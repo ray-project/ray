@@ -5,7 +5,6 @@ from __future__ import print_function
 import logging
 import time
 
-import ray
 from ray import tune
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
@@ -169,14 +168,13 @@ class DQNAgent(Agent):
 
         if self.config.get("parameter_noise", False):
             if self.config["callbacks"]["on_episode_start"]:
-                start_callback = self.config["callbacks"][
-                    "on_episode_start"]
+                start_callback = self.config["callbacks"]["on_episode_start"]
             else:
                 start_callback = None
 
             def on_episode_start(info):
-                # as a callback function to sample and pose parameter space noise
-                # on the parameters of network
+                # as a callback function to sample and pose parameter space
+                # noise on the parameters of network
                 policies = info["policy"]
                 for pi in policies.values():
                     pi.add_parameter_noise()
@@ -264,8 +262,8 @@ class DQNAgent(Agent):
             # Only collect metrics from the third of workers with lowest eps
             result = self.optimizer.collect_metrics(
                 timeout_seconds=self.config["collect_metrics_timeout"],
-                selected_evaluators=self.
-                remote_evaluators[-len(self.remote_evaluators) // 3:])
+                selected_evaluators=self.remote_evaluators[
+                    -len(self.remote_evaluators) // 3:])
         else:
             result = self.optimizer.collect_metrics(
                 timeout_seconds=self.config["collect_metrics_timeout"])
@@ -344,9 +342,9 @@ class DQNAgent(Agent):
         if self.config.get("parameter_noise", False):
             if self.config["batch_mode"] != "complete_episodes":
                 raise ValueError(
-                    "Exploration with parameter space noise requires batch_mode to be complete_episodes."
-                )
+                    "Exploration with parameter space noise requires "
+                    "batch_mode to be complete_episodes.")
             if self.config.get("noisy", False):
                 raise ValueError(
-                    "Exploration with parameter space noise and noisy network can NOT be used at the same time."
-                )
+                    "Exploration with parameter space noise and noisy network "
+                    "cannot be used at the same time.")

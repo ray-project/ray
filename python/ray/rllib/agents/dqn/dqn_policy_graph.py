@@ -474,9 +474,9 @@ class DQNPolicyGraph(TFPolicyGraph):
                 entropy(clean_action_distribution.T,
                         noisy_action_distribution.T))
             self.pi_distance = distance_in_action_space
-            if distance_in_action_space < -np.log(
-                    1 - self.cur_epsilon +
-                    self.cur_epsilon / self.num_actions):
+            if (distance_in_action_space <
+                    -np.log(1 - self.cur_epsilon +
+                            self.cur_epsilon / self.num_actions)):
                 self.parameter_noise_sigma_val *= 1.01
             else:
                 self.parameter_noise_sigma_val /= 1.01
