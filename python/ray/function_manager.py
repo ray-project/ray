@@ -259,7 +259,7 @@ class FunctionDescriptor(object):
             return descriptor_list
 
     def is_actor_method(self):
-        """Wether is function descriptor is an actor method.
+        """Wether this function descriptor is an actor method.
 
         Returns:
             True if it's an actor method, False if it's a normal function.
