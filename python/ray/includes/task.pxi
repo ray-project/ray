@@ -42,11 +42,11 @@ cdef class Task:
 
         # Parse the resource map.
         if resource_map is not None:
-            required_resources = resource_map_from_python_dict(resource_map)
+            required_resources = resource_map_from_dict(resource_map)
         if required_resources.count(b"CPU") == 0:
             required_resources[b"CPU"] = 1.0
         if placement_resource_map is not None:
-            required_placement_resources = resource_map_from_python_dict(placement_resource_map)
+            required_placement_resources = resource_map_from_dict(placement_resource_map)
 
         # Parse the arguments from the list.
         for arg in arguments:
