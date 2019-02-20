@@ -73,8 +73,8 @@ cc_binary(
         ":jni_md.h",
     ],
     includes = [
-        "cpp/src",
         ".",
+        "cpp/src",
     ],
     linkshared = 1,
     linkstatic = 0,
