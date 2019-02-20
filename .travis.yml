@@ -182,10 +182,6 @@ script:
   # streaming tests
   - python -m pytest -v --durations=10 test/test_batched_queue.py
   - python -m pytest -v --durations=10 test/test_logical_graph.py
-  
-  # streaming tests
-  - python -m pytest -v --durations=10 test/test_batched_queue.py
-  - python -m pytest -v --durations=10 test/test_logical_graph.py
 
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
