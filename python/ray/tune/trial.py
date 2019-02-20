@@ -125,7 +125,7 @@ class Checkpoint(object):
     def __init__(self, storage, value, last_result=None):
         self.storage = storage
         self.value = value
-        self.last_result = last_result
+        self.last_result = last_result or {}
 
     @staticmethod
     def from_object(value=None):
@@ -267,7 +267,7 @@ class Trial(object):
                 sync_function=self.sync_function)
 
     def update_resources(self, cpu, gpu, **kwargs):
-        """Updates the resource requirements.
+        """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
 
