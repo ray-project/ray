@@ -37,7 +37,7 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
     cdef cppclass CTaskArgument "ray::raylet::TaskArgument":
         pass
 
-    cdef cppclass CTaskArgumentByReference\
+    cdef cppclass CTaskArgumentByReference \
             "ray::raylet::TaskArgumentByReference":
         CTaskArgumentByReference(const c_vector[CObjectID] &references)
 
