@@ -2,6 +2,7 @@ from typing import List
 
 import ray
 from ray.serve import SingleQuery
+from ray.serve.utils.debug import print_debug
 
 
 def single_input(func):
@@ -13,7 +14,8 @@ class RayServeMixin:
     serve_method = "__call__"
 
     def _dispatch(self, input_batch: List[SingleQuery]):
-        method = eval("self.{}".format(self.serve_method))
+        method = getattr(self, self.serve_method)
+        print_debug("entering actor dispatch scope", method)
         if hasattr(method, "ray_serve_single_input"):
             for inp in input_batch:
                 result = method(inp.data)
