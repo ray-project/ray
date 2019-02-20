@@ -512,7 +512,7 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
   RAY_RETURN_NOT_OK(
       OpenPrefixedKey(&delete_key, ctx, prefix_str, id_data, REDISMODULE_READ));
   if (delete_key == nullptr) {
-    return Status::RedisError("Non-existing key");
+    return Status::RedisError("Key does not exist.");
   }
   auto key_type = RedisModule_KeyType(delete_key);
   if (key_type == REDISMODULE_KEYTYPE_STRING || key_type == REDISMODULE_KEYTYPE_LIST) {
@@ -556,7 +556,7 @@ int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   data_ptr = RedisModule_StringPtrLen(data, &len);
   REPLY_AND_RETURN_IF_FALSE(
       len % kUniqueIDSize == 0,
-      "deletion data lenghth should be multiples of UniqueID for TABLE_DELETE");
+      "The deletion data length must be a multiple of the UniqueID size.");
   size_t ids_to_delete = len / kUniqueIDSize;
   for (size_t i = 0; i < ids_to_delete; ++i) {
     RedisModuleString *id_data =
