@@ -1,7 +1,5 @@
 package org.ray.runtime;
 
-import static java.util.stream.Collectors.toList;
-
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.Arrays;
