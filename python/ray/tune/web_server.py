@@ -16,11 +16,11 @@ from sys import version as python_version
 from cgi import parse_header, parse_multipart
 
 if sys.version_info[0] == 2:
-    from urlparse import parse_qs
+    from urlparse import parse_qs, urljoin, urlparse
     from SimpleHTTPServer import SimpleHTTPRequestHandler
     from SocketServer import TCPServer as HTTPServer
 elif sys.version_info[0] == 3:
-    from urllib.parse import parse_qs
+    from urllib.parse import parse_qs, urljoin, urlparse
     from http.server import SimpleHTTPRequestHandler, HTTPServer
 
 logger = logging.getLogger(__name__)
@@ -31,8 +31,6 @@ except ImportError:
     requests = None
     logger.exception("Couldn't import `requests` library. "
                      "Be sure to install it on the client side.")
-
-import pdb
 
 def load_trial_info(trial_info):
     trial_info["config"] = cloudpickle.loads(
@@ -45,19 +43,15 @@ class TuneClient(object):
     """Client to interact with ongoing Tune experiment.
 
     Requires server to have started running."""
-    STOP = "STOP"
-    ADD = "ADD"
-    GET_LIST = "GET_LIST"
-    GET_TRIAL = "GET_TRIAL"
 
-    def __init__(self, tune_address):
-        # TODO(rliaw): Better to specify address and port forward
+    def __init__(self, tune_address, port_forward):
         self._tune_address = tune_address
-        self._path = "http://{}".format(tune_address)
+        self._port_forward = port_forward
+        self._path = "http://{}:{}".format(tune_address, port_forward)
 
     def get_all_trials(self):
         """Returns a list of all trials (trial_id, config, status)."""
-        response = requests.get(self._path + "/trials")
+        response = requests.get(urljoin(self._path, "trials"))
         parsed = response.json()
 
         if "trial" in parsed:
@@ -70,7 +64,7 @@ class TuneClient(object):
 
     def get_trial(self, trial_id):
         """Returns the last result for queried trial."""
-        response = requests.get(self._path + "/trials/{}".format(trial_id))
+        response = requests.get(urljoin(self._path, "trials/{}".format(trial_id)))
         parsed = response.json()
 
         if "trial" in parsed:
@@ -83,10 +77,11 @@ class TuneClient(object):
 
     def add_trial(self, name, trial_spec):
         """Adds a trial of `name` with configurations."""
-        response = requests.post(self._path + "/trials", data=json.dumps({
+        payload = {
             "name": name,
             "spec": trial_spec
-        }).encode())
+        }
+        response = requests.post(urljoin(self._path, "trials"), json=payload)
         parsed = response.json()
 
         if "trial" in parsed:
@@ -99,19 +94,7 @@ class TuneClient(object):
 
     def stop_trial(self, trial_id):
         """Requests to stop trial."""
-        response = requests.put(self._path + "/trials/{}".format(trial_id))
-        parsed = response.json()
-
-        if "trial" in parsed:
-            load_trial_info(parsed["trial"])
-        elif "trials" in parsed:
-            for trial_info in parsed["trials"]:
-                load_trial_info(trial_info)
-
-        return parsed
-
-    def _get_response(self, path, data=None):
-        response = requests.get(path, data=json.dumps(data).encode()) if data else requests.get(path)
+        response = requests.put(urljoin(self._path, "trials/{}".format(trial_id)))
         parsed = response.json()
 
         if "trial" in parsed:
@@ -231,7 +214,6 @@ def RunnerHandler(runner):
                 return trial
 
         def _get_trial_by_uri(self, uri):
-            from urllib.parse import urlparse, parse_qs
             parts = urlparse(uri)
             path, query = parts.path, parse_qs(parts.query)
             result = None
@@ -282,7 +264,3 @@ class TuneServer(threading.Thread):
 
     def shutdown(self):
         self._server.shutdown()
-
-if __name__ == "__main__":
-    s = TuneServer(RunnerHandler(runner))
-    s.run()
