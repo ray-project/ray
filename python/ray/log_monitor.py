@@ -4,14 +4,14 @@ from __future__ import print_function
 
 import argparse
 import errno
+import json
 import logging
 import os
 import time
 import traceback
 
-import colorama
-
 import ray.ray_constants as ray_constants
+import ray.services as services
 import ray.utils
 
 # Logger for this module. It should be configured at the entry point
@@ -69,7 +69,7 @@ class LogMonitor(object):
 
     def __init__(self, logs_dir, redis_address, redis_password=None):
         """Initialize the log monitor object."""
-        self.host = os.uname()[1]
+        self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
@@ -184,7 +184,6 @@ class LogMonitor(object):
             is_worker = (filename.startswith("worker")
                          and (filename.endswith("out")
                               or filename.endswith("err")))
-            output_type = "stdout" if filename.endswith("out") else "stderr"
 
             if is_worker and file_info.file_position == 0:
                 if (len(lines_to_publish) > 0 and
@@ -197,13 +196,13 @@ class LogMonitor(object):
             file_info.file_position = file_info.file_handle.tell()
 
             if len(lines_to_publish) > 0 and is_worker:
-                lines_to_publish.insert(
-                    0, "{}{}{} (pid={}, host={})".format(
-                        colorama.Fore.CYAN, "worker ({})".format(output_type),
-                        colorama.Fore.RESET, file_info.worker_pid, self.host))
-
-                self.redis_client.publish(ray.gcs_utils.LOG_FILE_CHANNEL,
-                                          "\n".join(lines_to_publish))
+                self.redis_client.publish(
+                    ray.gcs_utils.LOG_FILE_CHANNEL,
+                    json.dumps({
+                        "ip": self.ip,
+                        "pid": file_info.worker_pid,
+                        "lines": lines_to_publish
+                    }))
                 anything_published = True
 
         return anything_published
