@@ -25,6 +25,11 @@ class BasicVariantGenerator(SearchAlgorithm):
     """
 
     def __init__(self, shuffle=False):
+        """Initializes the Variant Generator.
+
+        Arguments:
+            shuffle (bool): Shuffles the generated list of configurations.
+        """
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0

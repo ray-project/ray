@@ -266,9 +266,18 @@ class Trial(object):
                 custom_loggers=self.custom_loggers,
                 sync_function=self.sync_function)
 
-    def update_resources(self, cpu, gpu, extra_cpu=0, extra_gpu=0):
-        assert self.status is not Trial.RUNNING
-        self.resources = Resources(cpu, gpu, extra_cpu=0, extra_gpu=0)
+    def update_resources(self, cpu, gpu, **kwargs):
+        """Updates the resource requirements.
+
+        Should only be called when the trial is not running.
+
+        Raises:
+            ValueError if trial status is running.
+        """
+        if self.status is Trial.RUNNING:
+            raise ValueError(
+                "Cannot update resources while Trial is running.")
+        self.resources = Resources(cpu, gpu, **kwargs)
 
     def sync_logger_to_new_location(self, worker_ip):
         """Updates the logger location.
