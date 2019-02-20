@@ -261,7 +261,7 @@ class FunctionDescriptor(object):
     def is_actor_method(self):
         """Wether is function descriptor is an actor method.
 
-        Returns
+        Returns:
             True if it's an actor method, False if it's a normal function.
         """
         return len(self._class_name) > 0
@@ -611,6 +611,7 @@ class FunctionActorManager(object):
         Args:
             driver_id: Driver ID of the actor.
             function_descriptor: Function descriptor of the actor constructor.
+
         Returns:
             The actor class.
         """
@@ -674,7 +675,7 @@ class FunctionActorManager(object):
         def temporary_actor_method(*xs):
             raise Exception(
                 "The actor with name {} failed to be imported, "
-                "and so cannot execute this method".format(actor_class_name))
+                "and so cannot execute this method.".format(actor_class_name))
 
         for method in actor_method_names:
             setattr(TemporaryActor, method, temporary_actor_method)
@@ -708,7 +709,9 @@ class FunctionActorManager(object):
         actor_class = None
         try:
             actor_class = pickle.loads(pickled_class)
-        except Exception:
+        except Exception as e:
+            logger.error(
+                "Failed to load actor class %s.", class_name, stack_info=True)
             # The actor class failed to be unpickled, create a fake actor
             # class instead (just to produce error messages and to prevent
             # the driver from hanging).
