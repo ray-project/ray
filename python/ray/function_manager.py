@@ -525,8 +525,8 @@ class FunctionActorManager(object):
         while True:
             with self._worker.lock:
                 if (self._worker.actor_id.is_nil()
-                        and (function_descriptor.function_id in
-                             self._function_execution_info[driver_id])):
+                        and (function_descriptor.function_id in self.
+                             _function_execution_info[driver_id])):
                     break
                 elif not self._worker.actor_id.is_nil() and (
                         self._worker.actor_id in self._worker.actors):

@@ -158,9 +158,9 @@ def test_complex_serialization(ray_start):
                 assert_equal(obj1[i], obj2[i])
         elif (ray.serialization.is_named_tuple(type(obj1))
               or ray.serialization.is_named_tuple(type(obj2))):
-            assert len(obj1) == len(obj2), ("Objects {} and {} are named "
-                                            "tuples with different lengths."
-                                            .format(obj1, obj2))
+            assert len(obj1) == len(obj2), (
+                "Objects {} and {} are named "
+                "tuples with different lengths.".format(obj1, obj2))
             for i in range(len(obj1)):
                 assert_equal(obj1[i], obj2[i])
         else:
@@ -786,7 +786,8 @@ def test_defining_remote_functions(shutdown_only):
 
     # Test that we can close over plain old data.
     data = [
-        np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60, {
+        np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60,
+        {
             "a": np.zeros(3)
         }
     ]
@@ -2854,7 +2855,6 @@ def echo(x):
 
 @ray.remote
 class WithConstructor(object):
-
     def __init__(self, data):
         self.data = data
 
@@ -2864,7 +2864,6 @@ class WithConstructor(object):
 
 @ray.remote
 class WithoutConstructor(object):
-
     def set_data(self, data):
         self.data = data
 
@@ -2873,14 +2872,12 @@ class WithoutConstructor(object):
 
 
 class BaseClass(object):
-
     def __init__(self, data):
         self.data = data
 
 
 @ray.remote
 class DerivedClass(BaseClass):
-
     def __init__(self, data):
         # Due to different behaviors of super in Python 2 and Python 3,
         # we use BaseClass directly here.
