@@ -61,8 +61,7 @@ parser.add_argument(
     "--load-code-from-local",
     default=False,
     action='store_true',
-    help=
-    "True if code should be loaded from local files, as opposed to the GCS.")
+    help="True if code is loaded from local files, as opposed to the GCS.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
