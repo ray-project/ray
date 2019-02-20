@@ -1,6 +1,5 @@
 package org.ray.api.options;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**

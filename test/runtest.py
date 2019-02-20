@@ -2523,11 +2523,11 @@ def test_logging_to_driver(shutdown_only):
 
     @ray.remote
     def f():
+        # It's important to make sure that these print statements occur even
+        # without calling sys.stdout.flush() and sys.stderr.flush().
         for i in range(100):
             print(i)
             print(100 + i, file=sys.stderr)
-            sys.stdout.flush()
-            sys.stderr.flush()
 
     captured = {}
     with CaptureOutputAndError(captured):
@@ -2535,10 +2535,10 @@ def test_logging_to_driver(shutdown_only):
         time.sleep(1)
 
     output_lines = captured["out"]
-    assert len(output_lines) == 0
-    error_lines = captured["err"]
     for i in range(200):
-        assert str(i) in error_lines
+        assert str(i) in output_lines
+    error_lines = captured["err"]
+    assert len(error_lines) == 0
 
 
 def test_not_logging_to_driver(shutdown_only):
@@ -2590,16 +2590,17 @@ def test_workers(shutdown_only):
 
 def test_specific_driver_id():
     dummy_driver_id = ray.DriverID(b"00112233445566778899")
-    ray.init(driver_id=dummy_driver_id)
+    ray.init(num_cpus=1, driver_id=dummy_driver_id)
 
+    # in driver
+    assert dummy_driver_id == ray._get_runtime_context().current_driver_id
+
+    # in worker
     @ray.remote
     def f():
-        return ray.worker.global_worker.task_driver_id.binary()
+        return ray._get_runtime_context().current_driver_id
 
-    assert dummy_driver_id.binary() == ray.worker.global_worker.worker_id
-
-    task_driver_id = ray.get(f.remote())
-    assert dummy_driver_id.binary() == task_driver_id
+    assert dummy_driver_id == ray.get(f.remote())
 
     ray.shutdown()
 
