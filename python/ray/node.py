@@ -297,9 +297,10 @@ class Node(object):
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password)
         assert ray_constants.PROCESS_TYPE_REPORTER not in self.all_processes
-        self.all_processes[ray_constants.PROCESS_TYPE_REPORTER] = [
-            process_info
-        ]
+        if process_info is not None:
+            self.all_processes[ray_constants.PROCESS_TYPE_REPORTER] = [
+                process_info
+            ]
 
     def start_dashboard(self):
         """Start the dashboard."""

@@ -852,6 +852,14 @@ def start_reporter(redis_address,
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
+
+    try:
+        import psutil  # noqa: F401
+    except ImportError:
+        logger.warning("Failed to start the reporter. The reporter requires "
+                       "'pip install psutil'.")
+        return None
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REPORTER,
