@@ -44,7 +44,7 @@ class TuneServerSuite(unittest.TestCase):
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)
-        client = TuneClient("localhost:{}".format(port))
+        client = TuneClient("localhost", port)
         return runner, client
 
     def tearDown(self):
