@@ -223,7 +223,7 @@ class Node(object):
             suffix=".out", prefix=name, directory_name=self._logs_dir)
         log_stderr = self._make_inc_temp(
             suffix=".err", prefix=name, directory_name=self._logs_dir)
-        # Line-buffer the output (mode 1)
+        # Line-buffer the output (mode 1).
         log_stdout_file = open(log_stdout, "a", buffering=1)
         log_stderr_file = open(log_stderr, "a", buffering=1)
         return log_stdout_file, log_stderr_file
