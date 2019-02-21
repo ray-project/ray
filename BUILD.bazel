@@ -101,6 +101,7 @@ cc_test(
         ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],
+    args = ["--gtest_filter=PrintLogTest*"]
 )
 
 cc_test(
