@@ -124,7 +124,7 @@ test_sgd(){
 }
 
 # RUN TESTS
-for PYTHON_VERSION in "p36"
+for PYTHON_VERSION in "p27" "p36"
 do
     test_impala $PYTHON_VERSION
     test_sgd $PYTHON_VERSION
