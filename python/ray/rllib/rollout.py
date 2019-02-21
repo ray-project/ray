@@ -112,7 +112,8 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
     else:
         policy_map = {}
         use_lstm = { 'default': False }
-    
+    multi_agent = len(policy_map) > 1
+
     if out is not None:
         rollouts = []
     steps = 0
@@ -123,7 +124,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         done = False
         reward_total = 0.0
         while not done and steps < (num_steps or steps + 1):
-            if policy_map:
+            if multi_agent:
                 action_dict = {}
                 for policy_id in policy_map.keys():
                     p_state = state[policy_id]
