@@ -148,8 +148,7 @@ requires = [
     "pytest",
     "pyyaml",
     "redis",
-    # The six module is required by pyarrow.
-    "six >= 1.0.0",
+    "six >= 1.12.0",
     # The typing module is required by modin.
     "typing",
     "flatbuffers",
