@@ -80,6 +80,50 @@ test_impala(){
     popd
 }
 
+
+# Total time is roughly 25 minutes.
+# Actual test runtime is roughly 10 minutes.
+test_large_tune(){
+    local PYTHON_VERSION=$1
+    local WHEEL_STR=$(_find_wheel_str $PYTHON_VERSION)
+
+    pushd "$ROOT_DIR"
+        local TEST_NAME="tune_large_$PYTHON_VERSION"
+        local CLUSTER="$TEST_NAME.yaml"
+        echo "Creating Tune cluster YAML from template."
+
+        cat application_cluster_template.yaml |
+            sed -e "
+                s/<<<CLUSTER_NAME>>>/$TEST_NAME/;
+                s/<<<HEAD_TYPE>>>/c5.18xlarge/;
+                s/<<<WORKER_TYPE>>>/c5.18xlarge/;
+                s/<<<MIN_WORKERS>>>/0/;
+                s/<<<MAX_WORKERS>>>/100/;
+                s/<<<PYTHON_VERSION>>>/$PYTHON_VERSION/;
+                s/<<<WHEEL_STR>>>/$WHEEL_STR/;" > $CLUSTER
+
+        echo "Try running Tune stress test"
+        {
+            ray --logging-level=DEBUG up -y $CLUSTER &&
+            # TODO: fix submit so that args work
+            ray rsync_up $CLUSTER test_large_tune_search.py test_large_tune_search.py &&
+            sleep 1 &&
+            ray --logging-level=DEBUG exec $CLUSTER "
+                python test_large_tune_search.py --redis-address=localhost:6379" &&
+            echo "PASS: Tune Test for" $PYTHON_VERSION >> $RESULT_FILE
+        } || echo "FAIL: Tune Test for" $PYTHON_VERSION >> $RESULT_FILE
+
+        # Tear down cluster.
+        if [ "$DEBUG_MODE" = "" ]; then
+            ray down -y $CLUSTER
+            rm $CLUSTER
+        else
+            echo "Not tearing down cluster" $CLUSTER
+        fi
+    popd
+}
+
+
 # Total runtime is about 20 minutes (if the AWS spot instance order is fulfilled).
 # Actual test runtime is roughly 10 minutes.
 test_sgd(){
@@ -127,6 +171,7 @@ test_sgd(){
 for PYTHON_VERSION in "p27" "p36"
 do
     test_impala $PYTHON_VERSION
+    test_large_tune $PYTHON_VERSION
     test_sgd $PYTHON_VERSION
 done
 
