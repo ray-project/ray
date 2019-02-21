@@ -165,13 +165,11 @@ def RunnerHandler(runner):
             content_len = int(self.headers.get('Content-Length'), 0)
             raw_body = self.rfile.read(content_len)
             parsed_input = json.loads(raw_body.decode())
-            resource = self._add_trials(
-                parsed_input["name"], parsed_input["spec"])
+            resource = self._add_trials(parsed_input["name"],
+                                        parsed_input["spec"])
 
-            headers = [
-                ('Content-type', 'application/json'),
-                ('Location', '/trials/')
-            ]
+            headers = [('Content-type', 'application/json'), ('Location',
+                                                              '/trials/')]
             self._do_header(response_code=response_code, headers=headers)
             self.wfile.write(json.dumps(resource).encode())
 
