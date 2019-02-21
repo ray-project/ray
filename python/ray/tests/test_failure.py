@@ -16,7 +16,7 @@ import redis
 import ray
 import ray.ray_constants as ray_constants
 from ray.utils import _random_string
-from ray.test.cluster_utils import Cluster
+from ray.tests.cluster_utils import Cluster
 
 
 def relevant_errors(error_type):

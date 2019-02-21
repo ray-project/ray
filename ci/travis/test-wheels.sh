@@ -21,7 +21,7 @@ else
   exit 1
 fi
 
-TEST_SCRIPT=$ROOT_DIR/../test/microbenchmarks.py
+TEST_SCRIPT=$ROOT_DIR/../../python/ray/tests/test_microbenchmarks.py
 
 if [[ "$platform" == "linux" ]]; then
   # First test Python 2.7.
@@ -31,7 +31,7 @@ if [[ "$platform" == "linux" ]]; then
   bash miniconda2.sh -b -p $HOME/miniconda2
 
   # Find the right wheel by grepping for the Python version.
-  PYTHON_WHEEL=$(find $ROOT_DIR/../.whl -type f -maxdepth 1 -print | grep -m1 '27')
+  PYTHON_WHEEL=$(find $ROOT_DIR/../../.whl -type f -maxdepth 1 -print | grep -m1 '27')
 
   # Install the wheel.
   $HOME/miniconda2/bin/pip install $PYTHON_WHEEL
@@ -46,7 +46,7 @@ if [[ "$platform" == "linux" ]]; then
   bash miniconda3.sh -b -p $HOME/miniconda3
 
   # Find the right wheel by grepping for the Python version.
-  PYTHON_WHEEL=$(find $ROOT_DIR/../.whl -type f -maxdepth 1 -print | grep -m1 '36')
+  PYTHON_WHEEL=$(find $ROOT_DIR/../../.whl -type f -maxdepth 1 -print | grep -m1 '36')
 
   # Install the wheel.
   $HOME/miniconda3/bin/pip install $PYTHON_WHEEL
@@ -55,7 +55,7 @@ if [[ "$platform" == "linux" ]]; then
   $HOME/miniconda3/bin/python $TEST_SCRIPT
 
   # Check that the other wheels are present.
-  NUMBER_OF_WHEELS=$(ls -1q $ROOT_DIR/../.whl/*.whl | wc -l)
+  NUMBER_OF_WHEELS=$(ls -1q $ROOT_DIR/../../.whl/*.whl | wc -l)
   if [[ "$NUMBER_OF_WHEELS" != "5" ]]; then
     echo "Wrong number of wheels found."
     ls -l $ROOT_DIR/../.whl/
@@ -84,7 +84,7 @@ elif [[ "$platform" == "macosx" ]]; then
     PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
 
     # Find the appropriate wheel by grepping for the Python version.
-    PYTHON_WHEEL=$(find $ROOT_DIR/../.whl -type f -maxdepth 1 -print | grep -m1 "$PY_WHEEL_VERSION")
+    PYTHON_WHEEL=$(find $ROOT_DIR/../../.whl -type f -maxdepth 1 -print | grep -m1 "$PY_WHEEL_VERSION")
 
     # Install the wheel.
     $PIP_CMD install $PYTHON_WHEEL

@@ -6,8 +6,8 @@ import os
 import time
 
 import ray
-from ray.test.test_utils import (_wait_for_nodes_to_join, _broadcast_event,
-                                 _wait_for_event, wait_for_pid_to_exit)
+from ray.tests.utils import (_wait_for_nodes_to_join, _broadcast_event,
+                             _wait_for_event, wait_for_pid_to_exit)
 
 # This test should be run with 5 nodes, which have 0, 1, 2, 3, and 4 GPUs for a
 # total of 10 GPUs. It should be run with 7 drivers. Drivers 2 through 6 must

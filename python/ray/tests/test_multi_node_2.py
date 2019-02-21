@@ -9,7 +9,7 @@ import time
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.test.cluster_utils import Cluster
+from ray.tests.cluster_utils import Cluster
 
 logger = logging.getLogger(__name__)
 

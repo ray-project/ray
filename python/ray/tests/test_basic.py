@@ -25,8 +25,8 @@ import pickle
 import pytest
 
 import ray
-import ray.test.cluster_utils
-import ray.test.test_utils
+import ray.tests.cluster_utils
+import ray.tests.utils
 from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)
@@ -1139,7 +1139,7 @@ def test_profiling_api(shutdown_only):
 
 @pytest.fixture()
 def ray_start_cluster():
-    cluster = ray.test.cluster_utils.Cluster()
+    cluster = ray.tests.cluster_utils.Cluster()
     yield cluster
 
     # The code after the yield will run as teardown code.
@@ -2281,7 +2281,7 @@ def test_max_call_tasks(shutdown_only):
         return os.getpid()
 
     pid = ray.get(f.remote())
-    ray.test.test_utils.wait_for_pid_to_exit(pid)
+    ray.tests.utils.wait_for_pid_to_exit(pid)
 
     @ray.remote(max_calls=2)
     def f():
@@ -2290,7 +2290,7 @@ def test_max_call_tasks(shutdown_only):
     pid1 = ray.get(f.remote())
     pid2 = ray.get(f.remote())
     assert pid1 == pid2
-    ray.test.test_utils.wait_for_pid_to_exit(pid1)
+    ray.tests.utils.wait_for_pid_to_exit(pid1)
 
 
 def attempt_to_load_balance(remote_function,
@@ -2443,9 +2443,9 @@ def test_global_state_api(shutdown_only):
     assert task_spec["DriverID"] == driver_id
     assert task_spec["ReturnObjectIDs"] == [result_id]
     function_table_entry = function_table[task_spec["FunctionID"]]
-    assert function_table_entry["Name"] == "runtest.f"
+    assert function_table_entry["Name"] == "ray.tests.test_basic.f"
     assert function_table_entry["DriverID"] == driver_id
-    assert function_table_entry["Module"] == "runtest"
+    assert function_table_entry["Module"] == "ray.tests.test_basic"
 
     assert task_table[task_id] == ray.global_state.task_table(task_id)
 
@@ -2722,7 +2722,8 @@ def test_ray_setproctitle(shutdown_only):
 
     @ray.remote
     def unique_1():
-        assert setproctitle.getproctitle() == "ray_worker:runtest.unique_1()"
+        assert setproctitle.getproctitle(
+        ) == "ray_worker:ray.tests.test_basic.unique_1()"
 
     actor = UniqueName.remote()
     ray.get(actor.f.remote())

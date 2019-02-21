@@ -8,8 +8,8 @@ import subprocess
 import time
 
 import ray
-from ray.test.test_utils import (run_and_get_output, run_string_as_driver,
-                                 run_string_as_driver_nonblocking)
+from ray.tests.utils import (run_and_get_output, run_string_as_driver,
+                             run_string_as_driver_nonblocking)
 
 
 @pytest.fixture

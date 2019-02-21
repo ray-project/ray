@@ -10,7 +10,7 @@ import time
 
 import ray
 
-from ray.test.test_utils import run_and_get_output
+from ray.tests.utils import run_and_get_output
 
 
 def _test_cleanup_on_driver_exit(num_redis_shards):
