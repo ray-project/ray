@@ -1278,7 +1278,7 @@ def test_multithreading(shutdown_only):
     # relase resources when joining the threads.
     ray.init(num_cpus=2)
 
-    def run_test_in_multi_threads(test_case, num_threads=20, num_repeats=50):
+    def run_test_in_multi_threads(test_case, num_threads=10, num_repeats=25):
         """A helper function that runs test cases in multiple threads."""
 
         def wrapper():
@@ -1376,8 +1376,8 @@ def test_multithreading(shutdown_only):
                     timeout=1000.0,
                 )
                 assert len(ready) == len(wait_objects)
-                for _ in range(50):
-                    num = 20
+                for _ in range(20):
+                    num = 10
                     # Test remote call
                     results = [echo.remote(i) for i in range(num)]
                     assert ray.get(results) == list(range(num))
@@ -1393,7 +1393,7 @@ def test_multithreading(shutdown_only):
                     self.thread_results.append("ok")
 
         def spawn(self):
-            wait_objects = [echo.remote(i, delay_ms=10) for i in range(20)]
+            wait_objects = [echo.remote(i, delay_ms=10) for i in range(10)]
             self.threads = [
                 threading.Thread(
                     target=self.background_thread, args=(wait_objects, ))
