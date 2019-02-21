@@ -97,9 +97,19 @@ class MedianStoppingRule(FIFOScheduler):
         return "Using MedianStoppingRule: num_stopped={}.".format(
             len(self._stopped_trials))
 
+    @property
+    def _trials_beyond_grace_period(self):
+        trials = [
+            trial for trial in self._results
+            if (trial.last_result.get(self._time_attr, -float('inf'))
+                > self._grace_period)
+        ]
+
+        return trials
+
     def _get_median_result(self, time):
         scores = []
-        for trial in self._completed_trials:
+        for trial in self._trials_beyond_grace_period:
             scores.append(self._running_result(trial, time))
         if len(scores) >= self._min_samples_required:
             return np.median(scores)
