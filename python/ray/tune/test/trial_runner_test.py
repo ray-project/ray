@@ -1188,6 +1188,40 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertRaises(TuneError, runner.step)
 
+    def testChangeResources(self):
+        """Checks that resource requirements can be changed on fly."""
+        ray.init(num_cpus=2)
+
+        class ChangingScheduler(FIFOScheduler):
+            def on_trial_result(self, trial_runner, trial, result):
+                if result["training_iteration"] == 1:
+                    executor = trial_runner.trial_executor
+                    executor.stop_trial(trial, stop_logger=False)
+                    trial.update_resources(2, 0)
+                    executor.start_trial(trial)
+                return TrialScheduler.CONTINUE
+
+        runner = TrialRunner(
+            BasicVariantGenerator(), scheduler=ChangingScheduler())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
+            },
+            "resources": Resources(cpu=1, gpu=0),
+        }
+        trials = [Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(runner.trial_executor._committed_resources.cpu, 1)
+        self.assertRaises(ValueError, lambda: trials[0].update_resources(2, 0))
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(runner.trial_executor._committed_resources.cpu, 2)
+
     def testErrorHandling(self):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner(BasicVariantGenerator())

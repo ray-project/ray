@@ -275,8 +275,7 @@ class Trial(object):
             ValueError if trial status is running.
         """
         if self.status is Trial.RUNNING:
-            raise ValueError(
-                "Cannot update resources while Trial is running.")
+            raise ValueError("Cannot update resources while Trial is running.")
         self.resources = Resources(cpu, gpu, **kwargs)
 
     def sync_logger_to_new_location(self, worker_ip):
@@ -345,14 +344,12 @@ class Trial(object):
                 return '{} pid={}'.format(hostname, pid)
 
         pieces = [
-            '{}'.format(
-                self._status_string()),
-            '[{}]'.format(self.resources.summary_string()),
-            '[{}]'.format(
-                location_string(
-                    self.last_result.get(HOSTNAME),
-                    self.last_result.get(PID))),
-            '{} s'.format(int(self.last_result.get(TIME_TOTAL_S)))
+            '{}'.format(self._status_string()), '[{}]'.format(
+                self.resources.summary_string()), '[{}]'.format(
+                    location_string(
+                        self.last_result.get(HOSTNAME),
+                        self.last_result.get(PID))), '{} s'.format(
+                            int(self.last_result.get(TIME_TOTAL_S)))
         ]
 
         if self.last_result.get(TRAINING_ITERATION) is not None:
