@@ -827,6 +827,117 @@ def start_log_monitor(redis_address,
     return process_info
 
 
+def start_reporter(redis_address,
+                   stdout_file=None,
+                   stderr_file=None,
+                   redis_password=None):
+    """Start a reporter process.
+
+    Args:
+        redis_address (str): The address of the Redis instance.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    reporter_filepath = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "reporter.py")
+    command = [
+        sys.executable, "-u", reporter_filepath,
+        "--redis-address={}".format(redis_address)
+    ]
+    if redis_password:
+        command += ["--redis-password", redis_password]
+
+    try:
+        import psutil  # noqa: F401
+    except ImportError:
+        logger.warning("Failed to start the reporter. The reporter requires "
+                       "'pip install psutil'.")
+        return None
+
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_REPORTER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
+    return process_info
+
+
+def start_dashboard(redis_address,
+                    temp_dir,
+                    stdout_file=None,
+                    stderr_file=None,
+                    redis_password=None):
+    """Start a dashboard process.
+
+    Args:
+        redis_address (str): The address of the Redis instance.
+        temp_dir (str): The temporary directory used for log files and
+            information for this Ray session.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    port = 8080
+    while True:
+        try:
+            port_test_socket = socket.socket()
+            port_test_socket.bind(("127.0.0.1", port))
+            port_test_socket.close()
+            break
+        except socket.error:
+            port += 1
+
+    token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
+
+    dashboard_filepath = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
+    command = [
+        sys.executable,
+        "-u",
+        dashboard_filepath,
+        "--redis-address={}".format(redis_address),
+        "--http-port={}".format(port),
+        "--token={}".format(token),
+        "--temp-dir={}".format(temp_dir),
+    ]
+    if redis_password:
+        command += ["--redis-password", redis_password]
+
+    if sys.version_info <= (3, 0):
+        return None, None
+    try:
+        import aiohttp  # noqa: F401
+        import psutil  # noqa: F401
+    except ImportError:
+        logger.warning(
+            "Failed to start the dashboard. The dashboard requires Python 3 "
+            "as well as 'pip install aiohttp psutil'.")
+        return None, None
+
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_DASHBOARD,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
+    dashboard_url = "http://{}:{}/?token={}".format(
+        ray.services.get_node_ip_address(), port, token)
+    print("\n" + "=" * 70)
+    print("View the dashboard at {}".format(dashboard_url))
+    print("=" * 70 + "\n")
+    return dashboard_url, process_info
+
+
 def start_ui(redis_address, notebook_name, stdout_file=None, stderr_file=None):
     """Start a UI process.
 

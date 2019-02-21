@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os
 import shutil
 import time
@@ -67,15 +71,14 @@ def test_raylet_tempfiles():
     ray.init(num_cpus=0)
     node = ray.worker._global_node
     top_levels = set(os.listdir(node.get_temp_dir_path()))
-    assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
+    assert top_levels.issuperset({"sockets", "logs"})
     log_files = set(os.listdir(node.get_logs_dir_path()))
-    assert log_files == {
+    assert log_files.issuperset({
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
-        "plasma_store.err", "webui.out", "webui.err", "monitor.out",
-        "monitor.err", "raylet_monitor.out", "raylet_monitor.err",
-        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err",
-        "raylet.out", "raylet.err"
-    }  # with raylet logs
+        "plasma_store.err", "monitor.out", "monitor.err", "raylet_monitor.out",
+        "raylet_monitor.err", "redis-shard_0.out", "redis-shard_0.err",
+        "redis.out", "redis.err", "raylet.out", "raylet.err"
+    })  # with raylet logs
     socket_files = set(os.listdir(node.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
@@ -83,15 +86,14 @@ def test_raylet_tempfiles():
     ray.init(num_cpus=2)
     node = ray.worker._global_node
     top_levels = set(os.listdir(node.get_temp_dir_path()))
-    assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
+    assert top_levels.issuperset({"sockets", "logs"})
     time.sleep(3)  # wait workers to start
     log_files = set(os.listdir(node.get_logs_dir_path()))
     assert log_files.issuperset({
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
-        "plasma_store.err", "webui.out", "webui.err", "monitor.out",
-        "monitor.err", "raylet_monitor.out", "raylet_monitor.err",
-        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err",
-        "raylet.out", "raylet.err"
+        "plasma_store.err", "monitor.out", "monitor.err", "raylet_monitor.out",
+        "raylet_monitor.err", "redis-shard_0.out", "redis-shard_0.err",
+        "redis.out", "redis.err", "raylet.out", "raylet.err"
     })  # with raylet logs
 
     # Check numbers of worker log file.
