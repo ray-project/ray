@@ -184,7 +184,7 @@ script:
   - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
 
   # ray tests
-  - python -m pytest -v --durations=10 --pyargs ray.test
+  - python -m pytest -v --durations=10 --pyargs ray.tests
 
   # TODO(yuhguo): object_manager_test.py requires a lot of CPU/memory, and
   # better be put in Jenkins. However, it fails frequently in Jenkins, but
