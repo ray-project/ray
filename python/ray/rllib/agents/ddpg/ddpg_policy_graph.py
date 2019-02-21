@@ -147,7 +147,7 @@ class ActorCriticLoss(object):
 
         q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
         if twin_q:
-            twin_q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
+            twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
             q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
 
         q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
