@@ -138,7 +138,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
                     action_dict[policy_id] = p_action
                 action = action_dict
             else:
-                if use_lstm:
+                if use_lstm['default']:
                     action, state_init, logits = agent.compute_action(
                         state, state=state_init)
                 else:
@@ -146,7 +146,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
 
             next_state, reward, done, _ = env.step(action)
             
-            if policy_map:
+            if multi_agent:
                 done = done['__all__']
                 reward_total += sum(reward.values())
             else:
