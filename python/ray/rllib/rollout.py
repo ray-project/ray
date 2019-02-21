@@ -106,15 +106,13 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         env = gym.make(env_name)
 
     if hasattr(agent, "local_evaluator"):
-        state_init = agent.local_evaluator.policy_map[
-            "default"].get_initial_state()
+        policy_map = agent.local_evaluator.policy_map
+        state_init = { p: m.get_initial_state() for p, m in policy_map.items() }
+        use_lstm = { p: len(s) > 0 for p, s in state_init.items() }
     else:
-        state_init = []
-    if state_init:
-        use_lstm = True
-    else:
-        use_lstm = False
-
+        policy_map = {}
+        use_lstm = { 'default': False }
+    
     if out is not None:
         rollouts = []
     steps = 0
@@ -125,13 +123,33 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         done = False
         reward_total = 0.0
         while not done and steps < (num_steps or steps + 1):
-            if use_lstm:
-                action, state_init, logits = agent.compute_action(
-                    state, state=state_init)
+            if policy_map:
+                action_dict = {}
+                for policy_id in policy_map.keys():
+                    p_state = state[policy_id]
+                    p_use_lstm = use_lstm[policy_id]
+                    if p_use_lstm:
+                        p_action, p_state_init, _ = agent.compute_action(
+                            p_state, state=state_init[policy_id], policy_id=policy_id)
+                        state_init[policy_id] = p_state_init
+                    else:
+                        p_action = agent.compute_action(p_state, policy_id=policy_id)
+                    action_dict[policy_id] = p_action
+                action = action_dict
             else:
-                action = agent.compute_action(state)
+                if use_lstm:
+                    action, state_init, logits = agent.compute_action(
+                        state, state=state_init)
+                else:
+                    action = agent.compute_action(state)
+
             next_state, reward, done, _ = env.step(action)
-            reward_total += reward
+            
+            if policy_map:
+                done = done['__all__']
+                reward_total += sum(reward.values())
+            else:
+                reward_total += reward
             if not no_render:
                 env.render()
             if out is not None:
