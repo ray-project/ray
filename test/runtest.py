@@ -156,9 +156,9 @@ def test_complex_serialization(ray_start):
                 assert_equal(obj1[i], obj2[i])
         elif (ray.serialization.is_named_tuple(type(obj1))
               or ray.serialization.is_named_tuple(type(obj2))):
-            assert len(obj1) == len(obj2), ("Objects {} and {} are named "
-                                            "tuples with different lengths."
-                                            .format(obj1, obj2))
+            assert len(obj1) == len(obj2), (
+                "Objects {} and {} are named "
+                "tuples with different lengths.".format(obj1, obj2))
             for i in range(len(obj1)):
                 assert_equal(obj1[i], obj2[i])
         else:
@@ -2843,3 +2843,58 @@ def test_non_ascii_comment(ray_start):
         return 1
 
     assert ray.get(f.remote()) == 1
+
+
+@ray.remote
+def echo(x):
+    return x
+
+
+@ray.remote
+class WithConstructor(object):
+    def __init__(self, data):
+        self.data = data
+
+    def get_data(self):
+        return self.data
+
+
+@ray.remote
+class WithoutConstructor(object):
+    def set_data(self, data):
+        self.data = data
+
+    def get_data(self):
+        return self.data
+
+
+class BaseClass(object):
+    def __init__(self, data):
+        self.data = data
+
+
+@ray.remote
+class DerivedClass(BaseClass):
+    def __init__(self, data):
+        # Due to different behaviors of super in Python 2 and Python 3,
+        # we use BaseClass directly here.
+        BaseClass.__init__(self, data)
+
+    def get_data(self):
+        return self.data
+
+
+def test_load_code_from_local(shutdown_only):
+    ray.init(load_code_from_local=True, num_cpus=4)
+    # Test normal function.
+    assert ray.get(echo.remote("foo")) == "foo"
+    # Test actor class with constructor.
+    actor = WithConstructor.remote(1)
+    assert ray.get(actor.get_data.remote()) == 1
+    # Test actor class without constructor.
+    actor = WithoutConstructor.remote()
+    actor.set_data.remote(1)
+    assert ray.get(actor.get_data.remote()) == 1
+    # Test derived actor class.
+    actor = DerivedClass.remote(1)
+    assert ray.get(actor.get_data.remote()) == 1

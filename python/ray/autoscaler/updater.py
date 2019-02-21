@@ -226,7 +226,6 @@ class NodeUpdater(object):
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
-
         if redirect is None:
             if logger.getEffectiveLevel() > logging.DEBUG:
                 redirect = open("/dev/null", "w")

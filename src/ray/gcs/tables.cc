@@ -173,6 +173,35 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
+void Log<ID, Data>::Delete(const JobID &job_id, const std::vector<ID> &ids) {
+  if (ids.empty()) {
+    return;
+  }
+  std::unordered_map<RedisContext *, std::ostringstream> sharded_data;
+  for (const auto &id : ids) {
+    sharded_data[GetRedisContext(id).get()] << id.binary();
+  }
+  // Breaking really large deletion commands into batches of smaller size.
+  const size_t batch_size =
+      RayConfig::instance().maximum_gcs_deletion_batch_size() * kUniqueIDSize;
+  for (const auto &pair : sharded_data) {
+    std::string current_data = pair.second.str();
+    for (size_t cur = 0; cur < pair.second.str().size(); cur += batch_size) {
+      RAY_IGNORE_EXPR(pair.first->RunAsync(
+          "RAY.TABLE_DELETE", UniqueID::nil(),
+          reinterpret_cast<const uint8_t *>(current_data.c_str() + cur),
+          std::min(batch_size, current_data.size() - cur), prefix_, pubsub_channel_,
+          /*redisCallback=*/nullptr));
+    }
+  }
+}
+
+template <typename ID, typename Data>
+void Log<ID, Data>::Delete(const JobID &job_id, const ID &id) {
+  Delete(job_id, std::vector<ID>({id}));
+}
+
+template <typename ID, typename Data>
 std::string Log<ID, Data>::DebugString() const {
   std::stringstream result;
   result << "num lookups: " << num_lookups_ << ", num appends: " << num_appends_;
@@ -462,7 +491,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                      << actor_id;
       copy->timestamps.erase(copy->timestamps.begin());
       copy->checkpoint_ids.erase(0, kUniqueIDSize);
-      // TODO(hchen): also delete checkpoint data from GCS.
+      client_->actor_checkpoint_table().Delete(job_id, checkpoint_id);
     }
     RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
   };

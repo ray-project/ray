@@ -7,6 +7,7 @@ extern "C" {
 
 #include "ray/gcs/client.h"
 #include "ray/gcs/tables.h"
+#include "ray/ray_config.h"
 
 namespace ray {
 
@@ -253,6 +254,160 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
 TEST_F(TestGcsWithAsio, TestLogAppendAt) {
   test = this;
   TestLogAppendAt(job_id_, client_);
+}
+
+void TestDeleteKeysFromLog(const JobID &job_id,
+                           std::shared_ptr<gcs::AsyncGcsClient> client,
+                           std::vector<std::shared_ptr<ObjectTableDataT>> &data_vector) {
+  std::vector<ObjectID> ids;
+  ObjectID object_id;
+  for (auto &data : data_vector) {
+    object_id = ObjectID::from_random();
+    ids.push_back(object_id);
+    // Check that we added the correct object entries.
+    auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                          const ObjectTableDataT &d) {
+      ASSERT_EQ(id, object_id);
+      ASSERT_EQ(data->manager, d.manager);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->object_table().Append(job_id, object_id, data, add_callback));
+  }
+  for (const auto &object_id : ids) {
+    // Check that lookup returns the added object entries.
+    auto lookup_callback = [object_id, data_vector](
+        gcs::AsyncGcsClient *client, const ObjectID &id,
+        const std::vector<ObjectTableDataT> &data) {
+      ASSERT_EQ(id, object_id);
+      ASSERT_EQ(data.size(), 1);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback));
+  }
+  if (ids.size() == 1) {
+    client->object_table().Delete(job_id, ids[0]);
+  } else {
+    client->object_table().Delete(job_id, ids);
+  }
+  for (const auto &object_id : ids) {
+    auto lookup_callback = [object_id](gcs::AsyncGcsClient *client, const ObjectID &id,
+                                       const std::vector<ObjectTableDataT> &data) {
+      ASSERT_EQ(id, object_id);
+      ASSERT_TRUE(data.size() == 0);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback));
+  }
+}
+
+void TestDeleteKeysFromTable(const JobID &job_id,
+                             std::shared_ptr<gcs::AsyncGcsClient> client,
+                             std::vector<std::shared_ptr<protocol::TaskT>> &data_vector,
+                             bool stop_at_end) {
+  std::vector<TaskID> ids;
+  TaskID task_id;
+  for (auto &data : data_vector) {
+    task_id = TaskID::from_random();
+    ids.push_back(task_id);
+    // Check that we added the correct object entries.
+    auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                        const protocol::TaskT &d) {
+      ASSERT_EQ(id, task_id);
+      ASSERT_EQ(data->task_specification, d.task_specification);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, add_callback));
+  }
+  for (const auto &task_id : ids) {
+    auto task_lookup_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
+                                          const protocol::TaskT &data) {
+      ASSERT_EQ(id, task_id);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->raylet_task_table().Lookup(job_id, task_id, task_lookup_callback,
+                                                    nullptr));
+  }
+  if (ids.size() == 1) {
+    client->raylet_task_table().Delete(job_id, ids[0]);
+  } else {
+    client->raylet_task_table().Delete(job_id, ids);
+  }
+  auto expected_failure_callback = [](AsyncGcsClient *client, const TaskID &id) {
+    ASSERT_TRUE(true);
+    test->IncrementNumCallbacks();
+  };
+  auto undesired_callback = [](gcs::AsyncGcsClient *client, const TaskID &id,
+                               const protocol::TaskT &data) { ASSERT_TRUE(false); };
+  for (size_t i = 0; i < ids.size(); ++i) {
+    RAY_CHECK_OK(client->raylet_task_table().Lookup(job_id, task_id, undesired_callback,
+                                                    expected_failure_callback));
+  }
+  if (stop_at_end) {
+    auto stop_callback = [](AsyncGcsClient *client, const TaskID &id) { test->Stop(); };
+    RAY_CHECK_OK(
+        client->raylet_task_table().Lookup(job_id, ids[0], nullptr, stop_callback));
+  }
+}
+
+// Test delete function for keys of Log or Table.
+void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+  // Test delete function for keys of Log.
+  std::vector<std::shared_ptr<ObjectTableDataT>> object_vector;
+  auto AppendObjectData = [&object_vector](size_t add_count) {
+    for (size_t i = 0; i < add_count; ++i) {
+      auto data = std::make_shared<ObjectTableDataT>();
+      data->manager = ObjectID::from_random().hex();
+      object_vector.push_back(data);
+    }
+  };
+  // Test one element case.
+  AppendObjectData(1);
+  ASSERT_EQ(object_vector.size(), 1);
+  TestDeleteKeysFromLog(job_id, client, object_vector);
+  // Test the case for more than one elements and less than
+  // maximum_gcs_deletion_batch_size.
+  AppendObjectData(RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
+  ASSERT_GT(object_vector.size(), 1);
+  ASSERT_LT(object_vector.size(),
+            RayConfig::instance().maximum_gcs_deletion_batch_size());
+  TestDeleteKeysFromLog(job_id, client, object_vector);
+  // Test the case for more than maximum_gcs_deletion_batch_size.
+  // The Delete function will split the data into two commands.
+  AppendObjectData(RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
+  ASSERT_GT(object_vector.size(),
+            RayConfig::instance().maximum_gcs_deletion_batch_size());
+  TestDeleteKeysFromLog(job_id, client, object_vector);
+
+  // Test delete function for keys of Table.
+  std::vector<std::shared_ptr<protocol::TaskT>> task_vector;
+  auto AppendTaskData = [&task_vector](size_t add_count) {
+    for (size_t i = 0; i < add_count; ++i) {
+      auto task_data = std::make_shared<protocol::TaskT>();
+      task_data->task_specification = ObjectID::from_random().hex();
+      task_vector.push_back(task_data);
+    }
+  };
+  AppendTaskData(1);
+  ASSERT_EQ(task_vector.size(), 1);
+  TestDeleteKeysFromTable(job_id, client, task_vector, false);
+
+  AppendTaskData(RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
+  ASSERT_GT(task_vector.size(), 1);
+  ASSERT_LT(task_vector.size(), RayConfig::instance().maximum_gcs_deletion_batch_size());
+  TestDeleteKeysFromTable(job_id, client, task_vector, false);
+
+  AppendTaskData(RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
+  ASSERT_GT(task_vector.size(), RayConfig::instance().maximum_gcs_deletion_batch_size());
+  TestDeleteKeysFromTable(job_id, client, task_vector, true);
+
+  test->Start();
+  ASSERT_GT(test->NumCallbacks(),
+            9 * RayConfig::instance().maximum_gcs_deletion_batch_size());
+}
+
+TEST_F(TestGcsWithAsio, TestDeleteKey) {
+  test = this;
+  TestDeleteKeys(job_id_, client_);
 }
 
 // Task table callbacks.
