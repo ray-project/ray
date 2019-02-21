@@ -32,7 +32,8 @@ def check_id(b):
     if not isinstance(b, bytes):
         raise TypeError("Unsupported type: " + str(type(b)))
     if len(b) != kUniqueIDSize:
-        raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
+        raise ValueError("ID string needs to have length " +
+                         str(kUniqueIDSize))
 
 
 cdef extern from "ray/constants.h" nogil:
@@ -106,9 +107,10 @@ cdef class UniqueID:
         return type(self), (self.binary(),)
 
     def redis_shard_hash(self):
-        # NOTE: The hash function used here must match the one in GetRedisContext in
-        # src/ray/gcs/tables.h. Changes to the hash function should only be made
-        # through std::hash in src/common/common.h
+        # NOTE: The hash function used here must match the one in
+        # GetRedisContext in src/ray/gcs/tables.h. Changes to the
+        # hash function should only be made through std::hash in
+        # src/common/common.h
         return self.data.hash()
 
 

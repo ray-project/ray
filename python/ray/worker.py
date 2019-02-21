@@ -3,10 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 from contextlib import contextmanager
+import colorama
 import atexit
 import faulthandler
 import hashlib
 import inspect
+import json
 import logging
 import numpy as np
 import os
@@ -44,6 +46,7 @@ from ray import (
 )
 from ray import import_thread
 from ray import profiling
+
 from ray.core.generated.ErrorType import ErrorType
 from ray.exceptions import (
     RayActorError,
@@ -149,6 +152,7 @@ class Worker(object):
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
+        self.load_code_from_local = False
         self.function_actor_manager = FunctionActorManager(self)
         # Identity of the driver that this worker is processing.
         # It is a DriverID.
@@ -912,8 +916,9 @@ class Worker(object):
             assert self.actor_id.is_nil()
             self.actor_id = task.actor_creation_id()
             self.actor_creation_task_id = task.task_id()
-            self.function_actor_manager.load_actor(driver_id,
-                                                   function_descriptor)
+            actor_class = self.function_actor_manager.load_actor_class(
+                driver_id, function_descriptor)
+            self.actors[self.actor_id] = actor_class.__new__(actor_class)
             self.actor_checkpoint_info[self.actor_id] = ActorCheckpointInfo(
                 num_tasks_since_last_checkpoint=0,
                 last_checkpoint_timestamp=int(1000 * time.time()),
@@ -1268,6 +1273,7 @@ def init(redis_address=None,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
          temp_dir=None,
+         load_code_from_local=False,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1343,6 +1349,8 @@ def init(redis_address=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        load_code_from_local: Whether code should be loaded from a local module
+            or from the GCS.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -1424,6 +1432,7 @@ def init(redis_address=None,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
+            load_code_from_local=load_code_from_local,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
@@ -1513,7 +1522,8 @@ def init(redis_address=None,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
-        driver_id=driver_id)
+        driver_id=driver_id,
+        load_code_from_local=load_code_from_local)
 
     for hook in _post_init_hooks:
         hook()
@@ -1586,6 +1596,7 @@ def print_logs(redis_client, threads_stopped):
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
+    localhost = services.get_node_ip_address()
     try:
         # Keep track of the number of consecutive log messages that have been
         # received with no break in between. If this number grows continually,
@@ -1603,7 +1614,18 @@ def print_logs(redis_client, threads_stopped):
                 threads_stopped.wait(timeout=0.01)
                 continue
             num_consecutive_messages_received += 1
-            print(ray.utils.decode(msg["data"]), file=sys.stderr)
+
+            data = json.loads(ray.utils.decode(msg["data"]))
+            if data["ip"] == localhost:
+                for line in data["lines"]:
+                    print("{}{}(pid={}){} {}".format(
+                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        colorama.Style.RESET_ALL, line))
+            else:
+                for line in data["lines"]:
+                    print("{}{}(pid={}, ip={}){} {}".format(
+                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        data["ip"], colorama.Style.RESET_ALL, line))
 
             if (num_consecutive_messages_received % 100 == 0
                     and num_consecutive_messages_received > 0):
@@ -1730,7 +1752,8 @@ def connect(info,
             mode=WORKER_MODE,
             log_to_driver=False,
             worker=global_worker,
-            driver_id=None):
+            driver_id=None,
+            load_code_from_local=False):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
     Args:
@@ -1787,6 +1810,7 @@ def connect(info,
     worker.actor_id = ActorID.nil()
     worker.connected = True
     worker.set_mode(mode)
+    worker.load_code_from_local = load_code_from_local
 
     # If running Ray in LOCAL_MODE, there is no need to create call
     # create_worker or to start the worker service.
@@ -1862,6 +1886,12 @@ def connect(info,
             # be redirected.
             os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
             os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
+            # We also manually set sys.stdout and sys.stderr because that seems
+            # to have an affect on the output buffering. Without doing this,
+            # stdout and stderr are heavily buffered resulting in seemingly
+            # lost logging statements.
+            sys.stdout = log_stdout_file
+            sys.stderr = log_stderr_file
             # This should always be the first message to appear in the worker's
             # stdout and stderr log files. The string "Ray worker pid:" is
             # parsed in the log monitor process.

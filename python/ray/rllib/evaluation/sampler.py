@@ -264,7 +264,8 @@ def _env_runner(base_env,
         if callbacks.get("on_episode_start"):
             callbacks["on_episode_start"]({
                 "env": base_env,
-                "episode": episode
+                "policy": policies,
+                "episode": episode,
             })
         return episode
 
@@ -412,6 +413,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
             if callbacks.get("on_episode_end"):
                 callbacks["on_episode_end"]({
                     "env": base_env,
+                    "policy": policies,
                     "episode": episode
                 })
             del active_episodes[env_id]

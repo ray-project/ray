@@ -311,6 +311,7 @@ class GlobalState(object):
         function_descriptor_list = task.function_descriptor_list()
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
+
         task_spec_info = {
             "DriverID": task.driver_id().hex(),
             "TaskID": task.task_id().hex(),

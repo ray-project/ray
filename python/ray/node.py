@@ -10,6 +10,7 @@ import json
 import os
 import logging
 import signal
+import sys
 import tempfile
 import threading
 import time
@@ -23,6 +24,8 @@ from ray.utils import try_to_create_directory
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
+
+PY3 = sys.version_info.major >= 3
 
 
 class Node(object):
@@ -81,6 +84,7 @@ class Node(object):
             self._plasma_store_socket_name = None
             self._raylet_socket_name = None
             self._webui_url = None
+            self._dashboard_url = None
         else:
             self._plasma_store_socket_name = (
                 ray_params.plasma_store_socket_name)
@@ -223,7 +227,7 @@ class Node(object):
             suffix=".out", prefix=name, directory_name=self._logs_dir)
         log_stderr = self._make_inc_temp(
             suffix=".err", prefix=name, directory_name=self._logs_dir)
-        # Line-buffer the output (mode 1)
+        # Line-buffer the output (mode 1).
         log_stdout_file = open(log_stdout, "a", buffering=1)
         log_stderr_file = open(log_stderr, "a", buffering=1)
         return log_stdout_file, log_stderr_file
@@ -283,6 +287,35 @@ class Node(object):
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info
         ]
+
+    def start_reporter(self):
+        """Start the reporter."""
+        stdout_file, stderr_file = self.new_log_files("reporter", True)
+        process_info = ray.services.start_reporter(
+            self.redis_address,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            redis_password=self._ray_params.redis_password)
+        assert ray_constants.PROCESS_TYPE_REPORTER not in self.all_processes
+        if process_info is not None:
+            self.all_processes[ray_constants.PROCESS_TYPE_REPORTER] = [
+                process_info
+            ]
+
+    def start_dashboard(self):
+        """Start the dashboard."""
+        stdout_file, stderr_file = self.new_log_files("dashboard", True)
+        self._dashboard_url, process_info = ray.services.start_dashboard(
+            self.redis_address,
+            self._temp_dir,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            redis_password=self._ray_params.redis_password)
+        assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
+        if process_info is not None:
+            self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
+                process_info
+            ]
 
     def start_ui(self):
         """Start the web UI."""
@@ -355,6 +388,7 @@ class Node(object):
             config=self._config,
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
+            load_code_from_local=self._ray_params.load_code_from_local,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -407,14 +441,16 @@ class Node(object):
             self.start_redis()
             self.start_monitor()
             self.start_raylet_monitor()
+            if PY3 and self._ray_params.include_webui:
+                self.start_dashboard()
 
         self.start_plasma_store()
         self.start_raylet()
+        if PY3 and self._ray_params.include_webui:
+            self.start_reporter()
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
-        if self._ray_params.include_webui:
-            self.start_ui()
 
     def _kill_process_type(self,
                            process_type,
@@ -543,6 +579,26 @@ class Node(object):
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_LOG_MONITOR, check_alive=check_alive)
+
+    def kill_reporter(self, check_alive=True):
+        """Kill the reporter.
+
+        Args:
+            check_alive (bool): Raise an exception if the process was already
+                dead.
+        """
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive)
+
+    def kill_dashboard(self, check_alive=True):
+        """Kill the dashboard.
+
+        Args:
+            check_alive (bool): Raise an exception if the process was already
+                dead.
+        """
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_DASHBOARD, check_alive=check_alive)
 
     def kill_monitor(self, check_alive=True):
         """Kill the monitor.
