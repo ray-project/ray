@@ -1,4 +1,5 @@
 #include <string.h>
+#include <sstream>
 
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/format/gcs_generated.h"
