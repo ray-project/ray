@@ -973,7 +973,8 @@ def start_raylet(redis_address,
                  stderr_file=None,
                  config=None,
                  include_java=False,
-                 java_worker_options=None):
+                 java_worker_options=None,
+                 load_code_from_local=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1067,6 +1068,9 @@ def start_raylet(redis_address,
     # to choose its own port.
     if node_manager_port is None:
         node_manager_port = 0
+
+    if load_code_from_local:
+        start_worker_command += " --load-code-from-local "
 
     command = [
         RAYLET_EXECUTABLE,

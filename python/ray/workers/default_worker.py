@@ -57,6 +57,11 @@ parser.add_argument(
     type=str,
     default=None,
     help="Specify the path of the temporary directory use by Ray process.")
+parser.add_argument(
+    "--load-code-from-local",
+    default=False,
+    action='store_true',
+    help="True if code is loaded from local files, as opposed to the GCS.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -77,7 +82,8 @@ if __name__ == "__main__":
         redis_password=args.redis_password,
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
-        temp_dir=args.temp_dir)
+        temp_dir=args.temp_dir,
+        load_code_from_local=args.load_code_from_local)
 
     node = ray.node.Node(
         ray_params, head=False, shutdown_at_exit=False, connect_only=True)
@@ -85,7 +91,10 @@ if __name__ == "__main__":
 
     # TODO(suquark): Use "node" as the input of "connect".
     ray.worker.connect(
-        info, redis_password=args.redis_password, mode=ray.WORKER_MODE)
+        info,
+        redis_password=args.redis_password,
+        mode=ray.WORKER_MODE,
+        load_code_from_local=args.load_code_from_local)
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
