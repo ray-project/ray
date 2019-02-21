@@ -148,3 +148,7 @@ cdef class Config:
     @staticmethod
     def num_actor_checkpoints_to_keep():
         return RayConfig.instance().num_actor_checkpoints_to_keep()
+
+    @staticmethod
+    def maximum_gcs_deletion_batch_size():
+        return RayConfig.instance().maximum_gcs_deletion_batch_size()
