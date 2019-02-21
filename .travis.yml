@@ -25,6 +25,7 @@ matrix:
       env:
         - JDK='Oracle JDK 8'
         - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - RAY_USE_CMAKE=1
       install:
         - ./.travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
@@ -38,7 +39,7 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: LINT=1 PYTHONWARNINGS=ignore
+      env: LINT=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
       before_install:
         # In case we ever want to use a different version of clang-format:
         #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
@@ -76,7 +77,7 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
+      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
       before_install:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
@@ -107,7 +108,7 @@ matrix:
     # Build Linux wheels.
     - os: linux
       dist: trusty
-      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
       install:
         - ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -118,7 +119,7 @@ matrix:
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
       install:
         - ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -133,28 +134,28 @@ matrix:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
         - PYTHONWARNINGS=ignore
+        - RAY_USE_CMAKE=1
 
 
 install:
+  - ./.travis/install-bazel.sh
   - ./.travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
   - ./.travis/install-ray.sh
   - ./.travis/install-cython-examples.sh
 
-  - cd build
-  - bash ../src/ray/test/run_gcs_tests.sh
+  - bash src/ray/test/run_gcs_tests.sh
   # Raylet tests.
-  - bash ../src/ray/test/run_object_manager_tests.sh
-  - ./src/ray/raylet/task_test
-  - ./src/ray/raylet/worker_pool_test
-  - ./src/ray/raylet/lineage_cache_test
-  - ./src/ray/raylet/task_dependency_manager_test
-  - ./src/ray/raylet/reconstruction_policy_test
-  - ./src/ray/raylet/client_connection_test
-  - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
-  - ./src/ray/util/signal_test
-
-  - cd ..
+  - bash src/ray/test/run_object_manager_tests.sh
+  - bazel build "//:task_test" "//:worker_pool_test" "//:lineage_cache_test" "//:task_dependency_manager_test" "//:reconstruction_policy_test" "//:client_connection_test" "//:logging_test" "//:signal_test" -c opt
+  - ./bazel-bin/task_test
+  - ./bazel-bin/worker_pool_test
+  - ./bazel-bin/lineage_cache_test
+  - ./bazel-bin/task_dependency_manager_test
+  - ./bazel-bin/reconstruction_policy_test
+  - ./bazel-bin/client_connection_test
+  - ./bazel-bin/logging_test --gtest_filter=PrintLogTest*
+  - ./bazel-bin/signal_test
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
@@ -174,17 +175,15 @@ script:
   - python -m pytest -v --durations=10 python/ray/tune/test/automl_searcher_test.py
 
   # ray rllib tests
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_catalog.py
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_filters.py
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_optimizers.py
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_evaluators.py
+  - python python/ray/rllib/test/test_catalog.py
+  - python python/ray/rllib/test/test_filters.py
+  - python python/ray/rllib/test/test_optimizers.py
+  - python python/ray/rllib/test/test_evaluators.py
 
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
 
-  - python -m pytest -v --durations=10 python/ray/test/test_global_state.py
-  - python -m pytest -v --durations=10 python/ray/test/test_queue.py
-  - python -m pytest -v --durations=10 python/ray/test/test_ray_init.py
+  - python -m pytest -v --durations=10 --pyargs ray.test
   - python -m pytest -v --durations=10 test/mini_test.py
 
   - python -m pytest -v --durations=10 test/runtest.py
