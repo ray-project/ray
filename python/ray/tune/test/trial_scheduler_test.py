@@ -89,6 +89,18 @@ class EarlyStoppingSuite(unittest.TestCase):
         self.assertEqual(
             rule.on_trial_result(None, t3, result(3, 10)), TrialScheduler.STOP)
 
+    def testMedianStoppingGracePeriodUnfinished(self):
+        rule = MedianStoppingRule(grace_period=2.5, min_samples_required=1)
+        t1, t2 = self.basicSetup(rule)
+        rule.on_trial_result(None, t1, result(3, 1000))
+        rule.on_trial_result(None, t2, result(3, 1000))
+        t3 = Trial("PPO")
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(2, 10)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(3, 10)), TrialScheduler.STOP)
+
     def testMedianStoppingMinSamples(self):
         rule = MedianStoppingRule(grace_period=0, min_samples_required=2)
         t1, t2 = self.basicSetup(rule)
