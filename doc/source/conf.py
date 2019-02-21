@@ -39,6 +39,7 @@ MOCK_MODULES = [
     "ray.core.generated.ray.protocol.Task",
     "scipy",
     "scipy.signal",
+    "scipy.stats",
     "tensorflow",
     "tensorflow.contrib",
     "tensorflow.contrib.all_reduce",
