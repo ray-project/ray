@@ -9,7 +9,7 @@ import pytest
 import time
 
 import ray
-from ray.test.cluster_utils import Cluster
+from ray.tests.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 
 

@@ -13,8 +13,8 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.test.cluster_utils import Cluster
-from ray.test.test_utils import run_string_as_driver_nonblocking
+from ray.tests.cluster_utils import Cluster
+from ray.tests.utils import run_string_as_driver_nonblocking
 
 
 @pytest.fixture

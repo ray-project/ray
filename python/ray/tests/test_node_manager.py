@@ -5,8 +5,8 @@ from __future__ import print_function
 import pytest
 
 import ray
-from ray.test.cluster_utils import Cluster
-from ray.test.test_utils import run_string_as_driver
+from ray.tests.cluster_utils import Cluster
+from ray.tests.utils import run_string_as_driver
 
 
 @pytest.fixture()

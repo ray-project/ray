@@ -11,7 +11,7 @@ import time
 import warnings
 
 import ray
-from ray.test.cluster_utils import Cluster
+from ray.tests.cluster_utils import Cluster
 
 if (multiprocessing.cpu_count() < 40
         or ray.utils.get_system_memory() < 50 * 10**9):
