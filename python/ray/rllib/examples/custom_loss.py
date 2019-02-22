@@ -46,7 +46,7 @@ class CustomLossModel(Model):
     def custom_loss(self, policy_loss):
         # create a new input reader per worker
         reader = JsonReader(self.options["custom_options"]["input_files"])
-        input_ops = reader.tf_input_ops()
+        input_ops = reader.tf_input_ops(queue_size=2, dequeue_n=2)
 
         # define a secondary loss by building a graph copy with weight sharing
         with tf.variable_scope(

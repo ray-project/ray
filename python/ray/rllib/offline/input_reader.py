@@ -82,7 +82,7 @@ class InputReader(object):
             for (k, s) in [(k, batch[k].shape) for k in keys]
         }
         queue = tf.FIFOQueue(capacity=queue_size, dtypes=dtypes, names=keys)
-        tensors = queue.dequeue()
+        tensors = queue.dequeue_many(dequeue_n)
 
         logger.info("Creating TF queue runner for {}".format(self))
         self._queue_runner = _QueueRunner(self, queue, keys, dtypes)
@@ -105,13 +105,12 @@ class _QueueRunner(threading.Thread):
         self.queue = queue
         self.placeholders = [tf.placeholder(dtype) for dtype in dtypes]
         self.enqueue_op = queue.enqueue(
-            {k: ph
-             for k, ph in zip(keys, self.placeholders)})
+            dict(zip(keys, self.placeholders)))
 
     def enqueue(self, batch):
         data = {
-            self.placeholders[i]: batch[self.keys[i]]
-            for i in range(len(self.keys))
+            self.placeholders[i]: batch[key]
+            for i, key in enumerate(self.keys)
         }
         self.sess.run(self.enqueue_op, feed_dict=data)
 

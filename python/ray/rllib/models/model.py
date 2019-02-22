@@ -214,6 +214,10 @@ def restore_original_dimensions(obs, obs_space, tensorlib=tf):
         obs_space: The flattened obs space. If this has the `original_space`
             attribute, we will unflatten the tensor to that shape.
         tensorlib: The library used to unflatten (reshape) the array/tensor.
+
+    Returns:
+        single tensor or dict / tuple of tensors matching the original
+        observation space.
     """
 
     if hasattr(obs_space, "original_space"):
