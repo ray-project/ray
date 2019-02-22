@@ -16,6 +16,7 @@ from ray.rllib.utils.explained_variance import explained_variance
 
 logger = logging.getLogger(__name__)
 
+
 class PPOLoss(object):
     def __init__(self,
                  action_space,
