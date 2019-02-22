@@ -14,6 +14,7 @@ from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.rnd import RND
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,8 @@ class TFPolicyGraph(PolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
+                 config,
+                 logit_dim,
                  sess,
                  obs_input,
                  action_sampler,
@@ -97,6 +100,8 @@ class TFPolicyGraph(PolicyGraph):
 
         self.observation_space = observation_space
         self.action_space = action_space
+        self._config = config
+        self._logit_dim = logit_dim
         self._sess = sess
         self._obs_input = obs_input
         self._prev_action_input = prev_action_input
@@ -123,6 +128,11 @@ class TFPolicyGraph(PolicyGraph):
         self._variables = ray.experimental.TensorFlowVariables(
             self._loss, self._sess)
 
+        if self._config["rnd"]:
+            # initialize RND
+            self._rnd = RND(self._obs_input, self._is_training, self.observation_space, self._logit_dim, self._config["model"], self._sess)
+            self._loss += self._rnd.loss
+
         # gather update ops for any batch norm layers
         if update_ops:
             self._update_ops = update_ops
@@ -137,6 +147,12 @@ class TFPolicyGraph(PolicyGraph):
             self._apply_op = self._optimizer.apply_gradients(
                 self._grads_and_vars,
                 global_step=tf.train.get_or_create_global_step())
+
+        self.stats_fetches = {
+            "stats": {},
+        }
+        if self._config["rnd"]:
+            self.stats_fetches["stats"]["rnd_loss"] = self._rnd.loss
 
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(
@@ -272,6 +288,20 @@ class TFPolicyGraph(PolicyGraph):
     def gradients(self, optimizer):
         """Override for custom gradient computation."""
         return optimizer.compute_gradients(self._loss)
+
+    @DeveloperAPI
+    def postprocess_trajectory(self, sample_batch):
+        if self._config["rnd"]:
+            # add rnd bonus
+            bonus = self._rnd.compute_intr_rew(sample_batch["obs"])
+#            print("POSTPROCESSING!!")
+#            print(sample_batch["obs"])
+#            import IPython
+#            IPython.embed()
+#            print(bonus)
+#            print(sample_batch["rewards"])
+            sample_batch["rewards"] = sample_batch["rewards"] * 1.0 #TODO: @Vishal figure out what exactly is going on here and a cleaner way to handle it
+            sample_batch["rewards"] += bonus
 
     @DeveloperAPI
     def _get_is_training_placeholder(self):

@@ -71,6 +71,8 @@ DEFAULT_CONFIG = with_common_config({
     "max_sample_requests_in_flight_per_worker": 2,
     # max number of workers to broadcast one set of weights to
     "broadcast_interval": 1,
+    # whether or not to enable exploration through Random Network Distillation (RND)
+    "rnd": 0,
 
     # Learning params.
     "grad_clip": 40.0,
