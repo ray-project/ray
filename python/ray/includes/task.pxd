@@ -18,10 +18,13 @@ from ray.includes.unique_ids cimport (
 )
 
 
-cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogil:
-    cdef cppclass CTaskExecutionSpecification "ray::raylet::TaskExecutionSpecification":
+cdef extern from "ray/raylet/task_execution_spec.h" \
+        namespace "ray::raylet" nogil:
+    cdef cppclass CTaskExecutionSpecification \
+            "ray::raylet::TaskExecutionSpecification":
         CTaskExecutionSpecification(const c_vector[CObjectID] &&dependencies)
-        CTaskExecutionSpecification(const c_vector[CObjectID] &&dependencies, int num_forwards)
+        CTaskExecutionSpecification(
+            const c_vector[CObjectID] &&dependencies, int num_forwards)
         c_vector[CObjectID] ExecutionDependencies() const
         void SetExecutionDependencies(const c_vector[CObjectID] &dependencies)
         int NumForwards() const
@@ -34,31 +37,35 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
     cdef cppclass CTaskArgument "ray::raylet::TaskArgument":
         pass
 
-    cdef cppclass CTaskArgumentByReference "ray::raylet::TaskArgumentByReference":
-        CTaskArgumentByReference(const c_vector[CObjectID] &references);
+    cdef cppclass CTaskArgumentByReference \
+            "ray::raylet::TaskArgumentByReference":
+        CTaskArgumentByReference(const c_vector[CObjectID] &references)
 
     cdef cppclass CTaskArgumentByValue "ray::raylet::TaskArgumentByValue":
-        CTaskArgumentByValue(const uint8_t *value, size_t length);
+        CTaskArgumentByValue(const uint8_t *value, size_t length)
 
     cdef cppclass CTaskSpecification "ray::raylet::TaskSpecification":
-        CTaskSpecification(const CDriverID &driver_id, const CTaskID &parent_task_id,
-                                int64_t parent_counter,
-                                const c_vector[shared_ptr[CTaskArgument]] &task_arguments,
-                                int64_t num_returns,
-                                const unordered_map[c_string, double] &required_resources,
-                                const CLanguage &language,
-                                const c_vector[c_string] &function_descriptor)
         CTaskSpecification(
-            const CDriverID &driver_id, const CTaskID &parent_task_id, int64_t parent_counter,
-            const CActorID &actor_creation_id, const CObjectID &actor_creation_dummy_object_id,
+            const CDriverID &driver_id, const CTaskID &parent_task_id,
+            int64_t parent_counter,
+            const c_vector[shared_ptr[CTaskArgument]] &task_arguments,
+            int64_t num_returns,
+            const unordered_map[c_string, double] &required_resources,
+            const CLanguage &language,
+            const c_vector[c_string] &function_descriptor)
+        CTaskSpecification(
+            const CDriverID &driver_id, const CTaskID &parent_task_id,
+            int64_t parent_counter, const CActorID &actor_creation_id,
+            const CObjectID &actor_creation_dummy_object_id,
             int64_t max_actor_reconstructions, const CActorID &actor_id,
             const CActorHandleID &actor_handle_id, int64_t actor_counter,
             const c_vector[CActorHandleID] &new_actor_handles,
             const c_vector[shared_ptr[CTaskArgument]] &task_arguments,
             int64_t num_returns,
             const unordered_map[c_string, double] &required_resources,
-            const unordered_map[c_string, double] &required_placement_resources,
-            const CLanguage &language, const c_vector[c_string] &function_descriptor)
+            const unordered_map[c_string, double] &required_placement_res,
+            const CLanguage &language,
+            const c_vector[c_string] &function_descriptor)
         CTaskSpecification(const c_string &string)
         c_string SerializeAsString() const
 
@@ -97,7 +104,7 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
 cdef extern from "ray/raylet/task.h" namespace "ray::raylet" nogil:
     cdef cppclass CTask "ray::raylet::Task":
         CTask(const CTaskExecutionSpecification &execution_spec,
-                   const CTaskSpecification &task_spec)
+              const CTaskSpecification &task_spec)
         const CTaskExecutionSpecification &GetTaskExecutionSpec() const
         const CTaskSpecification &GetTaskSpecification() const
         void SetExecutionDependencies(const c_vector[CObjectID] &dependencies)
@@ -105,5 +112,6 @@ cdef extern from "ray/raylet/task.h" namespace "ray::raylet" nogil:
         const c_vector[CObjectID] &GetDependencies() const
         void CopyTaskExecutionSpec(const CTask &task)
 
-    cdef c_string SerializeTaskAsString(const c_vector[CObjectID] *dependencies,
+    cdef c_string SerializeTaskAsString(
+        const c_vector[CObjectID] *dependencies,
         const CTaskSpecification *task_spec)

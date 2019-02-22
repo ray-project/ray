@@ -39,6 +39,7 @@ __all__ = [
 
 FUNCTION_PREFIX = "RemoteFunction:"
 LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
+REPORTER_CHANNEL = "RAY_REPORTER"
 
 # xray heartbeats
 XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
