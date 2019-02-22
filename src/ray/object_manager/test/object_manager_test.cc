@@ -10,7 +10,6 @@
 namespace {
 std::string store_executable;
 int64_t wait_timeout_ms;
-bool test_inline_objects = false;
 }
 
 namespace ray {
@@ -336,13 +335,6 @@ class TestObjectManager : public TestObjectManagerBase {
 
   void NextWaitTest() {
     int data_size;
-    // Set the data size under or over the inline objects limit depending on
-    // the test configuration.
-    if (test_inline_objects) {
-      data_size = RayConfig::instance().inline_object_max_size_bytes() / 2;
-    } else {
-      data_size = RayConfig::instance().inline_object_max_size_bytes() * 2;
-    }
     current_wait_test += 1;
     switch (current_wait_test) {
     case 0: {
@@ -493,9 +485,5 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   store_executable = std::string(argv[1]);
   wait_timeout_ms = std::stoi(std::string(argv[2]));
-  // If a third argument is provided, then test with inline objects.
-  if (argc > 3) {
-    test_inline_objects = true;
-  }
   return RUN_ALL_TESTS();
 }
