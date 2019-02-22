@@ -223,6 +223,8 @@ class GCPNodeProvider(NodeProvider):
             return result
 
     def _get_node(self, node_id):
+        self.non_terminated_nodes({})  # Side effect: updates cache
+
         with self.lock:
             if node_id in self.cached_nodes:
                 return self.cached_nodes[node_id]
@@ -233,9 +235,7 @@ class GCPNodeProvider(NodeProvider):
                 instance=node_id,
             ).execute()
 
-            self.cached_nodes[node_id] = instance
-
-            return self.cached_nodes[node_id]
+            return instance
 
     def _get_cached_node(self, node_id):
         if node_id in self.cached_nodes:
