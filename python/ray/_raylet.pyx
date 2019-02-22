@@ -354,7 +354,7 @@ cdef class RayletClient:
         cdef CActorCheckpointID checkpoint_id
         check_status(self.client.get().PrepareActorCheckpoint(
             actor_id.data, checkpoint_id))
-        return ObjectID.from_native(checkpoint_id)
+        return ActorCheckpointID.from_native(checkpoint_id)
 
     def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
                                              ActorCheckpointID checkpoint_id):
