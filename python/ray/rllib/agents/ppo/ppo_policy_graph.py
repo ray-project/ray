@@ -192,6 +192,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 # do not make the standard deviations free variables.
                 vf_config["free_log_std"] = False
                 if vf_config["use_lstm"]:
+                    vf_config["use_lstm"] = False
                     logger.warning(
                         "It is not recommended to use a LSTM model with "
                         "vf_share_layers=False (consider setting it to True). "
