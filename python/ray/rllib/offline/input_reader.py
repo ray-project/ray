@@ -104,8 +104,7 @@ class _QueueRunner(threading.Thread):
         self.keys = keys
         self.queue = queue
         self.placeholders = [tf.placeholder(dtype) for dtype in dtypes]
-        self.enqueue_op = queue.enqueue(
-            dict(zip(keys, self.placeholders)))
+        self.enqueue_op = queue.enqueue(dict(zip(keys, self.placeholders)))
 
     def enqueue(self, batch):
         data = {
