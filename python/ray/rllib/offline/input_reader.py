@@ -27,7 +27,7 @@ class InputReader(object):
         raise NotImplementedError
 
     @PublicAPI
-    def tf_input_ops(self, queue_size=1, dequeue_n=1):
+    def tf_input_ops(self, queue_size=1):
         """Returns TensorFlow queue ops for reading inputs from this reader.
 
         The main use of these ops is for integration into custom model losses.
@@ -39,7 +39,6 @@ class InputReader(object):
 
         Arguments:
             queue_size (int): Max elements to allow in the TF queue.
-            dequeue_n (int): `n` to pass to tf.io.QueueBase.dequeue_many().
 
         Example:
             >>> class MyModel(rllib.model.Model):
@@ -82,7 +81,7 @@ class InputReader(object):
             for (k, s) in [(k, batch[k].shape) for k in keys]
         }
         queue = tf.FIFOQueue(capacity=queue_size, dtypes=dtypes, names=keys)
-        tensors = queue.dequeue_many(dequeue_n)
+        tensors = queue.dequeue()
 
         logger.info("Creating TF queue runner for {}".format(self))
         self._queue_runner = _QueueRunner(self, queue, keys, dtypes)
