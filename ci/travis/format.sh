@@ -48,7 +48,7 @@ format_changed() {
     # exist on both branches.
     MERGEBASE="$(git merge-base upstream/master HEAD)"
 
-    if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.py*' &>/dev/null; then
+    if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py' | xargs -P 5 \
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
         if which flake8 >/dev/null; then
