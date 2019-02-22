@@ -12,6 +12,7 @@ import random
 import re
 import setproctitle
 import shutil
+import six
 import socket
 import string
 import subprocess
@@ -1273,6 +1274,10 @@ def test_illegal_api_calls(shutdown_only):
         ray.get(3)
 
 
+@pytest.skipif(
+    six.PY2,
+    "Plasma client isn't thread-safe, see #4107.",
+)
 def test_multithreading(shutdown_only):
     # This test requires at least 2 CPUs to finish since the worker does not
     # relase resources when joining the threads.
