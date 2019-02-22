@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import tensorflow as tf
 
 import ray
@@ -12,6 +13,8 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
+
+logger = logging.getLogger(__name__)
 
 
 class PPOLoss(object):
@@ -189,7 +192,14 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 # mean parameters and standard deviation parameters and
                 # do not make the standard deviations free variables.
                 vf_config["free_log_std"] = False
-                vf_config["use_lstm"] = False
+                if vf_config["use_lstm"]:
+                    vf_config["use_lstm"] = False
+                    logger.warning(
+                        "It is not recommended to use a LSTM model with "
+                        "vf_share_layers=False (consider setting it to True). "
+                        "If you want to not share layers, you can implement "
+                        "a custom LSTM model that overrides the "
+                        "value_function() method.")
                 with tf.variable_scope("value_function"):
                     self.value_function = ModelCatalog.get_model({
                         "obs": obs_ph,
