@@ -97,6 +97,7 @@ ray::Status ObjectDirectory::ReportObjectAdded(
 
 ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
                                                  const ClientID &client_id) {
+  RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   // Append the eviction entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();

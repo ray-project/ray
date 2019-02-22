@@ -334,7 +334,7 @@ class TestObjectManager : public TestObjectManagerBase {
   }
 
   void NextWaitTest() {
-    int data_size;
+    int data_size = 600;
     current_wait_test += 1;
     switch (current_wait_test) {
     case 0: {

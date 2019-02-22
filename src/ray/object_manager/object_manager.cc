@@ -64,6 +64,7 @@ void ObjectManager::HandleObjectAdded(
     const object_manager::protocol::ObjectInfoT &object_info) {
   // Notify the object directory that the object has been added to this node.
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+  RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
   ray::Status status =
@@ -169,7 +170,14 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   RAY_CHECK(local_objects_.count(object_id) == 0);
   // Make sure that there is at least one client which is not the local client.
   // TODO(rkn): It may actually be possible for this check to fail.
-  RAY_CHECK(client_vector.size() != 1 || client_vector[0] != client_id_);
+  if (client_vector.size() == 1 && client_vector[0] == client_id_) {
+    RAY_LOG(ERROR) << "The object manager with client ID " << client_id_
+                   << " is trying to pull object " << object_id
+                   << " but the object table suggests that this object manager "
+                   << "already has the object. The object may have been evicted.";
+    it->second.timer_set = false;
+    return;
+  }
 
   // Choose a random client to pull the object from.
   // Generate a random index.
