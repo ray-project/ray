@@ -223,18 +223,19 @@ class GCPNodeProvider(NodeProvider):
             return result
 
     def _get_node(self, node_id):
-        if node_id in self.cached_nodes:
+        with self.lock:
+            if node_id in self.cached_nodes:
+                return self.cached_nodes[node_id]
+
+            instance = self.compute.instances().get(
+                project=self.provider_config["project_id"],
+                zone=self.provider_config["availability_zone"],
+                instance=node_id,
+            ).execute()
+
+            self.cached_nodes[node_id] = instance
+
             return self.cached_nodes[node_id]
-
-        instance = self.compute.instances().get(
-            project=self.provider_config["project_id"],
-            zone=self.provider_config["availability_zone"],
-            instance=node_id,
-        ).execute()
-
-        self.cached_nodes[node_id] = instance
-
-        return self.cached_nodes[node_id]
 
     def _get_cached_node(self, node_id):
         if node_id in self.cached_nodes:
