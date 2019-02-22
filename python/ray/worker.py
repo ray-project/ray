@@ -404,16 +404,6 @@ class Worker(object):
                                 object_ids[i + j],
                                 serialization_context,
                             ))
-                    with self.plasma_client.lock:
-                        # The `release` method of C++ plasma client is used in
-                        # `PlasmaBuffer.__dealloc__`, thus this needs to be
-                        # protected by a lock.
-                        # TODO(hchen): This doesn't work in Python 2. Because
-                        # in Python 2, the `__dealloc__` method doesn't get
-                        # called right after the reference count decreases to
-                        # 0. We need to fix this by making the underlying
-                        # Cython or C++ plasma client thread-safe.
-                        del metadata_data_pairs
                 return results
             except pyarrow.DeserializationCallbackError:
                 # Wait a little bit for the import thread to import the class.
