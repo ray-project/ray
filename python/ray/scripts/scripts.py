@@ -208,6 +208,11 @@ def cli(logging_level, logging_format):
     default=None,
     type=str,
     help="Do NOT use this. This is for debugging/development purposes ONLY.")
+@click.option(
+    "--load-code-from-local",
+    is_flag=True,
+    default=False,
+    help="Specify whether load code from local file or GCS serialization.")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
@@ -215,7 +220,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, internal_config):
+          java_worker_options, load_code_from_local, internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -250,6 +255,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         temp_dir=temp_dir,
         include_java=include_java,
         java_worker_options=java_worker_options,
+        load_code_from_local=load_code_from_local,
         _internal_config=internal_config)
 
     if head:
@@ -372,8 +378,29 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @cli.command()
 def stop():
+    # Find the PID of the plasma_store_server process and kill it.
     subprocess.call(
-        ["killall plasma_store_server raylet raylet_monitor"], shell=True)
+        [
+            "kill $(ps aux | grep plasma_store_server | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the raylet process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep raylet | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the raylet_monitor process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep raylet_monitor | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
 
     # Find the PID of the monitor process and kill it.
     subprocess.call(
@@ -422,8 +449,8 @@ def stop():
         ]
         subprocess.call(
             ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
-    except ImportError:
-        pass
+    except Exception:
+        logger.exception("Error shutting down jupyter")
 
 
 @cli.command()
@@ -568,6 +595,11 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
+    "--docker",
+    is_flag=True,
+    default=False,
+    help="Runs command in the docker container specified in cluster_config.")
+@click.option(
     "--stop",
     is_flag=True,
     default=False,
@@ -594,8 +626,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     "--port-forward", required=False, type=int, help="Port to forward.")
 @click.argument("script", required=True, type=str)
 @click.argument("script_args", required=False, type=str, nargs=-1)
-def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
-           port_forward, script, script_args):
+def submit(cluster_config_file, docker, screen, tmux, stop, start,
+           cluster_name, port_forward, script, script_args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -612,7 +644,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
     cmd = " ".join(["python", target] + list(script_args))
-    exec_cluster(cluster_config_file, cmd, screen, tmux, stop, False,
+    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
                  cluster_name, port_forward)
 
 

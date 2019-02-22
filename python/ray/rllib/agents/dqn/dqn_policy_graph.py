@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from gym.spaces import Discrete
 import numpy as np
+from scipy.stats import entropy
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
@@ -28,7 +29,8 @@ class QNetwork(object):
                  num_atoms=1,
                  v_min=-10.0,
                  v_max=10.0,
-                 sigma0=0.5):
+                 sigma0=0.5,
+                 parameter_noise=False):
         self.model = model
         with tf.variable_scope("action_value"):
             if hiddens:
@@ -41,7 +43,9 @@ class QNetwork(object):
                         action_out = layers.fully_connected(
                             action_out,
                             num_outputs=hiddens[i],
-                            activation_fn=tf.nn.relu)
+                            activation_fn=tf.nn.relu,
+                            normalizer_fn=layers.layer_norm
+                            if parameter_noise else None)
             else:
                 # Avoid postprocessing the outputs. This enables custom models
                 # to be used for parametric action DQN.
@@ -89,7 +93,9 @@ class QNetwork(object):
                         state_out = layers.fully_connected(
                             state_out,
                             num_outputs=hiddens[i],
-                            activation_fn=tf.nn.relu)
+                            activation_fn=tf.nn.relu,
+                            normalizer_fn=layers.layer_norm
+                            if parameter_noise else None)
                 if use_noisy:
                     state_score = self.noisy_layer(
                         "dueling_output",
@@ -310,6 +316,13 @@ class DQNPolicyGraph(TFPolicyGraph):
             self.q_values = q_values
             self.q_func_vars = _scope_vars(scope.name)
 
+        # Noise vars for Q network except for layer normalization vars
+        if self.config["parameter_noise"]:
+            self._build_parameter_noise([
+                var for var in self.q_func_vars if "LayerNorm" not in var.name
+            ])
+            self.action_probs = tf.nn.softmax(self.q_values)
+
         # Action outputs
         self.output_actions, self.action_prob = self._build_q_value_policy(
             q_values)
@@ -449,6 +462,28 @@ class DQNPolicyGraph(TFPolicyGraph):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
+        if self.config["parameter_noise"]:
+            # adjust the sigma of parameter space noise
+            states = [list(x) for x in sample_batch.columns(["obs"])][0]
+
+            noisy_action_distribution = self.sess.run(
+                self.action_probs, feed_dict={self.cur_observations: states})
+            self.sess.run(self.remove_noise_op)
+            clean_action_distribution = self.sess.run(
+                self.action_probs, feed_dict={self.cur_observations: states})
+            distance_in_action_space = np.mean(
+                entropy(clean_action_distribution.T,
+                        noisy_action_distribution.T))
+            self.pi_distance = distance_in_action_space
+            if (distance_in_action_space <
+                    -np.log(1 - self.cur_epsilon +
+                            self.cur_epsilon / self.num_actions)):
+                self.parameter_noise_sigma_val *= 1.01
+            else:
+                self.parameter_noise_sigma_val /= 1.01
+            self.parameter_noise_sigma.load(
+                self.parameter_noise_sigma_val, session=self.sess)
+
         return _postprocess_dqn(self, sample_batch)
 
     @override(PolicyGraph)
@@ -459,6 +494,43 @@ class DQNPolicyGraph(TFPolicyGraph):
     def set_state(self, state):
         TFPolicyGraph.set_state(self, state[0])
         self.set_epsilon(state[1])
+
+    def _build_parameter_noise(self, pnet_params):
+        self.parameter_noise_sigma_val = 1.0
+        self.parameter_noise_sigma = tf.get_variable(
+            initializer=tf.constant_initializer(
+                self.parameter_noise_sigma_val),
+            name="parameter_noise_sigma",
+            shape=(),
+            trainable=False,
+            dtype=tf.float32)
+        self.parameter_noise = list()
+        # No need to add any noise on LayerNorm parameters
+        for var in pnet_params:
+            noise_var = tf.get_variable(
+                name=var.name.split(':')[0] + "_noise",
+                shape=var.shape,
+                initializer=tf.constant_initializer(.0),
+                trainable=False)
+            self.parameter_noise.append(noise_var)
+        remove_noise_ops = list()
+        for var, var_noise in zip(pnet_params, self.parameter_noise):
+            remove_noise_ops.append(tf.assign_add(var, -var_noise))
+        self.remove_noise_op = tf.group(*tuple(remove_noise_ops))
+        generate_noise_ops = list()
+        for var_noise in self.parameter_noise:
+            generate_noise_ops.append(
+                tf.assign(
+                    var_noise,
+                    tf.random_normal(
+                        shape=var_noise.shape,
+                        stddev=self.parameter_noise_sigma)))
+        with tf.control_dependencies(generate_noise_ops):
+            add_noise_ops = list()
+            for var, var_noise in zip(pnet_params, self.parameter_noise):
+                add_noise_ops.append(tf.assign_add(var, var_noise))
+            self.add_noise_op = tf.group(*tuple(add_noise_ops))
+        self.pi_distance = None
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
@@ -474,6 +546,10 @@ class DQNPolicyGraph(TFPolicyGraph):
             })
         return td_err
 
+    def add_parameter_noise(self):
+        if self.config["parameter_noise"]:
+            self.sess.run(self.add_noise_op)
+
     def update_target(self):
         return self.sess.run(self.update_target_expr)
 
@@ -488,7 +564,8 @@ class DQNPolicyGraph(TFPolicyGraph):
             }, space, self.num_actions, self.config["model"]),
             self.num_actions, self.config["dueling"], self.config["hiddens"],
             self.config["noisy"], self.config["num_atoms"],
-            self.config["v_min"], self.config["v_max"], self.config["sigma0"])
+            self.config["v_min"], self.config["v_max"], self.config["sigma0"],
+            self.config["parameter_noise"])
         return qnet.value, qnet.logits, qnet.dist, qnet.model
 
     def _build_q_value_policy(self, q_values):
