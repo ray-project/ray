@@ -184,7 +184,31 @@ script:
   - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
 
   # ray tests
-  - python -m pytest -v --durations=10 --pyargs ray.tests
+  # TODO(williamma12): We cannot use pytests built-in test discovery because
+  # it causes a lot of the tests to fail on travis' apple builds even though
+  # it runs without issue on an apple build locally.
+  - python -m pytest -v --durations=10 python/ray/tests/test_global_state.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_queue.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_ray_init.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_mini.py
+
+  - python -m pytest -v --durations=10 python/ray/tests/test_basic.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_array.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_actor.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_autoscaler.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_tensorflow.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_failure.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_microbenchmarks.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_stress.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_component_failures.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_multi_node.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_multi_node_2.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_recursion.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_monitors.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_cython.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_credis.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_node_manager.py
+  - python -m pytest -v --durations=10 python/ray/tests/test_signal.py
 
   # TODO(yuhguo): object_manager_test.py requires a lot of CPU/memory, and
   # better be put in Jenkins. However, it fails frequently in Jenkins, but
