@@ -266,7 +266,10 @@ class RayTrialExecutor(TrialExecutor):
 
     def _update_avail_resources(self, num_retries=5):
         for i in range(num_retries):
-            resources = ray.global_state.cluster_resources()
+            if False:  # TODO(rliaw) check local_mode
+                resources = ray.services.check_and_update_resources()
+            else:
+                resources = ray.global_state.cluster_resources()
             if not resources:
                 logger.warning("Cluster resources not detected. Retrying...")
                 time.sleep(0.5)
