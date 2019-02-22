@@ -230,7 +230,7 @@ class AWSNodeProvider(NodeProvider):
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""
-        self.nodes({})  # Side effect: fetches and caches the node.
+        self.non_terminated_nodes({})  # Side effect: updates cache
 
         if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
