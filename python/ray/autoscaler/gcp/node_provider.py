@@ -53,7 +53,7 @@ class GCPNodeProvider(NodeProvider):
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
 
-    def nodes(self, tag_filters):
+    def non_terminated_nodes(self, tag_filters):
         with self.lock:
             if tag_filters:
                 label_filter_expr = "(" + " AND ".join([

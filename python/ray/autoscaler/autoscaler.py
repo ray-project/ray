@@ -238,7 +238,7 @@ class NodeLauncher(threading.Thread):
 
     def _launch_node(self, config, count):
         tag_filters = {TAG_RAY_NODE_TYPE: "worker"}
-        before = self.provider.nodes(tag_filters=tag_filters)
+        before = self.provider.non_terminated_nodes(tag_filters=tag_filters)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
         self.provider.create_node(
             config["worker_nodes"], {
@@ -248,7 +248,7 @@ class NodeLauncher(threading.Thread):
                 TAG_RAY_NODE_STATUS: "uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: launch_hash,
             }, count)
-        after = self.provider.nodes(tag_filters=tag_filters)
+        after = self.provider.non_terminated_nodes(tag_filters=tag_filters)
         if set(after).issubset(before):
             logger.error("NodeLauncher: "
                          "No new nodes reported after node creation")
@@ -602,7 +602,8 @@ class StandardAutoscaler(object):
         self.launch_queue.put((config, count))
 
     def workers(self):
-        return self.provider.nodes(tag_filters={TAG_RAY_NODE_TYPE: "worker"})
+        return self.provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_TYPE: "worker"})
 
     def log_info_string(self, nodes):
         logger.info("StandardAutoscaler: {}".format(self.info_string(nodes)))
