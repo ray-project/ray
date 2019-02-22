@@ -1274,13 +1274,13 @@ def test_illegal_api_calls(shutdown_only):
         ray.get(3)
 
 
-@pytest.skipif(
-    six.PY2,
-    "Plasma client isn't thread-safe, see #4107.",
-)
+# TODO(hchen): This test currently doesn't work in Python 2. This is likely
+# because plasma client isn't thread-safe. This needs to be fixed from the
+# Arrow side. See #4107 for relevant discussions.
+@pytest.mark.skipif(six.PY2, reason="Doesn't work in Python 2.")
 def test_multithreading(shutdown_only):
     # This test requires at least 2 CPUs to finish since the worker does not
-    # relase resources when joining the threads.
+    # release resources when joining the threads.
     ray.init(num_cpus=2)
 
     def run_test_in_multi_threads(test_case, num_threads=10, num_repeats=25):
