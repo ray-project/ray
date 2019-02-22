@@ -85,6 +85,7 @@ void ObjectDirectory::RegisterBackend() {
 ray::Status ObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
+  RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
   // Append the addition entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
