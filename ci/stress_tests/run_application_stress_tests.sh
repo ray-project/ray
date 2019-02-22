@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # This script runs all of the application tests.
-# Currently includes an IMPALA stress test, a SGD stress test,
-# and modin stress tests on both Python 2.7 and 3.6.
+# Currently includes an IMPALA stress test and a SGD stress test.
+# on both Python 2.7 and 3.6.
 # All tests use a separate cluster, and each cluster
 # will be destroyed upon test completion (or failure).
 
