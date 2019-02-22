@@ -9,7 +9,7 @@ set -x
 MEMORY_SIZE="20G"
 SHM_SIZE="20G"
 
-docker build --no-cache -t ray-project/base-deps docker/base-deps
+docker build --no-cache -t -q ray-project/base-deps docker/base-deps
 
 # Add Ray source
 git rev-parse HEAD > ./docker/stress_test/git-rev
