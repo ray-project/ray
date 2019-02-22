@@ -547,8 +547,12 @@ class TrialRunner(object):
         """
         state = self.__dict__.copy()
         for k in [
-                "_trials", "_stop_queue", "_server", "_search_alg",
-                "_scheduler_alg", "trial_executor",
+                "_trials",
+                "_stop_queue",
+                "_server",
+                "_search_alg",
+                "_scheduler_alg",
+                "trial_executor",
         ]:
             del state[k]
         state["_start_time"] = self._start_time.timestamp()
@@ -561,7 +565,8 @@ class TrialRunner(object):
         session = state.pop("_session")
         self.__dict__.setdefault("_session", session)
         start_time = state.pop("_start_time")
-        self.__dict__.setdefault("_start_time", datetime.fromtimestamp(start_time))
+        self.__dict__.setdefault("_start_time",
+                                 datetime.fromtimestamp(start_time))
 
         self.__dict__.update(state)
         if launch_web_server:

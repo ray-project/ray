@@ -8,10 +8,9 @@ import json
 import os
 from datetime import datetime
 
-
 import pandas as pd
-
 from ray.tune.trial import Trial
+from tabulate import tabulate
 
 
 def _flatten_dict(dt):
@@ -34,13 +33,8 @@ def cli():
     pass
 
 
-DEFAULT_EXPERIMENT_INFO_KEYS = (
-    "trial_name",
-    "trial_id",
-    "status",
-    "num_failures",
-    "logdir"
-)
+DEFAULT_EXPERIMENT_INFO_KEYS = ("trial_name", "trial_id", "status",
+                                "num_failures", "logdir")
 
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
@@ -52,7 +46,8 @@ DEFAULT_PROJECT_INFO_KEYS = (
 )
 
 
-def _list_trials(experiment_path, info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
+def _list_trials(experiment_path, sort,
+                 info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
     experiment_path = os.path.expanduser(experiment_path)
     globs = glob.glob(os.path.join(experiment_path, "experiment_state*.json"))
     filename = max(list(globs))
@@ -60,30 +55,38 @@ def _list_trials(experiment_path, info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
     with open(filename) as f:
         experiment_state = json.load(f)
 
-    checkpoints = pd.DataFrame.from_records(experiment_state['checkpoints'])
+    checkpoints_df = pd.DataFrame(
+        experiment_state["checkpoints"])[list(info_keys)]
+    if "logdir" in checkpoints_df.columns:
+        checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
+            experiment_path, '')
+    if sort:
+        checkpoints_df = checkpoints_df.sort_values(by=sort)
+    print(tabulate(checkpoints_df, headers="keys", tablefmt="psql"))
+
     # TODO(hartikainen): The logdir is often too verbose to be viewed in a
     # table.
-    checkpoints['logdir'] = checkpoints['logdir'].str.replace(
-        experiment_path, '')
-
-    print(checkpoints[list(info_keys)].to_string())
+    # checkpoints = pd.DataFrame.from_records(experiment_state['checkpoints'])
+    # checkpoints['logdir'] = checkpoints['logdir'].str.replace(
+    #     experiment_path, '')
+    # print(checkpoints[list(info_keys)].to_string())
 
 
 @cli.command()
 @click.argument("experiment_path", required=True, type=str)
-def list_trials(experiment_path):
-    _list_trials(experiment_path)
+@click.option(
+    '--sort', default=None, type=str, help='Select which column to sort on.')
+def list_trials(experiment_path, sort):
+    _list_trials(experiment_path, sort)
 
 
-def _list_experiments(project_path, info_keys=DEFAULT_PROJECT_INFO_KEYS):
+def _list_experiments(project_path, sort, info_keys=DEFAULT_PROJECT_INFO_KEYS):
     base, experiment_paths, _ = list(os.walk(project_path))[0]  # clean this
 
     experiment_data_collection = []
     for experiment_path in experiment_paths:
-        experiment_state_path = glob.glob(os.path.join(
-            base,
-            experiment_path,
-            "experiment_state*.json"))
+        experiment_state_path = glob.glob(
+            os.path.join(base, experiment_path, "experiment_state*.json"))
 
         if not experiment_state_path:
             # TODO(hartikainen): Print some warning?
@@ -94,29 +97,34 @@ def _list_experiments(project_path, info_keys=DEFAULT_PROJECT_INFO_KEYS):
 
         checkpoints = pd.DataFrame(experiment_state["checkpoints"])
         runner_data = experiment_state["runner_data"]
-        timestamp = experiment_state["timestamp"]
+        timestamp = experiment_state.get("timestamp")
 
         experiment_data = {
             "name": experiment_path,
-            "start_time": runner_data["_start_time"],
-            "timestamp": datetime.fromtimestamp(timestamp),
+            "start_time": runner_data.get("_start_time"),
+            "timestamp": datetime.fromtimestamp(timestamp)
+            if timestamp else None,
             "total_trials": checkpoints.shape[0],
             "running_trials": (checkpoints["status"] == Trial.RUNNING).sum(),
             "terminated_trials": (
                 checkpoints["status"] == Trial.TERMINATED).sum(),
             "error_trials": (checkpoints["status"] == Trial.ERROR).sum(),
-         }
+        }
 
         experiment_data_collection.append(experiment_data)
 
-    info_dataframe = pd.DataFrame(experiment_data_collection)
-    print(info_dataframe[list(info_keys)].to_string())
+    info_df = pd.DataFrame(experiment_data_collection)
+    if sort:
+        info_df = info_df.sort_values(by=sort)
+    print(tabulate(info_df, headers="keys", tablefmt="psql"))
 
 
 @cli.command()
 @click.argument("project_path", required=True, type=str)
-def list_experiments(project_path):
-    _list_experiments(project_path)
+@click.option(
+    '--sort', default=None, type=str, help='Select which column to sort on.')
+def list_experiments(project_path, sort):
+    _list_experiments(project_path, sort)
 
 
 cli.add_command(list_trials, name="ls")
