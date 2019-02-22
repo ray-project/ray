@@ -8,6 +8,7 @@ import time
 import ray
 from ray.experimental.streaming.batched_queue import BatchedQueue
 
+
 @pytest.fixture
 def ray_start():
     # Start the Ray processes.
@@ -15,6 +16,7 @@ def ray_start():
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
 
 @ray.remote
 class Reader(object):
@@ -32,6 +34,7 @@ class Reader(object):
             self.num_reads += 1
             if read_slowly:
                 time.sleep(0.001)
+
 
 def test_batched_queue(ray_start):
     # Batched queue parameters

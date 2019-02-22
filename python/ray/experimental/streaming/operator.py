@@ -66,7 +66,7 @@ class Operator(object):
         # One partitioning strategy per downstream operator (default: forward)
         self.partitioning_strategies = {}
         self.other_args = other  # Depends on the type of the operator
-        self.state_actor = state_actor  # Actor to query state 
+        self.state_actor = state_actor  # Actor to query state
 
     # Sets the partitioning scheme for an output stream of the operator
     def _set_partition_strategy(self,

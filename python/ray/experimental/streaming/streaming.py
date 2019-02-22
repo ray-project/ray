@@ -27,10 +27,11 @@ def _generate_uuid():
 def _sum(value_1, value_2):
     return value_1 + value_2
 
+
 # Partitioning strategies that require all-to-all instance communication
 all_to_all_strategies = [
-    PStrategy.Shuffle, PStrategy.ShuffleByKey,
-    PStrategy.Broadcast, PStrategy.RoundRobin
+    PStrategy.Shuffle, PStrategy.ShuffleByKey, PStrategy.Broadcast,
+    PStrategy.RoundRobin
 ]
 
 
@@ -142,7 +143,7 @@ class Environment(object):
             return keyby.start.remote()
         elif operator.type == OpType.Sum:
             sum = operator_instance.Reduce.remote(actor_id, operator, input,
-                                                   output)
+                                                  output)
             # Register target handle at state actor
             state_actor = operator.state_actor
             if state_actor is not None:
@@ -285,8 +286,8 @@ class Environment(object):
     def source(self, source):
         source_id = _generate_uuid()
         source_stream = DataStream(self, source_id)
-        self.operators[source_id] = Operator(source_id, OpType.Source,
-                                             "Source",other=source)
+        self.operators[source_id] = Operator(
+            source_id, OpType.Source, "Source", other=source)
         return source_stream
 
     # Creates and registers a new data source that reads a

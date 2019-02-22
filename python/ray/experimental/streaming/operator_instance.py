@@ -19,8 +19,10 @@ logger.setLevel("DEBUG")
 # Currently, batched queues are based on Eric's implementation (see:
 # batched_queue.py)
 
+
 def _identity(element):
     return element
+
 
 # TODO (john): Specify the interface of state keepers
 class OperatorInstance(object):
@@ -36,13 +38,10 @@ class OperatorInstance(object):
         the operator instance.
     """
 
-    def __init__(self,
-                 instance_id,
-                 input_gate,
-                 output_gate,
+    def __init__(self, instance_id, input_gate, output_gate,
                  state_keeper=None):
-        self.key_index = None       # Index for key selection
-        self.key_attribute = None   # Attribute name for key selection
+        self.key_index = None  # Index for key selection
+        self.key_attribute = None  # Attribute name for key selection
         self.instance_id = instance_id
         self.input = input_gate
         self.output = output_gate
@@ -64,15 +63,15 @@ class OperatorInstance(object):
         # TODO (john): Add more channel types here
 
     # Registers actor's handle so that the actor can schedule itself
-    def register_handle(self,actor_handle):
+    def register_handle(self, actor_handle):
         self.this_actor = actor_handle
 
     # Used for index-based key extraction, e.g. for tuples
-    def index_based_selector(self,record):
+    def index_based_selector(self, record):
         return record[self.key_index]
 
     # Used for attribute-based key extraction, e.g. for classes
-    def attribute_based_selector(self,record):
+    def attribute_based_selector(self, record):
         return vars(record)[self.key_attribute]
 
     # Starts the actor
@@ -143,11 +142,11 @@ class Map(OperatorInstance):
             if record is None:
                 self.output._flush(close=True)
                 logger.debug("[map {}] read/writes per second: {}".format(
-                                        self.instance_id,
-                                        elements / (time.time()-start)))
+                    self.instance_id, elements / (time.time() - start)))
                 return
             self.output._push(self.map_fn(record))
             elements += 1
+
 
 # Flatmap actor
 @ray.remote
@@ -236,6 +235,7 @@ class Inspect(OperatorInstance):
             self.output._push(record)
             self.inspect_fn(record)
 
+
 # Reduce actor
 @ray.remote
 class Reduce(OperatorInstance):
@@ -251,8 +251,8 @@ class Reduce(OperatorInstance):
 
     def __init__(self, instance_id, operator_metadata, input_gate,
                  output_gate):
-        OperatorInstance.__init__(self, instance_id, input_gate,
-                                output_gate, operator_metadata.state_actor)
+        OperatorInstance.__init__(self, instance_id, input_gate, output_gate,
+                                  operator_metadata.state_actor)
         self.reduce_fn = operator_metadata.logic
         # Set the attribute selector
         self.attribute_selector = operator_metadata.other_args
@@ -294,6 +294,7 @@ class Reduce(OperatorInstance):
         def get_state(self):
             return self.state
 
+
 @ray.remote
 class KeyBy(OperatorInstance):
     """A key_by operator instance that physically partitions the
@@ -326,7 +327,7 @@ class KeyBy(OperatorInstance):
                 self.output._flush(close=True)
                 return
             key = self.key_selector(record)
-            self.output._push((key,record))
+            self.output._push((key, record))
 
 
 # A custom source actor
@@ -347,8 +348,7 @@ class Source(OperatorInstance):
             if next is None:
                 self.output._flush(close=True)
                 logger.debug("[writer {}] puts per second: {}".format(
-                                            self.instance_id,
-                                            elements / (time.time()-start)))
+                    self.instance_id, elements / (time.time() - start)))
                 return
             self.output._push(next)
             elements += 1

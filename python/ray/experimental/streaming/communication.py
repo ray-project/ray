@@ -15,6 +15,7 @@ logging.basicConfig(level=logging.INFO)
 # Forward and broadcast stream partitioning strategies
 forward_broadcast_strategies = [PStrategy.Forward, PStrategy.Broadcast]
 
+
 # Used to choose output channel in case of hash-based shuffling
 def _hash(value):
     if isinstance(value, int):
@@ -148,7 +149,7 @@ class DataOutput(object):
         self.forward_channels = []  # Forward and broadcast channels
         slots = sum(1 for scheme in self.partitioning_schemes.values()
                     if scheme.strategy == PStrategy.RoundRobin)
-        self.round_robin_channels = [[]] * slots    # RoundRobin channels
+        self.round_robin_channels = [[]] * slots  # RoundRobin channels
         self.round_robin_indexes = [-1] * slots
         slots = sum(1 for scheme in self.partitioning_schemes.values()
                     if scheme.strategy == PStrategy.Shuffle)
@@ -267,10 +268,10 @@ class DataOutput(object):
         for channels in self.round_robin_channels:
             self.round_robin_indexes[index] += 1
             if self.round_robin_indexes[index] == len(channels):
-                self.round_robin_indexes[index] = 0     # Reset index
+                self.round_robin_indexes[index] = 0  # Reset index
             channel = channels[self.round_robin_indexes[index]]
             logger.debug("[writer] Push record '{}' to channel {}".format(
-                                                            record, channel))
+                record, channel))
             channel.queue.put_next(record)
             index += 1
         # Hash-based shuffling by key
