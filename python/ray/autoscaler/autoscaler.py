@@ -211,10 +211,13 @@ class LoadMetrics(object):
         heartbeat_times = [
             now - t for t in self.last_heartbeat_time_by_ip.values()
         ]
-        highest_heartbeats = sorted(
+        most_delayed_heartbeats = sorted(
             list(self.last_heartbeat_time_by_ip.items()),
             key=lambda pair: pair[1])[:5]
-        highest_heartbeats = {ip: (now - t) for ip, t in highest_heartbeats}
+        most_delayed_heartbeats = {
+            ip: (now - t)
+            for ip, t in most_delayed_heartbeats
+        }
         return {
             "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
@@ -232,7 +235,7 @@ class LoadMetrics(object):
                 int(np.min(heartbeat_times)) if heartbeat_times else -1,
                 int(np.mean(heartbeat_times)) if heartbeat_times else -1,
                 int(np.max(heartbeat_times)) if heartbeat_times else -1),
-            "HighestHeartbeats": highest_heartbeats,
+            "MostDelayedHeartbeats": most_delayed_heartbeats,
         }
 
 
