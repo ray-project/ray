@@ -154,7 +154,7 @@ class MultiAgentSampleBatchBuilder(object):
 
     def check_missing_dones(self):
         for agent_id, builder in self.agent_builders.items():
-            if builder.buffers["dones"][-1] != True:
+            if builder.buffers["dones"][-1] is not True:
                 raise ValueError(
                     "The environment terminated for all agents, but we still "
                     "don't have a last observation for "

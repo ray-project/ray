@@ -361,9 +361,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
             batch_mode="complete_episodes",
             batch_steps=1)
-        self.assertRaisesRegexp(
-            ValueError, ".*don't have a last observation.*",
-            lambda: ev.sample())
+        self.assertRaisesRegexp(ValueError,
+                                ".*don't have a last observation.*",
+                                lambda: ev.sample())
 
     def testMultiAgentSampleRoundRobin(self):
         act_space = gym.spaces.Discrete(2)
