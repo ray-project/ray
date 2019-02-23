@@ -185,7 +185,8 @@ class UnifiedLogger(Logger):
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
         upload_uri (str): Optional URI where the logdir is sync'ed to.
-        loggers (list): List of custom logger creators.
+        loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
+            and JSON loggers.
         sync_function (func|str): Optional function for syncer to run.
             See ray/python/ray/tune/log_sync.py
     """
