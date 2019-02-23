@@ -182,6 +182,9 @@ class LoadMetrics(object):
     def approx_workers_used(self):
         return self._info()["NumNodesUsed"]
 
+    def num_workers_connected(self):
+        return self._info()["NumNodesConnected"]
+
     def info_string(self):
         return ", ".join(
             ["{}={}".format(k, v) for k, v in sorted(self._info().items())])
@@ -439,7 +442,8 @@ class StandardAutoscaler(object):
             self.launch_new_node(num_launches)
             nodes = self.workers()
             self.log_info_string(nodes)
-        else:
+        elif self.load_metrics.num_workers_connected() >= target_workers:
+            logger.info("Ending bringup phase")
             self.bringup = False
 
         # Process any completed updates
