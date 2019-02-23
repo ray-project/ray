@@ -1151,14 +1151,8 @@ def test_object_transfer_dump(ray_start_cluster):
     cluster = ray_start_cluster
 
     num_nodes = 3
-    # Set the inline object size to 0 to force all objects to be written to
-    # plasma.
-    config = json.dumps({"inline_object_max_size_bytes": 0})
     for i in range(num_nodes):
-        cluster.add_node(
-            resources={str(i): 1},
-            object_store_memory=10**9,
-            _internal_config=config)
+        cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
@@ -2657,56 +2651,6 @@ def test_wait_reconstruction(shutdown_only):
         ray.pyarrow.plasma.ObjectID(x_id.binary()))
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
-
-
-def test_inline_objects(shutdown_only):
-    config = json.dumps({"initial_reconstruction_timeout_milliseconds": 200})
-    ray.init(num_cpus=1, object_store_memory=10**7, _internal_config=config)
-
-    @ray.remote
-    class Actor(object):
-        def create_inline_object(self):
-            return "inline"
-
-        def create_non_inline_object(self):
-            return 10000 * [1]
-
-        def get(self):
-            return
-
-    a = Actor.remote()
-    # Count the number of objects that were successfully inlined.
-    inlined = 0
-    for _ in range(100):
-        inline_object = a.create_inline_object.remote()
-        ray.get(inline_object)
-        plasma_id = ray.pyarrow.plasma.ObjectID(inline_object.binary())
-        ray.worker.global_worker.plasma_client.delete([plasma_id])
-        # Make sure we can still get an inlined object created by an actor even
-        # after it has been evicted.
-        try:
-            value = ray.get(inline_object)
-            assert value == "inline"
-            inlined += 1
-        except ray.exceptions.UnreconstructableError:
-            pass
-    # Make sure some objects were inlined. Some of them may not get inlined
-    # because we evict the object soon after creating it.
-    assert inlined > 0
-
-    # Non-inlined objects are not able to be recreated after eviction.
-    for _ in range(10):
-        non_inline_object = a.create_non_inline_object.remote()
-        ray.get(non_inline_object)
-        plasma_id = ray.pyarrow.plasma.ObjectID(non_inline_object.binary())
-        # This while loop is necessary because sometimes the object is still
-        # there immediately after plasma_client.delete.
-        while ray.worker.global_worker.plasma_client.contains(plasma_id):
-            ray.worker.global_worker.plasma_client.delete([plasma_id])
-        # Objects created by an actor that were evicted and larger than the
-        # maximum inline object size cannot be retrieved or reconstructed.
-        with pytest.raises(ray.exceptions.UnreconstructableError):
-            ray.get(non_inline_object) == 10000 * [1]
 
 
 def test_ray_setproctitle(shutdown_only):

@@ -6,6 +6,8 @@
 set -e
 set -x
 
+bazel build "//:object_manager_stress_test" "//:object_manager_test" "@plasma//:plasma_store_server" -c opt
+
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"
 RAY_ROOT="$SCRIPT_DIR/../../.."
@@ -22,8 +24,7 @@ fi
 
 CORE_DIR="$RAY_ROOT/build"
 PYTHON_CORE_DIR="$RAY_ROOT/python/ray/core"
-REDIS_MODULE="$PYTHON_CORE_DIR/src/ray/gcs/redis_module/libray_redis_module.so"
-REDIS_DIR="$CORE_DIR/src/ray/thirdparty/redis/src"
+REDIS_MODULE="./bazel-genfiles/ray_pkg/ray/core/src/ray/gcs/redis_module/libray_redis_module.so"
 
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     REDIS_SERVER="$CORE_DIR/src/credis/redis/src/redis-server"
@@ -31,25 +32,25 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     CREDIS_MODULE="$CORE_DIR/src/credis/build/src/libmember.so"
     LOAD_MODULE_ARGS="--loadmodule ${CREDIS_MODULE} --loadmodule ${REDIS_MODULE}"
 else
-    REDIS_SERVER="${REDIS_DIR}/redis-server"
+    REDIS_SERVER="./bazel-genfiles/ray_pkg/ray/core/src/ray/thirdparty/redis/src/redis-server"
     LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 fi
 
-STORE_EXEC="$PYTHON_CORE_DIR/src/plasma/plasma_store_server"
+STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
 
 # Allow cleanup commands to fail.
-$REDIS_DIR/redis-cli -p 6379 shutdown || true
+./bazel-genfiles/ray_pkg/ray/core/src/ray/thirdparty/redis/src/redis-cli -p 6379 shutdown || true
 sleep 1s
 ${REDIS_SERVER} --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
 # Run tests.
-$CORE_DIR/src/ray/object_manager/object_manager_stress_test $STORE_EXEC
+./bazel-bin/object_manager_stress_test $STORE_EXEC
 sleep 1s
 # Use timeout=1000ms for the Wait tests.
-$CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC 1000
+./bazel-bin/object_manager_test $STORE_EXEC 1000
 # Run tests again with inlined objects.
-$CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC 1000 true
-$REDIS_DIR/redis-cli -p 6379 shutdown
+./bazel-bin/object_manager_test $STORE_EXEC 1000 true
+./bazel-genfiles/ray_pkg/ray/core/src/ray/thirdparty/redis/src/redis-cli -p 6379 shutdown
 sleep 1s
 
 # Include raylet integration test once it's ready.

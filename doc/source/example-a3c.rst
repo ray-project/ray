@@ -22,7 +22,7 @@ To run the application, first install **ray** and then some dependencies:
   pip install tensorflow
   pip install six
   pip install gym[atari]
-  pip install opencv-python
+  pip install opencv-python-headless
   pip install scipy
 
 You can run the code with
