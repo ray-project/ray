@@ -704,10 +704,12 @@ def _validate_and_canonicalize(policy_graph, env):
 
 
 def _validate_env(env):
-    if type(env) not in [
-            gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv
-    ] and not hasattr(env, "observation_space") and not hasattr(
-            env, "action_space"):
+    # allow this as a special case (assumed gym.Env)
+    if hasattr(env, "observation_space") and hasattr(env, "action_space"):
+        return env
+
+    allowed_types = [gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv]
+    if not any(isinstance(env, tpe) for tpe in allowed_types):
         raise ValueError(
             "Returned env should be an instance of gym.Env, MultiAgentEnv, "
             "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
