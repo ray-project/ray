@@ -188,15 +188,6 @@ def RunnerHandler(runner):
             }
             return info_dict
 
-        def _get_trial_by_id(self, trial_id):
-            """Gets trial by trial_id by using TrialRunner."""
-            trial = runner.get_trial(trial_id)
-            if trial is None:
-                error = "Trial ({}) not found.".format(trial_id)
-                raise TuneManagerError(error)
-            else:
-                return trial
-
         def _get_trial_by_url(self, url):
             """Parses url to get either all trials or trial by trial_id."""
             parts = urlparse(url)
@@ -208,10 +199,7 @@ def RunnerHandler(runner):
                 result = trials
             else:
                 trial_id = path.split("/")[-1]
-                try:
-                    trial = self._get_trial_by_id(trial_id)
-                except TuneError:
-                    return None
+                trial = runner.get_trial(trial_id)
                 result = trial
 
             return result
