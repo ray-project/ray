@@ -13,10 +13,6 @@ from ray.tune.web_server import TuneClient
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial_runner import TrialRunner
 
-from ray.tune import run_experiments, register_trainable
-from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest import NevergradSearch
-
 
 def get_valid_port():
     port = 4321

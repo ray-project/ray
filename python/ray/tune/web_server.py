@@ -8,7 +8,7 @@ import sys
 import threading
 
 import ray.cloudpickle as cloudpickle
-from ray.tune.error import TuneError, TuneManagerError
+from ray.tune import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray.utils import binary_to_hex, hex_to_binary
 
@@ -20,26 +20,20 @@ elif sys.version_info[0] == 3:
     from urllib.parse import urljoin, urlparse
     from http.server import SimpleHTTPRequestHandler, HTTPServer
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
     requests = None
-    logger.exception("Couldn't import `requests` library. "
+    LOGGER.exception("Couldn't import `requests` library. "
                      "Be sure to install it on the client side.")
 
 
-def load_trial_info(trial_info):
-    trial_info["config"] = cloudpickle.loads(
-        hex_to_binary(trial_info["config"]))
-    trial_info["result"] = cloudpickle.loads(
-        hex_to_binary(trial_info["result"]))
-
-
 class TuneClient(object):
-    """A TuneClient interacts with an ongoing Tune experiment by sending requests
-    to a TuneServer. Requires server to have started running.
+    """A TuneClient interacts with an ongoing Tune experiment by sending requests.
+
+    Requires a TuneServer to have started running.
 
     Attributes:
         tune_address (str): Address of running TuneServer
@@ -51,60 +45,69 @@ class TuneClient(object):
 
     def get_all_trials(self):
         """Returns a list of all trials' information."""
-        return self._get_response(requests.get, urljoin(self._path, "trials"))
+        response = requests.get(urljoin(self._path, "trials"))
+        return self._deserialize(response)
 
     def get_trial(self, trial_id):
         """Returns trial information by trial_id."""
-        return self._get_response(
-            requests.get, urljoin(self._path, "trials/{}".format(trial_id)))
+        response = requests.get(
+            urljoin(self._path, "trials/{}".format(trial_id)))
+        return self._deserialize(response)
 
     def add_trial(self, name, specification):
         """Adds a trial by name and specification (dict)."""
         payload = {"name": name, "spec": specification}
-        return self._get_response(
-            requests.post, urljoin(self._path, "trials"), payload=payload)
+        response = requests.post(urljoin(self._path, "trials"), json=payload)
+        return self._deserialize(response)
 
     def stop_trial(self, trial_id):
         """Requests to stop trial by trial_id."""
-        return self._get_response(
-            requests.put, urljoin(self._path, "trials/{}".format(trial_id)))
+        response = requests.put(
+            urljoin(self._path, "trials/{}".format(trial_id)))
+        return self._deserialize(response)
 
-    def _get_response(self, requests_fn, url, payload=None):
-        """Make HTTP request and parse the response as JSON.
+    def _load_trial_info(self, trial_info):
+        trial_info["config"] = cloudpickle.loads(
+            hex_to_binary(trial_info["config"]))
+        trial_info["result"] = cloudpickle.loads(
+            hex_to_binary(trial_info["result"]))
 
-        Also load trial information.
-        """
-        response = requests_fn(url, json=payload)
+    def _deserialize(self, response):
         parsed = response.json()
 
         if "trial" in parsed:
-            load_trial_info(parsed["trial"])
+            self._load_trial_info(parsed["trial"])
         elif "trials" in parsed:
             for trial_info in parsed["trials"]:
-                load_trial_info(trial_info)
+                self._load_trial_info(trial_info)
 
         return parsed
 
 
 def RunnerHandler(runner):
     class Handler(SimpleHTTPRequestHandler):
-        """A Handler is a custom handler that handles all requests and responses
-        coming into and from the TuneServer. Built off SimpleHTTPRequestHandler
-        which provides methods for handling HTTP requests.
+        """A Handler is a custom handler for TuneServer.
+
+        Handles all requests and responses coming into and from
+        the TuneServer. Built off SimpleHTTPRequestHandler which provides
+        methods for handling HTTP requests.
         """
 
         def _do_header(self,
                        response_code=200,
-                       headers=[('Content-type', 'application/json')]):
+                       headers=None):
             """Sends the header portion of the HTTP response.
 
             Parameters:
                 response_code (int): Standard HTTP response code
                 headers (list[tuples]): Standard HTTP response headers
             """
+            if headers is None:
+                headers = [('Content-type', 'application/json')]
+
             self.send_response(response_code)
-            for h in headers:
-                self.send_header(h[0], h[1])
+            for key, value in headers:
+                self.send_header(key, value)
             self.end_headers()
 
         def do_HEAD(self):
@@ -114,31 +117,31 @@ def RunnerHandler(runner):
         def do_GET(self):
             """HTTP GET handler method."""
             response_code = 200
-            resource, message = {}, ""
+            message = ""
             try:
                 result = self._get_trial_by_url(self.path)
+                resource = {}
                 if result:
                     if isinstance(result, list):
                         infos = [self._trial_info(t) for t in result]
                         resource["trials"] = infos
                     else:
                         resource["trial"] = self._trial_info(result)
+                message = json.dumps(resource)
             except TuneError as e:
                 response_code = 404
                 message = str(e)
 
             self._do_header(response_code=response_code)
-            if response_code == 200:
-                self.wfile.write(json.dumps(resource).encode())
-            else:
-                self.wfile.write(message.encode())
+            self.wfile.write(message.encode())
 
         def do_PUT(self):
             """HTTP PUT handler method."""
             response_code = 200
-            resource, message = {}, ""
+            message = ""
             try:
                 result = self._get_trial_by_url(self.path)
+                resource = {}
                 if result:
                     if isinstance(result, list):
                         infos = [self._trial_info(t) for t in result]
@@ -148,15 +151,13 @@ def RunnerHandler(runner):
                     else:
                         resource["trial"] = self._trial_info(result)
                         runner.request_stop_trial(result)
+                message = json.dumps(resource)
             except TuneError as e:
                 response_code = 404
                 message = str(e)
 
             self._do_header(response_code=response_code)
-            if response_code == 200:
-                self.wfile.write(json.dumps(resource).encode())
-            else:
-                self.wfile.write(message.encode())
+            self.wfile.write(message.encode())
 
         def do_POST(self):
             """HTTP POST handler method."""
@@ -192,17 +193,12 @@ def RunnerHandler(runner):
             """Parses url to get either all trials or trial by trial_id."""
             parts = urlparse(url)
             path = parts.path
-            result = None
 
             if path == "/trials":
-                trials = [t for t in runner.get_trials()]
-                result = trials
+                return [t for t in runner.get_trials()]
             else:
                 trial_id = path.split("/")[-1]
-                trial = runner.get_trial(trial_id)
-                result = trial
-
-            return result
+                return runner.get_trial(trial_id)
 
         def _add_trials(self, name, spec):
             """Add trial by invoking TrialRunner."""
@@ -220,9 +216,8 @@ def RunnerHandler(runner):
 
 class TuneServer(threading.Thread):
     """A TuneServer is a thread that initializes and runs a HTTPServer.
-    
-    The
-    server handles requests from a TuneClient.
+
+    The server handles requests from a TuneClient.
 
     Attributes:
         runner (TrialRunner): Runner that modifies and accesses trials.
@@ -236,7 +231,7 @@ class TuneServer(threading.Thread):
         threading.Thread.__init__(self)
         self._port = port if port else self.DEFAULT_PORT
         address = ('localhost', self._port)
-        logger.info("Starting Tune Server...")
+        LOGGER.info("Starting Tune Server...")
         self._server = HTTPServer(address, RunnerHandler(runner))
         self.start()
 
@@ -244,4 +239,5 @@ class TuneServer(threading.Thread):
         self._server.serve_forever()
 
     def shutdown(self):
+        """Shutdown the underlying server."""
         self._server.shutdown()
