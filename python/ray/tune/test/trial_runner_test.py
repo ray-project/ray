@@ -793,8 +793,7 @@ class RunExperimentTest(unittest.TestCase):
                 "stop": {
                     "training_iteration": 1
                 },
-                "use_default_loggers": False,
-                "custom_loggers": [CustomLogger]
+                "loggers": [CustomLogger]
             }
         })
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))

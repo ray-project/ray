@@ -19,7 +19,7 @@ from six import string_types
 import ray
 from ray.tune import TuneError
 from ray.tune.log_sync import validate_sync_function
-from ray.tune.logger import pretty_print, UnifiedLogger
+from ray.tune.logger import pretty_print, UnifiedLogger, DEFAULT_LOGGERS
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
@@ -256,8 +256,7 @@ class Trial(object):
                  restore_path=None,
                  upload_dir=None,
                  trial_name_creator=None,
-                 use_default_loggers=True,
-                 custom_loggers=None,
+                 loggers=DEFAULT_LOGGERS,
                  sync_function=None,
                  max_failures=0):
         """Initialize a new trial.
@@ -277,8 +276,7 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
-        self.use_default_loggers = use_default_loggers
-        self.custom_loggers = custom_loggers
+        self.loggers = loggers
         self.sync_function = sync_function
         validate_sync_function(sync_function)
         self.verbose = True
@@ -335,8 +333,7 @@ class Trial(object):
                 self.config,
                 self.logdir,
                 upload_uri=self.upload_dir,
-                use_default_loggers=self.use_default_loggers,
-                custom_loggers=self.custom_loggers,
+                loggers=self.loggers,
                 sync_function=self.sync_function)
 
     def sync_logger_to_new_location(self, worker_ip):
@@ -516,7 +513,7 @@ class Trial(object):
         pickle_data = {
             "_checkpoint": self._checkpoint,
             "config": self.config,
-            "custom_loggers": self.custom_loggers,
+            "loggers": self.loggers,
             "sync_function": self.sync_function,
             "last_result": self.last_result
         }
@@ -539,7 +536,7 @@ class Trial(object):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
         for key in [
-                "_checkpoint", "config", "custom_loggers", "sync_function",
+                "_checkpoint", "config", "loggers", "sync_function",
                 "last_result"
         ]:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))

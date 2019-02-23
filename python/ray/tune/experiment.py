@@ -9,6 +9,7 @@ import six
 import types
 
 from ray.tune.error import TuneError
+from ray.tune.logger import DEFAULT_LOGGERS
 from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -62,8 +63,7 @@ class Experiment(object):
             to (e.g. ``s3://bucket``).
         trial_name_creator (func): Optional function for generating
             the trial string representation.
-        use_default_loggers (bool): Whether to use Tune's default loggers.
-        custom_loggers (list): List of custom logger creators to be used with
+        loggers (list): List of logger creators to be used with
             each Trial. See `ray/tune/logger.py`.
         sync_function (func|str): Function for syncing the local_dir to
             upload_dir. If string, then it must be a string template for
@@ -118,8 +118,7 @@ class Experiment(object):
                  local_dir=None,
                  upload_dir=None,
                  trial_name_creator=None,
-                 use_default_loggers=True,
-                 custom_loggers=None,
+                 loggers=DEFAULT_LOGGERS,
                  sync_function=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
@@ -147,8 +146,7 @@ class Experiment(object):
             "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
             "trial_name_creator": trial_name_creator,
-            "use_default_loggers": use_default_loggers,
-            "custom_loggers": custom_loggers,
+            "loggers": loggers,
             "sync_function": sync_function,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
