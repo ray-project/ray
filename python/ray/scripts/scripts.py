@@ -440,6 +440,22 @@ def stop():
         ],
         shell=True)
 
+    # Find the PID of the Ray reporter process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep reporter.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the Ray dashboard process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep dashboard.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
     # Find the PID of the jupyter process and kill it.
     try:
         from notebook.notebookapp import list_running_servers
