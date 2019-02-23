@@ -178,6 +178,7 @@ class LoadMetrics(object):
         prune(self.last_used_time_by_ip)
         prune(self.static_resources_by_ip)
         prune(self.dynamic_resources_by_ip)
+        prune(self.last_heartbeat_time_by_ip)
 
     def approx_workers_used(self):
         return self._info()["NumNodesUsed"]
