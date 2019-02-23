@@ -340,7 +340,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             values_batched = to_batches(values)
         self.stats_fetches = {
             "stats": {
-                "model_loss": self.model.loss(),
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
