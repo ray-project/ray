@@ -373,6 +373,20 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
     openaigym.video.0.31403.video000000.meta.json
     openaigym.video.0.31403.video000000.mp4
 
+Episode Traces
+~~~~~~~~~~~~~~
+
+You can use the `data output API <rllib-offline.html>`__ to save episode traces for debugging. For example, the following command will run PPO while saving episode traces to ``/tmp/debug``.
+
+.. code-block:: bash
+
+    ./train.py --run=PPO --env=CartPole-v0 \
+        --config='{"output": "/tmp/debug", "output_compress_columns": []}'
+
+    # episode traces will be saved in /tmp/debug, for example
+    output-2019-02-23_12-02-03_worker-2_0.json
+    output-2019-02-23_12-02-04_worker-1_0.json
+
 Log Verbosity
 ~~~~~~~~~~~~~
 
