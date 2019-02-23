@@ -48,15 +48,20 @@ format_changed() {
     # exist on both branches.
     MERGEBASE="$(git merge-base upstream/master HEAD)"
 
-    if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.p*' &>/dev/null; then
+    if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py' | xargs -P 5 \
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py' | xargs -P 5 \
                  flake8 --exclude=python/ray/core/generated/,doc/source/conf.py,python/ray/cloudpickle/ \
                     --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
-            git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.p*' | xargs -P 5 \
-                 flake8 --filename="*.pyx,*.pxd,*.pxi" --ignore=E211,E225,E226,E227,E999
+        fi
+    fi
+
+    if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
+        if which flake8 >/dev/null; then
+            git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
+                 flake8 --ignore=E211,E225,E226,E227,E999
         fi
     fi
 
