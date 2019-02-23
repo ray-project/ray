@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from ray.tune.error import TuneError
 from ray.tune.tune import run_experiments
+from ray.tune.logger import DEFAULT_LOGGERS
 from ray.tune.experiment import Experiment
 from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
@@ -19,4 +20,5 @@ __all__ = [
     "Experiment",
     "function",
     "sample_from",
+    "DEFAULT_LOGGERS"
 ]
