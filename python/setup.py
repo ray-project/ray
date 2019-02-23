@@ -64,7 +64,9 @@ else:
 optional_ray_files += ray_autoscaler_files
 
 extras = {
-    "rllib": ["pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"],
+    "rllib": [
+        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy"
+    ],
     "debug": ["psutil", "setproctitle", "py-spy"],
     "dashboard": ["psutil", "aiohttp"],
 }
@@ -120,8 +122,9 @@ class build_ext(_build_ext.build_ext):
         parent_directory = os.path.dirname(destination)
         if not os.path.exists(parent_directory):
             os.makedirs(parent_directory)
-        print("Copying {} to {}.".format(source, destination))
-        shutil.copy(source, destination)
+        if not os.path.exists(destination):
+            print("Copying {} to {}.".format(source, destination))
+            shutil.copy(source, destination)
 
 
 class BinaryDistribution(Distribution):
