@@ -380,7 +380,7 @@ You can use the `data output API <rllib-offline.html>`__ to save episode traces 
 
 .. code-block:: bash
 
-    ./train.py --run=PPO --env=CartPole-v0 \
+    rllib train --run=PPO --env=CartPole-v0 \
         --config='{"output": "/tmp/debug", "output_compress_columns": []}'
 
     # episode traces will be saved in /tmp/debug, for example
