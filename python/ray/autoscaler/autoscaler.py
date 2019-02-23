@@ -154,6 +154,7 @@ class LoadMetrics(object):
         self.last_heartbeat_time_by_ip[ip] = now
 
     def mark_active(self, ip):
+        assert ip is not None, "IP should be known at this time"
         self.last_heartbeat_time_by_ip[ip] = time.time()
 
     def prune_active_ips(self, active_ips):
