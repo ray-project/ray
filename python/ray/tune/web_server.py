@@ -219,7 +219,9 @@ def RunnerHandler(runner):
 
 
 class TuneServer(threading.Thread):
-    """A TuneServer is a thread that initializes and runs a HTTPServer. The
+    """A TuneServer is a thread that initializes and runs a HTTPServer.
+    
+    The
     server handles requests from a TuneClient.
 
     Attributes:
