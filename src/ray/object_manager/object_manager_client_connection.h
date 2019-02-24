@@ -68,9 +68,8 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   ///
   /// \param buffer The buffer.
   /// \param ec The error code object in which to store error codes.
-  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
-                  boost::system::error_code &ec) {
-    return conn_->ReadBuffer(buffer, ec);
+  Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer) {
+    return conn_->ReadBuffer(buffer);
   }
 
   /// \return The ClientID of this connection.
