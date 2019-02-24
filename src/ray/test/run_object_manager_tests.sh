@@ -29,7 +29,7 @@ STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
 # Allow cleanup commands to fail.
 bazel run -c opt //:redis-cli -p 6379 shutdown || true
 sleep 1s
-bazel run -c opt //:redis-server --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
+bazel run -c opt //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
 # Run tests.
 bazel run -c opt //:object_manager_stress_test $STORE_EXEC
