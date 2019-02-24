@@ -93,9 +93,7 @@ def RunnerHandler(runner):
         methods for handling HTTP requests.
         """
 
-        def _do_header(self,
-                       response_code=200,
-                       headers=None):
+        def _do_header(self, response_code=200, headers=None):
             """Sends the header portion of the HTTP response.
 
             Parameters:

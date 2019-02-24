@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import unittest
 import socket
+import subprocess
+import json
 
 import ray
 from ray import tune
@@ -125,6 +127,24 @@ class TuneServerSuite(unittest.TestCase):
         all_trials = client.get_all_trials()["trials"]
         self.assertEqual(
             len([t for t in all_trials if t["status"] == Trial.RUNNING]), 0)
+
+    def testCurlCommand(self):
+        """Check if Stop Trial works."""
+        runner, client = self.basicSetup()
+        for i in range(3):
+            runner.step()
+        completed_process = subprocess.run(
+            'curl "http://localhost:4321/trials"',
+            shell=True, stdout=subprocess.PIPE)
+        self.assertEqual(completed_process.returncode, 0)
+        curl_trials = json.loads(completed_process.stdout.decode())["trials"]
+        client_trials = client.get_all_trials()["trials"]
+        for curl_trial, client_trial in zip(curl_trials, client_trials):
+            self.assertEqual(curl_trial.keys(), client_trial.keys())
+            self.assertEqual(curl_trial["id"], client_trial["id"])
+            self.assertEqual(
+                curl_trial["trainable_name"], client_trial["trainable_name"])
+            self.assertEqual(curl_trial["status"], client_trial["status"])
 
 
 if __name__ == "__main__":
