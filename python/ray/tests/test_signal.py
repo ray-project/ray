@@ -294,6 +294,8 @@ def test_send_signal_from_two_tasks_to_driver(ray_start):
 
     ray.get([a, b])
 
-    ray.experimental.signal.receive([a])
+    result_list = ray.experimental.signal.receive([a])
+    assert len(result_list) == 1
     # Call again receive on "a" with no new signal.
-    ray.experimental.signal.receive([a, b])
+    result_list = ray.experimental.signal.receive([a, b])
+    assert len(result_list) == 1
