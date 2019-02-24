@@ -7,7 +7,7 @@ import pytest
 import tensorflow as tf
 
 import ray
-import ray.experimental.tfutils
+import ray.experimental.tf_utils
 
 
 def make_linear_network(w_name=None, b_name=None):

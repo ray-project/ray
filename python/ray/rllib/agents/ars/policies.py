@@ -10,7 +10,7 @@ import numpy as np
 import tensorflow as tf
 
 import ray
-import ray.experimental.tfutils
+import ray.experimental.tf_utils
 from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.models import ModelCatalog

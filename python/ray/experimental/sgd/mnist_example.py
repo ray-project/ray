@@ -24,7 +24,7 @@ from ray.tune import run_experiments
 from ray.tune.examples.tune_mnist_ray import deepnn
 from ray.experimental.sgd.model import Model
 from ray.experimental.sgd.sgd import DistributedSGD
-import ray.experimental.tfutils
+import ray.experimental.tf_utils
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--redis-address", default=None, type=str)

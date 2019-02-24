@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from tfbench import model_config
 from ray.experimental.sgd.model import Model
-import ray.experimental.tfutils
+import ray.experimental.tf_utils
 
 
 class MockDataset():
@@ -47,7 +47,7 @@ class TFBenchModel(Model):
         self.loss = tf.reduce_mean(loss, name='xentropy-loss')
         self.optimizer = tf.train.GradientDescentOptimizer(1e-6)
 
-        self.variables = ray.experimental.tfutils.TensorFlowVariables(
+        self.variables = ray.experimental.tf_utils.TensorFlowVariables(
             self.loss, tf.get_default_session())
 
     def get_loss(self):

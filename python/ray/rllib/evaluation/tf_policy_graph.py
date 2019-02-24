@@ -9,7 +9,7 @@ import tensorflow as tf
 import numpy as np
 
 import ray
-import ray.experimental.tfutils
+import ray.experimental.tf_utils
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.annotations import override, DeveloperAPI

@@ -8,9 +8,9 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 import ray
-import ray.experimental.tfutils
-from ray.rllib.agents.dqn.dqn_policy_graph import _huber_loss, \
-    _minimize_and_clip, _scope_vars, _postprocess_dqn
+import ray.experimental.tf_utils
+from ray.rllib.agents.dqn.dqn_policy_graph import (
+    _huber_loss, _minimize_and_clip, _scope_vars, _postprocess_dqn)
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
