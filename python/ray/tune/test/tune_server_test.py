@@ -135,15 +135,16 @@ class TuneServerSuite(unittest.TestCase):
             runner.step()
         completed_process = subprocess.run(
             'curl "http://localhost:4321/trials"',
-            shell=True, stdout=subprocess.PIPE)
+            shell=True,
+            stdout=subprocess.PIPE)
         self.assertEqual(completed_process.returncode, 0)
         curl_trials = json.loads(completed_process.stdout.decode())["trials"]
         client_trials = client.get_all_trials()["trials"]
         for curl_trial, client_trial in zip(curl_trials, client_trials):
             self.assertEqual(curl_trial.keys(), client_trial.keys())
             self.assertEqual(curl_trial["id"], client_trial["id"])
-            self.assertEqual(
-                curl_trial["trainable_name"], client_trial["trainable_name"])
+            self.assertEqual(curl_trial["trainable_name"],
+                             client_trial["trainable_name"])
             self.assertEqual(curl_trial["status"], client_trial["status"])
 
 
