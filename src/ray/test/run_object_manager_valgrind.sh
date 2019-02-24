@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# This needs to be run in the build tree, which is normally ray/build
+# This needs to be run in the root directory.
 
 # Cause the script to exit if a single command fails.
 set -e
@@ -22,28 +22,17 @@ if [ ! -d "$RAY_ROOT/python" ]; then
   exit 1
 fi
 
-CORE_DIR="$RAY_ROOT/build"
-PYTHON_CORE_DIR="$RAY_ROOT/python/ray/core"
-REDIS_DIR="$CORE_DIR/src/ray/thirdparty/redis/src"
 REDIS_MODULE="./bazel-genfiles/ray_pkg/ray/core/src/ray/gcs/redis_module/libray_redis_module.so"
+LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
+
 VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1"
-
-if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
-    REDIS_SERVER="$CORE_DIR/src/credis/redis/src/redis-server"
-
-    CREDIS_MODULE="$CORE_DIR/src/credis/build/src/libmember.so"
-    LOAD_MODULE_ARGS="--loadmodule ${CREDIS_MODULE} --loadmodule ${REDIS_MODULE}"
-else
-    REDIS_SERVER="./bazel-genfiles/ray_pkg/ray/core/src/ray/thirdparty/redis/src/redis-server"
-    LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
-fi
 
 # Allow cleanup commands to fail.
 killall plasma_store || true
-./bazel-genfiles/ray_pkg/ray/core/src/ray/thirdparty/redis/src/redis-cli -p 6379 shutdown || true
+bazel run -c opt //:redis-cli -p 6379 shutdown || true
 sleep 1s
-${REDIS_SERVER} --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
+bazel run -c opt //:redis-server --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
 
 # Run tests. Use timeout=10000ms for the Wait tests since tests run slower
@@ -51,8 +40,8 @@ sleep 1s
 $VALGRIND_CMD ./bazel-bin/object_manager_test $STORE_EXEC 10000
 sleep 1s
 $VALGRIND_CMD ./bazel-bin/object_manager_stress_test $STORE_EXEC
-./bazel-genfiles/ray_pkg/ray/core/src/ray/thirdparty/redis/src/redis-cli -p 6379 shutdown
+bazel run -c opt //:redis-cli -p 6379 shutdown
 sleep 1s
 
 # Include raylet integration test once it's ready.
-# $CORE_DIR/src/ray/raylet/object_manager_integration_test $STORE_EXEC
+# $VALGRIND_CMD ./bazel-bin/object_manager_integration_test $STORE_EXEC
