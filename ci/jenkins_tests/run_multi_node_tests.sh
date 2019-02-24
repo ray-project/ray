@@ -14,6 +14,8 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
 echo "Using Docker image" $DOCKER_SHA
 
+######################## RLLIB TESTS #################################
+
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/test/run_silent.sh train.py \
     --env PongDeterministic-v0 \
@@ -245,7 +247,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --config '{"num_workers": 1}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    rllib train \
+    python /ray/python/ray/rllib/test/run_silent.sh train.py \
     --env MountainCarContinuous-v0 \
     --run DDPG \
     --stop '{"training_iteration": 2}' \
@@ -376,7 +378,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/test/run_silent.sh examples/custom_metrics_and_callbacks.py --num-iters=2
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/rllib/contrib/random_agent/random_agent.py
+    python /ray/python/ray/rllib/test/run_silent.sh contrib/random_agent/random_agent.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/test/run_silent.sh examples/twostep_game.py --stop=2000 --run=PG
@@ -408,6 +410,8 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --stop='{"timesteps_total": 40000}' \
     --ray-object-store-memory=500000000 \
     --config '{"num_workers": 1, "num_gpus": 0, "num_envs_per_worker": 64, "sample_batch_size": 50, "train_batch_size": 50, "learner_queue_size": 1}'
+
+######################## SGD TESTS #################################
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
@@ -462,6 +466,8 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --mem-size=60G \
     --shm-size=60G \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
+
+######################## TUNE TESTS #################################
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/tune_mnist_ray.py \
