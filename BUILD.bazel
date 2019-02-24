@@ -96,6 +96,7 @@ cc_test(
 cc_test(
     name = "logging_test",
     srcs = ["src/ray/util/logging_test.cc"],
+    args = ["--gtest_filter=PrintLogTest*"],
     copts = COPTS,
     deps = [
         ":ray_util",

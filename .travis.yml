@@ -39,7 +39,7 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: LINT=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
+      env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         # In case we ever want to use a different version of clang-format:
         #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
@@ -77,20 +77,18 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
+      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       install:
+        - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/travis/install-ray.sh
-        - ./ci/travis/install-with-cache-libs.sh
 
       script:
-        - cd build
-        - bash ../src/ray/test/run_object_manager_valgrind.sh
-        - cd ..
+        - bash src/ray/test/run_object_manager_valgrind.sh
 
         - export RAY_PLASMA_STORE_VALGRIND=1
         # - export RAY_RAYLET_VALGRIND=1
@@ -147,15 +145,8 @@ install:
   - bash src/ray/test/run_gcs_tests.sh
   # Raylet tests.
   - bash src/ray/test/run_object_manager_tests.sh
-  - bazel build "//:task_test" "//:worker_pool_test" "//:lineage_cache_test" "//:task_dependency_manager_test" "//:reconstruction_policy_test" "//:client_connection_test" "//:logging_test" "//:signal_test" -c opt
-  - ./bazel-bin/task_test
-  - ./bazel-bin/worker_pool_test
-  - ./bazel-bin/lineage_cache_test
-  - ./bazel-bin/task_dependency_manager_test
-  - ./bazel-bin/reconstruction_policy_test
-  - ./bazel-bin/client_connection_test
-  - ./bazel-bin/logging_test --gtest_filter=PrintLogTest*
-  - ./bazel-bin/signal_test
+  - bazel test --build_tests_only --test_lang_filters=cc ... -c opt
+
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
