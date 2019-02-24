@@ -6,10 +6,8 @@ SCRIPT=$1
 shift
 
 if [ -x $DIRECTORY/../$SCRIPT ]; then
-    echo "Testing $SCRIPT $@"
     $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
 else
-    echo "Testing python $SCRIPT $@"
     python $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
 fi
 
