@@ -39,7 +39,7 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: LINT=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
+      env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         # In case we ever want to use a different version of clang-format:
         #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
