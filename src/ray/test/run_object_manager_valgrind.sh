@@ -30,7 +30,7 @@ VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=a
 
 # Allow cleanup commands to fail.
 killall plasma_store || true
-bazel run -c opt //:redis-cli -p 6379 shutdown || true
+bazel run -c opt //:redis-cli -- -p 6379 shutdown || true
 sleep 1s
 bazel run -c opt //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
@@ -40,7 +40,7 @@ sleep 1s
 $VALGRIND_CMD ./bazel-bin/object_manager_test $STORE_EXEC 10000
 sleep 1s
 $VALGRIND_CMD ./bazel-bin/object_manager_stress_test $STORE_EXEC
-bazel run -c opt //:redis-cli -p 6379 shutdown
+bazel run -c opt //:redis-cli -- -p 6379 shutdown
 sleep 1s
 
 # Include raylet integration test once it's ready.

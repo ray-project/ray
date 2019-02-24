@@ -27,7 +27,7 @@ LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
 
 # Allow cleanup commands to fail.
-bazel run -c opt //:redis-cli -p 6379 shutdown || true
+bazel run -c opt //:redis-cli -- -p 6379 shutdown || true
 sleep 1s
 bazel run -c opt //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
@@ -36,8 +36,8 @@ sleep 1s
 sleep 1s
 # Use timeout=1000ms for the Wait tests.
 ./bazel-bin/object_manager_test $STORE_EXEC 1000
-bazel run -c opt //:redis-cli -p 6379 shutdown
+bazel run -c opt //:redis-cli -- -p 6379 shutdown
 sleep 1s
 
 # Include raylet integration test once it's ready.
-# bazel run -c opt //:object_manager_integration_test $STORE_EXEC
+# ./bazel-bin/object_manager_integration_test $STORE_EXEC
