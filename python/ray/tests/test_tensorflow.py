@@ -110,7 +110,7 @@ def test_tensorflow_variables(ray_start_regular):
     loss, init, _, _ = make_linear_network()
     sess.run(init)
 
-    variables = ray.experimental.TensorFlowVariables.tf_utils(loss, sess)
+    variables = ray.experimental.tf_utils.TensorFlowVariables(loss, sess)
     weights = variables.get_weights()
 
     for (name, val) in weights.items():
@@ -122,7 +122,7 @@ def test_tensorflow_variables(ray_start_regular):
     loss2, init2, _, _ = make_linear_network("w", "b")
     sess.run(init2)
 
-    variables2 = ray.experimental.TensorFlowVariables.tf_utils(loss2, sess)
+    variables2 = ray.experimental.tf_utils.TensorFlowVariables(loss2, sess)
     weights2 = variables2.get_weights()
 
     for (name, val) in weights2.items():
@@ -134,7 +134,7 @@ def test_tensorflow_variables(ray_start_regular):
     variables2.set_flat(flat_weights)
     assert_almost_equal(flat_weights, variables2.get_flat())
 
-    variables3 = ray.experimental.TensorFlowVariables.tf_utils([loss2])
+    variables3 = ray.experimental.tf_utils.TensorFlowVariables([loss2])
     assert variables3.sess is None
     sess = tf.Session()
     variables3.set_session(sess)
