@@ -77,7 +77,7 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
+      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
@@ -88,9 +88,7 @@ matrix:
         - ./ci/travis/install-with-cache-libs.sh
 
       script:
-        - cd build
-        - bash ../src/ray/test/run_object_manager_valgrind.sh
-        - cd ..
+        - bash src/ray/test/run_object_manager_valgrind.sh
 
         - export RAY_PLASMA_STORE_VALGRIND=1
         # - export RAY_RAYLET_VALGRIND=1

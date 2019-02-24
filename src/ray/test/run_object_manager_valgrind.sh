@@ -6,6 +6,8 @@
 set -e
 set -x
 
+bazel build "//:object_manager_stress_test" "//:object_manager_test" "@plasma//:plasma_store_server" -c opt
+
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"
 RAY_ROOT="$SCRIPT_DIR/../../.."
@@ -23,8 +25,8 @@ fi
 CORE_DIR="$RAY_ROOT/build"
 PYTHON_CORE_DIR="$RAY_ROOT/python/ray/core"
 REDIS_DIR="$CORE_DIR/src/ray/thirdparty/redis/src"
-REDIS_MODULE="$PYTHON_CORE_DIR/src/ray/gcs/redis_module/libray_redis_module.so"
-STORE_EXEC="$PYTHON_CORE_DIR/src/plasma/plasma_store_server"
+REDIS_MODULE="./bazel-genfiles/ray_pkg/ray/core/src/ray/gcs/redis_module/libray_redis_module.so"
+STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
 VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1"
 
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
@@ -33,27 +35,23 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     CREDIS_MODULE="$CORE_DIR/src/credis/build/src/libmember.so"
     LOAD_MODULE_ARGS="--loadmodule ${CREDIS_MODULE} --loadmodule ${REDIS_MODULE}"
 else
-    REDIS_SERVER="${REDIS_DIR}/redis-server"
+    REDIS_SERVER="./bazel-genfiles/ray_pkg/ray/core/src/ray/thirdparty/redis/src/redis-server"
     LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 fi
 
-echo "$STORE_EXEC"
-echo "${REDIS_SERVER} --loglevel warning ${LOAD_MODULE_ARGS} --port 6379"
-echo "$REDIS_DIR/redis-cli -p 6379 shutdown"
-
 # Allow cleanup commands to fail.
 killall plasma_store || true
-$REDIS_DIR/redis-cli -p 6379 shutdown || true
+./bazel-genfiles/ray_pkg/ray/core/src/ray/thirdparty/redis/src/redis-cli -p 6379 shutdown || true
 sleep 1s
 ${REDIS_SERVER} --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
 
 # Run tests. Use timeout=10000ms for the Wait tests since tests run slower
 # in valgrind.
-$VALGRIND_CMD $CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC 10000
+$VALGRIND_CMD ./bazel-bin/object_manager_test $STORE_EXEC 10000
 sleep 1s
-$VALGRIND_CMD $CORE_DIR/src/ray/object_manager/object_manager_stress_test $STORE_EXEC
-$REDIS_DIR/redis-cli -p 6379 shutdown
+$VALGRIND_CMD ./bazel-bin/object_manager_test $STORE_EXEC
+./bazel-genfiles/ray_pkg/ray/core/src/ray/thirdparty/redis/src/redis-cli -p 6379 shutdown
 sleep 1s
 
 # Include raylet integration test once it's ready.
