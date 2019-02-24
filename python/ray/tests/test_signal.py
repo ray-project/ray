@@ -3,6 +3,7 @@ import pytest
 import ray
 import ray.experimental.signal as signal
 
+import time
 
 class UserSignal(signal.Signal):
     def __init__(self, value):
@@ -205,8 +206,10 @@ def test_actor_crash_init3(ray_start):
 
     a = ActorCrashInit.remote()
     a.method.remote()
-    result_list = signal.receive([a], timeout=10)
-    assert len(result_list) == 1
+    # Wait for a.method.remote() to finish and generate an error.
+    time.sleep(10)
+    result_list = signal.receive([a], timeout=5)
+    assert len(result_list) == 2
     assert type(result_list[0][1]) == signal.ErrorSignal
 
 
@@ -279,3 +282,18 @@ def test_forget(ray_start):
     ray.get(a.send_signals.remote(signal_value, count))
     result_list = receive_all_signals([a], timeout=5)
     assert len(result_list) == count
+
+def test_send_signal_from_two_tasks_to_driver(ray_start):
+    # Define a remote function that sends a user-defined signal.
+    @ray.remote
+    def send_signal(value):
+        signal.send(UserSignal(value))
+
+    a = send_signal.remote(0)
+    b = send_signal.remote(0)
+
+    ray.get([a, b])
+
+    ray.experimental.signal.receive([a])
+    # Call again receive on "a" with no new signal.
+    ray.experimental.signal.receive([a, b])
