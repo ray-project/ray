@@ -2,13 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 import numpy as np
-import scipy.optimize
-import tensorflow as tf
 import os
+import scipy.optimize
 
+import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
+
+import ray
+import ray.experimental.tf_utils
 
 
 class LinearModel(object):
@@ -55,7 +57,7 @@ class LinearModel(object):
         # In order to get and set the weights, we pass in the loss function to
         # Ray's TensorFlowVariables to automatically create methods to modify
         # the weights.
-        self.variables = ray.experimental.TensorFlowVariables(
+        self.variables = ray.experimental.tf_utils.TensorFlowVariables(
             cross_entropy, self.sess)
 
     def loss(self, xs, ys):

@@ -1,8 +1,11 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-import numpy as np
+
 from collections import deque, OrderedDict
+import numpy as np
+
+import tensorflow as tf
 
 
 def unflatten(vector, shapes):
@@ -45,7 +48,6 @@ class TensorFlowVariables(object):
             input_variables (List[tf.Variables]): Variables to include in the
                 list.
         """
-        import tensorflow as tf
         self.sess = sess
         if not isinstance(output, (list, tuple)):
             output = [output]
