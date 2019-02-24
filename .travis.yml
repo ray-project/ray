@@ -82,6 +82,7 @@ matrix:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       install:
+        - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/travis/install-ray.sh
