@@ -50,7 +50,7 @@ sleep 1s
 # in valgrind.
 $VALGRIND_CMD ./bazel-bin/object_manager_test $STORE_EXEC 10000
 sleep 1s
-$VALGRIND_CMD ./bazel-bin/object_manager_test $STORE_EXEC
+$VALGRIND_CMD ./bazel-bin/object_manager_stress_test $STORE_EXEC
 ./bazel-genfiles/ray_pkg/ray/core/src/ray/thirdparty/redis/src/redis-cli -p 6379 shutdown
 sleep 1s
 
