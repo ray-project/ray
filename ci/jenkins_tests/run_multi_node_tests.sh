@@ -330,9 +330,6 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_supported_spaces.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    pytest /ray/python/ray/tune/test/cluster_tests.py
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_env_with_subprocess.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -524,3 +521,7 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --mem-size=60G \
     --shm-size=60G \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
+
+# Flaky! moved to bottom of file
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    pytest /ray/python/ray/tune/test/cluster_tests.py

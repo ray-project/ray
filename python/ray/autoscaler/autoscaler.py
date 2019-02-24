@@ -506,15 +506,15 @@ class StandardAutoscaler(object):
                                  "Error parsing config.")
 
     def target_num_workers(self):
-        initial_workers = self.config["initial_workers"]
+        target_frac = self.config["target_utilization_fraction"]
+        cur_used = self.load_metrics.approx_workers_used()
+        ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
+        ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
 
         if self.bringup:
-            ideal_num_workers = initial_workers
-        else:
-            target_frac = self.config["target_utilization_fraction"]
-            cur_used = self.load_metrics.approx_workers_used()
-            ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
-            ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
+            ideal_num_workers = max(ideal_num_workers,
+                                    self.config["initial_workers"])
+
         return min(self.config["max_workers"],
                    max(self.config["min_workers"], ideal_num_workers))
 
