@@ -6,7 +6,7 @@
 set -e
 set -x
 
-bazel build "//:object_manager_stress_test" "//:object_manager_test" "@plasma//:plasma_store_server" -c opt
+bazel build -c opt "//:object_manager_stress_test" "//:object_manager_test" "@plasma//:plasma_store_server"
 
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"

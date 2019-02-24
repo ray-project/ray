@@ -6,7 +6,7 @@
 set -e
 set -x
 
-bazel build -c opt "@plasma//:plasma_store_server"
+bazel build -c opt "//:object_manager_stress_test" "//:object_manager_test" "@plasma//:plasma_store_server"
 
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"
@@ -32,10 +32,10 @@ sleep 1s
 bazel run -c opt //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
 # Run tests.
-bazel run -c opt //:object_manager_stress_test $STORE_EXEC
+./bazel-bin/object_manager_stress_test $STORE_EXEC
 sleep 1s
 # Use timeout=1000ms for the Wait tests.
-bazel run -c opt //:object_manager_test $STORE_EXEC 1000
+./bazel-bin/object_manager_test $STORE_EXEC 1000
 bazel run -c opt //:redis-cli -p 6379 shutdown
 sleep 1s
 
