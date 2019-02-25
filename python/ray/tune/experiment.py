@@ -63,7 +63,7 @@ class Experiment(object):
         trial_name_creator (func): Optional function for generating
             the trial string representation.
         loggers (list): List of logger creators to be used with
-            each Trial. Defaults to ray.tune.logger.DEFAULT_LOGGERS.
+            each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
         sync_function (func|str): Function for syncing the local_dir to
             upload_dir. If string, then it must be a string template for
