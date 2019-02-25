@@ -12,7 +12,7 @@ from six import string_types
 from ray.tune import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import Trial, json_to_resources
-from ray.tune.logger import _SafeFallbackEncoder, DEFAULT_LOGGERS
+from ray.tune.logger import _SafeFallbackEncoder
 
 
 def make_parser(parser_creator=None, **kwargs):
@@ -193,7 +193,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,
         trial_name_creator=spec.get("trial_name_creator"),
-        loggers=spec.get("loggers", DEFAULT_LOGGERS),
+        loggers=spec.get("loggers"),
         # str(None) doesn't create None
         sync_function=spec.get("sync_function"),
         max_failures=args.max_failures,

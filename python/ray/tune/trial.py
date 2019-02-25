@@ -19,7 +19,7 @@ from six import string_types
 import ray
 from ray.tune import TuneError
 from ray.tune.log_sync import validate_sync_function
-from ray.tune.logger import pretty_print, UnifiedLogger, DEFAULT_LOGGERS
+from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
@@ -256,7 +256,7 @@ class Trial(object):
                  restore_path=None,
                  upload_dir=None,
                  trial_name_creator=None,
-                 loggers=DEFAULT_LOGGERS,
+                 loggers=None,
                  sync_function=None,
                  max_failures=0):
         """Initialize a new trial.

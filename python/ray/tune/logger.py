@@ -195,9 +195,12 @@ class UnifiedLogger(Logger):
                  config,
                  logdir,
                  upload_uri=None,
-                 loggers=DEFAULT_LOGGERS,
+                 loggers=None,
                  sync_function=None):
-        self._logger_cls_list = loggers
+        if loggers is None:
+            self._logger_cls_list = DEFAULT_LOGGERS
+        else:
+            self._logger_cls_list = loggers
         self._sync_function = sync_function
         self._log_syncer = None
 

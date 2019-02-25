@@ -800,6 +800,29 @@ class RunExperimentTest(unittest.TestCase):
         self.assertFalse(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
 
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                }
+            }
+        })
+        self.assertTrue(
+            os.path.exists(os.path.join(trial.logdir, "params.json")))
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                },
+                "loggers": []
+            }
+        })
+        self.assertFalse(
+            os.path.exists(os.path.join(trial.logdir, "params.json")))
+
     def testCustomTrialString(self):
         [trial] = run_experiments({
             "foo": {
