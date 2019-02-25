@@ -8,8 +8,9 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 import ray
-from ray.rllib.agents.dqn.dqn_policy_graph import _huber_loss, \
-    _minimize_and_clip, _scope_vars, _postprocess_dqn
+import ray.experimental.tf_utils
+from ray.rllib.agents.dqn.dqn_policy_graph import (
+    _huber_loss, _minimize_and_clip, _scope_vars, _postprocess_dqn)
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -147,7 +148,7 @@ class ActorCriticLoss(object):
 
         q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
         if twin_q:
-            twin_q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
+            twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
             q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
 
         q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
@@ -333,10 +334,11 @@ class DDPGPolicyGraph(TFPolicyGraph):
                             config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
 
         # Model self-supervised losses
-        self.loss.actor_loss += self.p_model.loss()
-        self.loss.critic_loss += self.q_model.loss()
+        self.loss.actor_loss = self.p_model.custom_loss(self.loss.actor_loss)
+        self.loss.critic_loss = self.q_model.custom_loss(self.loss.critic_loss)
         if self.config["twin_q"]:
-            self.loss.critic_loss += self.twin_q_model.loss()
+            self.loss.critic_loss = self.twin_q_model.custom_loss(
+                self.loss.critic_loss)
 
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
@@ -387,7 +389,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # Note that this encompasses both the policy and Q-value networks and
         # their corresponding target networks
-        self.variables = ray.experimental.TensorFlowVariables(
+        self.variables = ray.experimental.tf_utils.TensorFlowVariables(
             tf.group(q_tp0, q_tp1), self.sess)
 
         # Hard initial update

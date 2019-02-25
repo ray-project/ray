@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import tensorflow as tf
 
 import ray
@@ -12,6 +13,8 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
+
+logger = logging.getLogger(__name__)
 
 
 class PPOLoss(object):
@@ -145,6 +148,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             existing_state_in = None
             existing_seq_lens = None
         self.observations = obs_ph
+        self.prev_actions = prev_actions_ph
+        self.prev_rewards = prev_rewards_ph
 
         self.loss_in = [
             ("obs", obs_ph),
@@ -189,7 +194,14 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 # mean parameters and standard deviation parameters and
                 # do not make the standard deviations free variables.
                 vf_config["free_log_std"] = False
-                vf_config["use_lstm"] = False
+                if vf_config["use_lstm"]:
+                    vf_config["use_lstm"] = False
+                    logger.warning(
+                        "It is not recommended to use a LSTM model with "
+                        "vf_share_layers=False (consider setting it to True). "
+                        "If you want to not share layers, you can implement "
+                        "a custom LSTM model that overrides the "
+                        "value_function() method.")
                 with tf.variable_scope("value_function"):
                     self.value_function = ModelCatalog.get_model({
                         "obs": obs_ph,
@@ -235,7 +247,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             obs_input=obs_ph,
             action_sampler=self.sampler,
             action_prob=curr_action_dist.sampled_action_prob(),
-            loss=self.model.loss() + self.loss_obj.loss,
+            loss=self.loss_obj.loss,
+            model=self.model,
             loss_inputs=self.loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
@@ -279,7 +292,9 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             next_state = []
             for i in range(len(self.model.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch["new_obs"][-1], *next_state)
+            last_r = self._value(sample_batch["new_obs"][-1],
+                                 sample_batch["actions"][-1],
+                                 sample_batch["rewards"][-1], *next_state)
         batch = compute_advantages(
             sample_batch,
             last_r,
@@ -326,8 +341,13 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
         return self.kl_coeff_val
 
-    def _value(self, ob, *args):
-        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
+    def _value(self, ob, prev_action, prev_reward, *args):
+        feed_dict = {
+            self.observations: [ob],
+            self.prev_actions: [prev_action],
+            self.prev_rewards: [prev_reward],
+            self.model.seq_lens: [1]
+        }
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):

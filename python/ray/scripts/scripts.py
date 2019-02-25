@@ -378,8 +378,29 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @cli.command()
 def stop():
+    # Find the PID of the plasma_store_server process and kill it.
     subprocess.call(
-        ["killall plasma_store_server raylet raylet_monitor"], shell=True)
+        [
+            "kill $(ps aux | grep plasma_store_server | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the raylet process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep raylet | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the raylet_monitor process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep raylet_monitor | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
 
     # Find the PID of the monitor process and kill it.
     subprocess.call(
@@ -415,6 +436,22 @@ def stop():
     subprocess.call(
         [
             "kill $(ps aux | grep log_monitor.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the Ray reporter process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep reporter.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the Ray dashboard process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep dashboard.py | grep -v grep | "
             "awk '{ print $2 }') 2> /dev/null"
         ],
         shell=True)
