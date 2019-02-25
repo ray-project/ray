@@ -263,7 +263,7 @@ cdef class ActorCheckpointID(UniqueID):
 
     @staticmethod
     cdef from_native(const CActorCheckpointID& cpp_id):
-        cdef ActorCheckpointID self = ActorCheckpointID.__new__(ActorHandleID)
+        cdef ActorCheckpointID self = ActorCheckpointID.__new__(ActorCheckpointID)
         self.data = cpp_id
         return self
 
