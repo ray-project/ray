@@ -457,8 +457,8 @@ be wrapped with ``tune.function``):
     )
 
 
-Tune API
-----------
+Tune REST API
+-------------
 
 You can interact with an ongoing experiment with the Tune API. The Tune API is organized around REST, which includes resource-oriented URLs, accepts form-encoded requests, returns JSON-encoded responses, and uses standard HTTP protocol.
 
