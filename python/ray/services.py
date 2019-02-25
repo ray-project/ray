@@ -573,7 +573,7 @@ def start_redis(node_ip_address,
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
 
-    # Calculate the redis meomry
+    # Calculate the redis memory.
     system_memory = ray.utils.get_system_memory()
     if redis_max_memory is None:
         redis_max_memory = min(
