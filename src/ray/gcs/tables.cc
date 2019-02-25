@@ -412,8 +412,21 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
         AsyncGcsClient *client, const UniqueID &log_key,
         const std::vector<ClientTableDataT> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
+      std::unordered_map<std::string, ClientTableDataT> existing_nodes;
       for (auto &notification : notifications) {
-        HandleNotification(client, notification);
+        // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
+        // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
+        if (notification.is_insertion) {
+          existing_nodes.emplace(notification.client_id, notification);
+        } else {
+          auto iter = existing_nodes.find(notification.client_id);
+          if (iter != existing_nodes.end()) {
+            existing_nodes.erase(iter);
+          }
+        }
+      }
+      for (const auto &pair : existing_nodes) {
+        HandleNotification(client, pair.second);
       }
     };
     // Callback to request notifications from the client table once we've
