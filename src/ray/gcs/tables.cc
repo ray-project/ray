@@ -412,20 +412,29 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
         AsyncGcsClient *client, const UniqueID &log_key,
         const std::vector<ClientTableDataT> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
-      std::unordered_map<std::string, ClientTableDataT> existing_nodes;
+      std::unordered_map<std::string, ClientTableDataT> connected_nodes;
+      std::unordered_map<std::string, ClientTableDataT> disconnected_nodes;
       for (auto &notification : notifications) {
         // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
         // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
         if (notification.is_insertion) {
-          existing_nodes.emplace(notification.client_id, notification);
-        } else {
-          auto iter = existing_nodes.find(notification.client_id);
-          if (iter != existing_nodes.end()) {
-            existing_nodes.erase(iter);
+          auto iter = disconnected_nodes.find(notification.client_id);
+          if (iter != disconnected_nodes.end()) {
+            disconnected_nodes.erase(iter);
           }
+          connected_nodes.emplace(notification.client_id, notification);
+        } else {
+          auto iter = connected_nodes.find(notification.client_id);
+          if (iter != connected_nodes.end()) {
+            connected_nodes.erase(iter);
+          }
+          disconnected_nodes.emplace(notification.client_id, notification);
         }
       }
-      for (const auto &pair : existing_nodes) {
+      for (const auto &pair : connected_nodes) {
+        HandleNotification(client, pair.second);
+      }
+      for (const auto &pair : disconnected_nodes) {
         HandleNotification(client, pair.second);
       }
     };
