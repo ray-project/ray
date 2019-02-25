@@ -100,19 +100,19 @@ def run(args, parser):
 
 
 def rollout(agent, env_name, num_steps, out=None, no_render=True):
-    if hasattr(agent, "local_evaluator"):
-        env = agent.local_evaluator.env
-    else:
-        env = gym.make(env_name)
 
     if hasattr(agent, "local_evaluator"):
+        env = agent.local_evaluator.env
+        multiagent = agent.local_evaluator.multiagent
+        if multiagent:
+            policy_agent_mapping = agent.config["multiagent"]["policy_mapping_fn"]
         policy_map = agent.local_evaluator.policy_map
         state_init = { p: m.get_initial_state() for p, m in policy_map.items() }
         use_lstm = { p: len(s) > 0 for p, s in state_init.items() }
     else:
-        policy_map = {}
+        env = gym.make(env_name)
         use_lstm = { 'default': False }
-    multi_agent = len(policy_map) > 1
+        multiagent = False
 
     if out is not None:
         rollouts = []
@@ -121,21 +121,25 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         if out is not None:
             rollout = []
         state = env.reset()
+        if multiagent:
+            agents = state.keys()
         done = False
         reward_total = 0.0
         while not done and steps < (num_steps or steps + 1):
-            if multi_agent:
+            if multiagent:
                 action_dict = {}
-                for policy_id in policy_map.keys():
-                    p_state = state[policy_id]
-                    p_use_lstm = use_lstm[policy_id]
-                    if p_use_lstm:
-                        p_action, p_state_init, _ = agent.compute_action(
-                            p_state, state=state_init[policy_id], policy_id=policy_id)
-                        state_init[policy_id] = p_state_init
-                    else:
-                        p_action = agent.compute_action(p_state, policy_id=policy_id)
-                    action_dict[policy_id] = p_action
+                for agent_id in agents:
+                    a_state = state[agent_id]
+                    if a_state is not None:
+                        policy_id = policy_agent_mapping(agent_id)
+                        p_use_lstm = use_lstm[policy_id]
+                        if p_use_lstm:
+                            a_action, p_state_init, _ = agent.compute_action(
+                                a_state, state=state_init[policy_id], policy_id=policy_id)
+                            state_init[policy_id] = p_state_init
+                        else:
+                            a_action = agent.compute_action(a_state, policy_id=policy_id)
+                        action_dict[agent_id] = a_action
                 action = action_dict
             else:
                 if use_lstm['default']:
@@ -146,7 +150,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
 
             next_state, reward, done, _ = env.step(action)
             
-            if multi_agent:
+            if multiagent:
                 done = done['__all__']
                 reward_total += sum(reward.values())
             else:
@@ -160,6 +164,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         if out is not None:
             rollouts.append(rollout)
         print("Episode reward", reward_total)
+
     if out is not None:
         pickle.dump(rollouts, open(out, "wb"))
 
