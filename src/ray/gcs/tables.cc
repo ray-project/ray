@@ -418,10 +418,6 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
         // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
         // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
         if (notification.is_insertion) {
-          auto iter = disconnected_nodes.find(notification.client_id);
-          if (iter != disconnected_nodes.end()) {
-            disconnected_nodes.erase(iter);
-          }
           connected_nodes.emplace(notification.client_id, notification);
         } else {
           auto iter = connected_nodes.find(notification.client_id);
