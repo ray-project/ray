@@ -485,14 +485,14 @@ The API also supports curl. Here are the examples for getting trials (GET /trial
 
 .. code-block:: bash
 
-    curl http://localhost:4321/trials
-    curl http://localhost:4321/trials/<trial_id>
+    curl http://<address>:<port>/trials
+    curl http://<address>:<port>/trials/<trial_id>
 
 And stopping a trial (PUT /trials/:id): 
 
 .. code-block:: bash
 
-    curl -X PUT http://localhost:4321/trials/<trial_id>
+    curl -X PUT http://<address>:<port>/trials/<trial_id>
 
 
 Further Questions or Issues?

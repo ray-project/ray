@@ -41,6 +41,8 @@ class TuneClient(object):
     """
 
     def __init__(self, tune_address, port_forward):
+        self._tune_address = tune_address
+        self._port_forward = port_forward
         self._path = "http://{}:{}".format(tune_address, port_forward)
 
     def get_all_trials(self):
@@ -65,6 +67,12 @@ class TuneClient(object):
         response = requests.put(
             urljoin(self._path, "trials/{}".format(trial_id)))
         return self._deserialize(response)
+
+    def get_address(self):
+        return self._tune_address
+
+    def get_port(self):
+        return self._port_forward
 
     def _load_trial_info(self, trial_info):
         trial_info["config"] = cloudpickle.loads(

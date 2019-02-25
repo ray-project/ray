@@ -131,10 +131,12 @@ class TuneServerSuite(unittest.TestCase):
     def testCurlCommand(self):
         """Check if Stop Trial works."""
         runner, client = self.basicSetup()
-        for i in range(3):
+        for i in range(2):
             runner.step()
-        stdout = subprocess.check_output('curl "http://localhost:4321/trials"',
-                                         shell=True)
+        stdout = subprocess.check_output(
+            'curl "http://{}:{}/trials"'.format(client.get_address(),
+                                                client.get_port()),
+            shell=True)
         self.assertNotEqual(stdout, None)
         curl_trials = json.loads(stdout.decode())["trials"]
         client_trials = client.get_all_trials()["trials"]
