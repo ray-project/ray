@@ -16,8 +16,8 @@ except ImportError:
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.test.cluster_utils import Cluster
-from ray.test.test_utils import run_string_as_driver_nonblocking
+from ray.tests.cluster_utils import Cluster
+from ray.tests.utils import run_string_as_driver_nonblocking
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial

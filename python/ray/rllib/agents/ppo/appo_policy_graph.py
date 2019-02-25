@@ -226,8 +226,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Setup the policy
         dist_class, logit_dim = ModelCatalog.get_action_dist(
-            action_space,
-            self.config["model"])
+            action_space, self.config["model"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
         self.model = ModelCatalog.get_model(
@@ -392,7 +391,8 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             obs_input=observations,
             action_sampler=action_dist.sample(),
             action_prob=action_dist.sampled_action_prob(),
-            loss=self.model.loss() + self.loss.total_loss,
+            loss=self.loss.total_loss,
+            model=self.model,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
@@ -407,7 +407,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         values_batched = make_time_major(
             values, drop_last=self.config["vtrace"])
         self.stats_fetches = {
-            "kl": self.loss.mean_kl,
             "stats": dict({
                 "model_loss": self.model.loss(),
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
