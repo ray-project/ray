@@ -73,6 +73,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "head_ip": (str, OPTIONAL),  # local cluster head node
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
             "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
+            "extra_config": (dict, OPTIONAL),  # provider-specific config
         },
         REQUIRED),
 
