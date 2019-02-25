@@ -271,7 +271,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             if isinstance(tensor, list):
                 return [make_time_major(t, drop_last) for t in tensor]
 
-            if self.config["model"]["use_lstm"]:
+            if self.model.state_init:
                 B = tf.shape(self.model.seq_lens)[0]
                 T = tf.shape(tensor)[0] // B
             else:
@@ -392,7 +392,8 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             obs_input=observations,
             action_sampler=action_dist.sample(),
             action_prob=action_dist.sampled_action_prob(),
-            loss=self.model.loss() + self.loss.total_loss,
+            loss=self.loss.total_loss,
+            model=self.model,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
@@ -407,7 +408,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         values_batched = make_time_major(
             values, drop_last=self.config["vtrace"])
         self.stats_fetches = {
-            "kl": self.loss.mean_kl,
             "stats": dict({
                 "model_loss": self.model.loss(),
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),

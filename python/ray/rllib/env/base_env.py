@@ -325,6 +325,10 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             if set(infos).difference(set(obs)):
                 raise ValueError("Key set for infos must be a subset of obs: "
                                  "{} vs {}".format(infos.keys(), obs.keys()))
+            if "__all__" not in dones:
+                raise ValueError(
+                    "In multi-agent environments, '__all__': True|False must "
+                    "be included in the 'done' dict: got {}.".format(dones))
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
