@@ -845,7 +845,6 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     // Avoid handling this chunk if it's already being handled by another process.
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
-    boost::system::error_code ec;
     status = conn.ReadBuffer(buffer);
     if (status.ok()) {
       buffer_pool_.SealChunk(object_id, chunk_index);
@@ -862,7 +861,6 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     mutable_vec.resize(buffer_length);
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(mutable_vec, buffer_length));
-    boost::system::error_code ec;
     status = conn.ReadBuffer(buffer);
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
