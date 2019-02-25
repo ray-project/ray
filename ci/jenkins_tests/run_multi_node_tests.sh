@@ -45,6 +45,8 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
         --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
 
+######################## RAY BACKEND TESTS #################################
+
 python3 $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \
     --num-nodes=5 \
