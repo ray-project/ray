@@ -139,17 +139,17 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
 }
 
 bool TaskDependencyManager::SubscribeDependencies(
-    const TaskID &task_id, const std::vector<ObjectID> &required_objects) {
+    const TaskID &task_id, const std::vector<ObjectID> &required_objects, bool ray_get) {
   auto &task_entry = task_dependencies_[task_id];
 
   // Record the task's dependencies.
   for (const auto &object_id : required_objects) {
-    auto inserted = task_entry.object_dependencies.insert(object_id);
+    auto inserted = (ray_get) ? task_entry.get_dependencies.insert(object_id) : task_entry.wait_dependencies.insert(object_id);
     if (inserted.second) {
       // Get the ID of the task that creates the dependency.
       TaskID creating_task_id = ComputeTaskId(object_id);
       // Determine whether the dependency can be fulfilled by the local node.
-      if (local_objects_.count(object_id) == 0) {
+      if (ray_get && local_objects_.count(object_id) == 0) {
         // The object is not local.
         task_entry.num_missing_dependencies++;
       }
@@ -169,7 +169,56 @@ bool TaskDependencyManager::SubscribeDependencies(
   return (task_entry.num_missing_dependencies == 0);
 }
 
-bool TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
+void TaskDependencyManager::RemoveTaskDependency(const TaskID &task_id, const ObjectID &object_id) {
+  // Remove the task from the list of tasks that are dependent on this
+  // object.
+  // Get the ID of the task that creates the dependency.
+  TaskID creating_task_id = ComputeTaskId(object_id);
+  auto creating_task_entry = required_tasks_.find(creating_task_id);
+  std::vector<TaskID> &dependent_tasks = creating_task_entry->second[object_id];
+  auto it = std::find(dependent_tasks.begin(), dependent_tasks.end(), task_id);
+  RAY_CHECK(it != dependent_tasks.end());
+  dependent_tasks.erase(it);
+  // If the unsubscribed task was the only task dependent on the object, then
+  // erase the object entry.
+  if (dependent_tasks.empty()) {
+    creating_task_entry->second.erase(object_id);
+    // Remove the task that creates this object if there are no more object
+    // dependencies created by the task.
+    if (creating_task_entry->second.empty()) {
+      required_tasks_.erase(creating_task_entry);
+    }
+  }
+}
+
+bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
+  // Remove the task from the table of subscribed tasks.
+  auto it = task_dependencies_.find(task_id);
+  if (it == task_dependencies_.end()) {
+    return false;
+  }
+
+  const TaskDependencies task_entry = std::move(it->second);
+
+  // Remove the task's dependencies.
+  for (const auto &object_id : task_entry.get_dependencies) {
+    RemoveTaskDependency(task_id, object_id);
+  }
+
+  // These dependencies are no longer required by the given task. Cancel any
+  // in-progress operations to make them local.
+  for (const auto &object_id : task_entry.get_dependencies) {
+    HandleRemoteDependencyCanceled(object_id);
+  }
+
+  if (task_entry.wait_dependencies.empty()) {
+    task_dependencies_.erase(it);
+  }
+
+  return true;
+}
+
+bool TaskDependencyManager::UnsubscribeAllDependencies(const TaskID &task_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
   if (it == task_dependencies_.end()) {
@@ -180,32 +229,49 @@ bool TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   task_dependencies_.erase(it);
 
   // Remove the task's dependencies.
-  for (const auto &object_id : task_entry.object_dependencies) {
-    // Remove the task from the list of tasks that are dependent on this
-    // object.
-    // Get the ID of the task that creates the dependency.
-    TaskID creating_task_id = ComputeTaskId(object_id);
-    auto creating_task_entry = required_tasks_.find(creating_task_id);
-    std::vector<TaskID> &dependent_tasks = creating_task_entry->second[object_id];
-    auto it = std::find(dependent_tasks.begin(), dependent_tasks.end(), task_id);
-    RAY_CHECK(it != dependent_tasks.end());
-    dependent_tasks.erase(it);
-    // If the unsubscribed task was the only task dependent on the object, then
-    // erase the object entry.
-    if (dependent_tasks.empty()) {
-      creating_task_entry->second.erase(object_id);
-      // Remove the task that creates this object if there are no more object
-      // dependencies created by the task.
-      if (creating_task_entry->second.empty()) {
-        required_tasks_.erase(creating_task_entry);
-      }
-    }
+  for (const auto &object_id : task_entry.get_dependencies) {
+    RemoveTaskDependency(task_id, object_id);
+  }
+  for (const auto &object_id : task_entry.wait_dependencies) {
+    RemoveTaskDependency(task_id, object_id);
   }
 
   // These dependencies are no longer required by the given task. Cancel any
   // in-progress operations to make them local.
-  for (const auto &object_id : task_entry.object_dependencies) {
+  for (const auto &object_id : task_entry.get_dependencies) {
     HandleRemoteDependencyCanceled(object_id);
+  }
+  for (const auto &object_id : task_entry.wait_dependencies) {
+    HandleRemoteDependencyCanceled(object_id);
+  }
+
+  return true;
+}
+
+bool TaskDependencyManager::UnsubscribeDependency(const TaskID &task_id, const ObjectID &object_id) {
+  // Remove the task from the table of subscribed tasks.
+  auto it = task_dependencies_.find(task_id);
+  if (it == task_dependencies_.end()) {
+    return false;
+  }
+
+  const TaskDependencies task_entry = std::move(it->second);
+
+  auto get_it = task_entry.get_dependencies.find(object_id);
+  bool oid_found = (get_it != task_entry.get_dependencies.end());
+
+  auto wait_it = task_entry.wait_dependencies.find(object_id);
+  oid_found |= (wait_it != task_entry.wait_dependencies.end());
+
+  if (!oid_found) {
+    return false;
+  }
+
+  RemoveTaskDependency(task_id, object_id);
+  HandleRemoteDependencyCanceled(object_id);
+
+  if (task_entry.get_dependencies.empty() && task_entry.wait_dependencies.empty()) {
+    task_dependencies_.erase(it);
   }
 
   return true;

@@ -115,7 +115,7 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
   }
   // Subscribe to the task's dependencies.
-  bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments);
+  bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments, true);
   ASSERT_FALSE(ready);
 
   // All arguments should be canceled as they become available locally.
@@ -151,7 +151,7 @@ TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribe) {
     // requested from the node manager once.
     EXPECT_CALL(object_manager_mock_, Pull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
-    bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments);
+    bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments, true);
     ASSERT_FALSE(ready);
   }
 
@@ -187,7 +187,7 @@ TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
     TaskID task_id = TaskID::from_random();
     dependent_tasks.push_back(task_id);
     // Subscribe to each of the task's dependencies.
-    bool ready = task_dependency_manager_.SubscribeDependencies(task_id, {argument_id});
+    bool ready = task_dependency_manager_.SubscribeDependencies(task_id, {argument_id}, true);
     ASSERT_FALSE(ready);
   }
 
@@ -220,7 +220,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
     // Subscribe to each of the tasks' arguments.
     const auto &arguments = task.GetDependencies();
     bool ready = task_dependency_manager_.SubscribeDependencies(
-        task.GetTaskSpecification().TaskId(), arguments);
+        task.GetTaskSpecification().TaskId(), arguments, true);
     if (i < num_ready_tasks) {
       // The first task should be ready to run since it has no arguments.
       ASSERT_TRUE(ready);
@@ -245,7 +245,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
     TaskID task_id = task.GetTaskSpecification().TaskId();
     auto return_id = task.GetTaskSpecification().ReturnId(0);
 
-    task_dependency_manager_.UnsubscribeDependencies(task_id);
+    task_dependency_manager_.UnsubscribeGetDependencies(task_id);
     // Simulate the object notifications for the task's return values.
     auto ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
     if (tasks.empty()) {
@@ -275,7 +275,7 @@ TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(put_id));
   // Subscribe to the task's dependencies.
   bool ready = task_dependency_manager_.SubscribeDependencies(
-      task2.GetTaskSpecification().TaskId(), {put_id});
+      task2.GetTaskSpecification().TaskId(), {put_id}, true);
   ASSERT_FALSE(ready);
 
   // The put object should be considered local as soon as the task that creates
@@ -294,7 +294,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
     // Subscribe to each of the tasks' arguments.
     const auto &arguments = task.GetDependencies();
     static_cast<void>(task_dependency_manager_.SubscribeDependencies(
-        task.GetTaskSpecification().TaskId(), arguments));
+        task.GetTaskSpecification().TaskId(), arguments, true));
     EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _));
     task_dependency_manager_.TaskPending(task);
   }
@@ -304,7 +304,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
   ObjectID return_id = task.GetTaskSpecification().ReturnId(0);
   // Simulate forwarding the first task to a remote node.
-  task_dependency_manager_.UnsubscribeDependencies(task_id);
+  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
   // The object returned by the first task should be considered remote once we
   // cancel the forwarded task, since the second task depends on it.
   EXPECT_CALL(object_manager_mock_, Pull(return_id));
@@ -336,7 +336,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
   }
   // Subscribe to the task's dependencies.
-  bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments);
+  bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments, true);
   ASSERT_FALSE(ready);
 
   // Tell the task dependency manager that each of the arguments is now

@@ -54,7 +54,8 @@ class TaskDependencyManager {
   /// \return Whether all of the given dependencies for the given task are
   /// local.
   bool SubscribeDependencies(const TaskID &task_id,
-                             const std::vector<ObjectID> &required_objects);
+                             const std::vector<ObjectID> &required_objects,
+                             bool ray_get);
 
   /// Unsubscribe from the object dependencies required by this task. If the
   /// objects were remote and are no longer required by any subscribed task,
@@ -62,7 +63,11 @@ class TaskDependencyManager {
   ///
   /// \param task_id The ID of the task whose dependencies to unsubscribe from.
   /// \return Whether the task was subscribed before.
-  bool UnsubscribeDependencies(const TaskID &task_id);
+  bool UnsubscribeGetDependencies(const TaskID &task_id);
+
+  bool UnsubscribeAllDependencies(const TaskID &task_id);
+
+  bool UnsubscribeDependency(const TaskID &task_id, const ObjectID &object_id);
 
   /// Mark that the given task is pending execution. Any objects that it creates
   /// are now considered to be pending creation. If there are any subscribed
@@ -126,7 +131,9 @@ class TaskDependencyManager {
   struct TaskDependencies {
     /// The objects that the task is dependent on. These must be local before
     /// the task is ready to execute.
-    std::unordered_set<ObjectID> object_dependencies;
+    // std::unordered_set<ObjectID> object_dependencies;
+    std::unordered_set<ObjectID> get_dependencies;
+    std::unordered_set<ObjectID> wait_dependencies;
     /// The number of object arguments that are not available locally. This
     /// must be zero before the task is ready to execute.
     int64_t num_missing_dependencies;
@@ -164,6 +171,8 @@ class TaskDependencyManager {
   /// The task lease has an expiration time. If we do not renew the lease
   /// before that time, then other nodes may choose to execute the task.
   void AcquireTaskLease(const TaskID &task_id);
+
+  void RemoveTaskDependency(const TaskID &task_id, const ObjectID &object_id);
 
   /// The object manager, used to fetch required objects from remote nodes.
   ObjectManagerInterface &object_manager_;
