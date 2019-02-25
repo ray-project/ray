@@ -415,7 +415,7 @@ You can pass in your own logging mechanisms to output logs in custom formats
 via the Experiment object as follows:
 
 .. code-block:: python
-    from ray.tune import DEFAULT_LOGGERS
+    from ray.tune.logger import DEFAULT_LOGGERS
 
     exp = Experiment(
         name="experiment_name",

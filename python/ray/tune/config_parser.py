@@ -91,7 +91,7 @@ def make_parser(parser_creator=None, **kwargs):
         "--loggers",
         default=None,
         help="List of logger creators to be used with each Trial. "
-        "Defaults to ray.tune.loggers.DEFAULT_LOGGERS.")
+        "Defaults to ray.tune.logger.DEFAULT_LOGGERS.")
     parser.add_argument(
         "--checkpoint-freq",
         default=0,

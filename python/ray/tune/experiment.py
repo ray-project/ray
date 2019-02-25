@@ -9,7 +9,6 @@ import six
 import types
 
 from ray.tune.error import TuneError
-from ray.tune.logger import DEFAULT_LOGGERS
 from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -64,7 +63,7 @@ class Experiment(object):
         trial_name_creator (func): Optional function for generating
             the trial string representation.
         loggers (list): List of logger creators to be used with
-            each Trial. Defaults to ray.tune.loggers.DEFAULT_LOGGERS.
+            each Trial. Defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
         sync_function (func|str): Function for syncing the local_dir to
             upload_dir. If string, then it must be a string template for
@@ -119,7 +118,7 @@ class Experiment(object):
                  local_dir=None,
                  upload_dir=None,
                  trial_name_creator=None,
-                 loggers=DEFAULT_LOGGERS,
+                 loggers=None,
                  sync_function=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
