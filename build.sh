@@ -120,7 +120,7 @@ else
   # the commit listed in the command.
   $PYTHON_EXECUTABLE -m pip install \
       --target=$ROOT_DIR/python/ray/pyarrow_files \
-      https://s3-us-west-2.amazonaws.com/arrow-wheels/tmp/pyarrow-0.13.0.RAY-cp36-cp36m-linux_x86_64.whl
+      https://s3-us-west-2.amazonaws.com/arrow-wheels/tmp/pyarrow-0.13.0.RAY2-cp36-cp36m-linux_x86_64.whl
   bazel build //:ray_pkg -c opt
   # Copy files and skip existing files
   cp -r -n $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
