@@ -19,6 +19,7 @@ from ray.includes.unique_ids cimport (
     CConfigID,
     CDriverID,
     CFunctionID,
+    CJobID,
     CObjectID,
     CTaskID,
     CUniqueID,
@@ -42,14 +43,18 @@ cdef extern from "ray/constants.h" nogil:
 
 
 cdef class UniqueID:
-    cdef CUniqueID data
+    cdef CUniqueID *data
 
-    def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
+    def __cinit__(self, id):
+        # The derived class should also check self type and fill self.data.
+        if type(self) is UniqueID:
             check_id(id)
-            self.data = CUniqueID.from_binary(id)
+            self.data = new CUniqueID(<c_string>id)
+
+    def __dealloc__(self):
+        # The derived classes do not need to define __dealloc__,
+        # the base class will do it.
+        del self.data
 
     @classmethod
     def from_binary(cls, id_bytes):
@@ -59,7 +64,7 @@ cdef class UniqueID:
 
     @classmethod
     def nil(cls):
-        return cls(b"")
+        return cls(CUniqueID.nil().binary())
 
     def __hash__(self):
         return self.data.hash()
@@ -106,40 +111,102 @@ cdef class UniqueID:
 
 
 cdef class ObjectID(UniqueID):
-    pass
+
+    def __cinit__(self, id):
+        if type(self) is ObjectID:
+            check_id(id)
+            self.data = new CObjectID(<c_string>id)
+
+    cdef CObjectID native(self):
+        return (<CObjectID *>self.data)[0]
 
 
 cdef class TaskID(UniqueID):
-    pass
+
+    def __cinit__(self, id):
+        if type(self) is TaskID:
+            check_id(id)
+            self.data = new CTaskID(<c_string>id)
+
+    cdef CTaskID native(self):
+        return (<CTaskID *>self.data)[0]
 
 
 cdef class ClientID(UniqueID):
-    pass
+
+    def __cinit__(self, id):
+        if type(self) is ClientID:
+            check_id(id)
+            self.data = new CClientID(<c_string>id)
+
+    cdef CClientID native(self):
+        return (<CClientID *>self.data)[0]
 
 
 cdef class DriverID(UniqueID):
-    pass
+
+    def __cinit__(self, id):
+        if type(self) is DriverID:
+            check_id(id)
+            self.data = new CDriverID(<c_string>id)
+
+    cdef CDriverID native(self):
+        return (<CDriverID *>self.data)[0]
 
 
 cdef class ActorID(UniqueID):
-    pass
+
+    def __cinit__(self, id):
+        if type(self) is ActorID:
+            check_id(id)
+            self.data = new CActorID(<c_string>id)
+
+    cdef CActorID native(self):
+        return (<CActorID *>self.data)[0]
 
 
 cdef class ActorHandleID(UniqueID):
-    pass
+
+    def __cinit__(self, id):
+        if type(self) is ActorHandleID:
+            check_id(id)
+            self.data = new CActorHandleID(<c_string>id)
+
+    cdef CActorHandleID native(self):
+        return (<CActorHandleID *>self.data)[0]
 
 
 cdef class ActorCheckpointID(UniqueID):
-    pass
+
+    def __cinit__(self, id):
+        if type(self) is ActorCheckpointID:
+            check_id(id)
+            self.data = new CActorCheckpointID(<c_string>id)
+
+    cdef CActorCheckpointID native(self):
+        return (<CActorCheckpointID *>self.data)[0]
 
 
 cdef class FunctionID(UniqueID):
-    pass
+
+    def __cinit__(self, id):
+        if type(self) is FunctionID:
+            check_id(id)
+            self.data = new CFunctionID(<c_string>id)
+
+    cdef CFunctionID native(self):
+        return (<CFunctionID *>self.data)[0]
 
 
 cdef class ActorClassID(UniqueID):
-    pass
 
+    def __cinit__(self, id):
+        if type(self) is ActorClassID:
+            check_id(id)
+            self.data = new CActorClassID(<c_string>id)
+
+    cdef CActorClassID native(self):
+        return (<CActorClassID *>self.data)[0]
 
 _ID_TYPES = [
     ActorCheckpointID,

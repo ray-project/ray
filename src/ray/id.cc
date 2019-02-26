@@ -33,6 +33,10 @@ UniqueID::UniqueID(const plasma::UniqueID &from) {
   std::memcpy(&id_, from.data(), kUniqueIDSize);
 }
 
+UniqueID::UniqueID(const std::string &binary) {
+  std::memcpy(id_, binary.data(), kUniqueIDSize);
+}
+
 UniqueID UniqueID::from_random() {
   UniqueID id;
   uint8_t *data = id.mutable_data();
@@ -165,7 +169,7 @@ std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
 
 const ObjectID ComputeObjectId(const TaskID &task_id, int64_t object_index) {
   RAY_CHECK(object_index <= kMaxTaskReturns && object_index >= -kMaxTaskPuts);
-  ObjectID return_id = task_id;
+  ObjectID return_id = ObjectID(task_id);
   int64_t *first_bytes = reinterpret_cast<int64_t *>(&return_id);
   // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
   // object ID.
@@ -176,7 +180,9 @@ const ObjectID ComputeObjectId(const TaskID &task_id, int64_t object_index) {
   return return_id;
 }
 
-const TaskID FinishTaskId(const TaskID &task_id) { return ComputeObjectId(task_id, 0); }
+const TaskID FinishTaskId(const TaskID &task_id) {
+  return TaskID(ComputeObjectId(task_id, 0));
+}
 
 const ObjectID ComputeReturnId(const TaskID &task_id, int64_t return_index) {
   RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns);
@@ -190,7 +196,7 @@ const ObjectID ComputePutId(const TaskID &task_id, int64_t put_index) {
 }
 
 const TaskID ComputeTaskId(const ObjectID &object_id) {
-  TaskID task_id = object_id;
+  TaskID task_id = TaskID(object_id);
   int64_t *first_bytes = reinterpret_cast<int64_t *>(&task_id);
   // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
   // object ID.

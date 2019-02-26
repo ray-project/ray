@@ -346,10 +346,9 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   RAY_CHECK(entry);
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_READY);
 
-  gcs::raylet::TaskTable::WriteCallback task_callback = [this](
-      ray::gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
-    HandleEntryCommitted(id);
-  };
+  gcs::raylet::TaskTable::WriteCallback task_callback =
+      [this](ray::gcs::AsyncGcsClient *client, const TaskID &id,
+             const protocol::TaskT &data) { HandleEntryCommitted(id); };
   auto task = lineage_.GetEntry(task_id);
   // TODO(swang): Make this better...
   flatbuffers::FlatBufferBuilder fbb;
@@ -358,8 +357,9 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   auto task_data = std::make_shared<protocol::TaskT>();
   auto root = flatbuffers::GetRoot<protocol::Task>(fbb.GetBufferPointer());
   root->UnPackTo(task_data.get());
-  RAY_CHECK_OK(task_storage_.Add(task->TaskData().GetTaskSpecification().DriverId(),
-                                 task_id, task_data, task_callback));
+  RAY_CHECK_OK(
+      task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().DriverId()),
+                        task_id, task_data, task_callback));
 
   // We successfully wrote the task, so mark it as committing.
   // TODO(swang): Use a batched interface and write with all object entries.

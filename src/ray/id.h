@@ -15,6 +15,7 @@ namespace ray {
 class RAY_EXPORT UniqueID {
  public:
   UniqueID();
+  UniqueID(const std::string &binary);
   UniqueID(const plasma::UniqueID &from);
   static UniqueID from_random();
   static UniqueID from_binary(const std::string &binary);
@@ -30,7 +31,7 @@ class RAY_EXPORT UniqueID {
   std::string hex() const;
   plasma::UniqueID to_plasma_id() const;
 
- private:
+ protected:
   uint8_t id_[kUniqueIDSize];
 };
 
@@ -38,18 +39,25 @@ static_assert(std::is_standard_layout<UniqueID>::value, "UniqueID must be standa
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 
-typedef UniqueID TaskID;
-typedef UniqueID JobID;
-typedef UniqueID ObjectID;
-typedef UniqueID FunctionID;
-typedef UniqueID ActorClassID;
-typedef UniqueID ActorID;
-typedef UniqueID ActorHandleID;
-typedef UniqueID ActorCheckpointID;
-typedef UniqueID WorkerID;
-typedef UniqueID DriverID;
-typedef UniqueID ConfigID;
-typedef UniqueID ClientID;
+#define DEFINE_UNIQUE_ID(type)                                                          \
+  class RAY_EXPORT type : public UniqueID {                                             \
+   public:                                                                              \
+    explicit type(const UniqueID &from) {                                               \
+      std::memcpy(&id_, from.data(), kUniqueIDSize);                                    \
+    }                                                                                   \
+    type() : UniqueID() {}                                                              \
+    type(const std::string &binary) { std::memcpy(id_, binary.data(), kUniqueIDSize); } \
+    const UniqueID &get() { return *this; }                                             \
+    static type from_random() { return type(UniqueID::from_random()); }                 \
+    static type from_binary(const std::string &binary) {                                \
+      return type(UniqueID::from_binary(binary));                                       \
+    }                                                                                   \
+    static type nil() { return type(UniqueID::nil()); }                                 \
+  };
+
+#include "id_def.h"
+
+#undef DEFINE_UNIQUE_ID
 
 // TODO(swang): ObjectID and TaskID should derive from UniqueID. Then, we
 // can make these methods of the derived classes.
@@ -110,5 +118,19 @@ template <>
 struct hash<const ::ray::UniqueID> {
   size_t operator()(const ::ray::UniqueID &id) const { return id.hash(); }
 };
-}
+
+#define DEFINE_UNIQUE_ID(type)                                           \
+  template <>                                                            \
+  struct hash<::ray::type> {                                             \
+    size_t operator()(const ::ray::type &id) const { return id.hash(); } \
+  };                                                                     \
+  template <>                                                            \
+  struct hash<const ::ray::type> {                                       \
+    size_t operator()(const ::ray::type &id) const { return id.hash(); } \
+  };
+
+#include "id_def.h"
+
+#undef DEFINE_UNIQUE_ID
+}  // namespace std
 #endif  // RAY_ID_H_
