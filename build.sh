@@ -119,8 +119,8 @@ else
   # generated from https://github.com/ray-project/arrow-build from
   # the commit listed in the command.
   $PYTHON_EXECUTABLE -m pip install \
-      --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.13.0 \
-      s3://arrow-wheels/tmp/pyarrow-0.13.0.dev3517+ged68330.d20190226-cp36-cp36m-linux_x86_64.whl
+      --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.13.0.RAY \
+      s3://arrow-wheels/tmp/pyarrow-0.13.0.RAY-cp36-cp36m-linux_x86_64.whl
   bazel build //:ray_pkg -c opt
   # Copy files and skip existing files
   cp -r -n $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
