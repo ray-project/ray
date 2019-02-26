@@ -287,12 +287,22 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                self.plasma_client.put(
-                    value,
-                    object_id=pyarrow.plasma.ObjectID(object_id.binary()),
-                    memcopy_threads=self.memcopy_threads,
-                    serialization_context=self.get_serialization_context(
-                        self.task_driver_id))
+                if isinstance(value, bytes):
+                    # If the object is a byte array, skip serializing it and
+                    # use a special metadata to indicate it's raw binary. So
+                    # that this object can also be read by Java.
+                    self.plasma_client.put_raw_buffer(
+                        value,
+                        object_id=pyarrow.plasma.ObjectID(object_id.binary()),
+                        metadata=ray_constants.RAW_BUFFER_METADATA,
+                        memcopy_threads=self.memcopy_threads)
+                else:
+                    self.plasma_client.put(
+                        value,
+                        object_id=pyarrow.plasma.ObjectID(object_id.binary()),
+                        memcopy_threads=self.memcopy_threads,
+                        serialization_context=self.get_serialization_context(
+                            self.task_driver_id))
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
@@ -437,7 +447,10 @@ class Worker(object):
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
                                        serialization_context):
         if metadata:
-            # If metadata is not empty, return an exception object based on
+            # Check if the object should be returned as raw bytes.
+            if metadata == ray_constants.RAW_BUFFER_METADATA:
+                return data.to_pybytes()
+            # Otherwise, return an exception object based on
             # the error type.
             error_type = int(metadata)
             if error_type == ErrorType.WORKER_DIED:

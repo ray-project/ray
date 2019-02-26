@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
-import org.ray.runtime.util.ResourceUtil;
+import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 
 /**
  * Represents necessary information of a task for scheduling and executing.
@@ -52,9 +52,11 @@ public class TaskSpec {
   // The task's resource demands.
   public final Map<String, Double> resources;
 
-  // Function descriptor is a list of strings that can uniquely identify a function.
-  // It will be sent to worker and used to load the target callable function.
+  // Descriptor of the target function. This field is only valid for Java tasks.
   public final FunctionDescriptor functionDescriptor;
+
+  // Descriptor of the target Python function. This field is only valid for Python tasks.
+  public final PyFunctionDescriptor pyFunctionDescriptor;
 
   private List<UniqueId> executionDependencies;
 
@@ -66,10 +68,22 @@ public class TaskSpec {
     return !actorCreationId.isNil();
   }
 
-  public TaskSpec(UniqueId driverId, UniqueId taskId, UniqueId parentTaskId, int parentCounter,
-      UniqueId actorCreationId, int maxActorReconstructions, UniqueId actorId,
-      UniqueId actorHandleId, int actorCounter, UniqueId[] newActorHandles, FunctionArg[] args,
-      UniqueId[] returnIds, Map<String, Double> resources, FunctionDescriptor functionDescriptor) {
+  public TaskSpec(
+      UniqueId driverId,
+      UniqueId taskId,
+      UniqueId parentTaskId,
+      int parentCounter,
+      UniqueId actorCreationId,
+      int maxActorReconstructions,
+      UniqueId actorId,
+      UniqueId actorHandleId,
+      int actorCounter,
+      UniqueId[] newActorHandles,
+      FunctionArg[] args,
+      UniqueId[] returnIds,
+      Map<String, Double> resources,
+      FunctionDescriptor functionDescriptor,
+      PyFunctionDescriptor pyFunctionDescriptor) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
@@ -84,6 +98,7 @@ public class TaskSpec {
     this.returnIds = returnIds;
     this.resources = resources;
     this.functionDescriptor = functionDescriptor;
+    this.pyFunctionDescriptor = pyFunctionDescriptor;
     this.executionDependencies = new ArrayList<>();
   }
 
@@ -99,13 +114,17 @@ public class TaskSpec {
         ", parentTaskId=" + parentTaskId +
         ", parentCounter=" + parentCounter +
         ", actorCreationId=" + actorCreationId +
+        ", maxActorReconstructions=" + maxActorReconstructions +
         ", actorId=" + actorId +
         ", actorHandleId=" + actorHandleId +
         ", actorCounter=" + actorCounter +
+        ", newActorHandles=" + Arrays.toString(newActorHandles) +
         ", args=" + Arrays.toString(args) +
         ", returnIds=" + Arrays.toString(returnIds) +
-        ", resources=" + ResourceUtil.getResourcesStringFromMap(resources) +
+        ", resources=" + resources +
         ", functionDescriptor=" + functionDescriptor +
+        ", pyFunctionDescriptor=" + pyFunctionDescriptor +
+        ", executionDependencies=" + executionDependencies +
         '}';
   }
 }

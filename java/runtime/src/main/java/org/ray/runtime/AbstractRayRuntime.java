@@ -1,5 +1,6 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -10,6 +11,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.RayPyActor;
 import org.ray.api.RuntimeContext;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
@@ -20,8 +22,9 @@ import org.ray.api.options.BaseTaskOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.config.RayConfig;
+import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
-import org.ray.runtime.functionmanager.RayFunction;
+import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.raylet.RayletClient;
@@ -229,7 +232,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
-    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, false, options);
+    TaskSpec spec = createTaskSpec(func, null, RayActorImpl.NIL, args, false, options);
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
   }
@@ -242,7 +245,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     RayActorImpl<?> actorImpl = (RayActorImpl) actor;
     TaskSpec spec;
     synchronized (actor) {
-      spec = createTaskSpec(func, actorImpl, args, false, null);
+      spec = createTaskSpec(func, null, actorImpl, args, false, null);
       spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
       actorImpl.setTaskCursor(spec.returnIds[1]);
       actorImpl.clearNewActorHandles();
@@ -255,7 +258,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @SuppressWarnings("unchecked")
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
       Object[] args, ActorCreationOptions options) {
-    TaskSpec spec = createTaskSpec(actorFactoryFunc, RayActorImpl.NIL,
+    TaskSpec spec = createTaskSpec(actorFactoryFunc, null, RayActorImpl.NIL,
         args, true, options);
     RayActorImpl<?> actor = new RayActorImpl(spec.returnIds[0]);
     actor.increaseTaskCounter();
@@ -264,16 +267,69 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return (RayActor<T>) actor;
   }
 
+  private void checkPyArguments(Object[] args) {
+    for (Object arg : args) {
+      Preconditions.checkArgument(
+          (arg instanceof RayPyActor) || (arg instanceof byte[]),
+          "Python argument can only be a RayPyActor or a byte array, not {}.",
+          arg.getClass().getName());
+    }
+  }
+
+  @Override
+  public RayObject callPy(String moduleName, String functionName, Object[] args,
+      CallOptions options) {
+    checkPyArguments(args);
+    PyFunctionDescriptor desc = new PyFunctionDescriptor(moduleName, "", functionName);
+    TaskSpec spec = createTaskSpec(null, desc, RayPyActorImpl.NIL, args, false, options);
+    rayletClient.submitTask(spec);
+    return new RayObjectImpl(spec.returnIds[0]);
+  }
+
+  @Override
+  public RayObject callPy(RayPyActor pyActor, String functionName, Object... args) {
+    checkPyArguments(args);
+    PyFunctionDescriptor desc = new PyFunctionDescriptor(pyActor.getModuleName(),
+        pyActor.getClassName(), functionName);
+    RayPyActorImpl actorImpl = (RayPyActorImpl) pyActor;
+    TaskSpec spec;
+    synchronized (pyActor) {
+      spec = createTaskSpec(null, desc, actorImpl, args, false, null);
+      spec.getExecutionDependencies().add(actorImpl.getTaskCursor());
+      actorImpl.setTaskCursor(spec.returnIds[1]);
+      actorImpl.clearNewActorHandles();
+    }
+    rayletClient.submitTask(spec);
+    return new RayObjectImpl(spec.returnIds[0]);
+  }
+
+  @Override
+  public RayPyActor createPyActor(String moduleName, String className, Object[] args,
+      ActorCreationOptions options) {
+    checkPyArguments(args);
+    PyFunctionDescriptor desc = new PyFunctionDescriptor(moduleName, className, "__init__");
+    TaskSpec spec = createTaskSpec(null, desc, RayPyActorImpl.NIL, args, true, options);
+    RayPyActorImpl actor = new RayPyActorImpl(spec.actorCreationId, moduleName, className);
+    actor.increaseTaskCounter();
+    actor.setTaskCursor(spec.returnIds[0]);
+    rayletClient.submitTask(spec);
+    return actor;
+  }
+
+
   /**
    * Create the task specification.
    *
    * @param func The target remote function.
+   * @param pyFunctionDescriptor Descriptor of the target Python function, if the task is a
+   *     Python task.
    * @param actor The actor handle. If the task is not an actor task, actor id must be NIL.
    * @param args The arguments for the remote function.
    * @param isActorCreationTask Whether this task is an actor creation task.
    * @return A TaskSpec object.
    */
-  private TaskSpec createTaskSpec(RayFunc func, RayActorImpl<?> actor, Object[] args,
+  private TaskSpec createTaskSpec(RayFunc func, PyFunctionDescriptor pyFunctionDescriptor,
+      RayActorImpl<?> actor, Object[] args,
       boolean isActorCreationTask, BaseTaskOptions taskOptions) {
     UniqueId taskId = rayletClient.generateTaskId(workerContext.getCurrentDriverId(),
         workerContext.getCurrentTaskId(), workerContext.nextTaskIndex());
@@ -302,7 +358,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
     }
 
-    RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentDriverId(), func);
+    FunctionDescriptor functionDescriptor = null;
+    if (func != null) {
+      functionDescriptor = functionManager.getFunction(workerContext.getCurrentDriverId(), func)
+          .getFunctionDescriptor();
+    }
 
     return new TaskSpec(
         workerContext.getCurrentDriverId(),
@@ -315,10 +375,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.getHandleId(),
         actor.increaseTaskCounter(),
         actor.getNewActorHandles().toArray(new UniqueId[0]),
-        ArgumentsBuilder.wrap(args),
+        ArgumentsBuilder.wrap(args, functionDescriptor == null),
         returnIds,
         resources,
-        rayFunction.getFunctionDescriptor()
+        functionDescriptor,
+        pyFunctionDescriptor
     );
   }
 
