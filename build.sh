@@ -25,7 +25,7 @@ function usage()
 # Determine how many parallel jobs to use for make based on the number of cores
 unamestr="$(uname)"
 if [[ "$unamestr" == "Linux" ]]; then
-  PARALLEL=$(nproc --all)
+  PARALLEL=1
 elif [[ "$unamestr" == "Darwin" ]]; then
   PARALLEL=$(sysctl -n hw.ncpu)
 else
@@ -101,16 +101,29 @@ fi
 
 pushd "$BUILD_DIR"
 
-# avoid the command failed and exits
-# and cmake will check some directories to determine whether some targets built
-make clean || true
-rm -rf external/arrow-install
+if [ ! -z "$RAY_USE_CMAKE" ] ; then
+  # avoid the command failed and exits
+  # and cmake will check some directories to determine whether some targets built
+  make clean || true
+  rm -rf external/arrow-install
 
-cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
-      -DCMAKE_RAY_LANG_JAVA=$RAY_BUILD_JAVA \
-      -DCMAKE_RAY_LANG_PYTHON=$RAY_BUILD_PYTHON \
-      -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
-      -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
+  cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
+        -DCMAKE_RAY_LANG_JAVA=$RAY_BUILD_JAVA \
+        -DCMAKE_RAY_LANG_PYTHON=$RAY_BUILD_PYTHON \
+        -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
+        -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
 
-make -j${PARALLEL}
+  make -j${PARALLEL}
+else
+  # The following line installs pyarrow from S3, these wheels have been
+  # generated from https://github.com/ray-project/arrow-build from
+  # the commit listed in the command.
+  $PYTHON_EXECUTABLE -m pip install \
+      --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0-RAY \
+      --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/bf0f3a15e0d6583cfaedbca508627b06746fa41a/index.html
+  bazel build //:ray_pkg -c opt
+  # Copy files and skip existing files
+  cp -r -n $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
+fi
+
 popd

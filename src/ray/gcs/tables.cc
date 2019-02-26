@@ -2,6 +2,8 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/client.h"
+#include "ray/ray_config.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -40,6 +42,9 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_appends_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
+    // If data is not empty, then Redis failed to append the entry.
+    RAY_CHECK(data.empty()) << "TABLE_APPEND command failed: " << data;
+
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
@@ -165,6 +170,35 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
   return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id,
                                        client_id.data(), client_id.size(), prefix_,
                                        pubsub_channel_, nullptr);
+}
+
+template <typename ID, typename Data>
+void Log<ID, Data>::Delete(const JobID &job_id, const std::vector<ID> &ids) {
+  if (ids.empty()) {
+    return;
+  }
+  std::unordered_map<RedisContext *, std::ostringstream> sharded_data;
+  for (const auto &id : ids) {
+    sharded_data[GetRedisContext(id).get()] << id.binary();
+  }
+  // Breaking really large deletion commands into batches of smaller size.
+  const size_t batch_size =
+      RayConfig::instance().maximum_gcs_deletion_batch_size() * kUniqueIDSize;
+  for (const auto &pair : sharded_data) {
+    std::string current_data = pair.second.str();
+    for (size_t cur = 0; cur < pair.second.str().size(); cur += batch_size) {
+      RAY_IGNORE_EXPR(pair.first->RunAsync(
+          "RAY.TABLE_DELETE", UniqueID::nil(),
+          reinterpret_cast<const uint8_t *>(current_data.c_str() + cur),
+          std::min(batch_size, current_data.size() - cur), prefix_, pubsub_channel_,
+          /*redisCallback=*/nullptr));
+    }
+  }
+}
+
+template <typename ID, typename Data>
+void Log<ID, Data>::Delete(const JobID &job_id, const ID &id) {
+  Delete(job_id, std::vector<ID>({id}));
 }
 
 template <typename ID, typename Data>
@@ -438,6 +472,41 @@ std::string ClientTable::DebugString() const {
   return result.str();
 }
 
+Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
+                                               const ActorID &actor_id,
+                                               const UniqueID &checkpoint_id) {
+  auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id,
+      const ActorCheckpointIdDataT &data) {
+    std::shared_ptr<ActorCheckpointIdDataT> copy =
+        std::make_shared<ActorCheckpointIdDataT>(data);
+    copy->timestamps.push_back(current_sys_time_ms());
+    copy->checkpoint_ids += checkpoint_id.binary();
+    auto num_to_keep = RayConfig::instance().num_actor_checkpoints_to_keep();
+    while (copy->timestamps.size() > num_to_keep) {
+      // Delete the checkpoint from actor checkpoint table.
+      const auto &checkpoint_id =
+          UniqueID::from_binary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
+      RAY_LOG(DEBUG) << "Deleting checkpoint " << checkpoint_id << " for actor "
+                     << actor_id;
+      copy->timestamps.erase(copy->timestamps.begin());
+      copy->checkpoint_ids.erase(0, kUniqueIDSize);
+      client_->actor_checkpoint_table().Delete(job_id, checkpoint_id);
+    }
+    RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
+  };
+  auto failure_callback = [this, checkpoint_id, job_id, actor_id](
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
+    std::shared_ptr<ActorCheckpointIdDataT> data =
+        std::make_shared<ActorCheckpointIdDataT>();
+    data->actor_id = id.binary();
+    data->timestamps.push_back(current_sys_time_ms());
+    data->checkpoint_ids = checkpoint_id.binary();
+    RAY_CHECK_OK(Add(job_id, actor_id, data, nullptr));
+  };
+  return Lookup(job_id, actor_id, lookup_callback, failure_callback);
+}
+
 template class Log<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;
@@ -451,6 +520,8 @@ template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;
 template class Log<JobID, DriverTableData>;
 template class Log<UniqueID, ProfileTableData>;
+template class Table<ActorCheckpointID, ActorCheckpointData>;
+template class Table<ActorID, ActorCheckpointIdData>;
 
 }  // namespace gcs
 

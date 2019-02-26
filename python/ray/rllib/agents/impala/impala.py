@@ -64,7 +64,9 @@ DEFAULT_CONFIG = with_common_config({
     "replay_proportion": 0.0,
     # number of sample batches to store for replay. The number of transitions
     # saved total will be (replay_buffer_num_slots * sample_batch_size).
-    "replay_buffer_num_slots": 100,
+    "replay_buffer_num_slots": 0,
+    # max queue size for train batches feeding into the learner
+    "learner_queue_size": 16,
     # level of queuing for sampling.
     "max_sample_requests_in_flight_per_worker": 2,
     # max number of workers to broadcast one set of weights to

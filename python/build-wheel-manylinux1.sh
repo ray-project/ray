@@ -6,6 +6,8 @@ echo 10
 EOF
 chmod +x /usr/bin/nproc
 
+export RAY_USE_CMAKE=1
+
 PYTHONS=("cp27-cp27mu"
          "cp34-cp34m"
          "cp35-cp35m"

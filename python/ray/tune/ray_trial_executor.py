@@ -9,6 +9,7 @@ import time
 import traceback
 
 import ray
+from ray.tune.error import TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
@@ -269,6 +270,11 @@ class RayTrialExecutor(TrialExecutor):
             if not resources:
                 logger.warning("Cluster resources not detected. Retrying...")
                 time.sleep(0.5)
+
+        if not resources or "CPU" not in resources:
+            raise TuneError("Cluster resources cannot be detected. "
+                            "You can resume this experiment by passing in "
+                            "`resume=True` to `run_experiments`.")
 
         resources = resources.copy()
         num_cpus = resources.pop("CPU")

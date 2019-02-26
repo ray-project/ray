@@ -26,7 +26,7 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
                              TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL)
-from ray.utils import random_string, binary_to_hex, hex_to_binary
+from ray.utils import _random_string, binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
@@ -217,11 +217,13 @@ class ExportFormat(object):
         Raises:
             ValueError if the format is unknown.
         """
-        for export_format in export_formats:
-            if export_format not in [
+        for i in range(len(export_formats)):
+            export_formats[i] = export_formats[i].strip().lower()
+            if export_formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL
             ]:
-                raise TuneError("Unsupported export format: " + export_format)
+                raise TuneError("Unsupported export format: " +
+                                export_formats[i])
 
 
 class Trial(object):
@@ -311,7 +313,7 @@ class Trial(object):
 
     @classmethod
     def generate_id(cls):
-        return binary_to_hex(random_string())[:8]
+        return binary_to_hex(_random_string())[:8]
 
     def init_logger(self):
         """Init logger."""
