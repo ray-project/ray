@@ -406,8 +406,6 @@ class TrialRunner(object):
                 self._checkpoint_trial_if_needed(trial)
                 self.trial_executor.export_trial_if_needed(trial)
                 self.trial_executor.stop_trial(trial)
-            elif decision == TrialScheduler.NOOP:
-                return
             else:
                 assert False, "Invalid scheduling decision: {}".format(
                     decision)
