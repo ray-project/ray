@@ -6,17 +6,17 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 pushd "$ROOT_DIR"
 
-ray up -y config.yaml --cluster-name workload1
-ray rsync_up config.yaml --cluster-name workload1 workload1.py workload1.py
-ray exec config.yaml --cluster-name workload1 "python workload1.py" --tmux
+ray up -y config.yaml --cluster-name=workload1
+ray rsync_up config.yaml --cluster-name=workload1 workload1.py workload1.py
+ray exec config.yaml --cluster-name=workload1 "python workload1.py" --tmux
 
-ray up -y config.yaml --cluster-name workload2
-ray rsync_up config.yaml --cluster-name workload2 workload2.py workload2.py
-ray exec config.yaml --cluster-name workload2 "python workload2.py" --tmux
+ray up -y config.yaml --cluster-name=workload2
+ray rsync_up config.yaml --cluster-name=workload2 workload2.py workload2.py
+ray exec config.yaml --cluster-name=workload2 "python workload2.py" --tmux
 
-ray up -y config.yaml --cluster-name workload3
-ray rsync_up config.yaml --cluster-name workload3 workload3.py workload3.py
-ray exec config.yaml --cluster-name workload3 "python workload3.py" --tmux
+ray up -y config.yaml --cluster-name=workload3
+ray rsync_up config.yaml --cluster-name=workload3 workload3.py workload3.py
+ray exec config.yaml --cluster-name=workload3 "python workload3.py" --tmux
 
 popd
 
