@@ -20,18 +20,18 @@ elif sys.version_info[0] == 3:
     from urllib.parse import urljoin, urlparse
     from http.server import SimpleHTTPRequestHandler, HTTPServer
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
     requests = None
-    LOGGER.exception("Couldn't import `requests` library. "
+    logger.exception("Couldn't import `requests` library. "
                      "Be sure to install it on the client side.")
 
 
 class TuneClient(object):
-    """A TuneClient interacts with an ongoing Tune experiment by sending requests.
+    """Client to interact with an ongoing Tune experiment.
 
     Requires a TuneServer to have started running.
 
@@ -68,10 +68,12 @@ class TuneClient(object):
             urljoin(self._path, "trials/{}".format(trial_id)))
         return self._deserialize(response)
 
-    def get_address(self):
+    @property
+    def server_address(self):
         return self._tune_address
 
-    def get_port(self):
+    @property
+    def server_port(self):
         return self._port_forward
 
     def _load_trial_info(self, trial_info):
@@ -97,8 +99,7 @@ def RunnerHandler(runner):
         """A Handler is a custom handler for TuneServer.
 
         Handles all requests and responses coming into and from
-        the TuneServer. Built off SimpleHTTPRequestHandler which provides
-        methods for handling HTTP requests.
+        the TuneServer.
         """
 
         def _do_header(self, response_code=200, headers=None):
@@ -237,8 +238,9 @@ class TuneServer(threading.Thread):
         threading.Thread.__init__(self)
         self._port = port if port else self.DEFAULT_PORT
         address = ('localhost', self._port)
-        LOGGER.info("Starting Tune Server...")
+        logger.info("Starting Tune Server...")
         self._server = HTTPServer(address, RunnerHandler(runner))
+        self.daemon = True
         self.start()
 
     def run(self):
