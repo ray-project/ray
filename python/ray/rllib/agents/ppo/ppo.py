@@ -151,7 +151,8 @@ class PPOAgent(Agent):
         if (self.config["batch_mode"] == "truncate_episodes"
                 and not self.config["use_gae"]):
             raise ValueError(
-                "Episode truncation is not supported without a value function")
+                "Episode truncation is not supported without a value "
+                "function. Consider setting batch_mode=complete_episodes.")
         if (self.config["multiagent"]["policy_graphs"]
                 and not self.config["simple_optimizer"]):
             logger.info(
@@ -159,7 +160,12 @@ class PPOAgent(Agent):
                 "by the multi-GPU optimizer. Consider setting "
                 "simple_optimizer=True if this doesn't work for you.")
         if self.config["observation_filter"] != "NoFilter":
-            # TODO(ekl): consider setting the default to be NoFilter
             logger.warning(
-                "By default, observations will be normalized with {}".format(
-                    self.config["observation_filter"]))
+                "By default, observations will be normalized with {}. ".format(
+                    self.config["observation_filter"]) +
+                "If you are using image or discrete type observations, "
+                "consider disabling this with observation_filter=NoFilter.")
+        if not self.config["vf_share_layers"]:
+            logger.warning(
+                "By default, the value function will NOT share layers with "
+                "the policy model (vf_share_layers=False).")

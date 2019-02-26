@@ -7,6 +7,7 @@ import pytest
 import tensorflow as tf
 
 import ray
+import ray.experimental.tf_utils
 
 
 def make_linear_network(w_name=None, b_name=None):
@@ -31,7 +32,7 @@ class LossActor(object):
             loss, init, _, _ = make_linear_network()
             sess = tf.Session()
             # Additional code for setting and getting the weights.
-            weights = ray.experimental.TensorFlowVariables(
+            weights = ray.experimental.tf_utils.TensorFlowVariables(
                 loss if use_loss else None, sess, input_variables=var)
         # Return all of the data needed to use the network.
         self.values = [weights, init, sess]
@@ -53,7 +54,8 @@ class NetActor(object):
             loss, init, _, _ = make_linear_network()
             sess = tf.Session()
             # Additional code for setting and getting the weights.
-            variables = ray.experimental.TensorFlowVariables(loss, sess)
+            variables = ray.experimental.tf_utils.TensorFlowVariables(
+                loss, sess)
         # Return all of the data needed to use the network.
         self.values = [variables, init, sess]
         sess.run(init)
@@ -73,7 +75,8 @@ class TrainActor(object):
         with tf.Graph().as_default():
             loss, init, x_data, y_data = make_linear_network()
             sess = tf.Session()
-            variables = ray.experimental.TensorFlowVariables(loss, sess)
+            variables = ray.experimental.tf_utils.TensorFlowVariables(
+                loss, sess)
             optimizer = tf.train.GradientDescentOptimizer(0.9)
             grads = optimizer.compute_gradients(loss)
             train = optimizer.apply_gradients(grads)
@@ -107,7 +110,7 @@ def test_tensorflow_variables(ray_start_regular):
     loss, init, _, _ = make_linear_network()
     sess.run(init)
 
-    variables = ray.experimental.TensorFlowVariables(loss, sess)
+    variables = ray.experimental.tf_utils.TensorFlowVariables(loss, sess)
     weights = variables.get_weights()
 
     for (name, val) in weights.items():
@@ -119,7 +122,7 @@ def test_tensorflow_variables(ray_start_regular):
     loss2, init2, _, _ = make_linear_network("w", "b")
     sess.run(init2)
 
-    variables2 = ray.experimental.TensorFlowVariables(loss2, sess)
+    variables2 = ray.experimental.tf_utils.TensorFlowVariables(loss2, sess)
     weights2 = variables2.get_weights()
 
     for (name, val) in weights2.items():
@@ -131,7 +134,7 @@ def test_tensorflow_variables(ray_start_regular):
     variables2.set_flat(flat_weights)
     assert_almost_equal(flat_weights, variables2.get_flat())
 
-    variables3 = ray.experimental.TensorFlowVariables([loss2])
+    variables3 = ray.experimental.tf_utils.TensorFlowVariables([loss2])
     assert variables3.sess is None
     sess = tf.Session()
     variables3.set_session(sess)
@@ -205,7 +208,7 @@ def test_network_driver_worker_independent(ray_start_regular):
     # Create a network on the driver locally.
     sess1 = tf.Session()
     loss1, init1, _, _ = make_linear_network()
-    ray.experimental.TensorFlowVariables(loss1, sess1)
+    ray.experimental.tf_utils.TensorFlowVariables(loss1, sess1)
     sess1.run(init1)
 
     net2 = ray.remote(NetActor).remote()
@@ -221,7 +224,7 @@ def test_variables_control_dependencies(ray_start_regular):
     sess = tf.Session()
     loss, init, _, _ = make_linear_network()
     minimizer = tf.train.MomentumOptimizer(0.9, 0.9).minimize(loss)
-    net_vars = ray.experimental.TensorFlowVariables(minimizer, sess)
+    net_vars = ray.experimental.tf_utils.TensorFlowVariables(minimizer, sess)
     sess.run(init)
 
     # Tests if all variables are properly retrieved, 2 variables and 2

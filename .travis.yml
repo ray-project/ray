@@ -25,6 +25,7 @@ matrix:
       env:
         - JDK='Oracle JDK 8'
         - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - RAY_USE_CMAKE=1
       install:
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
@@ -81,15 +82,13 @@ matrix:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       install:
+        - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/travis/install-ray.sh
-        - ./ci/travis/install-with-cache-libs.sh
 
       script:
-        - cd build
-        - bash ../src/ray/test/run_object_manager_valgrind.sh
-        - cd ..
+        - bash src/ray/test/run_object_manager_valgrind.sh
 
         - export RAY_PLASMA_STORE_VALGRIND=1
         # - export RAY_RAYLET_VALGRIND=1
@@ -107,7 +106,7 @@ matrix:
     # Build Linux wheels.
     - os: linux
       dist: trusty
-      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
       install:
         - ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -118,7 +117,7 @@ matrix:
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
       install:
         - ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -133,28 +132,21 @@ matrix:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
         - PYTHONWARNINGS=ignore
+        - RAY_USE_CMAKE=1
 
 
 install:
+  - ./ci/travis/install-bazel.sh
   - ./ci/travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
   - ./ci/travis/install-ray.sh
   - ./ci/travis/install-cython-examples.sh
 
-  - cd build
-  - bash ../src/ray/test/run_gcs_tests.sh
+  - bash src/ray/test/run_gcs_tests.sh
   # Raylet tests.
-  - bash ../src/ray/test/run_object_manager_tests.sh
-  - ./src/ray/raylet/task_test
-  - ./src/ray/raylet/worker_pool_test
-  - ./src/ray/raylet/lineage_cache_test
-  - ./src/ray/raylet/task_dependency_manager_test
-  - ./src/ray/raylet/reconstruction_policy_test
-  - ./src/ray/raylet/client_connection_test
-  - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
-  - ./src/ray/util/signal_test
+  - bash src/ray/test/run_object_manager_tests.sh
+  - bazel test --build_tests_only --test_lang_filters=cc ... -c opt
 
-  - cd ..
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
@@ -174,10 +166,10 @@ script:
   - python -m pytest -v --durations=10 python/ray/tune/test/automl_searcher_test.py
 
   # ray rllib tests
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_catalog.py
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_filters.py
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_optimizers.py
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_evaluators.py
+  - python python/ray/rllib/test/test_catalog.py
+  - python python/ray/rllib/test/test_filters.py
+  - python python/ray/rllib/test/test_optimizers.py
+  - python python/ray/rllib/test/test_evaluators.py
 
   # streaming library tests
   - python -m pytest -v --durations=10 python/ray/tests/test_batched_queue.py

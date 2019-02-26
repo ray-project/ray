@@ -24,8 +24,9 @@ if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda2-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 cmake tensorflow gym==0.10.11 opencv-python pyyaml pandas==0.23.4 requests \
+  pip install -q cython==0.29.0 cmake gym==0.10.11 opencv-python-headless pyyaml pandas==0.23.4 requests \
     feather-format lxml openpyxl xlrd py-spy setproctitle faulthandler pytest-timeout mock flaky networkx
+  conda install -y scipy tensorflow
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake pkg-config python-dev python-numpy build-essential autoconf curl libtool unzip tmux gdb
@@ -33,8 +34,9 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 cmake tensorflow gym opencv-python pyyaml pandas==0.23.4 requests \
+  pip install -q cython==0.29.0 cmake gym opencv-python-headless pyyaml pandas==0.23.4 requests \
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx
+  conda install -y scipy tensorflow
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -50,7 +52,7 @@ elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda2-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 cmake tensorflow gym==0.10.11 opencv-python pyyaml pandas==0.23.4 requests \
+  pip install -q cython==0.29.0 cmake tensorflow gym==0.10.11 opencv-python-headless pyyaml pandas==0.23.4 requests \
     feather-format lxml openpyxl xlrd py-spy setproctitle faulthandler pytest-timeout mock flaky networkx
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
@@ -67,7 +69,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 cmake tensorflow gym opencv-python pyyaml pandas==0.23.4 requests \
+  pip install -q cython==0.29.0 cmake tensorflow gym opencv-python-headless pyyaml pandas==0.23.4 requests \
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update

@@ -74,7 +74,7 @@ cdef class UniqueID:
         return self.data.is_nil()
 
     def __eq__(self, other):
-        return self.binary() == other.binary()
+        return type(self) == type(other) and self.binary() == other.binary()
 
     def __ne__(self, other):
         return self.binary() != other.binary()
@@ -263,7 +263,7 @@ cdef class ActorCheckpointID(UniqueID):
 
     @staticmethod
     cdef from_native(const CActorCheckpointID& cpp_id):
-        cdef ActorCheckpointID self = ActorCheckpointID.__new__(ActorHandleID)
+        cdef ActorCheckpointID self = ActorCheckpointID.__new__(ActorCheckpointID)
         self.data = cpp_id
         return self
 
