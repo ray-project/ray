@@ -31,7 +31,6 @@ def receive_all_signals(sources, timeout):
         else:
             results.extend(r)
 
-
 def test_task_to_driver(ray_start):
     # Send a signal from a task to the driver.
 
@@ -299,3 +298,18 @@ def test_send_signal_from_two_tasks_to_driver(ray_start):
     # Call again receive on "a" with no new signal.
     result_list = ray.experimental.signal.receive([a, b])
     assert len(result_list) == 1
+
+def test_send_signal_from_task_with_two_arguments(ray_start):
+    @ray.remote(num_return_vals=2)
+    def send_signal(value):
+        signal.send(UserSignal(value))
+        return 1, 2
+
+    x, y = send_signal.remote(0)
+
+    ray.get([x, y])
+
+    results = ray.experimental.signal.receive([x, y])
+
+    assert ((x == results[0][0] and y == results[1][0]) or
+            (x == results[1][0] and y == results[0][0]))
