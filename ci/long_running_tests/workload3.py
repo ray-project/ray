@@ -43,7 +43,8 @@ def f(*xs):
 
 iteration = 0
 previous_ids = [1 for _ in range(100)]
-previous_time = time.time()
+start_time = time.time()
+previous_time = start_time
 while True:
     for _ in range(100):
         previous_ids = [f.remote(previous_id) for previous_id in previous_ids]
@@ -59,7 +60,11 @@ while True:
     cluster.add_node()
 
     new_time = time.time()
-    print("Iteration {}. Elapsed time is {}. Absolute time is {}.".format(
-        iteration, new_time - previous_time, new_time))
+    print("Iteration {}:\n"
+          "  - Iteration time: {}."
+          "  - Absolute time: {}."
+          "  - Total elapsed time: {}.".format(
+              iteration, new_time - previous_time, new_time,
+              new_time - start_time))
     previous_time = new_time
     iteration += 1
