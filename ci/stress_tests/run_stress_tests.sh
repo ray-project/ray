@@ -27,9 +27,17 @@ run_test(){
     fi
 }
 
+run_modin_tests(){
+    pushd "$ROOT_DIR"
+    git clone https://github.com/modin-project/modin.git
+    bash modin/stress_tests/run_stress_tests.sh
+    popd
+}
+
 pushd "$ROOT_DIR"
     run_test test_many_tasks_and_transfers
     run_test test_dead_actors
+    run_modin_tests
 popd
 
 cat $RESULT_FILE
