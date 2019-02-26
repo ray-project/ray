@@ -299,7 +299,7 @@ def test_send_signal_from_two_tasks_to_driver(ray_start):
     result_list = ray.experimental.signal.receive([a, b])
     assert len(result_list) == 1
 
-def test_send_signal_from_task_with_two_arguments(ray_start):
+def test_receiving_on_two_returns(ray_start):
     @ray.remote(num_return_vals=2)
     def send_signal(value):
         signal.send(UserSignal(value))
