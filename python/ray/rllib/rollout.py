@@ -67,21 +67,20 @@ def create_parser(parser_creator=None):
         "Surpresses loading of configuration from checkpoint.")
     return parser
 
-
 def run(args, parser):
     config = args.config
     if not config:
         # Load configuration from file
         config_dir = os.path.dirname(args.checkpoint)
-        config_path = os.path.join(config_dir, "params.json")
+        config_path = os.path.join(config_dir, "params.pkl")
         if not os.path.exists(config_path):
-            config_path = os.path.join(config_dir, "../params.json")
+            config_path = os.path.join(config_dir, "../params.pkl")
         if not os.path.exists(config_path):
             raise ValueError(
-                "Could not find params.json in either the checkpoint dir or "
+                "Could not find params.pkl in either the checkpoint dir or "
                 "its parent directory.")
-        with open(config_path) as f:
-            config = json.load(f)
+        with open(config_path, 'rb') as f:
+            config = pickle.load(f)
         if "num_workers" in config:
             config["num_workers"] = min(2, config["num_workers"])
 
@@ -106,13 +105,14 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         multiagent = agent.local_evaluator.multiagent
         if multiagent:
             policy_agent_mapping = agent.config["multiagent"]["policy_mapping_fn"]
+            mapping_cache = {}
         policy_map = agent.local_evaluator.policy_map
         state_init = { p: m.get_initial_state() for p, m in policy_map.items() }
         use_lstm = { p: len(s) > 0 for p, s in state_init.items() }
     else:
         env = gym.make(env_name)
-        use_lstm = { 'default': False }
         multiagent = False
+        use_lstm = { 'default': False }
 
     if out is not None:
         rollouts = []
@@ -121,17 +121,15 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         if out is not None:
             rollout = []
         state = env.reset()
-        if multiagent:
-            agents = state.keys()
         done = False
         reward_total = 0.0
         while not done and steps < (num_steps or steps + 1):
             if multiagent:
                 action_dict = {}
-                for agent_id in agents:
+                for agent_id in state.keys():
                     a_state = state[agent_id]
                     if a_state is not None:
-                        policy_id = policy_agent_mapping(agent_id)
+                        policy_id = mapping_cache.setdefault(agent_id, policy_agent_mapping(agent_id))
                         p_use_lstm = use_lstm[policy_id]
                         if p_use_lstm:
                             a_action, p_state_init, _ = agent.compute_action(
@@ -143,13 +141,13 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
                 action = action_dict
             else:
                 if use_lstm['default']:
-                    action, state_init, logits = agent.compute_action(
+                    action, state_init, _ = agent.compute_action(
                         state, state=state_init)
                 else:
                     action = agent.compute_action(state)
 
             next_state, reward, done, _ = env.step(action)
-            
+
             if multiagent:
                 done = done['__all__']
                 reward_total += sum(reward.values())
