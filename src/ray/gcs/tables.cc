@@ -446,13 +446,16 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
   return Append(JobID::nil(), client_log_key_, data, add_callback);
 }
 
-Status ClientTable::Disconnect() {
+Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto data = std::make_shared<ClientTableDataT>(local_client_);
   data->is_insertion = false;
-  auto add_callback = [this](AsyncGcsClient *client, const ClientID &id,
-                             const ClientTableDataT &data) {
+  auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
+                                       const ClientTableDataT &data) {
     HandleConnected(client, data);
     RAY_CHECK_OK(CancelNotifications(JobID::nil(), client_log_key_, id));
+    if (callback != nullptr) {
+      callback();
+    }
   };
   RAY_RETURN_NOT_OK(Append(JobID::nil(), client_log_key_, data, add_callback));
   // We successfully added the deletion entry. Mark ourselves as disconnected.

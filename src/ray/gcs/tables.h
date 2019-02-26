@@ -578,6 +578,7 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
       AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
+  using DisconnectCallback = std::function<void(void)>;
   ClientTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
               AsyncGcsClient *client, const ClientID &client_id)
       : Log(contexts, client),
@@ -606,7 +607,7 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// registration should never be reused after disconnecting.
   ///
   /// \return Status
-  ray::Status Disconnect();
+  ray::Status Disconnect(const DisconnectCallback &callback = nullptr);
 
   /// Mark a different client as disconnected. The client ID should never be
   /// reused for a new client.
