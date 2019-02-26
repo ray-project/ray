@@ -24,8 +24,8 @@ def _get_task_id(source):
     """Return the task id associated to the generic source of the signal.
 
     Args:
-        source: source of the signal, it can be either an object id, task id,
-            or actor handle.
+        source: source of the signal, it can be either an object id returned
+            by a task, a task id, or an actor handle.
 
     Returns:
         - If source is an object id, return id of task which creted object.
@@ -33,8 +33,7 @@ def _get_task_id(source):
         - If source is a task id, return same task id.
     """
     if type(source) is ray.actor.ActorHandle:
-        return ray._raylet.compute_task_id(
-            source._ray_actor_creation_dummy_object_id)
+        return source._ray_actor_id
     else:
         if type(source) is ray.TaskID:
             return source
@@ -54,8 +53,7 @@ def send(signal):
         signal: Signal to be sent.
     """
     if hasattr(ray.worker.global_worker, "actor_creation_task_id"):
-        global_worker = ray.worker.global_worker
-        source_key = global_worker.actor_creation_task_id.hex()
+        source_key = ray.worker.global_worker.actor_id.hex()
     else:
         # No actors; this function must have been called from a task
         source_key = ray.worker.global_worker.current_task_id.hex()
