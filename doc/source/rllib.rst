@@ -133,5 +133,7 @@ If you encounter errors like
 try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
 `ulimit -a` for other resource limit errors.
 
+If you encounter out-of-memory errors, consider setting ``redis_max_memory`` and ``object_store_memory`` in ``ray.init()`` to reduce memory usage.
+
 For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
 the stack traces of all Ray workers on the current node. This requires py-spy to be installed.
