@@ -210,7 +210,7 @@ def test_actor_broadcast(ray_start_cluster):
 def test_object_transfer_retry(ray_start_empty_cluster):
     cluster = ray_start_empty_cluster
 
-    repeated_push_delay = 10
+    repeated_push_delay = 4
 
     # Force the sending object manager to allow duplicate pushes again sooner.
     # Also, force the receiving object manager to retry the Pull sooner. We
@@ -261,6 +261,11 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     assert not any(
         ray.worker.global_worker.plasma_client.contains(
             ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
+
+    end_time = time.time()
+    # Make sure that the first time the objects get transferred, it happens
+    # quickly.
+    assert end_time - start_time < repeated_push_delay
 
     # Get the objects again and make sure they get transferred.
     xs = ray.get(x_ids)

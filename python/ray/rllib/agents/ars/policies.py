@@ -10,6 +10,7 @@ import numpy as np
 import tensorflow as tf
 
 import ray
+import ray.experimental.tf_utils
 from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.models import ModelCatalog
@@ -81,7 +82,7 @@ class GenericPolicy(object):
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
 
-        self.variables = ray.experimental.TensorFlowVariables(
+        self.variables = ray.experimental.tf_utils.TensorFlowVariables(
             model.outputs, self.sess)
 
         self.num_params = sum(

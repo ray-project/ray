@@ -400,6 +400,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
         # Cut the batch if we're not packing multiple episodes into one,
         # or if we've exceeded the requested batch size.
         if episode.batch_builder.has_pending_data():
+            if dones[env_id]["__all__"]:
+                episode.batch_builder.check_missing_dones()
             if (all_done and not pack) or \
                     episode.batch_builder.count >= unroll_length:
                 outputs.append(episode.batch_builder.build_and_reset(episode))

@@ -440,6 +440,22 @@ def stop():
         ],
         shell=True)
 
+    # Find the PID of the Ray reporter process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep reporter.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the Ray dashboard process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep dashboard.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
     # Find the PID of the jupyter process and kill it.
     try:
         from notebook.notebookapp import list_running_servers
@@ -595,11 +611,6 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
-    "--docker",
-    is_flag=True,
-    default=False,
-    help="Runs command in the docker container specified in cluster_config.")
-@click.option(
     "--stop",
     is_flag=True,
     default=False,
@@ -626,8 +637,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     "--port-forward", required=False, type=int, help="Port to forward.")
 @click.argument("script", required=True, type=str)
 @click.argument("script_args", required=False, type=str, nargs=-1)
-def submit(cluster_config_file, docker, screen, tmux, stop, start,
-           cluster_name, port_forward, script, script_args):
+def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
+           port_forward, script, script_args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -644,7 +655,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
     cmd = " ".join(["python", target] + list(script_args))
-    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
+    exec_cluster(cluster_config_file, cmd, screen, tmux, stop, False,
                  cluster_name, port_forward)
 
 
