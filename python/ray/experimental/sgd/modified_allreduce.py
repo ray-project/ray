@@ -27,7 +27,6 @@ import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib import nccl
 from tensorflow.contrib.all_reduce.python import all_reduce
 
 logger = logging.getLogger(__name__)
@@ -304,6 +303,7 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
                                 aux_devices=None,
                                 num_shards=1):
     """Apply all-reduce algorithm over specified gradient tensors."""
+    from tensorflow.contrib import nccl
     with tf.name_scope('allreduce'):
         # Note that each grad_and_vars looks like the following:
         #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
