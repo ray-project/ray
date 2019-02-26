@@ -48,7 +48,8 @@ Here are links to the latest wheels (which are built off of master). To install 
 Building Ray from source
 ------------------------
 
-If you want to use the latest version of Ray, you can build it from source. Below, we have instructions for installing dependencies and building from source for both Linux and MacOS.
+If you want to use the latest version of Ray, you can build it from source.
+Below, we have instructions for building from source for both Linux and MacOS.
 
 Dependencies
 ~~~~~~~~~~~~
@@ -63,14 +64,14 @@ For Ubuntu, run the following commands:
 .. code-block:: bash
 
   sudo apt-get update
-  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison psmisc python # we install python here because python2 is required to build the webui
+  sudo apt-get install -y build-essential curl unzip psmisc python # we install python here because python2 is required to build the webui
+
+  # Install Bazel.
+  ./ci/travis/install-bazel.sh
 
   # If you are not using Anaconda, you need the following.
   sudo apt-get install python-dev  # For Python 2.
   sudo apt-get install python3-dev  # For Python 3.
-
-  # If you are on Ubuntu 14.04, you need the following.
-  pip install cmake
 
   pip install cython==0.29.0
 
@@ -79,7 +80,10 @@ For MacOS, run the following commands:
 .. code-block:: bash
 
   brew update
-  brew install cmake pkg-config automake autoconf libtool openssl bison wget
+  brew install wget
+
+  # Install Bazel.
+  ./ci/travis/install-bazel.sh
 
   pip install cython==0.29.0
 
