@@ -22,7 +22,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} \
     $DOCKER_SHA \
     bash /ray/ci/stress_tests/run_stress_tests.sh
 
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} \
-    -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e RAY_AWS_SSH_KEY \
-    $DOCKER_SHA \
-    bash /ray/ci/stress_tests/run_application_stress_tests.sh
+# docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} \
+#     -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e RAY_AWS_SSH_KEY \
+#     $DOCKER_SHA \
+#     bash /ray/ci/stress_tests/run_application_stress_tests.sh
