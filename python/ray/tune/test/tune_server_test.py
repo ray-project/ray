@@ -134,8 +134,8 @@ class TuneServerSuite(unittest.TestCase):
         for i in range(2):
             runner.step()
         stdout = subprocess.check_output(
-            'curl "http://{}:{}/trials"'.format(client.get_address(),
-                                                client.get_port()),
+            'curl "http://{}:{}/trials"'.format(client.server_address,
+                                                client.server_port),
             shell=True)
         self.assertNotEqual(stdout, None)
         curl_trials = json.loads(stdout.decode())["trials"]
