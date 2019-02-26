@@ -573,9 +573,14 @@ def start_redis(node_ip_address,
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
 
-    # Cap the memory of the other redis shards if no limit is provided.
-    redis_max_memory = (redis_max_memory if redis_max_memory is not None else
-                        ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES)
+    # Calculate the redis memory.
+    system_memory = ray.utils.get_system_memory()
+    if redis_max_memory is None:
+        redis_max_memory = min(
+            ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES,
+            max(
+                int(system_memory * 0.2),
+                ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
     if redis_max_memory < ray_constants.REDIS_MINIMUM_MEMORY_BYTES:
         raise ValueError("Attempting to cap Redis memory usage at {} bytes, "
                          "but the minimum allowed is {} bytes.".format(
@@ -1286,7 +1291,7 @@ def determine_plasma_store_config(object_store_memory=None,
 
     # Choose a default object store size.
     if object_store_memory is None:
-        object_store_memory = int(system_memory * 0.4)
+        object_store_memory = int(system_memory * 0.3)
         # Cap memory to avoid memory waste and perf issues on large nodes
         if (object_store_memory >
                 ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
@@ -1440,7 +1445,8 @@ def start_plasma_store(stdout_file=None,
     # Print the object store memory using two decimal places.
     object_store_memory_str = (object_store_memory / 10**7) / 10**2
     logger.info("Starting the Plasma object store with {} GB memory "
-                "using {}.".format(object_store_memory_str, plasma_directory))
+                "using {}.".format(
+                    round(object_store_memory_str, 2), plasma_directory))
     # Start the Plasma store.
     process_info = _start_plasma_store(
         object_store_memory,
