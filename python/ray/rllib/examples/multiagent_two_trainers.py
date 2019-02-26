@@ -24,7 +24,7 @@ from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num-iters", type=int, default=20)
+parser.add_argument("--num-iters", type=int, default=2)
 
 if __name__ == "__main__":
     args = parser.parse_args()

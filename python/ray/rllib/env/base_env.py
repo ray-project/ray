@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.env.external_env import ExternalEnv
+from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -77,6 +78,11 @@ class BaseEnv(object):
                     raise ValueError(
                         "ExternalEnv does not currently support num_envs > 1.")
                 env = _ExternalEnvToBaseEnv(env)
+            elif isinstance(env, ExternalMultiAgentEnv):
+                if num_envs != 1:
+                    raise ValueError(
+                        "ExternalMultiAgentEnv not currently support num_envs > 1.")
+                env = _ExternalMultiAgentEnvToBaseEnv(env)
             elif isinstance(env, VectorEnv):
                 env = _VectorEnvToBaseEnv(env)
             else:
@@ -207,6 +213,65 @@ class _ExternalEnvToBaseEnv(BaseEnv):
             _with_dummy_agent_id(all_dones, "__all__"), \
             _with_dummy_agent_id(all_infos), \
             _with_dummy_agent_id(off_policy_actions)
+
+class _ExternalMultiAgentEnvToBaseEnv(BaseEnv):
+    """Internal adapter of ExternalEnv to BaseEnv."""
+
+    def __init__(self, external_env, preprocessor=None):
+        self.external_env = external_env
+        self.prep = preprocessor
+        # FIXME do i need to set the spaces
+        # if I have multiple agents?
+        self.action_space = external_env.action_space
+        if preprocessor:
+            self.observation_space = preprocessor.observation_space
+        else:
+            self.observation_space = external_env.observation_space
+        external_env.start()
+
+    @override(BaseEnv)
+    def poll(self):
+        # FIXME we need to take in account:
+        # - agents can have multiple observations
+        with self.external_env._results_avail_condition:
+            results = self._poll()
+            while len(results[0]) == 0:
+                self.external_env._results_avail_condition.wait()
+                results = self._poll()
+                if not self.external_env.isAlive():
+                    raise Exception("Serving thread has stopped.")
+        # we have to check this in a different way... 
+        """
+        limit = self.external_env._max_concurrent_episodes
+        assert len(results[0]) < limit, \
+            ("Too many concurrent episodes, were some leaked? This "
+             "ExternalEnv was created with max_concurrent={}".format(limit))
+        """
+        return results
+
+    @override(BaseEnv)
+    def send_actions(self, action_dict):
+        for env_id, actions in action_dict.items():
+            self.external_env._episodes[env_id].action_queue.put(actions)
+
+    def _poll(self):
+        all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
+        off_policy_actions = {}
+        for eid, episode in self.external_env._episodes.copy().items():
+            data = episode.get_data()
+            if episode.cur_done:
+                del self.external_env._episodes[eid]
+            if data:
+                if self.prep:
+                    all_obs[eid] = self.prep.transform(data["obs"])
+                else:
+                    all_obs[eid] = data["obs"]
+                all_rewards[eid] = data["reward"]
+                all_dones[eid] = data["done"]
+                all_infos[eid] = data["info"]
+                if "off_policy_action" in data:
+                    off_policy_actions[eid] = data["off_policy_action"]
+        return all_obs, all_rewards, all_dones, all_infos, off_policy_actions
 
 
 class _VectorEnvToBaseEnv(BaseEnv):
