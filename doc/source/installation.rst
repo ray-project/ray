@@ -66,9 +66,6 @@ For Ubuntu, run the following commands:
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip psmisc python # we install python here because python2 is required to build the webui
 
-  # Install Bazel.
-  ./ci/travis/install-bazel.sh
-
   # If you are not using Anaconda, you need the following.
   sudo apt-get install python-dev  # For Python 2.
   sudo apt-get install python3-dev  # For Python 3.
@@ -81,9 +78,6 @@ For MacOS, run the following commands:
 
   brew update
   brew install wget
-
-  # Install Bazel.
-  ./ci/travis/install-bazel.sh
 
   pip install cython==0.29.0
 
@@ -103,6 +97,10 @@ Ray can be built from the repository as follows.
 .. code-block:: bash
 
   git clone https://github.com/ray-project/ray.git
+
+  # Install Bazel.
+  ray/ci/travis/install-bazel.sh
+
   cd ray/python
   pip install -e . --verbose  # Add --user if you see a permission denied error.
 
