@@ -67,6 +67,7 @@ def create_parser(parser_creator=None):
         "Surpresses loading of configuration from checkpoint.")
     return parser
 
+
 def run(args, parser):
     config = args.config
     if not config:
@@ -99,7 +100,6 @@ def run(args, parser):
 
 
 def rollout(agent, env_name, num_steps, out=None, no_render=True):
-
     if hasattr(agent, "local_evaluator"):
         env = agent.local_evaluator.env
         multiagent = agent.local_evaluator.multiagent
