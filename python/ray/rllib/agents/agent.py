@@ -243,7 +243,7 @@ class Agent(Trainable):
         self.global_vars = {"timestep": 0}
 
         # Agents allow env ids to be passed directly to the constructor.
-        self._env_id = _register_if_needed(env or config.get("env"))
+        self._env_id = self._register_if_needed(env or config.get("env"))
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -671,11 +671,14 @@ class Agent(Trainable):
         if "optimizer" in state:
             self.optimizer.restore(state["optimizer"])
 
-
-def _register_if_needed(env_object):
-    if isinstance(env_object, six.string_types):
-        return env_object
-    elif isinstance(env_object, type):
-        name = env_object.__name__
-        register_env(name, lambda config: env_object(config))
-        return name
+    def _register_if_needed(self, env_object):
+        if isinstance(env_object, six.string_types):
+            return env_object
+        elif isinstance(env_object, type):
+            name = env_object.__name__
+            register_env(name, lambda config: env_object(config))
+            return name
+        raise ValueError(
+            "{} is an invalid env specification. ".format(env_object) +
+            "You can specify a custom env as either a class "
+            "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
