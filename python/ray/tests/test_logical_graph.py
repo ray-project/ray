@@ -90,13 +90,13 @@ def test_forking():
                 sum2_id = id
     # Check generated streams and their partitioning
     for source, destination in env.logical_topo.edges:
+        operator = env.operators[source]
         if source == source_id:
             assert destination == map_id, (destination, map_id)
         elif source == map_id:
-            operator = env.operators[map_id]
-            key_index = env.operators[destination].other_args
             p_scheme = operator.partitioning_strategies[destination]
             strategy = p_scheme.strategy
+            key_index = env.operators[destination].other_args
             if key_index == 0:  # This must be the first branch
                 assert strategy == PStrategy.Shuffle, (strategy,
                                                        PStrategy.Shuffle)
@@ -107,20 +107,19 @@ def test_forking():
                                                        PStrategy.Forward)
                 assert destination == keyby2_id, (destination, keyby2_id)
         elif source == keyby1_id or source == keyby2_id:
-            operator = env.operators[source]
             p_scheme = operator.partitioning_strategies[destination]
+            strategy = p_scheme.strategy
             key_index = env.operators[destination].other_args
             if key_index == 1:  # This must be the first branch
-                assert strategy == PStrategy.Forward, (strategy,
-                                                       PStrategy.Forward)
+                assert strategy == PStrategy.ShuffleByKey, (
+                    strategy, PStrategy.ShuffleByKey)
                 assert destination == sum1_id, (destination, sum1_id)
             else:  # This must be the second branch
                 assert key_index == 2, (key_index, 2)
-                assert strategy == PStrategy.Forward, (strategy,
-                                                       PStrategy.Forward)
+                assert strategy == PStrategy.ShuffleByKey, (
+                    strategy, PStrategy.ShuffleByKey)
                 assert destination == sum2_id, (destination, sum2_id)
         else:  # This must be a sum operator
-            operator = env.operators[source]
             assert operator.type == OpType.Sum, (operator.type, OpType.Sum)
 
 
