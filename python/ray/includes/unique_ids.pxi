@@ -76,9 +76,6 @@ cdef class UniqueID:
     def size(self):
         return self.data.size()
 
-    def __len__(self):
-        return self.size()
-
     def binary(self):
         return self.data.binary()
 
