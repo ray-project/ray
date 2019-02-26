@@ -19,9 +19,6 @@ For Ubuntu users, run the following commands:
   sudo apt-get update
   sudo apt-get install -y maven build-essential curl unzip psmisc python # we install python here because python2 is required to build the webui
 
-  # Install Bazel.
-  ./ci/travis/install-bazel.sh
-
   # If you are not using Anaconda, you need the following.
   sudo apt-get install python-dev  # For Python 2.
   sudo apt-get install python3-dev  # For Python 3.
@@ -44,6 +41,9 @@ Then we can start building Ray with the following commands:
 
   git clone https://github.com/ray-project/ray.git
   cd ray
+
+  # Install Bazel.
+  ci/travis/install-bazel.sh
 
   # build native components
   ./build.sh -l java
