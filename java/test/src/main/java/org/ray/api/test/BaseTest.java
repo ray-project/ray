@@ -1,6 +1,5 @@
 package org.ray.api.test;
 
-import java.io.File;
 import org.ray.api.Ray;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;

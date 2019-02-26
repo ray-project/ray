@@ -1,5 +1,6 @@
 package org.ray.runtime.gcs;
 
+import java.util.List;
 import java.util.Map;
 
 import org.ray.runtime.util.StringUtil;
@@ -77,7 +78,11 @@ public class RedisClient {
         return jedis.hget(key, field);
       }
     }
-
   }
 
+  public List<String> lrange(String key, long start, long end) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.lrange(key, start, end);
+    }
+  }
 }

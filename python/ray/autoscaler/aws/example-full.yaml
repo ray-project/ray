@@ -20,6 +20,7 @@ initial_workers: 0
 docker:
     image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
     container_name: "" # e.g. ray_docker
+    run_options: []  # Extra options to pass into "docker run"
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
@@ -54,7 +55,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    ImageId: ami-0b294f219d14e6a82 # Deep Learning AMI (Ubuntu) Version 21.0
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
@@ -70,7 +71,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    ImageId: ami-0b294f219d14e6a82 # Deep Learning AMI (Ubuntu) Version 21.0
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -88,15 +89,20 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
+initialization_commands: []
+
 # List of shell commands to run to set up nodes.
 setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.3-cp27-cp27mu-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.3-cp35-cp35m-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.3-cp36-cp36m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true

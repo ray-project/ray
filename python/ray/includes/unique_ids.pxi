@@ -7,9 +7,23 @@ See https://github.com/ray-project/ray/issues/3721.
 # WARNING: Any additional ID types defined in this file must be added to the
 # _ID_TYPES list at the bottom of this file.
 from ray.includes.common cimport (
-    CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
-    CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
-    ComputePutId, ComputeTaskId)
+    ComputePutId,
+    ComputeTaskId,
+)
+from ray.includes.unique_ids cimport (
+    CActorCheckpointID,
+    CActorClassID,
+    CActorHandleID,
+    CActorID,
+    CClientID,
+    CConfigID,
+    CDriverID,
+    CFunctionID,
+    CObjectID,
+    CTaskID,
+    CUniqueID,
+    CWorkerID,
+)
 
 from ray.utils import decode
 
@@ -18,7 +32,8 @@ def check_id(b):
     if not isinstance(b, bytes):
         raise TypeError("Unsupported type: " + str(type(b)))
     if len(b) != kUniqueIDSize:
-        raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
+        raise ValueError("ID string needs to have length " +
+                         str(kUniqueIDSize))
 
 
 cdef extern from "ray/constants.h" nogil:
@@ -59,7 +74,7 @@ cdef class UniqueID:
         return self.data.is_nil()
 
     def __eq__(self, other):
-        return self.binary() == other.binary()
+        return type(self) == type(other) and self.binary() == other.binary()
 
     def __ne__(self, other):
         return self.binary() != other.binary()
@@ -92,9 +107,10 @@ cdef class UniqueID:
         return type(self), (self.binary(),)
 
     def redis_shard_hash(self):
-        # NOTE: The hash function used here must match the one in GetRedisContext in
-        # src/ray/gcs/tables.h. Changes to the hash function should only be made
-        # through std::hash in src/common/common.h
+        # NOTE: The hash function used here must match the one in
+        # GetRedisContext in src/ray/gcs/tables.h. Changes to the
+        # hash function should only be made through std::hash in
+        # src/common/common.h
         return self.data.hash()
 
 
@@ -236,6 +252,29 @@ cdef class ActorHandleID(UniqueID):
         return "ActorHandleID(" + self.hex() + ")"
 
 
+cdef class ActorCheckpointID(UniqueID):
+
+    def __init__(self, id):
+        if not id:
+            self.data = CUniqueID()
+        else:
+            check_id(id)
+            self.data = CUniqueID.from_binary(id)
+
+    @staticmethod
+    cdef from_native(const CActorCheckpointID& cpp_id):
+        cdef ActorCheckpointID self = ActorCheckpointID.__new__(ActorCheckpointID)
+        self.data = cpp_id
+        return self
+
+    @staticmethod
+    def nil():
+        return ActorCheckpointID.from_native(CActorCheckpointID.nil())
+
+    def __repr__(self):
+        return "ActorCheckpointID(" + self.hex() + ")"
+
+
 cdef class FunctionID(UniqueID):
 
     def __init__(self, id):
@@ -282,5 +321,15 @@ cdef class ActorClassID(UniqueID):
         return "ActorClassID(" + self.hex() + ")"
 
 
-_ID_TYPES = [UniqueID, ObjectID, TaskID, ClientID, DriverID, ActorID,
-             ActorHandleID, FunctionID, ActorClassID]
+_ID_TYPES = [
+    ActorCheckpointID,
+    ActorClassID,
+    ActorHandleID,
+    ActorID,
+    ClientID,
+    DriverID,
+    FunctionID,
+    ObjectID,
+    TaskID,
+    UniqueID,
+]
