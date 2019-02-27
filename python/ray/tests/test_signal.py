@@ -1,9 +1,9 @@
 import pytest
+import time
 
 import ray
 import ray.experimental.signal as signal
 
-import time
 
 class UserSignal(signal.Signal):
     def __init__(self, value):
@@ -30,6 +30,7 @@ def receive_all_signals(sources, timeout):
             return results
         else:
             results.extend(r)
+
 
 def test_task_to_driver(ray_start):
     # Send a signal from a task to the driver.
@@ -282,6 +283,7 @@ def test_forget(ray_start):
     result_list = receive_all_signals([a], timeout=5)
     assert len(result_list) == count
 
+
 def test_send_signal_from_two_tasks_to_driver(ray_start):
     # Define a remote function that sends a user-defined signal.
     @ray.remote
@@ -299,6 +301,7 @@ def test_send_signal_from_two_tasks_to_driver(ray_start):
     result_list = ray.experimental.signal.receive([a, b])
     assert len(result_list) == 1
 
+
 def test_receiving_on_two_returns(ray_start):
     @ray.remote(num_return_vals=2)
     def send_signal(value):
@@ -311,5 +314,5 @@ def test_receiving_on_two_returns(ray_start):
 
     results = ray.experimental.signal.receive([x, y])
 
-    assert ((x == results[0][0] and y == results[1][0]) or
-            (x == results[1][0] and y == results[0][0]))
+    assert ((x == results[0][0] and y == results[1][0])
+            or (x == results[1][0] and y == results[0][0]))
