@@ -1,7 +1,8 @@
 Installing Ray
 ==============
 
-Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04, Ubuntu 16.04, OS X 10.11 and 10.12.
+Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04, Ubuntu 16.04, Ubuntu 18.04,
+MacOS 10.11, 10.12, 10.13, and 10.14.
 
 Latest stable version
 ---------------------
