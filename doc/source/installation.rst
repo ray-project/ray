@@ -1,7 +1,8 @@
 Installing Ray
 ==============
 
-Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04, Ubuntu 16.04, OS X 10.11 and 10.12.
+Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04, Ubuntu 16.04, Ubuntu 18.04,
+MacOS 10.11, 10.12, 10.13, and 10.14.
 
 Latest stable version
 ---------------------
@@ -48,7 +49,8 @@ Here are links to the latest wheels (which are built off of master). To install 
 Building Ray from source
 ------------------------
 
-If you want to use the latest version of Ray, you can build it from source. Below, we have instructions for installing dependencies and building from source for both Linux and MacOS.
+If you want to use the latest version of Ray, you can build it from source.
+Below, we have instructions for building from source for both Linux and MacOS.
 
 Dependencies
 ~~~~~~~~~~~~
@@ -63,14 +65,11 @@ For Ubuntu, run the following commands:
 .. code-block:: bash
 
   sudo apt-get update
-  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison psmisc python # we install python here because python2 is required to build the webui
+  sudo apt-get install -y build-essential curl unzip psmisc python # we install python here because python2 is required to build the webui
 
   # If you are not using Anaconda, you need the following.
   sudo apt-get install python-dev  # For Python 2.
   sudo apt-get install python3-dev  # For Python 3.
-
-  # If you are on Ubuntu 14.04, you need the following.
-  pip install cmake
 
   pip install cython==0.29.0
 
@@ -79,7 +78,7 @@ For MacOS, run the following commands:
 .. code-block:: bash
 
   brew update
-  brew install cmake pkg-config automake autoconf libtool openssl bison wget
+  brew install wget
 
   pip install cython==0.29.0
 
@@ -99,6 +98,10 @@ Ray can be built from the repository as follows.
 .. code-block:: bash
 
   git clone https://github.com/ray-project/ray.git
+
+  # Install Bazel.
+  ray/ci/travis/install-bazel.sh
+
   cd ray/python
   pip install -e . --verbose  # Add --user if you see a permission denied error.
 
@@ -116,7 +119,7 @@ that you've cloned the git repository.
 
 .. code-block:: bash
 
-  python -m pytest -v test/mini_test.py
+  python -m pytest -v python/ray/tests/test_mini.py
 
 Cleaning the source tree
 ~~~~~~~~~~~~~~~~~~~~~~~~
