@@ -201,7 +201,7 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
         text_type = str
         binary_type = bytes
     else:
-        text_type = unicode
+        text_type = unicode  # noqa: F821
         binary_type = str
     if not isinstance(s, (text_type, binary_type)):
         raise TypeError("not expecting type '%s'" % type(s))
