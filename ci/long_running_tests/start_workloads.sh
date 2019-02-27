@@ -22,7 +22,11 @@ done
 for workload_file in "$ROOT_DIR"/workloads/*; do
   file_name=$(basename -- $workload_file)
   workload_name="${file_name%.*}"
+  # Copy the workload to the cluster.
   ray rsync_up config.yaml --cluster-name="$workload_name" "$workload_file" "$file_name"
+  # Clean up previous runs if relevant.
+  ray exec config.yaml --cluster-name="$workload_name" "ray stop; rm -r /tmp/ray; tmux kill-server | true"
+  # Start the workload.
   ray exec config.yaml --cluster-name="$workload_name" "python $file_name" --tmux
 done
 

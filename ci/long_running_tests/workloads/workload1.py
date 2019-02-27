@@ -58,8 +58,8 @@ while True:
 
     new_time = time.time()
     print("Iteration {}:\n"
-          "  - Iteration time: {}."
-          "  - Absolute time: {}."
+          "  - Iteration time: {}.\n"
+          "  - Absolute time: {}.\n"
           "  - Total elapsed time: {}.".format(
               iteration, new_time - previous_time, new_time,
               new_time - start_time))
