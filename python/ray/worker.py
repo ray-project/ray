@@ -966,7 +966,7 @@ class Worker(object):
                     # same driver id.
                     self.task_driver_id = DriverID.nil()
                 # Reset signal counters so that the next worker can get
-                # all past signals.    
+                # all past signals.
                 ray_signal.reset()
 
         # Increase the task execution counter.
