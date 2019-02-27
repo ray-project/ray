@@ -4,12 +4,15 @@ from __future__ import print_function
 
 import copy
 
-try:
-    import bayes_opt as byo
-except Exception:
-    byo = None
-
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
+
+byo = None
+
+
+def _import_bayesopt():
+    global byo
+    import bayes_opt
+    byo = bayes_opt
 
 
 class BayesOptSearch(SuggestionAlgorithm):

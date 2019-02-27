@@ -17,15 +17,8 @@ from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
 
 logger = logging.getLogger(__name__)
 
-try:
-    import tensorflow as tf
-    use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                     distutils.version.LooseVersion("1.5.0"))
-except ImportError:
-    tf = None
-    use_tf150_api = True
-    logger.warning("Couldn't import TensorFlow - "
-                   "disabling TensorBoard logging.")
+tf = None
+use_tf150_api = True
 
 
 class Logger(object):
@@ -190,6 +183,15 @@ def to_tf_values(result, path):
 
 class _TFLogger(Logger):
     def _init(self):
+        try:
+            global tf, use_tf150_api
+            import tensorflow
+            tf = tensorflow
+            use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
+                             distutils.version.LooseVersion("1.5.0"))
+        except ImportError:
+            logger.warning("Couldn't import TensorFlow - "
+                           "disabling TensorBoard logging.")
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
