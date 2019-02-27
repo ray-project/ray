@@ -46,7 +46,8 @@ DEFAULT_PROJECT_INFO_KEYS = (
     "error_trials",
 )
 
-TERMINAL_HEIGHT, TERMINAL_WIDTH = subprocess.check_output(['stty', 'size']).split()
+TERMINAL_HEIGHT, TERMINAL_WIDTH = subprocess.check_output(['stty',
+                                                           'size']).split()
 TERMINAL_HEIGHT, TERMINAL_WIDTH = int(TERMINAL_HEIGHT), int(TERMINAL_WIDTH)
 
 
@@ -62,7 +63,7 @@ def _list_trials(experiment_path, sort,
     checkpoints_df = pd.DataFrame(
         experiment_state["checkpoints"])[list(info_keys)]
     if "logdir" in checkpoints_df.columns:
-        # logdir often too verbose to view in table, so drop the experiment_path
+        # logdir often too verbose to view in table, so drop experiment_path
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
             experiment_path, '')
     if sort:
@@ -84,7 +85,7 @@ def _list_trials(experiment_path, sort,
             table = tabulate(print_df, headers="keys", tablefmt="psql")
             dropped += columns[i:]
             break
-    
+
     print(table)
     if dropped:
         print("Dropped columns:", dropped)
@@ -136,7 +137,7 @@ def _list_experiments(project_path, sort, info_keys=DEFAULT_PROJECT_INFO_KEYS):
     info_df = pd.DataFrame(experiment_data_collection)[list(info_keys)]
     if sort:
         info_df = info_df.sort_values(by=sort)
-    
+
     print_df = pd.DataFrame()
     columns = list(info_keys)
     dropped = []
@@ -153,7 +154,7 @@ def _list_experiments(project_path, sort, info_keys=DEFAULT_PROJECT_INFO_KEYS):
             table = tabulate(print_df, headers="keys", tablefmt="psql")
             dropped += columns[i:]
             break
-    
+
     print(table)
     if dropped:
         print("Dropped columns:", dropped)
