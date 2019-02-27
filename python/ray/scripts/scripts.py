@@ -378,83 +378,25 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @cli.command()
 def stop():
-    # Find the PID of the plasma_store_server process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep plasma_store_server | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
+    processes_to_kill = [
+        "plasma_store_server",
+        "raylet",
+        "raylet_monitor",
+        "monitor.py",
+        "redis-server",
+        "default_worker.py",  # Python worker.
+        " ray_",  # Python worker.
+        "org.ray.runtime.runner.worker.DefaultWorker",  # Java worker.
+        "log_monitor.py",
+        "reporter.py",
+        "dashboard.py",
+    ]
 
-    # Find the PID of the raylet process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep raylet | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the raylet_monitor process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep raylet_monitor | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the monitor process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep monitor.py | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the Redis process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep redis-server | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PIDs of the worker processes and kill them.
-    subprocess.call(
-        [
-            "kill -9 $(ps aux | grep default_worker.py | "
-            "grep -v grep | awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-    subprocess.call(
-        [
-            "kill -9 $(ps aux | grep ' ray_' | "
-            "grep -v grep | awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the Ray log monitor process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep log_monitor.py | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the Ray reporter process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep reporter.py | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the Ray dashboard process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep dashboard.py | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
+    for process in processes_to_kill:
+        command = ("kill $(ps aux | grep '" + process + "' | grep -v grep | " +
+                   "awk '{ print $2 }') 2> /dev/null")
+        print(command)
+        subprocess.call([command], shell=True)
 
     # Find the PID of the jupyter process and kill it.
     try:
@@ -465,6 +407,8 @@ def stop():
         ]
         subprocess.call(
             ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
+    except ImportError:
+        pass
     except Exception:
         logger.exception("Error shutting down jupyter")
 
