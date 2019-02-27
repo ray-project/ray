@@ -116,7 +116,7 @@ that you've cloned the git repository.
 
 .. code-block:: bash
 
-  python -m pytest -v test/mini_test.py
+  python -m pytest -v python/ray/tests/test_mini.py
 
 Cleaning the source tree
 ~~~~~~~~~~~~~~~~~~~~~~~~
