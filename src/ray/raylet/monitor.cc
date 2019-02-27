@@ -59,22 +59,20 @@ void Monitor::Tick() {
           }
           if (!marked) {
             RAY_CHECK_OK(gcs_client_.client_table().MarkDisconnected(client_id));
+            // Broadcast a warning to all of the drivers indicating that the node
+            // has been marked as dead.
+            // TODO(rkn): Define this constant somewhere else.
+            std::string type = "node_removed";
+            std::ostringstream error_message;
+            error_message << "The node with client ID " << client_id
+                          << " has been marked dead because the monitor"
+                          << " has missed too many heartbeats from it.";
+            // We use the nil JobID to broadcast the message to all drivers.
+            RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
+                JobID::nil(), type, error_message.str(), current_time_ms()));
           }
         };
         RAY_CHECK_OK(gcs_client_.client_table().Lookup(lookup_callback));
-
-        // Broadcast a warning to all of the drivers indicating that the node
-        // has been marked as dead.
-        // TODO(rkn): Define this constant somewhere else.
-        std::string type = "node_removed";
-        std::ostringstream error_message;
-        error_message << "The node with client ID " << client_id << " has been marked "
-                      << "dead because the monitor has missed too many heartbeats "
-                      << "from it.";
-        // We use the nil JobID to broadcast the message to all drivers.
-        RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
-            JobID::nil(), type, error_message.str(), current_time_ms()));
-
         dead_clients_.insert(client_id);
       }
       it = heartbeats_.erase(it);
