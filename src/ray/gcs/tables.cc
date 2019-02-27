@@ -485,6 +485,11 @@ const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients
   return client_cache_;
 }
 
+Status ClientTable::Lookup(const Callback &lookup) {
+  RAY_CHECK(lookup != nullptr);
+  return Log::Lookup(JobID::nil(), client_log_key_, lookup);
+}
+
 std::string ClientTable::DebugString() const {
   std::stringstream result;
   result << Log<UniqueID, ClientTableData>::DebugString();
