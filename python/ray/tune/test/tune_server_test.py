@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import unittest
 import socket
+import subprocess
+import json
 
 import ray
 from ray import tune
@@ -44,7 +46,7 @@ class TuneServerSuite(unittest.TestCase):
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)
-        client = TuneClient("localhost:{}".format(port))
+        client = TuneClient("localhost", port)
         return runner, client
 
     def tearDown(self):
@@ -125,6 +127,25 @@ class TuneServerSuite(unittest.TestCase):
         all_trials = client.get_all_trials()["trials"]
         self.assertEqual(
             len([t for t in all_trials if t["status"] == Trial.RUNNING]), 0)
+
+    def testCurlCommand(self):
+        """Check if Stop Trial works."""
+        runner, client = self.basicSetup()
+        for i in range(2):
+            runner.step()
+        stdout = subprocess.check_output(
+            'curl "http://{}:{}/trials"'.format(client.server_address,
+                                                client.server_port),
+            shell=True)
+        self.assertNotEqual(stdout, None)
+        curl_trials = json.loads(stdout.decode())["trials"]
+        client_trials = client.get_all_trials()["trials"]
+        for curl_trial, client_trial in zip(curl_trials, client_trials):
+            self.assertEqual(curl_trial.keys(), client_trial.keys())
+            self.assertEqual(curl_trial["id"], client_trial["id"])
+            self.assertEqual(curl_trial["trainable_name"],
+                             client_trial["trainable_name"])
+            self.assertEqual(curl_trial["status"], client_trial["status"])
 
 
 if __name__ == "__main__":
