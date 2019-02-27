@@ -173,4 +173,22 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     checkpoints.sort((x, y) -> Long.compare(y.timestamp, x.timestamp));
     return checkpoints;
   }
+
+
+  /**
+   * Query whether the actor exists in Gcs.
+   */
+  boolean actorExistsInGcs(UniqueId actorId) {
+    byte[] key = ArrayUtils.addAll("ACTOR".getBytes(), actorId.getBytes());
+
+    // TODO(qwang): refactor this with `GlobalState` after this issue
+    // getting finished. https://github.com/ray-project/ray/issues/3933
+    for (RedisClient client : redisClients) {
+      if (client.exists(key)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 }

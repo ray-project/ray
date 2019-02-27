@@ -89,11 +89,15 @@ public class Worker {
       // Get local actor object and arguments.
       Object actor = null;
       if (spec.isActorTask()) {
+        // TODO(qwang): Remove `worker.currentActorId`,
+        // and use `runtime.currentActorId` instead.
+        runtime.setCurrentActorId(spec.actorId);
         Preconditions.checkState(spec.actorId.equals(currentActorId));
         if (actorCreationException != null) {
           throw actorCreationException;
         }
         actor = currentActor;
+
       }
       Object[] args = ArgumentsBuilder.unwrap(spec, rayFunction.classLoader);
       // Execute the task.
