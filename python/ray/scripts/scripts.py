@@ -642,8 +642,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     "--port-forward", required=False, type=int, help="Port to forward.")
 @click.argument("script", required=True, type=str)
 @click.argument("script_args", required=False, type=str, nargs=-1)
-def submit(cluster_config_file, docker, screen, tmux, stop, start, cluster_name,
-           port_forward, script, script_args):
+def submit(cluster_config_file, docker, screen, tmux, stop, start,
+           cluster_name, port_forward, script, script_args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
