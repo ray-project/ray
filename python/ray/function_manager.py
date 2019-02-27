@@ -664,7 +664,11 @@ class FunctionActorManager(object):
                                    function_descriptor.class_name)
         try:
             module = importlib.import_module(module_name)
-            return getattr(module, class_name)._modified_class
+            actor_class = getattr(module, class_name)
+            if isinstance(actor_class, ray.actor.ActorClass):
+                return actor_class._modified_class
+            else:
+                return actor_class
         except Exception:
             logger.exception(
                 "Failed to load actor_class %s.".format(class_name))
