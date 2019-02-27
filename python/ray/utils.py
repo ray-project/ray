@@ -181,10 +181,12 @@ def decode(byte_str, allow_none=False):
         return byte_str
 
 
-def ensure_str(s, encoding='utf-8', errors='strict'):
+def ensure_str(s, encoding="utf-8", errors="strict"):
     """Coerce *s* to `str`.
-    To keep six with lower version, see Issue 4169,
-    we copy this function fron six == 1.12.0.
+
+    To keep six with lower version, see Issue 4169, we copy this function
+    fron six == 1.12.0.
+
     TODO(yuhguo): remove this function when six >= 1.12.0.
 
     For Python 2:
