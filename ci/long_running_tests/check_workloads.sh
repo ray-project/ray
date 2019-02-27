@@ -9,7 +9,9 @@ pushd "$ROOT_DIR"
 for workload_file in "$ROOT_DIR"/workloads/*; do
   file_name=$(basename -- $workload_file)
   workload_name="${file_name%.*}"
+  echo "======================================================================"
   echo "WORKLOAD: $workload_name"
+  echo "======================================================================"
 
   ray exec config.yaml --cluster-name="$workload_name" "tmux capture-pane -p"
   echo ""
