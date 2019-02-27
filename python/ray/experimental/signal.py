@@ -62,6 +62,7 @@ def send(signal):
     ray.worker.global_worker.redis_client.execute_command(
         "XADD " + source_key + " * signal " + encoded_signal)
 
+
 def receive(sources, timeout=None):
     """Get all outstanding signals from sources.
 
