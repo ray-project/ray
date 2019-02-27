@@ -7,7 +7,6 @@ import importlib
 import inspect
 import json
 import logging
-import six
 import sys
 import time
 import traceback
@@ -27,6 +26,7 @@ from ray.utils import (
     is_class_method,
     check_oversized_pickle,
     decode,
+    ensure_str,
     format_error_message,
     push_error_to_driver,
 )
@@ -89,9 +89,9 @@ class FunctionDescriptor(object):
             return FunctionDescriptor.for_driver_task()
         elif (len(function_descriptor_list) == 3
               or len(function_descriptor_list) == 4):
-            module_name = six.ensure_str(function_descriptor_list[0])
-            class_name = six.ensure_str(function_descriptor_list[1])
-            function_name = six.ensure_str(function_descriptor_list[2])
+            module_name = ensure_str(function_descriptor_list[0])
+            class_name = ensure_str(function_descriptor_list[1])
+            function_name = ensure_str(function_descriptor_list[2])
             if len(function_descriptor_list) == 4:
                 return cls(module_name, function_name, class_name,
                            function_descriptor_list[3])
@@ -705,10 +705,10 @@ class FunctionActorManager(object):
                  "actor_method_names"
              ])
 
-        class_name = six.ensure_str(class_name)
-        module_name = six.ensure_str(module)
+        class_name = ensure_str(class_name)
+        module_name = ensure_str(module)
         driver_id = ray.DriverID(driver_id_str)
-        actor_method_names = json.loads(six.ensure_str(actor_method_names))
+        actor_method_names = json.loads(ensure_str(actor_method_names))
 
         actor_class = None
         try:

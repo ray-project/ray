@@ -152,7 +152,7 @@ requires = [
     "pytest",
     "pyyaml",
     "redis",
-    "six >= 1.12.0",
+    "six >= 1.10.0",
     # The typing module is required by modin.
     "typing",
     "flatbuffers",
