@@ -303,13 +303,13 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
                                 aux_devices=None,
                                 num_shards=1):
     """Apply all-reduce algorithm over specified gradient tensors."""
-    from tensorflow.contrib import nccl
     with tf.name_scope('allreduce'):
         # Note that each grad_and_vars looks like the following:
         #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
         scaled_grads = [g for g, _ in grad_and_vars]
         if alg == 'nccl':
-            summed_grads = nccl.all_sum(scaled_grads)
+            from tensorflow.python.ops import nccl_ops
+            summed_grads = nccl_ops.all_sum(scaled_grads)
         elif alg == 'simple':
             summed_grads = build_reduce_sum(scaled_grads)
         elif alg == 'trivial':
