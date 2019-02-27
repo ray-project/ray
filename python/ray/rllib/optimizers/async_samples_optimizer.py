@@ -84,7 +84,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                                          learner_queue_size)
         self.learner.start()
 
-        if self.remote_evaluators == 0:
+        if len(self.remote_evaluators) == 0:
             logger.warning("Starting optimizer without remote evaluators! Have you set num_workers to 0?")
 
         # Stats
