@@ -1,31 +1,22 @@
 #!/usr/bin/env bash
 
+# set -x
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 pushd "$ROOT_DIR"
 
-echo "WORKLOAD 1"
-ray exec config.yaml --cluster-name=workload1 "tmux capture-pane -p"
-echo ""
-echo "ssh to this machine with:"
-echo "    ray attach $ROOT_DIR/config.yaml --cluster-name=workload1"
-echo ""
-echo ""
+for workload_file in "$ROOT_DIR"/workloads/*; do
+  file_name=$(basename -- $workload_file)
+  workload_name="${file_name%.*}"
+  echo "WORKLOAD: $workload_name"
 
-echo "WORKLOAD 2"
-ray exec config.yaml --cluster-name=workload2 "tmux capture-pane -p"
-echo ""
-echo "ssh to this machine with:"
-echo "    ray attach $ROOT_DIR/config.yaml --cluster-name=workload2"
-echo ""
-echo ""
-
-echo "WORKLOAD 3"
-ray exec config.yaml --cluster-name=workload3 "tmux capture-pane -p"
-echo ""
-echo "ssh to this machine with:"
-echo "    ray attach $ROOT_DIR/config.yaml --cluster-name=workload3"
-echo ""
-echo ""
+  ray exec config.yaml --cluster-name="$workload_name" "tmux capture-pane -p"
+  echo ""
+  echo "ssh to this machine with:"
+  echo "    ray attach $ROOT_DIR/config.yaml --cluster-name=$workload_name"
+  echo ""
+  echo ""
+done
 
 popd
