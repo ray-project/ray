@@ -85,7 +85,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.learner.start()
 
         if self.remote_evaluators == 0:
-            logger.warning("Starting optimizer without remote evaluators! Have you set num_workers to 0?")
+            logger.warning("Training will hang when remote_evaluators=0.")
 
         # Stats
         self._optimizer_step_timer = TimerStat()
