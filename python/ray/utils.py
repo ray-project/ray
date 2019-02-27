@@ -185,7 +185,7 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
     """Coerce *s* to `str`.
 
     To keep six with lower version, see Issue 4169, we copy this function
-    fron six == 1.12.0.
+    from six == 1.12.0.
 
     TODO(yuhguo): remove this function when six >= 1.12.0.
 
