@@ -119,7 +119,7 @@ else
   # generated from https://github.com/ray-project/arrow-build from
   # the commit listed in the command.
   $PYTHON_EXECUTABLE -m pip install \
-      --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0-RAY \
+      --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/102ffa2f2faa90065b60e9e943d348179b8a425d/index.html
   bazel build //:ray_pkg -c opt
   # Copy files and skip existing files
