@@ -131,15 +131,14 @@ This will print any ``RAY_LOG(DEBUG)`` lines in the source code to the
 
 Testing locally
 ---------------
-Suppose that one of the tests (e.g., ``runtest.py``) is failing. You can run
-that test locally by running ``python test/runtest.py``. However, doing so will
-run all of the tests which can take a while. To run a specific test that is
+Suppose that one of the tests (e.g., ``test_basic.py``) is failing. You can run
+that test locally by running ``python -m pytest -v python/ray/tests/test_basic.py``. However, doing so will run all of the tests which can take a while. To run a specific test that is
 failing, you can do
 
 .. code-block:: shell
 
  cd ray
- python -m pytest -v test/runtest.py::test_keyword_args
+ python -m pytest -v python/ray/tests/test_basic.py::test_keyword_args
 
 When running tests, usually only the first test failure matters. A single
 test failure often triggers the failure of subsequent tests in the same
