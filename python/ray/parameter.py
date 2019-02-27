@@ -196,7 +196,3 @@ class RayParams(object):
         if self.redirect_output is not None:
             raise DeprecationWarning(
                 "The redirect_output argument is deprecated.")
-
-        if self.include_java is None and self.java_worker_options is not None:
-            raise ValueError("Should not specify `java-worker-options` "
-                             "without providing `include-java`.")
