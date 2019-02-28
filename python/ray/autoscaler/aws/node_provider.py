@@ -93,7 +93,7 @@ class AWSNodeProvider(NodeProvider):
             if self.tag_cache_kill_event.is_set():
                 return
 
-    def nodes(self, tag_filters):
+    def non_terminated_nodes(self, tag_filters):
         # Note that these filters are acceptable because they are set on
         #       node initialization, and so can never be sitting in the cache.
         tag_filters = to_aws_format(tag_filters)
@@ -230,12 +230,16 @@ class AWSNodeProvider(NodeProvider):
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""
-        self.nodes({})  # Side effect: fetches and caches the node.
+        self.non_terminated_nodes({})  # Side effect: updates cache
 
-        assert node_id in self.cached_nodes, "Invalid instance id {}".format(
-            node_id)
+        if node_id in self.cached_nodes:
+            return self.cached_nodes[node_id]
 
-        return self.cached_nodes[node_id]
+        # Node not in {pending, running} -- retry with a point query. This
+        # usually means the node was recently preempted or terminated.
+        matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
+        assert len(matches) == 1, "Invalid instance id {}".format(node_id)
+        return matches[0]
 
     def _get_cached_node(self, node_id):
         """Return node info from cache if possible, otherwise fetches it."""

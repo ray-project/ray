@@ -12,11 +12,16 @@
 
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
-RAY_VERSION=$(git describe --tags --abbrev=0)
 RESULT_FILE=$ROOT_DIR/"results-$(date '+%Y-%m-%d_%H-%M-%S').log"
 
-echo "Testing on latest version of Ray: $RAY_VERSION"
 echo "Logging to" $RESULT_FILE
+echo -e $RAY_AWS_SSH_KEY > /root/.ssh/ray-autoscaler_us-west-2.pem && chmod 400 /root/.ssh/ray-autoscaler_us-west-2.pem || true
+
+
+# Show explicitly which commands are currently running. This should only be AFTER
+# the private key is placed.
+set -x
+
 touch $RESULT_FILE
 
 # This function identifies the right string for the Ray wheel.
@@ -46,7 +51,6 @@ test_impala(){
         cat application_cluster_template.yaml |
             sed -e "
                 s/<<<CLUSTER_NAME>>>/$TEST_NAME/;
-                s/<<<RAY_VERSION>>>/$RAY_VERSION/;
                 s/<<<HEAD_TYPE>>>/g3.16xlarge/;
                 s/<<<WORKER_TYPE>>>/m5.24xlarge/;
                 s/<<<MIN_WORKERS>>>/5/;
@@ -57,10 +61,11 @@ test_impala(){
         echo "Try running IMPALA stress test."
         {
             RLLIB_DIR=../../python/ray/rllib/
-            ray up -y $CLUSTER &&
+            ray --logging-level=DEBUG up -y $CLUSTER &&
             ray rsync_up $CLUSTER $RLLIB_DIR/tuned_examples/ tuned_examples/ &&
             sleep 1 &&
-            ray exec $CLUSTER "
+            ray --logging-level=DEBUG exec $CLUSTER "rllib || true" &&
+            ray --logging-level=DEBUG exec $CLUSTER "
                 rllib train -f tuned_examples/atari-impala-large.yaml --redis-address='localhost:6379' --queue-trials" &&
             echo "PASS: IMPALA Test for" $PYTHON_VERSION >> $RESULT_FILE
         } || echo "FAIL: IMPALA Test for" $PYTHON_VERSION >> $RESULT_FILE
@@ -89,7 +94,6 @@ test_sgd(){
         cat application_cluster_template.yaml |
             sed -e "
                 s/<<<CLUSTER_NAME>>>/$TEST_NAME/;
-                s/<<<RAY_VERSION>>>/$RAY_VERSION/;
                 s/<<<HEAD_TYPE>>>/g3.16xlarge/;
                 s/<<<WORKER_TYPE>>>/g3.16xlarge/;
                 s/<<<MIN_WORKERS>>>/3/;
@@ -100,11 +104,11 @@ test_sgd(){
         echo "Try running SGD stress test."
         {
             SGD_DIR=$ROOT_DIR/../../python/ray/experimental/sgd/
-            ray up -y $CLUSTER &&
+            ray --logging-level=DEBUG up -y $CLUSTER &&
             # TODO: fix submit so that args work
             ray rsync_up $CLUSTER $SGD_DIR/mnist_example.py mnist_example.py &&
             sleep 1 &&
-            ray exec $CLUSTER "
+            ray --logging-level=DEBUG exec $CLUSTER "
                 python mnist_example.py --redis-address=localhost:6379 --num-iters=2000 --num-workers=8 --devices-per-worker=2 --gpu" &&
             echo "PASS: SGD Test for" $PYTHON_VERSION >> $RESULT_FILE
         } || echo "FAIL: SGD Test for" $PYTHON_VERSION >> $RESULT_FILE
