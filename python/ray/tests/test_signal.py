@@ -2,6 +2,7 @@ import pytest
 
 import ray
 import ray.experimental.signal as signal
+import time
 
 
 class UserSignal(signal.Signal):
@@ -106,7 +107,7 @@ def test_task_crash(ray_start):
     try:
         ray.get(object_id)
     except Exception as e:
-        assert type(e) == ray.exceptions.RayTaskError
+        assert type(e) == ray.worker.RayTaskError
     finally:
         result_list = signal.receive([object_id], timeout=5)
         assert len(result_list) == 1
@@ -142,7 +143,7 @@ def test_actor_crash(ray_start):
     try:
         ray.get(a.crash.remote())
     except Exception as e:
-        assert type(e) == ray.exceptions.RayTaskError
+        assert type(e) == ray.worker.RayTaskError
     finally:
         result_list = signal.receive([a], timeout=5)
         assert len(result_list) == 1
@@ -184,7 +185,7 @@ def test_actor_crash_init2(ray_start):
     try:
         ray.get(a.method.remote())
     except Exception as e:
-        assert type(e) == ray.exceptions.RayTaskError
+        assert type(e) == ray.worker.RayTaskError
     finally:
         result_list = receive_all_signals([a], timeout=5)
         assert len(result_list) == 2
@@ -205,8 +206,10 @@ def test_actor_crash_init3(ray_start):
 
     a = ActorCrashInit.remote()
     a.method.remote()
-    result_list = signal.receive([a], timeout=10)
-    assert len(result_list) == 1
+    # Wait for a.method.remote() to finish and generate an error.
+    time.sleep(10)
+    result_list = signal.receive([a], timeout=5)
+    assert len(result_list) == 2
     assert type(result_list[0][1]) == signal.ErrorSignal
 
 
@@ -275,7 +278,23 @@ def test_forget(ray_start):
     signal_value = "simple signal"
     count = 5
     ray.get(a.send_signals.remote(signal_value, count))
-    signal.forget([a])
+    # Ignore all previous signals.
+    signal.receive([a], timeout=0)
     ray.get(a.send_signals.remote(signal_value, count))
     result_list = receive_all_signals([a], timeout=5)
     assert len(result_list) == count
+
+
+def test_x(ray_start):
+    # Define a remote function that sends a user-defined signal.
+    @ray.remote
+    def send_signal(value):
+        signal.send(UserSignal(value))
+
+    a = send_signal.remote(0)
+    b = send_signal.remote(0)
+
+    ray.get([a, b])
+
+    ray.experimental.signal.receive([a])
+    ray.experimental.signal.receive([a, b])
