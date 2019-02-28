@@ -9,8 +9,12 @@
 //     1. You must update the file "ray/python/ray/includes/ray_config.pxd".
 //     2. You must update the file "ray/python/ray/includes/ray_config.pxi".
 
-/// In theory, this is used to detect Ray version mismatches.
-RAY_CONFIG(int64_t, ray_protocol_version, 0x0000000000000000);
+/// In theory, this is used to detect Ray cookie mismatches.
+/// This magic number (hex for "RAY") is used instead of zero, rationale is
+/// that it could still be possible that some random program sends an int64_t
+/// which is zero, but it's much less likely that a program sends this
+/// particular magic number.
+RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000);
 
 /// The duration that a single handler on the event loop can take before a
 /// warning is logged that the handler is taking too long.
@@ -135,3 +139,12 @@ RAY_CONFIG(int, num_workers_per_process, 1);
 
 /// Maximum timeout in milliseconds within which a task lease must be renewed.
 RAY_CONFIG(int64_t, max_task_lease_timeout_ms, 60000);
+
+/// Maximum number of checkpoints to keep in GCS for an actor.
+/// Note: this number should be set to at least 2. Because saving a application
+/// checkpoint isn't atomic with saving the backend checkpoint, and it will break
+/// if this number is set to 1 and users save application checkpoints in place.
+RAY_CONFIG(uint32_t, num_actor_checkpoints_to_keep, 20);
+
+/// Maximum number of ids in one batch to send to GCS to delete keys.
+RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000);

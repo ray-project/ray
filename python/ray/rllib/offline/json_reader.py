@@ -44,6 +44,7 @@ class JsonReader(InputReader):
 
         self.ioctx = ioctx or IOContext()
         if isinstance(inputs, six.string_types):
+            inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):
                 inputs = os.path.join(inputs, "*.json")
                 logger.warning(

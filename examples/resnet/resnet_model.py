@@ -13,14 +13,17 @@ from __future__ import print_function
 
 from collections import namedtuple
 import numpy as np
-import ray
+
 import tensorflow as tf
 from tensorflow.python.training import moving_averages
 
-HParams = namedtuple('HParams',
-                     'batch_size, num_classes, min_lrn_rate, lrn_rate, '
-                     'num_residual_units, use_bottleneck, weight_decay_rate, '
-                     'relu_leakiness, optimizer, num_gpus')
+import ray
+import ray.experimental.tf_utils
+
+HParams = namedtuple(
+    'HParams', 'batch_size, num_classes, min_lrn_rate, lrn_rate, '
+    'num_residual_units, use_bottleneck, weight_decay_rate, '
+    'relu_leakiness, optimizer, num_gpus')
 
 
 class ResNet(object):
@@ -51,7 +54,8 @@ class ResNet(object):
             self._build_train_op()
         else:
             # Additional initialization for the test network.
-            self.variables = ray.experimental.TensorFlowVariables(self.cost)
+            self.variables = ray.experimental.tf_utils.TensorFlowVariables(
+                self.cost)
             self.summaries = tf.summary.merge_all()
 
     def _stride_arr(self, stride):
@@ -75,27 +79,24 @@ class ResNet(object):
             filters = [16, 16, 32, 64]
 
         with tf.variable_scope('unit_1_0'):
-            x = res_func(x, filters[0], filters[1],
-                         self._stride_arr(strides[0]),
-                         activate_before_residual[0])
+            x = res_func(x, filters[0], filters[1], self._stride_arr(
+                strides[0]), activate_before_residual[0])
         for i in range(1, self.hps.num_residual_units):
             with tf.variable_scope('unit_1_%d' % i):
                 x = res_func(x, filters[1], filters[1], self._stride_arr(1),
                              False)
 
         with tf.variable_scope('unit_2_0'):
-            x = res_func(x, filters[1], filters[2],
-                         self._stride_arr(strides[1]),
-                         activate_before_residual[1])
+            x = res_func(x, filters[1], filters[2], self._stride_arr(
+                strides[1]), activate_before_residual[1])
         for i in range(1, self.hps.num_residual_units):
             with tf.variable_scope('unit_2_%d' % i):
-                x = res_func(x, filters[2], filters[2],
-                             self._stride_arr(1), False)
+                x = res_func(x, filters[2], filters[2], self._stride_arr(1),
+                             False)
 
         with tf.variable_scope('unit_3_0'):
-            x = res_func(x, filters[2], filters[3],
-                         self._stride_arr(strides[2]),
-                         activate_before_residual[2])
+            x = res_func(x, filters[2], filters[3], self._stride_arr(
+                strides[2]), activate_before_residual[2])
         for i in range(1, self.hps.num_residual_units):
             with tf.variable_scope('unit_3_%d' % i):
                 x = res_func(x, filters[3], filters[3], self._stride_arr(1),
@@ -136,7 +137,8 @@ class ResNet(object):
         apply_op = optimizer.minimize(self.cost, global_step=self.global_step)
         train_ops = [apply_op] + self._extra_train_ops
         self.train_op = tf.group(*train_ops)
-        self.variables = ray.experimental.TensorFlowVariables(self.train_op)
+        self.variables = ray.experimental.tf_utils.TensorFlowVariables(
+            self.train_op)
 
     def _batch_norm(self, name, x):
         """Batch normalization."""
@@ -144,49 +146,65 @@ class ResNet(object):
             params_shape = [x.get_shape()[-1]]
 
             beta = tf.get_variable(
-                'beta', params_shape, tf.float32,
+                'beta',
+                params_shape,
+                tf.float32,
                 initializer=tf.constant_initializer(0.0, tf.float32))
             gamma = tf.get_variable(
-                'gamma', params_shape, tf.float32,
+                'gamma',
+                params_shape,
+                tf.float32,
                 initializer=tf.constant_initializer(1.0, tf.float32))
 
             if self.mode == 'train':
                 mean, variance = tf.nn.moments(x, [0, 1, 2], name='moments')
 
                 moving_mean = tf.get_variable(
-                    'moving_mean', params_shape, tf.float32,
+                    'moving_mean',
+                    params_shape,
+                    tf.float32,
                     initializer=tf.constant_initializer(0.0, tf.float32),
                     trainable=False)
                 moving_variance = tf.get_variable(
-                    'moving_variance', params_shape, tf.float32,
+                    'moving_variance',
+                    params_shape,
+                    tf.float32,
                     initializer=tf.constant_initializer(1.0, tf.float32),
                     trainable=False)
 
                 self._extra_train_ops.append(
-                    moving_averages.assign_moving_average(moving_mean, mean,
-                                                          0.9))
+                    moving_averages.assign_moving_average(
+                        moving_mean, mean, 0.9))
                 self._extra_train_ops.append(
-                    moving_averages.assign_moving_average(moving_variance,
-                                                          variance, 0.9))
+                    moving_averages.assign_moving_average(
+                        moving_variance, variance, 0.9))
             else:
                 mean = tf.get_variable(
-                    'moving_mean', params_shape, tf.float32,
+                    'moving_mean',
+                    params_shape,
+                    tf.float32,
                     initializer=tf.constant_initializer(0.0, tf.float32),
                     trainable=False)
                 variance = tf.get_variable(
-                    'moving_variance', params_shape, tf.float32,
+                    'moving_variance',
+                    params_shape,
+                    tf.float32,
                     initializer=tf.constant_initializer(1.0, tf.float32),
                     trainable=False)
                 tf.summary.histogram(mean.op.name, mean)
                 tf.summary.histogram(variance.op.name, variance)
             # elipson used to be 1e-5. Maybe 0.001 solves NaN problem in deeper
             # net.
-            y = tf.nn.batch_normalization(
-                x, mean, variance, beta, gamma, 0.001)
+            y = tf.nn.batch_normalization(x, mean, variance, beta, gamma,
+                                          0.001)
             y.set_shape(x.get_shape())
             return y
 
-    def _residual(self, x, in_filter, out_filter, stride,
+    def _residual(self,
+                  x,
+                  in_filter,
+                  out_filter,
+                  stride,
                   activate_before_residual=False):
         """Residual unit with 2 sub layers."""
         if activate_before_residual:
@@ -212,14 +230,18 @@ class ResNet(object):
             if in_filter != out_filter:
                 orig_x = tf.nn.avg_pool(orig_x, stride, stride, 'VALID')
                 orig_x = tf.pad(
-                    orig_x, [[0, 0], [0, 0], [0, 0],
-                             [(out_filter - in_filter) // 2,
-                             (out_filter - in_filter) // 2]])
+                    orig_x,
+                    [[0, 0], [0, 0], [0, 0], [(out_filter - in_filter) // 2,
+                                              (out_filter - in_filter) // 2]])
             x += orig_x
 
         return x
 
-    def _bottleneck_residual(self, x, in_filter, out_filter, stride,
+    def _bottleneck_residual(self,
+                             x,
+                             in_filter,
+                             out_filter,
+                             stride,
                              activate_before_residual=False):
         """Bottleneck residual unit with 3 sub layers."""
         if activate_before_residual:
@@ -271,7 +293,8 @@ class ResNet(object):
             n = filter_size * filter_size * out_filters
             kernel = tf.get_variable(
                 'DW', [filter_size, filter_size, in_filters, out_filters],
-                tf.float32, initializer=tf.random_normal_initializer(
+                tf.float32,
+                initializer=tf.random_normal_initializer(
                     stddev=np.sqrt(2.0 / n)))
             return tf.nn.conv2d(x, kernel, strides, padding='SAME')
 
@@ -285,8 +308,8 @@ class ResNet(object):
         w = tf.get_variable(
             'DW', [x.get_shape()[1], out_dim],
             initializer=tf.uniform_unit_scaling_initializer(factor=1.0))
-        b = tf.get_variable('biases', [out_dim],
-                            initializer=tf.constant_initializer())
+        b = tf.get_variable(
+            'biases', [out_dim], initializer=tf.constant_initializer())
         return tf.nn.xw_plus_b(x, w, b)
 
     def _global_avg_pool(self, x):

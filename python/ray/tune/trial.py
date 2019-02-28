@@ -11,10 +11,10 @@ import json
 import time
 import tempfile
 import os
+from numbers import Number
 
 # For compatibility under py2 to consider unicode as str
 from six import string_types
-from numbers import Number
 
 import ray
 from ray.tune import TuneError
@@ -26,7 +26,7 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
                              TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL)
-from ray.utils import random_string, binary_to_hex, hex_to_binary
+from ray.utils import _random_string, binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
@@ -38,10 +38,11 @@ def date_str():
 
 
 class Resources(
-        namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"])):
+        namedtuple("Resources", [
+            "cpu", "gpu", "extra_cpu", "extra_gpu", "custom_resources",
+            "extra_custom_resources"
+        ])):
     """Ray resources required to schedule a trial.
-
-    TODO: Custom resources.
 
     Attributes:
         cpu (float): Number of CPUs to allocate to the trial.
@@ -50,27 +51,91 @@ class Resources(
             launch additional Ray actors that use CPUs.
         extra_gpu (float): Extra GPUs to reserve in case the trial needs to
             launch additional Ray actors that use GPUs.
+        custom_resources (dict): Mapping of resource to quantity to allocate
+            to the trial.
+        extra_custom_resources (dict): Extra custom resources to reserve in
+            case the trial needs to launch additional Ray actors that use
+            any of these custom resources.
 
     """
 
     __slots__ = ()
 
-    def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
-        for entry in [cpu, gpu, extra_cpu, extra_gpu]:
+    def __new__(cls,
+                cpu,
+                gpu,
+                extra_cpu=0,
+                extra_gpu=0,
+                custom_resources=None,
+                extra_custom_resources=None):
+        custom_resources = custom_resources or {}
+        extra_custom_resources = extra_custom_resources or {}
+        leftovers = set(custom_resources) ^ set(extra_custom_resources)
+
+        for value in leftovers:
+            custom_resources.setdefault(value, 0)
+            extra_custom_resources.setdefault(value, 0)
+
+        all_values = [cpu, gpu, extra_cpu, extra_gpu]
+        all_values += list(custom_resources.values())
+        all_values += list(extra_custom_resources.values())
+        assert len(custom_resources) == len(extra_custom_resources)
+        for entry in all_values:
             assert isinstance(entry, Number), "Improper resource value."
-            assert entry >= 0, "Resource cannot be negative."
-        return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
-                                             extra_gpu)
+        return super(Resources,
+                     cls).__new__(cls, cpu, gpu, extra_cpu, extra_gpu,
+                                  custom_resources, extra_custom_resources)
 
     def summary_string(self):
-        return "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
-                                         self.gpu + self.extra_gpu)
+        summary = "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
+                                            self.gpu + self.extra_gpu)
+        custom_summary = ", ".join([
+            "{} {}".format(self.get_res_total(res), res)
+            for res in self.custom_resources
+        ])
+        if custom_summary:
+            summary += " ({})".format(custom_summary)
+        return summary
 
     def cpu_total(self):
         return self.cpu + self.extra_cpu
 
     def gpu_total(self):
         return self.gpu + self.extra_gpu
+
+    def get_res_total(self, key):
+        return self.custom_resources.get(
+            key, 0) + self.extra_custom_resources.get(key, 0)
+
+    def get(self, key):
+        return self.custom_resources.get(key, 0)
+
+    def is_nonnegative(self):
+        all_values = [self.cpu, self.gpu, self.extra_cpu, self.extra_gpu]
+        all_values += list(self.custom_resources.values())
+        all_values += list(self.extra_custom_resources.values())
+        return all(v >= 0 for v in all_values)
+
+    @classmethod
+    def subtract(cls, original, to_remove):
+        cpu = original.cpu - to_remove.cpu
+        gpu = original.gpu - to_remove.gpu
+        extra_cpu = original.extra_cpu - to_remove.extra_cpu
+        extra_gpu = original.extra_gpu - to_remove.extra_gpu
+        all_resources = set(original.custom_resources).union(
+            set(to_remove.custom_resources))
+        new_custom_res = {
+            k: original.custom_resources.get(k, 0) -
+            to_remove.custom_resources.get(k, 0)
+            for k in all_resources
+        }
+        extra_custom_res = {
+            k: original.extra_custom_resources.get(k, 0) -
+            to_remove.extra_custom_resources.get(k, 0)
+            for k in all_resources
+        }
+        return Resources(cpu, gpu, extra_cpu, extra_gpu, new_custom_res,
+                         extra_custom_res)
 
 
 def json_to_resources(data):
@@ -84,12 +149,13 @@ def json_to_resources(data):
                 "The field `{}` is no longer supported. Use `extra_cpu` "
                 "or `extra_gpu` instead.".format(k))
         if k not in Resources._fields:
-            raise TuneError(
-                "Unknown resource type {}, must be one of {}".format(
+            raise ValueError(
+                "Unknown resource field {}, must be one of {}".format(
                     k, Resources._fields))
     return Resources(
         data.get("cpu", 1), data.get("gpu", 0), data.get("extra_cpu", 0),
-        data.get("extra_gpu", 0))
+        data.get("extra_gpu", 0), data.get("custom_resources"),
+        data.get("extra_custom_resources"))
 
 
 def resources_to_json(resources):
@@ -100,6 +166,8 @@ def resources_to_json(resources):
         "gpu": resources.gpu,
         "extra_cpu": resources.extra_cpu,
         "extra_gpu": resources.extra_gpu,
+        "custom_resources": resources.custom_resources.copy(),
+        "extra_custom_resources": resources.extra_custom_resources.copy()
     }
 
 
@@ -149,11 +217,13 @@ class ExportFormat(object):
         Raises:
             ValueError if the format is unknown.
         """
-        for export_format in export_formats:
-            if export_format not in [
+        for i in range(len(export_formats)):
+            export_formats[i] = export_formats[i].strip().lower()
+            if export_formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL
             ]:
-                raise TuneError("Unsupported export format: " + export_format)
+                raise TuneError("Unsupported export format: " +
+                                export_formats[i])
 
 
 class Trial(object):
@@ -243,7 +313,7 @@ class Trial(object):
 
     @classmethod
     def generate_id(cls):
-        return binary_to_hex(random_string())[:8]
+        return binary_to_hex(_random_string())[:8]
 
     def init_logger(self):
         """Init logger."""

@@ -2,6 +2,7 @@ package org.ray.runtime.runner;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -16,6 +17,7 @@ import java.util.stream.Stream;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.util.FileUtil;
 import org.ray.runtime.util.ResourceUtil;
+import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
@@ -146,9 +148,13 @@ public class RunManager {
 
   private void startRedisServer() {
     // start primary redis
-    String primary = startRedisInstance(rayConfig.nodeIp, rayConfig.headRedisPort, null);
+    String primary = startRedisInstance(rayConfig.nodeIp,
+        rayConfig.headRedisPort, rayConfig.headRedisPassword, null);
     rayConfig.setRedisAddress(primary);
     try (Jedis client = new Jedis("127.0.0.1", rayConfig.headRedisPort)) {
+      if (!StringUtil.isNullOrEmpty(rayConfig.headRedisPassword)) {
+        client.auth(rayConfig.headRedisPassword);
+      }
       client.set("UseRaylet", "1");
       // Register the number of Redis shards in the primary shard, so that clients
       // know how many redis shards to expect under RedisShards.
@@ -156,14 +162,15 @@ public class RunManager {
 
       // start redis shards
       for (int i = 0; i < rayConfig.numberRedisShards; i++) {
-        String shard = startRedisInstance(rayConfig.nodeIp, rayConfig.headRedisPort + i + 1, i);
+        String shard = startRedisInstance(rayConfig.nodeIp,
+            rayConfig.headRedisPort + i + 1, rayConfig.headRedisPassword, i);
         client.rpush("RedisShards", shard);
       }
     }
   }
 
-  private String startRedisInstance(String ip, int port, Integer shard) {
-    List<String> command = ImmutableList.of(
+  private String startRedisInstance(String ip, int port, String password, Integer shard) {
+    List<String> command = Lists.newArrayList(
         rayConfig.redisServerExecutablePath,
         "--protected-mode",
         "no",
@@ -174,10 +181,20 @@ public class RunManager {
         "--loadmodule",
         rayConfig.redisModulePath
     );
+
+    if (!StringUtil.isNullOrEmpty(password)) {
+      command.add("--requirepass ");
+      command.add(password);
+    }
+
     String name = shard == null ? "redis" : "redis-" + shard;
     startProcess(command, null, name);
 
     try (Jedis client = new Jedis("127.0.0.1", port)) {
+      if (!StringUtil.isNullOrEmpty(password)) {
+        client.auth(password);
+      }
+
       // Configure Redis to only generate notifications for the export keys.
       client.configSet("notify-keyspace-events", "Kl");
       // Put a time stamp in Redis to indicate when it was started.
@@ -192,6 +209,11 @@ public class RunManager {
     int maximumStartupConcurrency = Math.max(1,
         Math.min(rayConfig.resources.getOrDefault("CPU", 0.0).intValue(), hardwareConcurrency));
 
+    String redisPasswordOption = "";
+    if (!StringUtil.isNullOrEmpty(rayConfig.headRedisPassword)) {
+      redisPasswordOption = rayConfig.headRedisPassword;
+    }
+
     // See `src/ray/raylet/main.cc` for the meaning of each parameter.
     List<String> command = ImmutableList.of(
         rayConfig.rayletExecutablePath,
@@ -205,9 +227,10 @@ public class RunManager {
         "0", // number of initial workers
         String.valueOf(maximumStartupConcurrency),
         ResourceUtil.getResourcesStringFromMap(rayConfig.resources),
-        "",  // The internal config list.
+        String.join(",", rayConfig.rayletConfigParameters), // The internal config list.
         buildPythonWorkerCommand(), // python worker command
-        buildWorkerCommandRaylet() // java worker command
+        buildWorkerCommandRaylet(), // java worker command
+        redisPasswordOption
     );
 
     startProcess(command, null, "raylet");
@@ -247,6 +270,11 @@ public class RunManager {
 
     // Config overwrite
     cmd.add("-Dray.redis.address=" + rayConfig.getRedisAddress());
+
+    // redis password
+    if (!StringUtil.isNullOrEmpty(rayConfig.headRedisPassword)) {
+      cmd.add("-Dray.redis.password=" + rayConfig.headRedisPassword);
+    }
 
     cmd.addAll(rayConfig.jvmParameters);
 

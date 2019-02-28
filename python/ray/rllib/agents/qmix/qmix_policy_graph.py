@@ -234,7 +234,7 @@ class QMixPolicyGraph(PolicyGraph):
         return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
 
     @override(PolicyGraph)
-    def compute_apply(self, samples):
+    def learn_on_batch(self, samples):
         obs_batch, action_mask = self._unpack_observation(samples["obs"])
         group_rewards = self._get_group_rewards(samples["infos"])
 

@@ -37,9 +37,32 @@ Debugging
 
 Starting processes in a debugger
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-When processes are crashing, it is often useful to start them in a debugger
-(``gdb`` on Linux or ``lldb`` on MacOS). See the latest discussion about how to
-do this `here`_.
+When processes are crashing, it is often useful to start them in a debugger.
+Ray currently allows processes to be started in the following:
+
+- valgrind
+- the valgrind profiler
+- the perftools profiler
+- gdb
+- tmux
+
+To use any of these tools, please make sure that you have them installed on
+your machine first (``gdb`` and ``valgrind`` on MacOS are known to have issues).
+Then, you can launch a subset of ray processes by adding the environment
+variable ``RAY_{PROCESS_NAME}_{DEBUGGER}=1``. For instance, if you wanted to
+start the raylet in ``valgrind``, then you simply need to set the environment
+variable ``RAY_RAYLET_VALGRIND=1``.
+
+To start a process inside of ``gdb``, the process must also be started inside of
+``tmux``. So if you want to start the raylet in ``gdb``, you would start your
+Python script with the following:
+
+.. code-block:: bash
+
+ RAY_RAYLET_GDB=1 RAY_RAYLET_TMUX=1 python
+ 
+You can then list the ``tmux`` sessions with ``tmux ls`` and attach to the
+appropriate one.
 
 You can also get a core dump of the ``raylet`` process, which is especially
 useful when filing `issues`_. The process to obtain a core dump is OS-specific,
@@ -108,15 +131,14 @@ This will print any ``RAY_LOG(DEBUG)`` lines in the source code to the
 
 Testing locally
 ---------------
-Suppose that one of the tests (e.g., ``runtest.py``) is failing. You can run
-that test locally by running ``python test/runtest.py``. However, doing so will
-run all of the tests which can take a while. To run a specific test that is
+Suppose that one of the tests (e.g., ``test_basic.py``) is failing. You can run
+that test locally by running ``python -m pytest -v python/ray/tests/test_basic.py``. However, doing so will run all of the tests which can take a while. To run a specific test that is
 failing, you can do
 
 .. code-block:: shell
 
  cd ray
- python -m pytest -v test/runtest.py::test_keyword_args
+ python -m pytest -v python/ray/tests/test_basic.py::test_keyword_args
 
 When running tests, usually only the first test failure matters. A single
 test failure often triggers the failure of subsequent tests in the same
@@ -137,5 +159,4 @@ Linting
 
 
 .. _`issues`: https://github.com/ray-project/ray/issues
-.. _`here`: https://github.com/ray-project/ray/issues/108
 .. _`Temporary Files`: http://ray.readthedocs.io/en/latest/tempfile.html

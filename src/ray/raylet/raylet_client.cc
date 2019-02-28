@@ -139,12 +139,12 @@ ray::Status RayletConnection::Disconnect() {
 
 ray::Status RayletConnection::ReadMessage(MessageType type,
                                           std::unique_ptr<uint8_t[]> &message) {
-  int64_t version;
+  int64_t cookie;
   int64_t type_field;
   int64_t length;
-  int closed = read_bytes(conn_, (uint8_t *)&version, sizeof(version));
+  int closed = read_bytes(conn_, (uint8_t *)&cookie, sizeof(cookie));
   if (closed) goto disconnected;
-  RAY_CHECK(version == RayConfig::instance().ray_protocol_version());
+  RAY_CHECK(cookie == RayConfig::instance().ray_cookie());
   closed = read_bytes(conn_, (uint8_t *)&type_field, sizeof(type_field));
   if (closed) goto disconnected;
   closed = read_bytes(conn_, (uint8_t *)&length, sizeof(length));
@@ -175,13 +175,13 @@ ray::Status RayletConnection::ReadMessage(MessageType type,
 ray::Status RayletConnection::WriteMessage(MessageType type,
                                            flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(write_mutex_);
-  int64_t version = RayConfig::instance().ray_protocol_version();
+  int64_t cookie = RayConfig::instance().ray_cookie();
   int64_t length = fbb ? fbb->GetSize() : 0;
   uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
   int64_t type_field = static_cast<int64_t>(type);
   auto io_error = ray::Status::IOError("[RayletClient] Connection closed unexpectedly.");
   int closed;
-  closed = write_bytes(conn_, (uint8_t *)&version, sizeof(version));
+  closed = write_bytes(conn_, (uint8_t *)&cookie, sizeof(cookie));
   if (closed) return io_error;
   closed = write_bytes(conn_, (uint8_t *)&type_field, sizeof(type_field));
   if (closed) return io_error;
@@ -357,4 +357,32 @@ ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_i
 
   auto status = conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
   return status;
+}
+
+ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
+                                                 ActorCheckpointID &checkpoint_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      ray::protocol::CreatePrepareActorCheckpointRequest(fbb, to_flatbuf(fbb, actor_id));
+  fbb.Finish(message);
+
+  std::unique_ptr<uint8_t[]> reply;
+  auto status =
+      conn_->AtomicRequestReply(MessageType::PrepareActorCheckpointRequest,
+                                MessageType::PrepareActorCheckpointReply, reply, &fbb);
+  if (!status.ok()) return status;
+  auto reply_message =
+      flatbuffers::GetRoot<ray::protocol::PrepareActorCheckpointReply>(reply.get());
+  checkpoint_id = ObjectID::from_binary(reply_message->checkpoint_id()->str());
+  return ray::Status::OK();
+}
+
+ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
+    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateNotifyActorResumedFromCheckpoint(
+      fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, checkpoint_id));
+  fbb.Finish(message);
+
+  return conn_->WriteMessage(MessageType::NotifyActorResumedFromCheckpoint, &fbb);
 }
