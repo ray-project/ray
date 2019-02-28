@@ -2853,10 +2853,3 @@ def test_load_code_from_local(shutdown_only):
     base_actor_class = ray.remote(num_cpus=1)(BaseClass)
     base_actor = base_actor_class.remote(message)
     assert ray.get(base_actor.get_data.remote()) == message
-
-
-def test_connect_with_disconnected_node(ray_start_cluster):
-    ray_start_cluster.add_node()
-    dead_node = ray_start_cluster.add_node()
-    ray_start_cluster.remove_node(dead_node, allow_graceful=True)
-    ray_start_cluster.add_node()
