@@ -85,7 +85,7 @@ class LocalNodeProvider(NodeProvider):
                                   "/tmp/cluster-{}.state".format(cluster_name),
                                   provider_config)
 
-    def nodes(self, tag_filters):
+    def non_terminated_nodes(self, tag_filters):
         workers = self.state.get()
         matching_ips = []
         for worker_ip, info in workers.items():

@@ -268,6 +268,7 @@ class Node(object):
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
+             include_java=self._ray_params.include_java,
              redis_max_memory=self._ray_params.redis_max_memory)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)

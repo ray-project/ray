@@ -1,4 +1,4 @@
-# This test is not inside of runtest.py because when a recursive remote
+# This test is not inside of test_basic.py because when a recursive remote
 # function is defined inside of another function, we currently can't handle
 # that.
 

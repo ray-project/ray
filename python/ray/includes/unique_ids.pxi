@@ -51,21 +51,15 @@ cdef class UniqueID:
             check_id(id)
             self.data = CUniqueID.from_binary(id)
 
-    @staticmethod
-    cdef from_native(const CUniqueID& cpp_id):
-        cdef UniqueID self = UniqueID.__new__(UniqueID)
-        self.data = cpp_id
-        return self
-
     @classmethod
     def from_binary(cls, id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
         return cls(id_bytes)
 
-    @staticmethod
-    def nil():
-        return UniqueID.from_native(CUniqueID.nil())
+    @classmethod
+    def nil(cls):
+        return cls(b"")
 
     def __hash__(self):
         return self.data.hash()
@@ -74,16 +68,13 @@ cdef class UniqueID:
         return self.data.is_nil()
 
     def __eq__(self, other):
-        return self.binary() == other.binary()
+        return type(self) == type(other) and self.binary() == other.binary()
 
     def __ne__(self, other):
         return self.binary() != other.binary()
 
     def size(self):
         return self.data.size()
-
-    def __len__(self):
-        return self.size()
 
     def binary(self):
         return self.data.binary()
@@ -98,7 +89,7 @@ cdef class UniqueID:
         return self.hex()
 
     def __repr__(self):
-        return "UniqueID(" + self.hex() + ")"
+        return self.__class__.__name__ + "(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
@@ -115,210 +106,39 @@ cdef class UniqueID:
 
 
 cdef class ObjectID(UniqueID):
-
-    def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
-            check_id(id)
-            self.data = CUniqueID.from_binary(id)
-
-    @staticmethod
-    cdef from_native(const CObjectID& cpp_id):
-        cdef ObjectID self = ObjectID.__new__(ObjectID)
-        self.data = cpp_id
-        return self
-
-    @staticmethod
-    def nil():
-        return ObjectID.from_native(CObjectID.nil())
-
-    def __repr__(self):
-        return "ObjectID(" + self.hex() + ")"
+    pass
 
 
 cdef class TaskID(UniqueID):
-
-    def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
-            check_id(id)
-            self.data = CUniqueID.from_binary(id)
-
-    @staticmethod
-    cdef from_native(const CTaskID& cpp_id):
-        cdef TaskID self = TaskID.__new__(TaskID)
-        self.data = cpp_id
-        return self
-
-    @staticmethod
-    def nil():
-        return TaskID.from_native(CTaskID.nil())
-
-    def __repr__(self):
-        return "TaskID(" + self.hex() + ")"
+    pass
 
 
 cdef class ClientID(UniqueID):
-
-    def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
-            check_id(id)
-            self.data = CUniqueID.from_binary(id)
-
-    @staticmethod
-    cdef from_native(const CClientID& cpp_id):
-        cdef ClientID self = ClientID.__new__(ClientID)
-        self.data = cpp_id
-        return self
-
-    @staticmethod
-    def nil():
-        return ClientID.from_native(CClientID.nil())
-
-    def __repr__(self):
-        return "ClientID(" + self.hex() + ")"
+    pass
 
 
 cdef class DriverID(UniqueID):
-
-    def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
-            check_id(id)
-            self.data = CUniqueID.from_binary(id)
-
-    @staticmethod
-    cdef from_native(const CDriverID& cpp_id):
-        cdef DriverID self = DriverID.__new__(DriverID)
-        self.data = cpp_id
-        return self
-
-    @staticmethod
-    def nil():
-        return DriverID.from_native(CDriverID.nil())
-
-    def __repr__(self):
-        return "DriverID(" + self.hex() + ")"
+    pass
 
 
 cdef class ActorID(UniqueID):
-
-    def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
-            check_id(id)
-            self.data = CUniqueID.from_binary(id)
-
-    @staticmethod
-    cdef from_native(const CActorID& cpp_id):
-        cdef ActorID self = ActorID.__new__(ActorID)
-        self.data = cpp_id
-        return self
-
-    @staticmethod
-    def nil():
-        return ActorID.from_native(CActorID.nil())
-
-    def __repr__(self):
-        return "ActorID(" + self.hex() + ")"
+    pass
 
 
 cdef class ActorHandleID(UniqueID):
-
-    def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
-            check_id(id)
-            self.data = CUniqueID.from_binary(id)
-
-    @staticmethod
-    cdef from_native(const CActorHandleID& cpp_id):
-        cdef ActorHandleID self = ActorHandleID.__new__(ActorHandleID)
-        self.data = cpp_id
-        return self
-
-    @staticmethod
-    def nil():
-        return ActorHandleID.from_native(CActorHandleID.nil())
-
-    def __repr__(self):
-        return "ActorHandleID(" + self.hex() + ")"
+    pass
 
 
 cdef class ActorCheckpointID(UniqueID):
-
-    def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
-            check_id(id)
-            self.data = CUniqueID.from_binary(id)
-
-    @staticmethod
-    cdef from_native(const CActorCheckpointID& cpp_id):
-        cdef ActorCheckpointID self = ActorCheckpointID.__new__(ActorHandleID)
-        self.data = cpp_id
-        return self
-
-    @staticmethod
-    def nil():
-        return ActorCheckpointID.from_native(CActorCheckpointID.nil())
-
-    def __repr__(self):
-        return "ActorCheckpointID(" + self.hex() + ")"
+    pass
 
 
 cdef class FunctionID(UniqueID):
-
-    def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
-            check_id(id)
-            self.data = CUniqueID.from_binary(id)
-
-    @staticmethod
-    cdef from_native(const CFunctionID& cpp_id):
-        cdef FunctionID self = FunctionID.__new__(FunctionID)
-        self.data = cpp_id
-        return self
-
-    @staticmethod
-    def nil():
-        return FunctionID.from_native(CFunctionID.nil())
-
-    def __repr__(self):
-        return "FunctionID(" + self.hex() + ")"
+    pass
 
 
 cdef class ActorClassID(UniqueID):
-
-    def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
-            check_id(id)
-            self.data = CUniqueID.from_binary(id)
-
-    @staticmethod
-    cdef from_native(const CActorClassID& cpp_id):
-        cdef ActorClassID self = ActorClassID.__new__(ActorClassID)
-        self.data = cpp_id
-        return self
-
-    @staticmethod
-    def nil():
-        return ActorClassID.from_native(CActorClassID.nil())
-
-    def __repr__(self):
-        return "ActorClassID(" + self.hex() + ")"
+    pass
 
 
 _ID_TYPES = [
