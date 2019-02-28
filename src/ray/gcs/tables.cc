@@ -112,6 +112,20 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
+  auto subscribeWrapper = [subscribe](AsyncGcsClient *client, const ID &id,
+                                      const GcsTableNotificationMode mode,
+                                      const std::vector<DataT> &data) {
+    RAY_CHECK(mode != GcsTableNotificationMode::REMOVE);
+    subscribe(client, id, data);
+  };
+  return SubscribeWithNotificationMode(job_id, client_id, subscribeWrapper, done);
+}
+
+template <typename ID, typename Data>
+Status Log<ID, Data>::SubscribeWithNotificationMode(const JobID &job_id,
+                                                    const ClientID &client_id,
+                                                    const NotificationCallback &subscribe,
+                                                    const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
       << "Client called Subscribe twice on the same table";
   auto callback = [this, subscribe, done](const std::string &data) {
@@ -137,7 +151,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
           data_root->UnPackTo(&result);
           results.emplace_back(std::move(result));
         }
-        subscribe(client_, id, results);
+        subscribe(client_, id, root->mode(), results);
       }
     }
     // We do not delete the callback after calling it since there may be
@@ -271,6 +285,54 @@ template <typename ID, typename Data>
 std::string Table<ID, Data>::DebugString() const {
   std::stringstream result;
   result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_;
+  return result.str();
+}
+
+template<typename ID, typename Data>
+Status Set<ID, Data>::Add(const JobID &job_id,
+                          const ID &id,
+                          std::shared_ptr<DataT> &dataT,
+                          const WriteCallback &done) {
+  num_adds_++;
+  auto callback = [this, id, dataT, done](const std::string &data) {
+    if (done != nullptr) {
+      (done)(client_, id, *dataT);
+    }
+    return true;
+  };
+  flatbuffers::FlatBufferBuilder fbb;
+  fbb.ForceDefaults(true);
+  fbb.Finish(Data::Pack(fbb, dataT.get()));
+  return GetRedisContext(id)->RunAsync("RAY.SET_ADD", id, fbb.GetBufferPointer(),
+                                       fbb.GetSize(), prefix_, pubsub_channel_,
+                                       std::move(callback));
+}
+
+template<typename ID, typename Data>
+Status Set<ID, Data>::Remove(const JobID &job_id,
+                             const ID &id,
+                             std::shared_ptr<DataT> &dataT,
+                             const WriteCallback &done) {
+  num_removes_++;
+  auto callback = [this, id, dataT, done](const std::string &data) {
+    if (done != nullptr) {
+      (done)(client_, id, *dataT);
+    }
+    return true;
+  };
+  flatbuffers::FlatBufferBuilder fbb;
+  fbb.ForceDefaults(true);
+  fbb.Finish(Data::Pack(fbb, dataT.get()));
+  return GetRedisContext(id)->RunAsync("RAY.SET_REMOVE", id, fbb.GetBufferPointer(),
+                                       fbb.GetSize(), prefix_, pubsub_channel_,
+                                       std::move(callback));
+}
+
+template <typename ID, typename Data>
+std::string Set<ID, Data>::DebugString() const {
+  std::stringstream result;
+  result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_
+         << ", num removes: " << num_removes_;
   return result.str();
 }
 
@@ -508,6 +570,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
 }
 
 template class Log<ObjectID, ObjectTableData>;
+template class Set<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;
 template class Table<TaskID, TaskTableData>;

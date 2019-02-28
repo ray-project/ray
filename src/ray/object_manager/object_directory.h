@@ -110,9 +110,11 @@ class ObjectDirectoryInterface {
   ///
   /// \param object_id The object id that was removed from the store.
   /// \param client_id The client id corresponding to this node.
+  /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
-                                          const ClientID &client_id) = 0;
+  virtual ray::Status ReportObjectRemoved(
+      const ObjectID &object_id, const ClientID &client_id,
+      const object_manager::protocol::ObjectInfoT &object_info) = 0;
 
   /// Get local client id
   ///
@@ -159,8 +161,9 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
-  ray::Status ReportObjectRemoved(const ObjectID &object_id,
-                                  const ClientID &client_id) override;
+  ray::Status ReportObjectRemoved(
+      const ObjectID &object_id, const ClientID &client_id,
+      const object_manager::protocol::ObjectInfoT &object_info) override;
 
   ray::ClientID GetLocalClientID() override;
 

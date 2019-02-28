@@ -13,25 +13,22 @@ namespace {
 /// object table log up to but not including this suffix. This also stores a
 /// bool in has_been_created indicating whether the object has ever been
 /// created before.
-void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history,
+void UpdateObjectLocations(const GcsTableNotificationMode mode,
+                           const std::vector<ObjectTableDataT> &location_updates,
                            const ray::gcs::ClientTable &client_table,
                            std::unordered_set<ClientID> *client_ids,
                            bool *has_been_created) {
-  // location_history contains the history of locations of the object (it is a log),
-  // which might look like the following:
-  //   client1.is_eviction = false
-  //   client1.is_eviction = true
-  //   client2.is_eviction = false
-  // In such a scenario, we want to indicate client2 is the only client that contains
-  // the object, which the following code achieves.
-  if (!location_history.empty()) {
+  // location_updates contains the updates of locations of the object.
+  // with GcsTableNotificationMode, we can determine whether the update mode is
+  // addition or deletion (or just current value).
+  if (!location_updates.empty()) {
     // If there are entries, then the object has been created. Once this flag
     // is set to true, it should never go back to false.
     *has_been_created = true;
   }
-  for (const auto &object_table_data : location_history) {
+  for (const auto &object_table_data : location_updates) {
     ClientID client_id = ClientID::from_binary(object_table_data.manager);
-    if (!object_table_data.is_eviction) {
+    if (mode != GcsTableNotificationMode::REMOVE) {
       client_ids->insert(client_id);
     } else {
       client_ids->erase(client_id);
@@ -52,7 +49,8 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
 void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback = [this](
       gcs::AsyncGcsClient *client, const ObjectID &object_id,
-      const std::vector<ObjectTableDataT> &location_history) {
+      const GcsTableNotificationMode mode,
+      const std::vector<ObjectTableDataT> &location_updates) {
     // Objects are added to this map in SubscribeObjectLocations.
     auto it = listeners_.find(object_id);
     // Do nothing for objects we are not listening for.
@@ -60,7 +58,7 @@ void ObjectDirectory::RegisterBackend() {
       return;
     }
     // Update entries for this object.
-    UpdateObjectLocations(location_history, gcs_client_->client_table(),
+    UpdateObjectLocations(mode, location_updates, gcs_client_->client_table(),
                           &it->second.current_object_locations,
                           &it->second.has_been_created);
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
@@ -89,22 +87,22 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   // Append the addition entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
-  data->is_eviction = false;
   data->object_size = object_info.data_size;
   ray::Status status =
-      gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Add(JobID::nil(), object_id, data, nullptr);
   return status;
 }
 
-ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
-                                                 const ClientID &client_id) {
+ray::Status ObjectDirectory::ReportObjectRemoved(
+    const ObjectID &object_id, const ClientID &client_id,
+    const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   // Append the eviction entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
-  data->is_eviction = true;
+  data->object_size = object_info.data_size;
   ray::Status status =
-      gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Remove(JobID::nil(), object_id, data, nullptr);
   return status;
 };
 
@@ -141,8 +139,9 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
     const ObjectID &object_id = listener.first;
     if (listener.second.current_object_locations.count(client_id) > 0) {
       // If the subscribed object has the removed client as a location, update
-      // its locations with an empty log so that the location will be removed.
-      UpdateObjectLocations({}, gcs_client_->client_table(),
+      // its locations with an empty update so that the location will be removed.
+      UpdateObjectLocations(GcsTableNotificationMode::CURRENT_VALUE /* doesn't matter */,
+                            {}, gcs_client_->client_table(),
                             &listener.second.current_object_locations,
                             &listener.second.has_been_created);
       // Re-call all the subscribed callbacks for the object, since its
@@ -208,11 +207,12 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     status = gcs_client_->object_table().Lookup(
         JobID::nil(), object_id,
         [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
-                         const std::vector<ObjectTableDataT> &location_history) {
+                         const std::vector<ObjectTableDataT> &location_updates) {
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
           bool has_been_created = false;
-          UpdateObjectLocations(location_history, gcs_client_->client_table(),
+          UpdateObjectLocations(GcsTableNotificationMode::CURRENT_VALUE,
+                                location_updates, gcs_client_->client_table(),
                                 &client_ids, &has_been_created);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.
