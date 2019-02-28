@@ -1,8 +1,9 @@
+import time
+
 import pytest
 
 import ray
 import ray.experimental.signal as signal
-import time
 
 
 class UserSignal(signal.Signal):

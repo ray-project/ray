@@ -8,7 +8,7 @@ to detect failures and potentially recover from failures.
 
 .. autofunction:: ray.experimental.signal.send
 
-Here is a simple example of a task sending a user-defined signal.
+Here is a simple example of a remote function that sends a user-defined signal.
 
 .. code-block:: python
 
