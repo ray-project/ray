@@ -67,7 +67,7 @@ class MNISTModel(Model):
             tf.nn.softmax_cross_entropy_with_logits(
                 labels=self.y_, logits=y_conv))
         self.optimizer = tf.train.AdamOptimizer(1e-4)
-        self.variables = ray.experimental.tf_utils.TensorFlowVariables(
+        self.variables = ray.experimental.tfutils.TensorFlowVariables(
             self.loss, tf.get_default_session())
 
         # For evaluating test accuracy
