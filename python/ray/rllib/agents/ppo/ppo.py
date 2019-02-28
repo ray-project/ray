@@ -161,9 +161,9 @@ class PPOAgent(Agent):
                 "simple_optimizer=True if this doesn't work for you.")
         if self.config["observation_filter"] == "NoFilter":
             logger.warning(
-                "Since 0.7.0, to enable observation normalization you will "
+                "FYI: Since 0.7.0, to enable obs normalization you will "
                 "need to configure 'observation_filter': 'MeanStdFilter'.")
         if not self.config["vf_share_layers"]:
             logger.warning(
-                "By default, the value function will NOT share layers with "
-                "the policy model (vf_share_layers=False).")
+                "FYI: By default, the value function will not share layers "
+                "with the policy model (vf_share_layers=False).")
