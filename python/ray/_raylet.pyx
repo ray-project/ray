@@ -262,8 +262,8 @@ cdef class RayletClient:
         cdef:
             WaitResultPair result
             c_vector[CObjectID] wait_ids
+            CTaskID c_task_id = current_task_id.native()
         wait_ids = ObjectIDsToVector(object_ids)
-        c_task_id = current_task_id.native()
         with nogil:
             check_status(self.client.get().Wait(wait_ids, num_returns,
                                                 timeout_milliseconds,
