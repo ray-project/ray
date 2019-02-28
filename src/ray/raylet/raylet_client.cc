@@ -201,7 +201,7 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
-RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
+RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &client_id,
                            bool is_worker, const DriverID &driver_id,
                            const Language &language)
     : client_id_(client_id),

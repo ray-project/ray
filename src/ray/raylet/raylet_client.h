@@ -69,7 +69,7 @@ class RayletClient {
   /// additional message will be sent to register as one.
   /// \param driver_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
-  RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
+  RayletClient(const std::string &raylet_socket, const ClientID &client_id,
                bool is_worker, const DriverID &driver_id, const Language &language);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
