@@ -148,7 +148,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                           tf.get_variable_scope().name)
 
         def to_batches(tensor):
-            if self.config["model"]["use_lstm"]:
+            if self.model.state_init:
                 B = tf.shape(self.model.seq_lens)[0]
                 T = tf.shape(tensor)[0] // B
             else:
@@ -215,7 +215,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=observations,
             action_sampler=action_dist.sample(),
-            loss=self.model.loss() + self.loss.total_loss,
+            action_prob=action_dist.sampled_action_prob(),
+            loss=self.loss.total_loss,
+            model=self.model,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
@@ -270,7 +272,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
-        return {"behaviour_logits": self.model.outputs}
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self),
+            **{"behaviour_logits": self.model.outputs})
 
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):

@@ -212,7 +212,7 @@ def train(config={'activation': 'relu'}, reporter=None):
 
 
 # !!! Example of using the ray.tune Python API !!!
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--smoke-test', action='store_true', help='Finish quickly for testing')

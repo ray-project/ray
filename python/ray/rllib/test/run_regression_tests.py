@@ -10,7 +10,7 @@ import sys
 import ray
 from ray.tune import run_experiments
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     ray.init()
 

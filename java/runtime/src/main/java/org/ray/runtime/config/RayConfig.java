@@ -47,6 +47,8 @@ public class RayConfig {
   private Integer redisPort;
   public final int headRedisPort;
   public final int numberRedisShards;
+  public final String headRedisPassword;
+  public final String redisPassword;
 
   public final String objectStoreSocketName;
   public final Long objectStoreSize;
@@ -157,6 +159,8 @@ public class RayConfig {
     }
     headRedisPort = config.getInt("ray.redis.head-port");
     numberRedisShards = config.getInt("ray.redis.shard-number");
+    headRedisPassword = config.getString("ray.redis.head-password");
+    redisPassword = config.getString("ray.redis.password");
 
     // object store configurations
     objectStoreSocketName = config.getString("ray.object-store.socket-name");
@@ -168,7 +172,7 @@ public class RayConfig {
     // raylet parameters
     rayletConfigParameters = new ArrayList<String>();
     Config rayletConfig = config.getConfig("ray.raylet.config");
-    for (java.util.Map.Entry<java.lang.String,ConfigValue> entry : rayletConfig.entrySet()) {
+    for (Map.Entry<String,ConfigValue> entry : rayletConfig.entrySet()) {
       String parameter = entry.getKey() + "," + String.valueOf(entry.getValue().unwrapped());
       rayletConfigParameters.add(parameter);
     }
@@ -233,6 +237,7 @@ public class RayConfig {
         + ", redirectOutput=" + redirectOutput
         + ", libraryPath=" + libraryPath
         + ", classpath=" + classpath
+        + ", jvmParameters=" + jvmParameters
         + ", redisAddress='" + redisAddress + '\''
         + ", redisIp='" + redisIp + '\''
         + ", redisPort=" + redisPort
@@ -241,9 +246,13 @@ public class RayConfig {
         + ", objectStoreSocketName='" + objectStoreSocketName + '\''
         + ", objectStoreSize=" + objectStoreSize
         + ", rayletSocketName='" + rayletSocketName + '\''
+        + ", rayletConfigParameters=" + rayletConfigParameters
         + ", redisServerExecutablePath='" + redisServerExecutablePath + '\''
+        + ", redisModulePath='" + redisModulePath + '\''
         + ", plasmaStoreExecutablePath='" + plasmaStoreExecutablePath + '\''
         + ", rayletExecutablePath='" + rayletExecutablePath + '\''
+        + ", driverResourcePath='" + driverResourcePath + '\''
+        + ", pythonWorkerCommand='" + pythonWorkerCommand + '\''
         + '}';
   }
 

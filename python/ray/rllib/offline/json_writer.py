@@ -43,13 +43,13 @@ class JsonWriter(OutputWriter):
             compress_columns (list): list of sample batch columns to compress.
         """
 
-        self.path = path
         self.ioctx = ioctx or IOContext()
         self.max_file_size = max_file_size
         self.compress_columns = compress_columns
         if urlparse(path).scheme:
             self.path_is_uri = True
         else:
+            path = os.path.abspath(os.path.expanduser(path))
             # Try to create local dirs if they don't exist
             try:
                 os.makedirs(path)
@@ -57,6 +57,7 @@ class JsonWriter(OutputWriter):
                 pass  # already exists
             assert os.path.exists(path), "Failed to create {}".format(path)
             self.path_is_uri = False
+        self.path = path
         self.file_index = 0
         self.bytes_written = 0
         self.cur_file = None

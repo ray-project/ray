@@ -184,6 +184,20 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   Status CancelNotifications(const JobID &job_id, const ID &id,
                              const ClientID &client_id);
 
+  /// Delete an entire key from redis.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data to delete from the GCS.
+  /// \return Void.
+  void Delete(const JobID &job_id, const ID &id);
+
+  /// Delete several keys from redis.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param ids The vector of IDs to delete from the GCS.
+  /// \return Void.
+  void Delete(const JobID &job_id, const std::vector<ID> &ids);
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -303,6 +317,12 @@ class Table : private Log<ID, Data>,
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const Callback &subscribe, const FailureCallback &failure,
                    const SubscriptionCallback &done);
+
+  void Delete(const JobID &job_id, const ID &id) { Log<ID, Data>::Delete(job_id, id); }
+
+  void Delete(const JobID &job_id, const std::vector<ID> &ids) {
+    Log<ID, Data>::Delete(job_id, ids);
+  }
 
   /// Returns debug string for class.
   ///
@@ -441,6 +461,34 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
 
     return GetRedisContext(id)->RunArgvAsync(args);
   }
+};
+
+class ActorCheckpointTable : public Table<ActorCheckpointID, ActorCheckpointData> {
+ public:
+  ActorCheckpointTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                       AsyncGcsClient *client)
+      : Table(contexts, client) {
+    prefix_ = TablePrefix::ACTOR_CHECKPOINT;
+  };
+};
+
+class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
+ public:
+  ActorCheckpointIdTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                         AsyncGcsClient *client)
+      : Table(contexts, client) {
+    prefix_ = TablePrefix::ACTOR_CHECKPOINT_ID;
+  };
+
+  /// Add a checkpoint id to an actor, and remove a previous checkpoint if the
+  /// total number of checkpoints in GCS exceeds the max allowed value.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param actor_id ID of the actor.
+  /// \param checkpoint_id ID of the checkpoint.
+  /// \return Status.
+  Status AddCheckpointId(const JobID &job_id, const ActorID &actor_id,
+                         const UniqueID &checkpoint_id);
 };
 
 namespace raylet {

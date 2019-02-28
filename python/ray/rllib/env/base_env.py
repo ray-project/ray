@@ -66,10 +66,18 @@ class BaseEnv(object):
     """
 
     @staticmethod
-    def to_base_env(env, make_env=None, num_envs=1):
+    def to_base_env(env, make_env=None, num_envs=1, remote_envs=False):
         """Wraps any env type as needed to expose the async interface."""
+        if remote_envs and num_envs == 1:
+            raise ValueError(
+                "Remote envs only make sense to use if num_envs > 1 "
+                "(i.e. vectorization is enabled).")
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
+                if remote_envs:
+                    raise NotImplementedError(
+                        "Remote multiagent environments are not implemented")
+
                 env = _MultiAgentEnvToBaseEnv(
                     make_env=make_env, existing_envs=[env], num_envs=num_envs)
             elif isinstance(env, ExternalEnv):
@@ -81,7 +89,12 @@ class BaseEnv(object):
                 env = _VectorEnvToBaseEnv(env)
             else:
                 env = VectorEnv.wrap(
-                    make_env=make_env, existing_envs=[env], num_envs=num_envs)
+                    make_env=make_env,
+                    existing_envs=[env],
+                    num_envs=num_envs,
+                    remote_envs=remote_envs,
+                    action_space=env.action_space,
+                    observation_space=env.observation_space)
                 env = _VectorEnvToBaseEnv(env)
         assert isinstance(env, BaseEnv)
         return env
@@ -312,6 +325,10 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             if set(infos).difference(set(obs)):
                 raise ValueError("Key set for infos must be a subset of obs: "
                                  "{} vs {}".format(infos.keys(), obs.keys()))
+            if "__all__" not in dones:
+                raise ValueError(
+                    "In multi-agent environments, '__all__': True|False must "
+                    "be included in the 'done' dict: got {}.".format(dones))
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)

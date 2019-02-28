@@ -2,7 +2,6 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import java.io.File;
-import java.io.IOException;
 import java.lang.ProcessBuilder.Redirect;
 import java.util.List;
 import java.util.concurrent.TimeUnit;

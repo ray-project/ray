@@ -3,12 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+import errno
 import functools
 import hashlib
 import inspect
 import logging
 import numpy as np
 import os
+import six
 import subprocess
 import sys
 import threading
@@ -179,6 +181,37 @@ def decode(byte_str, allow_none=False):
         return byte_str
 
 
+def ensure_str(s, encoding="utf-8", errors="strict"):
+    """Coerce *s* to `str`.
+
+    To keep six with lower version, see Issue 4169, we copy this function
+    from six == 1.12.0.
+
+    TODO(yuhguo): remove this function when six >= 1.12.0.
+
+    For Python 2:
+      - `unicode` -> encoded to `str`
+      - `str` -> `str`
+
+    For Python 3:
+      - `str` -> `str`
+      - `bytes` -> decoded to `str`
+    """
+    if six.PY3:
+        text_type = str
+        binary_type = bytes
+    else:
+        text_type = unicode  # noqa: F821
+        binary_type = str
+    if not isinstance(s, (text_type, binary_type)):
+        raise TypeError("not expecting type '%s'" % type(s))
+    if six.PY2 and isinstance(s, text_type):
+        s = s.encode(encoding, errors)
+    elif six.PY3 and isinstance(s, binary_type):
+        s = s.decode(encoding, errors)
+    return s
+
+
 def binary_to_object_id(binary_object_id):
     return ray.ObjectID(binary_object_id)
 
@@ -276,21 +309,11 @@ def setup_logger(logging_level, logging_format):
         logging_level = logging.getLevelName(logging_level.upper())
     logger.setLevel(logging_level)
     global _default_handler
-    _default_handler = logging.StreamHandler()
-    _default_handler.setFormatter(logging.Formatter(logging_format))
-    logger.addHandler(_default_handler)
-    logger.propagate = False
-
-
-def try_update_handler(new_stream):
-    global _default_handler
-    logger = logging.getLogger("ray")
-    if _default_handler:
-        new_handler = logging.StreamHandler(stream=new_stream)
-        new_handler.setFormatter(_default_handler.formatter)
-        _default_handler.close()
-        _default_handler = new_handler
+    if _default_handler is None:
+        _default_handler = logging.StreamHandler()
         logger.addHandler(_default_handler)
+    _default_handler.setFormatter(logging.Formatter(logging_format))
+    logger.propagate = False
 
 
 # This function is copied and modified from
@@ -475,3 +498,36 @@ def thread_safe_client(client, lock=None):
 
 def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
+
+
+def try_to_create_directory(directory_path):
+    """Attempt to create a directory that is globally readable/writable.
+
+    Args:
+        directory_path: The path of the directory to create.
+    """
+    logger = logging.getLogger("ray")
+    directory_path = os.path.expanduser(directory_path)
+    if not os.path.exists(directory_path):
+        try:
+            os.makedirs(directory_path)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise e
+            logger.warning(
+                "Attempted to create '{}', but the directory already "
+                "exists.".format(directory_path))
+        # Change the log directory permissions so others can use it. This is
+        # important when multiple people are using the same machine.
+    try:
+        os.chmod(directory_path, 0o0777)
+    except OSError as e:
+        # Silently suppress the PermissionError that is thrown by the chmod.
+        # This is done because the user attempting to change the permissions
+        # on a directory may not own it. The chmod is attempted whether the
+        # directory is new or not to avoid race conditions.
+        # ray-project/ray/#3591
+        if e.errno in [errno.EACCES, errno.EPERM]:
+            pass
+        else:
+            raise
