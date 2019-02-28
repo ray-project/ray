@@ -139,7 +139,12 @@ class PPOAgent(Agent):
                 "{} iterations for your value ".format(rew_scale) +
                 "function to converge. If this is not intended, consider "
                 "increasing `vf_clip_param`.")
-
+        if "observation_filter" not in self.raw_user_config:
+            # TODO(ekl) remove this message after a few releases
+            logger.info(
+                "Important! Since 0.7.0, observation normalization is no "
+                "longer enabled by default. To enable running-mean "
+                "normalization, set 'observation_filter': 'MeanStdFilter'.")
         return res
 
     def _validate_config(self):
@@ -159,10 +164,6 @@ class PPOAgent(Agent):
                 "In multi-agent mode, policies will be optimized sequentially "
                 "by the multi-GPU optimizer. Consider setting "
                 "simple_optimizer=True if this doesn't work for you.")
-        if self.config["observation_filter"] == "NoFilter":
-            logger.warning(
-                "FYI: Since 0.7.0, to enable obs normalization you will "
-                "need to configure 'observation_filter': 'MeanStdFilter'.")
         if not self.config["vf_share_layers"]:
             logger.warning(
                 "FYI: By default, the value function will not share layers "
