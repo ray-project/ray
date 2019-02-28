@@ -1,8 +1,10 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
 import org.ray.api.RuntimeContext;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
+import org.ray.runtime.config.WorkerMode;
 
 public class RuntimeContextImpl implements RuntimeContext {
 
@@ -19,6 +21,7 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public UniqueId getCurrentActorId() {
+    Preconditions.checkState(runtime.rayConfig.workerMode == WorkerMode.WORKER);
     return runtime.getCurrentActorId();
   }
 
