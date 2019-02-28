@@ -385,6 +385,8 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/twostep_game.py --stop=2000 --run=APEX_QMIX
 
+bash $ROOT_DIR/multi_node_docker_test ${MEMORY_SIZE} ${SHM_SIZE} $DOCKER_SHA
+
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
         --batch-size=1 --strategy=simple
@@ -460,73 +462,3 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --mem-size=60G \
     --shm-size=60G \
     --test-script=/ray/ci/jenkins_tests/multi_node_tests/large_memory_test.py
-
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    pytest /ray/python/ray/tune/test/cluster_tests.py
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/tune_mnist_ray.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/pbt_example.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/hyperband_example.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/async_hyperband_example.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/tune_mnist_ray_hyperband.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/tune_mnist_async_hyperband.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/logging_example.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/bayesopt_example.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/hyperopt_example.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} -e SIGOPT_KEY $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/sigopt_example.py \
-    --smoke-test
-
-# Runs only on Python3
-# docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-#     python /ray/python/ray/tune/examples/nevergrad_example.py \
-#     --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/tune_mnist_keras.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/mnist_pytorch.py --smoke-test --no-cuda
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/mnist_pytorch_trainable.py \
-    --smoke-test --no-cuda
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/genetic_example.py \
-    --smoke-test
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/skopt_example.py \
-    --smoke-test
-
-
