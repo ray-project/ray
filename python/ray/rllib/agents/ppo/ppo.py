@@ -99,6 +99,12 @@ class PPOAgent(Agent):
 
     @override(Agent)
     def _train(self):
+        if "observation_filter" not in self.raw_user_config:
+            # TODO(ekl) remove this message after a few releases
+            logger.info(
+                "Important! Since 0.7.0, observation normalization is no "
+                "longer enabled by default. To enable running-mean "
+                "normalization, set 'observation_filter': 'MeanStdFilter'.")
         prev_steps = self.optimizer.num_steps_sampled
         fetches = self.optimizer.step()
         if "kl" in fetches:
@@ -139,12 +145,6 @@ class PPOAgent(Agent):
                 "{} iterations for your value ".format(rew_scale) +
                 "function to converge. If this is not intended, consider "
                 "increasing `vf_clip_param`.")
-        if "observation_filter" not in self.raw_user_config:
-            # TODO(ekl) remove this message after a few releases
-            logger.info(
-                "Important! Since 0.7.0, observation normalization is no "
-                "longer enabled by default. To enable running-mean "
-                "normalization, set 'observation_filter': 'MeanStdFilter'.")
         return res
 
     def _validate_config(self):
