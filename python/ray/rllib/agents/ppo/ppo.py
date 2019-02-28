@@ -166,4 +166,4 @@ class PPOAgent(Agent):
         if not self.config["vf_share_layers"]:
             logger.warning(
                 "FYI: By default, the value function will not share layers "
-                "with the policy model (vf_share_layers=False).")
+                "with the policy model ('vf_share_layers': False).")
