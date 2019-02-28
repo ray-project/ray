@@ -323,15 +323,15 @@ def test_serial_tasks_reading_same_signal(ray_start):
     def send_signal(value):
         signal.send(UserSignal(value))
 
-     a = send_signal.remote(0)
+    a = send_signal.remote(0)
 
-     @ray.remote
+    @ray.remote
     def f(sources):
         return ray.experimental.signal.receive(sources, timeout=1)
 
-     result_list = ray.get(f.remote([a]))
-    assert(len(result_list)) == 1
     result_list = ray.get(f.remote([a]))
-    assert(len(result_list)) == 1
+    assert len(result_list) == 1
     result_list = ray.get(f.remote([a]))
-    assert(len(result_list)) == 1
+    assert len(result_list) == 1
+    result_list = ray.get(f.remote([a]))
+    assert len(result_list) == 1
