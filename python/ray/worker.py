@@ -965,6 +965,9 @@ class Worker(object):
                     # actor. Because the following tasks should all have the
                     # same driver id.
                     self.task_driver_id = DriverID.nil()
+                    # Reset signal counters so that the next task can get
+                    # all past signals.
+                    ray_signal.reset()
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
