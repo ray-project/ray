@@ -19,25 +19,21 @@ class ErrorSignal(Signal):
     def __init__(self, error):
         self.error = error
 
-    def get_error(self):
-        return self.error
-
 
 def _get_task_id(source):
-    """Return the task ID associated with the generic source of the signal.
+    """Return the task id associated to the generic source of the signal.
 
     Args:
-        source: source of the signal, it can be either an object ID, task ID,
-            or actor handle.
+        source: source of the signal, it can be either an object id returned
+            by a task, a task id, or an actor handle.
 
     Returns:
-        - If source is an object ID, return ID of task which creted object.
-        - If source is an actor handle, return ID of actor's task creator.
-        - If source is a task ID, return same task ID.
+        - If source is an object id, return id of task which creted object.
+        - If source is an actor handle, return id of actor's task creator.
+        - If source is a task id, return same task id.
     """
     if type(source) is ray.actor.ActorHandle:
-        return ray._raylet.compute_task_id(
-            source._ray_actor_creation_dummy_object_id)
+        return source._ray_actor_id
     else:
         if type(source) is ray.TaskID:
             return source
@@ -46,23 +42,18 @@ def _get_task_id(source):
 
 
 def send(signal):
-    """Send a signal to anyone listening for signals.
+    """Send signal.
 
-    Signals from the same sender are sent in order and they persist. The sender
-    is the actor, task, or driver invoking this call. By "persist" we
-    mean that all past signals can be red at a later time by another
-    task, actor, or driver using receive().
+    The signal has a unique identifier that is computed from (1) the id
+    of the actor or task sending this signal (i.e., the actor or task calling
+    this function), and (2) an index that is incremented every time this
+    source sends a signal. This index starts from 1.
 
     Args:
         signal: Signal to be sent.
     """
-    # The signal has a unique identifier that is computed from (1) the ID
-    # of the actor or task sending this signal (i.e., the actor or task calling
-    # this function), and (2) an index that is incremented every time this
-    # source sends a signal. This index starts from 1.
     if hasattr(ray.worker.global_worker, "actor_creation_task_id"):
-        global_worker = ray.worker.global_worker
-        source_key = global_worker.actor_creation_task_id.hex()
+        source_key = ray.worker.global_worker.actor_id.hex()
     else:
         # No actors; this function must have been called from a task
         source_key = ray.worker.global_worker.current_task_id.hex()
@@ -89,7 +80,7 @@ def receive(sources, timeout=None):
     Args:
         sources: List of sources from which the caller waits for signals.
             A source is either an object ID returned by a task (in this case
-            the object ID is used to Identify that task), or an actor handle.
+            the object ID is used to identify that task), or an actor handle.
             If the user passes the IDs of multiple objects returned by the
             same task, this function returns a copy of the signals generated
             by that task for each object ID.
@@ -116,44 +107,59 @@ def receive(sources, timeout=None):
 
     signal_counters = ray.worker.global_worker.signal_counters
 
+    # Map the ID of each source task to the source itself.
+    task_id_to_sources = defaultdict(lambda: [])
+    for s in sources:
+        task_id_to_sources[_get_task_id(s).hex()].append(s)
+
     # Construct the redis query.
     query = "XREAD BLOCK "
     # Multiply by 1000x since timeout is in sec and redis expects ms.
     query += str(1000 * timeout)
     query += " STREAMS "
-    query += " ".join([_get_task_id(source).hex() for source in sources])
+    query += " ".join([task_id for task_id in task_id_to_sources])
     query += " "
     query += " ".join([
-        ray.utils.decode(signal_counters[_get_task_id(source)])
-        for source in sources
+        ray.utils.decode(signal_counters[ray.utils.hex_to_binary(task_id)])
+        for task_id in task_id_to_sources
     ])
 
     answers = ray.worker.global_worker.redis_client.execute_command(query)
     if not answers:
         return []
-    # There will be at most one answer per source. If there is no signal for
-    # a given source, redis will provide no answer for that source.
-    # Map the ID of each source s in sources to s itself.
-    source_id_to_idx = {}
-    for s in sources:
-        source_id_to_idx[_get_task_id(s).hex()] = s
 
     results = []
     # Decoding is a little bit involved. Iterate through all the answers:
     for i, answer in enumerate(answers):
         # Make sure the answer corresponds to a source, s, in sources.
-        assert ray.utils.decode(answer[0]) in source_id_to_idx
-        s = source_id_to_idx[ray.utils.decode(answer[0])]
+        task_id = ray.utils.decode(answer[0])
+        task_source_list = task_id_to_sources[task_id]
         # The list of results for source s is stored in answer[1]
         for r in answer[1]:
-            # Now it gets tricky: r[0] is the redis internal sequence id
-            signal_counters[_get_task_id(s)] = r[0]
-            # r[1] contains a list with elements (key, value), in our case
-            # we only have one key "signal" and the value is the signal.
-            signal = cloudpickle.loads(ray.utils.hex_to_binary(r[1][1]))
-            results.append((s, signal))
+            for s in task_source_list:
+                # Now it gets tricky: r[0] is the redis internal sequence id
+                signal_counters[ray.utils.hex_to_binary(task_id)] = r[0]
+                # r[1] contains a list with elements (key, value), in our case
+                # we only have one key "signal" and the value is the signal.
+                signal = cloudpickle.loads(ray.utils.hex_to_binary(r[1][1]))
+                results.append((s, signal))
 
     return results
+
+
+def forget(sources):
+    """Ignore all previous signals associated with each source S in sources.
+
+    The index of the next expected signal from S is set to the index of
+    the last signal that S sent plus 1. This means that the next receive()
+    on S will only get the signals generated after this function was invoked.
+
+    Args:
+        sources: list of sources whose past signals are forgotten.
+    """
+    # Just read all signals sent by all sources so far.
+    # This will results in ignoring these signals.
+    receive(sources, timeout=0)
 
 
 def reset():

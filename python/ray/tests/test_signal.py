@@ -1,6 +1,5 @@
-import time
-
 import pytest
+import time
 
 import ray
 import ray.experimental.signal as signal
@@ -108,7 +107,7 @@ def test_task_crash(ray_start):
     try:
         ray.get(object_id)
     except Exception as e:
-        assert type(e) == ray.worker.RayTaskError
+        assert type(e) == ray.exceptions.RayTaskError
     finally:
         result_list = signal.receive([object_id], timeout=5)
         assert len(result_list) == 1
@@ -144,7 +143,7 @@ def test_actor_crash(ray_start):
     try:
         ray.get(a.crash.remote())
     except Exception as e:
-        assert type(e) == ray.worker.RayTaskError
+        assert type(e) == ray.exceptions.RayTaskError
     finally:
         result_list = signal.receive([a], timeout=5)
         assert len(result_list) == 1
@@ -186,7 +185,7 @@ def test_actor_crash_init2(ray_start):
     try:
         ray.get(a.method.remote())
     except Exception as e:
-        assert type(e) == ray.worker.RayTaskError
+        assert type(e) == ray.exceptions.RayTaskError
     finally:
         result_list = receive_all_signals([a], timeout=5)
         assert len(result_list) == 2
@@ -279,14 +278,13 @@ def test_forget(ray_start):
     signal_value = "simple signal"
     count = 5
     ray.get(a.send_signals.remote(signal_value, count))
-    # Ignore all previous signals.
-    signal.receive([a], timeout=0)
+    signal.forget([a])
     ray.get(a.send_signals.remote(signal_value, count))
     result_list = receive_all_signals([a], timeout=5)
     assert len(result_list) == count
 
 
-def test_x(ray_start):
+def test_send_signal_from_two_tasks_to_driver(ray_start):
     # Define a remote function that sends a user-defined signal.
     @ray.remote
     def send_signal(value):
@@ -297,5 +295,24 @@ def test_x(ray_start):
 
     ray.get([a, b])
 
-    ray.experimental.signal.receive([a])
-    ray.experimental.signal.receive([a, b])
+    result_list = ray.experimental.signal.receive([a])
+    assert len(result_list) == 1
+    # Call again receive on "a" with no new signal.
+    result_list = ray.experimental.signal.receive([a, b])
+    assert len(result_list) == 1
+
+
+def test_receiving_on_two_returns(ray_start):
+    @ray.remote(num_return_vals=2)
+    def send_signal(value):
+        signal.send(UserSignal(value))
+        return 1, 2
+
+    x, y = send_signal.remote(0)
+
+    ray.get([x, y])
+
+    results = ray.experimental.signal.receive([x, y])
+
+    assert ((x == results[0][0] and y == results[1][0])
+            or (x == results[1][0] and y == results[0][0]))
