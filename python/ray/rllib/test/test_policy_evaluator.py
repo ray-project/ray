@@ -209,16 +209,21 @@ class TestPolicyEvaluator(unittest.TestCase):
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
         pg = PGAgent(
-            env="test", config={
+            env="test",
+            config={
                 "num_workers": 2,
-                "sample_batch_size": 5
+                "sample_batch_size": 5,
+                "num_envs_per_worker": 2,
             })
         results = pg.optimizer.foreach_evaluator(
             lambda ev: ev.sample_batch_size)
         results2 = pg.optimizer.foreach_evaluator_with_index(
             lambda ev, i: (i, ev.sample_batch_size))
-        self.assertEqual(results, [5, 5, 5])
-        self.assertEqual(results2, [(0, 5), (1, 5), (2, 5)])
+        results3 = pg.optimizer.foreach_evaluator(
+            lambda ev: ev.foreach_env(lambda env: 1))
+        self.assertEqual(results, [10, 10, 10])
+        self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
+        self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
 
     def testRewardClipping(self):
         # clipping on
@@ -411,6 +416,6 @@ class TestPolicyEvaluator(unittest.TestCase):
         return obs_f
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ray.init(num_cpus=5)
     unittest.main(verbosity=2)

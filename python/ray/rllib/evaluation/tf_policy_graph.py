@@ -9,6 +9,7 @@ import tensorflow as tf
 import numpy as np
 
 import ray
+import ray.experimental.tf_utils
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -31,6 +32,7 @@ class TFPolicyGraph(PolicyGraph):
     Attributes:
         observation_space (gym.Space): observation space of the policy.
         action_space (gym.Space): action space of the policy.
+        model (rllib.models.Model): RLlib model used for the policy.
 
     Examples:
         >>> policy = TFPolicyGraphSubclass(
@@ -52,6 +54,8 @@ class TFPolicyGraph(PolicyGraph):
                  action_sampler,
                  loss,
                  loss_inputs,
+                 model=None,
+                 action_prob=None,
                  state_inputs=None,
                  state_outputs=None,
                  prev_action_input=None,
@@ -77,6 +81,9 @@ class TFPolicyGraph(PolicyGraph):
                 and has shape [BATCH_SIZE, data...]. These keys will be read
                 from postprocessed sample batches and fed into the specified
                 placeholders during loss computation.
+            model (rllib.models.Model): used to integrate custom losses and
+                stats from user-defined RLlib models.
+            action_prob (Tensor): probability of the sampled action.
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
             prev_action_input (Tensor): placeholder for previous actions
@@ -95,15 +102,22 @@ class TFPolicyGraph(PolicyGraph):
 
         self.observation_space = observation_space
         self.action_space = action_space
+        self.model = model
         self._sess = sess
         self._obs_input = obs_input
         self._prev_action_input = prev_action_input
         self._prev_reward_input = prev_reward_input
         self._sampler = action_sampler
-        self._loss = loss
+        if self.model:
+            self._loss = self.model.custom_loss(loss)
+            self._stats_fetches = {"model": self.model.custom_stats()}
+        else:
+            self._loss = loss
+            self._stats_fetches = {}
         self._loss_inputs = loss_inputs
         self._loss_input_dict = dict(self._loss_inputs)
         self._is_training = self._get_is_training_placeholder()
+        self._action_prob = action_prob
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         for i, ph in enumerate(self._state_inputs):
@@ -117,7 +131,7 @@ class TFPolicyGraph(PolicyGraph):
                                 for (g, v) in self.gradients(self._optimizer)
                                 if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
-        self._variables = ray.experimental.TensorFlowVariables(
+        self._variables = ray.experimental.tf_utils.TensorFlowVariables(
             self._loss, self._sess)
 
         # gather update ops for any batch norm layers
@@ -179,9 +193,9 @@ class TFPolicyGraph(PolicyGraph):
         return builder.get(fetches)
 
     @override(PolicyGraph)
-    def compute_apply(self, postprocessed_batch):
-        builder = TFRunBuilder(self._sess, "compute_apply")
-        fetches = self._build_compute_apply(builder, postprocessed_batch)
+    def learn_on_batch(self, postprocessed_batch):
+        builder = TFRunBuilder(self._sess, "learn_on_batch")
+        fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         return builder.get(fetches)
 
     @override(PolicyGraph)
@@ -231,8 +245,14 @@ class TFPolicyGraph(PolicyGraph):
 
     @DeveloperAPI
     def extra_compute_action_fetches(self):
-        """Extra values to fetch and return from compute_actions()."""
-        return {}  # e.g, value function
+        """Extra values to fetch and return from compute_actions().
+
+        By default we only return action probability info (if present).
+        """
+        if self._action_prob is not None:
+            return {"action_prob": self._action_prob}
+        else:
+            return {}
 
     @DeveloperAPI
     def extra_compute_grad_feed_dict(self):
@@ -365,7 +385,7 @@ class TFPolicyGraph(PolicyGraph):
         builder.add_feed_dict({self._is_training: True})
         builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))
         fetches = builder.add_fetches(
-            [self._grads, self.extra_compute_grad_fetches()])
+            [self._grads, self._get_grad_and_stats_fetches()])
         return fetches[0], fetches[1]
 
     def _build_apply_gradients(self, builder, gradients):
@@ -380,17 +400,24 @@ class TFPolicyGraph(PolicyGraph):
             [self._apply_op, self.extra_apply_grad_fetches()])
         return fetches[1]
 
-    def _build_compute_apply(self, builder, postprocessed_batch):
+    def _build_learn_on_batch(self, builder, postprocessed_batch):
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(self.extra_apply_grad_feed_dict())
         builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))
         builder.add_feed_dict({self._is_training: True})
         fetches = builder.add_fetches([
             self._apply_op,
-            self.extra_compute_grad_fetches(),
+            self._get_grad_and_stats_fetches(),
             self.extra_apply_grad_fetches()
         ])
         return fetches[1], fetches[2]
+
+    def _get_grad_and_stats_fetches(self):
+        fetches = self.extra_compute_grad_fetches()
+        if self._stats_fetches:
+            fetches["stats"] = dict(self._stats_fetches,
+                                    **fetches.get("stats", {}))
+        return fetches
 
     def _get_loss_inputs_dict(self, batch):
         feed_dict = {}

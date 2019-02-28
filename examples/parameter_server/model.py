@@ -6,17 +6,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
+import time
+
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
-import time
+
+import ray
+import ray.experimental.tf_utils
 
 
 def download_mnist_retry(seed=0, max_num_retries=20):
     for _ in range(max_num_retries):
         try:
-            return input_data.read_data_sets("MNIST_data", one_hot=True,
-                                             seed=seed)
+            return input_data.read_data_sets(
+                "MNIST_data", one_hot=True, seed=seed)
         except tf.errors.AlreadyExistsError:
             time.sleep(1)
     raise Exception("Failed to download MNIST.")
@@ -42,30 +45,29 @@ class SimpleCNN(object):
 
             with tf.name_scope('adam_optimizer'):
                 self.optimizer = tf.train.AdamOptimizer(learning_rate)
-                self.train_step = self.optimizer.minimize(
-                    self.cross_entropy)
+                self.train_step = self.optimizer.minimize(self.cross_entropy)
 
             with tf.name_scope('accuracy'):
-                correct_prediction = tf.equal(tf.argmax(self.y_conv, 1),
-                                              tf.argmax(self.y_, 1))
+                correct_prediction = tf.equal(
+                    tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1))
                 correct_prediction = tf.cast(correct_prediction, tf.float32)
             self.accuracy = tf.reduce_mean(correct_prediction)
 
-            self.sess = tf.Session(config=tf.ConfigProto(
-                intra_op_parallelism_threads=1,
-                inter_op_parallelism_threads=1))
+            self.sess = tf.Session(
+                config=tf.ConfigProto(
+                    intra_op_parallelism_threads=1,
+                    inter_op_parallelism_threads=1))
             self.sess.run(tf.global_variables_initializer())
 
             # Helper values.
 
-            self.variables = ray.experimental.TensorFlowVariables(
+            self.variables = ray.experimental.tf_utils.TensorFlowVariables(
                 self.cross_entropy, self.sess)
 
-            self.grads = self.optimizer.compute_gradients(
-                self.cross_entropy)
-            self.grads_placeholder = [
-                (tf.placeholder("float", shape=grad[1].get_shape()), grad[1])
-                for grad in self.grads]
+            self.grads = self.optimizer.compute_gradients(self.cross_entropy)
+            self.grads_placeholder = [(tf.placeholder(
+                "float", shape=grad[1].get_shape()), grad[1])
+                                      for grad in self.grads]
             self.apply_grads_placeholder = self.optimizer.apply_gradients(
                 self.grads_placeholder)
 
@@ -73,17 +75,24 @@ class SimpleCNN(object):
         # TODO(rkn): Computing the weights before and after the training step
         # and taking the diff is awful.
         weights = self.get_weights()[1]
-        self.sess.run(self.train_step, feed_dict={self.x: x,
-                                                  self.y_: y,
-                                                  self.keep_prob: 0.5})
+        self.sess.run(
+            self.train_step,
+            feed_dict={
+                self.x: x,
+                self.y_: y,
+                self.keep_prob: 0.5
+            })
         new_weights = self.get_weights()[1]
         return [x - y for x, y in zip(new_weights, weights)]
 
     def compute_gradients(self, x, y):
-        return self.sess.run([grad[0] for grad in self.grads],
-                             feed_dict={self.x: x,
-                                        self.y_: y,
-                                        self.keep_prob: 0.5})
+        return self.sess.run(
+            [grad[0] for grad in self.grads],
+            feed_dict={
+                self.x: x,
+                self.y_: y,
+                self.keep_prob: 0.5
+            })
 
     def apply_gradients(self, gradients):
         feed_dict = {}
@@ -92,10 +101,13 @@ class SimpleCNN(object):
         self.sess.run(self.apply_grads_placeholder, feed_dict=feed_dict)
 
     def compute_accuracy(self, x, y):
-        return self.sess.run(self.accuracy,
-                             feed_dict={self.x: x,
-                                        self.y_: y,
-                                        self.keep_prob: 1.0})
+        return self.sess.run(
+            self.accuracy,
+            feed_dict={
+                self.x: x,
+                self.y_: y,
+                self.keep_prob: 1.0
+            })
 
     def set_weights(self, variable_names, weights):
         self.variables.set_weights(dict(zip(variable_names, weights)))
@@ -175,8 +187,8 @@ def conv2d(x, W):
 
 def max_pool_2x2(x):
     """max_pool_2x2 downsamples a feature map by 2X."""
-    return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
-                          strides=[1, 2, 2, 1], padding='SAME')
+    return tf.nn.max_pool(
+        x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
 
 
 def weight_variable(shape):

@@ -391,7 +391,7 @@ class LearnerThread(threading.Thread):
         if replay is not None:
             prio_dict = {}
             with self.grad_timer:
-                grad_out = self.local_evaluator.compute_apply(replay)
+                grad_out = self.local_evaluator.learn_on_batch(replay)
                 for pid, info in grad_out.items():
                     prio_dict[pid] = (
                         replay.policy_batches[pid].data.get("batch_indexes"),

@@ -230,7 +230,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                           tf.get_variable_scope().name)
 
         def to_batches(tensor):
-            if self.config["model"]["use_lstm"]:
+            if self.model.state_init:
                 B = tf.shape(self.model.seq_lens)[0]
                 T = tf.shape(tensor)[0] // B
             else:
@@ -320,7 +320,9 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=observations,
             action_sampler=action_dist.sample(),
-            loss=self.model.loss() + self.loss.total_loss,
+            action_prob=action_dist.sampled_action_prob(),
+            loss=self.loss.total_loss,
+            model=self.model,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
@@ -338,7 +340,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             values_batched = to_batches(values)
         self.stats_fetches = {
             "stats": {
-                "model_loss": self.model.loss(),
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
@@ -373,7 +374,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         out = {"behaviour_logits": self.model.outputs}
         if not self.config["vtrace"]:
             out["vf_preds"] = self.value_function
-        return out
+        return dict(TFPolicyGraph.extra_compute_action_fetches(self), **out)
 
     def extra_compute_grad_fetches(self):
         return self.stats_fetches

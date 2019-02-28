@@ -305,6 +305,17 @@ class TrialRunner(object):
 
         for local_dir in sorted({t.local_dir for t in self._trials}):
             messages.append("Result logdir: {}".format(local_dir))
+
+        num_trials_per_state = {
+            state: len(trials)
+            for state, trials in states.items()
+        }
+        total_number_of_trials = sum(num_trials_per_state.values())
+        if total_number_of_trials > 0:
+            messages.append("Number of trials: {} ({})"
+                            "".format(total_number_of_trials,
+                                      num_trials_per_state))
+
         for state, trials in sorted(states.items()):
             limit = limit_per_state[state]
             messages.append("{} trials:".format(state))
@@ -395,15 +406,17 @@ class TrialRunner(object):
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 
+            # Checkpoints to disk. This should be checked even if
+            # the scheduler decision is STOP or PAUSE. Note that
+            # PAUSE only checkpoints to memory and does not update
+            # the global checkpoint state.
+            self._checkpoint_trial_if_needed(trial)
+
             if decision == TrialScheduler.CONTINUE:
-                self._checkpoint_trial_if_needed(trial)
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
-                # Checkpoint before ending the trial
-                # if checkpoint_at_end experiment option is set to True
-                self._checkpoint_trial_if_needed(trial)
                 self.trial_executor.export_trial_if_needed(trial)
                 self.trial_executor.stop_trial(trial)
             else:

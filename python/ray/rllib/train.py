@@ -8,7 +8,7 @@ import argparse
 import yaml
 
 import ray
-from ray.test.cluster_utils import Cluster
+from ray.tests.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.trial import resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
@@ -126,10 +126,8 @@ def run(args, parser):
         cluster = Cluster()
         for _ in range(args.ray_num_nodes):
             cluster.add_node(
-                resources={
-                    "num_cpus": args.ray_num_cpus or 1,
-                    "num_gpus": args.ray_num_gpus or 0,
-                },
+                num_cpus=args.ray_num_cpus or 1,
+                num_gpus=args.ray_num_gpus or 0,
                 object_store_memory=args.ray_object_store_memory,
                 redis_max_memory=args.ray_redis_max_memory)
         ray.init(redis_address=cluster.redis_address)

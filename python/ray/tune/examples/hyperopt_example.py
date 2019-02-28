@@ -25,7 +25,7 @@ def easy_objective(config, reporter):
         time.sleep(0.02)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
     from hyperopt import hp
 
@@ -33,7 +33,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init(redirect_output=True)
+    ray.init()
 
     register_trainable("exp", easy_objective)
 
@@ -42,6 +42,19 @@ if __name__ == '__main__':
         'height': hp.uniform('height', -100, 100),
         'activation': hp.choice("activation", ["relu", "tanh"])
     }
+
+    current_best_params = [
+        {
+            "width": 1,
+            "height": 2,
+            "activation": 0  # Activation will be relu
+        },
+        {
+            "width": 4,
+            "height": 2,
+            "activation": 1  # Activation will be tanh
+        }
+    ]
 
     config = {
         "my_exp": {
@@ -55,6 +68,10 @@ if __name__ == '__main__':
             },
         }
     }
-    algo = HyperOptSearch(space, max_concurrent=4, reward_attr="neg_mean_loss")
+    algo = HyperOptSearch(
+        space,
+        max_concurrent=4,
+        reward_attr="neg_mean_loss",
+        points_to_evaluate=current_best_params)
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
     run_experiments(config, search_alg=algo, scheduler=scheduler)
