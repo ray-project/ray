@@ -29,8 +29,8 @@ UniqueID::UniqueID() {
   std::fill_n(id_, kUniqueIDSize, 255);
 }
 
-UniqueID::UniqueID(const std::string &binary) {
-  std::memcpy(id_, binary.data(), kUniqueIDSize);
+UniqueID::UniqueID(const plasma::UniqueID &from) {
+  std::memcpy(&id_, from.data(), kUniqueIDSize);
 }
 
 UniqueID UniqueID::from_random() {

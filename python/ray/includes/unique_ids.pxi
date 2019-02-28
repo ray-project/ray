@@ -49,7 +49,7 @@ cdef class UniqueID:
         # The derived class should also check self type and fill self.data.
         if type(self) is UniqueID:
             check_id(id)
-            self.data = CUniqueID.from_binary(<c_string>id)
+            self.data = CUniqueID.from_binary(id)
 
     @classmethod
     def from_binary(cls, id_bytes):
