@@ -51,7 +51,7 @@ DEFAULT_CONFIG = with_common_config({
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "truncate_episodes",
     # Which observation filter to apply to the observation
-    "observation_filter": "MeanStdFilter",
+    "observation_filter": "NoFilter",
     # Uses the sync samples optimizer instead of the multi-gpu one. This does
     # not support minibatches.
     "simple_optimizer": False,
@@ -159,12 +159,10 @@ class PPOAgent(Agent):
                 "In multi-agent mode, policies will be optimized sequentially "
                 "by the multi-GPU optimizer. Consider setting "
                 "simple_optimizer=True if this doesn't work for you.")
-        if self.config["observation_filter"] != "NoFilter":
+        if self.config["observation_filter"] == "NoFilter":
             logger.warning(
-                "By default, observations will be normalized with {}. ".format(
-                    self.config["observation_filter"]) +
-                "If you are using image or discrete type observations, "
-                "consider disabling this with observation_filter=NoFilter.")
+                "Since 0.7.0, to enable observation normalization you will "
+                "need to configure 'observation_filter': 'MeanStdFilter'.")
         if not self.config["vf_share_layers"]:
             logger.warning(
                 "By default, the value function will NOT share layers with "
