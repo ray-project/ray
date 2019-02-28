@@ -85,6 +85,8 @@ class Experiment(object):
             Ray. Use `num_samples` instead.
         trial_resources: Deprecated and will be removed in future versions of
             Ray. Use `resources_per_trial` instead.
+        custom_loggers: Deprecated and will be removed in future versions of
+            Ray. Use `loggers` instead.
 
 
     Examples:
@@ -119,6 +121,7 @@ class Experiment(object):
                  upload_dir=None,
                  trial_name_creator=None,
                  loggers=None,
+                 custom_loggers=None,
                  sync_function=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
@@ -136,6 +139,8 @@ class Experiment(object):
             _raise_deprecation_note(
                 "trial_resources", "resources_per_trial", soft=True)
             resources_per_trial = trial_resources
+        if custom_loggers:
+            _raise_deprecation_note("custom_loggers", "loggers", soft=False)
 
         spec = {
             "run": Experiment._register_if_needed(run),
