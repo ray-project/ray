@@ -152,15 +152,19 @@ class ExternalMultiAgentEnv(threading.Thread):
 
         Arguments:
             episode_id (str): Episode id returned from start_episode().
-            reward (float): Reward from the environment.
+            reward (dict): Reward from the environment agents.
             info (dict): Optional info dict.
         """
 
-        # FIXME handle different agents here
         episode = self._get(episode_id)
-        # shall we sum up the reward here?
-        # accumulate reward by agent!
-        episode.cur_reward += sum([v for k, v in reward.items()])
+
+        # accumulate reward by agent
+        # for existing agents, we want to add the reward up
+        for agent, rew in reward.items():
+            if agent in episode.cur_reward:
+                episode.cur_reward[agent] += rew
+            else:
+                episode.cur_reward[agent] = rew 
         if info:
             episode.cur_info = info or {}
 
@@ -197,8 +201,8 @@ class _ExternalEnvEpisode(object):
     - multiagent dict variables
     """
 
-    def reset_cur_done(self):
-        self.cur_done = {"__all__": False}
+    def reset_cur_done(self, done=False):
+        self.cur_done = {"__all__": done}
 
     def __init__(self, episode_id, results_avail_condition, training_enabled):
         self.episode_id = episode_id
@@ -208,7 +212,13 @@ class _ExternalEnvEpisode(object):
         self.action_queue = queue.Queue()
         self.new_observation = None
         self.new_action = None
-        self.cur_reward = {} 
+
+        # FIXME dirty. do we need to know all agents here?
+        # if I do not set this, the first _send is going to fail
+        # and result in a keyerror in the evaluator
+        self.cur_reward = { x: 0.0 for x in list(range(200)) } 
+        # self.cur_reward = {}
+
         self.reset_cur_done()
         self.cur_info = {}
 
@@ -230,7 +240,7 @@ class _ExternalEnvEpisode(object):
 
     def done(self, observation):
         self.new_observation = observation
-        self.reset_cur_done()
+        self.reset_cur_done(True)
         self._send()
 
     def _send(self):
@@ -246,7 +256,7 @@ class _ExternalEnvEpisode(object):
             item["info"]["training_enabled"] = False
         self.new_observation = None
         self.new_action = None
-        self.cur_reward = 0.0
+        self.cur_reward = {} 
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)
             self.results_avail_condition.notify()

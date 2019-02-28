@@ -13,35 +13,41 @@ import os
 from gym import spaces
 import numpy as np
 import random
+from time import sleep
+import threading
 
 import ray
 import ray.tune as tune
 from ray.rllib.agents.ppo import PPOAgent
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
+from ray.rllib.agents.dqn import DQNAgent
+from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.utils.multiagent.policy_server import PolicyServer
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
+
+from constants import *
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9990
 CHECKPOINT_FILE = "last_checkpoint.out"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num-agents", type=int, default=4)
-parser.add_argument("--num-policies", type=int, default=2)
-
-ACT_SPACE = spaces.Box(low=-10, high=10, shape=(4, ), dtype=np.float32)
-OBS_SPACE = spaces.Discrete(2)
 
 
 class CartpoleServing(ExternalMultiAgentEnv):
     def __init__(self):
-        ExternalMultiAgentEnv.__init__(self, ACT_SPACE, OBS_SPACE)
+        # all our agents share the same spaces in this example
+        # ExternalMultiAgentEnv.__init__(self,
+        # ACT_SPACE, OBS_SPACE)
+        ExternalMultiAgentEnv.__init__(self,
+        None, None)
 
     def run(self):
         print("Starting policy server at {}:{}".format(SERVER_ADDRESS,
-                                                       SERVER_PORT))
+                                                    SERVER_PORT))
+        print(f"Thread {threading.get_ident()}")
         server = PolicyServer(self, SERVER_ADDRESS, SERVER_PORT)
         server.serve_forever()
 
@@ -50,57 +56,80 @@ if __name__ == "__main__":
 
     # parse args
     args = parser.parse_args()
-    agents = [f"agent_{x}" for x in range(args.num_agents)]
 
     # initialize ray & register Env
-    ray.init()
+    ray.init(num_cpus=NUM_CPUS)
     register_env("srv", lambda _: CartpoleServing())
 
-    # Each policy can have a different configuration (including custom model)
-
-    def gen_policy(i):
-        config = {
-            "gamma": random.choice([0.95, 0.99])
-        }
-        return (PPOPolicyGraph, OBS_SPACE, ACT_SPACE, config)
-
-    # Setup PPO with an ensemble of `num_policies` different policy graphs
     policy_graphs = {
-        "policy_{}".format(i): gen_policy(i)
-        for i in range(args.num_policies)
+        "ppo_policy": (PPOPolicyGraph, OBS_SPACE, ACT_SPACE, {}),
+        "dqn_policy": (DQNPolicyGraph, OBS_SPACE, ACT_SPACE, {}),
     }
     policy_ids = list(policy_graphs.keys())
 
-    ppo = PPOAgent(
+    def policy_mapper(agent_id):
+        return random.choice(policy_ids)
+
+    dqn_trainer = DQNAgent(
         env="srv",
         config={
-            # Use a single process to avoid needing to set up a load balancer
             "num_workers": 0,
-            # Configure the agent to run short iterations for debugging
-            # "learning_starts": 100,
-            # "timesteps_per_iteration": 200,
-            "observation_filter": "NoFilter",
-            "log_level": "INFO",
-            "num_sgd_iter": 10,
             "multiagent": {
                 "policy_graphs": policy_graphs,
-                "policy_mapping_fn": tune.function(
-                    lambda agent_id: random.choice(policy_ids)),
+                "policy_mapping_fn": policy_mapper,
+                "policies_to_train": ["dqn_policy"],
             },
+            "log_level": "INFO",
+            "exploration_fraction": 0.01,
+            "learning_starts": 100,
+            "timesteps_per_iteration": 200,
         })
 
+    ppo_trainer = PPOAgent(
+        env="srv",
+        config={
+            "num_workers": 0,
+            "multiagent": {
+                "policy_graphs": policy_graphs,
+                "policy_mapping_fn": policy_mapper,
+                "policies_to_train": ["ppo_policy"],
+            },
+            "log_level": "INFO",
+            # "exploration_fraction": 0.01,
+            # "learning_starts": 100,
+            # "timesteps_per_iteration": 200,
+
+            # disable filters, otherwise we would need to synchronize those
+            # as well to the DQN agent
+            "observation_filter": "NoFilter",
+            "simple_optimizer": True,
+        })
+
+    # disable DQN exploration when used by the PPO trainer
+    ppo_trainer.optimizer.foreach_evaluator(
+        lambda ev: ev.for_policy(
+            lambda pi: pi.set_epsilon(0.0), policy_id="dqn_policy"))
+
+
     # Attempt to restore from checkpoint if possible.
-    """
-    if os.path.exists(CHECKPOINT_FILE):
-        checkpoint_path = open(CHECKPOINT_FILE).read()
-        print("Restoring from checkpoint path", checkpoint_path)
-        ppo.restore(checkpoint_path)
-    """
+    try:
+        if os.path.exists(CHECKPOINT_FILE):
+            checkpoint_path = open(CHECKPOINT_FILE).read()
+            print("Restoring from checkpoint path", checkpoint_path)
+            dqn_trainer.restore(checkpoint_path)
+    except:
+        print("restore failed")
 
     # Serving and training loop
     while True:
-        print(pretty_print(ppo.train()))
-        checkpoint_path = ppo.save()
+        print("\n-- DQN --")
+        print(pretty_print(dqn_trainer.train()))
+        checkpoint_path = dqn_trainer.save()
         print("Last checkpoint", checkpoint_path)
         with open(CHECKPOINT_FILE, "w") as f:
             f.write(checkpoint_path)
+        sleep(0.5)
+
+        print("\n-- PPO --")
+        print(pretty_print(ppo_trainer.train()))
+        sleep(0.5)

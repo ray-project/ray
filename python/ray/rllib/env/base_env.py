@@ -231,8 +231,6 @@ class _ExternalMultiAgentEnvToBaseEnv(BaseEnv):
 
     @override(BaseEnv)
     def poll(self):
-        # FIXME we need to take in account:
-        # - agents can have multiple observations
         with self.external_env._results_avail_condition:
             results = self._poll()
             while len(results[0]) == 0:
@@ -240,13 +238,10 @@ class _ExternalMultiAgentEnvToBaseEnv(BaseEnv):
                 results = self._poll()
                 if not self.external_env.isAlive():
                     raise Exception("Serving thread has stopped.")
-        # we have to check this in a different way... 
-        """
         limit = self.external_env._max_concurrent_episodes
         assert len(results[0]) < limit, \
             ("Too many concurrent episodes, were some leaked? This "
              "ExternalEnv was created with max_concurrent={}".format(limit))
-        """
         return results
 
     @override(BaseEnv)
@@ -259,7 +254,7 @@ class _ExternalMultiAgentEnvToBaseEnv(BaseEnv):
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
-            if episode.cur_done:
+            if episode.cur_done["__all__"]:
                 del self.external_env._episodes[eid]
             if data:
                 if self.prep:
