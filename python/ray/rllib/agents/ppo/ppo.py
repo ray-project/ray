@@ -36,7 +36,7 @@ DEFAULT_CONFIG = with_common_config({
     # Share layers for value function
     "vf_share_layers": False,
     # Coefficient of the value function loss
-    "vf_loss_coeff": 1.0,
+    "vf_loss_coeff": 0.01,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
     # PPO clip parameter
