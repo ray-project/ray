@@ -481,6 +481,18 @@ Then, on the client side, you can use the following class. The server address de
 For an example notebook for using the Client API, see the `Client API Example <https://github.com/ray-project/ray/tree/master/python/ray/tune/TuneClient.ipynb>`__.
 
 
+Tune CLI
+--------
+
+You can monitor your experiments and projects using the Tune CLI. To do this, verify that you have the ``tabulate`` library installed:
+
+.. code-block:: bash
+
+    $ pip install tabulate
+
+[TODO: Andrew]
+
+
 Further Questions or Issues?
 ----------------------------
 
