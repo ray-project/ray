@@ -302,90 +302,30 @@ def test_forget(ray_start):
     assert len(result_list) == count
 
 
-@pytest.fixture
-def ray_checkpointable_actor_cls(request):
-    checkpoint_dir = "/tmp/ray_temp_checkpoint_dir/"
-    if not os.path.isdir(checkpoint_dir):
-        os.mkdir(checkpoint_dir)
 
-    class CheckpointableActor(ray.actor.Checkpointable):
+def test_signal_on_node_failure(two_node_cluster):
+    """Test actor checkpointing on a remote node."""
+
+    class ActorSignal(object):
         def __init__(self):
-            self.value = 0
-            self.resumed_from_checkpoint = False
-            self.checkpoint_dir = checkpoint_dir
+            pass
 
         def local_plasma(self):
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        def increase(self):
-            self.value += 1
-            return self.value
-
-        def get(self):
-            return self.value
-
-        def was_resumed_from_checkpoint(self):
-            return self.resumed_from_checkpoint
-
-        def get_pid(self):
-            return os.getpid()
-
-        def should_checkpoint(self, checkpoint_context):
-            # Checkpoint the actor when value is increased to 3.
-            should_checkpoint = self.value == 3
-            return should_checkpoint
-
-        def save_checkpoint(self, actor_id, checkpoint_id):
-            actor_id, checkpoint_id = actor_id.hex(), checkpoint_id.hex()
-            # Save checkpoint into a file.
-            with open(self.checkpoint_dir + actor_id, "a+") as f:
-                print(checkpoint_id, self.value, file=f)
-
-        def load_checkpoint(self, actor_id, available_checkpoints):
-            actor_id = actor_id.hex()
-            filename = self.checkpoint_dir + actor_id
-            # Load checkpoint from the file.
-            if not os.path.isfile(filename):
-                return None
-
-            with open(filename, "r") as f:
-                lines = f.readlines()
-                checkpoint_id, value = lines[-1].split(" ")
-                self.value = int(value)
-                self.resumed_from_checkpoint = True
-                checkpoint_id = ray.ActorCheckpointID(
-                    ray.utils.hex_to_binary(checkpoint_id))
-                assert any(checkpoint_id == checkpoint.checkpoint_id
-                           for checkpoint in available_checkpoints)
-                return checkpoint_id
-
-        def checkpoint_expired(self, actor_id, checkpoint_id):
-            pass
-
-    return CheckpointableActor
-
-
-def test_checkpointing_on_node_failure(two_node_cluster,
-                                       ray_checkpointable_actor_cls):
-    """Test actor checkpointing on a remote node."""
     # Place the actor on the remote node.
     cluster, remote_node = two_node_cluster
-    actor_cls = ray.remote(max_reconstructions=1)(ray_checkpointable_actor_cls)
+    actor_cls = ray.remote(max_reconstructions=0)(ActorSignal)
     actor = actor_cls.remote()
+    # Try until we put an actor on a different node.
     while (ray.get(actor.local_plasma.remote()) !=
            remote_node.plasma_store_socket_name):
         actor = actor_cls.remote()
 
-    # Call increase several times.
-    expected = 0
-    for _ in range(6):
-        ray.get(actor.increase.remote())
-        expected += 1
-    # Assert that the actor wasn't resumed from a checkpoint.
-    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
     # Kill actor process.
     cluster.remove_node(remote_node)
-    # Assert that the actor was resumed from a checkpoint and its value is
-    # still correct.
-    assert ray.get(actor.get.remote()) == expected
-    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
+
+    # Wait on signal from the actor on the failed node.
+    result_list = signal.receive([actor], timeout=10)
+    assert len(result_list) == 1
+    assert type(result_list[0][1]) == signal.ActorDiedSignal

@@ -7,6 +7,8 @@ from collections import defaultdict
 import ray
 import ray.cloudpickle as cloudpickle
 
+# This string should be identical to the name of the signal sent upon
+# detecting that an actor died.
 ActorDiedStr = "ACTOR_DIED"
 
 class Signal(object):
@@ -122,8 +124,7 @@ def receive(sources, timeout=10**12):
         assert ray.utils.decode(answer[0]) == _get_task_id(sources[i]).hex()
         # The list of results for that source is stored in answer[1]
         for r in answer[1]:
-            if r[1][1] == ActorDiedStr:
-                print("XXX = ", sources[i], len(r[1][1]), r[1][1])
+            if r[1][1].decode('ascii') == ActorDiedStr:
                 results.append((sources[i], ActorDiedSignal()))
             else:
                 # Now it gets tricky: r[0] is the redis internal sequence id
