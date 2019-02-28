@@ -1244,8 +1244,8 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
       // to the driver.
       std::ostringstream stream;
       stream << "An plasma error (" << status.ToString() << ") occurred while saving"
-             << " error code to object " << object_id << ". Anyone who's getting this"
-             << " object may hang forever.";
+             << " error code to object " << object_id.hex() << ". Anyone who's getting"
+             << " this object may hang forever.";
       std::string error_message = stream.str();
       RAY_LOG(WARNING) << error_message;
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(

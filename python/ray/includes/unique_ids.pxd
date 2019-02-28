@@ -29,71 +29,95 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
 
     cdef cppclass CActorCheckpointID "ray::ActorCheckpointID"(CUniqueID):
         CActorCheckpointID()
-        CActorCheckpointID(const c_string &binary)
         CActorCheckpointID(const CUniqueID &from_id)
+
+        @staticmethod
+        CActorCheckpointID from_binary(const c_string &binary)
 
 
     cdef cppclass CActorClassID "ray::ActorClassID"(CUniqueID):
         CActorClassID()
-        CActorClassID(const c_string &binary)
         CActorClassID(const CUniqueID &from_id)
+
+        @staticmethod
+        CActorClassID from_binary(const c_string &binary)
 
 
     cdef cppclass CActorID "ray::ActorID"(CUniqueID):
         CActorID()
-        CActorID(const c_string &binary)
         CActorID(const CUniqueID &from_id)
+
+        @staticmethod
+        CActorID from_binary(const c_string &binary)
 
 
     cdef cppclass CActorHandleID "ray::ActorHandleID"(CUniqueID):
         CActorHandleID()
-        CActorHandleID(const c_string &binary)
         CActorHandleID(const CUniqueID &from_id)
+
+        @staticmethod
+        CActorHandleID from_binary(const c_string &binary)
 
 
     cdef cppclass CClientID "ray::ClientID"(CUniqueID):
         CClientID()
-        CClientID(const c_string &binary)
         CClientID(const CUniqueID &from_id)
+
+        @staticmethod
+        CClientID from_binary(const c_string &binary)
 
 
     cdef cppclass CConfigID "ray::ConfigID"(CUniqueID):
         CConfigID()
-        CConfigID(const c_string &binary)
         CConfigID(const CUniqueID &from_id)
+
+        @staticmethod
+        CConfigID from_binary(const c_string &binary)
 
 
     cdef cppclass CFunctionID "ray::FunctionID"(CUniqueID):
         CFunctionID()
-        CFunctionID(const c_string &binary)
         CFunctionID(const CUniqueID &from_id)
+
+        @staticmethod
+        CFunctionID from_binary(const c_string &binary)
 
 
     cdef cppclass CDriverID "ray::DriverID"(CUniqueID):
         CDriverID()
-        CDriverID(const c_string &binary)
         CDriverID(const CUniqueID &from_id)
+
+        @staticmethod
+        CDriverID from_binary(const c_string &binary)
 
 
     cdef cppclass CJobID "ray::JobID"(CUniqueID):
         CJobID()
-        CJobID(const c_string &binary)
         CJobID(const CUniqueID &from_id)
+
+        @staticmethod
+        CJobID from_binary(const c_string &binary)
 
 
     cdef cppclass CTaskID "ray::TaskID"(CUniqueID):
         CTaskID()
-        CTaskID(const c_string &binary)
         CTaskID(const CUniqueID &from_id)
+
+        @staticmethod
+        CTaskID from_binary(const c_string &binary)
 
 
     cdef cppclass CObjectID" ray::ObjectID"(CUniqueID):
         CObjectID()
-        CObjectID(const c_string &binary)
         CObjectID(const CUniqueID &from_id)
+
+        @staticmethod
+        CObjectID from_binary(const c_string &binary)
 
 
     cdef cppclass CWorkerID "ray::WorkerID"(CUniqueID):
         CWorkerID()
-        CWorkerID(const c_string &binary)
         CWorkerID(const CUniqueID &from_id)
+
+        @staticmethod
+        CWorkerID from_binary(const c_string &binary)

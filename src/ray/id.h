@@ -16,7 +16,6 @@ class RAY_EXPORT UniqueID {
  public:
   UniqueID();
   UniqueID(const std::string &binary);
-  UniqueID(const plasma::UniqueID &from);
   static UniqueID from_random();
   static UniqueID from_binary(const std::string &binary);
   static const UniqueID &nil();
@@ -46,13 +45,12 @@ std::ostream &operator<<(std::ostream &os, const UniqueID &id);
       std::memcpy(&id_, from.data(), kUniqueIDSize);                                    \
     }                                                                                   \
     type() : UniqueID() {}                                                              \
-    type(const std::string &binary) { std::memcpy(id_, binary.data(), kUniqueIDSize); } \
-    const UniqueID &get() { return *this; }                                             \
     static type from_random() { return type(UniqueID::from_random()); }                 \
-    static type from_binary(const std::string &binary) {                                \
-      return type(UniqueID::from_binary(binary));                                       \
-    }                                                                                   \
+    static type from_binary(const std::string &binary) { return type(binary); }         \
     static type nil() { return type(UniqueID::nil()); }                                 \
+                                                                                        \
+   private:                                                                             \
+    type(const std::string &binary) { std::memcpy(id_, binary.data(), kUniqueIDSize); } \
   };
 
 #include "id_def.h"
@@ -109,15 +107,6 @@ int64_t ComputeObjectIndex(const ObjectID &object_id);
 }  // namespace ray
 
 namespace std {
-template <>
-struct hash<::ray::UniqueID> {
-  size_t operator()(const ::ray::UniqueID &id) const { return id.hash(); }
-};
-
-template <>
-struct hash<const ::ray::UniqueID> {
-  size_t operator()(const ::ray::UniqueID &id) const { return id.hash(); }
-};
 
 #define DEFINE_UNIQUE_ID(type)                                           \
   template <>                                                            \
@@ -129,6 +118,7 @@ struct hash<const ::ray::UniqueID> {
     size_t operator()(const ::ray::type &id) const { return id.hash(); } \
   };
 
+DEFINE_UNIQUE_ID(UniqueID);
 #include "id_def.h"
 
 #undef DEFINE_UNIQUE_ID
