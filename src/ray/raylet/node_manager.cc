@@ -507,8 +507,10 @@ void NodeManager::PublishActorStateTransition(
   auto success_callback = [](gcs::AsyncGcsClient *client, const ActorID &id,
                           const ActorTableDataT &data) {
     auto redis_context = client->primary_context();
-    std::vector<std::string> args = {"XADD", id.hex(), "*", "signal", "xxxxx"};
-    RAY_CHECK_OK(redis_context->RunArgvAsync(args));
+    if (data.state == ActorState::DEAD || data.state == ActorState::RECONSTRUCTING) {
+      std::vector<std::string> args = {"XADD", id.hex(), "*", "signal", "ACTOR_DIED"};
+      RAY_CHECK_OK(redis_context->RunArgvAsync(args));
+    }
   };
   RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(
       JobID::nil(), actor_id, actor_notification, success_callback, failure_callback, log_length));

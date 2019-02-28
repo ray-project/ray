@@ -7,6 +7,7 @@ from collections import defaultdict
 import ray
 import ray.cloudpickle as cloudpickle
 
+ActorDiedStr = "ACTOR_DIED"
 
 class Signal(object):
     """Base class for Ray signals."""
@@ -19,6 +20,11 @@ class ErrorSignal(Signal):
     def __init__(self, error):
         self.error = error
 
+class ActorDiedSignal(Signal):
+    """Signal raised if an exception happens in a task or actor method."""
+
+    def __init__(self):
+        pass
 
 def _get_task_id(source):
     """Return the task id associated to the generic source of the signal.
@@ -33,14 +39,12 @@ def _get_task_id(source):
         - If source is a task id, return same task id.
     """
     if type(source) is ray.actor.ActorHandle:
-        return ray._raylet.compute_task_id(
-            source._ray_actor_creation_dummy_object_id)
+        return source._ray_actor_id
     else:
         if type(source) is ray.TaskID:
             return source
         else:
             return ray._raylet.compute_task_id(source)
-
 
 def send(signal):
     """Send signal.
@@ -54,8 +58,7 @@ def send(signal):
         signal: Signal to be sent.
     """
     if hasattr(ray.worker.global_worker, "actor_creation_task_id"):
-        global_worker = ray.worker.global_worker
-        source_key = global_worker.actor_creation_task_id.hex()
+        source_key = ray.worker.global_worker.actor_id.hex()
     else:
         # No actors; this function must have been called from a task
         source_key = ray.worker.global_worker.current_task_id.hex()
@@ -119,12 +122,16 @@ def receive(sources, timeout=10**12):
         assert ray.utils.decode(answer[0]) == _get_task_id(sources[i]).hex()
         # The list of results for that source is stored in answer[1]
         for r in answer[1]:
-            # Now it gets tricky: r[0] is the redis internal sequence id
-            signal_counters[_get_task_id(sources[i])] = r[0]
-            # r[1] contains a list with elements (key, value), in our case
-            # we only have one key "signal" and the value is the signal.
-            signal = cloudpickle.loads(ray.utils.hex_to_binary(r[1][1]))
-            results.append((sources[i], signal))
+            if r[1][1] == ActorDiedStr:
+                print("XXX = ", sources[i], len(r[1][1]), r[1][1])
+                results.append((sources[i], ActorDiedSignal()))
+            else:
+                # Now it gets tricky: r[0] is the redis internal sequence id
+                signal_counters[_get_task_id(sources[i])] = r[0]
+                # r[1] contains a list with elements (key, value), in our case
+                # we only have one key "signal" and the value is the signal.
+                signal = cloudpickle.loads(ray.utils.hex_to_binary(r[1][1]))
+                results.append((sources[i], signal))
 
     return results
 
