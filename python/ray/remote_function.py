@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import copy
 import logging
+import time
 
 from ray.function_manager import FunctionDescriptor
 import ray.signature
@@ -57,9 +58,10 @@ class RemoteFunction(object):
         self._function_signature = ray.signature.extract_signature(
             self._function)
 
-        # # Export the function.
+        # Export the function.
         worker = ray.worker.get_global_worker()
         worker.function_actor_manager.export(self)
+        self._last_export_time = time.time()
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
@@ -97,6 +99,13 @@ class RemoteFunction(object):
         """An experimental alternate way to submit remote functions."""
         worker = ray.worker.get_global_worker()
         worker.check_connected()
+
+        if self._last_export_time < worker._last_shutdown_time:
+            # If the worker has been shut down, we need to export this
+            # function again.
+            self._last_export_time = time.time()
+            worker.function_actor_manager.export(self)
+
         kwargs = {} if kwargs is None else kwargs
         args = ray.signature.extend_args(self._function_signature, args,
                                          kwargs)
