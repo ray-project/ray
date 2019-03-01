@@ -6,6 +6,24 @@ from ray.rllib.agents.ppo.appo_policy_graph import AsyncPPOPolicyGraph
 from ray.rllib.agents.agent import with_base_config
 from ray.rllib.agents import impala
 from ray.rllib.utils.annotations import override
+from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.optimizers import AsyncSamplesOptimizer
+
+
+OPTIMIZER_SHARED_CONFIGS = [
+    "lr",
+    "num_envs_per_worker",
+    "num_gpus",
+    "sample_batch_size",
+    "train_batch_size",
+    "replay_buffer_num_slots",
+    "replay_proportion",
+    "num_data_loader_buffers",
+    "max_sample_requests_in_flight_per_worker",
+    "broadcast_interval",
+    "num_sgd_iter",
+    "minibatch_buffer_size",
+]
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -58,6 +76,26 @@ class APPOAgent(impala.ImpalaAgent):
     _agent_name = "APPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = AsyncPPOPolicyGraph
+
+    @override(impala.ImpalaAgent)
+    def _init(self):
+        for k in OPTIMIZER_SHARED_CONFIGS:
+            if k not in self.config["optimizer"]:
+                self.config["optimizer"][k] = self.config[k]
+        policy_cls = self._get_policy_graph()
+        self.local_evaluator = self.make_local_evaluator(
+            self.env_creator, policy_cls)
+
+        self.remote_evaluators = self.make_remote_evaluators(
+            self.env_creator, policy_cls, self.config["num_workers"])
+
+        self.old_policy_evaluator = self.make_local_evaluator(
+            self.env_creator, policy_cls)    
+        self.config["optimizer"]["old_policy_evaluator"] = self.old_policy_evaluator
+        
+        self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
+                                               self.remote_evaluators,
+                                               self.config["optimizer"])
 
     @override(impala.ImpalaAgent)
     def _get_policy_graph(self):

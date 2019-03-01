@@ -38,6 +38,7 @@ class PPOSurrogateLoss(object):
     """
 
     def __init__(self,
+                 old_policy_actions_logp,
                  prev_actions_logp,
                  actions_logp,
                  action_kl,
@@ -50,7 +51,8 @@ class PPOSurrogateLoss(object):
                  entropy_coeff=-0.01,
                  clip_param=0.3):
 
-        logp_ratio = tf.exp(actions_logp - prev_actions_logp)
+        importance_ratio = tf.exp(old_policy_actions_logp - prev_actions_logp)
+        logp_ratio = tf.exp(actions_logp - importance_ratio*prev_actions_logp)
 
         surrogate_loss = tf.minimum(
             advantages * logp_ratio,
@@ -73,7 +75,7 @@ class PPOSurrogateLoss(object):
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
                            self.entropy * entropy_coeff)
 
-
+# ToDo: Make Vtrace workable with continuous spaces
 class VTraceSurrogateLoss(object):
     def __init__(self,
                  actions,
@@ -221,8 +223,12 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             state_in=existing_state_in,
             seq_lens=existing_seq_lens)
 
+        old_policy_behaviour_logits = tf.placeholder(
+                tf.float32, [None, logit_dim], name="old_policy_behaviour_logits")
+
         action_dist = dist_class(self.model.outputs)
         prev_action_dist = dist_class(behaviour_logits)
+        old_policy_action_dist = dist_class(old_policy_behaviour_logits)
 
         values = self.model.value_function()
         self.value_function = values
@@ -279,6 +285,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         else:
             logger.info("Using PPO surrogate loss (vtrace=False)")
             self.loss = PPOSurrogateLoss(
+                old_policy_actions_logp=to_batches(old_policy_action_dist.logp(actions)),
                 prev_actions_logp=to_batches(prev_action_dist.logp(actions)),
                 actions_logp=to_batches(action_dist.logp(actions)),
                 action_kl=prev_action_dist.kl(action_dist),
@@ -307,6 +314,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             ("obs", observations),
             ("prev_actions", prev_actions),
             ("prev_rewards", prev_rewards),
+            ("old_policy_behaviour_logits", old_policy_behaviour_logits)
         ]
         if not self.config["vtrace"]:
             loss_in.append(("advantages", adv_ph))

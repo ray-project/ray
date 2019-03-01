@@ -17,6 +17,5 @@ halfcheetah-ppo:
         num_workers: 16
         num_gpus: 1
         grad_clip: 0.5
-        num_envs_per_worker: 
-            grid_search: [16, 32]
+        num_envs_per_worker: 16
         batch_mode: truncate_episodes
