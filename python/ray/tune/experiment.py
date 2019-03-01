@@ -62,8 +62,9 @@ class Experiment(object):
             to (e.g. ``s3://bucket``).
         trial_name_creator (func): Optional function for generating
             the trial string representation.
-        custom_loggers (list): List of custom logger creators to be used with
-            each Trial. See `ray/tune/logger.py`.
+        loggers (list): List of logger creators to be used with
+            each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
+            See `ray/tune/logger.py`.
         sync_function (func|str): Function for syncing the local_dir to
             upload_dir. If string, then it must be a string template for
             syncer to run. If not provided, the sync command defaults
@@ -84,6 +85,8 @@ class Experiment(object):
             Ray. Use `num_samples` instead.
         trial_resources: Deprecated and will be removed in future versions of
             Ray. Use `resources_per_trial` instead.
+        custom_loggers: Deprecated and will be removed in future versions of
+            Ray. Use `loggers` instead.
 
 
     Examples:
@@ -117,6 +120,7 @@ class Experiment(object):
                  local_dir=None,
                  upload_dir=None,
                  trial_name_creator=None,
+                 loggers=None,
                  custom_loggers=None,
                  sync_function=None,
                  checkpoint_freq=0,
@@ -135,6 +139,8 @@ class Experiment(object):
             _raise_deprecation_note(
                 "trial_resources", "resources_per_trial", soft=True)
             resources_per_trial = trial_resources
+        if custom_loggers:
+            _raise_deprecation_note("custom_loggers", "loggers", soft=False)
 
         spec = {
             "run": Experiment._register_if_needed(run),
@@ -145,7 +151,7 @@ class Experiment(object):
             "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
             "trial_name_creator": trial_name_creator,
-            "custom_loggers": custom_loggers,
+            "loggers": loggers,
             "sync_function": sync_function,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
