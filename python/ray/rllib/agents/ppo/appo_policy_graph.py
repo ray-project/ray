@@ -169,9 +169,18 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.sess = tf.get_default_session()
         self.grads = None
 
-        is_multidiscrete = False
-        output_hidden_shape = None
-        actions_shape = [None]
+        if isinstance(action_space, gym.spaces.Discrete):
+            is_multidiscrete = False
+            actions_shape = [None]
+            output_hidden_shape = [action_space.n]
+        elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
+            is_multidiscrete = True
+            actions_shape = [None, len(action_space.nvec)]
+            output_hidden_shape = action_space.nvec.astype(np.int32)
+        else:
+            raise UnsupportedSpaceException(
+                "Action space {} is not supported for APPO.",
+                format(action_space))
 
         # Policy network model
         dist_class, logit_dim = ModelCatalog.get_action_dist(
@@ -191,18 +200,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 existing_state_in = existing_inputs[9:-1]
                 existing_seq_lens = existing_inputs[-1]
         else:
-            if isinstance(action_space, gym.spaces.Discrete):
-                output_hidden_shape = [action_space.n]
-            elif isinstance(action_space,
-                            gym.spaces.multi_discrete.MultiDiscrete):
-                is_multidiscrete = True
-                actions_shape = [None, len(action_space.nvec)]
-                output_hidden_shape = action_space.nvec.astype(np.int32)
-            elif self.config["vtrace"]:
-                raise UnsupportedSpaceException(
-                    "Action space {} is not supported for APPO with VTrace.".
-                    format(action_space))
-
             actions = tf.placeholder(tf.int64, actions_shape, name="ac")
             dones = tf.placeholder(tf.bool, [None], name="dones")
             rewards = tf.placeholder(tf.float32, [None], name="rewards")
@@ -408,7 +405,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             values, drop_last=self.config["vtrace"])
         self.stats_fetches = {
             "stats": dict({
-                "model_loss": self.model.loss(),
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
