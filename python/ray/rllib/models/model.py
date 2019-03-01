@@ -48,6 +48,7 @@ class Model(object):
     def __init__(self,
                  input_dict,
                  obs_space,
+                 action_space,
                  num_outputs,
                  options,
                  state_in=None,
@@ -59,6 +60,7 @@ class Model(object):
         self.state_in = state_in or []
         self.state_out = []
         self.obs_space = obs_space
+        self.action_space = action_space
         self.num_outputs = num_outputs
         self.options = options
         self.scope = tf.get_variable_scope()

@@ -217,7 +217,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
         # Actor: P (policy) network
         with tf.variable_scope(P_SCOPE) as scope:
             p_values, self.p_model = self._build_p_network(
-                self.cur_observations, observation_space)
+                self.cur_observations, observation_space, action_space)
             self.p_func_vars = _scope_vars(scope.name)
 
         # Noise vars for P network except for layer normalization vars
@@ -283,7 +283,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
         prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
         with tf.variable_scope(Q_SCOPE) as scope:
             q_t, self.q_model = self._build_q_network(
-                self.obs_t, observation_space, self.act_t)
+                self.obs_t, observation_space, action_space, self.act_t)
             self.q_func_vars = _scope_vars(scope.name)
         self.stats = {
             "mean_q": tf.reduce_mean(q_t),
@@ -488,22 +488,23 @@ class DDPGPolicyGraph(TFPolicyGraph):
         TFPolicyGraph.set_state(self, state[0])
         self.set_epsilon(state[1])
 
-    def _build_q_network(self, obs, obs_space, actions):
+    def _build_q_network(self, obs, obs_space, action_space, actions):
         q_net = QNetwork(
             ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
-            }, obs_space, 1, self.config["model"]), actions,
+            }, obs_space, action_space, 1, self.config["model"]), actions,
             self.config["critic_hiddens"],
             self.config["critic_hidden_activation"])
         return q_net.value, q_net.model
 
-    def _build_p_network(self, obs, obs_space):
+    def _build_p_network(self, obs, obs_space, action_space):
         policy_net = PNetwork(
             ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
-            }, obs_space, 1, self.config["model"]), self.dim_actions,
+            }, obs_space, action_space, 1, self.config["model"]),
+            self.dim_actions,
             self.config["actor_hiddens"],
             self.config["actor_hidden_activation"],
             self.config["parameter_noise"])
