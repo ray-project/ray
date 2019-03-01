@@ -80,7 +80,7 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
 ######################## TUNE TESTS #################################
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    pytest /ray/python/ray/tune/test/cluster_tests.py
+    pytest /ray/python/ray/tune/tests/test_cluster.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/tune_mnist_ray.py \
