@@ -84,8 +84,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                                          learner_queue_size)
         self.learner.start()
 
-        if len(self.remote_evaluators) == 0:
-            logger.warning("Starting optimizer without remote evaluators! Training will hang! Have you set num_workers to 0?")
+        assert len(self.remote_evaluators) > 0
 
         # Stats
         self._optimizer_step_timer = TimerStat()
@@ -132,6 +131,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         for key in self._last_stats_sum.keys():
             self._last_stats_sum[key] = 0
             self._last_stats_time[key] = time.time()
+
         return mean_stats
 
     @override(PolicyOptimizer)
