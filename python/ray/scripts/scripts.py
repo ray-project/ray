@@ -146,7 +146,7 @@ def cli(logging_level, logging_format):
     default=False,
     help="provide this argument for the head node")
 @click.option(
-    "--no-ui",
+    "--include-webui",
     is_flag=True,
     default=False,
     help="provide this argument if the UI should not be started")
@@ -216,8 +216,8 @@ def cli(logging_level, logging_format):
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head, no_ui, block,
-          plasma_directory, huge_pages, autoscaling_config,
+          redis_max_memory, num_cpus, num_gpus, resources, head, include_webui,
+          block, plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config):
@@ -290,7 +290,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
-            include_webui=(not no_ui),
+            include_webui=include_webui,
             autoscaling_config=autoscaling_config,
             include_java=False,
         )
@@ -332,9 +332,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if redis_max_clients is not None:
             raise Exception("If --head is not passed in, --redis-max-clients "
                             "must not be provided.")
-        if no_ui:
-            raise Exception("If --head is not passed in, the --no-ui flag is "
-                            "not relevant.")
+        if include_webui:
+            raise Exception("If --head is not passed in, the --include-webui "
+                            "flag is not relevant.")
         if include_java is not None:
             raise ValueError("--include-java should only be set for the head "
                              "node.")
