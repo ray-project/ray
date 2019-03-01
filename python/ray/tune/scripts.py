@@ -6,6 +6,7 @@ import click
 import glob
 import json
 import os
+import subprocess
 from datetime import datetime
 
 import pandas as pd
@@ -45,6 +46,10 @@ DEFAULT_PROJECT_INFO_KEYS = (
     "error_trials",
 )
 
+TERMINAL_HEIGHT, TERMINAL_WIDTH = subprocess.check_output(['stty',
+                                                           'size']).split()
+TERMINAL_HEIGHT, TERMINAL_WIDTH = int(TERMINAL_HEIGHT), int(TERMINAL_WIDTH)
+
 
 def _list_trials(experiment_path, sort,
                  info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
@@ -58,18 +63,36 @@ def _list_trials(experiment_path, sort,
     checkpoints_df = pd.DataFrame(
         experiment_state["checkpoints"])[list(info_keys)]
     if "logdir" in checkpoints_df.columns:
+        # logdir often too verbose to view in table, so drop experiment_path
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
             experiment_path, '')
     if sort:
         checkpoints_df = checkpoints_df.sort_values(by=sort)
-    print(tabulate(checkpoints_df, headers="keys", tablefmt="psql"))
+        checkpoints_df = checkpoints_df.reset_index(drop=True)
 
-    # TODO(hartikainen): The logdir is often too verbose to be viewed in a
-    # table.
-    # checkpoints = pd.DataFrame.from_records(experiment_state['checkpoints'])
-    # checkpoints['logdir'] = checkpoints['logdir'].str.replace(
-    #     experiment_path, '')
-    # print(checkpoints[list(info_keys)].to_string())
+    print_df = pd.DataFrame()
+    columns = list(info_keys)
+    dropped = []
+    empty = []
+    # column display priority is based on the info_keys passed in
+    for i in range(len(columns)):
+        print_df[columns[i]] = checkpoints_df[columns[i]]
+        table = tabulate(print_df, headers="keys", tablefmt="psql")
+        if checkpoints_df[columns[i]].isnull().all():
+            empty.append(columns[i])
+            print_df.drop(columns[i], axis=1, inplace=True)
+        elif str(table).index('\n') > TERMINAL_WIDTH:
+            print_df.drop(columns[i], axis=1, inplace=True)
+            table = tabulate(print_df, headers="keys", tablefmt="psql")
+            dropped += columns[i:]
+            break
+
+    print(table)
+    if dropped:
+        print("Dropped columns:", dropped)
+        print("Please increase your terminal size to view remaining columns.")
+    if empty:
+        print("Empty columns:", empty)
 
 
 @cli.command()
@@ -110,13 +133,36 @@ def _list_experiments(project_path, sort, info_keys=DEFAULT_PROJECT_INFO_KEYS):
                 checkpoints["status"] == Trial.TERMINATED).sum(),
             "error_trials": (checkpoints["status"] == Trial.ERROR).sum(),
         }
-
         experiment_data_collection.append(experiment_data)
 
-    info_df = pd.DataFrame(experiment_data_collection)
+    info_df = pd.DataFrame(experiment_data_collection)[list(info_keys)]
     if sort:
         info_df = info_df.sort_values(by=sort)
-    print(tabulate(info_df, headers="keys", tablefmt="psql"))
+        info_df = info_df.reset_index(drop=True)
+
+    print_df = pd.DataFrame()
+    columns = list(info_keys)
+    dropped = []
+    empty = []
+    # column display priority is based on the info_keys passed in
+    for i in range(len(columns)):
+        print_df[columns[i]] = info_df[columns[i]]
+        table = tabulate(print_df, headers="keys", tablefmt="psql")
+        if info_df[columns[i]].isnull().all():
+            empty.append(columns[i])
+            print_df.drop(columns[i], axis=1, inplace=True)
+        elif str(table).index('\n') > TERMINAL_WIDTH:
+            print_df.drop(columns[i], axis=1, inplace=True)
+            table = tabulate(print_df, headers="keys", tablefmt="psql")
+            dropped += columns[i:]
+            break
+
+    print(table)
+    if dropped:
+        print("Dropped columns:", dropped)
+        print("Please increase your terminal size to view remaining columns.")
+    if empty:
+        print("Empty columns:", empty)
 
 
 @cli.command()
