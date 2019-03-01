@@ -66,6 +66,116 @@ class Logger(object):
         pass
 
 
+class NoopLogger(Logger):
+    def on_result(self, result):
+        pass
+
+
+class JsonLogger(Logger):
+    def _init(self):
+        config_out = os.path.join(self.logdir, "params.json")
+        with open(config_out, "w") as f:
+            json.dump(
+                self.config,
+                f,
+                indent=2,
+                sort_keys=True,
+                cls=_SafeFallbackEncoder)
+        config_pkl = os.path.join(self.logdir, "params.pkl")
+        with open(config_pkl, "wb") as f:
+            cloudpickle.dump(self.config, f)
+        local_file = os.path.join(self.logdir, "result.json")
+        self.local_out = open(local_file, "a")
+
+    def on_result(self, result):
+        json.dump(result, self, cls=_SafeFallbackEncoder)
+        self.write("\n")
+        self.local_out.flush()
+
+    def write(self, b):
+        self.local_out.write(b)
+
+    def flush(self):
+        self.local_out.flush()
+
+    def close(self):
+        self.local_out.close()
+
+
+def to_tf_values(result, path):
+    values = []
+    for attr, value in result.items():
+        if value is not None:
+            if use_tf150_api:
+                type_list = [int, float, np.float32, np.float64, np.int32]
+            else:
+                type_list = [int, float]
+            if type(value) in type_list:
+                values.append(
+                    tf.Summary.Value(
+                        tag="/".join(path + [attr]), simple_value=value))
+            elif type(value) is dict:
+                values.extend(to_tf_values(value, path + [attr]))
+    return values
+
+
+class TFLogger(Logger):
+    def _init(self):
+        self._file_writer = tf.summary.FileWriter(self.logdir)
+
+    def on_result(self, result):
+        tmp = result.copy()
+        for k in [
+                "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
+        ]:
+            if k in tmp:
+                del tmp[k]  # not useful to tf log these
+        values = to_tf_values(tmp, ["ray", "tune"])
+        train_stats = tf.Summary(value=values)
+        t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+        self._file_writer.add_summary(train_stats, t)
+        iteration_value = to_tf_values({
+            "training_iteration": result[TRAINING_ITERATION]
+        }, ["ray", "tune"])
+        iteration_stats = tf.Summary(value=iteration_value)
+        self._file_writer.add_summary(iteration_stats, t)
+        self._file_writer.flush()
+
+    def flush(self):
+        self._file_writer.flush()
+
+    def close(self):
+        self._file_writer.close()
+
+
+class CSVLogger(Logger):
+    def _init(self):
+        """CSV outputted with Headers as first set of results."""
+        # Note that we assume params.json was already created by JsonLogger
+        progress_file = os.path.join(self.logdir, "progress.csv")
+        self._continuing = os.path.exists(progress_file)
+        self._file = open(progress_file, "a")
+        self._csv_out = None
+
+    def on_result(self, result):
+        if self._csv_out is None:
+            self._csv_out = csv.DictWriter(self._file, result.keys())
+            if not self._continuing:
+                self._csv_out.writeheader()
+        self._csv_out.writerow(
+            {k: v
+             for k, v in result.items() if k in self._csv_out.fieldnames})
+
+    def flush(self):
+        self._file.flush()
+
+    def close(self):
+        self._file.close()
+
+
+DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TFLogger)
+
+
 class UnifiedLogger(Logger):
     """Unified result logger for TensorBoard, rllab/viskit, plain json.
 
@@ -75,7 +185,8 @@ class UnifiedLogger(Logger):
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
         upload_uri (str): Optional URI where the logdir is sync'ed to.
-        custom_loggers (list): List of custom logger creators.
+        loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
+            and JSON loggers.
         sync_function (func|str): Optional function for syncer to run.
             See ray/python/ray/tune/log_sync.py
     """
@@ -84,20 +195,20 @@ class UnifiedLogger(Logger):
                  config,
                  logdir,
                  upload_uri=None,
-                 custom_loggers=None,
+                 loggers=None,
                  sync_function=None):
-        self._logger_list = [_JsonLogger, _TFLogger, _CSVLogger]
+        if loggers is None:
+            self._logger_cls_list = DEFAULT_LOGGERS
+        else:
+            self._logger_cls_list = loggers
         self._sync_function = sync_function
         self._log_syncer = None
-        if custom_loggers:
-            assert isinstance(custom_loggers, list), "Improper custom loggers."
-            self._logger_list += custom_loggers
 
         Logger.__init__(self, config, logdir, upload_uri)
 
     def _init(self):
         self._loggers = []
-        for cls in self._logger_list:
+        for cls in self._logger_cls_list:
             try:
                 self._loggers.append(cls(self.config, self.logdir, self.uri))
             except Exception:
@@ -133,113 +244,6 @@ class UnifiedLogger(Logger):
         if worker_ip != self._log_syncer.worker_ip:
             self._log_syncer.set_worker_ip(worker_ip)
             self._log_syncer.sync_to_worker_if_possible()
-
-
-class NoopLogger(Logger):
-    def on_result(self, result):
-        pass
-
-
-class _JsonLogger(Logger):
-    def _init(self):
-        config_out = os.path.join(self.logdir, "params.json")
-        with open(config_out, "w") as f:
-            json.dump(
-                self.config,
-                f,
-                indent=2,
-                sort_keys=True,
-                cls=_SafeFallbackEncoder)
-        config_pkl = os.path.join(self.logdir, "params.pkl")
-        with open(config_pkl, "wb") as f:
-            cloudpickle.dump(self.config, f)
-        local_file = os.path.join(self.logdir, "result.json")
-        self.local_out = open(local_file, "a")
-
-    def on_result(self, result):
-        json.dump(result, self, cls=_SafeFallbackEncoder)
-        self.write("\n")
-
-    def write(self, b):
-        self.local_out.write(b)
-        self.local_out.flush()
-
-    def flush(self):
-        self.local_out.flush()
-
-    def close(self):
-        self.local_out.close()
-
-
-def to_tf_values(result, path):
-    values = []
-    for attr, value in result.items():
-        if value is not None:
-            if use_tf150_api:
-                type_list = [int, float, np.float32, np.float64, np.int32]
-            else:
-                type_list = [int, float]
-            if type(value) in type_list:
-                values.append(
-                    tf.Summary.Value(
-                        tag="/".join(path + [attr]), simple_value=value))
-            elif type(value) is dict:
-                values.extend(to_tf_values(value, path + [attr]))
-    return values
-
-
-class _TFLogger(Logger):
-    def _init(self):
-        self._file_writer = tf.summary.FileWriter(self.logdir)
-
-    def on_result(self, result):
-        tmp = result.copy()
-        for k in [
-                "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
-        ]:
-            if k in tmp:
-                del tmp[k]  # not useful to tf log these
-        values = to_tf_values(tmp, ["ray", "tune"])
-        train_stats = tf.Summary(value=values)
-        t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
-        self._file_writer.add_summary(train_stats, t)
-        iteration_value = to_tf_values({
-            "training_iteration": result[TRAINING_ITERATION]
-        }, ["ray", "tune"])
-        iteration_stats = tf.Summary(value=iteration_value)
-        self._file_writer.add_summary(iteration_stats, t)
-        self._file_writer.flush()
-
-    def flush(self):
-        self._file_writer.flush()
-
-    def close(self):
-        self._file_writer.close()
-
-
-class _CSVLogger(Logger):
-    def _init(self):
-        """CSV outputted with Headers as first set of results."""
-        # Note that we assume params.json was already created by JsonLogger
-        progress_file = os.path.join(self.logdir, "progress.csv")
-        self._continuing = os.path.exists(progress_file)
-        self._file = open(progress_file, "a")
-        self._csv_out = None
-
-    def on_result(self, result):
-        if self._csv_out is None:
-            self._csv_out = csv.DictWriter(self._file, result.keys())
-            if not self._continuing:
-                self._csv_out.writeheader()
-        self._csv_out.writerow(
-            {k: v
-             for k, v in result.items() if k in self._csv_out.fieldnames})
-
-    def flush(self):
-        self._file.flush()
-
-    def close(self):
-        self._file.close()
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):

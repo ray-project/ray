@@ -332,6 +332,7 @@ class Agent(Trainable):
         merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
+        self.raw_user_config = config
         self.config = merged_config
         Agent._validate_config(self.config)
         if self.config.get("log_level"):
