@@ -66,81 +66,12 @@ class Logger(object):
         pass
 
 
-class UnifiedLogger(Logger):
-    """Unified result logger for TensorBoard, rllab/viskit, plain json.
-
-    This class also periodically syncs output to the given upload uri.
-
-    Arguments:
-        config: Configuration passed to all logger creators.
-        logdir: Directory for all logger creators to log to.
-        upload_uri (str): Optional URI where the logdir is sync'ed to.
-        custom_loggers (list): List of custom logger creators.
-        sync_function (func|str): Optional function for syncer to run.
-            See ray/python/ray/tune/log_sync.py
-    """
-
-    def __init__(self,
-                 config,
-                 logdir,
-                 upload_uri=None,
-                 custom_loggers=None,
-                 sync_function=None):
-        self._logger_list = [_JsonLogger, _TFLogger, _CSVLogger]
-        self._sync_function = sync_function
-        self._log_syncer = None
-        if custom_loggers:
-            assert isinstance(custom_loggers, list), "Improper custom loggers."
-            self._logger_list += custom_loggers
-
-        Logger.__init__(self, config, logdir, upload_uri)
-
-    def _init(self):
-        self._loggers = []
-        for cls in self._logger_list:
-            try:
-                self._loggers.append(cls(self.config, self.logdir, self.uri))
-            except Exception:
-                logger.warning("Could not instantiate {} - skipping.".format(
-                    str(cls)))
-        self._log_syncer = get_syncer(
-            self.logdir, self.uri, sync_function=self._sync_function)
-
-    def on_result(self, result):
-        for _logger in self._loggers:
-            _logger.on_result(result)
-        self._log_syncer.set_worker_ip(result.get(NODE_IP))
-        self._log_syncer.sync_if_needed()
-
-    def close(self):
-        for _logger in self._loggers:
-            _logger.close()
-        self._log_syncer.sync_now(force=True)
-        self._log_syncer.close()
-
-    def flush(self):
-        for _logger in self._loggers:
-            _logger.flush()
-        self._log_syncer.sync_now(force=True)
-        self._log_syncer.wait()
-
-    def sync_results_to_new_location(self, worker_ip):
-        """Sends the current log directory to the remote node.
-
-        Syncing will not occur if the cluster is not started
-        with the Ray autoscaler.
-        """
-        if worker_ip != self._log_syncer.worker_ip:
-            self._log_syncer.set_worker_ip(worker_ip)
-            self._log_syncer.sync_to_worker_if_possible()
-
-
 class NoopLogger(Logger):
     def on_result(self, result):
         pass
 
 
-class _JsonLogger(Logger):
+class JsonLogger(Logger):
     def _init(self):
         config_out = os.path.join(self.logdir, "params.json")
         with open(config_out, "w") as f:
@@ -188,7 +119,7 @@ def to_tf_values(result, path):
     return values
 
 
-class _TFLogger(Logger):
+class TFLogger(Logger):
     def _init(self):
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
@@ -217,7 +148,7 @@ class _TFLogger(Logger):
         self._file_writer.close()
 
 
-class _CSVLogger(Logger):
+class CSVLogger(Logger):
     def _init(self):
         """CSV outputted with Headers as first set of results."""
         # Note that we assume params.json was already created by JsonLogger
@@ -240,6 +171,79 @@ class _CSVLogger(Logger):
 
     def close(self):
         self._file.close()
+
+
+DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TFLogger)
+
+
+class UnifiedLogger(Logger):
+    """Unified result logger for TensorBoard, rllab/viskit, plain json.
+
+    This class also periodically syncs output to the given upload uri.
+
+    Arguments:
+        config: Configuration passed to all logger creators.
+        logdir: Directory for all logger creators to log to.
+        upload_uri (str): Optional URI where the logdir is sync'ed to.
+        loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
+            and JSON loggers.
+        sync_function (func|str): Optional function for syncer to run.
+            See ray/python/ray/tune/log_sync.py
+    """
+
+    def __init__(self,
+                 config,
+                 logdir,
+                 upload_uri=None,
+                 loggers=None,
+                 sync_function=None):
+        if loggers is None:
+            self._logger_cls_list = DEFAULT_LOGGERS
+        else:
+            self._logger_cls_list = loggers
+        self._sync_function = sync_function
+        self._log_syncer = None
+
+        Logger.__init__(self, config, logdir, upload_uri)
+
+    def _init(self):
+        self._loggers = []
+        for cls in self._logger_cls_list:
+            try:
+                self._loggers.append(cls(self.config, self.logdir, self.uri))
+            except Exception:
+                logger.warning("Could not instantiate {} - skipping.".format(
+                    str(cls)))
+        self._log_syncer = get_syncer(
+            self.logdir, self.uri, sync_function=self._sync_function)
+
+    def on_result(self, result):
+        for _logger in self._loggers:
+            _logger.on_result(result)
+        self._log_syncer.set_worker_ip(result.get(NODE_IP))
+        self._log_syncer.sync_if_needed()
+
+    def close(self):
+        for _logger in self._loggers:
+            _logger.close()
+        self._log_syncer.sync_now(force=True)
+        self._log_syncer.close()
+
+    def flush(self):
+        for _logger in self._loggers:
+            _logger.flush()
+        self._log_syncer.sync_now(force=True)
+        self._log_syncer.wait()
+
+    def sync_results_to_new_location(self, worker_ip):
+        """Sends the current log directory to the remote node.
+
+        Syncing will not occur if the cluster is not started
+        with the Ray autoscaler.
+        """
+        if worker_ip != self._log_syncer.worker_ip:
+            self._log_syncer.set_worker_ip(worker_ip)
+            self._log_syncer.sync_to_worker_if_possible()
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):
