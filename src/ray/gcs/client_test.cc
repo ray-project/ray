@@ -161,7 +161,8 @@ void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   };
 
   // Do a lookup at the object ID.
-  RAY_CHECK_OK(client->task_reconstruction_log().Lookup(job_id, object_id, lookup_callback));
+  RAY_CHECK_OK(
+      client->task_reconstruction_log().Lookup(job_id, object_id, lookup_callback));
   // Run the event loop. The loop will only stop if the Lookup callback is
   // called (or an assertion failure).
   test->Start();
@@ -235,8 +236,10 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
       job_id, task_id, data_log[1],
       /*done callback=*/nullptr, failure_callback, /*log_length=*/1));
 
-  auto lookup_callback = [node_manager_ids](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                    const std::vector<TaskReconstructionDataT> &data) {
+  auto lookup_callback = [node_manager_ids](
+      gcs::AsyncGcsClient *client,
+      const UniqueID &id,
+      const std::vector<TaskReconstructionDataT> &data) {
     std::vector<std::string> appended_managers;
     for (const auto &entry : data) {
       appended_managers.push_back(entry.node_manager_id);
@@ -290,15 +293,14 @@ void TestSet(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
     auto data = std::make_shared<ObjectTableDataT>();
     data->manager = manager;
     // Check that we added the correct object entries.
-    auto remove_entry_callback = [object_id, data](gcs::AsyncGcsClient *client,
-                                                   const UniqueID &id,
-                                                   const ObjectTableDataT &d) {
+    auto remove_entry_callback = [object_id, data](
+        gcs::AsyncGcsClient *client, const UniqueID &id, const ObjectTableDataT &d) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data->manager, d.manager);
       test->IncrementNumCallbacks();
     };
-    RAY_CHECK_OK(client->object_table().Remove(job_id, object_id, data,
-                                               remove_entry_callback));
+    RAY_CHECK_OK(
+        client->object_table().Remove(job_id, object_id, data, remove_entry_callback));
   }
 
   // Check that the entries are removed.
@@ -324,9 +326,9 @@ TEST_F(TestGcsWithAsio, TestSet) {
   TestSet(job_id_, client_);
 }
 
-void TestDeleteKeysFromLog(const JobID &job_id,
-                           std::shared_ptr<gcs::AsyncGcsClient> client,
-                           std::vector<std::shared_ptr<TaskReconstructionDataT>> &data_vector) {
+void TestDeleteKeysFromLog(
+    const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client,
+    std::vector<std::shared_ptr<TaskReconstructionDataT>> &data_vector) {
   std::vector<ObjectID> ids;
   ObjectID object_id;
   for (auto &data : data_vector) {
@@ -339,7 +341,8 @@ void TestDeleteKeysFromLog(const JobID &job_id,
       ASSERT_EQ(data->node_manager_id, d.node_manager_id);
       test->IncrementNumCallbacks();
     };
-    RAY_CHECK_OK(client->task_reconstruction_log().Append(job_id, object_id, data, add_callback));
+    RAY_CHECK_OK(
+        client->task_reconstruction_log().Append(job_id, object_id, data, add_callback));
   }
   for (const auto &object_id : ids) {
     // Check that lookup returns the added object entries.
@@ -350,7 +353,8 @@ void TestDeleteKeysFromLog(const JobID &job_id,
       ASSERT_EQ(data.size(), 1);
       test->IncrementNumCallbacks();
     };
-    RAY_CHECK_OK(client->task_reconstruction_log().Lookup(job_id, object_id, lookup_callback));
+    RAY_CHECK_OK(
+        client->task_reconstruction_log().Lookup(job_id, object_id, lookup_callback));
   }
   if (ids.size() == 1) {
     client->task_reconstruction_log().Delete(job_id, ids[0]);
@@ -364,7 +368,8 @@ void TestDeleteKeysFromLog(const JobID &job_id,
       ASSERT_TRUE(data.size() == 0);
       test->IncrementNumCallbacks();
     };
-    RAY_CHECK_OK(client->task_reconstruction_log().Lookup(job_id, object_id, lookup_callback));
+    RAY_CHECK_OK(
+        client->task_reconstruction_log().Lookup(job_id, object_id, lookup_callback));
   }
 }
 
@@ -478,14 +483,16 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cl
   TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
   // Test the case for more than one elements and less than
   // maximum_gcs_deletion_batch_size.
-  AppendTaskReconstructionData(RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
+  AppendTaskReconstructionData(
+      RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
   ASSERT_GT(task_reconstruction_vector.size(), 1);
   ASSERT_LT(task_reconstruction_vector.size(),
             RayConfig::instance().maximum_gcs_deletion_batch_size());
   TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
   // Test the case for more than maximum_gcs_deletion_batch_size.
   // The Delete function will split the data into two commands.
-  AppendTaskReconstructionData(RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
+  AppendTaskReconstructionData(
+      RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
   ASSERT_GT(task_reconstruction_vector.size(),
             RayConfig::instance().maximum_gcs_deletion_batch_size());
   TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
@@ -595,9 +602,9 @@ void TestLogSubscribeAll(const JobID &job_id,
     driver_ids.emplace_back(JobID::from_random());
   }
   // Callback for a notification.
-  auto notification_callback = [driver_ids](
-      gcs::AsyncGcsClient *client, const UniqueID &id,
-      const std::vector<DriverTableDataT> data) {
+  auto notification_callback = [driver_ids](gcs::AsyncGcsClient *client,
+                                            const UniqueID &id,
+                                            const std::vector<DriverTableDataT> data) {
     ASSERT_EQ(id, driver_ids[test->NumCallbacks()]);
     // Check that we get notifications in the same order as the writes.
     for (const auto &entry : data) {

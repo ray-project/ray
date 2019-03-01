@@ -76,8 +76,8 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
   using NotificationCallback = std::function<void(AsyncGcsClient *client, const ID &id,
-                                              const GcsTableNotificationMode mode,
-                                              const std::vector<DataT> &data)>;
+                                                  const GcsTableNotificationMode mode,
+                                                  const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
@@ -370,7 +370,7 @@ class SetInterface {
   virtual Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
                      const WriteCallback &done) = 0;
   virtual Status Remove(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
-                     const WriteCallback &done) = 0;
+                        const WriteCallback &done) = 0;
   virtual ~SetInterface(){};
 };
 
@@ -385,8 +385,8 @@ class SetInterface {
 ///   ObjectTable: Stores a set of which clients have added an object.
 template <typename ID, typename Data>
 class Set : private Log<ID, Data>,
-              public SetInterface<ID, Data>,
-              virtual public PubsubInterface<ID> {
+            public SetInterface<ID, Data>,
+            virtual public PubsubInterface<ID> {
  public:
   using DataT = typename Log<ID, Data>::DataT;
   using Callback = typename Log<ID, Data>::Callback;
@@ -394,8 +394,7 @@ class Set : private Log<ID, Data>,
   using NotificationCallback = typename Log<ID, Data>::NotificationCallback;
   using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
 
-  Set(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-        AsyncGcsClient *client)
+  Set(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
       : Log<ID, Data>(contexts, client) {}
 
   using Log<ID, Data>::RequestNotifications;
@@ -410,7 +409,7 @@ class Set : private Log<ID, Data>,
   /// GCS.
   /// \return Status
   Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
-                const WriteCallback &done);
+             const WriteCallback &done);
 
   /// Remove an entry from the set.
   ///
@@ -434,8 +433,8 @@ class Set : private Log<ID, Data>,
   }
 
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                                      const NotificationCallback &subscribe,
-                                      const SubscriptionCallback &done) {
+                   const NotificationCallback &subscribe,
+                   const SubscriptionCallback &done) {
     return Log<ID, Data>::SubscribeWithNotificationMode(job_id, client_id, subscribe,
                                                         done);
   }

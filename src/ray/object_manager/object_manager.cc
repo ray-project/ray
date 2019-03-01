@@ -95,8 +95,8 @@ void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   RAY_CHECK(it != local_objects_.end());
   auto object_info = it->second.object_info;
   local_objects_.erase(it);
-  ray::Status status = object_directory_->ReportObjectRemoved(object_id,
-                                                              client_id_, object_info);
+  ray::Status status =
+      object_directory_->ReportObjectRemoved(object_id, client_id_, object_info);
 }
 
 ray::Status ObjectManager::SubscribeObjAdded(

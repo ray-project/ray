@@ -423,7 +423,8 @@ int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
     // channel.
     return PublishTableUpdate(ctx, pubsub_channel_str, id,
                               is_add ? GcsTableNotificationMode::APPEND_OR_ADD
-                                     : GcsTableNotificationMode::REMOVE, data);
+                                     : GcsTableNotificationMode::REMOVE,
+                              data);
   } else {
     return RedisModule_ReplyWithSimpleString(ctx, "OK");
   }
@@ -439,8 +440,8 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
   RedisModuleString *data = argv[4];
 
   RedisModuleString *key_string = PrefixedKeyString(ctx, prefix_str, id);
-  RedisModuleCallReply *reply = RedisModule_Call(ctx, is_add ? "SADD" : "SREM", "ss",
-                                                 key_string, data);
+  RedisModuleCallReply *reply =
+      RedisModule_Call(ctx, is_add ? "SADD" : "SREM", "ss", key_string, data);
   if (RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ERROR) {
     if (!is_add) {
       // try to delete the empty set.
@@ -542,12 +543,12 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
     // server list iterator, once it is implemented for redis modules.
     RedisModuleCallReply *reply = nullptr;
     switch (key_type) {
-      case REDISMODULE_KEYTYPE_LIST:
-        reply = RedisModule_Call(ctx, "LRANGE", "sll", table_key_str, 0, -1);
-        break;
-      case REDISMODULE_KEYTYPE_SET:
-        reply = RedisModule_Call(ctx, "SMEMBERS", "s", table_key_str);
-        break;
+    case REDISMODULE_KEYTYPE_LIST:
+      reply = RedisModule_Call(ctx, "LRANGE", "sll", table_key_str, 0, -1);
+      break;
+    case REDISMODULE_KEYTYPE_SET:
+      reply = RedisModule_Call(ctx, "SMEMBERS", "s", table_key_str);
+      break;
     }
     // Build the flatbuffer from the set of log entries.
     if (reply == nullptr || RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ARRAY) {
@@ -895,13 +896,13 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.set_add", SetAdd_RedisCommand,
-                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.set_add", SetAdd_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.set_remove", SetRemove_RedisCommand,
-                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.set_remove", SetRemove_RedisCommand, "write", 0,
+                                0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

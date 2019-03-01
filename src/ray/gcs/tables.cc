@@ -288,11 +288,9 @@ std::string Table<ID, Data>::DebugString() const {
   return result.str();
 }
 
-template<typename ID, typename Data>
-Status Set<ID, Data>::Add(const JobID &job_id,
-                          const ID &id,
-                          std::shared_ptr<DataT> &dataT,
-                          const WriteCallback &done) {
+template <typename ID, typename Data>
+Status Set<ID, Data>::Add(const JobID &job_id, const ID &id,
+                          std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {
@@ -308,11 +306,9 @@ Status Set<ID, Data>::Add(const JobID &job_id,
                                        std::move(callback));
 }
 
-template<typename ID, typename Data>
-Status Set<ID, Data>::Remove(const JobID &job_id,
-                             const ID &id,
-                             std::shared_ptr<DataT> &dataT,
-                             const WriteCallback &done) {
+template <typename ID, typename Data>
+Status Set<ID, Data>::Remove(const JobID &job_id, const ID &id,
+                             std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_removes_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {

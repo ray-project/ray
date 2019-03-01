@@ -214,9 +214,9 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
           bool has_been_created = false;
-          UpdateObjectLocations(GcsTableNotificationMode::CURRENT_VALUE,
-                                location_updates, gcs_client_->client_table(),
-                                &client_ids, &has_been_created);
+          UpdateObjectLocations(GcsTableNotificationMode::CURRENT_VALUE, location_updates,
+                                gcs_client_->client_table(), &client_ids,
+                                &has_been_created);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.
           callback(object_id, client_ids, has_been_created);
