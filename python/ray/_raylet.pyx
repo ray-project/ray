@@ -263,9 +263,11 @@ cdef class RayletClient:
             WaitResultPair result
             c_vector[CObjectID] wait_ids
         wait_ids = ObjectIDsToVector(object_ids)
-        check_status(self.client.get().Wait(wait_ids, num_returns,
-                                            timeout_milliseconds, wait_local,
-                                            current_task_id.data, &result))
+        with nogil:
+            check_status(self.client.get().Wait(wait_ids, num_returns,
+                                                timeout_milliseconds,
+                                                wait_local,
+                                                current_task_id.data, &result))
         return (VectorToObjectIDs(result.first),
                 VectorToObjectIDs(result.second))
 
