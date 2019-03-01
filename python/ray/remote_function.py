@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import copy
 import logging
-import time
 
 from ray.function_manager import FunctionDescriptor
 import ray.signature
