@@ -51,8 +51,8 @@ class PPOSurrogateLoss(object):
                  entropy_coeff=-0.01,
                  clip_param=0.3):
 
-        importance_ratio = tf.exp(old_policy_actions_logp - prev_actions_logp)
-        logp_ratio = tf.exp(actions_logp - importance_ratio*prev_actions_logp)
+        importance_ratio = tf.exp(prev_actions_logp-old_policy_actions_logp)
+        logp_ratio = importance_ratio*tf.exp(actions_logp - *prev_actions_logp)
 
         surrogate_loss = tf.minimum(
             advantages * logp_ratio,

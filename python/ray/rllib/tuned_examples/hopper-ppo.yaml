@@ -1,5 +1,5 @@
 hopper-ppo:
-    env: Hopper-v2
+    env: Hopper-v1
     run: PPO
     config:
         gamma: 0.995
@@ -8,6 +8,6 @@ hopper-ppo:
         lr: .0001
         sgd_minibatch_size: 32768
         train_batch_size: 160000
-        num_workers: 16
-        num_gpus: 1
+        num_workers: 64
+        num_gpus: 4
         batch_mode: complete_episodes
