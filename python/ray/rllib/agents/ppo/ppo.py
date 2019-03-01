@@ -104,7 +104,7 @@ class PPOAgent(Agent):
             logger.info(
                 "Important! Since 0.7.0, observation normalization is no "
                 "longer enabled by default. To enable running-mean "
-                "normalization, set 'observation_filter': 'MeanStdFilter'. " 
+                "normalization, set 'observation_filter': 'MeanStdFilter'. "
                 "You can ignore this message if your environment doesn't "
                 "require observation normalization.")
         prev_steps = self.optimizer.num_steps_sampled
