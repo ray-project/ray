@@ -122,8 +122,9 @@ else
       --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
   bazel build //:ray_pkg -c opt
-  # Copy files and skip existing files
-  cp -r -n $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
+  # Copy files and do not overwrite ownership
+  find $ROOT_DIR/bazel-genfiles/ray_pkg/ -exec chmod +w {} \;
+  cp -r $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
 fi
 
 popd
