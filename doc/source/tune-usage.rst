@@ -498,19 +498,19 @@ And stopping a trial (``PUT /trials/[:id]``):
 Tune CLI (Experimental)
 -----------------------
 
-You can monitor your experiments and projects using the Tune CLI. To do this, verify that you have the ``tabulate`` library installed:
+``tune`` is a powerful, easy-to-use command line interface (CLI) to manage and monitor your experiments on Ray. To do this, verify that you have the ``tabulate`` library installed:
 
 .. code-block:: bash
 
     $ pip install tabulate
 
-The 2 commands currently supported are ``ls`` and ``lsx``. ``ls`` allows you to display information about trials within an experiment folder, and ``lsx`` allows you to display information about experiments within a project folder. You can add the ``--sort`` flag to sort the output by specific columns. The commands will resize your output and drop columns based on the size of your terminal. It will also remove empty columns by default.
+Here are a few examples of command line calls that can be made and the corresponding terminal output. The commands will resize your output based on the size of your terminal.
 
-Here are a few examples of command-line calls that can be made and the corresponding terminal output:
+- ``tune ls``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns. Empty columns will be removed and reported by default. If the terminal window is not wide enough to fit the entire table, columns will be dropped and reported based on the order of fields requested.
 
 .. code-block:: bash
 
-    $ python scripts.py ls path_to_experiment --sort trial_id
+    $ tune ls path_to_experiment --sort trial_id
     +----+------------+------------+----------------+
     |    | trial_id   | status     |   num_failures |
     |----+------------+------------+----------------|
@@ -523,7 +523,11 @@ Here are a few examples of command-line calls that can be made and the correspon
     Please increase your terminal size to view remaining columns.
     Empty columns: ['trial_name']
 
-    $ python scripts.py lsx path_to_project
+- ``tune lsx``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--sort`` flag to sort the output by specific columns. Empty columns will be removed and reported by default. If the terminal window is not wide enough to fit the entire table, columns will be dropped and reported based on the order of fields requested.
+
+.. code-block:: bash
+
+    $ tune lsx path_to_project
     +----+--------+--------------+----------------+-------------------+--------------+
     |    | name   | total_trials | running_trials | terminated_trials | error_trials |
     |----+--------+--------------+----------------+-------------------+--------------|
