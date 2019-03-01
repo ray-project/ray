@@ -52,6 +52,36 @@ def try_restore_runner(checkpoint_dir, search_alg, scheduler, trial_executor):
     return new_runner
 
 
+def run(run,
+        name=None,
+        stop=None,
+        config=None,
+        resources_per_trial=None,
+        num_samples=1,
+        local_dir=None,
+        upload_dir=None,
+        trial_name_creator=None,
+        custom_loggers=None,
+        sync_function=None,
+        checkpoint_freq=0,
+        checkpoint_at_end=False,
+        export_formats=None,
+        max_failures=3,
+        restore=None,
+        repeat=None,
+        trial_resources=None,
+        search_alg=None,
+        scheduler=None,
+        with_server=False,
+        server_port=TuneServer.DEFAULT_PORT,
+        verbose=2,
+        resume=False,
+        queue_trials=False,
+        trial_executor=None,
+        raise_on_failed_trial=True):
+    raise NotImplementedError()
+
+
 def run_experiments(experiments,
                     search_alg=None,
                     scheduler=None,
