@@ -90,7 +90,7 @@ class BaseEnv(object):
                 if num_envs != 1:
                     raise ValueError(
                         "ExternalMultiAgentEnv not currently support num_envs > 1.")
-                env = _ExternalMultiAgentEnvToBaseEnv(env)
+                env = _ExternalEnvToBaseEnv(env, multiagent=True)
             elif isinstance(env, VectorEnv):
                 env = _VectorEnvToBaseEnv(env)
             else:
@@ -173,9 +173,10 @@ def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):
 class _ExternalEnvToBaseEnv(BaseEnv):
     """Internal adapter of ExternalEnv to BaseEnv."""
 
-    def __init__(self, external_env, preprocessor=None):
+    def __init__(self, external_env, preprocessor=None, multiagent=False):
         self.external_env = external_env
         self.prep = preprocessor
+        self.multiagent = multiagent
         self.action_space = external_env.action_space
         if preprocessor:
             self.observation_space = preprocessor.observation_space
@@ -200,74 +201,21 @@ class _ExternalEnvToBaseEnv(BaseEnv):
 
     @override(BaseEnv)
     def send_actions(self, action_dict):
-        for eid, action in action_dict.items():
-            self.external_env._episodes[eid].action_queue.put(
-                action[_DUMMY_AGENT_ID])
-
-    def _poll(self):
-        all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
-        off_policy_actions = {}
-        for eid, episode in self.external_env._episodes.copy().items():
-            data = episode.get_data()
-            if episode.cur_done:
-                del self.external_env._episodes[eid]
-            if data:
-                if self.prep:
-                    all_obs[eid] = self.prep.transform(data["obs"])
-                else:
-                    all_obs[eid] = data["obs"]
-                all_rewards[eid] = data["reward"]
-                all_dones[eid] = data["done"]
-                all_infos[eid] = data["info"]
-                if "off_policy_action" in data:
-                    off_policy_actions[eid] = data["off_policy_action"]
-        return _with_dummy_agent_id(all_obs), \
-            _with_dummy_agent_id(all_rewards), \
-            _with_dummy_agent_id(all_dones, "__all__"), \
-            _with_dummy_agent_id(all_infos), \
-            _with_dummy_agent_id(off_policy_actions)
-
-class _ExternalMultiAgentEnvToBaseEnv(BaseEnv):
-    """Internal adapter of ExternalEnv to BaseEnv."""
-
-    def __init__(self, external_env, preprocessor=None):
-        self.external_env = external_env
-        self.prep = preprocessor
-        # FIXME do i need to set the spaces
-        # if I have multiple agents?
-        self.action_space = external_env.action_space
-        if preprocessor:
-            self.observation_space = preprocessor.observation_space
+        if self.multiagent:
+            for env_id, actions in action_dict.items():
+                self.external_env._episodes[env_id].action_queue.put(actions)
         else:
-            self.observation_space = external_env.observation_space
-        external_env.start()
-
-    @override(BaseEnv)
-    def poll(self):
-        with self.external_env._results_avail_condition:
-            results = self._poll()
-            while len(results[0]) == 0:
-                self.external_env._results_avail_condition.wait()
-                results = self._poll()
-                if not self.external_env.isAlive():
-                    raise Exception("Serving thread has stopped.")
-        limit = self.external_env._max_concurrent_episodes
-        assert len(results[0]) < limit, \
-            ("Too many concurrent episodes, were some leaked? This "
-             "ExternalEnv was created with max_concurrent={}".format(limit))
-        return results
-
-    @override(BaseEnv)
-    def send_actions(self, action_dict):
-        for env_id, actions in action_dict.items():
-            self.external_env._episodes[env_id].action_queue.put(actions)
+            for eid, action in action_dict.items():
+                self.external_env._episodes[eid].action_queue.put(
+                    action[_DUMMY_AGENT_ID])
 
     def _poll(self):
         all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
-            if episode.cur_done["__all__"]:
+            cur_done = episode.cur_done["__all__"] if self.multiagent else episode.cur_done
+            if cur_done:
                 del self.external_env._episodes[eid]
             if data:
                 if self.prep:
@@ -279,7 +227,14 @@ class _ExternalMultiAgentEnvToBaseEnv(BaseEnv):
                 all_infos[eid] = data["info"]
                 if "off_policy_action" in data:
                     off_policy_actions[eid] = data["off_policy_action"]
-        return all_obs, all_rewards, all_dones, all_infos, off_policy_actions
+        if self.multiagent:
+            return all_obs, all_rewards, all_dones, all_infos, off_policy_actions
+        else:
+            return _with_dummy_agent_id(all_obs), \
+                _with_dummy_agent_id(all_rewards), \
+                _with_dummy_agent_id(all_dones, "__all__"), \
+                _with_dummy_agent_id(all_infos), \
+                _with_dummy_agent_id(off_policy_actions)
 
 
 class _VectorEnvToBaseEnv(BaseEnv):
