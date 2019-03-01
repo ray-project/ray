@@ -30,38 +30,23 @@ public class RuntimeContextTest extends BaseTest {
 
   // test in actor.
   @RayRemote
-  public static class Info {
+  public static class RuntimeContextTester {
 
-    public Info() {
-
-    }
-
-    public UniqueId getCurrentDriverId() {
-      return Ray.getRuntimeContext().getCurrentDriverId();
-    }
-
-    public UniqueId getCurrentActorId() {
-      return Ray.getRuntimeContext().getCurrentActorId();
-    }
-
-    public String getRayletSocketName() {
-      return Ray.getRuntimeContext().getRayletSocketName();
-    }
-
-    public String getObjectStoreSocketName() {
-      return Ray.getRuntimeContext().getObjectStoreSocketName();
+    public String testRuntimeContext(UniqueId actorId) {
+      Assert.assertEquals(DRIVER_ID, Ray.getRuntimeContext().getCurrentDriverId());
+      Assert.assertEquals(actorId, Ray.getRuntimeContext().getCurrentActorId());
+      Assert.assertEquals(RAYLET_SOCKET_NAME, Ray.getRuntimeContext().getRayletSocketName());
+      Assert.assertEquals(OBJECT_STORE_SOCKET_NAME,
+          Ray.getRuntimeContext().getObjectStoreSocketName());
+      return "ok";
     }
   }
 
   @Test
   public void testRuntimeContextInActor() {
-    RayActor<Info> actor = Ray.createActor(Info::new);
-
-    Assert.assertEquals(DRIVER_ID, Ray.call(Info::getCurrentDriverId, actor).get());
-    Assert.assertEquals(actor.getId(), Ray.call(Info::getCurrentActorId, actor).get());
-    Assert.assertEquals(RAYLET_SOCKET_NAME, Ray.call(Info::getRayletSocketName, actor).get());
-    Assert.assertEquals(OBJECT_STORE_SOCKET_NAME,
-        Ray.call(Info::getObjectStoreSocketName, actor).get());
+    RayActor<RuntimeContextTester> actor = Ray.createActor(RuntimeContextTester::new);
+    Assert.assertEquals("ok",
+        Ray.call(RuntimeContextTester::testRuntimeContext, actor, actor.getId()));
 
   }
 

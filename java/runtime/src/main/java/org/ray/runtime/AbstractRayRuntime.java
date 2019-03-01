@@ -63,7 +63,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected ObjectStoreProxy objectStoreProxy;
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
-  protected UniqueId currentActorId = UniqueId.NIL;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
@@ -349,14 +348,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public RayConfig getRayConfig() {
     return rayConfig;
-  }
-
-  public void setCurrentActorId(UniqueId actorId) {
-    currentActorId = actorId;
-  }
-
-  public UniqueId getCurrentActorId() {
-    return currentActorId;
   }
 
   public RuntimeContext getRuntimeContext() {

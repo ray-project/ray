@@ -22,7 +22,7 @@ public class RuntimeContextImpl implements RuntimeContext {
   @Override
   public UniqueId getCurrentActorId() {
     Preconditions.checkState(runtime.rayConfig.workerMode == WorkerMode.WORKER);
-    return runtime.getCurrentActorId();
+    return runtime.getWorker().getCurrentActorId();
   }
 
   @Override

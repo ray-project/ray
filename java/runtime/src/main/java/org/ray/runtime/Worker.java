@@ -63,6 +63,10 @@ public class Worker {
     this.runtime = runtime;
   }
 
+  public UniqueId getCurrentActorId() {
+    return currentActorId;
+  }
+
   public void loop() {
     while (true) {
       LOGGER.info("Fetching new task in thread {}.", Thread.currentThread().getName());
@@ -89,9 +93,6 @@ public class Worker {
       // Get local actor object and arguments.
       Object actor = null;
       if (spec.isActorTask()) {
-        // TODO(qwang): Remove `worker.currentActorId`,
-        // and use `runtime.currentActorId` instead.
-        runtime.setCurrentActorId(spec.actorId);
         Preconditions.checkState(spec.actorId.equals(currentActorId));
         if (actorCreationException != null) {
           throw actorCreationException;
