@@ -27,7 +27,7 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public boolean wasCurrentActorReconstructed() {
-    if (RunMode.SINGLE_PROCESS == runtime.getRayConfig().runMode) {
+    if (isSingleProcess()) {
       return false;
     }
 
@@ -42,6 +42,11 @@ public class RuntimeContextImpl implements RuntimeContext {
   @Override
   public String getObjectStoreSocketName() {
     return runtime.getRayConfig().objectStoreSocketName;
+  }
+
+  @Override
+  public boolean isSingleProcess() {
+    return RunMode.SINGLE_PROCESS == runtime.getRayConfig().runMode;
   }
 
 }
