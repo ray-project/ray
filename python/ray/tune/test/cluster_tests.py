@@ -361,6 +361,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     cluster.shutdown()
 
 
+@pytest.mark.skip(reason="Not very consistent.")
 def test_cluster_rllib_restore(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)

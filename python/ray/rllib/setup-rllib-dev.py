@@ -40,8 +40,7 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter, description="Setup dev.")
     parser.add_argument(
         "--yes",
-        is_flag=True,
-        default=False,
+        action='store_true',
         help="Don't ask for confirmation.")
     args = parser.parse_args()
 
