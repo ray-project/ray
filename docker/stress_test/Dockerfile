@@ -7,7 +7,7 @@ FROM ray-project/base-deps
 RUN pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl boto3
 # We install this after the latest wheels -- this should not override the latest wheels.
 RUN apt-get install -y zlib1g-dev
-RUN pip install ray[rllib]
+RUN pip install ray[rllib] tensorflow
 RUN mkdir -p /root/.ssh/
 
 # We port the source code in so that we run the most up-to-date stress tests.
