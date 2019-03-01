@@ -61,7 +61,7 @@ class RemoteFunction(object):
         worker = ray.worker.get_global_worker()
         worker.function_actor_manager.export(self)
         # In which session this function was exported last time.
-        self._last_export_session = worker._session_index:
+        self._last_export_session = worker._session_index
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
