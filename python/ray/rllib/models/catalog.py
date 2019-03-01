@@ -202,39 +202,22 @@ class ModelCatalog(object):
 
         assert isinstance(input_dict, dict)
         options = options or MODEL_DEFAULTS
-        model = ModelCatalog._get_model(
-            input_dict,
-            obs_space,
-            action_space,
-            num_outputs,
-            options,
-            state_in,
-            seq_lens)
+        model = ModelCatalog._get_model(input_dict, obs_space, action_space,
+                                        num_outputs, options, state_in,
+                                        seq_lens)
 
         if options.get("use_lstm"):
             copy = dict(input_dict)
             copy["obs"] = model.last_layer
             feature_space = gym.spaces.Box(
                 -1, 1, shape=(model.last_layer.shape[1], ))
-            model = LSTM(
-                copy,
-                feature_space,
-                action_space,
-                num_outputs,
-                options,
-                state_in,
-                seq_lens)
+            model = LSTM(copy, feature_space, action_space, num_outputs,
+                         options, state_in, seq_lens)
 
         logger.debug(
             "Created model {}: ({} of {}, {}, {}, {}) -> {}, {}".format(
-                model,
-                input_dict,
-                obs_space,
-                action_space,
-                state_in,
-                seq_lens,
-                model.outputs,
-                model.state_out))
+                model, input_dict, obs_space, action_space, state_in, seq_lens,
+                model.outputs, model.state_out))
 
         model._validate_output_shape()
         return model
@@ -257,12 +240,8 @@ class ModelCatalog(object):
         obs_rank = len(input_dict["obs"].shape) - 1
 
         if obs_rank > 1:
-            return VisionNetwork(
-                input_dict,
-                obs_space,
-                action_space,
-                num_outputs,
-                options)
+            return VisionNetwork(input_dict, obs_space, action_space,
+                                 num_outputs, options)
 
         return FullyConnectedNetwork(input_dict, obs_space, action_space,
                                      num_outputs, options)

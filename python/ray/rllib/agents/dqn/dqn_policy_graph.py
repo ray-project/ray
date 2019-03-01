@@ -312,7 +312,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
             q_values, q_logits, q_dist, _ = self._build_q_network(
-                    self.cur_observations, observation_space, action_space)
+                self.cur_observations, observation_space, action_space)
             self.q_values = q_values
             self.q_func_vars = _scope_vars(scope.name)
 
@@ -364,7 +364,7 @@ class DQNPolicyGraph(TFPolicyGraph):
             with tf.variable_scope(Q_SCOPE, reuse=True):
                 q_tp1_using_online_net, q_logits_tp1_using_online_net, \
                     q_dist_tp1_using_online_net, _ = self._build_q_network(
-                    self.obs_tp1, observation_space, action_space)
+                        self.obs_tp1, observation_space, action_space)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best_one_hot_selection = tf.one_hot(
                 q_tp1_best_using_online_net, self.num_actions)
@@ -562,8 +562,8 @@ class DQNPolicyGraph(TFPolicyGraph):
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
             }, obs_space, action_space, self.num_actions,
-                self.config["model"]),
-            self.num_actions, self.config["dueling"], self.config["hiddens"],
+                                   self.config["model"]), self.num_actions,
+            self.config["dueling"], self.config["hiddens"],
             self.config["noisy"], self.config["num_atoms"],
             self.config["v_min"], self.config["v_max"], self.config["sigma0"],
             self.config["parameter_noise"])

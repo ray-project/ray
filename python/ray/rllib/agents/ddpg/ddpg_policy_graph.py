@@ -256,14 +256,16 @@ class DDPGPolicyGraph(TFPolicyGraph):
         # p network evaluation
         with tf.variable_scope(P_SCOPE, reuse=True) as scope:
             prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-            self.p_t, _ = self._build_p_network(self.obs_t, observation_space, action_space)
+            self.p_t, _ = self._build_p_network(self.obs_t, observation_space,
+                                                action_space)
             p_batchnorm_update_ops = list(
                 set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
                 prev_update_ops)
 
         # target p network evaluation
         with tf.variable_scope(P_TARGET_SCOPE) as scope:
-            p_tp1, _ = self._build_p_network(self.obs_tp1, observation_space, action_space)
+            p_tp1, _ = self._build_p_network(self.obs_tp1, observation_space,
+                                             action_space)
             target_p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -304,12 +306,14 @@ class DDPGPolicyGraph(TFPolicyGraph):
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
             q_tp1, _ = self._build_q_network(self.obs_tp1, observation_space,
-                                             action_space, output_actions_estimated)
+                                             action_space,
+                                             output_actions_estimated)
             target_q_func_vars = _scope_vars(scope.name)
         if self.config["twin_q"]:
             with tf.variable_scope(TWIN_Q_TARGET_SCOPE) as scope:
                 twin_q_tp1, _ = self._build_q_network(
-                    self.obs_tp1, observation_space, action_space, output_actions_estimated)
+                    self.obs_tp1, observation_space, action_space,
+                    output_actions_estimated)
                 twin_target_q_func_vars = _scope_vars(scope.name)
 
         if self.config["twin_q"]:
@@ -504,8 +508,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
             }, obs_space, action_space, 1, self.config["model"]),
-            self.dim_actions,
-            self.config["actor_hiddens"],
+            self.dim_actions, self.config["actor_hiddens"],
             self.config["actor_hidden_activation"],
             self.config["parameter_noise"])
         return policy_net.action_scores, policy_net.model
