@@ -66,7 +66,7 @@ if __name__ == "__main__":
         run=MyTrainableClass,
         num_samples=1,
         trial_name_creator=tune.function(trial_str_creator),
-        custom_loggers=[TestLogger],
+        loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
             "width": tune.sample_from(

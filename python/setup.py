@@ -24,7 +24,9 @@ ray_files = [
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store_server", "ray/_raylet.so",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
-    "ray/WebUI.ipynb"
+    "ray/WebUI.ipynb", "ray/dashboard/dashboard.py",
+    "ray/dashboard/index.html", "ray/dashboard/res/main.css",
+    "ray/dashboard/res/main.js"
 ]
 
 # These are the directories where automatically generated Python flatbuffer
@@ -152,7 +154,9 @@ requires = [
     "pytest",
     "pyyaml",
     "redis",
-    "six >= 1.12.0",
+    # NOTE: Don't upgrade the version of six! Doing so causes installation
+    # problems. See https://github.com/ray-project/ray/issues/4169.
+    "six >= 1.0.0",
     # The typing module is required by modin.
     "typing",
     "flatbuffers",
