@@ -61,7 +61,8 @@ class RemoteFunction(object):
         # Export the function.
         worker = ray.worker.get_global_worker()
         worker.function_actor_manager.export(self)
-        self._last_export_time = time.time()
+        # In which session this function was exported last time.
+        self._last_export_session = worker._session_index:
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
@@ -100,10 +101,10 @@ class RemoteFunction(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        if self._last_export_time < worker._last_shutdown_time:
-            # If the worker has been shut down, we need to export this
-            # function again.
-            self._last_export_time = time.time()
+        if self._last_export_session < worker._session_index:
+            # If this function was exported in a previous session, we need to
+            # export this function again, because current GCS doesn't have it.
+            self._last_export_session = worker._session_index
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs
