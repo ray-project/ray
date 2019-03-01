@@ -19,24 +19,22 @@ fi
 
 if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
-  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool python-dev python-numpy python-pip unzip tmux gdb
+  sudo apt-get install -y build-essential curl python-dev python-numpy python-pip unzip tmux gdb
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda2-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 cmake gym==0.10.11 opencv-python-headless pyyaml pandas==0.23.4 requests \
-    feather-format lxml openpyxl xlrd py-spy setproctitle faulthandler pytest-timeout mock flaky
-  conda install -y scipy tensorflow
+  pip install -q scipy tensorflow cython==0.29.0 gym==0.10.11 opencv-python-headless pyyaml pandas==0.23.4 requests \
+    feather-format lxml openpyxl xlrd py-spy setproctitle faulthandler pytest-timeout mock flaky networkx
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
-  sudo apt-get install -y cmake pkg-config python-dev python-numpy build-essential autoconf curl libtool unzip tmux gdb
+  sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 cmake gym opencv-python-headless pyyaml pandas==0.23.4 requests \
-    feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky
-  conda install -y scipy tensorflow
+  pip install -q scipy tensorflow cython==0.29.0 gym opencv-python-headless pyyaml pandas==0.23.4 requests \
+    feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -47,13 +45,12 @@ elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
     echo "Updating brew."
     brew update > /dev/null
   fi
-  brew install cmake pkg-config automake autoconf libtool openssl bison > /dev/null
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda2-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 cmake tensorflow gym==0.10.11 opencv-python-headless pyyaml pandas==0.23.4 requests \
-    feather-format lxml openpyxl xlrd py-spy setproctitle faulthandler pytest-timeout mock flaky
+  pip install -q cython==0.29.0 tensorflow gym==0.10.11 opencv-python-headless pyyaml pandas==0.23.4 requests \
+    feather-format lxml openpyxl xlrd py-spy setproctitle faulthandler pytest-timeout mock flaky networkx
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -64,16 +61,15 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
     echo "Updating brew."
     brew update > /dev/null
   fi
-  brew install cmake pkg-config automake autoconf libtool openssl bison > /dev/null
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 cmake tensorflow gym opencv-python-headless pyyaml pandas==0.23.4 requests \
-    feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky
+  pip install -q cython==0.29.0 tensorflow gym opencv-python-headless pyyaml pandas==0.23.4 requests \
+    feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
-  sudo apt-get install -y cmake build-essential autoconf curl libtool unzip
+  sudo apt-get install -y build-essential curl unzip
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
