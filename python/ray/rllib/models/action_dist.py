@@ -2,11 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
 import distutils.version
-import tensorflow as tf
-import numpy as np
+from collections import namedtuple
 
+import numpy as np
+import tensorflow as tf
 from ray.rllib.utils.annotations import override, DeveloperAPI
 
 use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
@@ -112,6 +112,31 @@ class Categorical(ActionDistribution):
     @override(ActionDistribution)
     def _build_sample_op(self):
         return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
+
+
+class MultiCategorical(ActionDistribution):
+    """Categorical distribution for discrete action spaces."""
+
+    def __init__(self, inputs):
+        self.cats = [Categorical(input_) for input_ in inputs]
+        self.sample_op = self._build_sample_op()
+
+    def logp(self, actions):
+        # If tensor is provided, unstack it into list
+        if isinstance(actions, tf.Tensor):
+            actions = tf.unstack(actions, axis=1)
+        logps = tf.stack(
+            [cat.logp(act) for cat, act in zip(self.cats, actions)])
+        return tf.reduce_sum(logps, axis=0)
+
+    def entropy(self):
+        return tf.stack([cat.entropy() for cat in self.cats], axis=1)
+
+    def kl(self, other):
+        return [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)]
+
+    def _build_sample_op(self):
+        return tf.stack([cat.sample() for cat in self.cats], axis=1)
 
 
 class DiagGaussian(ActionDistribution):
