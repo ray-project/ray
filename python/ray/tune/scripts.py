@@ -68,6 +68,7 @@ def _list_trials(experiment_path, sort,
             experiment_path, '')
     if sort:
         checkpoints_df = checkpoints_df.sort_values(by=sort)
+        checkpoints_df = checkpoints_df.reset_index(drop=True)
 
     print_df = pd.DataFrame()
     columns = list(info_keys)
@@ -137,6 +138,7 @@ def _list_experiments(project_path, sort, info_keys=DEFAULT_PROJECT_INFO_KEYS):
     info_df = pd.DataFrame(experiment_data_collection)[list(info_keys)]
     if sort:
         info_df = info_df.sort_values(by=sort)
+        info_df = info_df.reset_index(drop=True)
 
     print_df = pd.DataFrame()
     columns = list(info_keys)

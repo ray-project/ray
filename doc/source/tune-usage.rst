@@ -495,8 +495,8 @@ And stopping a trial (``PUT /trials/[:id]``):
     curl -X PUT http://<address>:<port>/trials/<trial_id>
 
 
-Tune CLI
---------
+Tune CLI (Experimental)
+-----------------------
 
 You can monitor your experiments and projects using the Tune CLI. To do this, verify that you have the ``tabulate`` library installed:
 
@@ -504,7 +504,34 @@ You can monitor your experiments and projects using the Tune CLI. To do this, ve
 
     $ pip install tabulate
 
-[TODO: Andrew]
+The 2 commands currently supported are ``ls`` and ``lsx``. ``ls`` allows you to display information about trials within an experiment folder, and ``lsx`` allows you to display information about experiments within a project folder. You can add the ``--sort`` flag to sort the output by specific columns. The commands will resize your output and drop columns based on the size of your terminal. It will also remove empty columns by default.
+
+Here are a few examples of command-line calls that can be made and the corresponding terminal output:
+
+.. code-block:: bash
+
+    $ python scripts.py ls path_to_experiment --sort trial_id
+    +----+------------+------------+----------------+
+    |    | trial_id   | status     |   num_failures |
+    |----+------------+------------+----------------|
+    |  0 | 2a51423e   | TERMINATED |              0 |
+    |  1 | 930a2a93   | TERMINATED |              0 |
+    |  2 | a3be6d03   | TERMINATED |              0 |
+    |  3 | c86c6d43   | TERMINATED |              0 |
+    +----+------------+------------+----------------+
+    Dropped columns: ['logdir']
+    Please increase your terminal size to view remaining columns.
+    Empty columns: ['trial_name']
+
+    $ python scripts.py lsx path_to_project
+    +----+--------+--------------+----------------+-------------------+--------------+
+    |    | name   | total_trials | running_trials | terminated_trials | error_trials |
+    |----+--------+--------------+----------------+-------------------+--------------|
+    |  0 | exp_1  |            1 |              0 |                 0 |            1 |
+    |  1 | exp_2  |            1 |              0 |                 1 |            0 |
+    |  2 | exp_3  |            6 |              0 |                 6 |            0 |
+    +----+--------+--------------+----------------+-------------------+--------------+
+    Empty columns: ['timestamp']
 
 
 Further Questions or Issues?
