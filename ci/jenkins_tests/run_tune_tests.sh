@@ -25,7 +25,7 @@ if [ "$DOCKER_SHA" == "" ]; then
     # Add Ray source
     git rev-parse HEAD > ./docker/stress_test/git-rev
     git archive -o ./docker/stress_test/ray.tar $(git rev-parse HEAD)
-    DOCKER_SHA=$(docker build --no-cache -t ray-project/stress_test docker/stress_test)
+    DOCKER_SHA=$(docker build --no-cache -q -t ray-project/stress_test docker/stress_test)
 fi
 
 echo "Using Docker image" $DOCKER_SHA
