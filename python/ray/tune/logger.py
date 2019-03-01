@@ -90,10 +90,10 @@ class JsonLogger(Logger):
     def on_result(self, result):
         json.dump(result, self, cls=_SafeFallbackEncoder)
         self.write("\n")
+        self.local_out.flush()
 
     def write(self, b):
         self.local_out.write(b)
-        self.local_out.flush()
 
     def flush(self):
         self.local_out.flush()
