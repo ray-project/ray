@@ -346,9 +346,9 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
     // We need to broadcase this message.
     std::string type = "raylet_connection_error";
     std::ostringstream error_message;
-    error_message << "Failed to connect to client " << client_id
-                  << " in ClientAdded. TcpConnect returned status: " << status.ToString()
-                  << ". This error should not happen.";
+    error_message << "Failed to connect to ray node " << client_id
+                  << " with status: " << status.ToString()
+                  << ". This may be since the node was recently removed.";
     // We use the nil JobID to broadcast the message to all drivers.
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
         JobID::nil(), type, error_message.str(), current_time_ms()));
