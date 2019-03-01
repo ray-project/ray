@@ -263,7 +263,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # target p network evaluation
         with tf.variable_scope(P_TARGET_SCOPE) as scope:
-            p_tp1, _ = self._build_p_network(self.obs_tp1, observation_space)
+            p_tp1, _ = self._build_p_network(self.obs_tp1, observation_space,
+                                             action_space)
             target_p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -292,7 +293,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
         }
         with tf.variable_scope(Q_SCOPE, reuse=True):
             q_tp0, _ = self._build_q_network(self.obs_t, observation_space,
-                                             output_actions)
+                                             action_space, output_actions)
         if self.config["twin_q"]:
             with tf.variable_scope(TWIN_Q_SCOPE) as scope:
                 twin_q_t, self.twin_q_model = self._build_q_network(
@@ -303,13 +304,13 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1, _ = self._build_q_network(self.obs_tp1, observation_space,
-                                             output_actions_estimated)
+            q_tp1, _ = self._build_q_network(
+                self.obs_tp1, observation_space, action_space, output_actions_estimated)
             target_q_func_vars = _scope_vars(scope.name)
         if self.config["twin_q"]:
             with tf.variable_scope(TWIN_Q_TARGET_SCOPE) as scope:
                 twin_q_tp1, _ = self._build_q_network(
-                    self.obs_tp1, observation_space, output_actions_estimated)
+                    self.obs_tp1, observation_space, action_space, output_actions_estimated)
                 twin_target_q_func_vars = _scope_vars(scope.name)
 
         if self.config["twin_q"]:
