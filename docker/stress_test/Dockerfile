@@ -1,6 +1,6 @@
 # The stress_test Docker image build a self-contained Ray instance for launching Ray.
 
-FROM ubuntu:xenial
+FROM ray-project/base-deps
 
 # We install ray and boto3 to enable the ray autoscaler as
 # a test runner.

@@ -6,9 +6,9 @@ set -e
 # Show explicitly which commands are currently running.
 set -x
 
-MEMORY_SIZE=$0
-SHM_SIZE=$1
-DOCKER_SHA=$2
+MEMORY_SIZE=$1
+SHM_SIZE=$2
+DOCKER_SHA=$3
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
@@ -20,9 +20,13 @@ if [ "$SHM_SIZE" == "" ]; then
 fi
 if [ "$DOCKER_SHA" == "" ]; then
     echo "Building application docker."
-    DOCKER_SHA=$(docker build -q --no-cache -t ray-project/stress_test docker/stress_test)
-fi
+    docker build -q --no-cache -t ray-project/base-deps docker/base-deps
 
+    # Add Ray source
+    git rev-parse HEAD > ./docker/stress_test/git-rev
+    git archive -o ./docker/stress_test/ray.tar $(git rev-parse HEAD)
+    DOCKER_SHA=$(docker build --no-cache -q -t ray-project/stress_test docker/stress_test)
+fi
 
 echo "Using Docker image" $DOCKER_SHA
 
