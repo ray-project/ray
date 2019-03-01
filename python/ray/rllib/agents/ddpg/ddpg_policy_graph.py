@@ -256,15 +256,14 @@ class DDPGPolicyGraph(TFPolicyGraph):
         # p network evaluation
         with tf.variable_scope(P_SCOPE, reuse=True) as scope:
             prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-            self.p_t, _ = self._build_p_network(self.obs_t, observation_space)
+            self.p_t, _ = self._build_p_network(self.obs_t, observation_space, action_space)
             p_batchnorm_update_ops = list(
                 set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
                 prev_update_ops)
 
         # target p network evaluation
         with tf.variable_scope(P_TARGET_SCOPE) as scope:
-            p_tp1, _ = self._build_p_network(self.obs_tp1, observation_space,
-                                             action_space)
+            p_tp1, _ = self._build_p_network(self.obs_tp1, observation_space, action_space)
             target_p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -297,15 +296,15 @@ class DDPGPolicyGraph(TFPolicyGraph):
         if self.config["twin_q"]:
             with tf.variable_scope(TWIN_Q_SCOPE) as scope:
                 twin_q_t, self.twin_q_model = self._build_q_network(
-                    self.obs_t, observation_space, self.act_t)
+                    self.obs_t, observation_space, action_space, self.act_t)
                 self.twin_q_func_vars = _scope_vars(scope.name)
         q_batchnorm_update_ops = list(
             set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1, _ = self._build_q_network(
-                self.obs_tp1, observation_space, action_space, output_actions_estimated)
+            q_tp1, _ = self._build_q_network(self.obs_tp1, observation_space,
+                                             action_space, output_actions_estimated)
             target_q_func_vars = _scope_vars(scope.name)
         if self.config["twin_q"]:
             with tf.variable_scope(TWIN_Q_TARGET_SCOPE) as scope:
