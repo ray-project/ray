@@ -1287,6 +1287,9 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
         [this, task_marked_as_failed, task](
             const ray::ObjectID &object_id,
             const std::unordered_set<ray::ClientID> &clients, bool has_been_created) {
+          // TODO(raulchen): LookupLocations will set has_been_created to false if
+          // the object does not exist on any nodes due to eviction
+          has_been_created = true;
           if (!*task_marked_as_failed) {
             // Only process the object locations if we haven't already marked the
             // task as failed.

@@ -8,9 +8,9 @@ ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
 
 namespace {
 
-/// Process a suffix of the object table log and store the result in
+/// Process a notification of the object table entries and store the result in
 /// client_ids. This assumes that client_ids already contains the result of the
-/// object table log up to but not including this suffix. This also stores a
+/// object table entries up to but not including this notification. This also stores a
 /// bool in has_been_created indicating whether the object has ever been
 /// created before.
 void UpdateObjectLocations(const GcsTableNotificationMode mode,
@@ -25,6 +25,9 @@ void UpdateObjectLocations(const GcsTableNotificationMode mode,
     // If there are entries, then the object has been created. Once this flag
     // is set to true, it should never go back to false.
     *has_been_created = true;
+  }
+  if (mode == GcsTableNotificationMode::CURRENT_VALUE) {
+    client_ids->clear();
   }
   for (const auto &object_table_data : location_updates) {
     ClientID client_id = ClientID::from_binary(object_table_data.manager);
@@ -140,7 +143,7 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
     if (listener.second.current_object_locations.count(client_id) > 0) {
       // If the subscribed object has the removed client as a location, update
       // its locations with an empty update so that the location will be removed.
-      UpdateObjectLocations(GcsTableNotificationMode::CURRENT_VALUE /* doesn't matter */,
+      UpdateObjectLocations(GcsTableNotificationMode::APPEND_OR_ADD,
                             {}, gcs_client_->client_table(),
                             &listener.second.current_object_locations,
                             &listener.second.has_been_created);
