@@ -37,11 +37,10 @@ def do_link(package, force=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        formatter_class=argparse.RawDescriptionHelpFormatter, description="Setup dev.")
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Setup dev.")
     parser.add_argument(
-        "--yes",
-        action='store_true',
-        help="Don't ask for confirmation.")
+        "--yes", action='store_true', help="Don't ask for confirmation.")
     args = parser.parse_args()
 
     do_link("rllib", force=args.yes)
