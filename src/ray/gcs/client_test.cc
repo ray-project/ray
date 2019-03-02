@@ -237,8 +237,7 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
       /*done callback=*/nullptr, failure_callback, /*log_length=*/1));
 
   auto lookup_callback = [node_manager_ids](
-      gcs::AsyncGcsClient *client,
-      const UniqueID &id,
+      gcs::AsyncGcsClient *client, const UniqueID &id,
       const std::vector<TaskReconstructionDataT> &data) {
     std::vector<std::string> appended_managers;
     for (const auto &entry : data) {
@@ -483,16 +482,16 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cl
   TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
   // Test the case for more than one elements and less than
   // maximum_gcs_deletion_batch_size.
-  AppendTaskReconstructionData(
-      RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
+  AppendTaskReconstructionData(RayConfig::instance().maximum_gcs_deletion_batch_size() /
+                               2);
   ASSERT_GT(task_reconstruction_vector.size(), 1);
   ASSERT_LT(task_reconstruction_vector.size(),
             RayConfig::instance().maximum_gcs_deletion_batch_size());
   TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
   // Test the case for more than maximum_gcs_deletion_batch_size.
   // The Delete function will split the data into two commands.
-  AppendTaskReconstructionData(
-      RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
+  AppendTaskReconstructionData(RayConfig::instance().maximum_gcs_deletion_batch_size() /
+                               2);
   ASSERT_GT(task_reconstruction_vector.size(),
             RayConfig::instance().maximum_gcs_deletion_batch_size());
   TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
