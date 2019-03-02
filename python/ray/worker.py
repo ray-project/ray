@@ -898,7 +898,7 @@ class Worker(object):
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
         # Send signal with the error.
-        ray_signal.send(ray_signal.ErrorSignal(failure_object))
+        ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
