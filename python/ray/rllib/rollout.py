@@ -104,15 +104,16 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         env = agent.local_evaluator.env
         multiagent = agent.local_evaluator.multiagent
         if multiagent:
-            policy_agent_mapping = agent.config["multiagent"]["policy_mapping_fn"]
+            policy_agent_mapping = agent.config["multiagent"][
+                "policy_mapping_fn"]
             mapping_cache = {}
         policy_map = agent.local_evaluator.policy_map
-        state_init = { p: m.get_initial_state() for p, m in policy_map.items() }
-        use_lstm = { p: len(s) > 0 for p, s in state_init.items() }
+        state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
+        use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
     else:
         env = gym.make(env_name)
         multiagent = False
-        use_lstm = { 'default': False }
+        use_lstm = {'default': False}
 
     if out is not None:
         rollouts = []
@@ -129,14 +130,18 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
                 for agent_id in state.keys():
                     a_state = state[agent_id]
                     if a_state is not None:
-                        policy_id = mapping_cache.setdefault(agent_id, policy_agent_mapping(agent_id))
+                        policy_id = mapping_cache.setdefault(
+                            agent_id, policy_agent_mapping(agent_id))
                         p_use_lstm = use_lstm[policy_id]
                         if p_use_lstm:
                             a_action, p_state_init, _ = agent.compute_action(
-                                a_state, state=state_init[policy_id], policy_id=policy_id)
+                                a_state,
+                                state=state_init[policy_id],
+                                policy_id=policy_id)
                             state_init[policy_id] = p_state_init
                         else:
-                            a_action = agent.compute_action(a_state, policy_id=policy_id)
+                            a_action = agent.compute_action(
+                                a_state, policy_id=policy_id)
                         action_dict[agent_id] = a_action
                 action = action_dict
             else:
