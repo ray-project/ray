@@ -9,7 +9,8 @@ import sys
 
 import ray
 from ray.rllib.agents.registry import get_agent_class
-from ray.rllib.test.test_multi_agent_env import MultiCartpole, MultiMountainCar
+from ray.rllib.tests.test_multi_agent_env import (MultiCartpole,
+                                                  MultiMountainCar)
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
 
