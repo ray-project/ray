@@ -65,5 +65,7 @@ Community Examples
    Example of training robotic control policies in SageMaker with RLlib.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
+- `NeuroCuts <https://github.com/xinjin/neurocuts-code>`__:
+   Example of building decision trees using the divide-and-conquer and the multi-agent API.
 - `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.

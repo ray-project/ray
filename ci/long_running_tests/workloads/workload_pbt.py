@@ -1,4 +1,4 @@
-# This workload tests running APEX
+# This workload tests running PBT
 
 from __future__ import absolute_import
 from __future__ import division
@@ -47,6 +47,7 @@ run_experiments(
     {
         "pbt_test": {
             "run": "PG",
+            "env": "CartPole-v0",
             "num_samples": 8,
             "config": {
                 "lr": 0.01,

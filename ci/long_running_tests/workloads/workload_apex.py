@@ -37,14 +37,14 @@ ray.init(redis_address=cluster.redis_address)
 run_experiments({
     "apex": {
         "run": "APEX",
-        "env": "CartPole-v0",
+        "env": "Pong-v0",
         "config": {
             "num_workers": 8,
             "num_gpus": 0,
             "buffer_size": 10000,
             "learning_starts": 0,
             "sample_batch_size": 1,
-            "train_batch_size": 10,
+            "train_batch_size": 1,
             "min_iter_time_s": 10,
             "timesteps_per_iteration": 10,
         },
