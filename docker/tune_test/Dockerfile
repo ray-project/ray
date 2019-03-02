@@ -13,7 +13,9 @@ RUN pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
 RUN pip install --upgrade sigopt
 # RUN pip install --upgrade nevergrad
 RUN pip install --upgrade scikit-optimize
-RUN mkdir -p /root/.ssh/
+RUN conda install pytorch-cpu torchvision-cpu -c pytorch
+
+# RUN mkdir -p /root/.ssh/
 
 # We port the source code in so that we run the most up-to-date stress tests.
 ADD ray.tar /ray
