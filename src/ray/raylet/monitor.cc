@@ -45,22 +45,35 @@ void Monitor::Tick() {
     it->second--;
     if (it->second == 0) {
       if (dead_clients_.count(it->first) == 0) {
-        RAY_LOG(WARNING) << "Client timed out: " << it->first;
-        RAY_CHECK_OK(gcs_client_.client_table().MarkDisconnected(it->first));
-
-        // Broadcast a warning to all of the drivers indicating that the node
-        // has been marked as dead.
-        // TODO(rkn): Define this constant somewhere else.
-        std::string type = "node_removed";
-        std::ostringstream error_message;
-        error_message << "The node with client ID " << it->first << " has been marked "
-                      << "dead because the monitor has missed too many heartbeats "
-                      << "from it.";
-        // We use the nil JobID to broadcast the message to all drivers.
-        RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
-            JobID::nil(), type, error_message.str(), current_time_ms()));
-
-        dead_clients_.insert(it->first);
+        auto client_id = it->first;
+        RAY_LOG(WARNING) << "Client timed out: " << client_id;
+        auto lookup_callback = [this, client_id](
+            gcs::AsyncGcsClient *client, const ClientID &id,
+            const std::vector<ClientTableDataT> &all_data) {
+          bool marked = false;
+          for (const auto &data : all_data) {
+            if (client_id.binary() == data.client_id && !data.is_insertion) {
+              // The node has been marked dead by itself.
+              marked = true;
+            }
+          }
+          if (!marked) {
+            RAY_CHECK_OK(gcs_client_.client_table().MarkDisconnected(client_id));
+            // Broadcast a warning to all of the drivers indicating that the node
+            // has been marked as dead.
+            // TODO(rkn): Define this constant somewhere else.
+            std::string type = "node_removed";
+            std::ostringstream error_message;
+            error_message << "The node with client ID " << client_id
+                          << " has been marked dead because the monitor"
+                          << " has missed too many heartbeats from it.";
+            // We use the nil JobID to broadcast the message to all drivers.
+            RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
+                JobID::nil(), type, error_message.str(), current_time_ms()));
+          }
+        };
+        RAY_CHECK_OK(gcs_client_.client_table().Lookup(lookup_callback));
+        dead_clients_.insert(client_id);
       }
       it = heartbeats_.erase(it);
     } else {
