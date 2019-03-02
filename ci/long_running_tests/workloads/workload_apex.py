@@ -39,7 +39,7 @@ run_experiments({
         "run": "APEX",
         "env": "Pong-v0",
         "config": {
-            "num_workers": 8,
+            "num_workers": 4,
             "num_gpus": 0,
             "buffer_size": 10000,
             "learning_starts": 0,
