@@ -20,7 +20,7 @@ for workload_file in "$ROOT_DIR"/workloads/*; do
   workload_name="${file_name%.*}"
   if $check_load; then
     echo -n "$workload_name: "
-    ray --logging-level=WARNING exec config.yaml --cluster-name="$workload_name" uptime 2>/dev/null
+    ray --logging-level=WARNING exec config.yaml --cluster-name="$workload_name" uptime 2>/dev/null || echo "<offline>"
   else
     echo "======================================================================"
     echo "WORKLOAD: $workload_name"
