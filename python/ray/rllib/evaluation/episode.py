@@ -163,6 +163,9 @@ class MultiAgentEpisode(object):
         self._agent_to_last_info[agent_id] = info
 
     def _set_last_action(self, agent_id, action):
+        if agent_id in self._agent_to_last_action:
+            self._agent_to_prev_action[agent_id] = \
+                self._agent_to_last_action[agent_id]
         self._agent_to_last_action[agent_id] = action
 
     def _set_last_pi_info(self, agent_id, pi_info):
