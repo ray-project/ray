@@ -359,6 +359,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
                                   (1.0 - self.tau) * var_target))
         self.update_target_expr = tf.group(*update_target_expr)
 
+        self.sess = tf.get_default_session()
         self.loss_inputs = [
             ("obs", self.obs_t),
             ("actions", self.act_t),
@@ -378,7 +379,6 @@ class DDPGPolicyGraph(TFPolicyGraph):
             self.loss.critic_loss = self.twin_q_model.custom_loss(
                 self.loss.critic_loss, input_dict, self)
 
-        self.sess = tf.get_default_session()
         TFPolicyGraph.__init__(
             self,
             observation_space,

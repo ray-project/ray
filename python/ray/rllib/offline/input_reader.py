@@ -42,7 +42,7 @@ class InputReader(object):
 
         Example:
             >>> class MyModel(rllib.model.Model):
-            ...     def custom_loss(self, policy_loss, loss_inputs):
+            ...     def custom_loss(self, policy_loss, loss_inputs, pol_graph):
             ...         reader = JsonReader(...)
             ...         input_ops = reader.tf_input_ops()
             ...         with tf.variable_scope(
