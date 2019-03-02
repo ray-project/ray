@@ -90,7 +90,7 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
             return tf.reshape(
                 linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
 
-        def custom_loss(self, policy_loss, loss_inputs, policy_graph):
+        def custom_loss(self, policy_loss, loss_inputs):
             """Override to customize the loss function used to optimize this model.
 
             This can be used to incorporate self-supervised losses (by defining

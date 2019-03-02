@@ -372,12 +372,12 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # Model self-supervised losses
         self.loss.actor_loss = self.p_model.custom_loss(
-            self.loss.actor_loss, input_dict, self)
+            self.loss.actor_loss, input_dict)
         self.loss.critic_loss = self.q_model.custom_loss(
-            self.loss.critic_loss, input_dict, self)
+            self.loss.critic_loss, input_dict)
         if self.config["twin_q"]:
             self.loss.critic_loss = self.twin_q_model.custom_loss(
-                self.loss.critic_loss, input_dict, self)
+                self.loss.critic_loss, input_dict)
 
         TFPolicyGraph.__init__(
             self,

@@ -120,11 +120,8 @@ class TFPolicyGraph(PolicyGraph):
         self._max_seq_len = max_seq_len
         self._batch_divisibility_req = batch_divisibility_req
 
-        # Call custom_loss() as late as possible so that it can access the
-        # above attrs of `self` if needed.
         if self.model:
-            self._loss = self.model.custom_loss(loss, self._loss_input_dict,
-                                                self)
+            self._loss = self.model.custom_loss(loss, self._loss_input_dict)
             self._stats_fetches = {"model": self.model.custom_stats()}
         else:
             self._loss = loss
