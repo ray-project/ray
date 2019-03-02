@@ -43,7 +43,7 @@ class CustomLossModel(Model):
                                            num_outputs, options)
         return self.fcnet.outputs, self.fcnet.last_layer
 
-    def custom_loss(self, policy_loss):
+    def custom_loss(self, policy_loss, loss_inputs, policy_graph):
         # create a new input reader per worker
         reader = JsonReader(self.options["custom_options"]["input_files"])
         input_ops = reader.tf_input_ops()
@@ -59,7 +59,11 @@ class CustomLossModel(Model):
         # You can also add self-supervised losses easily by referencing tensors
         # created during _build_layers_v2(). For example, an autoencoder-style
         # loss can be added as follows:
-        # ae_loss = squared_diff(self.obs_in, Decoder(self.fcnet.last_layer))
+        # ae_loss = squared_diff(
+        #     loss_inputs["obs"], Decoder(self.fcnet.last_layer))
+        print(
+            "FYI: You can also use these tensors: {}, ".format(loss_inputs) +
+            "or other attributes of the policy graph {}.".format(policy_graph))
 
         # compute the IL loss
         action_dist = Categorical(logits)

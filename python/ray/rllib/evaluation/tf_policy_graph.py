@@ -108,12 +108,6 @@ class TFPolicyGraph(PolicyGraph):
         self._prev_action_input = prev_action_input
         self._prev_reward_input = prev_reward_input
         self._sampler = action_sampler
-        if self.model:
-            self._loss = self.model.custom_loss(loss)
-            self._stats_fetches = {"model": self.model.custom_stats()}
-        else:
-            self._loss = loss
-            self._stats_fetches = {}
         self._loss_inputs = loss_inputs
         self._loss_input_dict = dict(self._loss_inputs)
         self._is_training = self._get_is_training_placeholder()
@@ -125,6 +119,16 @@ class TFPolicyGraph(PolicyGraph):
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
         self._batch_divisibility_req = batch_divisibility_req
+
+        # Call custom_loss() as late as possible so that it can access the
+        # above attrs of `self` if needed.
+        if self.model:
+            self._loss = self.model.custom_loss(loss, self._loss_input_dict,
+                                                self)
+            self._stats_fetches = {"model": self.model.custom_stats()}
+        else:
+            self._loss = loss
+            self._stats_fetches = {}
 
         self._optimizer = self.optimizer()
         self._grads_and_vars = [(g, v)

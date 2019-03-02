@@ -146,7 +146,7 @@ class Model(object):
             linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
 
     @PublicAPI
-    def custom_loss(self, policy_loss):
+    def custom_loss(self, policy_loss, loss_inputs, policy_graph):
         """Override to customize the loss function used to optimize this model.
 
         This can be used to incorporate self-supervised losses (by defining
@@ -158,6 +158,8 @@ class Model(object):
 
         Arguments:
             policy_loss (Tensor): scalar policy loss from the policy graph.
+            loss_inputs (dict): map of input placeholders for rollout data.
+            policy_graph (TFPolicyGraph): policy graph holding this model.
 
         Returns:
             Scalar tensor for the customized loss for this model.
