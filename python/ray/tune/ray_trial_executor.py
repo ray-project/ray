@@ -219,12 +219,11 @@ class RayTrialExecutor(TrialExecutor):
     def get_next_available_trial(self):
         shuffled_results = random.sample(
             self._running.keys(), len(self._running))
-        # Note: We shuffle the results and add timeout because `ray.wait` by
-        # default returns the first available result, and we want to guarantee
-        # that slower trials (i.e. trials that run remotely) also get fairly
-        # reported. See https://github.com/ray-project/ray/issues/4211 for
-        # details.
-        [result_id], _ = ray.wait(shuffled_results, timeout=0.1)
+        # Note: We shuffle the results because `ray.wait` by default returns
+        # the first available result, and we want to guarantee that slower
+        # trials (i.e. trials that run remotely) also get fairly reported.
+        # See https://github.com/ray-project/ray/issues/4211 for details.
+        [result_id], _ = ray.wait(shuffled_results)
         return self._running[result_id]
 
     def fetch_result(self, trial):
