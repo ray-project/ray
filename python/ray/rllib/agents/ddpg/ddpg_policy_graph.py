@@ -333,25 +333,6 @@ class DDPGPolicyGraph(TFPolicyGraph):
                         self.loss.critic_loss += (
                             config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
 
-        self.loss_inputs = [
-            ("obs", self.obs_t),
-            ("actions", self.act_t),
-            ("rewards", self.rew_t),
-            ("new_obs", self.obs_tp1),
-            ("dones", self.done_mask),
-            ("weights", self.importance_weights),
-        ]
-        input_dict = dict(self.loss_inputs)
-
-        # Model self-supervised losses
-        self.loss.actor_loss = self.p_model.custom_loss(
-            self.loss.actor_loss, input_dict)
-        self.loss.critic_loss = self.q_model.custom_loss(
-            self.loss.critic_loss, input_dict)
-        if self.config["twin_q"]:
-            self.loss.critic_loss = self.twin_q_model.custom_loss(
-                self.loss.critic_loss, input_dict)
-
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
         self.tau_value = config.get("tau")
@@ -377,6 +358,25 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 var_target.assign(self.tau * var +
                                   (1.0 - self.tau) * var_target))
         self.update_target_expr = tf.group(*update_target_expr)
+
+        self.loss_inputs = [
+            ("obs", self.obs_t),
+            ("actions", self.act_t),
+            ("rewards", self.rew_t),
+            ("new_obs", self.obs_tp1),
+            ("dones", self.done_mask),
+            ("weights", self.importance_weights),
+        ]
+        input_dict = dict(self.loss_inputs)
+
+        # Model self-supervised losses
+        self.loss.actor_loss = self.p_model.custom_loss(
+            self.loss.actor_loss, input_dict, self)
+        self.loss.critic_loss = self.q_model.custom_loss(
+            self.loss.critic_loss, input_dict, self)
+        if self.config["twin_q"]:
+            self.loss.critic_loss = self.twin_q_model.custom_loss(
+                self.loss.critic_loss, input_dict, self)
 
         self.sess = tf.get_default_session()
         TFPolicyGraph.__init__(
