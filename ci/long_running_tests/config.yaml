@@ -42,6 +42,7 @@ setup_commands:
     - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
+    - echo 'termcapinfo xterm* ti@:te@' >> ~/.screenrc
     # Some Python dependencies.
     - pip install boto3==1.4.8 cython==0.29.0
     # # Uncomment the following if you wish to install Ray instead.

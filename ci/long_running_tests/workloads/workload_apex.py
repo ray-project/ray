@@ -10,7 +10,7 @@ from ray.tune import run_experiments
 
 num_redis_shards = 5
 redis_max_memory = 10**8
-object_store_memory = 10**8
+object_store_memory = 10**9
 num_nodes = 1
 
 message = ("Make sure there is enough memory on this machine to run this "
@@ -25,7 +25,7 @@ for i in range(num_nodes):
     cluster.add_node(
         redis_port=6379 if i == 0 else None,
         num_redis_shards=num_redis_shards if i == 0 else None,
-        num_cpus=10,
+        num_cpus=20,
         num_gpus=0,
         resources={str(i): 2},
         object_store_memory=object_store_memory,
@@ -39,7 +39,7 @@ run_experiments({
         "run": "APEX",
         "env": "Pong-v0",
         "config": {
-            "num_workers": 4,
+            "num_workers": 8,
             "num_gpus": 0,
             "buffer_size": 10000,
             "learning_starts": 0,
