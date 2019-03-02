@@ -19,7 +19,7 @@ from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader
 from ray.rllib.offline.json_writer import _to_json
-from ray.rllib.test.test_multi_agent_env import MultiCartpole
+from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
 
 SAMPLES = SampleBatch({
