@@ -31,7 +31,7 @@ fi
 echo "Using Docker image" $DOCKER_SHA
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    pytest /ray/python/ray/tune/test/cluster_tests.py
+    pytest /ray/python/ray/tune/tests/cluster_tests.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/tune_mnist_ray.py \
