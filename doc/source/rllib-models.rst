@@ -103,7 +103,6 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
             Arguments:
                 policy_loss (Tensor): scalar policy loss from the policy graph.
                 loss_inputs (dict): map of input placeholders for rollout data.
-                policy_graph (TFPolicyGraph): policy graph holding this model.
 
             Returns:
                 Scalar tensor for the customized loss for this model.
