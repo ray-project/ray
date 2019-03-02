@@ -217,8 +217,8 @@ class RayTrialExecutor(TrialExecutor):
         return list(self._running.values())
 
     def get_next_available_trial(self):
-        shuffled_results = random.sample(
-            self._running.keys(), len(self._running))
+        shuffled_results = list(self._running.keys())
+        random.shuffle(shuffled_results)
         # Note: We shuffle the results because `ray.wait` by default returns
         # the first available result, and we want to guarantee that slower
         # trials (i.e. trials that run remotely) also get fairly reported.
