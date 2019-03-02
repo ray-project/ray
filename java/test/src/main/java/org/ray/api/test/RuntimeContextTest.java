@@ -32,9 +32,8 @@ public class RuntimeContextTest extends BaseTest {
   @RayRemote
   public static class RuntimeContextTester {
 
-    public String testRuntimeContext(UniqueId actorId) {
+    public String testRuntimeContext() {
       Assert.assertEquals(DRIVER_ID, Ray.getRuntimeContext().getCurrentDriverId());
-      Assert.assertEquals(actorId, Ray.getRuntimeContext().getCurrentActorId());
       Assert.assertEquals(RAYLET_SOCKET_NAME, Ray.getRuntimeContext().getRayletSocketName());
       Assert.assertEquals(OBJECT_STORE_SOCKET_NAME,
           Ray.getRuntimeContext().getObjectStoreSocketName());
@@ -46,7 +45,7 @@ public class RuntimeContextTest extends BaseTest {
   public void testRuntimeContextInActor() {
     RayActor<RuntimeContextTester> actor = Ray.createActor(RuntimeContextTester::new);
     Assert.assertEquals("ok",
-        Ray.call(RuntimeContextTester::testRuntimeContext, actor, actor.getId()).get());
+        Ray.call(RuntimeContextTester::testRuntimeContext, actor).get());
 
   }
 
