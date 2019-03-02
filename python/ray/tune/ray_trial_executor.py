@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import logging
 import os
+import random
 import time
 import traceback
 
@@ -216,7 +217,9 @@ class RayTrialExecutor(TrialExecutor):
         return list(self._running.values())
 
     def get_next_available_trial(self):
-        [result_id], _ = ray.wait(list(self._running))
+        shuffled_results = random.sample(
+            self._running.keys(), len(self._running))
+        [result_id], _ = ray.wait(shuffled_results, timeout=0.1)
         return self._running[result_id]
 
     def fetch_result(self, trial):
