@@ -266,22 +266,22 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --config '{"input": "/ray/python/ray/rllib/tests/data/cartpole_small", "learning_starts": 0, "input_evaluation": ["wis", "is"], "soft_q": true}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_local.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_local.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_io.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_io.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_checkpoint_restore.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_checkpoint_restore.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_policy_evaluator.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_policy_evaluator.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_nested_spaces.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_nested_spaces.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_external_env.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_external_env.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/tests/run_silent.sh examples/parametric_action_cartpole.py --run=PG --stop=50
@@ -293,7 +293,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/tests/run_silent.sh examples/parametric_action_cartpole.py --run=DQN --stop=50
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_lstm.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_lstm.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/tests/run_silent.sh examples/batch_norm_model.py --num-iters=1 --run=PPO
@@ -308,34 +308,34 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/tests/run_silent.sh examples/batch_norm_model.py --num-iters=1 --run=DDPG
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_multi_agent_env.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_multi_agent_env.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_supported_spaces.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_supported_spaces.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    pytest /ray/python/ray/tune/test/cluster_tests.py
+    pytest /ray/python/ray/tune/tests/test_cluster.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_env_with_subprocess.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_env_with_subprocess.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_rollout.sh
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_rollout.sh
 
 # Run all single-agent regression tests (3x retry each)
 for yaml in $(ls $ROOT_DIR/../../python/ray/rllib/tuned_examples/regression_tests); do
     docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-        /ray/python/ray/rllib/tests/run_silent.sh test/run_regression_tests.py \
+        /ray/python/ray/rllib/tests/run_silent.sh tests/run_regression_tests.py \
             /ray/python/ray/rllib/tuned_examples/regression_tests/$yaml
 done
 
 # Try a couple times since it's stochastic
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-        /ray/python/ray/rllib/tests/run_silent.sh test/multiagent_pendulum.py || \
+        /ray/python/ray/rllib/tests/run_silent.sh tests/multiagent_pendulum.py || \
     docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-        /ray/python/ray/rllib/tests/run_silent.sh test/multiagent_pendulum.py || \
+        /ray/python/ray/rllib/tests/run_silent.sh tests/multiagent_pendulum.py || \
     docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-        /ray/python/ray/rllib/tests/run_silent.sh test/multiagent_pendulum.py
+        /ray/python/ray/rllib/tests/run_silent.sh tests/multiagent_pendulum.py
 
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -345,7 +345,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/tests/run_silent.sh examples/multiagent_two_trainers.py --num-iters=2
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh test/test_avail_actions_qmix.py
+    /ray/python/ray/rllib/tests/run_silent.sh tests/test_avail_actions_qmix.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/tests/run_silent.sh examples/cartpole_lstm.py --run=PPO --stop=200
