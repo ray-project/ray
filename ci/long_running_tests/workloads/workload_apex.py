@@ -11,7 +11,7 @@ from ray.tune import run_experiments
 num_redis_shards = 5
 redis_max_memory = 10**8
 object_store_memory = 10**9
-num_nodes = 1
+num_nodes = 3
 
 message = ("Make sure there is enough memory on this machine to run this "
            "workload. We divide the system memory by 2 to provide a buffer.")
