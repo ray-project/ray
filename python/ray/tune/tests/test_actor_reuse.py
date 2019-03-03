@@ -6,6 +6,7 @@ import unittest
 
 import ray
 from ray.tune import Trainable, run_experiments
+from ray.tune.error import TuneError
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 
 
@@ -73,21 +74,22 @@ class ActorReuseTest(unittest.TestCase):
                          [1, 2, 3, 4])
 
     def testTrialReuseEnabledError(self):
-        trials = run_experiments(
-            {
-                "foo": {
-                    "run": MyResettableClass,
-                    "max_failures": 1,
-                    "num_samples": 4,
-                    "config": {
-                        "fake_reset_not_supported": True
-                    },
-                }
-            },
-            reuse_actors=True,
-            scheduler=FrequentPausesScheduler())
-        self.assertEqual([t.last_result["num_resets"] for t in trials],
-                         [0, 0, 0, 0])
+        def run():
+            run_experiments(
+                {
+                    "foo": {
+                        "run": MyResettableClass,
+                        "max_failures": 1,
+                        "num_samples": 4,
+                        "config": {
+                            "fake_reset_not_supported": True
+                        },
+                    }
+                },
+                reuse_actors=True,
+                scheduler=FrequentPausesScheduler())
+
+        self.assertRaises(TuneError, lambda: run())
 
 
 if __name__ == "__main__":

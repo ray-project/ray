@@ -10,7 +10,7 @@ import time
 import traceback
 
 import ray
-from ray.tune.error import TuneError
+from ray.tune.error import TuneError, AbortTrialExecution
 from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
@@ -67,7 +67,7 @@ class RayTrialExecutor(TrialExecutor):
         if existing_runner:
             trial.runner = existing_runner
             if not self.reset_trial(trial, trial.config, trial.experiment_tag):
-                raise NotImplementedError(
+                raise AbortTrialExecution(
                     "Trial runner reuse requires reset_trial() to be "
                     "implemented and return True.")
             return existing_runner
@@ -173,11 +173,13 @@ class RayTrialExecutor(TrialExecutor):
         self._commit_resources(trial.resources)
         try:
             self._start_trial(trial, checkpoint)
-        except Exception:
+        except Exception as e:
             logger.exception("Error starting runner for Trial %s", str(trial))
             error_msg = traceback.format_exc()
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
+            if isinstance(e, AbortTrialExecution):
+                return  # don't retry fatal Tune errors
             try:
                 # This forces the trial to not start from checkpoint.
                 trial.clear_checkpoint()
