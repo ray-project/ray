@@ -122,7 +122,7 @@ class TrialExecutor(object):
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
 
-    def reset_trial(self, trial, new_config, new_experiment_tag, reset_state):
+    def reset_trial(self, trial, new_config, new_experiment_tag):
         """Tries to invoke `Trainable.reset_config()` to reset trial.
 
         Args:
@@ -131,7 +131,6 @@ class TrialExecutor(object):
                 trainable.
             new_experiment_tag (str): New experiment name
                 for trial.
-            reset_state (bool): Whether to fully reset the trial state.
 
         Returns:
             True if `reset_config` is successful else False.

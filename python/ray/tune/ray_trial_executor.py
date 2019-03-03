@@ -37,12 +37,21 @@ class RayTrialExecutor(TrialExecutor):
         if ray.is_initialized():
             self._update_avail_resources()
 
-    def _setup_runner(self, trial):
-        if self._reuse_actors and self._cached_actor is not None:
-            logger.debug("Reusing cached runner {}".format(self._cached_actor))
+    def _setup_runner(self, trial, reuse_allowed):
+        if (self._reuse_actors and reuse_allowed
+                and self._cached_actor is not None):
+            logger.debug("Reusing cached runner {} for {}".format(
+                self._cached_actor, trial.trial_id))
             existing_runner = self._cached_actor
             self._cached_actor = None
         else:
+            if self._cached_actor:
+                logger.debug(
+                    "Cannot reuse cached runner {} for new trial".format(
+                        self._cached_actor))
+                self._cached_actor.stop.remote()
+                self._cached_actor.__ray_terminate__.remote()
+                self._cached_actor = None
             existing_runner = None
             cls = ray.remote(
                 num_cpus=trial.resources.cpu,
@@ -57,9 +66,7 @@ class RayTrialExecutor(TrialExecutor):
 
         if existing_runner:
             trial.runner = existing_runner
-            if not self.reset_trial(
-                    trial, trial.config, trial.experiment_tag,
-                    reset_state=True):
+            if not self.reset_trial(trial, trial.config, trial.experiment_tag):
                 raise NotImplementedError(
                     "Trial runner reuse requires reset_trial() to be "
                     "implemented and return True.")
@@ -91,7 +98,10 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         self.set_status(trial, Trial.RUNNING)
-        trial.runner = self._setup_runner(trial)
+        trial.runner = self._setup_runner(
+            trial,
+            reuse_allowed=checkpoint is not None
+            or trial._checkpoint.value is not None)
         if not self.restore(trial, checkpoint):
             if trial.status == Trial.ERROR:
                 raise RuntimeError(
@@ -217,7 +227,7 @@ class RayTrialExecutor(TrialExecutor):
             self._paused[trial_future[0]] = trial
         super(RayTrialExecutor, self).pause_trial(trial)
 
-    def reset_trial(self, trial, new_config, new_experiment_tag, reset_state):
+    def reset_trial(self, trial, new_config, new_experiment_tag):
         """Tries to invoke `Trainable.reset_config()` to reset trial.
 
         Args:
@@ -226,7 +236,6 @@ class RayTrialExecutor(TrialExecutor):
                 trainable.
             new_experiment_tag (str): New experiment name
                 for trial.
-            reset_state (bool): Whether to fully reset the trial state.
 
         Returns:
             True if `reset_config` is successful else False.
@@ -235,9 +244,7 @@ class RayTrialExecutor(TrialExecutor):
         trial.config = new_config
         trainable = trial.runner
         with warn_if_slow("reset_config"):
-            reset_val = ray.get(
-                trainable.reset_config.remote(
-                    new_config, reset_state=reset_state))
+            reset_val = ray.get(trainable.reset_config.remote(new_config))
         return reset_val
 
     def get_running_trials(self):

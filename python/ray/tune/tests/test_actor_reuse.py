@@ -6,21 +6,34 @@ import unittest
 
 import ray
 from ray.tune import Trainable, run_experiments
+from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+
+
+class FrequentPausesScheduler(FIFOScheduler):
+    def on_trial_result(self, trial_runner, trial, result):
+        return TrialScheduler.PAUSE
 
 
 class MyResettableClass(Trainable):
     def _setup(self, config):
         self.config = config
         self.num_resets = 0
+        self.iter = 0
 
     def _train(self):
-        return {"num_resets": self.num_resets, "done": True}
+        self.iter += 1
+        return {"num_resets": self.num_resets, "done": self.iter > 1}
 
-    def reset_config(self, new_config, reset_state):
+    def _save(self, chkpt_dir):
+        return {"iter": self.iter}
+
+    def _restore(self, item):
+        self.iter = item["iter"]
+
+    def reset_config(self, new_config):
         if "fake_reset_not_supported" in self.config:
             return False
-        if reset_state:
-            self.num_resets += 1
+        self.num_resets += 1
         return True
 
 
@@ -40,7 +53,8 @@ class ActorReuseTest(unittest.TestCase):
                     "config": {},
                 }
             },
-            reuse_actors=False)
+            reuse_actors=False,
+            scheduler=FrequentPausesScheduler())
         self.assertEqual([t.last_result["num_resets"] for t in trials],
                          [0, 0, 0, 0])
 
@@ -53,9 +67,10 @@ class ActorReuseTest(unittest.TestCase):
                     "config": {},
                 }
             },
-            reuse_actors=True)
+            reuse_actors=True,
+            scheduler=FrequentPausesScheduler())
         self.assertEqual([t.last_result["num_resets"] for t in trials],
-                         [0, 1, 2, 3])
+                         [1, 2, 3, 4])
 
     def testTrialReuseEnabledError(self):
         trials = run_experiments(
@@ -69,7 +84,8 @@ class ActorReuseTest(unittest.TestCase):
                     },
                 }
             },
-            reuse_actors=True)
+            reuse_actors=True,
+            scheduler=FrequentPausesScheduler())
         self.assertEqual([t.last_result["num_resets"] for t in trials],
                          [0, 0, 0, 0])
 

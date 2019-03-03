@@ -53,10 +53,8 @@ class MyTrainableClass(Trainable):
             self.timestep = data["timestep"]
             self.current_value = data["value"]
 
-    def reset_config(self, new_config, reset_state):
+    def reset_config(self, new_config):
         self.config = new_config
-        if reset_state:
-            self._setup(self.config)
         return True
 
 

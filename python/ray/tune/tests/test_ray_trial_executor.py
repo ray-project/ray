@@ -85,7 +85,7 @@ class RayTrialExecutorTest(unittest.TestCase):
             def _train(self):
                 return dict(timesteps_this_iter=1, done=True)
 
-            def reset_config(self, config, reset_state):
+            def reset_config(self, config):
                 self.config = config
                 return True
 
