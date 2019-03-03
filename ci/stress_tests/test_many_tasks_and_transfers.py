@@ -18,7 +18,7 @@ ray.init(redis_address="localhost:6379")
 # These numbers need to correspond with the autoscaler config file.
 # The number of remote nodes in the autoscaler should upper bound
 # these because sometimes nodes fail to update.
-num_remote_nodes = 100
+num_remote_nodes = 95
 head_node_cpus = 2
 num_remote_cpus = num_remote_nodes * head_node_cpus
 
