@@ -10,10 +10,10 @@ import ray
 from ray.rllib.agents.pg import PGAgent
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
-from ray.rllib.optimizers import SyncSamplesOptimizer, \
-    SyncReplayOptimizer, AsyncGradientsOptimizer
-from ray.rllib.test.test_policy_evaluator import MockEnv, MockEnv2, \
-    MockPolicyGraph
+from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
+                                  AsyncGradientsOptimizer)
+from ray.rllib.tests.test_policy_evaluator import (MockEnv, MockEnv2,
+                                                   MockPolicyGraph)
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
