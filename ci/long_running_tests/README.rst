@@ -24,6 +24,12 @@ relevant machine, attach to the tmux session (usually ``tmux a -t 0``), inspect
 the logs under ``/tmp/ray/session*/logs/``, and also inspect
 ``/tmp/ray/session*/debug_state.txt``.
 
+Shut Down the Workloads
+-----------------------
+
+The instances running the workloads can all be killed by running
+``./shut_down_workloads.sh``.
+
 Adding a Workload
 -----------------
 

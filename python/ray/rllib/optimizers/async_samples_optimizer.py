@@ -91,7 +91,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                                          learner_queue_size, old_policy_evaluator=self.old_policy_evaluator)
         self.learner.start()
 
-        assert len(self.remote_evaluators) > 0
+        if len(self.remote_evaluators) == 0:
+            logger.warning("Config num_workers=0 means training will hang!")
 
         # Stats
         self._optimizer_step_timer = TimerStat()

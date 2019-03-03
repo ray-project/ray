@@ -68,7 +68,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
   RAY_CHECK_OK(RegisterPeriodicTimer(main_service));
 }
 
-Raylet::~Raylet() { RAY_CHECK_OK(gcs_client_->client_table().Disconnect()); }
+Raylet::~Raylet() {}
 
 ray::Status Raylet::RegisterPeriodicTimer(boost::asio::io_service &io_service) {
   boost::posix_time::milliseconds timer_period_ms(100);
