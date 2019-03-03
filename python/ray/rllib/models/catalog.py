@@ -12,8 +12,8 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
 from ray.rllib.models.extra_spaces import Simplex
-from ray.rllib.models.action_dist import (Categorical, Deterministic,
-                                          DiagGaussian,
+from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
+                                          Deterministic, DiagGaussian,
                                           MultiActionDistribution, Dirichlet)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
@@ -136,6 +136,9 @@ class ModelCatalog(object):
                 input_lens=input_lens), sum(input_lens)
         elif isinstance(action_space, Simplex):
             return Dirichlet, action_space.shape[0]
+        elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
+            return MultiCategorical, sum(action_space.nvec)
+
         raise NotImplementedError("Unsupported args: {} {}".format(
             action_space, dist_type))
 
@@ -171,6 +174,11 @@ class ModelCatalog(object):
         elif isinstance(action_space, Simplex):
             return tf.placeholder(
                 tf.float32, shape=(None, action_space.shape[0]), name="action")
+        elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
+            return tf.placeholder(
+                tf.as_dtype(action_space.dtype),
+                shape=(None, len(action_space.nvec)),
+                name="action")
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))

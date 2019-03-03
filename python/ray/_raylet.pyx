@@ -79,7 +79,7 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
 cdef VectorToObjectIDs(c_vector[CObjectID] object_ids):
     result = []
     for i in range(object_ids.size()):
-        result.append(ObjectID.from_native(object_ids[i]))
+        result.append(ObjectID(object_ids[i].binary()))
     return result
 
 
@@ -87,11 +87,11 @@ def compute_put_id(TaskID task_id, int64_t put_index):
     if put_index < 1 or put_index > kMaxTaskPuts:
         raise ValueError("The range of 'put_index' should be [1, %d]"
                          % kMaxTaskPuts)
-    return ObjectID.from_native(ComputePutId(task_id.data, put_index))
+    return ObjectID(ComputePutId(task_id.data, put_index).binary())
 
 
 def compute_task_id(ObjectID object_id):
-    return TaskID.from_native(ComputeTaskId(object_id.data))
+    return TaskID(ComputeTaskId(object_id.data).binary())
 
 
 cdef c_bool is_simple_value(value, int *num_elements_contained):
@@ -263,9 +263,11 @@ cdef class RayletClient:
             WaitResultPair result
             c_vector[CObjectID] wait_ids
         wait_ids = ObjectIDsToVector(object_ids)
-        check_status(self.client.get().Wait(wait_ids, num_returns,
-                                            timeout_milliseconds, wait_local,
-                                            current_task_id.data, &result))
+        with nogil:
+            check_status(self.client.get().Wait(wait_ids, num_returns,
+                                                timeout_milliseconds,
+                                                wait_local,
+                                                current_task_id.data, &result))
         return (VectorToObjectIDs(result.first),
                 VectorToObjectIDs(result.second))
 
@@ -352,9 +354,13 @@ cdef class RayletClient:
 
     def prepare_actor_checkpoint(self, ActorID actor_id):
         cdef CActorCheckpointID checkpoint_id
-        check_status(self.client.get().PrepareActorCheckpoint(
-            actor_id.data, checkpoint_id))
-        return ObjectID.from_native(checkpoint_id)
+        cdef CActorID c_actor_id = actor_id.data
+        # PrepareActorCheckpoint will wait for raylet's reply, release
+        # the GIL so other Python threads can run.
+        with nogil:
+            check_status(self.client.get().PrepareActorCheckpoint(
+                c_actor_id, checkpoint_id))
+        return ActorCheckpointID(checkpoint_id.binary())
 
     def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
                                              ActorCheckpointID checkpoint_id):
@@ -367,11 +373,11 @@ cdef class RayletClient:
 
     @property
     def client_id(self):
-        return ClientID.from_native(self.client.get().GetClientID())
+        return ClientID(self.client.get().GetClientID().binary())
 
     @property
     def driver_id(self):
-        return DriverID.from_native(self.client.get().GetDriverID())
+        return DriverID(self.client.get().GetDriverID().binary())
 
     @property
     def is_worker(self):

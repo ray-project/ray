@@ -84,7 +84,6 @@ class Node(object):
             self._plasma_store_socket_name = None
             self._raylet_socket_name = None
             self._webui_url = None
-            self._dashboard_url = None
         else:
             self._plasma_store_socket_name = (
                 ray_params.plasma_store_socket_name)
@@ -268,6 +267,7 @@ class Node(object):
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
+             include_java=self._ray_params.include_java,
              redis_max_memory=self._ray_params.redis_max_memory)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
@@ -305,7 +305,7 @@ class Node(object):
     def start_dashboard(self):
         """Start the dashboard."""
         stdout_file, stderr_file = self.new_log_files("dashboard", True)
-        self._dashboard_url, process_info = ray.services.start_dashboard(
+        self._webui_url, process_info = ray.services.start_dashboard(
             self.redis_address,
             self._temp_dir,
             stdout_file=stdout_file,
@@ -316,13 +316,15 @@ class Node(object):
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info
             ]
+        redis_client = self.create_redis_client()
+        redis_client.hmset("webui", {"url": self._webui_url})
 
     def start_ui(self):
         """Start the web UI."""
         stdout_file, stderr_file = self.new_log_files("webui")
         notebook_name = self._make_inc_temp(
             suffix=".ipynb", prefix="ray_ui", directory_name=self._temp_dir)
-        self._webui_url, process_info = ray.services.start_ui(
+        _, process_info = ray.services.start_ui(
             self._redis_address,
             notebook_name,
             stdout_file=stdout_file,
