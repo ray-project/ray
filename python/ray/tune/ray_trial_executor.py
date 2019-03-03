@@ -56,6 +56,11 @@ class RayTrialExecutor(TrialExecutor):
         remote_logdir = trial.logdir
 
         if existing_runner:
+            trial.runner = existing_runner
+            if not self.reset_trial(trial, trial.config, trial.experiment_tag):
+                raise ValueError(
+                    "Trial runner reuse requires reset_trial() to be "
+                    "implemented.")
             return existing_runner
 
         def logger_creator(config):
