@@ -12,11 +12,8 @@ for workload_file in "$ROOT_DIR"/workloads/*; do
   workload_name="${file_name%.*}"
   ray up -y config.yaml --cluster-name="$workload_name" &
 done
-
 # Wait for all of the nodes to be up.
-for pid in `jobs -p`; do
-  wait $pid
-done
+wait
 
 # Start the workloads running.
 for workload_file in "$ROOT_DIR"/workloads/*; do
@@ -31,6 +28,7 @@ for workload_file in "$ROOT_DIR"/workloads/*; do
       ray exec config.yaml --cluster-name="$workload_name" "python $file_name" --tmux
    ) &
 done
+# Wait for child processes to finish.
 wait
 
 popd
