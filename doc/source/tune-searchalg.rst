@@ -16,7 +16,7 @@ Currently, Tune offers the following search algorithms (and library integrations
 - `HyperOpt <tune-searchalg.html#hyperopt-search-tree-structured-parzen-estimators>`__
 - `SigOpt <tune-searchalg.html#sigopt-search>`__
 - `Nevergrad <tune-searchalg.html#nevergrad-search>`__
-- `SkOpt <tune-searchalg.html#skopt-search>`__
+- `SkOpt <tune-searchalg.html#scikit-optimize-search>`__
 
 
 Variant Generation (Grid Search/Random Search)
@@ -131,8 +131,8 @@ An example of this can be found in `nevergrad_example.py <https://github.com/ray
     :show-inheritance:
     :noindex:
 
-SkOpt Search
-------------
+Scikit-Optimize Search
+----------------------
 
 The ``SkOptSearch`` is a SearchAlgorithm that is backed by `Scikit-Optimize <https://scikit-optimize.github.io>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using SkOptSearch.
 
