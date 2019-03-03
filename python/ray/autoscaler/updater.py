@@ -31,7 +31,7 @@ def get_default_ssh_options(private_key, connect_timeout):
         ("StrictHostKeyChecking", "no"),
         ("ControlMaster", "auto"),
         ("ControlPath", "{}/%C".format(SSH_CONTROL_PATH)),
-        ("ControlPersist", "yes"),
+        ("ControlPersist", "5m"),
     ]
 
     return ["-i", private_key] + [
