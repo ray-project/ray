@@ -2,12 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-try:
-    import nevergrad
-except Exception:
-    nevergrad = None
-
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
+
+ng = None
+
+
+def _import_nevergrad():
+    global ng
+    import nevergrad
+    ng = nevergrad
 
 
 class NevergradSearch(SuggestionAlgorithm):
@@ -51,7 +54,8 @@ class NevergradSearch(SuggestionAlgorithm):
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
                  **kwargs):
-        assert nevergrad is not None, "Nevergrad must be installed!"
+        _import_nevergrad()
+        assert ng is not None, "Nevergrad must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
