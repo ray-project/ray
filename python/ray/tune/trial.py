@@ -299,6 +299,10 @@ class Trial(object):
         self.error_file = None
         self.num_failures = 0
 
+        self._nonjson_fields = [
+            "_checkpoint", "config", "loggers", "sync_function", "last_result"
+        ]
+
         self.trial_name = None
         if trial_name_creator:
             self.trial_name = trial_name_creator(self)
@@ -476,6 +480,9 @@ class Trial(object):
     def is_finished(self):
         return self.status in [Trial.TERMINATED, Trial.ERROR]
 
+    def serialize_field_to_hex(self, fields):
+        self._nonjson_fields += [fields]
+
     def __repr__(self):
         return str(self)
 
@@ -509,17 +516,8 @@ class Trial(object):
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 
-        # These are non-pickleable entries.
-        pickle_data = {
-            "_checkpoint": self._checkpoint,
-            "config": self.config,
-            "loggers": self.loggers,
-            "sync_function": self.sync_function,
-            "last_result": self.last_result
-        }
-
-        for key, value in pickle_data.items():
-            state[key] = binary_to_hex(cloudpickle.dumps(value))
+        for key in self._nonjson_fields:
+            state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
         state["result_logger"] = None
@@ -535,10 +533,7 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
-        for key in [
-                "_checkpoint", "config", "loggers", "sync_function",
-                "last_result"
-        ]:
+        for key in self._nonjson_fields:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)

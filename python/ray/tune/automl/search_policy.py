@@ -98,6 +98,7 @@ class AutoMLSearcher(SearchAlgorithm):
                 trial.best_result = None
                 trial.param_config = param_config
                 trial.extra_arg = extra_arg
+                trial.serialize_field_to_hex(["param_config"])
 
                 trials.append(trial)
                 self._running_trials[trial.trial_id] = trial
