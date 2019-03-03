@@ -232,7 +232,10 @@ class PopulationBasedTraining(FIFOScheduler):
                                       self._hyperparam_mutations)
         reset_successful = trial_executor.reset_trial(trial, new_config,
                                                       new_tag)
-        if not reset_successful:
+        if reset_successful:
+            trial_executor.restore(
+                trial, Checkpoint.from_object(new_state.last_checkpoint))
+        else:
             trial_executor.stop_trial(trial, stop_logger=False)
             trial.config = new_config
             trial.experiment_tag = new_tag

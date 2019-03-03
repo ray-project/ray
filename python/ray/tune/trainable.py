@@ -307,6 +307,9 @@ class Trainable(object):
             self._restore(checkpoint_dict)
         else:
             self._restore(checkpoint_path)
+        self._time_since_restore = 0.0
+        self._timesteps_since_restore = 0
+        self._iterations_since_restore = 0
         self._restored = True
 
     def restore_from_object(self, obj):
