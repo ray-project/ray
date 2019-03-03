@@ -17,6 +17,8 @@ class MyResettableClass(Trainable):
         return {"num_resets": self.num_resets, "done": True}
 
     def reset_config(self, new_config, reset_state):
+        if "fake_reset_not_supported" in self.config:
+            return False
         if reset_state:
             self.num_resets += 1
         return True
@@ -30,28 +32,46 @@ class ActorReuseTest(unittest.TestCase):
         ray.shutdown()
 
     def testTrialReuseDisabled(self):
-        trials = run_experiments({
-            "foo": {
-                "run": MyResettableClass,
-                "num_samples": 4,
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
-            }
-        }, reuse_actors=False)
-        self.assertEqual([t.last_result["num_resets"] for t in trials], [0, 0, 0, 0])
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": MyResettableClass,
+                    "num_samples": 4,
+                    "config": {},
+                }
+            },
+            reuse_actors=False)
+        self.assertEqual([t.last_result["num_resets"] for t in trials],
+                         [0, 0, 0, 0])
 
     def testTrialReuseEnabled(self):
-        trials = run_experiments({
-            "foo": {
-                "run": MyResettableClass,
-                "num_samples": 4,
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
-            }
-        }, reuse_actors=True)
-        self.assertEqual([t.last_result["num_resets"] for t in trials], [0, 1, 2, 3])
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": MyResettableClass,
+                    "num_samples": 4,
+                    "config": {},
+                }
+            },
+            reuse_actors=True)
+        self.assertEqual([t.last_result["num_resets"] for t in trials],
+                         [0, 1, 2, 3])
+
+    def testTrialReuseEnabledError(self):
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": MyResettableClass,
+                    "max_failures": 1,
+                    "num_samples": 4,
+                    "config": {
+                        "fake_reset_not_supported": True
+                    },
+                }
+            },
+            reuse_actors=True)
+        self.assertEqual([t.last_result["num_resets"] for t in trials],
+                         [0, 0, 0, 0])
 
 
 if __name__ == "__main__":

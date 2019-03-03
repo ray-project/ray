@@ -60,9 +60,9 @@ class RayTrialExecutor(TrialExecutor):
             if not self.reset_trial(
                     trial, trial.config, trial.experiment_tag,
                     reset_state=True):
-                raise ValueError(
+                raise NotImplementedError(
                     "Trial runner reuse requires reset_trial() to be "
-                    "implemented.")
+                    "implemented and return True.")
             return existing_runner
 
         def logger_creator(config):
