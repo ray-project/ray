@@ -46,6 +46,9 @@ class _MockAgent(Agent):
         self.info = info
         self.restored = True
 
+    def _register_if_needed(self, env_object):
+        pass
+
     def set_info(self, info):
         self.info = info
         return info

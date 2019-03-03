@@ -61,6 +61,7 @@ set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${RAY_SYST
 set(RAY_LIB_DEPENDENCIES
     boost_thread
     arrow_ep
+    googletest_ep
     gen_gcs_fbs
     gen_object_manager_fbs
     gen_node_manager_fbs)

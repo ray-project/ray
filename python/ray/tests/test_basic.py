@@ -12,6 +12,7 @@ import random
 import re
 import setproctitle
 import shutil
+import six
 import socket
 import string
 import subprocess
@@ -1151,14 +1152,8 @@ def test_object_transfer_dump(ray_start_cluster):
     cluster = ray_start_cluster
 
     num_nodes = 3
-    # Set the inline object size to 0 to force all objects to be written to
-    # plasma.
-    config = json.dumps({"inline_object_max_size_bytes": 0})
     for i in range(num_nodes):
-        cluster.add_node(
-            resources={str(i): 1},
-            object_store_memory=10**9,
-            _internal_config=config)
+        cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
@@ -1273,12 +1268,16 @@ def test_illegal_api_calls(shutdown_only):
         ray.get(3)
 
 
+# TODO(hchen): This test currently doesn't work in Python 2. This is likely
+# because plasma client isn't thread-safe. This needs to be fixed from the
+# Arrow side. See #4107 for relevant discussions.
+@pytest.mark.skipif(six.PY2, reason="Doesn't work in Python 2.")
 def test_multithreading(shutdown_only):
     # This test requires at least 2 CPUs to finish since the worker does not
-    # relase resources when joining the threads.
+    # release resources when joining the threads.
     ray.init(num_cpus=2)
 
-    def run_test_in_multi_threads(test_case, num_threads=20, num_repeats=50):
+    def run_test_in_multi_threads(test_case, num_threads=10, num_repeats=25):
         """A helper function that runs test cases in multiple threads."""
 
         def wrapper():
@@ -1376,8 +1375,8 @@ def test_multithreading(shutdown_only):
                     timeout=1000.0,
                 )
                 assert len(ready) == len(wait_objects)
-                for _ in range(50):
-                    num = 20
+                for _ in range(20):
+                    num = 10
                     # Test remote call
                     results = [echo.remote(i) for i in range(num)]
                     assert ray.get(results) == list(range(num))
@@ -1393,7 +1392,7 @@ def test_multithreading(shutdown_only):
                     self.thread_results.append("ok")
 
         def spawn(self):
-            wait_objects = [echo.remote(i, delay_ms=10) for i in range(20)]
+            wait_objects = [echo.remote(i, delay_ms=10) for i in range(10)]
             self.threads = [
                 threading.Thread(
                     target=self.background_thread, args=(wait_objects, ))
@@ -2659,56 +2658,6 @@ def test_wait_reconstruction(shutdown_only):
     assert len(ready_ids) == 1
 
 
-def test_inline_objects(shutdown_only):
-    config = json.dumps({"initial_reconstruction_timeout_milliseconds": 200})
-    ray.init(num_cpus=1, object_store_memory=10**7, _internal_config=config)
-
-    @ray.remote
-    class Actor(object):
-        def create_inline_object(self):
-            return "inline"
-
-        def create_non_inline_object(self):
-            return 10000 * [1]
-
-        def get(self):
-            return
-
-    a = Actor.remote()
-    # Count the number of objects that were successfully inlined.
-    inlined = 0
-    for _ in range(100):
-        inline_object = a.create_inline_object.remote()
-        ray.get(inline_object)
-        plasma_id = ray.pyarrow.plasma.ObjectID(inline_object.binary())
-        ray.worker.global_worker.plasma_client.delete([plasma_id])
-        # Make sure we can still get an inlined object created by an actor even
-        # after it has been evicted.
-        try:
-            value = ray.get(inline_object)
-            assert value == "inline"
-            inlined += 1
-        except ray.exceptions.UnreconstructableError:
-            pass
-    # Make sure some objects were inlined. Some of them may not get inlined
-    # because we evict the object soon after creating it.
-    assert inlined > 0
-
-    # Non-inlined objects are not able to be recreated after eviction.
-    for _ in range(10):
-        non_inline_object = a.create_non_inline_object.remote()
-        ray.get(non_inline_object)
-        plasma_id = ray.pyarrow.plasma.ObjectID(non_inline_object.binary())
-        # This while loop is necessary because sometimes the object is still
-        # there immediately after plasma_client.delete.
-        while ray.worker.global_worker.plasma_client.contains(plasma_id):
-            ray.worker.global_worker.plasma_client.delete([plasma_id])
-        # Objects created by an actor that were evicted and larger than the
-        # maximum inline object size cannot be retrieved or reconstructed.
-        with pytest.raises(ray.exceptions.UnreconstructableError):
-            ray.get(non_inline_object) == 10000 * [1]
-
-
 def test_ray_setproctitle(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -2873,6 +2822,9 @@ class BaseClass(object):
     def __init__(self, data):
         self.data = data
 
+    def get_data(self):
+        return self.data
+
 
 @ray.remote
 class DerivedClass(BaseClass):
@@ -2881,14 +2833,12 @@ class DerivedClass(BaseClass):
         # we use BaseClass directly here.
         BaseClass.__init__(self, data)
 
-    def get_data(self):
-        return self.data
-
 
 def test_load_code_from_local(shutdown_only):
     ray.init(load_code_from_local=True, num_cpus=4)
+    message = "foo"
     # Test normal function.
-    assert ray.get(echo.remote("foo")) == "foo"
+    assert ray.get(echo.remote(message)) == message
     # Test actor class with constructor.
     actor = WithConstructor.remote(1)
     assert ray.get(actor.get_data.remote()) == 1
@@ -2899,3 +2849,7 @@ def test_load_code_from_local(shutdown_only):
     # Test derived actor class.
     actor = DerivedClass.remote(1)
     assert ray.get(actor.get_data.remote()) == 1
+    # Test using ray.remote decorator on raw classes.
+    base_actor_class = ray.remote(num_cpus=1)(BaseClass)
+    base_actor = base_actor_class.remote(message)
+    assert ray.get(base_actor.get_data.remote()) == message

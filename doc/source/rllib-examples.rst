@@ -28,7 +28,9 @@ Custom Envs and Models
 
 - `Registering a custom env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env for use with RLlib.
-- `Subprocess environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_env_with_subprocess.py>`__:
+- `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__:
+   Example of defining and registering a custom model with a supervised loss.
+- `Subprocess environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_env_with_subprocess.py>`__:
    Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
 - `Batch normalization <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__:
    Example of adding batch norm layers to a custom model.

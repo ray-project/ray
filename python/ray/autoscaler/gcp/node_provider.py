@@ -53,7 +53,7 @@ class GCPNodeProvider(NodeProvider):
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
 
-    def nodes(self, tag_filters):
+    def non_terminated_nodes(self, tag_filters):
         with self.lock:
             if tag_filters:
                 label_filter_expr = "(" + " AND ".join([
@@ -223,12 +223,19 @@ class GCPNodeProvider(NodeProvider):
             return result
 
     def _get_node(self, node_id):
-        self.nodes({})  # Side effect: fetches and caches the node.
+        self.non_terminated_nodes({})  # Side effect: updates cache
 
-        assert node_id in self.cached_nodes, "Invalid instance id {}".format(
-            node_id)
+        with self.lock:
+            if node_id in self.cached_nodes:
+                return self.cached_nodes[node_id]
 
-        return self.cached_nodes[node_id]
+            instance = self.compute.instances().get(
+                project=self.provider_config["project_id"],
+                zone=self.provider_config["availability_zone"],
+                instance=node_id,
+            ).execute()
+
+            return instance
 
     def _get_cached_node(self, node_id):
         if node_id in self.cached_nodes:
