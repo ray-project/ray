@@ -9,6 +9,7 @@ import numpy as np
 import os
 import yaml
 import distutils.version
+import numbers
 
 import ray.cloudpickle as cloudpickle
 from ray.tune.log_sync import get_syncer
@@ -255,10 +256,18 @@ class _SafeFallbackEncoder(json.JSONEncoder):
         try:
             if np.isnan(value):
                 return None
-            if np.issubdtype(value, float):
-                return float(value)
-            if np.issubdtype(value, int):
+
+            if (type(value).__module__ == np.__name__
+                and isinstance(value, np.ndarray)):
+                return value.tolist()
+
+            if issubclass(type(value), numbers.Integral):
                 return int(value)
+            if issubclass(type(value), numbers.Number):
+                return float(value)
+
+            return super(_SafeFallbackEncoder, self).default(value)
+
         except Exception:
             return str(value)  # give up, just stringify it (ok for logs)
 
