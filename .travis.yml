@@ -34,7 +34,7 @@ matrix:
 
       # Test Bazel build
       - rm -rf build
-      - ./ci/travis/install-bazel.sh
+      - out=`mktemp`; ./ci/travis/install-bazel.sh >$out 2>&1 || cat $out
       - bazel build ...
 
     - os: linux
@@ -82,8 +82,8 @@ matrix:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       install:
-        - ./ci/travis/install-bazel.sh
-        - ./ci/travis/install-dependencies.sh
+        - out=`mktemp`; ./ci/travis/install-bazel.sh >$out 2>&1 || cat $out
+        - out=`mktemp`; ./ci/travis/install-dependencies.sh >$out 2>&1 || cat $out
         - export PATH="$HOME/miniconda/bin:$PATH"
         - out=`mktemp`; ./ci/travis/install-ray.sh >$out 2>&1 || cat $out
 
@@ -136,16 +136,16 @@ matrix:
 
 
 install:
-  - ./ci/travis/install-bazel.sh
+  - out=`mktemp`; ./ci/travis/install-bazel.sh >$out 2>&1 || cat $out
   - ./ci/travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
   - out=`mktemp`; ./ci/travis/install-ray.sh >$out 2>&1 || cat $out
-  - ./ci/travis/install-cython-examples.sh
+  - out=`mktemp`; ./ci/travis/install-cython-examples.sh >$out 2>&1 || cat $out
 
   - bash src/ray/test/run_gcs_tests.sh
   # Raylet tests.
   - bash src/ray/test/run_object_manager_tests.sh
-  - bazel test --build_tests_only --test_lang_filters=cc ... -c opt
+  - out=`mktemp`; bazel test --build_tests_only --test_lang_filters=cc ... -c opt >$out 2>&1 || cat $out
 
 
 script:
@@ -157,7 +157,7 @@ script:
   # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
   # ray tune tests
-  - python python/ray/tune/tests/test_dependency.py
+  - out=`mktemp`; python python/ray/tune/tests/test_dependency.py >$out 2>&1 || cat $out
   # `cluster_tests.py` runs on Jenkins, not Travis.
   - python -m pytest --durations=10 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests
 
