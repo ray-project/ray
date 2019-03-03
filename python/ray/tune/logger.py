@@ -5,11 +5,12 @@ from __future__ import print_function
 import csv
 import json
 import logging
-import numpy as np
 import os
 import yaml
 import distutils.version
 import numbers
+
+import numpy as np
 
 import ray.cloudpickle as cloudpickle
 from ray.tune.log_sync import get_syncer
@@ -258,7 +259,7 @@ class _SafeFallbackEncoder(json.JSONEncoder):
                 return None
 
             if (type(value).__module__ == np.__name__
-                and isinstance(value, np.ndarray)):
+                    and isinstance(value, np.ndarray)):
                 return value.tolist()
 
             if issubclass(type(value), numbers.Integral):
