@@ -17,6 +17,15 @@ from ray.tune.trial_executor import TrialExecutor
 logger = logging.getLogger(__name__)
 
 
+class _LocalWrapper(object):
+    def __init__(self, result):
+        self._result = result
+
+    def unwrap(self):
+        """Returns the wrapped result."""
+        return self._result
+
+
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
@@ -61,6 +70,11 @@ class RayTrialExecutor(TrialExecutor):
 
         assert trial.status == Trial.RUNNING, trial.status
         remote = trial.runner.train.remote()
+
+        # Local Mode
+        if type(remote) is dict:
+            remote = _LocalWrapper(remote)
+
         self._running[remote] = trial
 
     def _start_trial(self, trial, checkpoint=None):
@@ -229,6 +243,10 @@ class RayTrialExecutor(TrialExecutor):
             raise ValueError("Trial was not running.")
         self._running.pop(trial_future[0])
         result = ray.get(trial_future[0])
+
+        # For local mode
+        if not type(result) is dict:
+            result = result.unwrap()
         return result
 
     def _commit_resources(self, resources):
@@ -266,10 +284,12 @@ class RayTrialExecutor(TrialExecutor):
 
     def _update_avail_resources(self, num_retries=5):
         for i in range(num_retries):
-            if False:  # TODO(rliaw) check local_mode
-                resources = ray.services.check_and_update_resources()
-            else:
+            try:
                 resources = ray.global_state.cluster_resources()
+            except Exception:
+                # TODO(rliaw): Remove this when local mode is fixed.
+                logger.debug("Using resources for local machine.")
+                resources = ray.services.check_and_update_resources()
             if not resources:
                 logger.warning("Cluster resources not detected. Retrying...")
                 time.sleep(0.5)
