@@ -161,6 +161,9 @@ class Worker(object):
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
+        # Index of the current session. This number will
+        # increment every time when `ray.shutdown` is called.
+        self._session_index = 0
 
     @property
     def task_context(self):
@@ -898,7 +901,7 @@ class Worker(object):
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
         # Send signal with the error.
-        ray_signal.send(ray_signal.ErrorSignal(error))
+        ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -1867,9 +1870,6 @@ def connect(info,
                      if hasattr(main, "__file__") else "INTERACTIVE MODE")
         }
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
-        if (not worker.redis_client.exists("webui")
-                and info["webui_url"] is not None):
-            worker.redis_client.hmset("webui", {"url": info["webui_url"]})
     elif mode == WORKER_MODE:
         # Register the worker with Redis.
         worker_dict = {
@@ -2064,6 +2064,7 @@ def disconnect():
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
+        worker._session_index += 1
 
     worker.connected = False
     worker.cached_functions_to_run = []
