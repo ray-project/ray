@@ -245,7 +245,7 @@ class RayTrialExecutor(TrialExecutor):
         result = ray.get(trial_future[0])
 
         # For local mode
-        if not type(result) is dict:
+        if isinstance(result, _LocalWrapper):
             result = result.unwrap()
         return result
 
