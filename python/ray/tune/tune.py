@@ -87,7 +87,8 @@ def run_experiments(experiments,
             automatic scale-up.
         reuse_actors (bool): Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start
-            and stop actors often (e.g., PBT in time-multiplexing mode).
+            and stop actors often (e.g., PBT in time-multiplexing mode). This
+            requires trials to have the same resource requirements.
         trial_executor (TrialExecutor): Manage the execution of trials.
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
