@@ -1012,7 +1012,7 @@ def start_ui(redis_address, notebook_name, stdout_file=None, stderr_file=None):
     return None, None
 
 
-def check_and_update_resources(num_cpus=None, num_gpus=None, resources=None):
+def check_and_update_resources(num_cpus, num_gpus, resources):
     """Sanity check a resource dictionary and add sensible defaults.
 
     Args:
