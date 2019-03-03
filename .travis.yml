@@ -96,11 +96,11 @@ matrix:
         # - export RAY_REDIS_SERVER_VALGRIND=1
 
         # # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=10 python/ray/experimental/test/async_test.py
-        - python -m pytest --durations=10 python/ray/tests/test_mini.py
-        - python -m pytest --durations=10 python/ray/tests/test_array.py
-        - python -m pytest --durations=10 python/ray/tests/test_multi_node_2.py
-        - python -m pytest --durations=10 python/ray/tests/test_node_manager.py
+        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py
+        - python -m pytest --durations=5 python/ray/tests/test_mini.py
+        - python -m pytest --durations=5 python/ray/tests/test_array.py
+        - python -m pytest --durations=5 python/ray/tests/test_multi_node_2.py
+        - python -m pytest --durations=5 python/ray/tests/test_node_manager.py
 
 
     # Build Linux wheels.
@@ -159,7 +159,7 @@ script:
   # ray tune tests
   - python python/ray/tune/tests/test_dependency.py
   # `cluster_tests.py` runs on Jenkins, not Travis.
-  - python -m pytest --durations=30 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests
+  - python -m pytest --durations=10 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests
 
   # ray rllib tests
   - python/ray/rllib/tests/run_silent.sh test_catalog.py
@@ -169,8 +169,8 @@ script:
 
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=10 python/ray/experimental/test/async_test.py
-  - python -m pytest --durations=30 python/ray/tests
+  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py
+  - python -m pytest --durations=10 python/ray/tests
 deploy:
   - provider: s3
     access_key_id: AKIAJ2L7XDUSZVTXI5QA
