@@ -53,8 +53,10 @@ class MyTrainableClass(Trainable):
             self.timestep = data["timestep"]
             self.current_value = data["value"]
 
-    def reset_config(self, new_config):
+    def reset_config(self, new_config, reset_state):
         self.config = new_config
+        if reset_state:
+            self._setup(self.config)
         return True
 
 
@@ -96,4 +98,5 @@ if __name__ == "__main__":
             }
         },
         scheduler=pbt,
+        reuse_actors=True,
         verbose=False)

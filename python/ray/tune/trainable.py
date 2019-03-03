@@ -344,15 +344,21 @@ class Trainable(object):
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset_config(self, new_config):
+    def reset_config(self, new_config, reset_state):
         """Resets configuration without restarting the trial.
+
+        This method is optional, but can be implemented to speed up algorithms
+        such as PBT, and to allow performance optimizations such as running
+        experiments with reuse_actors=True.
 
         Args:
             new_config (dir): Updated hyperparameter configuration
                 for the trainable.
+            reset_state (bool): Whether to reset the state completely, as if
+                the trial was newly set up.
 
         Returns:
-            True if configuration reset successfully else False.
+            True if reset was successful else False.
         """
         return False
 

@@ -71,6 +71,7 @@ class TrialRunner(object):
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
                  queue_trials=False,
+                 reuse_actors=False,
                  trial_executor=None):
         """Initializes a new TrialRunner.
 
@@ -88,12 +89,16 @@ class TrialRunner(object):
                 not currently have enough resources to launch one. This should
                 be set to True when running on an autoscaling cluster to enable
                 automatic scale-up.
+            reuse_actors (bool): Whether to reuse actors between different
+                trials when possible. This can drastically speed up experiments
+                that start and stop actors often (e.g., PBT in
+                time-multiplexing mode).
             trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
         """
         self._search_alg = search_alg
         self._scheduler_alg = scheduler or FIFOScheduler()
-        self.trial_executor = trial_executor or \
-            RayTrialExecutor(queue_trials=queue_trials)
+        self.trial_executor = (trial_executor or RayTrialExecutor(
+            queue_trials=queue_trials, reuse_actors=reuse_actors))
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.

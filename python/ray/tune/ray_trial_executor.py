@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
-    def __init__(self, queue_trials=False):
+    def __init__(self, queue_trials=False, reuse_actors=False):
         super(RayTrialExecutor, self).__init__(queue_trials)
         self._running = {}
         # Since trial resume after paused should not run
@@ -32,16 +32,16 @@ class RayTrialExecutor(TrialExecutor):
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
-        self._cached_runner = None
+        self._reuse_actors = reuse_actors
+        self._cached_actor = None
         if ray.is_initialized():
             self._update_avail_resources()
 
     def _setup_runner(self, trial):
-        if self._cached_runner is not None:
-            logger.debug("Reusing cached runner {}".format(
-                self._cached_runner))
-            existing_runner = self._cached_runner
-            self._cached_runner = None
+        if self._reuse_actors and self._cached_actor is not None:
+            logger.debug("Reusing cached runner {}".format(self._cached_actor))
+            existing_runner = self._cached_actor
+            self._cached_actor = None
         else:
             existing_runner = None
             cls = ray.remote(
@@ -57,7 +57,9 @@ class RayTrialExecutor(TrialExecutor):
 
         if existing_runner:
             trial.runner = existing_runner
-            if not self.reset_trial(trial, trial.config, trial.experiment_tag):
+            if not self.reset_trial(
+                    trial, trial.config, trial.experiment_tag,
+                    reset_state=True):
                 raise ValueError(
                     "Trial runner reuse requires reset_trial() to be "
                     "implemented.")
@@ -129,11 +131,16 @@ class RayTrialExecutor(TrialExecutor):
         try:
             trial.write_error_log(error_msg)
             if hasattr(trial, 'runner') and trial.runner:
-                if not error and self._cached_runner is None:
-                    logger.debug("Retaining trial runner {}".format(
-                        trial.runner))
-                    self._cached_runner = trial.runner
+                if (not error and self._reuse_actors
+                        and self._cached_actor is None):
+                    logger.debug("Reusing actor for {}".format(trial.runner))
+                    self._cached_actor = trial.runner
                 else:
+                    logger.info(
+                        "Destroying actor for trial {}. If your trainable is "
+                        "slow to initialize, consider setting "
+                        "reuse_actors=True to reduce actor creation "
+                        "overheads.".format(trial))
                     trial.runner.stop.remote()
                     trial.runner.__ray_terminate__.remote()
         except Exception:
@@ -210,7 +217,7 @@ class RayTrialExecutor(TrialExecutor):
             self._paused[trial_future[0]] = trial
         super(RayTrialExecutor, self).pause_trial(trial)
 
-    def reset_trial(self, trial, new_config, new_experiment_tag):
+    def reset_trial(self, trial, new_config, new_experiment_tag, reset_state):
         """Tries to invoke `Trainable.reset_config()` to reset trial.
 
         Args:
@@ -219,6 +226,7 @@ class RayTrialExecutor(TrialExecutor):
                 trainable.
             new_experiment_tag (str): New experiment name
                 for trial.
+            reset_state (bool): Whether to fully reset the trial state.
 
         Returns:
             True if `reset_config` is successful else False.
@@ -227,7 +235,9 @@ class RayTrialExecutor(TrialExecutor):
         trial.config = new_config
         trainable = trial.runner
         with warn_if_slow("reset_config"):
-            reset_val = ray.get(trainable.reset_config.remote(new_config))
+            reset_val = ray.get(
+                trainable.reset_config.remote(
+                    new_config, reset_state=reset_state))
         return reset_val
 
     def get_running_trials(self):
