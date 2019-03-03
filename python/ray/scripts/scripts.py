@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -723,11 +724,11 @@ def timeline(redis_address):
             print("Found multiple active Ray instances: {}. ".format(
                 redis_addresses) +
                   "Please specify the one to connect to with --redis-address.")
-            exit(1)
+            sys.exit(1)
         elif not redis_addresses:
             print("Could not find any running Ray instance. "
                   "Please specify the one to connect to with --redis-address.")
-            exit(1)
+            sys.exit(1)
         redis_address = redis_addresses.pop()
     print("Connecting to Ray instance at {}.".format(redis_address))
     ray.init(redis_address=redis_address)
