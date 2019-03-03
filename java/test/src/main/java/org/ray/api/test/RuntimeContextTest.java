@@ -9,7 +9,8 @@ import org.testng.annotations.Test;
 
 public class RuntimeContextTest extends BaseTest {
 
-  private static UniqueId DRIVER_ID = UniqueId.randomId();
+  private static UniqueId DRIVER_ID =
+      UniqueId.fromHexString("0011223344556677889900112233445566778899");
   private static String RAYLET_SOCKET_NAME = "/tmp/ray/test/raylet_socket";
   private static String OBJECT_STORE_SOCKET_NAME = "/tmp/ray/test/object_store_socket";
 
@@ -32,8 +33,9 @@ public class RuntimeContextTest extends BaseTest {
   @RayRemote
   public static class RuntimeContextTester {
 
-    public String testRuntimeContext() {
+    public String testRuntimeContext(UniqueId actorId) {
       Assert.assertEquals(DRIVER_ID, Ray.getRuntimeContext().getCurrentDriverId());
+      Assert.assertEquals(actorId, Ray.getRuntimeContext().getCurrentActorId());
       Assert.assertEquals(RAYLET_SOCKET_NAME, Ray.getRuntimeContext().getRayletSocketName());
       Assert.assertEquals(OBJECT_STORE_SOCKET_NAME,
           Ray.getRuntimeContext().getObjectStoreSocketName());
@@ -45,7 +47,7 @@ public class RuntimeContextTest extends BaseTest {
   public void testRuntimeContextInActor() {
     RayActor<RuntimeContextTester> actor = Ray.createActor(RuntimeContextTester::new);
     Assert.assertEquals("ok",
-        Ray.call(RuntimeContextTester::testRuntimeContext, actor).get());
+        Ray.call(RuntimeContextTester::testRuntimeContext, actor, actor.getId()).get());
 
   }
 
