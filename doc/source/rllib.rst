@@ -137,4 +137,4 @@ If you encounter out-of-memory errors, consider setting ``redis_max_memory`` and
 
 For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
 the stack traces of all Ray workers on the current node, and ``ray timeline`` to dump
-a timelin visualization of tasks to a file.
+a timeline visualization of tasks to a file.
