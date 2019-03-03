@@ -44,7 +44,7 @@ class warn_if_slow(object):
     """Prints a warning if a given operation is slower than 100ms.
 
     Example:
-        >>> with expect_fast("some_operation"):
+        >>> with warn_if_slow("some_operation"):
         ...    ray.get(something)
     """
 

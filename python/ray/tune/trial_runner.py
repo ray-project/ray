@@ -16,6 +16,7 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.util import warn_if_slow
 from ray.tune.web_server import TuneServer
 
 MAX_DEBUG_TRIALS = 20
@@ -223,7 +224,8 @@ class TrialRunner(object):
         self.trial_executor.on_step_begin()
         next_trial = self._get_next_trial()
         if next_trial is not None:
-            self.trial_executor.start_trial(next_trial)
+            with warn_if_slow("start_trial"):
+                self.trial_executor.start_trial(next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()
         else:
@@ -280,7 +282,8 @@ class TrialRunner(object):
             trial (Trial): Trial to queue.
         """
         trial.set_verbose(self._verbose)
-        self._scheduler_alg.on_trial_add(self, trial)
+        with warn_if_slow("scheduler.on_trial_add"):
+            self._scheduler_alg.on_trial_add(self, trial)
         self.trial_executor.try_checkpoint_metadata(trial)
         self._trials.append(trial)
 
@@ -385,6 +388,10 @@ class TrialRunner(object):
 
     def _process_events(self):
         trial = self.trial_executor.get_next_available_trial()
+        with warn_if_slow("process_trial"):
+            self._process_trial(trial)
+
+    def _process_trial(self, trial):
         try:
             result = self.trial_executor.fetch_result(trial)
             self._total_time += result[TIME_THIS_ITER_S]
@@ -397,12 +404,15 @@ class TrialRunner(object):
                 decision = TrialScheduler.STOP
 
             else:
-                decision = self._scheduler_alg.on_trial_result(
-                    self, trial, result)
-                self._search_alg.on_trial_result(trial.trial_id, result)
+                with warn_if_slow("scheduler.on_trial_result"):
+                    decision = self._scheduler_alg.on_trial_result(
+                        self, trial, result)
+                with warn_if_slow("search_alg.on_trial_result"):
+                    self._search_alg.on_trial_result(trial.trial_id, result)
                 if decision == TrialScheduler.STOP:
-                    self._search_alg.on_trial_complete(
-                        trial.trial_id, early_terminated=True)
+                    with warn_if_slow("search_alg.on_trial_complete"):
+                        self._search_alg.on_trial_complete(
+                            trial.trial_id, early_terminated=True)
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 
@@ -481,7 +491,8 @@ class TrialRunner(object):
         """
         self._scheduler_alg.on_trial_error(self, trial)
         self.trial_executor.set_status(trial, Trial.PENDING)
-        self._scheduler_alg.on_trial_add(self, trial)
+        with warn_if_slow("scheduler.on_trial_add"):
+            self._scheduler_alg.on_trial_add(self, trial)
 
     def _update_trial_queue(self, blocking=False, timeout=600):
         """Adds next trials to queue if possible.

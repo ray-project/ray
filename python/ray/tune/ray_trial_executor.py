@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import logging
 import os
+import random
 import time
 import traceback
 
@@ -31,20 +32,31 @@ class RayTrialExecutor(TrialExecutor):
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
+        self._cached_runner = None
         if ray.is_initialized():
             self._update_avail_resources()
 
     def _setup_runner(self, trial):
-        cls = ray.remote(
-            num_cpus=trial.resources.cpu,
-            num_gpus=trial.resources.gpu,
-            resources=trial.resources.custom_resources)(
-                trial._get_trainable_cls())
+        if self._cached_runner is not None:
+            logger.debug("Reusing cached runner {}".format(
+                self._cached_runner))
+            existing_runner = self._cached_runner
+            self._cached_runner = None
+        else:
+            existing_runner = None
+            cls = ray.remote(
+                num_cpus=trial.resources.cpu,
+                num_gpus=trial.resources.gpu,
+                resources=trial.resources.custom_resources)(
+                    trial._get_trainable_cls())
 
         trial.init_logger()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         remote_logdir = trial.logdir
+
+        if existing_runner:
+            return existing_runner
 
         def logger_creator(config):
             # Set the working dir in the remote process, for user file writes
@@ -112,9 +124,13 @@ class RayTrialExecutor(TrialExecutor):
         try:
             trial.write_error_log(error_msg)
             if hasattr(trial, 'runner') and trial.runner:
-                stop_tasks = []
-                stop_tasks.append(trial.runner.stop.remote())
-                stop_tasks.append(trial.runner.__ray_terminate__.remote())
+                if not error and self._cached_runner is None:
+                    logger.debug("Retaining trial runner {}".format(
+                        trial.runner))
+                    self._cached_runner = trial.runner
+                else:
+                    trial.runner.stop.remote()
+                    trial.runner.__ray_terminate__.remote()
         except Exception:
             logger.exception("Error stopping runner for Trial %s", str(trial))
             self.set_status(trial, Trial.ERROR)
@@ -215,7 +231,9 @@ class RayTrialExecutor(TrialExecutor):
         return list(self._running.values())
 
     def get_next_available_trial(self):
-        [result_id], _ = ray.wait(list(self._running))
+        candidates = list(self._running)
+        random.shuffle(candidates)
+        [result_id], _ = ray.wait(candidates)
         return self._running[result_id]
 
     def fetch_result(self, trial):
