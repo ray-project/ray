@@ -271,9 +271,10 @@ class NodeUpdater(object):
             ssh.append("-tt")
         if emulate_interactive:
             force_interactive = (
-                "set -i || true && source ~/.bashrc && "
+                "true && source ~/.bashrc && "
                 "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-            cmd = "bash --login -c {}".format(quote(force_interactive + cmd))
+            cmd = "bash --login -c -i {}".format(
+                quote(force_interactive + cmd))
 
         if port_forward is None:
             ssh_opt = []
