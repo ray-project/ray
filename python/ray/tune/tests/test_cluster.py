@@ -153,7 +153,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     runner.add_trial(t)
     runner.step()  # start
     runner.step()  # 1 result
-    assert t.last_result is not None
+    assert t.last_result
     node2 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node)
     cluster.wait_for_nodes()
@@ -384,7 +384,7 @@ tune.run_experiments(
             runner = TrialRunner.restore(metadata_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
-            if last_res is not None and last_res["training_iteration"]:
+            if last_res and last_res.get("training_iteration"):
                 break
         time.sleep(0.3)
 
@@ -476,7 +476,7 @@ tune.run_experiments(
             runner = TrialRunner.restore(metadata_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
-            if last_res is not None and last_res["training_iteration"] == 3:
+            if last_res and last_res.get("training_iteration") == 3:
                 break
         time.sleep(0.2)
 
