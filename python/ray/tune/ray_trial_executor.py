@@ -72,7 +72,7 @@ class RayTrialExecutor(TrialExecutor):
         remote = trial.runner.train.remote()
 
         # Local Mode
-        if type(remote) is dict:
+        if isinstance(remote, dict):
             remote = _LocalWrapper(remote)
 
         self._running[remote] = trial
@@ -288,6 +288,7 @@ class RayTrialExecutor(TrialExecutor):
                 resources = ray.global_state.cluster_resources()
             except Exception:
                 # TODO(rliaw): Remove this when local mode is fixed.
+                # https://github.com/ray-project/ray/issues/4147
                 logger.debug("Using resources for local machine.")
                 resources = ray.services.check_and_update_resources(
                     None, None, None)
