@@ -314,9 +314,6 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/tests/run_silent.sh tests/test_supported_spaces.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    pytest /ray/python/ray/tune/tests/test_cluster.py
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/tests/run_silent.sh tests/test_env_with_subprocess.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
