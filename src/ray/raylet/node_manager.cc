@@ -341,15 +341,17 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   // Establish a new NodeManager connection to this GCS client.
   auto status = ConnectRemoteNodeManager(client_id, client_data.node_manager_address,
                                          client_data.node_manager_port);
-  // A disconnected client has 2 entries in the client table (one for being
-  // inserted and one for being removed). When a new raylet starts, ClientAdded
-  // will be called with the disconnected client's first entry, which will cause
-  // IOError and "Connection refused".
   if (!status.ok()) {
-    RAY_LOG(WARNING) << "Failed to connect to client " << client_id
-                     << " in ClientAdded. TcpConnect returned status: "
-                     << status.ToString() << ". This may be caused by "
-                     << "trying to connect to a node manager that has failed.";
+    // This is not a fatal error for raylet, but it should not happen.
+    // We need to broadcase this message.
+    std::string type = "raylet_connection_error";
+    std::ostringstream error_message;
+    error_message << "Failed to connect to ray node " << client_id
+                  << " with status: " << status.ToString()
+                  << ". This may be since the node was recently removed.";
+    // We use the nil JobID to broadcast the message to all drivers.
+    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+        JobID::nil(), type, error_message.str(), current_time_ms()));
     return;
   }
 

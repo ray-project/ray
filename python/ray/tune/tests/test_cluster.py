@@ -8,10 +8,6 @@ import time
 import os
 import pytest
 import shutil
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
 
 import ray
 from ray import tune
@@ -134,10 +130,6 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
         runner.step()
 
 
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test.")
-@pytest.mark.timeout(120, method="thread")
 def test_trial_migration(start_connected_emptyhead_cluster):
     """Removing a node while cluster has space should migrate trial.
 
@@ -208,10 +200,6 @@ def test_trial_migration(start_connected_emptyhead_cluster):
         runner.step()
 
 
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test.")
-@pytest.mark.timeout(120, method="thread")
 def test_trial_requeue(start_connected_emptyhead_cluster):
     """Removing a node in full cluster causes Trial to be requeued."""
     cluster = start_connected_emptyhead_cluster
@@ -361,6 +349,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     cluster.shutdown()
 
 
+@pytest.mark.skip(reason="Not very consistent.")
 def test_cluster_rllib_restore(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
