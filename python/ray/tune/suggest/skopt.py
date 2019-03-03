@@ -52,7 +52,7 @@ class SkOptSearch(SuggestionAlgorithm):
                  reward_attr="episode_reward_mean",
                  **kwargs):
         _import_skopt()
-        assert skopt is not None, """skopt must be installed!
+        assert sko is not None, """skopt must be installed!
             You can install Skopt with the command:
             `pip install scikit-optimize`."""
         assert type(max_concurrent) is int and max_concurrent > 0
