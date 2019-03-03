@@ -46,7 +46,7 @@ class Trainable(object):
     (sans checkpoint functionality).
     """
 
-    def __init__(self, config=None, logger_creator=None, resources=None):
+    def __init__(self, config=None, logger_creator=None):
         """Initialize an Trainable.
 
         Sets up logging and points ``self.logdir`` to a directory in which
