@@ -36,9 +36,8 @@ def _make_scheduler(args):
 
 
 def _find_checkpoint_dir(exp_list):
-    assert exp_list, "Experiments must be specified via `run_experiments`"
-    exp = exp_list[0]
-    # TODO(rliaw): Make sure this is resolved earlier.
+    # TODO(rliaw): Make sure the checkpoint_dir is resolved earlier.
+    # Right now it is resolved somewhere far down the trial generation process
     return os.path.join(exp.spec["local_dir"], exp.name)
 
 
@@ -52,7 +51,7 @@ def try_restore_runner(checkpoint_dir, search_alg, scheduler, trial_executor):
     return new_runner
 
 
-def run(run,
+def run(run_or_experiment,
         name=None,
         stop=None,
         config=None,
@@ -61,15 +60,13 @@ def run(run,
         local_dir=None,
         upload_dir=None,
         trial_name_creator=None,
-        custom_loggers=None,
+        loggers=None,
         sync_function=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
         export_formats=None,
         max_failures=3,
         restore=None,
-        repeat=None,
-        trial_resources=None,
         search_alg=None,
         scheduler=None,
         with_server=False,
@@ -79,24 +76,54 @@ def run(run,
         queue_trials=False,
         trial_executor=None,
         raise_on_failed_trial=True):
-    raise NotImplementedError()
-
-
-def run_experiments(experiments,
-                    search_alg=None,
-                    scheduler=None,
-                    with_server=False,
-                    server_port=TuneServer.DEFAULT_PORT,
-                    verbose=2,
-                    resume=False,
-                    queue_trials=False,
-                    trial_executor=None,
-                    raise_on_failed_trial=True):
-    """Runs and blocks until all trials finish.
+    """Executes training.
 
     Args:
-        experiments (Experiment | list | dict): Experiments to run. Will be
-            passed to `search_alg` via `add_configurations`.
+        run (function|class|str): The algorithm or model to train.
+            This may refer to the name of a built-on algorithm
+            (e.g. RLLib's DQN or PPO), a user-defined trainable
+            function or class, or the string identifier of a
+            trainable function or class registered in the tune registry.
+        name (str): Name of experiment.
+        stop (dict): The stopping criteria. The keys may be any field in
+            the return result of 'train()', whichever is reached first.
+            Defaults to empty dict.
+        config (dict): Algorithm-specific configuration for Tune variant
+            generation (e.g. env, hyperparams). Defaults to empty dict.
+            Custom search algorithms may ignore this.
+        resources_per_trial (dict): Machine resources to allocate per trial,
+            e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
+            assigned unless you specify them here. Defaults to 1 CPU and 0
+            GPUs in ``Trainable.default_resource_request()``.
+        num_samples (int): Number of times to sample from the
+            hyperparameter space. Defaults to 1. If `grid_search` is
+            provided as an argument, the grid will be repeated
+            `num_samples` of times.
+        local_dir (str): Local dir to save training results to.
+            Defaults to ``~/ray_results``.
+        upload_dir (str): Optional URI to sync training results
+            to (e.g. ``s3://bucket``).
+        trial_name_creator (func): Optional function for generating
+            the trial string representation.
+        loggers (list): List of logger creators to be used with
+            each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
+            See `ray/tune/logger.py`.
+        sync_function (func|str): Function for syncing the local_dir to
+            upload_dir. If string, then it must be a string template for
+            syncer to run. If not provided, the sync command defaults
+            to standard S3 or gsutil sync comamnds.
+        checkpoint_freq (int): How many training iterations between
+            checkpoints. A value of 0 (default) disables checkpointing.
+        checkpoint_at_end (bool): Whether to checkpoint at the end of the
+            experiment regardless of the checkpoint_freq. Default is False.
+        export_formats (list): List of formats that exported at the end of
+            the experiment. Default is None.
+        max_failures (int): Try to recover a trial from its last
+            checkpoint at least this many times. Only applies if
+            checkpointing is enabled. Setting to -1 will lead to infinite
+            recovery retries. Defaults to 3.
+        restore (str): Path to checkpoint. Only makes sense to set if
+            running 1 trial. Defaults to None.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
             BasicVariantGenerator.
         scheduler (TrialScheduler): Scheduler for executing
@@ -118,31 +145,13 @@ def run_experiments(experiments,
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
 
-    Examples:
-        >>> experiment_spec = Experiment("experiment", my_func)
-        >>> run_experiments(experiments=experiment_spec)
-
-        >>> experiment_spec = {"experiment": {"run": my_func}}
-        >>> run_experiments(experiments=experiment_spec)
-
-        >>> run_experiments(
-        >>>     experiments=experiment_spec,
-        >>>     scheduler=MedianStoppingRule(...))
-
-        >>> run_experiments(
-        >>>     experiments=experiment_spec,
-        >>>     search_alg=SearchAlgorithm(),
-        >>>     scheduler=MedianStoppingRule(...))
-
-    Returns:
-        List of Trial objects, holding data for each executed trial.
-
+    TODO:
+        Add examples
     """
-    # This is important to do this here
-    # because it schematize the experiments
-    # and it conducts the implicit registration.
-    experiments = convert_to_experiment_list(experiments)
-    checkpoint_dir = _find_checkpoint_dir(experiments)
+
+    #TODO: convert run to experiment
+    experiment = run_or_experiment
+    checkpoint_dir = _find_checkpoint_dir(experiment)
 
     runner = None
     restore = False
@@ -154,16 +163,16 @@ def run_experiments(experiments,
             restore = click.confirm(msg, default=False)
             if restore:
                 logger.info("Tip: to always resume, "
-                            "pass resume=True to run_experiments()")
+                            "pass resume=True to run()")
             else:
                 logger.info("Tip: to always start a new experiment, "
-                            "pass resume=False to run_experiments()")
+                            "pass resume=False to run()")
         elif resume:
             restore = True
         else:
             logger.info(
                 "Tip: to resume incomplete experiments, "
-                "pass resume='prompt' or resume=True to run_experiments()")
+                "pass resume='prompt' or resume=True to run()")
     else:
         logger.info(
             "Did not find checkpoint file in {}.".format(checkpoint_dir))
@@ -175,13 +184,10 @@ def run_experiments(experiments,
         logger.info("Starting a new experiment.")
 
     if not runner:
-        if scheduler is None:
-            scheduler = FIFOScheduler()
+        scheduler = scheduler or FIFOScheduler()
+        search_alg = search_alg or BasicVariantGenerator()
 
-        if search_alg is None:
-            search_alg = BasicVariantGenerator()
-
-        search_alg.add_configurations(experiments)
+        search_alg.add_configurations([experiment])
 
         runner = TrialRunner(
             search_alg,
@@ -221,3 +227,46 @@ def run_experiments(experiments,
             logger.error("Trials did not complete: %s", errored_trials)
 
     return runner.get_trials()
+
+
+def run_experiments(experiments,
+                    search_alg=None,
+                    scheduler=None,
+                    with_server=False,
+                    server_port=TuneServer.DEFAULT_PORT,
+                    verbose=2,
+                    resume=False,
+                    queue_trials=False,
+                    trial_executor=None,
+                    raise_on_failed_trial=True):
+    """Runs and blocks until all trials finish.
+
+    Examples:
+        >>> experiment_spec = Experiment("experiment", my_func)
+        >>> run_experiments(experiments=experiment_spec)
+
+        >>> experiment_spec = {"experiment": {"run": my_func}}
+        >>> run_experiments(experiments=experiment_spec)
+
+        >>> run_experiments(
+        >>>     experiments=experiment_spec,
+        >>>     scheduler=MedianStoppingRule(...))
+
+        >>> run_experiments(
+        >>>     experiments=experiment_spec,
+        >>>     search_alg=SearchAlgorithm(),
+        >>>     scheduler=MedianStoppingRule(...))
+
+    Returns:
+        List of Trial objects, holding data for each executed trial.
+
+    """
+    # This is important to do this here
+    # because it schematize the experiments
+    # and it conducts the implicit registration.
+    experiments = convert_to_experiment_list(experiments)
+
+    trials = []
+    for exp in experiments:
+        trials += run(exp)
+    return trials
