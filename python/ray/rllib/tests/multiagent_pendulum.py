@@ -5,7 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.test.test_multi_agent_env import make_multiagent
+from ray.rllib.tests.test_multi_agent_env import make_multiagent
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
 

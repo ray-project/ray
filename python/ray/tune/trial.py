@@ -256,7 +256,7 @@ class Trial(object):
                  restore_path=None,
                  upload_dir=None,
                  trial_name_creator=None,
-                 custom_loggers=None,
+                 loggers=None,
                  sync_function=None,
                  max_failures=0):
         """Initialize a new trial.
@@ -276,7 +276,7 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
-        self.custom_loggers = custom_loggers
+        self.loggers = loggers
         self.sync_function = sync_function
         validate_sync_function(sync_function)
         self.verbose = True
@@ -333,7 +333,7 @@ class Trial(object):
                 self.config,
                 self.logdir,
                 upload_uri=self.upload_dir,
-                custom_loggers=self.custom_loggers,
+                loggers=self.loggers,
                 sync_function=self.sync_function)
 
     def update_resources(self, cpu, gpu, **kwargs):
@@ -521,10 +521,11 @@ class Trial(object):
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 
+        # These are non-pickleable entries.
         pickle_data = {
             "_checkpoint": self._checkpoint,
             "config": self.config,
-            "custom_loggers": self.custom_loggers,
+            "loggers": self.loggers,
             "sync_function": self.sync_function,
             "last_result": self.last_result
         }
@@ -547,7 +548,7 @@ class Trial(object):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
         for key in [
-                "_checkpoint", "config", "custom_loggers", "sync_function",
+                "_checkpoint", "config", "loggers", "sync_function",
                 "last_result"
         ]:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
