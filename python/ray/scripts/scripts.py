@@ -718,6 +718,8 @@ def timeline(redis_address):
                         if arg.startswith("--redis-address="):
                             addr = arg.split("=")[1]
                             redis_addresses.add(addr)
+            except psutil.AccessDenied:
+                pass
             except psutil.NoSuchProcess:
                 pass
         if len(redis_addresses) > 1:
