@@ -7,7 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tune import run_experiments, register_trainable
+from ray.tune import run, register_trainable
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest import NevergradSearch
 
@@ -33,18 +33,16 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    register_trainable("exp", easy_objective)
+    register_trainable("exp", )
 
     config = {
-        "nevergrad": {
-            "run": "exp",
-            "num_samples": 10 if args.smoke_test else 50,
-            "config": {
-                "iterations": 100,
-            },
-            "stop": {
-                "timesteps_total": 100
-            },
+        "run": "exp",
+        "num_samples": 10 if args.smoke_test else 50,
+        "config": {
+            "iterations": 100,
+        },
+        "stop": {
+            "timesteps_total": 100
         }
     }
     optimizer = optimizerlib.OnePlusOne(dimension=2)
@@ -53,4 +51,8 @@ if __name__ == "__main__":
         max_concurrent=4,
         reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
-    run_experiments(config, search_alg=algo, scheduler=scheduler)
+    run(easy_objective,
+        name="nevergrad",
+        **config,
+        search_alg=algo,
+        scheduler=scheduler)
