@@ -3,10 +3,11 @@ package org.ray.runtime;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.lang3.tuple.Pair;
+import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
@@ -21,7 +22,7 @@ import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
-import org.ray.runtime.objectstore.ObjectStoreProxy.GetStatus;
+import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
@@ -37,9 +38,22 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
 
+  /**
+   * Default timeout of a get.
+   */
   private static final int GET_TIMEOUT_MS = 1000;
+  /**
+   * Split objects in this batch size when fetching or reconstructing them.
+   */
   private static final int FETCH_BATCH_SIZE = 1000;
-  private static final int LIMITED_RETRY_COUNTER = 10;
+  /**
+   * Print a warning every this number of attempts.
+   */
+  private static final int WARN_PER_NUM_ATTEMPTS = 50;
+  /**
+   * Max number of ids to print in the warning message.
+   */
+  private static final int MAX_IDS_TO_PRINT_IN_WARNING = 20;
 
   protected RayConfig rayConfig;
   protected WorkerContext workerContext;
@@ -75,7 +89,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public <T> void put(UniqueId objectId, T obj) {
     UniqueId taskId = workerContext.getCurrentTaskId();
     LOGGER.debug("Putting object {}, for task {} ", objectId, taskId);
-    objectStoreProxy.put(objectId, obj, null);
+    objectStoreProxy.put(objectId, obj);
   }
 
 
@@ -87,10 +101,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    */
   public RayObject<Object> putSerialized(byte[] obj) {
     UniqueId objectId = UniqueIdUtil.computePutId(
-            workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
+        workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
     UniqueId taskId = workerContext.getCurrentTaskId();
     LOGGER.debug("Putting serialized object {}, for task {} ", objectId, taskId);
-    objectStoreProxy.putSerialized(objectId, obj, null);
+    objectStoreProxy.putSerialized(objectId, obj);
     return new RayObjectImpl<>(objectId);
   }
 
@@ -102,63 +116,68 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> List<T> get(List<UniqueId> objectIds) {
+    List<T> ret = new ArrayList<>(Collections.nCopies(objectIds.size(), null));
     boolean wasBlocked = false;
 
     try {
-      int numObjectIds = objectIds.size();
-
-      // Do an initial fetch for remote objects.
-      List<List<UniqueId>> fetchBatches = splitIntoBatches(objectIds);
-      for (List<UniqueId> batch : fetchBatches) {
-        rayletClient.fetchOrReconstruct(batch, true, workerContext.getCurrentTaskId());
+      // A map that stores the unready object ids and their original indexes.
+      Map<UniqueId, Integer> unready = new HashMap<>();
+      for (int i = 0; i < objectIds.size(); i++) {
+        unready.put(objectIds.get(i), i);
       }
+      int numAttempts = 0;
 
-      // Get the objects. We initially try to get the objects immediately.
-      List<Pair<T, GetStatus>> ret = objectStoreProxy
-          .get(objectIds, GET_TIMEOUT_MS, false);
-      assert ret.size() == numObjectIds;
+      // Repeat until we get all objects.
+      while (!unready.isEmpty()) {
+        List<UniqueId> unreadyIds = new ArrayList<>(unready.keySet());
 
-      // Mapping the object IDs that we haven't gotten yet to their original index in objectIds.
-      Map<UniqueId, Integer> unreadys = new HashMap<>();
-      for (int i = 0; i < numObjectIds; i++) {
-        if (ret.get(i).getRight() != GetStatus.SUCCESS) {
-          unreadys.put(objectIds.get(i), i);
+        // For the initial fetch, we only fetch the objects, do not reconstruct them.
+        boolean fetchOnly = numAttempts == 0;
+        if (!fetchOnly) {
+          // If fetchOnly is false, this worker will be blocked.
+          wasBlocked = true;
         }
-      }
-      wasBlocked = (unreadys.size() > 0);
-
-      // Try reconstructing any objects we haven't gotten yet. Try to get them
-      // until at least PlasmaLink.GET_TIMEOUT_MS milliseconds passes, then repeat.
-      int retryCounter = 0;
-      while (unreadys.size() > 0) {
-        retryCounter++;
-        List<UniqueId> unreadyList = new ArrayList<>(unreadys.keySet());
-        List<List<UniqueId>> reconstructBatches = splitIntoBatches(unreadyList);
-
-        for (List<UniqueId> batch : reconstructBatches) {
-          rayletClient.fetchOrReconstruct(batch, false, workerContext.getCurrentTaskId());
+        // Call `fetchOrReconstruct` in batches.
+        for (List<UniqueId> batch : splitIntoBatches(unreadyIds)) {
+          rayletClient.fetchOrReconstruct(batch, fetchOnly, workerContext.getCurrentTaskId());
         }
 
-        List<Pair<T, GetStatus>> results = objectStoreProxy
-            .get(unreadyList, GET_TIMEOUT_MS, false);
-
-        // Remove any entries for objects we received during this iteration so we
-        // don't retrieve the same object twice.
-        for (int i = 0; i < results.size(); i++) {
-          Pair<T, GetStatus> value = results.get(i);
-          if (value.getRight() == GetStatus.SUCCESS) {
-            UniqueId id = unreadyList.get(i);
-            ret.set(unreadys.get(id), value);
-            unreadys.remove(id);
+        // Get the objects from the object store, and parse the result.
+        List<GetResult<T>> getResults = objectStoreProxy.get(unreadyIds, GET_TIMEOUT_MS);
+        for (int i = 0; i < getResults.size(); i++) {
+          GetResult<T> getResult = getResults.get(i);
+          if (getResult.exists) {
+            if (getResult.exception != null) {
+              // If the result is an exception, throw it.
+              throw getResult.exception;
+            } else {
+              // Set the result to the return list, and remove it from the unready map.
+              UniqueId id = unreadyIds.get(i);
+              ret.set(unready.get(id), getResult.object);
+              unready.remove(id);
+            }
           }
         }
 
-        if (retryCounter % LIMITED_RETRY_COUNTER == 0) {
-          LOGGER.warn("Attempted {} times to reconstruct objects {}, "
-              + "but haven't received response. If this message continues to print,"
-              + " it may indicate that the task is hanging, or someting wrong "
-              + "happened in raylet backend.",
-              retryCounter, unreadys.keySet());
+        numAttempts += 1;
+        if (LOGGER.isWarnEnabled() && numAttempts % WARN_PER_NUM_ATTEMPTS == 0) {
+          // Print a warning if we've attempted too many times, but some objects are still
+          // unavailable.
+          List<UniqueId> idsToPrint = new ArrayList<>(unready.keySet());
+          if (idsToPrint.size() > MAX_IDS_TO_PRINT_IN_WARNING) {
+            idsToPrint = idsToPrint.subList(0, MAX_IDS_TO_PRINT_IN_WARNING);
+          }
+          String ids = idsToPrint.stream().map(UniqueId::toString)
+              .collect(Collectors.joining(", "));
+          if (idsToPrint.size() < unready.size()) {
+            ids += ", etc";
+          }
+          String msg = String.format("Attempted %d times to reconstruct objects,"
+                  + " but some objects are still unavailable. If this message continues to print,"
+                  + " it may indicate that object's creating task is hanging, or something wrong"
+                  + " happened in raylet backend. %d object(s) pending: %s.", numAttempts,
+              unreadyIds.size(), ids);
+          LOGGER.warn(msg);
         }
       }
 
@@ -167,19 +186,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
             workerContext.getCurrentTaskId());
       }
 
-      List<T> finalRet = new ArrayList<>();
-
-      for (Pair<T, GetStatus> value : ret) {
-        finalRet.add(value.getLeft());
-      }
-
-      return finalRet;
-    } catch (RayException e) {
-      LOGGER.error("Failed to get objects for task {}.", workerContext.getCurrentTaskId(), e);
-      throw e;
+      return ret;
     } finally {
-      // If there were objects that we weren't able to get locally, let the local
-      // scheduler know that we're now unblocked.
+      // If there were objects that we weren't able to get locally, let the raylet backend
+      // know that we're now unblocked.
       if (wasBlocked) {
         rayletClient.notifyUnblocked(workerContext.getCurrentTaskId());
       }
@@ -252,6 +262,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   /**
    * Create the task specification.
+   *
    * @param func The target remote function.
    * @param actor The actor handle. If the task is not an actor task, actor id must be NIL.
    * @param args The arguments for the remote function.
@@ -278,7 +289,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
 
     if (!resources.containsKey(ResourceUtil.CPU_LITERAL)
-            && !resources.containsKey(ResourceUtil.CPU_LITERAL.toLowerCase())) {
+        && !resources.containsKey(ResourceUtil.CPU_LITERAL.toLowerCase())) {
       resources.put(ResourceUtil.CPU_LITERAL, 0.0);
     }
 
@@ -321,6 +332,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public RayletClient getRayletClient() {
     return rayletClient;
+  }
+
+  public ObjectStoreProxy getObjectStoreProxy() {
+    return objectStoreProxy;
   }
 
   public FunctionManager getFunctionManager() {

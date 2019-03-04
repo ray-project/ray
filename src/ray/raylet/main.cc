@@ -127,17 +127,30 @@ int main(int argc, char *argv[]) {
   RAY_LOG(DEBUG) << "Initializing GCS client "
                  << gcs_client->client_table().GetLocalClientId();
 
-  ray::raylet::Raylet server(main_service, raylet_socket_name, node_ip_address,
-                             redis_address, redis_port, redis_password,
-                             node_manager_config, object_manager_config, gcs_client);
+  std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
+      main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
+      redis_password, node_manager_config, object_manager_config, gcs_client));
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
-  auto handler = [&main_service, &raylet_socket_name](
+  auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
       const boost::system::error_code &error, int signal_number) {
-    main_service.stop();
+    auto shutdown_callback = [&server, &main_service]() {
+      server.reset();
+      main_service.stop();
+    };
+    RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));
+    // Give a timeout for this Disconnect operation.
+    boost::posix_time::milliseconds stop_timeout(800);
+    boost::asio::deadline_timer timer(main_service);
+    timer.expires_from_now(stop_timeout);
+    timer.async_wait([shutdown_callback](const boost::system::error_code &error) {
+      if (!error) {
+        shutdown_callback();
+      }
+    });
     remove(raylet_socket_name.c_str());
   };
   boost::asio::signal_set signals(main_service, SIGTERM);

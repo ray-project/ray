@@ -124,15 +124,6 @@ def cli(logging_level, logging_format):
     "applies to the sharded redis tables (task, object, and profile tables). "
     "By default this is capped at 10GB but can be set higher.")
 @click.option(
-    "--num-workers",
-    required=False,
-    type=int,
-    help=("The initial number of workers to start on this node, "
-          "note that the local scheduler may start additional "
-          "workers. If you wish to control the total number of "
-          "concurent tasks, then use --resources instead and "
-          "specify the CPU field."))
-@click.option(
     "--num-cpus",
     required=False,
     type=int,
@@ -155,7 +146,7 @@ def cli(logging_level, logging_format):
     default=False,
     help="provide this argument for the head node")
 @click.option(
-    "--no-ui",
+    "--include-webui",
     is_flag=True,
     default=False,
     help="provide this argument if the UI should not be started")
@@ -217,14 +208,19 @@ def cli(logging_level, logging_format):
     default=None,
     type=str,
     help="Do NOT use this. This is for debugging/development purposes ONLY.")
+@click.option(
+    "--load-code-from-local",
+    is_flag=True,
+    default=False,
+    help="Specify whether load code from local file or GCS serialization.")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
-          redis_max_memory, num_workers, num_cpus, num_gpus, resources, head,
-          no_ui, block, plasma_directory, huge_pages, autoscaling_config,
+          redis_max_memory, num_cpus, num_gpus, resources, head, include_webui,
+          block, plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, internal_config):
+          java_worker_options, load_code_from_local, internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -239,15 +235,16 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
 
+    redirect_worker_output = None if not no_redirect_worker_output else True
+    redirect_output = None if not no_redirect_output else True
     ray_params = ray.parameter.RayParams(
         node_ip_address=node_ip_address,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
-        num_workers=num_workers,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
-        redirect_worker_output=not no_redirect_worker_output,
-        redirect_output=not no_redirect_output,
+        redirect_worker_output=redirect_worker_output,
+        redirect_output=redirect_output,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
@@ -258,6 +255,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         temp_dir=temp_dir,
         include_java=include_java,
         java_worker_options=java_worker_options,
+        load_code_from_local=load_code_from_local,
         _internal_config=internal_config)
 
     if head:
@@ -292,7 +290,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
-            include_webui=(not no_ui),
+            include_webui=include_webui,
             autoscaling_config=autoscaling_config,
             include_java=False,
         )
@@ -334,9 +332,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if redis_max_clients is not None:
             raise Exception("If --head is not passed in, --redis-max-clients "
                             "must not be provided.")
-        if no_ui:
-            raise Exception("If --head is not passed in, the --no-ui flag is "
-                            "not relevant.")
+        if include_webui:
+            raise Exception("If --head is not passed in, the --include-webui "
+                            "flag is not relevant.")
         if include_java is not None:
             raise ValueError("--include-java should only be set for the head "
                              "node.")
@@ -380,46 +378,24 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @cli.command()
 def stop():
-    subprocess.call(
-        ["killall plasma_store_server raylet raylet_monitor"], shell=True)
+    processes_to_kill = [
+        "plasma_store_server",
+        "raylet",
+        "raylet_monitor",
+        "monitor.py",
+        "redis-server",
+        "default_worker.py",  # Python worker.
+        " ray_",  # Python worker.
+        "org.ray.runtime.runner.worker.DefaultWorker",  # Java worker.
+        "log_monitor.py",
+        "reporter.py",
+        "dashboard.py",
+    ]
 
-    # Find the PID of the monitor process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep monitor.py | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the Redis process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep redis-server | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PIDs of the worker processes and kill them.
-    subprocess.call(
-        [
-            "kill -9 $(ps aux | grep default_worker.py | "
-            "grep -v grep | awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-    subprocess.call(
-        [
-            "kill -9 $(ps aux | grep ' ray_' | "
-            "grep -v grep | awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the Ray log monitor process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep log_monitor.py | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
+    for process in processes_to_kill:
+        command = ("kill $(ps aux | grep '" + process + "' | grep -v grep | " +
+                   "awk '{ print $2 }') 2> /dev/null")
+        subprocess.call([command], shell=True)
 
     # Find the PID of the jupyter process and kill it.
     try:
@@ -432,6 +408,8 @@ def stop():
             ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
     except ImportError:
         pass
+    except Exception:
+        logger.exception("Error shutting down jupyter")
 
 
 @cli.command()
@@ -576,6 +554,11 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
+    "--docker",
+    is_flag=True,
+    default=False,
+    help="Runs command in the docker container specified in cluster_config.")
+@click.option(
     "--stop",
     is_flag=True,
     default=False,
@@ -602,8 +585,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     "--port-forward", required=False, type=int, help="Port to forward.")
 @click.argument("script", required=True, type=str)
 @click.argument("script_args", required=False, type=str, nargs=-1)
-def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
-           port_forward, script, script_args):
+def submit(cluster_config_file, docker, screen, tmux, stop, start,
+           cluster_name, port_forward, script, script_args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -620,7 +603,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
     cmd = " ".join(["python", target] + list(script_args))
-    exec_cluster(cluster_config_file, cmd, screen, tmux, stop, False,
+    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
                  cluster_name, port_forward)
 
 

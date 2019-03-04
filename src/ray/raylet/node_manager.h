@@ -56,12 +56,10 @@ class NodeManager {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  /// \param reference to the local object store.
   NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
               ObjectManager &object_manager,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
-              plasma::PlasmaClient &store_client);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
 
   /// Process a new client connection.
   ///
@@ -157,8 +155,9 @@ class NodeManager {
   /// the local queue.
   ///
   /// \param task The task to fail.
+  /// \param error_type The type of the error that caused this task to fail.
   /// \return Void.
-  void TreatTaskAsFailed(const Task &task);
+  void TreatTaskAsFailed(const Task &task, const ErrorType &error_type);
   /// This is similar to TreatTaskAsFailed, but it will only mark the task as
   /// failed if at least one of the task's return values is lost. A return
   /// value is lost if it has been created before, but no longer exists on any
@@ -439,7 +438,7 @@ class NodeManager {
   /// A Plasma object store client. This is used exclusively for creating new
   /// objects in the object store (e.g., for actor tasks that can't be run
   /// because the actor died).
-  plasma::PlasmaClient &store_client_;
+  plasma::PlasmaClient store_client_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.

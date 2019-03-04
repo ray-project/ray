@@ -20,3 +20,4 @@ halfcheetah-ppo:
         num_envs_per_worker: 
             grid_search: [16, 32]
         batch_mode: truncate_episodes
+        observation_filter: MeanStdFilter

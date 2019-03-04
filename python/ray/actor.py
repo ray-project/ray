@@ -125,12 +125,6 @@ class ActorMethod(object):
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
 
-    def _submit(self, args, kwargs, num_return_vals=None):
-        logger.warning(
-            "WARNING: _submit() is being deprecated. Please use _remote().")
-        return self._remote(
-            args=args, kwargs=kwargs, num_return_vals=num_return_vals)
-
     def _remote(self, args, kwargs, num_return_vals=None):
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
@@ -237,21 +231,6 @@ class ActorClass(object):
             A handle to the newly created actor.
         """
         return self._remote(args=args, kwargs=kwargs)
-
-    def _submit(self,
-                args,
-                kwargs,
-                num_cpus=None,
-                num_gpus=None,
-                resources=None):
-        logger.warning(
-            "WARNING: _submit() is being deprecated. Please use _remote().")
-        return self._remote(
-            args=args,
-            kwargs=kwargs,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            resources=resources)
 
     def _remote(self,
                 args,

@@ -573,9 +573,14 @@ def start_redis(node_ip_address,
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
 
-    # Cap the memory of the other redis shards if no limit is provided.
-    redis_max_memory = (redis_max_memory if redis_max_memory is not None else
-                        ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES)
+    # Calculate the redis memory.
+    system_memory = ray.utils.get_system_memory()
+    if redis_max_memory is None:
+        redis_max_memory = min(
+            ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES,
+            max(
+                int(system_memory * 0.2),
+                ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
     if redis_max_memory < ray_constants.REDIS_MINIMUM_MEMORY_BYTES:
         raise ValueError("Attempting to cap Redis memory usage at {} bytes, "
                          "but the minimum allowed is {} bytes.".format(
@@ -827,6 +832,117 @@ def start_log_monitor(redis_address,
     return process_info
 
 
+def start_reporter(redis_address,
+                   stdout_file=None,
+                   stderr_file=None,
+                   redis_password=None):
+    """Start a reporter process.
+
+    Args:
+        redis_address (str): The address of the Redis instance.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    reporter_filepath = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "reporter.py")
+    command = [
+        sys.executable, "-u", reporter_filepath,
+        "--redis-address={}".format(redis_address)
+    ]
+    if redis_password:
+        command += ["--redis-password", redis_password]
+
+    try:
+        import psutil  # noqa: F401
+    except ImportError:
+        logger.warning("Failed to start the reporter. The reporter requires "
+                       "'pip install psutil'.")
+        return None
+
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_REPORTER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
+    return process_info
+
+
+def start_dashboard(redis_address,
+                    temp_dir,
+                    stdout_file=None,
+                    stderr_file=None,
+                    redis_password=None):
+    """Start a dashboard process.
+
+    Args:
+        redis_address (str): The address of the Redis instance.
+        temp_dir (str): The temporary directory used for log files and
+            information for this Ray session.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    port = 8080
+    while True:
+        try:
+            port_test_socket = socket.socket()
+            port_test_socket.bind(("127.0.0.1", port))
+            port_test_socket.close()
+            break
+        except socket.error:
+            port += 1
+
+    token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
+
+    dashboard_filepath = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
+    command = [
+        sys.executable,
+        "-u",
+        dashboard_filepath,
+        "--redis-address={}".format(redis_address),
+        "--http-port={}".format(port),
+        "--token={}".format(token),
+        "--temp-dir={}".format(temp_dir),
+    ]
+    if redis_password:
+        command += ["--redis-password", redis_password]
+
+    if sys.version_info <= (3, 0):
+        return None, None
+    try:
+        import aiohttp  # noqa: F401
+        import psutil  # noqa: F401
+    except ImportError:
+        logger.warning(
+            "Failed to start the dashboard. The dashboard requires Python 3 "
+            "as well as 'pip install aiohttp psutil'.")
+        return None, None
+
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_DASHBOARD,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
+    dashboard_url = "http://{}:{}/?token={}".format(
+        ray.services.get_node_ip_address(), port, token)
+    print("\n" + "=" * 70)
+    print("View the dashboard at {}".format(dashboard_url))
+    print("=" * 70 + "\n")
+    return dashboard_url, process_info
+
+
 def start_ui(redis_address, notebook_name, stdout_file=None, stderr_file=None):
     """Start a UI process.
 
@@ -973,7 +1089,8 @@ def start_raylet(redis_address,
                  stderr_file=None,
                  config=None,
                  include_java=False,
-                 java_worker_options=None):
+                 java_worker_options=None,
+                 load_code_from_local=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1068,6 +1185,9 @@ def start_raylet(redis_address,
     if node_manager_port is None:
         node_manager_port = 0
 
+    if load_code_from_local:
+        start_worker_command += " --load-code-from-local "
+
     command = [
         RAYLET_EXECUTABLE,
         raylet_name,
@@ -1134,7 +1254,7 @@ def build_java_worker_command(
         command += "-Dray.raylet.socket-name={} ".format(raylet_name)
 
     if redis_password is not None:
-        command += ("-Dray.redis-password=%s", redis_password)
+        command += "-Dray.redis.password={} ".format(redis_password)
 
     command += "-Dray.home={} ".format(RAY_HOME)
     # TODO(suquark): We should use temp_dir as the input of a java worker.
@@ -1171,7 +1291,7 @@ def determine_plasma_store_config(object_store_memory=None,
 
     # Choose a default object store size.
     if object_store_memory is None:
-        object_store_memory = int(system_memory * 0.4)
+        object_store_memory = int(system_memory * 0.3)
         # Cap memory to avoid memory waste and perf issues on large nodes
         if (object_store_memory >
                 ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
@@ -1325,7 +1445,8 @@ def start_plasma_store(stdout_file=None,
     # Print the object store memory using two decimal places.
     object_store_memory_str = (object_store_memory / 10**7) / 10**2
     logger.info("Starting the Plasma object store with {} GB memory "
-                "using {}.".format(object_store_memory_str, plasma_directory))
+                "using {}.".format(
+                    round(object_store_memory_str, 2), plasma_directory))
     # Start the Plasma store.
     process_info = _start_plasma_store(
         object_store_memory,
