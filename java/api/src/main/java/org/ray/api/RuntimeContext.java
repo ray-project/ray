@@ -3,40 +3,44 @@ package org.ray.api;
 import org.ray.api.id.UniqueId;
 
 /**
- * A class used for getting runtime context fields.
+ * A class used for getting information of Ray runtime.
  */
 public interface RuntimeContext {
 
   /**
-   * Get the current Driver id. If called by a driver,
-   * this returns the driver ID. If called in a task,
-   * return the driver ID of the associated driver.
+   * Get the current Driver ID.
+   *
+   * If called in a driver, this returns the driver ID. If called in a worker, this returns the ID
+   * of the associated driver.
    */
   UniqueId getCurrentDriverId();
 
   /**
-   * Get the current actor id. This only could be
-   * called in actor task, not in driver or normal task.
+   * Get the current actor ID.
+   *
+   * Note, this can only be called in actors.
    */
   UniqueId getCurrentActorId();
 
   /**
-   * Whether the current actor was reconstructed.
+   * Returns true if the current actor was reconstructed, false if it's created for the first time.
+   *
+   * Note, this method should only be called from an actor creation task.
    */
   boolean wasCurrentActorReconstructed();
 
   /**
-   * Get the raylet socket name that we can connect to.
+   * Get the raylet socket name.
    */
   String getRayletSocketName();
 
   /**
-   * Get the object store socket name that we can connect to.
+   * Get the object store socket name.
    */
   String getObjectStoreSocketName();
 
   /**
-   * Whether the run mode equals `SINGLE_PROCESS`.
+   * Return true if Ray is running in single-process mode, false if Ray is running in cluster mode.
    */
   boolean isSingleProcess();
 }
