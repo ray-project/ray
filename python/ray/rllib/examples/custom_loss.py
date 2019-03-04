@@ -31,7 +31,7 @@ parser.add_argument(
     type=str,
     default=os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "../test/data/cartpole_small"))
+        "../tests/data/cartpole_small"))
 
 
 class CustomLossModel(Model):
@@ -50,7 +50,7 @@ class CustomLossModel(Model):
 
         # define a secondary loss by building a graph copy with weight sharing
         with tf.variable_scope(
-                self.scope, reuse=tf.AUTO_REUSE, auxiliary_name_scope=False):
+                self.scope, reuse=True, auxiliary_name_scope=False):
             logits, _ = self._build_layers_v2({
                 "obs": restore_original_dimensions(input_ops["obs"],
                                                    self.obs_space)
