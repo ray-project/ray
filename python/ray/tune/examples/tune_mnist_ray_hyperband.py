@@ -31,8 +31,7 @@ import time
 
 import ray
 from ray import tune
-from ray.tune import grid_search, run_experiments, register_trainable, \
-    Trainable, sample_from
+from ray.tune import grid_search, Trainable, sample_from
 from ray.tune.schedulers import HyperBandScheduler
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -236,4 +235,8 @@ if __name__ == "__main__":
     hyperband = HyperBandScheduler(
         time_attr="training_iteration", reward_attr="mean_accuracy", max_t=10)
 
-    tune.run(TrainMNIST, name='mnist_hyperband_test', scheduler=hyperband, **mnist_spec)
+    tune.run(
+        TrainMNIST,
+        name='mnist_hyperband_test',
+        scheduler=hyperband,
+        **mnist_spec)
