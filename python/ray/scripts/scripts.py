@@ -721,23 +721,26 @@ def timeline(redis_address):
             except psutil.NoSuchProcess:
                 pass
         if len(redis_addresses) > 1:
-            print("Found multiple active Ray instances: {}. ".format(
-                redis_addresses) +
-                  "Please specify the one to connect to with --redis-address.")
+            logger.info(
+                "Found multiple active Ray instances: {}. ".format(
+                    redis_addresses) +
+                "Please specify the one to connect to with --redis-address.")
             sys.exit(1)
         elif not redis_addresses:
-            print("Could not find any running Ray instance. "
-                  "Please specify the one to connect to with --redis-address.")
+            logger.info(
+                "Could not find any running Ray instance. "
+                "Please specify the one to connect to with --redis-address.")
             sys.exit(1)
         redis_address = redis_addresses.pop()
-    print("Connecting to Ray instance at {}.".format(redis_address))
+    logger.info("Connecting to Ray instance at {}.".format(redis_address))
     ray.init(redis_address=redis_address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = "/tmp/ray-timeline-{}.json".format(time)
     ray.global_state.chrome_tracing_dump(filename=filename)
     size = os.path.getsize(filename)
-    print("Trace file written to {} ({} bytes).".format(filename, size))
-    print("You can open this with chrome://tracing in the Chrome browser.")
+    logger.info("Trace file written to {} ({} bytes).".format(filename, size))
+    logger.info(
+        "You can open this with chrome://tracing in the Chrome browser.")
 
 
 cli.add_command(start)
