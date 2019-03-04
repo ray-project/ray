@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.testng.Assert;
@@ -69,6 +70,11 @@ public class MultiThreadingTest extends BaseTest {
     }, 1);
 
     return "ok";
+  }
+
+  @Override
+  public void beforeEachCase() {
+    TestUtils.skipTestUnderSingleProcess();
   }
 
   @Test

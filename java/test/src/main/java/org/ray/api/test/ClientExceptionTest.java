@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayObjectImpl;
@@ -15,6 +16,11 @@ import org.testng.annotations.Test;
 public class ClientExceptionTest extends BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ClientExceptionTest.class);
+
+  @Override
+  public void beforeEachCase() {
+    TestUtils.skipTestUnderSingleProcess();
+  }
 
   @Test
   public void testWaitAndCrash() {
