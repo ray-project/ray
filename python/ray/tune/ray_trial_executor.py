@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import logging
 import os
+import random
 import time
 import traceback
 
@@ -230,7 +231,13 @@ class RayTrialExecutor(TrialExecutor):
         return list(self._running.values())
 
     def get_next_available_trial(self):
-        [result_id], _ = ray.wait(list(self._running))
+        shuffled_results = list(self._running.keys())
+        random.shuffle(shuffled_results)
+        # Note: We shuffle the results because `ray.wait` by default returns
+        # the first available result, and we want to guarantee that slower
+        # trials (i.e. trials that run remotely) also get fairly reported.
+        # See https://github.com/ray-project/ray/issues/4211 for details.
+        [result_id], _ = ray.wait(shuffled_results)
         return self._running[result_id]
 
     def fetch_result(self, trial):
