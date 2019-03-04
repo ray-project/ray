@@ -27,10 +27,12 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public boolean wasCurrentActorReconstructed() {
+    Preconditions.checkState(
+        runtime.getWorkerContext().getCurrentTask().isActorCreationTask());
+
     if (isSingleProcess()) {
       return false;
     }
-
     return ((RayNativeRuntime) runtime).actorExistsInGcs(getCurrentActorId());
   }
 
