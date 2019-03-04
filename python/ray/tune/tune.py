@@ -168,7 +168,7 @@ def run(run_or_experiment,
     """
     experiment = run_or_experiment
     if not isinstance(run_or_experiment, Experiment):
-        experiment = Experiment(name, run, stop, config, resources_per_trial,
+        experiment = Experiment(name, run_or_experiment, stop, config, resources_per_trial,
                                 num_samples, local_dir, upload_dir,
                                 trial_name_creator, loggers, sync_function,
                                 checkpoint_freq, checkpoint_at_end,

@@ -57,28 +57,26 @@ class Experiment(object):
         >>>     max_failures=2)
     """
 
-    def __init__(
-            self,
-            run,
-            name=None,
-            stop=None,
-            config=None,
-            resources_per_trial=None,
-            num_samples=1,
-            local_dir=None,
-            upload_dir=None,
-            trial_name_creator=None,
-            loggers=None,
-            sync_function=None,
-            checkpoint_freq=0,
-            checkpoint_at_end=False,
-            export_formats=None,
-            max_failures=3,
-            restore=None,
-            repeat=None,
-            trial_resources=None,
-            custom_loggers=None,
-    ):
+    def __init__(self,
+                 name,
+                 run,
+                 stop=None,
+                 config=None,
+                 resources_per_trial=None,
+                 num_samples=1,
+                 local_dir=None,
+                 upload_dir=None,
+                 trial_name_creator=None,
+                 loggers=None,
+                 sync_function=None,
+                 checkpoint_freq=0,
+                 checkpoint_at_end=False,
+                 export_formats=None,
+                 max_failures=3,
+                 restore=None,
+                 repeat=None,
+                 trial_resources=None,
+                 custom_loggers=None):
         if sync_function:
             assert upload_dir, "Need `upload_dir` if sync_function given."
 

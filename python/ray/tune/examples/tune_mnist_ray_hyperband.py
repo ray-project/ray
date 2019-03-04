@@ -30,6 +30,7 @@ import argparse
 import time
 
 import ray
+from ray import tune
 from ray.tune import grid_search, run_experiments, register_trainable, \
     Trainable, sample_from
 from ray.tune.schedulers import HyperBandScheduler
@@ -214,10 +215,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--smoke-test', action='store_true', help='Finish quickly for testing')
     args, _ = parser.parse_known_args()
-
-    register_trainable("my_class", TrainMNIST)
     mnist_spec = {
-        'run': 'my_class',
         'stop': {
             'mean_accuracy': 0.99,
             'time_total_s': 600,
@@ -238,4 +236,4 @@ if __name__ == "__main__":
     hyperband = HyperBandScheduler(
         time_attr="training_iteration", reward_attr="mean_accuracy", max_t=10)
 
-    run_experiments({'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)
+    tune.run(TrainMNIST, name='mnist_hyperband_test', scheduler=hyperband, **mnist_spec)
