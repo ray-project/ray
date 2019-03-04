@@ -347,7 +347,7 @@ class Worker(object):
         """
         # Make sure that the value is not an object ID.
         if isinstance(value, ObjectID):
-            raise Exception(
+            raise TypeError(
                 "Calling 'put' on an ray.ObjectID is not allowed "
                 "(similarly, returning an ray.ObjectID from a remote "
                 "function is not allowed). If you really want to "
@@ -470,7 +470,7 @@ class Worker(object):
         # Make sure that the values are object IDs.
         for object_id in object_ids:
             if not isinstance(object_id, ObjectID):
-                raise Exception(
+                raise TypeError(
                     "Attempting to call `get` on the value {}, "
                     "which is not an ray.ObjectID.".format(object_id))
         # Do an initial fetch for remote objects. We divide the fetch into
@@ -1800,7 +1800,7 @@ def connect(info,
             driver_id = DriverID(_random_string())
 
         if not isinstance(driver_id, DriverID):
-            raise Exception("The type of given driver id must be DriverID.")
+            raise TypeError("The type of given driver id must be DriverID.")
 
         worker.worker_id = driver_id.binary()
 
