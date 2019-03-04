@@ -134,6 +134,9 @@ COMMON_CONFIG = {
     # remote processes instead of in the same worker. This adds overheads, but
     # can make sense if your envs are very CPU intensive (e.g., for StarCraft).
     "remote_worker_envs": False,
+    # Similar to remote_worker_envs, but runs the envs asynchronously in the
+    # background for greater efficiency.
+    "async_remote_worker_envs": False,
 
     # === Offline Datasets ===
     # __sphinx_doc_input_begin__
@@ -473,9 +476,7 @@ class Agent(Trainable):
                         "tf_session_args": self.
                         config["local_evaluator_tf_session_args"]
                     }),
-                extra_config or {}),
-            remote_worker_envs=False,
-        )
+                extra_config or {}))
 
     @DeveloperAPI
     def make_remote_evaluators(self, env_creator, policy_graph, count):
@@ -495,8 +496,7 @@ class Agent(Trainable):
                 env_creator,
                 policy_graph,
                 i + 1,
-                self.config,
-                remote_worker_envs=self.config["remote_worker_envs"])
+                self.config)
             for i in range(count)
         ]
 
@@ -568,8 +568,7 @@ class Agent(Trainable):
                         env_creator,
                         policy_graph,
                         worker_index,
-                        config,
-                        remote_worker_envs=False):
+                        config):
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
@@ -639,7 +638,8 @@ class Agent(Trainable):
             input_creator=input_creator,
             input_evaluation=input_evaluation,
             output_creator=output_creator,
-            remote_worker_envs=remote_worker_envs)
+            remote_worker_envs=config["remote_worker_envs"],
+            async_remote_worker_envs=config["async_remote_worker_envs"])
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):

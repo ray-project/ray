@@ -71,58 +71,6 @@ class MyEnvActor(object):
         return obs, rew, done, info
 
 
-class MyAsyncMultiAgentEnv(BaseEnv):
-    """Custom env class directly extending BaseEnv."""
-
-    def __init__(self, env_config):
-        self.actors = [
-            MyEnvActor.remote() for _ in range(env_config["num_remote_envs"])
-        ]
-        self.worker_index = env_config.worker_index
-        self.pending = None  # lazy init
-
-    def poll(self):
-        if self.pending is None:
-            self.pending = {a.reset.remote(): a for a in self.actors}
-
-        # each keyed by env_id in [0, num_remote_envs)
-        obs, rewards, dones, infos = {}, {}, {}, {}
-        ready = []
-
-        # Wait for at least 1 env, but not more than 100ms total
-        while not ready:
-            ready, _ = ray.wait(
-                list(self.pending),
-                num_returns=len(self.pending),
-                timeout=BATCH_SECONDS)
-
-        # Get and return observations for each of the ready envs
-        env_ids = set()
-        for obj_id in ready:
-            actor = self.pending.pop(obj_id)
-            env_id = self.actors.index(actor)
-            env_ids.add(env_id)
-            ob, rew, done, info = ray.get(obj_id)
-            obs[env_id] = ob
-            rewards[env_id] = rew
-            dones[env_id] = done
-            infos[env_id] = info
-
-        print("Worker {} returning obs batch for actors {}".format(
-            self.worker_index, env_ids))
-        return obs, rewards, dones, infos, {}
-
-    def send_actions(self, action_dict):
-        for env_id, actions in action_dict.items():
-            actor = self.actors[env_id]
-            obj_id = actor.step.remote(actions)
-            self.pending[obj_id] = actor
-
-    def try_reset(self, env_id):
-        obs, _, _, _ = ray.get(self.actors[env_id].reset.remote())
-        return obs
-
-
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
