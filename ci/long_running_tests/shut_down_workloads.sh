@@ -12,10 +12,7 @@ for workload_file in "$ROOT_DIR"/workloads/*; do
   workload_name="${file_name%.*}"
   ray down -y config.yaml --cluster-name="$workload_name" &
 done
-
 # Wait for all of the ray down commands to finish.
-for pid in `jobs -p`; do
-  wait $pid
-done
+wait
 
 popd
