@@ -8,7 +8,7 @@ import os
 import time
 
 from ray.tune.error import TuneError
-from ray.tune.experiment import convert_to_experiment_list
+from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
@@ -35,20 +35,35 @@ def _make_scheduler(args):
             args.scheduler, _SCHEDULERS.keys()))
 
 
-def _find_checkpoint_dir(exp_list):
+def _find_checkpoint_dir(exp):
     # TODO(rliaw): Make sure the checkpoint_dir is resolved earlier.
     # Right now it is resolved somewhere far down the trial generation process
     return os.path.join(exp.spec["local_dir"], exp.name)
 
 
-def try_restore_runner(checkpoint_dir, search_alg, scheduler, trial_executor):
-    new_runner = None
-    try:
-        new_runner = TrialRunner.restore(checkpoint_dir, search_alg, scheduler,
-                                         trial_executor)
-    except Exception:
-        logger.exception("Runner restore failed. Restarting experiment.")
-    return new_runner
+def _prompt_restore(checkpoint_dir, resume):
+    restore = False
+    if TrialRunner.checkpoint_exists(checkpoint_dir):
+        if resume == "prompt":
+            msg = ("Found incomplete experiment at {}. "
+                   "Would you like to resume it?".format(checkpoint_dir))
+            restore = click.confirm(msg, default=False)
+            if restore:
+                logger.info("Tip: to always resume, "
+                            "pass resume=True to run()")
+            else:
+                logger.info("Tip: to always start a new experiment, "
+                            "pass resume=False to run()")
+        elif resume:
+            restore = True
+        else:
+            logger.info("Tip: to resume incomplete experiments, "
+                        "pass resume='prompt' or resume=True to run()")
+    else:
+        logger.info(
+            "Did not find checkpoint file in {}.".format(checkpoint_dir))
+
+    return restore
 
 
 def run(run_or_experiment,
@@ -79,11 +94,14 @@ def run(run_or_experiment,
     """Executes training.
 
     Args:
-        run (function|class|str): The algorithm or model to train.
+        run_or_experiment (function|class|str|Experiment): If
+            function|class|str, this is the algorithm  or model to train.
             This may refer to the name of a built-on algorithm
             (e.g. RLLib's DQN or PPO), a user-defined trainable
             function or class, or the string identifier of a
             trainable function or class registered in the tune registry.
+            If Experiment, then Tune will execute training based on
+            Experiment.spec.
         name (str): Name of experiment.
         stop (dict): The stopping criteria. The keys may be any field in
             the return result of 'train()', whichever is reached first.
@@ -148,38 +166,26 @@ def run(run_or_experiment,
     TODO:
         Add examples
     """
-
-    #TODO: convert run to experiment
     experiment = run_or_experiment
+    if not isinstance(run_or_experiment, Experiment):
+        experiment = Experiment(name, run, stop, config, resources_per_trial,
+                                num_samples, local_dir, upload_dir,
+                                trial_name_creator, loggers, sync_function,
+                                checkpoint_freq, checkpoint_at_end,
+                                export_formats, max_failures, restore)
+    else:
+        logger.debug("Ignoring some parameters passed into tune.run.")
+
     checkpoint_dir = _find_checkpoint_dir(experiment)
+    should_restore = _prompt_restore(checkpoint_dir, resume)
 
     runner = None
-    restore = False
-
-    if TrialRunner.checkpoint_exists(checkpoint_dir):
-        if resume == "prompt":
-            msg = ("Found incomplete experiment at {}. "
-                   "Would you like to resume it?".format(checkpoint_dir))
-            restore = click.confirm(msg, default=False)
-            if restore:
-                logger.info("Tip: to always resume, "
-                            "pass resume=True to run()")
-            else:
-                logger.info("Tip: to always start a new experiment, "
-                            "pass resume=False to run()")
-        elif resume:
-            restore = True
-        else:
-            logger.info(
-                "Tip: to resume incomplete experiments, "
-                "pass resume='prompt' or resume=True to run()")
-    else:
-        logger.info(
-            "Did not find checkpoint file in {}.".format(checkpoint_dir))
-
-    if restore:
-        runner = try_restore_runner(checkpoint_dir, search_alg, scheduler,
-                                    trial_executor)
+    if should_restore:
+        try:
+            runner = TrialRunner.restore(checkpoint_dir, search_alg, scheduler,
+                                         trial_executor)
+        except Exception:
+            logger.exception("Runner restore failed. Restarting experiment.")
     else:
         logger.info("Starting a new experiment.")
 

@@ -57,26 +57,28 @@ class Experiment(object):
         >>>     max_failures=2)
     """
 
-    def __init__(self,
-                 name,
-                 run,
-                 stop=None,
-                 config=None,
-                 resources_per_trial=None,
-                 num_samples=1,
-                 local_dir=None,
-                 upload_dir=None,
-                 trial_name_creator=None,
-                 loggers=None,
-                 custom_loggers=None,
-                 sync_function=None,
-                 checkpoint_freq=0,
-                 checkpoint_at_end=False,
-                 export_formats=None,
-                 max_failures=3,
-                 restore=None,
-                 repeat=None,
-                 trial_resources=None):
+    def __init__(
+            self,
+            run,
+            name=None,
+            stop=None,
+            config=None,
+            resources_per_trial=None,
+            num_samples=1,
+            local_dir=None,
+            upload_dir=None,
+            trial_name_creator=None,
+            loggers=None,
+            sync_function=None,
+            checkpoint_freq=0,
+            checkpoint_at_end=False,
+            export_formats=None,
+            max_failures=3,
+            restore=None,
+            repeat=None,
+            trial_resources=None,
+            custom_loggers=None,
+    ):
         if sync_function:
             assert upload_dir, "Need `upload_dir` if sync_function given."
 
@@ -88,8 +90,9 @@ class Experiment(object):
         if custom_loggers:
             _raise_deprecation_note("custom_loggers", "loggers", soft=False)
 
+        run_identifier = Experiment._register_if_needed(run)
         spec = {
-            "run": Experiment._register_if_needed(run),
+            "run": run_identifier,
             "stop": stop or {},
             "config": config or {},
             "resources_per_trial": resources_per_trial,
@@ -106,7 +109,7 @@ class Experiment(object):
             "restore": restore
         }
 
-        self.name = name
+        self.name = name or run_identifier
         self.spec = spec
 
     @classmethod
