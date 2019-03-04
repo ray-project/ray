@@ -177,27 +177,25 @@ if __name__ == "__main__":
     ray.init()
     sched = HyperBandScheduler(
         time_attr="training_iteration", reward_attr="neg_mean_loss")
-    tune.run_experiments(
-        {
-            "exp": {
-                "stop": {
-                    "mean_accuracy": 0.95,
-                    "training_iteration": 1 if args.smoke_test else 20,
-                },
-                "resources_per_trial": {
-                    "cpu": 3,
-                    "gpu": int(not args.no_cuda)
-                },
-                "run": TrainMNIST,
-                "num_samples": 1 if args.smoke_test else 20,
-                "checkpoint_at_end": True,
-                "config": {
-                    "args": args,
-                    "lr": tune.sample_from(
-                        lambda spec: np.random.uniform(0.001, 0.1)),
-                    "momentum": tune.sample_from(
-                        lambda spec: np.random.uniform(0.1, 0.9)),
-                }
+    tune.run(
+        TrainMNIST,
+        **{
+            "stop": {
+                "mean_accuracy": 0.95,
+                "training_iteration": 1 if args.smoke_test else 20,
+            },
+            "resources_per_trial": {
+                "cpu": 3,
+                "gpu": int(not args.no_cuda)
+            },
+            "num_samples": 1 if args.smoke_test else 20,
+            "checkpoint_at_end": True,
+            "config": {
+                "args": args,
+                "lr": tune.sample_from(
+                    lambda spec: np.random.uniform(0.001, 0.1)),
+                "momentum": tune.sample_from(
+                    lambda spec: np.random.uniform(0.1, 0.9)),
             }
         },
         verbose=0,

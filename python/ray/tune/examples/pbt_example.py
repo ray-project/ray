@@ -82,18 +82,17 @@ if __name__ == "__main__":
 
     # Try to find the best factor 1 and factor 2
     run_experiments(
-        {
-            "pbt_test": {
-                "run": MyTrainableClass,
-                "stop": {
-                    "training_iteration": 20 if args.smoke_test else 99999
-                },
-                "num_samples": 10,
-                "config": {
-                    "factor_1": 4.0,
-                    "factor_2": 1.0,
-                },
-            }
+        MyTrainableClass,
+        name="pbt_test",
+        **{
+            "stop": {
+                "training_iteration": 20 if args.smoke_test else 99999
+            },
+            "num_samples": 10,
+            "config": {
+                "factor_1": 4.0,
+                "factor_2": 1.0,
+            },
         },
         scheduler=pbt,
         verbose=False)
