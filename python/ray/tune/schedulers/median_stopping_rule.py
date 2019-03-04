@@ -100,9 +100,8 @@ class MedianStoppingRule(FIFOScheduler):
     @property
     def _trials_beyond_grace_period(self):
         trials = [
-            trial for trial in self._results
-            if (trial.last_result.get(self._time_attr, -float('inf'))
-                > self._grace_period)
+            trial for trial in self._results if (trial.last_result.get(
+                self._time_attr, -float('inf')) > self._grace_period)
         ]
 
         return trials
