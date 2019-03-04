@@ -66,7 +66,7 @@ For a full runnable code example using the custom environment API, see `custom_e
 
 .. warning::
 
-   Please do **not** try to use gym registration to register custom environments. The gym registry is not compatible with Ray. Instead, always use the registration flows documented above.
+   The gym registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
 
 Configuring Environments
 ------------------------
@@ -319,11 +319,11 @@ Note that envs can read from different partitions of the logs based on the ``wor
 
 .. seealso::
 
-    `RLlib I/O <rllib-offline.html>`__ provides higher-level interfaces for working with offline experience datasets.
+    `RLlib Offline Datasets <rllib-offline.html>`__ provide higher-level interfaces for working with offline experience datasets.
 
-Batch Asynchronous
-------------------
+Advanced Integrations
+---------------------
 
-The lowest-level "catch-all" environment supported by RLlib is `BaseEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/base_env.py>`__. BaseEnv models multiple agents executing asynchronously in multiple environments. A call to ``poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents can be sent back via ``send_actions()``. This interface can be subclassed directly to support batched simulators such as `ELF <https://github.com/facebookresearch/ELF>`__.
+For more complex / high-performance environment integrations, you can instead extend the low-level `BaseEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/base_env.py>`__ class. This low-level API models multiple agents executing asynchronously in multiple environments. A call to ``BaseEnv:poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents can be sent back via ``BaseEnv:send_actions()``.
 
-Under the hood, all other envs are converted to BaseEnv by RLlib so that there is a common internal path for policy evaluation.
+For example, ``BaseEnv`` can be used to implement a multi-agent environment that dynamically batches observations for inference over `multiple simulator instances <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/async_remote_multiagent_env.py>`__. BaseEnv is used to implement all the other env types in RLlib, so it offers a superset of their functionality.

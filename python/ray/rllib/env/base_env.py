@@ -38,14 +38,22 @@ class BaseEnv(object):
             "env_0": {
                 "car_0": [2.4, 1.6],
                 "car_1": [3.4, -3.2],
-            }
+            },
+            "env_1": {
+                "car_0": [8.0, 4.1],
+            },
+            "env_2": {
+                "car_0": [2.3, 3.3],
+                "car_1": [1.4, -0.2],
+                "car_3": [1.2, 0.1],
+            },
         }
         >>> env.send_actions(
             actions={
                 "env_0": {
                     "car_0": 0,
                     "car_1": 1,
-                }
+                }, ...
             })
         >>> obs, rewards, dones, infos, off_policy_actions = env.poll()
         >>> print(obs)
@@ -53,7 +61,7 @@ class BaseEnv(object):
             "env_0": {
                 "car_0": [4.1, 1.7],
                 "car_1": [3.2, -4.2],
-            }
+            }, ...
         }
         >>> print(dones)
         {
@@ -61,7 +69,7 @@ class BaseEnv(object):
                 "__all__": False,
                 "car_0": False,
                 "car_1": True,
-            }
+            }, ...
         }
     """
 

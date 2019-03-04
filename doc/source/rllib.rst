@@ -40,7 +40,7 @@ Environments
 * `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
 * `Interfacing with External Agents <rllib-env.html#interfacing-with-external-agents>`__
-* `Batch Asynchronous <rllib-env.html#batch-asynchronous>`__
+* `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
 Algorithms
 ----------
