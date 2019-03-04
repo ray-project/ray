@@ -256,7 +256,7 @@ class _SafeFallbackEncoder(json.JSONEncoder):
     def default(self, value):
         try:
             if np.isnan(value):
-                return None
+                return self.nan_str
 
             if (type(value).__module__ == np.__name__
                     and isinstance(value, np.ndarray)):
