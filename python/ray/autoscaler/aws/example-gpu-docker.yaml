@@ -14,6 +14,11 @@ max_workers: 2
 # subsequent `ray up`) this number of nodes will be started.
 initial_workers: 0
 
+# Whether or not to autoscale aggressively. If this is enabled, if at any point
+#   we would start more workers, we start at least enough to bring us to
+#   initial_workers.
+aggressive_autoscaling: false
+
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
