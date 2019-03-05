@@ -34,6 +34,7 @@ public class MultiLanguageClusterTest {
 
   /**
    * Execute an external command.
+   *
    * @return Whether the command succeeded.
    */
   private boolean executeCommand(List<String> command, int waitTimeoutSeconds) {
@@ -50,16 +51,16 @@ public class MultiLanguageClusterTest {
 
   @BeforeMethod
   public void setUp(Method method) {
+    String testName = method.getName();
+    if (!"1".equals(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS"))) {
+      LOGGER
+          .info("Skip " + testName + " because env variable ENABLE_MULTI_LANGUAGE_TESTS isn't set");
+      throw new SkipException("Skip test.");
+    }
     // Check whether 'ray' command is installed.
     boolean rayCommandExists = executeCommand(ImmutableList.of("which", "ray"), 5);
     if (!rayCommandExists) {
-      String testName = method.getName();
-      if(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS").equals("1")) {
-        Assert.fail("Couldn't run test " + testName + ", because ray command doesn't exist.");
-      } else {
-        LOGGER.info("Skipping test {}, because ray command doesn't exist.", testName);
-        throw new SkipException("Skipping test, because ray command doesn't exist.");
-      }
+      Assert.fail("Couldn't run test " + testName + ", because ray command doesn't exist.");
     }
 
     // Delete existing socket files.

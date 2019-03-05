@@ -44,13 +44,9 @@ public class ActorReconstructionTest extends BaseTest {
     }
   }
 
-  @Override
-  public void beforeEachCase() {
-    TestUtils.skipTestUnderSingleProcess();
-  }
-
   @Test
   public void testActorReconstruction() throws InterruptedException, IOException {
+    TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options = new ActorCreationOptions(new HashMap<>(), 1);
     RayActor<Counter> actor = Ray.createActor(Counter::new, options);
     // Call increase 3 times.
@@ -130,6 +126,8 @@ public class ActorReconstructionTest extends BaseTest {
 
   @Test
   public void testActorCheckpointing() throws IOException, InterruptedException {
+    TestUtils.skipTestUnderSingleProcess();
+
     ActorCreationOptions options = new ActorCreationOptions(new HashMap<>(), 1);
     RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
     // Call increase 3 times.
@@ -138,8 +136,6 @@ public class ActorReconstructionTest extends BaseTest {
     }
     // Assert that the actor wasn't resumed from a checkpoint.
     Assert.assertFalse(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
-
-    // Kill the actor process.
     int pid = Ray.call(CheckpointableCounter::getPid, actor).get();
     Runtime.getRuntime().exec("kill -9 " + pid);
     // Wait for the actor to be killed.

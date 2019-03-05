@@ -21,10 +21,10 @@ echo "Checking code format."
 mvn checkstyle:check
 
 echo "Running tests under cluster mode."
-mvn test
+ENABLE_MULTI_LANGUAGE_TESTS=1 mvn test
 
 echo "Running tests under single-process mode."
-ENABLE_MULTI_LANGUAGE_TESTS=0 mvn test -Dray.run-mode=SINGLE_PROCESS
+mvn test -Dray.run-mode=SINGLE_PROCESS
 
 set +x
 set +e

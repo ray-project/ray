@@ -11,19 +11,16 @@ import org.ray.runtime.RayObjectImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 public class ClientExceptionTest extends BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ClientExceptionTest.class);
 
-  @Override
-  public void beforeEachCase() {
-    TestUtils.skipTestUnderSingleProcess();
-  }
-
   @Test
   public void testWaitAndCrash() {
+    TestUtils.skipTestUnderSingleProcess();
     UniqueId randomId = UniqueId.randomId();
     RayObject<String> notExisting = new RayObjectImpl(randomId);
 
