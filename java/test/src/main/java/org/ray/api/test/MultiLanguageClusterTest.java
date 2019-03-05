@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
