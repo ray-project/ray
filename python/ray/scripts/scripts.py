@@ -597,6 +597,8 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
 
+    docker = False
+
     if start:
         create_or_update_cluster(cluster_config_file, None, None, False, False,
                                  True, cluster_name)
