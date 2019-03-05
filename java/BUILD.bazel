@@ -1,0 +1,211 @@
+
+load("//bazel:ray.bzl", "flatbuffer_java_library")
+load("//bazel:ray_java.bzl", "generated_java_libraries")
+
+generated_java_libraries()
+
+java_import(
+    name = "org_ray_ray_java_root",
+    jars = [
+        "liborg_ray_ray_api.jar",
+        "liborg_ray_ray_api-src.jar",
+        "liborg_ray_ray_runtime.jar",
+        "liborg_ray_ray_runtime-src.jar",
+        "liborg_ray_ray_cli.jar",
+        "liborg_ray_ray_cli-src.jar",
+        "liborg_ray_ray_runtime_test.jar",
+        "liborg_ray_ray_runtime_test-src.jar",
+        "liborg_ray_ray_test.jar",
+        "liborg_ray_ray_test-src.jar",
+        "org_ray_ray_tutorial_deploy.jar",
+        "org_ray_ray_tutorial_deploy-src.jar",
+        "AllTests_deploy.jar",
+        "AllTests_deploy-src.jar",
+    ],
+    deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_cli",
+        ":org_ray_ray_runtime",
+        ":org_ray_ray_tutorial",
+        ":org_ray_ray_test",
+        ":org_ray_ray_runtime_test",
+    ],
+)
+
+java_library(
+    name = "org_ray_ray_api",
+    srcs = glob(["api/src/main/java/**/*.java"]),
+    deps = [
+        "@org_slf4j_slf4j_log4j12//jar",
+        "@log4j_log4j//jar",
+    ],
+)
+
+java_library(
+    name = "org_ray_ray_cli",
+    srcs = glob(["cli/src/main/java/**/*.java"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_beust_jcommander//jar",
+        "@com_github_davidmoten_flatbuffers_java//jar",
+        "@de_ruedigermoeller_fst//jar",
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@redis_clients_jedis//jar",
+        "@org_slf4j_slf4j_api//jar",
+    ],
+)
+
+java_library(
+    name = "org_ray_ray_runtime",
+    srcs = glob(["runtime/src/main/java/**/*.java"]),
+    resources = glob(["runtime/src/main/resources/**"]),
+    visibility = ["//visibility:public"],
+    data = ["//:raylet_library_java", ":copy_java_gcs_fbs"],
+    deps = [
+        ":org_ray_ray_api",
+        "@com_typesafe_config//jar",
+        "@org_apache_commons_commons_lang3//jar",
+        "@de_ruedigermoeller_fst//jar",
+        "@com_github_davidmoten_flatbuffers_java//jar",
+        "@redis_clients_jedis//jar",
+        "@plasma//:org_apache_arrow_arrow_plasma",
+        "@commons_io_commons_io//jar",
+        "@com_google_guava_guava//jar",
+        "@net_lingala_zip4j_zip4j//jar",
+        "@org_slf4j_slf4j_log4j12//jar",
+        "@org_slf4j_slf4j_api//jar",
+        "@org_ini4j_ini4j//jar",
+        "@org_ow2_asm_asm//jar",
+        "@com_google_code_gson_gson//jar",
+        "@com_fasterxml_jackson_core_jackson_core//jar",
+        "@org_apache_commons_commons_pool2//jar",
+        "@org_javassist_javassist//jar",
+        "@org_objenesis_objenesis//jar",
+    ],
+)
+
+java_binary(
+    name = "org_ray_ray_tutorial",
+    srcs = glob(["tutorial/src/main/java/**/*.java"]),
+    resources = glob(["tutorial/src/main/resources/**"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@com_google_guava_guava//jar",
+    ],
+)
+
+java_library(
+    name = "org_ray_ray_test",
+    srcs = glob(["test/src/main/java/**/*.java"]),
+    deps = [
+        "@com_google_guava_guava//jar",
+        "@commons_collections_commons_collections//jar",
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@org_apache_commons_commons_lang3//jar",
+        "@org_slf4j_slf4j_api//jar",
+        "@plasma//:org_apache_arrow_arrow_plasma",
+        "@org_testng_testng//jar",
+    ],
+)
+
+java_library(
+    name = "org_ray_ray_runtime_test",
+    srcs = glob(["runtime/src/test/java/**/*.java"]),
+    deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@org_testng_testng//jar",
+        "@org_apache_commons_commons_lang3//jar",
+        "@com_beust_jcommander//jar",
+    ],
+)
+
+java_test(
+    name = "AllTests",
+    size = "small",
+    main_class = "org.testng.TestNG",
+    data = ["testng.xml"],
+    runtime_deps = [
+        ":org_ray_ray_test",
+        ":org_ray_ray_runtime_test",
+    ],
+)
+
+#use .py file to generate *.java, but be telled can't to find the generated files
+#genrule(
+#    name = "generate_java_gcs_fbs",
+#    outs = ["generate_java_gcs_fbs.out"],
+#    cmd = """
+#        python3 $$(pwd)/java/modify_generated_java_flatbuffers_files.py $$(pwd)
+#        echo $$(pwd) > $@
+#    """,
+#    local = 1,
+#)
+
+flatbuffer_java_library(
+    name = "java_gcs_fbs",
+    srcs = ["//:gcs_fbs_file"],
+    outs = [
+        "ActorCheckpointData.java",
+        "ActorCheckpointIdData.java",
+        "ActorState.java",
+        "ActorTableData.java",
+        "Arg.java",
+        "ClassTableData.java",
+        "ClientTableData.java",
+        "ClientType.java",
+        "ConfigTableData.java",
+        "CustomSerializerData.java",
+        "DriverTableData.java",
+        "ErrorTableData.java",
+        "ErrorType.java",
+        "FunctionTableData.java",
+        "GcsTableEntry.java",
+        "GcsTableNotificationMode.java",
+        "HeartbeatBatchTableData.java",
+        "HeartbeatTableData.java",
+        "Language.java",
+        "ObjectTableData.java",
+        "PipeClientData.java",
+        "ProfileEvent.java",
+        "ProfileTableData.java",
+        "RayResource.java",
+        "ResourcePair.java",
+        "SchedulingState.java",
+        "TablePrefix.java",
+        "TablePubsub.java",
+        "TaskInfo.java",
+        "TaskLeaseData.java",
+        "TaskReconstructionData.java",
+        "TaskTableData.java",
+        "TaskTableTestAndUpdate.java",
+    ],
+    out_prefix = "java/runtime/src/main/java/org/ray/runtime/generated",
+)
+
+genrule(
+    name = "copy_java_gcs_fbs",
+    srcs = [
+        "//java:java_gcs_fbs",
+    ],
+    outs = [
+        "java_gcs_fbs.out",
+    ],
+    cmd = """
+        WORK_DIR=$$(pwd)
+        GENERATED_DIR=$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
+        mkdir -p $$GENERATED_DIR
+        for f in $(locations //java:java_gcs_fbs); do
+            cp $$f $$GENERATED_DIR/;
+            file="$$GENERATED_DIR/$${f#*java/}";
+            chmod +w $$file;
+            sed -i "2i\package org.ray.runtime.generated;" $$file;
+        done
+        echo $$(pwd) >> $@
+    """,
+    local = 1,
+)
