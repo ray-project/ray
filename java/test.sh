@@ -19,7 +19,7 @@ echo "${check_style}"
 mvn test | tee mvn_test
 if [ `grep -c "BUILD FAILURE" mvn_test` -eq '0' ]; then
     rm mvn_test
-    echo "Run well with CLUSTER mode!"
+    echo "Tests passed under CLUSTER mode!"
 else
     rm mvn_test
     exit 1
@@ -28,7 +28,7 @@ fi
 mvn test -Dray.run-mode=SINGLE_PROCESS | tee dev_mvn_test
 if [ `grep -c "BUILD FAILURE" dev_mvn_test` -eq '0' ]; then
     rm dev_mvn_test
-    echo "Run well with SINGLE_PROCESS mode!"
+    echo "Tests passed under SINGLE_PROCESS mode!"
 else
     rm dev_mvn_test
     exit 1

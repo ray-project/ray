@@ -58,7 +58,7 @@ public class MockObjectStore implements ObjectStoreLink {
 
   @Override
   public byte[] get(byte[] objectId, int timeoutMs, boolean isMetadata) {
-    return new byte[0];
+    return get(new byte[][] {objectId}, timeoutMs, isMetadata).get(0);
   }
 
   @Override

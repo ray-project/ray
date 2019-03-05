@@ -64,7 +64,7 @@ public class RayConfig {
   public final String pythonWorkerCommand;
 
   /**
-   * Number of threads that execute tasks under SINGLE_PROCESS mode.
+   * Number of threads that execute tasks.
    */
   public final int numberExecThreadsForDevRuntime;
 
@@ -201,7 +201,7 @@ public class RayConfig {
       driverResourcePath = null;
     }
 
-    // number of threads that execute tasks under SINGLE_PROCESS mode
+    // number of threads that execute tasks
     numberExecThreadsForDevRuntime = config.getInt("ray.dev-runtime.execution-parallelism");
 
     // validate config

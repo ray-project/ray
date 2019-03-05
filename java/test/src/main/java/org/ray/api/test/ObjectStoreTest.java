@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.TestUtils;
 import org.ray.api.id.UniqueId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -14,11 +13,6 @@ import org.testng.annotations.Test;
  * Test putting and getting objects.
  */
 public class ObjectStoreTest extends BaseTest {
-
-  @Override
-  public void beforeEachCase() {
-    TestUtils.skipTestUnderSingleProcess();
-  }
 
   @Test
   public void testPutAndGet() {
