@@ -10,7 +10,7 @@ import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 
 import ray
-from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.ppo import PPOAgent
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.lstm import add_time_dimension, chop_into_sequences
 from ray.rllib.models.misc import linear, normc_initializer
@@ -146,22 +146,26 @@ class DebugCounterEnv(gym.Env):
 
 
 class RNNSequencing(unittest.TestCase):
-    def testRNNSequences(self):
+    def testSimpleOptimizerSequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
-        pg = PGAgent(
+        ppo = PPOAgent(
             env="counter",
             config={
                 "num_workers": 0,
                 "sample_batch_size": 10,
                 "train_batch_size": 10,
+                "sgd_minibatch_size": 10,
+                "vf_share_layers": True,
+                "simple_optimizer": True,
+                "num_sgd_iter": 1,
                 "model": {
                     "custom_model": "rnn",
                     "max_seq_len": 4,
                 },
             })
-        pg.train()
-        pg.train()
+        ppo.train()
+        ppo.train()
 
         batch0 = pickle.loads(
             ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_0"))
@@ -182,7 +186,6 @@ class RNNSequencing(unittest.TestCase):
 
         batch1 = pickle.loads(
             ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_1"))
-        print(batch1)
         self.assertEqual(batch1["sequences"].tolist(), [
             [[10], [11], [12], [13]],
             [[14], [0], [0], [0]],
@@ -199,6 +202,66 @@ class RNNSequencing(unittest.TestCase):
         self.assertGreater(abs(np.sum(batch1["state_in"][0][3])), 0)
         self.assertGreater(abs(np.sum(batch1["state_in"][1][3])), 0)
 
+    def testMinibatchSequencing(self):
+        ModelCatalog.register_custom_model("rnn", RNNSpyModel)
+        register_env("counter", lambda _: DebugCounterEnv())
+        ppo = PPOAgent(
+            env="counter",
+            config={
+                "num_workers": 0,
+                "sample_batch_size": 20,
+                "train_batch_size": 20,
+                "sgd_minibatch_size": 10,
+                "vf_share_layers": True,
+                "simple_optimizer": False,
+                "num_sgd_iter": 1,
+                "model": {
+                    "custom_model": "rnn",
+                    "max_seq_len": 4,
+                },
+            })
+        ppo.train()
+        ppo.train()
+
+        # first epoch: 20 observations get split into 2 minibatches of 8
+        # four observations are discarded
+        batch0 = pickle.loads(
+            ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_0"))
+        batch1 = pickle.loads(
+            ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_1"))
+        if batch0["sequences"][0][0][0] > batch1["sequences"][0][0][0]:
+            batch0, batch1 = batch1, batch0  # sort minibatches
+        self.assertEqual(batch0["seq_lens"].tolist(), [4, 4])
+        self.assertEqual(batch1["seq_lens"].tolist(), [4, 3])
+        self.assertEqual(batch0["sequences"].tolist(), [
+            [[0], [1], [2], [3]],
+            [[4], [5], [6], [7]],
+        ])
+        self.assertEqual(batch1["sequences"].tolist(), [
+            [[8], [9], [10], [11]],
+            [[12], [13], [14], [0]],
+        ])
+
+        # second epoch: 20 observations get split into 2 minibatches of 8
+        # four observations are discarded
+        batch2 = pickle.loads(
+            ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_2"))
+        batch3 = pickle.loads(
+            ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_3"))
+        if batch2["sequences"][0][0][0] > batch3["sequences"][0][0][0]:
+            batch2, batch3 = batch2, batch3
+        self.assertEqual(batch2["seq_lens"].tolist(), [4, 4])
+        self.assertEqual(batch3["seq_lens"].tolist(), [2, 4])
+        self.assertEqual(batch2["sequences"].tolist(), [
+            [[5], [6], [7], [8]],
+            [[9], [10], [11], [12]],
+        ])
+        self.assertEqual(batch3["sequences"].tolist(), [
+            [[13], [14], [0], [0]],
+            [[0], [1], [2], [3]],
+        ])
+
 
 if __name__ == "__main__":
+    ray.init(num_cpus=4)
     unittest.main(verbosity=2)
