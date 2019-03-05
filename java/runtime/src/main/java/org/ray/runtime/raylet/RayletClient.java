@@ -29,4 +29,6 @@ public interface RayletClient {
   UniqueId prepareCheckpoint(UniqueId actorId);
 
   void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId);
+
+  void destroy();
 }

@@ -2,6 +2,7 @@ package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.config.RunMode;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
 import org.slf4j.Logger;
@@ -34,12 +35,17 @@ public class WorkerContext {
    */
   private long mainThreadId;
 
+  /**
+   * The run-mode of this worker.
+   */
+  private RunMode runMode;
 
-  public WorkerContext(WorkerMode workerMode, UniqueId driverId) {
+  public WorkerContext(WorkerMode workerMode, UniqueId driverId, RunMode runMode) {
     mainThreadId = Thread.currentThread().getId();
     taskIndex = ThreadLocal.withInitial(() -> 0);
     putIndex = ThreadLocal.withInitial(() -> 0);
     currentTaskId = ThreadLocal.withInitial(UniqueId::randomId);
+    this.runMode = runMode;
     currentClassLoader = null;
     if (workerMode == WorkerMode.DRIVER) {
       workerId = driverId;
@@ -65,10 +71,12 @@ public class WorkerContext {
    * be called from the main thread.
    */
   public void setCurrentTask(TaskSpec task, ClassLoader classLoader) {
-    Preconditions.checkState(
-        Thread.currentThread().getId() == mainThreadId,
-        "This method should only be called from the main thread."
-    );
+    if (runMode == RunMode.CLUSTER) {
+      Preconditions.checkState(
+              Thread.currentThread().getId() == mainThreadId,
+              "This method should only be called from the main thread."
+      );
+    }
 
     Preconditions.checkNotNull(task);
     this.currentTaskId.set(task.taskId);

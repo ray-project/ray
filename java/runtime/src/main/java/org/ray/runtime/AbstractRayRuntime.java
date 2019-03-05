@@ -66,7 +66,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     this.rayConfig = rayConfig;
     functionManager = new FunctionManager(rayConfig.driverResourcePath);
     worker = new Worker(this);
-    workerContext = new WorkerContext(rayConfig.workerMode, rayConfig.driverId);
+    workerContext = new WorkerContext(rayConfig.workerMode,
+            rayConfig.driverId, rayConfig.runMode);
   }
 
   /**
