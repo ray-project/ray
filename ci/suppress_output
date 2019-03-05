@@ -1,0 +1,17 @@
+#!/bin/bash
+# Run a command, suppressing output unless it hangs or crashes.
+
+TIMEOUT=30m
+TMPFILE=`mktemp`
+COMMAND="$@"
+
+timeout -k $TIMEOUT $TIMEOUT $COMMAND >$TMPFILE 2>&1
+
+CODE=$?
+if [ $CODE != 0 ]; then
+    cat $TMPFILE
+    echo "FAILED $CODE"
+    exit $CODE
+fi
+
+exit 0

@@ -34,7 +34,7 @@ matrix:
 
       # Test Bazel build
       - rm -rf build
-      - out=`mktemp`; ./ci/travis/install-bazel.sh >$out 2>&1 || cat $out
+      - ./ci/suppress_output ./ci/travis/install-bazel.sh
       - bazel build ...
 
     - os: linux
@@ -82,10 +82,10 @@ matrix:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       install:
-        - out=`mktemp`; ./ci/travis/install-bazel.sh >$out 2>&1 || cat $out
-        - out=`mktemp`; ./ci/travis/install-dependencies.sh >$out 2>&1 || cat $out
+        - ./ci/suppress_output ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - out=`mktemp`; ./ci/travis/install-ray.sh >$out 2>&1 || cat $out
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
 
       script:
         - bash src/ray/test/run_object_manager_valgrind.sh
@@ -136,16 +136,16 @@ matrix:
 
 
 install:
-  - out=`mktemp`; ./ci/travis/install-bazel.sh >$out 2>&1 || cat $out
-  - out=`mktemp`; ./ci/travis/install-dependencies.sh >$out 2>&1 || cat $out
+  - ./ci/suppress_output ./ci/travis/install-bazel.sh
+  - ./ci/suppress_output ./ci/travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
-  - out=`mktemp`; ./ci/travis/install-ray.sh >$out 2>&1 || cat $out
-  - out=`mktemp`; ./ci/travis/install-cython-examples.sh >$out 2>&1 || cat $out
+  - ./ci/suppress_output ./ci/travis/install-ray.sh
+  - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
-  - out=`mktemp`; bash src/ray/test/run_gcs_tests.sh >$out 2>&1 || cat $out
+  - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
   # Raylet tests.
-  - out=`mktemp`; bash src/ray/test/run_object_manager_tests.sh >$out 2>&1 || cat $out
-  - out=`mktemp`; bazel test --build_tests_only --test_lang_filters=cc ... -c opt >$out 2>&1 || cat $out
+  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
+  - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc ... -c opt
 
 
 script:
@@ -157,7 +157,7 @@ script:
   # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
   # ray tune tests
-  - out=`mktemp`; python python/ray/tune/tests/test_dependency.py >$out 2>&1 || cat $out
+  - ./ci/suppress_output python python/ray/tune/tests/test_dependency.py
   # `cluster_tests.py` runs on Jenkins, not Travis.
   - python -m pytest --durations=10 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests
 
