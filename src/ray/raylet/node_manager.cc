@@ -672,7 +672,11 @@ void NodeManager::DispatchTasks(
       }
     }
   }
-  local_queues_.RemoveTasks(removed_task_ids);
+  // Move the assigned tasks to the SWAP queue so that we remember that we
+  // have them queued locally. Once the GetTaskReply has been sent to a worker,
+  // the task will get queued to either RUNNING or READY, depending on whether
+  // the assignment succeeded or not.
+  local_queues_.MoveTasks(removed_task_ids, TaskState::READY, TaskState::SWAP);
 }
 
 void NodeManager::ProcessClientMessage(
@@ -1670,6 +1674,8 @@ bool NodeManager::AssignTask(const Task &task) {
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
       fbb.GetBufferPointer(), [this, worker, assigned_task](ray::Status status) mutable {
+        // Remove the task from the SWAP queue.
+        local_queues_.RemoveTask(assigned_task.GetTaskSpecification().TaskId());
         if (status.ok()) {
           auto spec = assigned_task.GetTaskSpecification();
           // We successfully assigned the task to the worker.

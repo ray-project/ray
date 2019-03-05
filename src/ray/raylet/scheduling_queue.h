@@ -33,6 +33,8 @@ enum class TaskState {
   // The task is an actor method and is waiting to learn where the actor was
   // created.
   WAITING_FOR_ACTOR_CREATION,
+  // Swap queue for tasks that are in between states.
+  SWAP,
   // The number of task queues. All states that precede this enum must have an
   // associated TaskQueue in SchedulingQueue. All states that succeed
   // this enum do not have an associated TaskQueue, since the tasks
@@ -145,6 +147,7 @@ class SchedulingQueue {
              TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY,
              TaskState::RUNNING, TaskState::INFEASIBLE,
              TaskState::WAITING_FOR_ACTOR_CREATION,
+             TaskState::SWAP,
          }) {
       if (task_state == TaskState::READY) {
         task_queues_[static_cast<int>(task_state)] = ready_queue_;
