@@ -18,7 +18,11 @@ progress() {
 progress & 2>/dev/null
 prog=$!
 
-timeout -k $TIMEOUT $TIMEOUT $COMMAND >$TMPFILE 2>&1
+if which timeout >/dev/null; then
+    timeout -k $TIMEOUT $TIMEOUT $COMMAND >$TMPFILE 2>&1
+else
+    $COMMAND >$TMPFILE 2>&1
+fi
 
 CODE=$?
 if [ $CODE != 0 ]; then
