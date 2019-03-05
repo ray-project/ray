@@ -50,8 +50,6 @@ public class MultiLanguageClusterTest {
 
   @BeforeMethod
   public void setUp() {
-    TestUtils.skipTestUnderSingleProcess();
-
     // Check whether 'ray' command is installed.
     boolean rayCommandExists = executeCommand(ImmutableList.of("which", "ray"), 5);
     if (!rayCommandExists) {
