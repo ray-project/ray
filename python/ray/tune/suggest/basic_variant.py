@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import random
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
@@ -23,11 +24,17 @@ class BasicVariantGenerator(SearchAlgorithm):
         >>> searcher.is_finished == True
     """
 
-    def __init__(self):
+    def __init__(self, shuffle=False):
+        """Initializes the Variant Generator.
+
+        Arguments:
+            shuffle (bool): Shuffles the generated list of configurations.
+        """
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0
         self._finished = False
+        self._shuffle = shuffle
 
     def add_configurations(self, experiments):
         """Chains generator given experiment specifications.
@@ -48,6 +55,8 @@ class BasicVariantGenerator(SearchAlgorithm):
             trials (list): Returns a list of trials.
         """
         trials = list(self._trial_generator)
+        if self._shuffle:
+            random.shuffle(trials)
         self._finished = True
         return trials
 

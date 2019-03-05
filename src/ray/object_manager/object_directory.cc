@@ -204,7 +204,20 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                                              const OnLocationsFound &callback) {
   ray::Status status;
   auto it = listeners_.find(object_id);
-  if (it == listeners_.end()) {
+  if (it != listeners_.end() && it->second.has_been_created) {
+    // If we have locations cached due to a concurrent SubscribeObjectLocations
+    // call, and we have received at least one notification from the GCS about
+    // the object's creation, then call the callback immediately with the
+    // cached locations.
+    auto &locations = it->second.current_object_locations;
+    bool has_been_created = it->second.has_been_created;
+    io_service_.post([callback, object_id, locations, has_been_created]() {
+      callback(object_id, locations, has_been_created);
+    });
+  } else {
+    // We do not have any locations cached due to a concurrent
+    // SubscribeObjectLocations call, so look up the object's locations
+    // directly from the GCS.
     status = gcs_client_->object_table().Lookup(
         JobID::nil(), object_id,
         [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
@@ -218,14 +231,6 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
           // in the GCS client's lookup callback stack.
           callback(object_id, client_ids, has_been_created);
         });
-  } else {
-    // If we have locations cached due to a concurrent SubscribeObjectLocations
-    // call, call the callback immediately with the cached locations.
-    auto &locations = it->second.current_object_locations;
-    bool has_been_created = it->second.has_been_created;
-    io_service_.post([callback, object_id, locations, has_been_created]() {
-      callback(object_id, locations, has_been_created);
-    });
   }
   return status;
 }

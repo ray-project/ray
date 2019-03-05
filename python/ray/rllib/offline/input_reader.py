@@ -45,12 +45,9 @@ class InputReader(object):
             ...     def custom_loss(self, policy_loss, loss_inputs):
             ...         reader = JsonReader(...)
             ...         input_ops = reader.tf_input_ops()
-            ...         with tf.variable_scope(
-            ...                 self.scope, reuse=tf.AUTO_REUSE,
-            ...                 auxiliary_name_scope=False):
-            ...             logits, _ = self._build_layers_v2(
-            ...                 {"obs": input_ops["obs"]},
-            ...                 self.num_outputs, self.options)
+            ...         logits, _ = self._build_layers_v2(
+            ...             {"obs": input_ops["obs"]},
+            ...             self.num_outputs, self.options)
             ...         il_loss = imitation_loss(logits, input_ops["action"])
             ...         return policy_loss + il_loss
 
