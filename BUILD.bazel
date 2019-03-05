@@ -372,7 +372,7 @@ pyx_library(
 )
 
 cc_binary(
-    name = "raylet_library_java.so",
+    name = "libraylet_library_java.so",
     srcs = [
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
@@ -403,8 +403,8 @@ cc_binary(
 
 genrule(
     name = "raylet-jni-darwin-compat",
-    srcs = [":raylet_library_java.so"],
-    outs = ["raylet_library_java.dylib"],
+    srcs = [":libraylet_library_java.so"],
+    outs = ["libraylet_library_java.dylib"],
     cmd = "cp $< $@",
     output_to_bindir = 1,
 )
@@ -412,16 +412,22 @@ genrule(
 filegroup(
     name = "raylet_library_java",
     srcs = select({
-        "@bazel_tools//src/conditions:darwin": [":raylet_library_java.dylib"],
-        "//conditions:default": [":raylet_library_java.so"],
+        "@bazel_tools//src/conditions:darwin": [":libraylet_library_java.dylib"],
+        "//conditions:default": [":libraylet_library_java.so"],
     }),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "gcs_fbs_file",
+    srcs = ["src/ray/gcs/format/gcs.fbs"],
     visibility = ["//visibility:public"],
 )
 
 flatbuffer_py_library(
     name = "python_gcs_fbs",
     srcs = [
-        "src/ray/gcs/format/gcs.fbs",
+        ":gcs_fbs_file",
     ],
     outs = [
         "ActorCheckpointIdData.py",
@@ -577,4 +583,31 @@ genrule(
         for f in $(locations //:python_node_manager_fbs); do cp $$f python/ray/core/generated/ray/protocol/; done &&
         mv python $(location ray_pkg)
         """,
+)
+
+genrule(
+    name = "ray_java_pkg",
+    srcs = [
+        "//:redis-server",
+        "//:ray_redis_module.so",
+        "//:raylet",
+        "//:raylet_library_java",
+        "@plasma//:plasma_store_server",
+        "@plasma//:plasma_client_java",
+    ],
+    outs = ["ray_java_pkg"],
+    cmd = """
+        set -x &&
+        mkdir -p java/ray/src/plasma/ &&
+        cp $(location @plasma//:plasma_client_java) java/ray/src/plasma/ &&
+        cp $(location @plasma//:plasma_store_server) java/ray/src/plasma/ &&
+        mkdir -p java/ray/src/ray/raylet/ &&
+        cp $(location //:raylet) java/ray/src/ray/raylet/ &&
+        cp $(location //:raylet_library_java) java/ray/src/ray/raylet/ &&
+        mkdir -p java/ray/src/ray/gcs/redis_module/ &&
+        cp $(location //:ray_redis_module.so) java/ray/src/ray/gcs/redis_module/libray_redis_module.so &&
+        mkdir -p java/ray/src/ray/thirdparty/redis/src/ &&
+        cp $(location //:redis-server) java/ray/src/ray/thirdparty/redis/src/ &&
+        mv java $(location ray_java_pkg)
+    """,
 )

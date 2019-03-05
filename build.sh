@@ -121,14 +121,21 @@ else
   $PYTHON_EXECUTABLE -m pip install \
       --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
-  bazel build //:ray_pkg -c opt --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
-  # Copy files and keep them writeable. This is a workaround, as Bazel
-  # marks all generated files non-writeable. If we would just copy them
-  # over without adding write permission, the copy would fail the next time.
-  # TODO(pcm): It would be great to have a solution here that does not
-  # require us to copy the files.
-  find $ROOT_DIR/bazel-genfiles/ray_pkg/ -exec chmod +w {} \;
-  cp -r $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
+  if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
+    bazel build //:ray_pkg -c opt
+    # Copy files and keep them writeable. This is a workaround, as Bazel
+    # marks all generated files non-writeable. If we would just copy them
+    # over without adding write permission, the copy would fail the next time.
+    # TODO(pcm): It would be great to have a solution here that does not
+    # require us to copy the files.
+    find $ROOT_DIR/bazel-genfiles/ray_pkg/ -exec chmod +w {} \;
+    cp -r $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
+  fi
+  if [ "$RAY_BUILD_JAVA" == "YES" ]; then
+    bazel build //:ray_java_pkg -c opt
+    find $ROOT_DIR/bazel-genfiles/ray_java_pkg/ -exec chmod +w {} \;
+    cp -r $ROOT_DIR/bazel-genfiles/ray_java_pkg/ray/* $ROOT_DIR/build || true
+  fi
 fi
 
 popd

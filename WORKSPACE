@@ -1,4 +1,8 @@
+workspace(name = "com_github_riselab_ray")
+
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
+load("//bazel:ray_java.bzl", "generated_maven_jars")
+generated_maven_jars()
 
 git_repository(
     name = "com_github_nelhage_rules_boost",
