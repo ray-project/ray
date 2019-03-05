@@ -81,6 +81,7 @@ class BaseEnv(object):
                     async_remote_envs=False):
         """Wraps any env type as needed to expose the async interface."""
 
+        from ray.rllib.env.async_remote_env import AsyncRemoteEnv
         if (remote_envs or async_remote_envs) and num_envs == 1:
             raise ValueError(
                 "Remote envs only make sense to use if num_envs > 1 "
@@ -92,12 +93,11 @@ class BaseEnv(object):
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
                 if remote_envs:
-                    raise NotImplementedError(
-                        "Remote multiagent environments are not implemented. "
-                        "Consider using async_remote_envs=True instead.")
+                    env = AsyncRemoteEnv(
+                        make_env, num_envs, multiagent=True, sync=True)
                 elif async_remote_envs:
-                    from ray.rllib.env.async_remote_env import AsyncRemoteEnv
-                    env = AsyncRemoteEnv(make_env, num_envs, multiagent=True)
+                    env = AsyncRemoteEnv(
+                        make_env, num_envs, multiagent=True, sync=False)
                 else:
                     env = _MultiAgentEnvToBaseEnv(
                         make_env=make_env,
@@ -111,15 +111,17 @@ class BaseEnv(object):
             elif isinstance(env, VectorEnv):
                 env = _VectorEnvToBaseEnv(env)
             else:
-                if async_remote_envs:
-                    from ray.rllib.env.async_remote_env import AsyncRemoteEnv
-                    env = AsyncRemoteEnv(make_env, num_envs, multiagent=False)
+                if remote_envs:
+                    env = AsyncRemoteEnv(
+                        make_env, num_envs, multiagent=False, sync=True)
+                elif async_remote_envs:
+                    env = AsyncRemoteEnv(
+                        make_env, num_envs, multiagent=False, sync=False)
                 else:
                     env = VectorEnv.wrap(
                         make_env=make_env,
                         existing_envs=[env],
                         num_envs=num_envs,
-                        remote_envs=remote_envs,
                         action_space=env.action_space,
                         observation_space=env.observation_space)
                     env = _VectorEnvToBaseEnv(env)

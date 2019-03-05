@@ -17,8 +17,12 @@ class AsyncRemoteEnv(BaseEnv):
     from the remote simulator actors.
     """
 
-    def __init__(self, make_env, num_envs, multiagent):
+    def __init__(self, make_env, num_envs, multiagent, sync):
         self.make_local_env = make_env
+        if sync:
+            self.timeout = 9999999.0  # wait for all envs
+        else:
+            self.timeout = 0.0  # wait for only ready envs
 
         def make_remote_env(i):
             logger.info("Launching env {} in remote actor".format(i))
@@ -41,8 +45,9 @@ class AsyncRemoteEnv(BaseEnv):
         # Wait for at least 1 env to be ready here
         while not ready:
             ready, _ = ray.wait(
-                list(self.pending), num_returns=len(self.pending),
-                timeout=0.0)  # TODO(ekl) make the timeout configurable
+                list(self.pending),
+                num_returns=len(self.pending),
+                timeout=self.timeout)
 
         # Get and return observations for each of the ready envs
         env_ids = set()
