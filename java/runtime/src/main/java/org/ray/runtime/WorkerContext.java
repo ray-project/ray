@@ -26,6 +26,8 @@ public class WorkerContext {
    */
   private ThreadLocal<Integer> taskIndex;
 
+  private ThreadLocal<TaskSpec> currentTask;
+
   private UniqueId currentDriverId;
 
   private ClassLoader currentClassLoader;
@@ -46,6 +48,7 @@ public class WorkerContext {
     putIndex = ThreadLocal.withInitial(() -> 0);
     currentTaskId = ThreadLocal.withInitial(UniqueId::randomId);
     this.runMode = runMode;
+    currentTask = ThreadLocal.withInitial(() -> null);
     currentClassLoader = null;
     if (workerMode == WorkerMode.DRIVER) {
       workerId = driverId;
@@ -83,6 +86,7 @@ public class WorkerContext {
     this.currentDriverId = task.driverId;
     taskIndex.set(0);
     putIndex.set(0);
+    this.currentTask.set(task);
     currentClassLoader = classLoader;
   }
 
@@ -124,4 +128,10 @@ public class WorkerContext {
     return currentClassLoader;
   }
 
+  /**
+   * Get the current task.
+   */
+  public TaskSpec getCurrentTask() {
+    return this.currentTask.get();
+  }
 }
