@@ -29,8 +29,9 @@ matrix:
       install:
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/travis/install-ray.sh
       script:
-      - ./java/test.sh
+      - ENABLE_MULTI_LANGUAGE_TESTS=1 ./java/test.sh
 
       # Test Bazel build
       - rm -rf build

@@ -3,6 +3,7 @@ package org.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import java.io.File;
 import java.lang.ProcessBuilder.Redirect;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
@@ -48,11 +49,17 @@ public class MultiLanguageClusterTest {
   }
 
   @BeforeMethod
-  public void setUp() {
+  public void setUp(Method method) {
     // Check whether 'ray' command is installed.
     boolean rayCommandExists = executeCommand(ImmutableList.of("which", "ray"), 5);
     if (!rayCommandExists) {
-      throw new SkipException("Skipping test, because ray command doesn't exist.");
+      String testName = method.getName();
+      if(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS").equals("1")) {
+        Assert.fail("Couldn't run test " + testName + ", because ray command doesn't exist.");
+      } else {
+        LOGGER.info("Skipping test {}, because ray command doesn't exist.", testName);
+        throw new SkipException("Skipping test, because ray command doesn't exist.");
+      }
     }
 
     // Delete existing socket files.
