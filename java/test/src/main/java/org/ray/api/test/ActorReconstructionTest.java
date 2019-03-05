@@ -24,6 +24,16 @@ public class ActorReconstructionTest extends BaseTest {
 
     protected int value = 0;
 
+    private boolean wasCurrentActorReconstructed = false;
+
+    public Counter() {
+      wasCurrentActorReconstructed = Ray.getRuntimeContext().wasCurrentActorReconstructed();
+    }
+
+    public boolean wasCurrentActorReconstructed() {
+      return wasCurrentActorReconstructed;
+    }
+
     public int increase() {
       value += 1;
       return value;
@@ -48,6 +58,8 @@ public class ActorReconstructionTest extends BaseTest {
       Ray.call(Counter::increase, actor).get();
     }
 
+    Assert.assertFalse(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
+
     // Kill the actor process.
     int pid = Ray.call(Counter::getPid, actor).get();
     Runtime.getRuntime().exec("kill -9 " + pid);
@@ -57,6 +69,8 @@ public class ActorReconstructionTest extends BaseTest {
     // Try calling increase on this actor again and check the value is now 4.
     int value = Ray.call(Counter::increase, actor).get();
     Assert.assertEquals(value, 4);
+
+    Assert.assertTrue(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
 
     // Kill the actor process again.
     pid = Ray.call(Counter::getPid, actor).get();
