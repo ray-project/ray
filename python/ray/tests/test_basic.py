@@ -1161,7 +1161,7 @@ def test_wait_cluster(ray_start_cluster):
     # Submit some tasks that can only be executed on the remote nodes.
     tasks = [f.remote() for _ in range(10)]
     # Sleep for a bit to let the tasks finish.
-    time.sleep(1)
+    time.sleep(5)
     _, unready = ray.wait(tasks, num_returns=len(tasks), timeout=0)
     # All remote tasks should have finished.
     assert len(unready) == 0
