@@ -24,7 +24,7 @@ def list_trials(experiment_path, sort):
 @click.option(
     '--sort', default=None, type=str, help='Select which column to sort on.')
 def list_experiments(project_path, sort):
-    _list_experiments(project_path, sort)
+    commands.list_experiments(project_path, sort)
 
 
 cli.add_command(list_trials, name="list-trials")
