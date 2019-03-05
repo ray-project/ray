@@ -5,13 +5,27 @@ TIMEOUT=30m
 TMPFILE=`mktemp`
 COMMAND="$@"
 
+# Print output to avoid travis killing us
+progress() {
+    sleep 5m
+    echo "This command has been running for more than 5 minutes..."
+    while true; do
+        sleep 5m
+        echo "This command is still running..."
+    done
+}
+
+progress & 2>/dev/null
+prog=$!
+
 timeout -k $TIMEOUT $TIMEOUT $COMMAND >$TMPFILE 2>&1
 
 CODE=$?
 if [ $CODE != 0 ]; then
     cat $TMPFILE
     echo "FAILED $CODE"
+    kill $prog
     exit $CODE
 fi
 
-exit 0
+kill $prog
