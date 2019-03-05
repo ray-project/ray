@@ -61,4 +61,5 @@ echo ""
 echo ""
 
 echo "To check up on the scripts, run the following."
-echo "    $ROOT_DIR/check_workloads.sh"
+echo "    $ROOT_DIR/check_workloads.sh --load"
+echo "    $ROOT_DIR/check_workloads.sh --logs"
