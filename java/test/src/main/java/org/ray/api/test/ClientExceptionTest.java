@@ -41,12 +41,12 @@ public class ClientExceptionTest extends BaseTest {
       Ray.wait(ImmutableList.of(notExisting), 1, 2000);
       Assert.fail("Should not reach here");
     } catch (RayException e) {
-      LOGGER.debug(String.format("Expected runtime exception: {}", e));
+      LOGGER.debug("Expected runtime exception: {}", e);
     }
     try {
       thread.join();
     } catch (Exception e) {
-      LOGGER.error(String.format("Excpetion caught: {}", e));
+      LOGGER.error("Excpetion caught: {}", e);
     }
   }
 }
