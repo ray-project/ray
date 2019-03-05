@@ -1,14 +1,15 @@
 #!/bin/bash
 
+TIMEOUT=30m
 TMPFILE=`mktemp`
 DIRECTORY=`dirname $0`
 SCRIPT=$1
 shift
 
 if [ -x $DIRECTORY/../$SCRIPT ]; then
-    $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
+    timeout -k $TIMEOUT $TIMEOUT $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
 else
-    python $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
+    timeout -k $TIMEOUT $TIMEOUT python $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
 fi
 
 CODE=$?
