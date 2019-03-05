@@ -249,7 +249,7 @@ class RNNSequencing(unittest.TestCase):
         batch3 = pickle.loads(
             ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_3"))
         if batch2["sequences"][0][0][0] > batch3["sequences"][0][0][0]:
-            batch2, batch3 = batch2, batch3
+            batch2, batch3 = batch3, batch2
         self.assertEqual(batch2["seq_lens"].tolist(), [4, 4])
         self.assertEqual(batch3["seq_lens"].tolist(), [2, 4])
         self.assertEqual(batch2["sequences"].tolist(), [
