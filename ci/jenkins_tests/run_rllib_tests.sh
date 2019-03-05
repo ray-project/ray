@@ -354,6 +354,9 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/tests/run_silent.sh examples/cartpole_lstm.py --stop=200 --use-prev-action-reward
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/python/ray/rllib/tests/run_silent.sh examples/custom_loss.py --iters=2
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/tests/run_silent.sh examples/custom_metrics_and_callbacks.py --num-iters=2
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
