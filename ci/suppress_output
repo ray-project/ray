@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run a command, suppressing output unless it hangs or crashes.
 
-TIMEOUT=30m
+TIMEOUT=60m
 TMPFILE=`mktemp`
 COMMAND="$@"
 
