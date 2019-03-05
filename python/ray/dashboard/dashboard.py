@@ -141,6 +141,7 @@ class Dashboard(object):
                 "min_workers": cfg["min_workers"],
                 "max_workers": cfg["max_workers"],
                 "initial_workers": cfg["initial_workers"],
+                "aggressive_autoscaling": cfg["aggressive_autoscaling"],
                 "idle_timeout_minutes": cfg["idle_timeout_minutes"],
             }
 
