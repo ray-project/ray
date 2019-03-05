@@ -9,7 +9,6 @@ import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.id.UniqueId;
 import org.testng.Assert;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 public class StressTest extends BaseTest {
