@@ -201,7 +201,7 @@ public class RayConfig {
       driverResourcePath = null;
     }
 
-    // number of threads that execute tasks
+    // Number of threads that execute tasks.
     numberExecThreadsForDevRuntime = config.getInt("ray.dev-runtime.execution-parallelism");
 
     // validate config
