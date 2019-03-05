@@ -16,8 +16,22 @@ echo "${check_style}"
 [[ ${check_style} =~ "BUILD FAILURE" ]] && exit 1
 
 # test raylet
-mvn_test=$(mvn test)
-echo "${mvn_test}"
-[[ ${mvn_test} =~ "BUILD SUCCESS" ]] || exit 1
+mvn test | tee mvn_test
+if [ `grep -c "BUILD FAILURE" mvn_test` -eq '0' ]; then
+    rm mvn_test
+    echo "Tests passed under CLUSTER mode!"
+else
+    rm mvn_test
+    exit 1
+fi
+# test raylet under SINGLE_PROCESS mode
+mvn test -Dray.run-mode=SINGLE_PROCESS | tee dev_mvn_test
+if [ `grep -c "BUILD FAILURE" dev_mvn_test` -eq '0' ]; then
+    rm dev_mvn_test
+    echo "Tests passed under SINGLE_PROCESS mode!"
+else
+    rm dev_mvn_test
+    exit 1
+fi
 
 popd

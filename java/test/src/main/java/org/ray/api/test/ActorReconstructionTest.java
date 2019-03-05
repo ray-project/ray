@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 import org.ray.api.Checkpointable;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
+import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.id.UniqueId;
@@ -31,6 +32,11 @@ public class ActorReconstructionTest extends BaseTest {
     public int getPid() {
       return pid();
     }
+  }
+
+  @Override
+  public void beforeEachCase() {
+    TestUtils.skipTestUnderSingleProcess();
   }
 
   @Test

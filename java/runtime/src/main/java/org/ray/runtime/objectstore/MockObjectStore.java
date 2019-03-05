@@ -6,11 +6,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
 import org.apache.arrow.plasma.ObjectStoreLink;
-import org.apache.arrow.plasma.ObjectStoreLink.ObjectStoreData;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
-import org.ray.runtime.raylet.MockRayletClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,13 +21,21 @@ import org.slf4j.LoggerFactory;
 public class MockObjectStore implements ObjectStoreLink {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MockObjectStore.class);
+
+  private static final int GET_CHECK_INTERVAL_MS = 100;
+
   private final RayDevRuntime runtime;
   private final Map<UniqueId, byte[]> data = new ConcurrentHashMap<>();
   private final Map<UniqueId, byte[]> metadata = new ConcurrentHashMap<>();
-  private MockRayletClient scheduler = null;
+  private final List<Consumer<UniqueId>> objectPutCallbacks;
 
   public MockObjectStore(RayDevRuntime runtime) {
     this.runtime = runtime;
+    this.objectPutCallbacks = new ArrayList<>();
+  }
+
+  public void addObjectPutCallback(Consumer<UniqueId> callback) {
+    this.objectPutCallbacks.add(callback);
   }
 
   @Override
@@ -41,34 +50,56 @@ public class MockObjectStore implements ObjectStoreLink {
     if (metadataValue != null) {
       metadata.put(uniqueId, metadataValue);
     }
-    if (scheduler != null) {
-      scheduler.onObjectPut(uniqueId);
+    UniqueId id = new UniqueId(objectId);
+    for (Consumer<UniqueId> callback : objectPutCallbacks) {
+      callback.accept(id);
     }
+  }
+
+  @Override
+  public byte[] get(byte[] objectId, int timeoutMs, boolean isMetadata) {
+    return get(new byte[][] {objectId}, timeoutMs, isMetadata).get(0);
   }
 
   @Override
   public List<byte[]> get(byte[][] objectIds, int timeoutMs, boolean isMetadata) {
-    final Map<UniqueId, byte[]> dataMap = isMetadata ? metadata : data;
-    ArrayList<byte[]> rets = new ArrayList<>(objectIds.length);
-    for (byte[] objId : objectIds) {
-      UniqueId uniqueId = new UniqueId(objId);
-      LOGGER.info("{} is notified for objectid {}",logPrefix(), uniqueId);
-      rets.add(dataMap.get(uniqueId));
-    }
-    return rets;
+    return get(objectIds, timeoutMs)
+            .stream()
+            .map(data -> isMetadata ? data.data : data.metadata)
+            .collect(Collectors.toList());
   }
 
   @Override
   public List<ObjectStoreData> get(byte[][] objectIds, int timeoutMs) {
+    int ready = 0;
+    int remainingTime = timeoutMs;
+    boolean firstCheck = true;
+    while (ready < objectIds.length && remainingTime > 0) {
+      if (!firstCheck) {
+        int sleepTime = Math.min(remainingTime, GET_CHECK_INTERVAL_MS);
+        try {
+          Thread.sleep(sleepTime);
+        } catch (InterruptedException e) {
+          LOGGER.warn("Got InterruptedException while sleeping.");
+        }
+        remainingTime -= sleepTime;
+      }
+      ready = 0;
+      for (byte[] id : objectIds) {
+        if (data.containsKey(new UniqueId(id))) {
+          ready += 1;
+        }
+      }
+      firstCheck = false;
+    }
     ArrayList<ObjectStoreData> rets = new ArrayList<>();
-    // TODO(yuhguo): make ObjectStoreData's constructor public.
-    for (byte[] objId : objectIds) {
-      UniqueId uniqueId = new UniqueId(objId);
+    for (byte[] id : objectIds) {
       try {
         Constructor<ObjectStoreData> constructor = ObjectStoreData.class.getConstructor(
-            byte[].class, byte[].class);
+                byte[].class, byte[].class);
         constructor.setAccessible(true);
-        rets.add(constructor.newInstance(metadata.get(uniqueId), data.get(uniqueId)));
+        rets.add(constructor.newInstance(metadata.get(new UniqueId(id)),
+                data.get(new UniqueId(id))));
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
@@ -119,7 +150,8 @@ public class MockObjectStore implements ObjectStoreLink {
     return data.containsKey(id);
   }
 
-  public void registerScheduler(MockRayletClient s) {
-    scheduler = s;
+  public void free(UniqueId id) {
+    data.remove(id);
+    metadata.remove(id);
   }
 }
