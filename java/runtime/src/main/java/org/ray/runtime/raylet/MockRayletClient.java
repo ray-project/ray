@@ -44,7 +44,7 @@ public class MockRayletClient implements RayletClient {
     this.runtime = runtime;
     this.store = runtime.getObjectStore();
     store.addObjectPutCallback(this::onObjectPut);
-    // the thread pool that executes tasks in parallel
+    // The thread pool that executes tasks in parallel.
     exec = Executors.newFixedThreadPool(numberThreads);
     idleWorkers = new LinkedList<>();
     actorWorkers = new HashMap<>();
@@ -120,16 +120,15 @@ public class MockRayletClient implements RayletClient {
 
   private Set<UniqueId> getUnreadyObjects(TaskSpec spec) {
     Set<UniqueId> unreadyObjects = new HashSet<>();
-    // check whether the arguments which this task needs is ready
+    // Check whether task arguments are ready.
     for (FunctionArg arg : spec.args) {
       if (arg.id != null) {
         if (!store.isObjectReady(arg.id)) {
-          // if this objectId doesn't exist in store, then return this objectId
           unreadyObjects.add(arg.id);
         }
       }
     }
-    // check whether the dependencies which this task needs is ready
+    // Check whether task dependencies are ready.
     for (UniqueId id : spec.getExecutionDependencies()) {
       if (!store.isObjectReady(id)) {
         unreadyObjects.add(id);

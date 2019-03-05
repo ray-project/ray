@@ -36,7 +36,7 @@ public class WorkerContext {
   private long mainThreadId;
 
   /**
-   * The runmode of this worker.
+   * The run-mode of this worker.
    */
   private RunMode runMode;
 
