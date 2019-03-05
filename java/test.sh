@@ -9,6 +9,13 @@ set -x
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 $ROOT_DIR/../build.sh -l java
 
+# Build python for multi languages tests
+pushd $ROOT_DIR/../python
+pip install -e . -v
+popd
+
+which ray
+
 pushd $ROOT_DIR/../java
 mvn clean install -Dmaven.test.skip
 check_style=$(mvn checkstyle:check)
