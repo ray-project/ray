@@ -16,7 +16,7 @@ Currently, Tune offers the following search algorithms (and library integrations
 - `HyperOpt <tune-searchalg.html#hyperopt-search-tree-structured-parzen-estimators>`__
 - `SigOpt <tune-searchalg.html#sigopt-search>`__
 - `Nevergrad <tune-searchalg.html#nevergrad-search>`__
-- `SkOpt <tune-searchalg.html#scikit-optimize-search>`__
+- `Scikit-Optimize <tune-searchalg.html#scikit-optimize-search>`__
 
 
 Variant Generation (Grid Search/Random Search)
