@@ -457,8 +457,6 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
     """
 
     eval_results = {}
-    import time
-    time.sleep(0.1)
 
     if tf_sess:
         builder = TFRunBuilder(tf_sess, "policy_eval")
