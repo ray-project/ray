@@ -18,7 +18,6 @@ class AsyncRemoteEnv(BaseEnv):
     """
 
     def __init__(self, make_env, num_envs, multiagent):
-        self.multiagent = multiagent
         self.make_local_env = make_env
 
         def make_remote_env(i):
