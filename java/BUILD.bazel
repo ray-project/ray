@@ -11,8 +11,6 @@ java_import(
         "liborg_ray_ray_api-src.jar",
         "liborg_ray_ray_runtime.jar",
         "liborg_ray_ray_runtime-src.jar",
-        "liborg_ray_ray_cli.jar",
-        "liborg_ray_ray_cli-src.jar",
         "liborg_ray_ray_runtime_test.jar",
         "liborg_ray_ray_runtime_test-src.jar",
         "liborg_ray_ray_test.jar",
@@ -24,7 +22,6 @@ java_import(
     ],
     deps = [
         ":org_ray_ray_api",
-        ":org_ray_ray_cli",
         ":org_ray_ray_runtime",
         ":org_ray_ray_tutorial",
         ":org_ray_ray_test",
@@ -38,21 +35,6 @@ java_library(
     deps = [
         "@org_slf4j_slf4j_log4j12//jar",
         "@log4j_log4j//jar",
-    ],
-)
-
-java_library(
-    name = "org_ray_ray_cli",
-    srcs = glob(["cli/src/main/java/**/*.java"]),
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_beust_jcommander//jar",
-        "@com_github_davidmoten_flatbuffers_java//jar",
-        "@de_ruedigermoeller_fst//jar",
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
-        "@redis_clients_jedis//jar",
-        "@org_slf4j_slf4j_api//jar",
     ],
 )
 
@@ -157,7 +139,6 @@ flatbuffer_java_library(
         "Arg.java",
         "ClassTableData.java",
         "ClientTableData.java",
-        "ClientType.java",
         "ConfigTableData.java",
         "CustomSerializerData.java",
         "DriverTableData.java",
@@ -165,12 +146,10 @@ flatbuffer_java_library(
         "ErrorType.java",
         "FunctionTableData.java",
         "GcsTableEntry.java",
-        "GcsTableNotificationMode.java",
         "HeartbeatBatchTableData.java",
         "HeartbeatTableData.java",
         "Language.java",
         "ObjectTableData.java",
-        "PipeClientData.java",
         "ProfileEvent.java",
         "ProfileTableData.java",
         "RayResource.java",
