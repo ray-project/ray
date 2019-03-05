@@ -1541,7 +1541,7 @@ def init(redis_address=None,
 _post_init_hooks = []
 
 
-def shutdown():
+def shutdown(exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
     This will automatically run at the end when a Python process that uses Ray
@@ -1553,7 +1553,17 @@ def shutdown():
     defined remote functions or actors after calling ray.shutdown(), then you
     need to redefine them. If they were defined in an imported module, then you
     will need to reload the module.
+
+    Args:
+        exiting_interpreter (bool): True if this is called by the atexit hook
+            and false otherwise. If we are exiting the interpreter, we will
+            wait a little while to print any extra error messages.
     """
+    if exiting_interpreter and global_worker.mode == SCRIPT_MODE:
+        # This is a duration to sleep before shutting down everything in order
+        # to make sure that log messages finish printing.
+        time.sleep(0.5)
+
     disconnect()
 
     # Shut down the Ray processes.
@@ -1565,7 +1575,7 @@ def shutdown():
     global_worker.set_mode(None)
 
 
-atexit.register(shutdown)
+atexit.register(shutdown, True)
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
@@ -1670,6 +1680,8 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
         # messages originating from the worker.
         while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
             threads_stopped.wait(timeout=1)
+            if threads_stopped.is_set():
+                break
         if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
             logger.debug("Suppressing error from worker: {}".format(error))
         else:
