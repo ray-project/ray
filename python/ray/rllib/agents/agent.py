@@ -491,13 +491,8 @@ class Agent(Trainable):
         cls = PolicyEvaluator.as_remote(**remote_args).remote
 
         return [
-            self._make_evaluator(
-                cls,
-                env_creator,
-                policy_graph,
-                i + 1,
-                self.config)
-            for i in range(count)
+            self._make_evaluator(cls, env_creator, policy_graph, i + 1,
+                                 self.config) for i in range(count)
         ]
 
     @DeveloperAPI
@@ -563,11 +558,7 @@ class Agent(Trainable):
                 "`input_evaluation` must be a list of strings, got {}".format(
                     config["input_evaluation"]))
 
-    def _make_evaluator(self,
-                        cls,
-                        env_creator,
-                        policy_graph,
-                        worker_index,
+    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
                         config):
         def session_creator():
             logger.debug("Creating TF session {}".format(

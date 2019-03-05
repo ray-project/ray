@@ -28,9 +28,7 @@ class AsyncRemoteEnv(BaseEnv):
             else:
                 return _RemoteSingleAgentEnv.remote(self.make_local_env, i)
 
-        self.actors = [
-            make_remote_env(i) for i in range(num_envs)
-        ]
+        self.actors = [make_remote_env(i) for i in range(num_envs)]
         self.pending = None  # lazy init
 
     def poll(self):
@@ -41,12 +39,11 @@ class AsyncRemoteEnv(BaseEnv):
         obs, rewards, dones, infos = {}, {}, {}, {}
         ready = []
 
-        # Wait for at least 1 env, but not more than 100ms total
+        # Wait for at least 1 env to be ready here
         while not ready:
             ready, _ = ray.wait(
-                list(self.pending),
-                num_returns=len(self.pending),
-                timeout=0.01)
+                list(self.pending), num_returns=len(self.pending),
+                timeout=0.0)  # TODO(ekl) make the timeout configurable
 
         # Get and return observations for each of the ready envs
         env_ids = set()
@@ -54,9 +51,6 @@ class AsyncRemoteEnv(BaseEnv):
             actor = self.pending.pop(obj_id)
             env_id = self.actors.index(actor)
             env_ids.add(env_id)
-            print(ray.get(obj_id))
-#            import time
-#            time.sleep(1)
             ob, rew, done, info = ray.get(obj_id)
             obs[env_id] = ob
             rewards[env_id] = rew
@@ -104,10 +98,16 @@ class _RemoteSingleAgentEnv(object):
         self.env = make_env(i)
 
     def reset(self):
-        return {_DUMMY_AGENT_ID: self.env.reset()}
+        obs = {_DUMMY_AGENT_ID: self.env.reset()}
+        rew = {agent_id: 0 for agent_id in obs.keys()}
+        info = {agent_id: {} for agent_id in obs.keys()}
+        done = {"__all__": False}
+        return obs, rew, done, info
 
     def step(self, action):
-        results = self.env.step(action)
-        res = [{_DUMMY_AGENT_ID: x} for x in results]
-        print(res)
-        return res
+        obs, rew, done, info = self.env.step(action[_DUMMY_AGENT_ID])
+        obs, rew, done, info = [{
+            _DUMMY_AGENT_ID: x
+        } for x in [obs, rew, done, info]]
+        done["__all__"] = done[_DUMMY_AGENT_ID]
+        return obs, rew, done, info

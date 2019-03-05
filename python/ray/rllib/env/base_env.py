@@ -74,7 +74,11 @@ class BaseEnv(object):
     """
 
     @staticmethod
-    def to_base_env(env, make_env=None, num_envs=1, remote_envs=False, async_remote_envs=False):
+    def to_base_env(env,
+                    make_env=None,
+                    num_envs=1,
+                    remote_envs=False,
+                    async_remote_envs=False):
         """Wraps any env type as needed to expose the async interface."""
 
         if (remote_envs or async_remote_envs) and num_envs == 1:
@@ -82,9 +86,8 @@ class BaseEnv(object):
                 "Remote envs only make sense to use if num_envs > 1 "
                 "(i.e. vectorization is enabled).")
         if remote_envs and async_remote_envs:
-            raise ValueError(
-                "You can only specify one of remote_envs or "
-                "async_remote_envs.")
+            raise ValueError("You can only specify one of remote_envs or "
+                             "async_remote_envs.")
 
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
@@ -97,7 +100,9 @@ class BaseEnv(object):
                     env = AsyncRemoteEnv(make_env, num_envs, multiagent=True)
                 else:
                     env = _MultiAgentEnvToBaseEnv(
-                        make_env=make_env, existing_envs=[env], num_envs=num_envs)
+                        make_env=make_env,
+                        existing_envs=[env],
+                        num_envs=num_envs)
             elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
                     raise ValueError(
