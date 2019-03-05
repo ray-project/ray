@@ -5,6 +5,7 @@ import org.ray.api.RuntimeContext;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.config.WorkerMode;
+import org.ray.runtime.task.TaskSpec;
 
 public class RuntimeContextImpl implements RuntimeContext {
 
@@ -27,12 +28,13 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public boolean wasCurrentActorReconstructed() {
-    Preconditions.checkState(
-        runtime.getWorkerContext().getCurrentTask().isActorCreationTask());
-
+    TaskSpec currentTask = runtime.getWorkerContext().getCurrentTask();
+    Preconditions.checkState(currentTask != null && currentTask.isActorCreationTask(),
+        "This method can only be called from an actor creation task.");
     if (isSingleProcess()) {
       return false;
     }
+
     return ((RayNativeRuntime) runtime).actorExistsInGcs(getCurrentActorId());
   }
 
