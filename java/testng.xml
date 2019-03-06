@@ -5,7 +5,7 @@
 <test name = "RAY test" >
     <packages>
         <package name = "org.ray.api.test.*" />
-        <package name = "org.ray.runtime.functionmanager.*" />
+        <package name = "org.ray.runtime.*" />
     </packages>
 </test>
 </suite>
