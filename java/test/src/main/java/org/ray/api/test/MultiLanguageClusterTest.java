@@ -53,8 +53,8 @@ public class MultiLanguageClusterTest {
   public void setUp(Method method) {
     String testName = method.getName();
     if (!"1".equals(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS"))) {
-      LOGGER
-          .info("Skip " + testName + " because env variable ENABLE_MULTI_LANGUAGE_TESTS isn't set");
+      LOGGER.info("Skip " + testName +
+          " because env variable ENABLE_MULTI_LANGUAGE_TESTS isn't set");
       throw new SkipException("Skip test.");
     }
     // Check whether 'ray' command is installed.
@@ -72,15 +72,18 @@ public class MultiLanguageClusterTest {
     }
 
     // Start ray cluster.
+    String testDir = System.getProperty("user.dir");
+    String classpath = String.format("%s/../../build/java/*:%s/target/*", testDir, testDir);
     final List<String> startCommand = ImmutableList.of(
         "ray",
         "start",
         "--head",
         "--redis-port=6379",
-        "--include-java",
         String.format("--plasma-store-socket-name=%s", PLASMA_STORE_SOCKET_NAME),
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
-        "--java-worker-options=-classpath ../../build/java/*:../../java/test/target/*"
+        "--load-code-from-local",
+        "--include-java",
+        "--java-worker-options=-classpath " + classpath
     );
     if (!executeCommand(startCommand, 10)) {
       throw new RuntimeException("Couldn't start ray cluster.");
