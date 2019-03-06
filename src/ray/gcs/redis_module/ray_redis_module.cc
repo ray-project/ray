@@ -430,7 +430,7 @@ int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
   }
 }
 
-int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is_add) {
+int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is_add, bool &changed) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -443,6 +443,7 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
   RedisModuleCallReply *reply =
       RedisModule_Call(ctx, is_add ? "SADD" : "SREM", "ss", key_string, data);
   if (RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ERROR) {
+    changed = RedisModule_CallReplyInteger(reply) > 0;
     if (!is_add) {
       // try to delete the empty set.
       RedisModuleKey *key;
@@ -478,10 +479,14 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
 /// \return OK if the add succeeds, or an error message string if the add
 ///         fails.
 int SetAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  if (Set_DoWrite(ctx, argv, argc, /*is_add=*/true) != REDISMODULE_OK) {
+  bool changed;
+  if (Set_DoWrite(ctx, argv, argc, /*is_add=*/true, changed) != REDISMODULE_OK) {
     return REDISMODULE_ERR;
   }
-  return Set_DoPublish(ctx, argv, /*is_add=*/true);
+  if (changed) {
+    return Set_DoPublish(ctx, argv, /*is_add=*/true);
+  }
+  return REDISMODULE_OK;
 }
 
 /// Remove an entry from the set stored at a key. Publishes a notification about
@@ -500,10 +505,14 @@ int SetAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
 /// \return OK if the remove succeeds, or an error message string if the remove
 ///         fails.
 int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  if (Set_DoWrite(ctx, argv, argc, /*is_add=*/false) != REDISMODULE_OK) {
+  bool changed;
+  if (Set_DoWrite(ctx, argv, argc, /*is_add=*/false, changed) != REDISMODULE_OK) {
     return REDISMODULE_ERR;
   }
-  return Set_DoPublish(ctx, argv, /*is_add=*/false);
+  if (changed) {
+    return Set_DoPublish(ctx, argv, /*is_add=*/false);
+  }
+  return REDISMODULE_OK;
 }
 
 /// A helper function to create and finish a GcsTableEntry, based on the
