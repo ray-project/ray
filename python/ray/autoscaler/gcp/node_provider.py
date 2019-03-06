@@ -21,9 +21,7 @@ INSTANCE_NAME_UUID_LEN = 8
 
 def raise_for_errors(results):
     exceptions = [
-        Exception(result["error"])
-        for result in results
-        if "error" in result
+        Exception(result["error"]) for result in results if "error" in result
     ]
 
     if exceptions:
@@ -41,8 +39,7 @@ def wait_for_compute_zone_operations(compute, project_name, operations, zone):
         results = [
             compute.zoneOperations().get(
                 project=project_name, operation=operation["name"],
-                zone=zone).execute()
-            for operation in operations
+                zone=zone).execute() for operation in operations
         ]
 
         raise_for_errors(results)
@@ -57,8 +54,7 @@ def wait_for_compute_zone_operations(compute, project_name, operations, zone):
     logger.info(
         "wait_for_compute_zone_operation: "
         "MAX_POLLS ({}) exceeded. Could not finish all the {} {}."
-        "".format(MAX_POLLS,
-                  len(operations),
+        "".format(MAX_POLLS, len(operations),
                   "operations" if len(operations) > 1 else "operation"))
 
     return results
@@ -66,8 +62,8 @@ def wait_for_compute_zone_operations(compute, project_name, operations, zone):
 
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):
     """Poll for a compute zone operation until finished."""
-    return wait_for_compute_zone_operations(
-        compute, project_name, [operation], zone)[0]
+    return wait_for_compute_zone_operations(compute, project_name, [operation],
+                                            zone)[0]
 
 
 class GCPNodeProvider(NodeProvider):
@@ -265,8 +261,7 @@ class GCPNodeProvider(NodeProvider):
 
             # Note: "name" is a unique id for the instance
             instance_name_filter_expr = "(" + " OR ".join([
-                "(name = {name})".format(name=name)
-                for name in missing_nodes
+                "(name = {name})".format(name=name) for name in missing_nodes
             ]) + ")"
 
             response = self.compute.instances().list(
@@ -279,9 +274,9 @@ class GCPNodeProvider(NodeProvider):
             missing_nodes -= set(node["name"] for node in fetched_nodes)
             assert not missing_nodes, missing_nodes
 
-            self.cached_nodes.update({
-                node["name"]: node for node in fetched_nodes
-            })
+            self.cached_nodes.update(
+                {node["name"]: node
+                 for node in fetched_nodes})
 
             result = [self.cached_nodes[node_id] for node_id in node_ids]
 

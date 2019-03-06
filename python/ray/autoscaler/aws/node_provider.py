@@ -235,14 +235,12 @@ class AWSNodeProvider(NodeProvider):
         if not missing_nodes:
             return [self.cached_nodes[node_id] for node_id in node_ids]
 
-        fetched_nodes = list(self.ec2.instances.filter(
-            InstanceIds=list(missing_nodes)))
+        fetched_nodes = list(
+            self.ec2.instances.filter(InstanceIds=list(missing_nodes)))
         missing_nodes -= set(node.id for node in fetched_nodes)
         assert not missing_nodes, missing_nodes
 
-        self.cached_nodes.update({
-            node.id: node for node in fetched_nodes
-        })
+        self.cached_nodes.update({node.id: node for node in fetched_nodes})
 
         result = [self.cached_nodes[node_id] for node_id in node_ids]
 
