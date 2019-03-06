@@ -13,7 +13,7 @@ auth:
     ssh_user: ubuntu
 
 head_node:
-    InstanceType: m5.2xlarge
+    InstanceType: m5.xlarge
     ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
 
     # Set primary volume to 25 GiB
