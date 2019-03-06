@@ -20,7 +20,7 @@ NUMPY_VERSIONS=("1.10.4"
                 "1.14.5")
 
 sudo apt-get install unzip
-./ray/ci/travis/install-bazel.sh
+/ray/ci/travis/install-bazel.sh
 
 # Remove this old Python 2.4.3 executable, and make the "python2" command find
 # a newer version of Python. We need this for autogenerating some files for the
