@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-bazel build //java:all
+bazel build -c opt //java:all
