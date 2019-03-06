@@ -213,7 +213,9 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// Subscribe to any modifications to the key. The caller may choose
   /// to subscribe to all modifications, or to subscribe only to keys that it
   /// requests notifications for. This may only be called once per Log
-  /// instance.
+  /// instance. This function is different from public version due to
+  /// an additional parameter mode in NotificationCallback. Therefore this
+  /// function supports notifications of remove operations.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param client_id The type of update to listen to. If this is nil, then a
@@ -226,7 +228,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status SubscribeWithNotificationMode(const JobID &job_id, const ClientID &client_id,
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
                                        const NotificationCallback &subscribe,
                                        const SubscriptionCallback &done);
 
@@ -399,6 +401,8 @@ class Set : private Log<ID, Data>,
 
   using Log<ID, Data>::RequestNotifications;
   using Log<ID, Data>::CancelNotifications;
+  using Log<ID, Data>::Lookup;
+  using Log<ID, Data>::Delete;
 
   /// Add an entry to the set.
   ///
@@ -422,20 +426,10 @@ class Set : private Log<ID, Data>,
   Status Remove(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
                 const WriteCallback &done);
 
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
-    return Log<ID, Data>::Lookup(job_id, id, lookup);
-  }
-
-  void Delete(const JobID &job_id, const ID &id) { Log<ID, Data>::Delete(job_id, id); }
-
-  void Delete(const JobID &job_id, const std::vector<ID> &ids) {
-    Log<ID, Data>::Delete(job_id, ids);
-  }
-
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done) {
-    return Log<ID, Data>::SubscribeWithNotificationMode(job_id, client_id, subscribe,
+    return Log<ID, Data>::Subscribe(job_id, client_id, subscribe,
                                                         done);
   }
 

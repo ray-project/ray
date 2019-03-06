@@ -118,11 +118,11 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
     RAY_CHECK(mode != GcsTableNotificationMode::REMOVE);
     subscribe(client, id, data);
   };
-  return SubscribeWithNotificationMode(job_id, client_id, subscribeWrapper, done);
+  return Subscribe(job_id, client_id, subscribeWrapper, done);
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::SubscribeWithNotificationMode(const JobID &job_id,
+Status Log<ID, Data>::Subscribe(const JobID &job_id,
                                                     const ClientID &client_id,
                                                     const NotificationCallback &subscribe,
                                                     const SubscriptionCallback &done) {
