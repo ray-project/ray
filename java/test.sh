@@ -21,7 +21,7 @@ echo "Checking code format."
 mvn checkstyle:check
 
 echo "Running tests under cluster mode."
-ENABLE_MULTI_LANGUAGE_TESTS=1 mvn test
+RAY_BACKEND_LOG_LEVEL=debug ENABLE_MULTI_LANGUAGE_TESTS=1 mvn test
 
 echo "Running tests under single-process mode."
 mvn test -Dray.run-mode=SINGLE_PROCESS
