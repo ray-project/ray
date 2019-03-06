@@ -12,7 +12,7 @@ from ray.experimental.serve.router import start_router
 
 @pytest.fixture(scope="module")
 def router():
-    ray.init()
+    ray.init(num_cpus=1)
 
     # The following two blobs are equivalent
     #

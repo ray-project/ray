@@ -1,1 +1,1 @@
-from .HTTPFrontend import HTTPFrontendActor
+from .http_frontend import HTTPFrontendActor

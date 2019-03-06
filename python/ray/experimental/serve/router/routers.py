@@ -16,6 +16,7 @@ to regsier it.
 )
 
 
+# Use @total_ordering so we can sort SingleQuery
 @total_ordering
 class SingleQuery:
     """Data container for request data, its result object id, 
