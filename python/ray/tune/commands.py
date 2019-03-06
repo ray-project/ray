@@ -4,19 +4,32 @@ from __future__ import print_function
 
 import glob
 import json
+import logging
 import os
+import sys
 import subprocess
 from datetime import datetime
 
 import pandas as pd
+from ray.tune.util import flatten_dict
+from ray.tune.result import TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS
 from ray.tune.trial import Trial
 try:
     from tabulate import tabulate
 except ImportError:
     tabulate = None
 
-DEFAULT_EXPERIMENT_INFO_KEYS = ("trial_name", "trial_id", "status",
-                                "num_failures", "logdir")
+logger = logging.getLogger(__name__)
+
+DEFAULT_EXPERIMENT_INFO_KEYS = (
+    "trainable_name",
+    "experiment_tag",
+    "trial_id",
+    "status",
+    "last_update_time",
+)
+
+DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS)
 
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
@@ -38,78 +51,107 @@ def _check_tabulate():
             "Tabulate not installed. Please run `pip install tabulate`.")
 
 
-def _format_output(dataframe, columns):
+def print_format_output(dataframe):
     print_df = pd.DataFrame()
     dropped_cols = []
     empty_cols = []
     # column display priority is based on the info_keys passed in
-    for i, col in enumerate(columns):
-        print_df[col] = dataframe[col]
-        table = tabulate(print_df, headers="keys", tablefmt="psql")
+    for i, col in enumerate(dataframe):
         if dataframe[col].isnull().all():
+            # Don't add col to print_df if is fully empty
             empty_cols += [col]
-            print_df.drop(col, axis=1, inplace=True)
-        elif str(table).index('\n') > TERMINAL_WIDTH:
+            continue
+
+        print_df[col] = dataframe[col]
+        test_table = tabulate(print_df, headers="keys", tablefmt="psql")
+        if str(test_table).index('\n') > TERMINAL_WIDTH:
             # Drop all columns beyond terminal width
             print_df.drop(col, axis=1, inplace=True)
-            table = tabulate(print_df, headers="keys", tablefmt="psql")
-            dropped_cols += columns[i:]
+            dropped_cols += list(dataframe.columns)[i:]
             break
+
+    table = tabulate(
+        print_df, headers="keys", tablefmt="psql", showindex="never")
+
+    print(table)
+    if dropped_cols:
+        print("Dropped columns:", dropped_cols)
+        print("Please increase your terminal size to view remaining columns.")
+    if empty_cols:
+        print("Empty columns:", empty_cols)
+
     return table, dropped_cols, empty_cols
 
 
-def list_trials(experiment_path, sort, info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
-    _check_tabulate()
+def get_experiment_state(experiment_path, exit_on_fail=False):
     experiment_path = os.path.expanduser(experiment_path)
-    globs = glob.glob(os.path.join(experiment_path, "experiment_state*.json"))
-    filename = max(list(globs))
+    experiment_state_paths = glob.glob(
+        os.path.join(experiment_path, "experiment_state*.json"))
+    if not experiment_state_paths:
+        if exit_on_fail:
+            print("No experiment state found!")
+            sys.exit(0)
+        else:
+            return
+    experiment_filename = max(list(experiment_state_paths))
 
-    with open(filename) as f:
+    with open(experiment_filename) as f:
         experiment_state = json.load(f)
+    return experiment_state
 
-    checkpoints_df = pd.DataFrame(
-        experiment_state["checkpoints"])[list(info_keys)]
-    if "logdir" in checkpoints_df.columns:
+
+def list_trials(experiment_path,
+                sort=None,
+                info_keys=DEFAULT_EXPERIMENT_INFO_KEYS,
+                result_keys=DEFAULT_RESULT_KEYS):
+    """Lists trials in the directory subtree starting at the given path."""
+    _check_tabulate()
+    experiment_state = get_experiment_state(experiment_path, exit_on_fail=True)
+
+    checkpoint_dicts = experiment_state["checkpoints"]
+    checkpoint_dicts = [flatten_dict(g) for g in checkpoint_dicts]
+    checkpoints_df = pd.DataFrame(checkpoint_dicts)
+
+    result_keys = ["last_result:{}".format(k) for k in result_keys]
+    col_keys = [
+        k for k in list(info_keys) + result_keys if k in checkpoints_df
+    ]
+    checkpoints_df = checkpoints_df[col_keys]
+
+    if "logdir" in checkpoints_df:
         # logdir often too verbose to view in table, so drop experiment_path
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
             experiment_path, '')
+
     if sort:
+        if sort not in checkpoints_df:
+            raise KeyError("Sort Index {} not in: {}".format(
+                sort, list(checkpoints_df)))
         checkpoints_df = checkpoints_df.sort_values(by=sort)
-        checkpoints_df = checkpoints_df.reset_index(drop=True)
 
-    columns = list(info_keys)
-    table, dropped, empty = _format_output(checkpoints_df, columns)
-
-    print(table)
-    if dropped:
-        print("Dropped columns:", dropped)
-        print("Please increase your terminal size to view remaining columns.")
-    if empty:
-        print("Empty columns:", empty)
+    print_format_output(checkpoints_df)
 
 
-def list_experiments(project_path, sort, info_keys=DEFAULT_PROJECT_INFO_KEYS):
+def list_experiments(project_path,
+                     sort=None,
+                     info_keys=DEFAULT_PROJECT_INFO_KEYS):
     _check_tabulate()
-    base, experiment_paths, _ = list(os.walk(project_path))[0]  # clean this
+    base, experiment_folders, _ = next(os.walk(project_path))
 
     experiment_data_collection = []
-    for experiment_path in experiment_paths:
-        experiment_state_path = glob.glob(
-            os.path.join(base, experiment_path, "experiment_state*.json"))
-
-        if not experiment_state_path:
-            # TODO(hartikainen): Print some warning?
+    for experiment_dir in experiment_dirs:
+        experiment_state = get_experiment_state(
+            os.path.join(base, experiment_dir))
+        if not experiment_state:
+            logger.debug("No experiment state found in %s", experiment_dir)
             continue
-
-        with open(experiment_state_path[0]) as f:
-            experiment_state = json.load(f)
 
         checkpoints = pd.DataFrame(experiment_state["checkpoints"])
         runner_data = experiment_state["runner_data"]
         timestamp = experiment_state.get("timestamp")
 
         experiment_data = {
-            "name": experiment_path,
+            "name": experiment_dir,
             "start_time": runner_data.get("_start_time"),
             "timestamp": datetime.fromtimestamp(timestamp)
             if timestamp else None,
@@ -122,15 +164,8 @@ def list_experiments(project_path, sort, info_keys=DEFAULT_PROJECT_INFO_KEYS):
         experiment_data_collection.append(experiment_data)
 
     info_df = pd.DataFrame(experiment_data_collection)[list(info_keys)]
+
     if sort:
         info_df = info_df.sort_values(by=sort)
-        info_df = info_df.reset_index(drop=True)
 
-    columns = list(info_keys)
-    table, dropped, empty = _format_output(info_df, columns)
-    print(table)
-    if dropped:
-        print("Dropped columns:", dropped)
-        print("Please increase your terminal size to view remaining columns.")
-    if empty:
-        print("Empty columns:", empty)
+    print_format_output(info_df)
