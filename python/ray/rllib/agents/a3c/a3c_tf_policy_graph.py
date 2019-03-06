@@ -138,7 +138,9 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             next_state = []
             for i in range(len(self.model.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch["new_obs"][-1], *next_state)
+            last_r = self._value(sample_batch["new_obs"][-1],
+                                 sample_batch["actions"][-1],
+                                 sample_batch["rewards"][-1], *next_state)
         return compute_advantages(sample_batch, last_r, self.config["gamma"],
                                   self.config["lambda"])
 
@@ -159,8 +161,13 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             TFPolicyGraph.extra_compute_action_fetches(self),
             **{"vf_preds": self.vf})
 
-    def _value(self, ob, *args):
-        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
+    def _value(self, ob, prev_action, prev_reward, *args):
+        feed_dict = {
+            self.observations: [ob],
+            self.prev_actions: [prev_action],
+            self.prev_rewards: [prev_reward],
+            self.model.seq_lens: [1]
+        }
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):
