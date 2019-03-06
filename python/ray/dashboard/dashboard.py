@@ -182,7 +182,7 @@ class Dashboard(object):
     def run(self):
         self.log_dashboard_url()
         self.node_stats.start()
-        aiohttp.web.run_app(self.app, host=self.ip, port=self.port)
+        aiohttp.web.run_app(self.app, host="0.0.0.0", port=self.port)
 
 
 class NodeStats(threading.Thread):
