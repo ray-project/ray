@@ -15,13 +15,13 @@ NUMBER_OF_TRIES = 5
 
 
 @pytest.fixture(scope="module")
-def init_ray():
+def ray_start():
     ray.init()
     yield
     ray.shutdown()
 
 
-def test_http_basic(init_ray):
+def test_http_basic(ray_start):
     router = start_router(DeadlineAwareRouter, ROUTER_NAME)
 
     a = HTTPFrontendActor.remote(router=ROUTER_NAME)
