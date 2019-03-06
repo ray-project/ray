@@ -6,8 +6,6 @@ echo 10
 EOF
 chmod +x /usr/bin/nproc
 
-export RAY_USE_CMAKE=1
-
 PYTHONS=("cp27-cp27mu"
          "cp34-cp34m"
          "cp35-cp35m"
@@ -20,6 +18,9 @@ NUMPY_VERSIONS=("1.10.4"
                 "1.10.4"
                 "1.10.4"
                 "1.14.5")
+
+sudo apt-get install unzip
+bash /ray/ci/travis/install-bazel.sh
 
 # Remove this old Python 2.4.3 executable, and make the "python2" command find
 # a newer version of Python. We need this for autogenerating some files for the
