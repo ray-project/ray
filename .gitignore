@@ -134,6 +134,7 @@ build
 
 # Pytest Cache
 **/.pytest_cache
+.benchmarks
 
 # Vscode
 .vscode/
