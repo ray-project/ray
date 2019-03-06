@@ -83,7 +83,7 @@ def print_format_output(dataframe):
     return table, dropped_cols, empty_cols
 
 
-def get_experiment_state(experiment_path, exit_on_fail=False):
+def _get_experiment_state(experiment_path, exit_on_fail=False):
     experiment_path = os.path.expanduser(experiment_path)
     experiment_state_paths = glob.glob(
         os.path.join(experiment_path, "experiment_state*.json"))
@@ -106,7 +106,7 @@ def list_trials(experiment_path,
                 result_keys=DEFAULT_RESULT_KEYS):
     """Lists trials in the directory subtree starting at the given path."""
     _check_tabulate()
-    experiment_state = get_experiment_state(experiment_path, exit_on_fail=True)
+    experiment_state = _get_experiment_state(experiment_path, exit_on_fail=True)
 
     checkpoint_dicts = experiment_state["checkpoints"]
     checkpoint_dicts = [flatten_dict(g) for g in checkpoint_dicts]
@@ -141,7 +141,7 @@ def list_experiments(project_path,
     experiment_data_collection = []
 
     for experiment_dir in experiment_folders:
-        experiment_state = get_experiment_state(
+        experiment_state = _get_experiment_state(
             os.path.join(base, experiment_dir))
         if not experiment_state:
             logger.debug("No experiment state found in %s", experiment_dir)
