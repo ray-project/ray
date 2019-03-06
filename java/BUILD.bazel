@@ -122,7 +122,7 @@ genrule(
     srcs = [":copy_java_gcs_fbs"],
     outs = ["generate_java_gcs_fbs.out"],
     cmd = """
-        python3 $$(pwd)/java/modify_generated_java_flatbuffers_files.py $$(pwd)
+        python $$(pwd)/java/modify_generated_java_flatbuffers_files.py $$(pwd)
         echo $$(pwd) > $@
     """,
     local = 1,
@@ -179,7 +179,8 @@ genrule(
         GENERATED_DIR=$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
         mkdir -p $$GENERATED_DIR
         for f in $(locations //java:java_gcs_fbs); do
-            cp $$f $$GENERATED_DIR/;
+            chmod +w $$f
+            cp -f $$f $$GENERATED_DIR/
         done
         echo $$(pwd) >> $@
     """,
