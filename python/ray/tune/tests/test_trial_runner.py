@@ -376,7 +376,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
+        self.assertEqual(trial.last_result[DONE], True)
 
     def testErrorReturn(self):
         def train(config, reporter):
@@ -399,7 +399,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testSuccess(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(timesteps_total=i)
+                reporter(timesteps_total=i, done=i == 99)
 
         register_trainable("f1", train)
         [trial] = run_experiments({
@@ -413,30 +413,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
-    def testNoRaiseFlag(self):
-        def train(config, reporter):
-            # Finish this trial without any metric,
-            # which leads to a failed trial
-            return
-
-        register_trainable("f1", train)
-
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
-                }
-            },
-            raise_on_failed_trial=False)
-        self.assertEqual(trial.status, Trial.ERROR)
-
     def testReportInfinity(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(mean_accuracy=float('inf'))
+                reporter(mean_accuracy=float('inf'), done=i == 99)
 
         register_trainable("f1", train)
         [trial] = run_experiments({
@@ -453,7 +433,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testReportTimeStep(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(mean_accuracy=5)
+                reporter(mean_accuracy=5, done=i == 99)
 
         [trial] = run_experiments({
             "foo": {
@@ -467,7 +447,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         def train2(config, reporter):
             for i in range(10):
-                reporter(timesteps_total=5)
+                reporter(timesteps_total=5, done=i == 9)
 
         [trial2] = run_experiments({
             "foo": {
@@ -478,7 +458,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial2.last_result[TIMESTEPS_TOTAL], 5)
-        self.assertEqual(trial2.last_result["timesteps_this_iter"], 0)
+        self.assertRaises(KeyError, lambda: trial2.last_result["timesteps_this_iter"])
 
         def train3(config, reporter):
             for i in range(10):
@@ -563,7 +543,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testIterationCounter(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(itr=i, done=i == 99)
+                reporter(itr=i, timesteps_this_iter=1)
 
         register_trainable("exp", train)
         config = {
@@ -594,7 +574,7 @@ class RunExperimentTest(unittest.TestCase):
     def testDict(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(timesteps_total=i)
+                reporter(timesteps_total=i, done=i == 99)
 
         register_trainable("f1", train)
         trials = run_experiments({
@@ -618,7 +598,7 @@ class RunExperimentTest(unittest.TestCase):
     def testExperiment(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(timesteps_total=i)
+                reporter(timesteps_total=i, done=i == 99)
 
         register_trainable("f1", train)
         exp1 = Experiment(**{
@@ -635,7 +615,7 @@ class RunExperimentTest(unittest.TestCase):
     def testExperimentList(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(timesteps_total=i)
+                reporter(timesteps_total=i, done=i == 99)
 
         register_trainable("f1", train)
         exp1 = Experiment(**{
@@ -660,7 +640,7 @@ class RunExperimentTest(unittest.TestCase):
     def testAutoregisterTrainable(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(timesteps_total=i)
+                reporter(timesteps_total=i, done=i == 99)
 
         class B(Trainable):
             def _train(self):

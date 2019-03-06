@@ -10,7 +10,7 @@ from six.moves import queue
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TIME_THIS_ITER_S, TRAINING_ITERATION
+from ray.tune.result import TIME_THIS_ITER_S
 
 logger = logging.getLogger(__name__)
 
@@ -142,9 +142,6 @@ class FunctionRunner(Trainable):
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
-        
-        # the function runner's iteration count
-        self._iteration = 0
 
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
@@ -206,9 +203,6 @@ class FunctionRunner(Trainable):
                         "Runner error waiting to be raised in main thread. "
                         "Logging all available results first."
                         ))
-                
-        result.setdefault(TRAINING_ITERATION, self._iteration)   
-        self._iteration += 1
         
         return result
 
