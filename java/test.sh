@@ -7,12 +7,6 @@ set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-# Skip compiling the binaries if `--skip-compile` is passed in.
-if [[ "$@" != *--skip-compile* ]]; then
-    echo "Compiling binaries."
-    $ROOT_DIR/../build.sh -l python,java
-fi
-
 pushd $ROOT_DIR/../java
 echo "Compiling Java code."
 mvn clean install -Dmaven.test.skip
