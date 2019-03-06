@@ -46,6 +46,7 @@ if __name__ == "__main__":
     do_link("rllib", force=args.yes)
     do_link("tune", force=args.yes)
     do_link("autoscaler", force=args.yes)
+    do_link("scripts", force=args.yes)
     print("Created links.\n\nIf you run into issues initializing Ray, please "
           "ensure that your local repo and the installed Ray are in sync "
           "(pip install -U the latest wheels at "
