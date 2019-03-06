@@ -6,6 +6,7 @@ import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.id.UniqueId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -14,6 +15,11 @@ public class StressTest extends BaseTest {
 
   public static int echo(int x) {
     return x;
+  }
+
+  @Override
+  public void beforeEachCase() {
+    TestUtils.skipTestUnderSingleProcess();
   }
 
   @Test

@@ -183,6 +183,41 @@ print("success")
         assert "success" in out
 
 
+def test_receive_late_worker_logs():
+    # Make sure that log messages from tasks appear in the stdout even if the
+    # script exits quickly.
+    log_message = "some helpful debugging message"
+
+    # Define a driver that creates a task that prints something, ensures that
+    # the task runs, and then exits.
+    driver_script = """
+import ray
+import random
+import time
+
+log_message = "{}"
+
+@ray.remote
+class Actor(object):
+    def log(self):
+        print(log_message)
+
+@ray.remote
+def f():
+    print(log_message)
+
+ray.init(num_cpus=2)
+
+a = Actor.remote()
+ray.get([a.log.remote(), f.remote()])
+ray.get([a.log.remote(), f.remote()])
+""".format(log_message)
+
+    for _ in range(2):
+        out = run_string_as_driver(driver_script)
+        assert out.count(log_message) == 4
+
+
 @pytest.fixture
 def ray_start_head_with_resources():
     out = run_and_get_output(
