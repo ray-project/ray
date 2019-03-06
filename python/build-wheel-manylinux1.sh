@@ -22,6 +22,9 @@ NUMPY_VERSIONS=("1.10.4"
 sudo apt-get install unzip
 /ray/ci/travis/install-bazel.sh
 
+# Put bazel into the PATH
+export PATH=$PATH:/root/bin
+
 # Remove this old Python 2.4.3 executable, and make the "python2" command find
 # a newer version of Python. We need this for autogenerating some files for the
 # UI.
