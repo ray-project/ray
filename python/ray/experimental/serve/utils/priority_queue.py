@@ -1,8 +1,12 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import heapq
 
 
 class PriorityQueue:
-    """A min-heap class wrapping heapq module"""
+    """A min-heap class wrapping heapq module."""
 
     def __init__(self):
         self.q = []

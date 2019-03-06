@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import pytest
 
@@ -24,14 +28,15 @@ def generated_inputs():
     input_arr = np.arange(10)
     for i in input_arr:
         oid = get_new_oid()
-        inputs.append(SingleQuery(data=i, result_oid=oid, deadline_s=deadline))
+        inputs.append(
+            SingleQuery(data=i, result_object_id=oid, deadline_s=deadline))
     return inputs
 
 
 def test_vadd(ray_start, generated_inputs):
     adder = VectorizedAdder.remote(INCREMENT)
     inputs = generated_inputs
-    oids = [inp.result_oid for inp in inputs]
+    oids = [inp.result_object_id for inp in inputs]
     input_data = [inp.data for inp in inputs]
 
     adder._dispatch.remote(inputs)
@@ -42,7 +47,7 @@ def test_vadd(ray_start, generated_inputs):
 def test_single_input(ray_start, generated_inputs):
     counter = Counter.remote()
     counter._dispatch.remote(generated_inputs)
-    oids = [inp.result_oid for inp in generated_inputs]
+    oids = [inp.result_object_id for inp in generated_inputs]
     returned_query_ids = np.array(ray.get(oids))
     assert np.array_equal(returned_query_ids, np.arange(1, 11))
 
@@ -50,7 +55,7 @@ def test_single_input(ray_start, generated_inputs):
 def test_custom_method(ray_start, generated_inputs):
     dummy = CustomCounter.remote()
     dummy._dispatch.remote(generated_inputs)
-    oids = [inp.result_oid for inp in generated_inputs]
+    oids = [inp.result_object_id for inp in generated_inputs]
     returned_query_ids = np.array(ray.get(oids))
     assert np.array_equal(returned_query_ids, np.ones(10))
 
@@ -60,4 +65,4 @@ def test_exception(ray_start):
     query = SingleQuery("this can't be added with int", get_new_oid(), 10)
     adder._dispatch.remote([query])
     with pytest.raises(ray.worker.RayTaskError):
-        ray.get(query.result_oid)
+        ray.get(query.result_object_id)
