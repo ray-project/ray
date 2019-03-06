@@ -11,7 +11,7 @@ INCREMENT = 3
 
 
 @pytest.fixture(scope="module")
-def init_ray():
+def ray_start():
     ray.init()
     yield
     ray.shutdown()
@@ -28,7 +28,7 @@ def generated_inputs():
     return inputs
 
 
-def test_vadd(init_ray, generated_inputs):
+def test_vadd(ray_start, generated_inputs):
     adder = VectorizedAdder.remote(INCREMENT)
     inputs = generated_inputs
     oids = [inp.result_oid for inp in inputs]
@@ -39,7 +39,7 @@ def test_vadd(init_ray, generated_inputs):
     assert np.array_equal(result_arr, np.array(input_data) + INCREMENT)
 
 
-def test_single_input(init_ray, generated_inputs):
+def test_single_input(ray_start, generated_inputs):
     counter = Counter.remote()
     counter._dispatch.remote(generated_inputs)
     oids = [inp.result_oid for inp in generated_inputs]
@@ -47,7 +47,7 @@ def test_single_input(init_ray, generated_inputs):
     assert np.array_equal(returned_query_ids, np.arange(1, 11))
 
 
-def test_custom_method(init_ray, generated_inputs):
+def test_custom_method(ray_start, generated_inputs):
     dummy = CustomCounter.remote()
     dummy._dispatch.remote(generated_inputs)
     oids = [inp.result_oid for inp in generated_inputs]
@@ -55,7 +55,7 @@ def test_custom_method(init_ray, generated_inputs):
     assert np.array_equal(returned_query_ids, np.ones(10))
 
 
-def test_exception(init_ray):
+def test_exception(ray_start):
     adder = ScalerAdder.remote(INCREMENT)
     query = SingleQuery("this can't be added with int", get_new_oid(), 10)
     adder._dispatch.remote([query])
