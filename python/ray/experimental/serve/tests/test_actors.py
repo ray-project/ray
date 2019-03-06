@@ -2,10 +2,10 @@ import numpy as np
 import pytest
 
 import ray
-from ray.serve import SingleQuery
-from ray.serve.examples.adder import VectorizedAdder
-from ray.serve.examples.counter import Counter, CustomCounter
-from ray.serve.object_id import get_new_oid
+from ray.experimental.serve import SingleQuery
+from ray.experimental.serve.examples.adder import ScalerAdder, VectorizedAdder
+from ray.experimental.serve.examples.counter import Counter, CustomCounter
+from ray.experimental.serve.object_id import get_new_oid
 
 INCREMENT = 3
 
@@ -55,12 +55,9 @@ def test_custom_method(init_ray, generated_inputs):
     assert np.array_equal(returned_query_ids, np.ones(10))
 
 
-if __name__ == "__main__":
-    ray.init()
-    dummy = CustomCounter.remote()
-    inputs = generated_inputs()
-    dummy._dispatch.remote(inputs)
-    oids = [inp.result_oid for inp in inputs]
-    returned_query_ids = np.array(ray.get(oids))
-    assert np.array_equal(returned_query_ids, np.ones(10))
-    ray.shutdown()
+def test_exception(init_ray):
+    adder = ScalerAdder.remote(INCREMENT)
+    query = SingleQuery("this can't be added with int", get_new_oid(), 10)
+    adder._dispatch.remote([query])
+    with pytest.raises(ray.worker.RayTaskError):
+        ray.get(query.result_oid)

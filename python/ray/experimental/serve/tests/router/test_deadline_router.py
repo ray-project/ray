@@ -2,20 +2,25 @@ from time import perf_counter
 
 import numpy as np
 import pytest
+
 import ray
-from ray.serve import DeadlineAwareRouter, unwrap
-from ray.serve.examples.adder import ScalerAdder, VectorizedAdder
-from ray.serve.examples.halt import SleepCounter, SleepOnFirst
-from ray.serve.router import start_router
+from ray.experimental.serve import DeadlineAwareRouter, unwrap
+from ray.experimental.serve.examples.adder import ScalerAdder, VectorizedAdder
+from ray.experimental.serve.examples.halt import SleepCounter, SleepOnFirst
+from ray.experimental.serve.router import start_router
 
 
 @pytest.fixture(scope="module")
 def router():
     ray.init()
 
+    # The following two blobs are equivalent
+    #
     # handle = DeadlineAwareRouter.remote("DefaultTestRouter")
     # ray.experimental.register_actor("DefaultTestRouter", handle)
     # handle.start.remote()
+    #
+    # handle = start_router(DeadlineAwareRouter, "DefaultRouter")
     handle = start_router(DeadlineAwareRouter, "DefaultRouter")
 
     handle.register_actor.remote(
@@ -29,7 +34,9 @@ def router():
     )
     handle.register_actor.remote("SleepCounter", SleepCounter, max_batch_size=1)
 
-    return handle
+    yield handle
+
+    ray.shutdown()
 
 
 @pytest.fixture
@@ -72,25 +79,6 @@ def test_deadline_priority(router: DeadlineAwareRouter, now: float):
 
     # and a request with sooner deadline
     third = unwrap(router.call.remote("SleepCounter", 0, now + 1))
-
-    id_1, id_2, id_3 = ray.get([first, second, third])
-
-    assert id_1 < id_3 < id_2
-
-
-if __name__ == "__main__":
-    ray.init()
-    handle = start_router(DeadlineAwareRouter, "DefaultRouter")
-    handle.register_actor.remote("SleepCounter", SleepCounter, max_batch_size=1)
-
-    # first sleep 2 seconds
-    first = unwrap(handle.call.remote("SleepCounter", 2, now() + 1))
-
-    # then send a request to with deadline farther away
-    second = unwrap(handle.call.remote("SleepCounter", 0, now() + 10))
-
-    # and a request with sooner deadline
-    third = unwrap(handle.call.remote("SleepCounter", 0, now() + 1))
 
     id_1, id_2, id_3 = ray.get([first, second, third])
 

@@ -1,6 +1,6 @@
 # Ray Serve Module
 
-`ray.serve` is a module for publishing your actors to interact with outside world. 
+`ray.experimental.serve` is a module for publishing your actors to interact with outside world. 
 
 ## Use Case
 
@@ -15,7 +15,7 @@
 
 ## Architecture
 
-`ray.serve` is implemented in a three-tiered system. Each tier can scale horizontally. 
+`ray.experimental.serve` is implemented in a three-tiered system. Each tier can scale horizontally. 
 
 In the following illustration, call chain goes from top to bottom. 
 Each box is one or more replicated ray actors.
@@ -42,7 +42,7 @@ Frontend     |   HTTP Frontend   |     |    Arrow RPC    |   |    ...     |
 ```
 
 ### Frontend Tier
-The frontend tier is repsonsible for interface with the world. Currently `ray.serve` provides
+The frontend tier is repsonsible for interface with the world. Currently `ray.experimental.serve` provides
 implementation for 
 - HTTP Frontend
 
@@ -52,7 +52,7 @@ And we are planning to add support for
 
 ### Router Tier
 The router tier receives calls from frontend and route them to the managed actors. Routers both _route_
-and _queue_ incoming queries. `ray.serve` has native support for (micro-)batching queries. 
+and _queue_ incoming queries. `ray.experimental.serve` has native support for (micro-)batching queries. 
 
 In addition, we implemented a deadline aware routers that will put high priority queries in the front
 of the queue so they will be delivered first. 

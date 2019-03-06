@@ -1,15 +1,14 @@
 import time
 
 import ray
-from ray.serve import RayServeMixin, single_input
-from ray.serve.utils.debug import print_debug
+from ray.experimental.serve import RayServeMixin, single_input
 
 
 @ray.remote
 class SleepOnFirst(RayServeMixin):
     """Sleep on the first request, return batch size
 
-    Used for testing
+    Used for testing DeadlineAwareRouter
     """
 
     def __init__(self, sleep_time):
@@ -23,6 +22,8 @@ class SleepOnFirst(RayServeMixin):
 @ray.remote
 class SleepCounter(RayServeMixin):
     """Sleep on input argument seconds, return the query id
+
+    Used to test DeadlineAwareRouter
     """
 
     def __init__(self):
@@ -30,7 +31,6 @@ class SleepCounter(RayServeMixin):
 
     def __call__(self, input_batch):
         total_sleep_time = sum(input_batch)
-        print_debug("sleeping", total_sleep_time)
         time.sleep(total_sleep_time)
 
         results = []

@@ -5,9 +5,8 @@ from functools import total_ordering
 from typing import Callable, Dict, List, Set, Tuple
 
 import ray
-from ray.serve.object_id import get_new_oid
-from ray.serve.utils.debug import print_debug
-from ray.serve.utils.PriorityQueue import PriorityQueue
+from ray.experimental.serve.object_id import get_new_oid
+from ray.experimental.serve.utils.PriorityQueue import PriorityQueue
 
 ACTOR_NOT_REGISTERED_MSG: Callable = lambda name: """
 Actor {} is not registered with this router. Please use router.register_actor.remote(...)
@@ -19,6 +18,10 @@ to regsier it.
 
 @total_ordering
 class SingleQuery:
+    """Data container for request data, its result object id, 
+       and corresponding deadline in seconds
+    """
+
     def __init__(self, data, result_oid: ray.ObjectID, deadline_s: float):
         self.data = data
         self.result_oid = result_oid
@@ -33,6 +36,10 @@ class SingleQuery:
 
 @ray.remote
 class DeadlineAwareRouter:
+    """DeadlineAwareRouter is a router that takes into consideration of the deadline
+    attached to each query. It will re-order incoming query based on their deadline.
+    """
+
     def __init__(self, router_name):
         # Runtime Data
         self.query_queues: Dict[str, PriorityQueue] = defaultdict(PriorityQueue)
@@ -44,11 +51,14 @@ class DeadlineAwareRouter:
         self.actor_init_arguments: Dict[str, Tuple[List, Dict]] = dict()
         self.max_batch_size: Dict[str, int] = dict()
 
+        # Router Metadata
         self.name = router_name
 
     def start(self):
         """Kick off the router loop"""
-        # Note: This is meant for hiding the complexity.
+
+        # Note: This is meant for hiding the complexity for a user
+        #       facing method.
         #       Because the `loop` api can be hard to understand.
         ray.experimental.get_actor(self.name).loop.remote()
 
@@ -61,6 +71,8 @@ class DeadlineAwareRouter:
         num_replicas: int = 1,
         max_batch_size: int = -1,  # Unbounded batch size
     ):
+        """Register a new managed actor. 
+        """
         self.managed_actors[actor_name] = actor_class
         self.actor_init_arguments[actor_name] = (init_args, init_kwargs)
         self.max_batch_size[actor_name] = max_batch_size
@@ -70,6 +82,8 @@ class DeadlineAwareRouter:
         )
 
     def set_replica(self, actor_name, new_replica_count):
+        """Scale a managed actor according to new_replica_count
+        """
         assert actor_name in self.managed_actors, ACTOR_NOT_REGISTERED_MSG(actor_name)
 
         current_replicas = len(self.actor_handles[actor_name])
@@ -90,41 +104,45 @@ class DeadlineAwareRouter:
                 removed_actor = self.actor_handles[actor_name].pop()
 
                 # Note actor destructor will be called after all remaining call finishes
-                # Therefore it's safe to call `del` ehre.
+                # Therefore it's safe to call `del` here.
                 del removed_actor
 
     def call(self, actor_name, data, deadline_s):
+        """Enqueue a request to one of the actor managed by this router.
+        
+        Returns:
+            List[ray.ObjectID] with length 1, the object id wrapped inside is the result
+            objectid when the query is executed. 
+        """
         assert actor_name in self.managed_actors, ACTOR_NOT_REGISTERED_MSG(actor_name)
 
         result_oid = get_new_oid()
         self.query_queues[actor_name].push(SingleQuery(data, result_oid, deadline_s))
 
-        print_debug(
-            "Received request for actor {0}, assigning object id {1}".format(
-                actor_name, result_oid
-            )
-        )
-
         return [result_oid]
 
     def loop(self):
+        """Main loop for router. It will does the following things:
+        
+        1. Check which running actors finished
+        2. Iterate over free actors and request queues, dispatch requests batch to free actors
+        3. Tail recursively schedule itself.
+        """
+
+        # 1. Check which running actors finished
         ready_oids, _ = ray.wait(
             object_ids=list(self.running_queries.keys()),
             num_returns=len(self.running_queries),
             timeout=0,
         )
 
-        print_debug("entering loop")
-
         for ready_oid in ready_oids:
             self.running_queries.pop(ready_oid)
         busy_actors: Set[ray.actor.ActorHandle] = set(self.running_queries.values())
-        print_debug("Busy actors", busy_actors)
 
+        # 2. Iterate over free actors and request queues, dispatch requests batch to free actors
         for actor_name, queue in self.query_queues.items():
-            print_debug("Go overing actor", actor_name, "with length", len(queue))
             # try to drain the queue
-
             for actor_handle in self.actor_handles[actor_name]:
                 if len(queue) == 0:
                     break
@@ -134,16 +152,17 @@ class DeadlineAwareRouter:
 
                 # A free actor found. Dispatch queries
                 batch = self._get_next_batch(actor_name)
-                print_debug("Assining batch", batch, "to", actor_handle)
                 assert len(batch)
 
-                actor_handle._dispatch.remote(batch)
-                self._mark_running(batch, actor_handle)
+                batch_result_oid = actor_handle._dispatch.remote(batch)
+                self._mark_running(batch_result_oid, actor_handle)
 
-        # time.sleep(2)
+        # 3. Tail recursively schedule itself.
         ray.experimental.get_actor(self.name).loop.remote()
 
     def _get_next_batch(self, actor_name: str) -> List[SingleQuery]:
+        """Get next batch of request for actor {actor_name}
+        """
         assert actor_name in self.query_queues, ACTOR_NOT_REGISTERED_MSG(actor_name)
 
         inputs = []
@@ -151,7 +170,6 @@ class DeadlineAwareRouter:
         if batch_size == -1:
             inp = self.query_queues[actor_name].try_pop()
             while inp:
-                print_debug("Adding {0} to batch for actor {1}".format(inp, actor_name))
                 inputs.append(inp)
                 inp = self.query_queues[actor_name].try_pop()
         else:
@@ -165,7 +183,9 @@ class DeadlineAwareRouter:
         return inputs
 
     def _mark_running(
-        self, query_batch: List[SingleQuery], actor_handle: ray.actor.ActorHandle
+        self, batch_oid: ray.ObjectID, actor_handle: ray.actor.ActorHandle
     ):
-        for query in query_batch:
-            self.running_queries[query.result_oid] = actor_handle
+        """Mark actor_handle as running identified by batch_oid.
+        This means that if batch_oid is fullfilled, then actor_handle must be free.
+        """
+        self.running_queries[batch_oid] = actor_handle
