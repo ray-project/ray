@@ -256,6 +256,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
         include_java=include_java,
+        include_webui=include_webui,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
         _internal_config=internal_config)
@@ -334,9 +335,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if redis_max_clients is not None:
             raise Exception("If --head is not passed in, --redis-max-clients "
                             "must not be provided.")
-        if include_webui:
-            raise Exception("If --head is not passed in, the --include-webui "
-                            "flag is not relevant.")
         if include_java is not None:
             raise ValueError("--include-java should only be set for the head "
                              "node.")
