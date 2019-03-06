@@ -117,7 +117,6 @@ java_test(
     ],
 )
 
-#use .py file to generate *.java, but be telled can't to find the generated files
 genrule(
     name = "generate_java_gcs_fbs",
     srcs = [":copy_java_gcs_fbs"],
