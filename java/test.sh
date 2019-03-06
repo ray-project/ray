@@ -36,9 +36,9 @@ else
   pushd $ROOT_DIR/..
   bazel build -c opt //java:all
   pushd $ROOT_DIR/../java/test
-  java -jar -Dray.home=$ROOT_DIR/../ -Djava.library.path=$ROOT_DIR/../bazel-bin:$ROOT_DIR/../bazel-bin/externl/plasma:$ROOT_DIR/../bazel-genfiles $ROOT_DIR/../bazel-bin/java/AllTests_deploy.jar $ROOT_DIR/../java/testng.xml
+  java -jar -Dray.home=$ROOT_DIR/../ $ROOT_DIR/../bazel-bin/java/AllTests_deploy.jar $ROOT_DIR/../java/testng.xml
 
-  java -jar -Dray.home=$ROOT_DIR/../ -Dray.run-mode=SINGLE_PROCESS -Djava.library.path=$ROOT_DIR/../bazel-bin:$ROOT_DIR/../bazel-bin/externl/plasma:$ROOT_DIR/../bazel-genfiles $ROOT_DIR/../bazel-bin/java/AllTests_deploy.jar $ROOT_DIR/../java/testng.xml
+  java -jar -Dray.home=$ROOT_DIR/../ -Dray.run-mode=SINGLE_PROCESS $ROOT_DIR/../bazel-bin/java/AllTests_deploy.jar $ROOT_DIR/../java/testng.xml
 fi
 
 popd
