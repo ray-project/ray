@@ -2,8 +2,8 @@ from ray.includes.ray_config cimport RayConfig
 
 cdef class Config:
     @staticmethod
-    def ray_protocol_version():
-        return RayConfig.instance().ray_protocol_version()
+    def ray_cookie():
+        return RayConfig.instance().ray_cookie()
 
     @staticmethod
     def handler_warning_timeout_ms():
@@ -27,7 +27,8 @@ cdef class Config:
 
     @staticmethod
     def initial_reconstruction_timeout_milliseconds():
-        return RayConfig.instance().initial_reconstruction_timeout_milliseconds()
+        return (RayConfig.instance()
+                .initial_reconstruction_timeout_milliseconds())
 
     @staticmethod
     def get_timeout_milliseconds():
@@ -59,11 +60,13 @@ cdef class Config:
 
     @staticmethod
     def local_scheduler_fetch_timeout_milliseconds():
-        return RayConfig.instance().local_scheduler_fetch_timeout_milliseconds()
+        return (RayConfig.instance()
+                .local_scheduler_fetch_timeout_milliseconds())
 
     @staticmethod
     def local_scheduler_reconstruction_timeout_milliseconds():
-        return RayConfig.instance().local_scheduler_reconstruction_timeout_milliseconds()
+        return (RayConfig.instance()
+                .local_scheduler_reconstruction_timeout_milliseconds())
 
     @staticmethod
     def max_num_to_reconstruct():
@@ -119,7 +122,8 @@ cdef class Config:
 
     @staticmethod
     def node_manager_forward_task_retry_timeout_milliseconds():
-        return RayConfig.instance().node_manager_forward_task_retry_timeout_milliseconds()
+        return (RayConfig.instance()
+                .node_manager_forward_task_retry_timeout_milliseconds())
 
     @staticmethod
     def object_manager_pull_timeout_ms():
@@ -144,3 +148,11 @@ cdef class Config:
     @staticmethod
     def max_task_lease_timeout_ms():
         return RayConfig.instance().max_task_lease_timeout_ms()
+
+    @staticmethod
+    def num_actor_checkpoints_to_keep():
+        return RayConfig.instance().num_actor_checkpoints_to_keep()
+
+    @staticmethod
+    def maximum_gcs_deletion_batch_size():
+        return RayConfig.instance().maximum_gcs_deletion_batch_size()

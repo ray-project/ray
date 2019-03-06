@@ -71,6 +71,14 @@ enum MessageType:int {
   PushProfileEventsRequest,
   // Free the objects in objects store.
   FreeObjectsInObjectStoreRequest,
+  // Request raylet backend to prepare a checkpoint for an actor.
+  PrepareActorCheckpointRequest,
+  // Reply of `PrepareActorCheckpointRequest`.
+  PrepareActorCheckpointReply,
+  // Notify raylet backend that an actor was resumed from a checkpoint.
+  NotifyActorResumedFromCheckpoint,
+  // A node manager requests to connect to another node manager.
+  ConnectClient,
 }
 
 table TaskExecutionSpecification {
@@ -203,4 +211,26 @@ table FreeObjectsRequest {
   local_only: bool;
   // List of object ids we'll delete from object store.
   object_ids: [string];
+}
+
+table PrepareActorCheckpointRequest {
+  // ID of the actor.
+  actor_id: string;
+}
+
+table PrepareActorCheckpointReply {
+  // ID of the checkpoint.
+  checkpoint_id: string;
+}
+
+table NotifyActorResumedFromCheckpoint {
+  // ID of the actor.
+  actor_id: string;
+  // ID of the checkpoint from which the actor was resumed.
+  checkpoint_id: string;
+}
+
+table ConnectClient {
+  // ID of the connecting client.
+  client_id: string;
 }

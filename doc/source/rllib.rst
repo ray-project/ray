@@ -82,17 +82,17 @@ Algorithms
 Models and Preprocessors
 ------------------------
 * `RLlib Models and Preprocessors Overview <rllib-models.html>`__
-* `Built-in Models and Preprocessors <rllib-models.html#built-in-models-and-preprocessors>`__
 * `Custom Models (TensorFlow) <rllib-models.html#custom-models-tensorflow>`__
 * `Custom Models (PyTorch) <rllib-models.html#custom-models-pytorch>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
-* `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
+* `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
-* `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
+* `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
 
 Offline Datasets
 ----------------
 * `Working with Offline Datasets <rllib-offline.html>`__
+* `Input Pipeline for Supervised Losses <rllib-offline.html#input-pipeline-for-supervised-losses>`__
 * `Input API <rllib-offline.html#input-api>`__
 * `Output API <rllib-offline.html#output-api>`__
 
@@ -133,5 +133,8 @@ If you encounter errors like
 try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
 `ulimit -a` for other resource limit errors.
 
+If you encounter out-of-memory errors, consider setting ``redis_max_memory`` and ``object_store_memory`` in ``ray.init()`` to reduce memory usage.
+
 For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
-the stack traces of all Ray workers on the current node. This requires py-spy to be installed.
+the stack traces of all Ray workers on the current node, and ``ray timeline`` to dump
+a timeline visualization of tasks to a file.

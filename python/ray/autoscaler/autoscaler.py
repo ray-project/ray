@@ -73,6 +73,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "head_ip": (str, OPTIONAL),  # local cluster head node
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
             "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
+            "extra_config": (dict, OPTIONAL),  # provider-specific config
         },
         REQUIRED),
 
@@ -90,6 +91,7 @@ CLUSTER_CONFIG_SCHEMA = {
         {
             "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
             "container_name": (str, OPTIONAL),  # e.g., ray_docker
+            "run_options": (list, OPTIONAL),
         },
         OPTIONAL),
 
@@ -102,7 +104,12 @@ CLUSTER_CONFIG_SCHEMA = {
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
     "file_mounts": (dict, OPTIONAL),
 
-    # List of common shell commands to run to initialize nodes.
+    # List of commands that will be run before `setup_commands`. If docker is
+    # enabled, these commands will run outside the container and before docker
+    # is setup.
+    "initialization_commands": (list, OPTIONAL),
+
+    # List of common shell commands to run to setup nodes.
     "setup_commands": (list, OPTIONAL),
 
     # Commands that will be run on the head node after common setup.
@@ -148,6 +155,8 @@ class LoadMetrics(object):
         self.last_heartbeat_time_by_ip[ip] = now
 
     def mark_active(self, ip):
+        assert ip is not None, "IP should be known at this time"
+        logger.info("Node {} is newly setup, treating as active".format(ip))
         self.last_heartbeat_time_by_ip[ip] = time.time()
 
     def prune_active_ips(self, active_ips):
@@ -170,9 +179,13 @@ class LoadMetrics(object):
         prune(self.last_used_time_by_ip)
         prune(self.static_resources_by_ip)
         prune(self.dynamic_resources_by_ip)
+        prune(self.last_heartbeat_time_by_ip)
 
     def approx_workers_used(self):
         return self._info()["NumNodesUsed"]
+
+    def num_workers_connected(self):
+        return self._info()["NumNodesConnected"]
 
     def info_string(self):
         return ", ".join(
@@ -203,6 +216,13 @@ class LoadMetrics(object):
         heartbeat_times = [
             now - t for t in self.last_heartbeat_time_by_ip.values()
         ]
+        most_delayed_heartbeats = sorted(
+            list(self.last_heartbeat_time_by_ip.items()),
+            key=lambda pair: pair[1])[:5]
+        most_delayed_heartbeats = {
+            ip: (now - t)
+            for ip, t in most_delayed_heartbeats
+        }
         return {
             "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
@@ -220,6 +240,7 @@ class LoadMetrics(object):
                 int(np.min(heartbeat_times)) if heartbeat_times else -1,
                 int(np.mean(heartbeat_times)) if heartbeat_times else -1,
                 int(np.max(heartbeat_times)) if heartbeat_times else -1),
+            "MostDelayedHeartbeats": most_delayed_heartbeats,
         }
 
 
@@ -232,7 +253,7 @@ class NodeLauncher(threading.Thread):
 
     def _launch_node(self, config, count):
         tag_filters = {TAG_RAY_NODE_TYPE: "worker"}
-        before = self.provider.nodes(tag_filters=tag_filters)
+        before = self.provider.non_terminated_nodes(tag_filters=tag_filters)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
         self.provider.create_node(
             config["worker_nodes"], {
@@ -242,7 +263,7 @@ class NodeLauncher(threading.Thread):
                 TAG_RAY_NODE_STATUS: "uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: launch_hash,
             }, count)
-        after = self.provider.nodes(tag_filters=tag_filters)
+        after = self.provider.non_terminated_nodes(tag_filters=tag_filters)
         if set(after).issubset(before):
             logger.error("NodeLauncher: "
                          "No new nodes reported after node creation")
@@ -423,7 +444,8 @@ class StandardAutoscaler(object):
             self.launch_new_node(num_launches)
             nodes = self.workers()
             self.log_info_string(nodes)
-        else:
+        elif self.load_metrics.num_workers_connected() >= target_workers:
+            logger.info("Ending bringup phase")
             self.bringup = False
 
         # Process any completed updates
@@ -485,15 +507,15 @@ class StandardAutoscaler(object):
                                  "Error parsing config.")
 
     def target_num_workers(self):
-        initial_workers = self.config["initial_workers"]
+        target_frac = self.config["target_utilization_fraction"]
+        cur_used = self.load_metrics.approx_workers_used()
+        ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
+        ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
 
         if self.bringup:
-            ideal_num_workers = initial_workers
-        else:
-            target_frac = self.config["target_utilization_fraction"]
-            cur_used = self.load_metrics.approx_workers_used()
-            ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
-            ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
+            ideal_num_workers = max(ideal_num_workers,
+                                    self.config["initial_workers"])
+
         return min(self.config["max_workers"],
                    max(self.config["min_workers"], ideal_num_workers))
 
@@ -527,13 +549,16 @@ class StandardAutoscaler(object):
                        "{}: No heartbeat in {}s, "
                        "restarting Ray to recover...".format(node_id, delta))
         updater = NodeUpdaterThread(
-            node_id,
-            self.config["provider"],
-            self.provider,
-            self.config["auth"],
-            self.config["cluster_name"], {},
-            with_head_node_ip(self.config["worker_start_ray_commands"]),
-            self.runtime_hash,
+            node_id=node_id,
+            provider_config=self.config["provider"],
+            provider=self.provider,
+            auth_config=self.config["auth"],
+            cluster_name=self.config["cluster_name"],
+            file_mounts={},
+            initialization_commands=[],
+            setup_commands=with_head_node_ip(
+                self.config["worker_start_ray_commands"]),
+            runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
         updater.start()
@@ -561,14 +586,16 @@ class StandardAutoscaler(object):
 
     def spawn_updater(self, node_id, init_commands):
         updater = NodeUpdaterThread(
-            node_id,
-            self.config["provider"],
-            self.provider,
-            self.config["auth"],
-            self.config["cluster_name"],
-            self.config["file_mounts"],
-            with_head_node_ip(init_commands),
-            self.runtime_hash,
+            node_id=node_id,
+            provider_config=self.config["provider"],
+            provider=self.provider,
+            auth_config=self.config["auth"],
+            cluster_name=self.config["cluster_name"],
+            file_mounts=self.config["file_mounts"],
+            initialization_commands=with_head_node_ip(
+                self.config["initialization_commands"]),
+            setup_commands=with_head_node_ip(init_commands),
+            runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
         updater.start()
@@ -591,7 +618,8 @@ class StandardAutoscaler(object):
         self.launch_queue.put((config, count))
 
     def workers(self):
-        return self.provider.nodes(tag_filters={TAG_RAY_NODE_TYPE: "worker"})
+        return self.provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_TYPE: "worker"})
 
     def log_info_string(self, nodes):
         logger.info("StandardAutoscaler: {}".format(self.info_string(nodes)))

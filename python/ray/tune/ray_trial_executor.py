@@ -5,15 +5,26 @@ from __future__ import print_function
 
 import logging
 import os
+import random
 import time
 import traceback
 
 import ray
+from ray.tune.error import TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 
 logger = logging.getLogger(__name__)
+
+
+class _LocalWrapper(object):
+    def __init__(self, result):
+        self._result = result
+
+    def unwrap(self):
+        """Returns the wrapped result."""
+        return self._result
 
 
 class RayTrialExecutor(TrialExecutor):
@@ -60,6 +71,11 @@ class RayTrialExecutor(TrialExecutor):
 
         assert trial.status == Trial.RUNNING, trial.status
         remote = trial.runner.train.remote()
+
+        # Local Mode
+        if isinstance(remote, dict):
+            remote = _LocalWrapper(remote)
+
         self._running[remote] = trial
 
     def _start_trial(self, trial, checkpoint=None):
@@ -215,7 +231,13 @@ class RayTrialExecutor(TrialExecutor):
         return list(self._running.values())
 
     def get_next_available_trial(self):
-        [result_id], _ = ray.wait(list(self._running))
+        shuffled_results = list(self._running.keys())
+        random.shuffle(shuffled_results)
+        # Note: We shuffle the results because `ray.wait` by default returns
+        # the first available result, and we want to guarantee that slower
+        # trials (i.e. trials that run remotely) also get fairly reported.
+        # See https://github.com/ray-project/ray/issues/4211 for details.
+        [result_id], _ = ray.wait(shuffled_results)
         return self._running[result_id]
 
     def fetch_result(self, trial):
@@ -228,6 +250,10 @@ class RayTrialExecutor(TrialExecutor):
             raise ValueError("Trial was not running.")
         self._running.pop(trial_future[0])
         result = ray.get(trial_future[0])
+
+        # For local mode
+        if isinstance(result, _LocalWrapper):
+            result = result.unwrap()
         return result
 
     def _commit_resources(self, resources):
@@ -265,10 +291,22 @@ class RayTrialExecutor(TrialExecutor):
 
     def _update_avail_resources(self, num_retries=5):
         for i in range(num_retries):
-            resources = ray.global_state.cluster_resources()
+            try:
+                resources = ray.global_state.cluster_resources()
+            except Exception:
+                # TODO(rliaw): Remove this when local mode is fixed.
+                # https://github.com/ray-project/ray/issues/4147
+                logger.debug("Using resources for local machine.")
+                resources = ray.services.check_and_update_resources(
+                    None, None, None)
             if not resources:
                 logger.warning("Cluster resources not detected. Retrying...")
                 time.sleep(0.5)
+
+        if not resources or "CPU" not in resources:
+            raise TuneError("Cluster resources cannot be detected. "
+                            "You can resume this experiment by passing in "
+                            "`resume=True` to `run_experiments`.")
 
         resources = resources.copy()
         num_cpus = resources.pop("CPU")

@@ -9,11 +9,14 @@ You can utilize these search algorithms as follows:
 
     run_experiments(experiments, search_alg=SearchAlgorithm(...))
 
-Currently, Tune offers the following search algorithms:
+Currently, Tune offers the following search algorithms (and library integrations):
 
 - `Grid Search and Random Search <tune-searchalg.html#variant-generation-grid-search-random-search>`__
+- `BayesOpt <tune-searchalg.html#bayesopt-search>`__
 - `HyperOpt <tune-searchalg.html#hyperopt-search-tree-structured-parzen-estimators>`__
 - `SigOpt <tune-searchalg.html#sigopt-search>`__
+- `Nevergrad <tune-searchalg.html#nevergrad-search>`__
+- `Scikit-Optimize <tune-searchalg.html#scikit-optimize-search>`__
 
 
 Variant Generation (Grid Search/Random Search)
@@ -100,6 +103,55 @@ This algorithm requires using the `SigOpt experiment and space specification <ht
 An example of this can be found in `sigopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/sigopt_example.py>`__.
 
 .. autoclass:: ray.tune.suggest.SigOptSearch
+    :show-inheritance:
+    :noindex:
+
+Nevergrad Search
+----------------
+
+The ``NevergradSearch`` is a SearchAlgorithm that is backed by `Nevergrad <https://github.com/facebookresearch/nevergrad>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using NevergradSearch.
+
+In order to use this search algorithm, you will need to install Nevergrad via the following command.:
+
+.. code-block:: bash
+
+    $ pip install nevergrad
+
+Keep in mind that ``nevergrad`` is a Python 3.6+ library.
+
+This algorithm requires using an optimizer provided by ``nevergrad``, of which there are many options. A good rundown can be found on their README's `Optimization <https://github.com/facebookresearch/nevergrad/blob/master/docs/optimization.md#Choosing-an-optimizer>`__ section. You can use ``NevergradSearch`` like follows:
+
+.. code-block:: python
+
+    run_experiments(experiment_config, search_alg=NevergradSearch(optimizer, parameter_names, ... ))
+
+An example of this can be found in `nevergrad_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py>`__.
+
+.. autoclass:: ray.tune.suggest.NevergradSearch
+    :show-inheritance:
+    :noindex:
+
+Scikit-Optimize Search
+----------------------
+
+The ``SkOptSearch`` is a SearchAlgorithm that is backed by `Scikit-Optimize <https://scikit-optimize.github.io>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using SkOptSearch.
+
+In order to use this search algorithm, you will need to install Scikit-Optimize via the following command:
+
+.. code-block:: bash
+
+    $ pip install scikit-optimize
+
+This algorithm requires using the `Scikit-Optimize ask and tell interface <https://scikit-optimize.github.io/notebooks/ask-and-tell.html>`__. This interface requires using the `Optimizer <https://scikit-optimize.github.io/#skopt.Optimizer>`__ provided by Scikit-Optimize. You can use SkOptSearch like follows:
+
+.. code-block:: python
+
+    optimizer = Optimizer(dimension, ...)
+    run_experiments(experiment_config, search_alg=SkOptSearch(optimizer, parameter_names, ... ))
+
+An example of this can be found in `skopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/skopt_example.py>`__.
+
+.. autoclass:: ray.tune.suggest.SkOptSearch
     :show-inheritance:
     :noindex:
 

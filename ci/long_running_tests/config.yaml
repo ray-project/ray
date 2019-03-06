@@ -1,0 +1,68 @@
+cluster_name: default
+min_workers: 0
+max_workers: 0
+target_utilization_fraction: 0.8
+idle_timeout_minutes: 5
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    InstanceType: m5.2xlarge
+    ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
+
+    # Set primary volume to 25 GiB
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 50
+
+worker_nodes:
+    InstanceType: m5.large
+    ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
+
+    # Set primary volume to 25 GiB
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 50
+
+    # Run workers on spot by default. Comment this out to use on-demand.
+    InstanceMarketOptions:
+        MarketType: spot
+
+# List of shell commands to run to set up nodes.
+setup_commands:
+    # Install Anaconda.
+    - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
+    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
+    - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
+    - echo 'termcapinfo xterm* ti@:te@' >> ~/.screenrc
+    # Some Python dependencies.
+    - pip install boto3==1.4.8 cython==0.29.0
+    # # Uncomment the following if you wish to install Ray instead.
+    # - sudo apt-get update
+    # - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison python
+    # - git clone https://github.com/ray-project/ray || true
+    # - cd ray/python; git checkout master; git pull; pip install -e . --verbose
+    # Install nightly Ray wheels.
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - pip install ray[rllib] ray[debug] tensorflow
+    - pip install -U dask  # fix error importing lz4
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands: []
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands: []
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands: []

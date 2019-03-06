@@ -169,6 +169,8 @@ if __name__ == "__main__":
     configs = {
         "PPO": {
             "num_sgd_iter": 5,
+            "vf_share_layers": True,
+            "vf_loss_coeff": 0.0001,
         },
         "IMPALA": {
             "num_workers": 2,

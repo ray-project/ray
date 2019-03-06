@@ -31,7 +31,7 @@ def get_default_ssh_options(private_key, connect_timeout):
         ("StrictHostKeyChecking", "no"),
         ("ControlMaster", "auto"),
         ("ControlPath", "{}/%C".format(SSH_CONTROL_PATH)),
-        ("ControlPersist", "yes"),
+        ("ControlPersist", "5m"),
     ]
 
     return ["-i", private_key] + [
@@ -49,7 +49,8 @@ class NodeUpdater(object):
                  auth_config,
                  cluster_name,
                  file_mounts,
-                 setup_cmds,
+                 initialization_commands,
+                 setup_commands,
                  runtime_hash,
                  process_runner=subprocess,
                  use_internal_ip=False):
@@ -66,7 +67,8 @@ class NodeUpdater(object):
             remote: os.path.expanduser(local)
             for remote, local in file_mounts.items()
         }
-        self.setup_cmds = setup_cmds
+        self.initialization_commands = initialization_commands
+        self.setup_commands = setup_commands
         self.runtime_hash = runtime_hash
 
     def get_caller(self, check_error):
@@ -215,13 +217,15 @@ class NodeUpdater(object):
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "setting-up"})
 
+        m = "{}: Initialization commands completed".format(self.node_id)
+        with LogTimer("NodeUpdater: {}".format(m)):
+            for cmd in self.initialization_commands:
+                self.ssh_cmd(cmd, redirect=open("/dev/null", "w"))
+
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            for cmd in self.setup_cmds:
-                self.ssh_cmd(
-                    cmd,
-                    # verbose=True,
-                    redirect=open("/dev/null", "w"))
+            for cmd in self.setup_commands:
+                self.ssh_cmd(cmd, redirect=open("/dev/null", "w"))
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
@@ -253,7 +257,6 @@ class NodeUpdater(object):
                 cmd,
                 connect_timeout=120,
                 redirect=None,
-                verbose=False,
                 allocate_tty=False,
                 emulate_interactive=True,
                 expect_error=False,
@@ -261,17 +264,17 @@ class NodeUpdater(object):
 
         self.set_ssh_ip_if_required()
 
-        if verbose:
-            logger.info("NodeUpdater: "
-                        "Running {} on {}...".format(cmd, self.ssh_ip))
+        logger.info("NodeUpdater: Running {} on {}...".format(
+            cmd, self.ssh_ip))
         ssh = ["ssh"]
         if allocate_tty:
             ssh.append("-tt")
         if emulate_interactive:
             force_interactive = (
-                "set -i || true && source ~/.bashrc && "
+                "true && source ~/.bashrc && "
                 "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-            cmd = "bash --login -c {}".format(quote(force_interactive + cmd))
+            cmd = "bash --login -c -i {}".format(
+                quote(force_interactive + cmd))
 
         if port_forward is None:
             ssh_opt = []

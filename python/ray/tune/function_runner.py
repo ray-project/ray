@@ -10,7 +10,7 @@ from six.moves import queue
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TIME_THIS_ITER_S
+from ray.tune.result import TIME_THIS_ITER_S, TRAINING_ITERATION
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class StatusReporter(object):
         >>>     assert isinstance(reporter, StatusReporter)
         >>>     reporter(timesteps_total=1)
     """
-
+    
     def __init__(self, result_queue, continue_semaphore):
         self._queue = result_queue
         self._last_report_time = None
@@ -52,7 +52,7 @@ class StatusReporter(object):
             StopIteration: A StopIteration exception is raised if the trial has
                 been signaled to stop.
         """
-
+        
         assert self._last_report_time is not None, (
                 "StatusReporter._start() must be called before the first "
                 "report __call__ is made to ensure correct runtime metrics."
@@ -142,6 +142,9 @@ class FunctionRunner(Trainable):
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
+        
+        # the function runner's iteration count
+        self._iteration = 0
 
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
@@ -203,7 +206,10 @@ class FunctionRunner(Trainable):
                         "Runner error waiting to be raised in main thread. "
                         "Logging all available results first."
                         ))
-
+                
+        result.setdefault(TRAINING_ITERATION, self._iteration)   
+        self._iteration += 1
+        
         return result
 
     def _stop(self):

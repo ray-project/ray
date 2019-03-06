@@ -150,7 +150,7 @@ def train_mnist(args, config, reporter):
         test()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     datasets.MNIST('~/data', train=True, download=True)
     args = parser.parse_args()
 

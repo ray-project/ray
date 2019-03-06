@@ -45,6 +45,7 @@ typedef UniqueID FunctionID;
 typedef UniqueID ActorClassID;
 typedef UniqueID ActorID;
 typedef UniqueID ActorHandleID;
+typedef UniqueID ActorCheckpointID;
 typedef UniqueID WorkerID;
 typedef UniqueID DriverID;
 typedef UniqueID ConfigID;

@@ -5,7 +5,6 @@ from __future__ import print_function
 from datetime import datetime
 
 import copy
-import gzip
 import io
 import logging
 import os
@@ -18,9 +17,9 @@ import uuid
 
 import ray
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
-                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
-                             EPISODES_THIS_ITER, EPISODES_TOTAL)
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
+    TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION)
 from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
@@ -181,6 +180,7 @@ class Trainable(object):
         # self._timesteps_total should not override user-provided total
         result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
         result.setdefault(EPISODES_TOTAL, self._episodes_total)
+        result.setdefault(TRAINING_ITERATION, self._iteration)
 
         # Provides auto-filled neg_mean_loss for avoiding regressions
         if result.get("mean_loss"):
@@ -191,7 +191,6 @@ class Trainable(object):
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),
-            training_iteration=self._iteration,
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
             pid=os.getpid(),
@@ -246,14 +245,15 @@ class Trainable(object):
             raise ValueError(
                 "`_save` must return a dict or string type: {}".format(
                     str(type(checkpoint))))
-        pickle.dump({
-            "experiment_id": self._experiment_id,
-            "iteration": self._iteration,
-            "timesteps_total": self._timesteps_total,
-            "time_total": self._time_total,
-            "episodes_total": self._episodes_total,
-            "saved_as_dict": saved_as_dict
-        }, open(checkpoint_path + ".tune_metadata", "wb"))
+        with open(checkpoint_path + ".tune_metadata", "wb") as f:
+            pickle.dump({
+                "experiment_id": self._experiment_id,
+                "iteration": self._iteration,
+                "timesteps_total": self._timesteps_total,
+                "time_total": self._time_total,
+                "episodes_total": self._episodes_total,
+                "saved_as_dict": saved_as_dict
+            }, f)
         return checkpoint_path
 
     def save_to_object(self):
@@ -272,18 +272,17 @@ class Trainable(object):
         for path in os.listdir(base_dir):
             path = os.path.join(base_dir, path)
             if path.startswith(checkpoint_prefix):
-                data[os.path.basename(path)] = open(path, "rb").read()
+                with open(path, "rb") as f:
+                    data[os.path.basename(path)] = f.read()
 
         out = io.BytesIO()
-        with gzip.GzipFile(fileobj=out, mode="wb") as f:
-            compressed = pickle.dumps({
-                "checkpoint_name": os.path.basename(checkpoint_prefix),
-                "data": data,
-            })
-            if len(compressed) > 10e6:  # getting pretty large
-                logger.info("Checkpoint size is {} bytes".format(
-                    len(compressed)))
-            f.write(compressed)
+        data_dict = pickle.dumps({
+            "checkpoint_name": os.path.basename(checkpoint_prefix),
+            "data": data,
+        })
+        if len(data_dict) > 10e6:  # getting pretty large
+            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
+        out.write(data_dict)
 
         shutil.rmtree(tmpdir)
         return out.getvalue()
@@ -297,7 +296,8 @@ class Trainable(object):
         This method restores additional metadata saved with the checkpoint.
         """
 
-        metadata = pickle.load(open(checkpoint_path + ".tune_metadata", "rb"))
+        with open(checkpoint_path + ".tune_metadata", "rb") as f:
+            metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
         self._timesteps_total = metadata["timesteps_total"]
@@ -318,8 +318,7 @@ class Trainable(object):
         These checkpoints are returned from calls to save_to_object().
         """
 
-        out = io.BytesIO(obj)
-        info = pickle.loads(gzip.GzipFile(fileobj=out, mode="rb").read())
+        info = pickle.loads(obj)
         data = info["data"]
         tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
         checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
