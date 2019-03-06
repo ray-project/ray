@@ -3,6 +3,7 @@ package org.ray.api.test;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
@@ -52,6 +53,11 @@ public class FailureTest extends BaseTest {
       Assert.assertTrue(rootCause instanceof RuntimeException);
       Assert.assertEquals(rootCause.getMessage(), EXCEPTION_MESSAGE);
     }
+  }
+
+  @Override
+  public void beforeEachCase() {
+    TestUtils.skipTestUnderSingleProcess();
   }
 
   @Test

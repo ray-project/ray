@@ -194,7 +194,7 @@ class Checkpoint(object):
     def __init__(self, storage, value, last_result=None):
         self.storage = storage
         self.value = value
-        self.last_result = last_result
+        self.last_result = last_result or {}
 
     @staticmethod
     def from_object(value=None):
@@ -284,7 +284,7 @@ class Trial(object):
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
-        self.last_result = None
+        self.last_result = {}
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
@@ -336,6 +336,18 @@ class Trial(object):
                 upload_uri=self.upload_dir,
                 loggers=self.loggers,
                 sync_function=self.sync_function)
+
+    def update_resources(self, cpu, gpu, **kwargs):
+        """EXPERIMENTAL: Updates the resource requirements.
+
+        Should only be called when the trial is not running.
+
+        Raises:
+            ValueError if trial status is running.
+        """
+        if self.status is Trial.RUNNING:
+            raise ValueError("Cannot update resources while Trial is running.")
+        self.resources = Resources(cpu, gpu, **kwargs)
 
     def sync_logger_to_new_location(self, worker_ip):
         """Updates the logger location.
@@ -393,7 +405,7 @@ class Trial(object):
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
 
-        if self.last_result is None:
+        if not self.last_result:
             return self._status_string()
 
         def location_string(hostname, pid):
@@ -403,12 +415,12 @@ class Trial(object):
                 return '{} pid={}'.format(hostname, pid)
 
         pieces = [
-            '{} [{}]'.format(
-                self._status_string(),
-                location_string(
-                    self.last_result.get(HOSTNAME),
-                    self.last_result.get(PID))), '{} s'.format(
-                        int(self.last_result.get(TIME_TOTAL_S)))
+            '{}'.format(self._status_string()), '[{}]'.format(
+                self.resources.summary_string()), '[{}]'.format(
+                    location_string(
+                        self.last_result.get(HOSTNAME),
+                        self.last_result.get(PID))), '{} s'.format(
+                            int(self.last_result.get(TIME_TOTAL_S)))
         ]
 
         if self.last_result.get(TRAINING_ITERATION) is not None:

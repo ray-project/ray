@@ -492,7 +492,7 @@ The API also supports curl. Here are the examples for getting trials (``GET /tri
     curl http://<address>:<port>/trials
     curl http://<address>:<port>/trials/<trial_id>
 
-And stopping a trial (``PUT /trials/[:id]``):
+And stopping a trial (``PUT /trials/:id``):
 
 .. code-block:: bash
 
