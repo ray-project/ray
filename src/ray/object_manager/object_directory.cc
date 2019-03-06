@@ -20,14 +20,11 @@ void UpdateObjectLocations(const GcsTableNotificationMode mode,
                            bool *has_been_created) {
   // location_updates contains the updates of locations of the object.
   // with GcsTableNotificationMode, we can determine whether the update mode is
-  // addition or deletion (or just current value).
+  // addition or deletion.
   if (!location_updates.empty()) {
     // If there are entries, then the object has been created. Once this flag
     // is set to true, it should never go back to false.
     *has_been_created = true;
-  }
-  if (mode == GcsTableNotificationMode::CURRENT_VALUE) {
-    client_ids->clear();
   }
   for (const auto &object_table_data : location_updates) {
     ClientID client_id = ClientID::from_binary(object_table_data.manager);
@@ -213,7 +210,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
           bool has_been_created = false;
-          UpdateObjectLocations(GcsTableNotificationMode::CURRENT_VALUE, location_updates,
+          UpdateObjectLocations(GcsTableNotificationMode::APPEND_OR_ADD, location_updates,
                                 gcs_client_->client_table(), &client_ids,
                                 &has_been_created);
           // It is safe to call the callback directly since this is already running

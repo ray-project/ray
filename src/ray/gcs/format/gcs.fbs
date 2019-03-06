@@ -109,8 +109,7 @@ table ResourcePair {
 }
 
 enum GcsTableNotificationMode:int {
-  CURRENT_VALUE = 0,
-  APPEND_OR_ADD,
+  APPEND_OR_ADD = 0,
   REMOVE,
 }
 

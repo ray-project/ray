@@ -527,7 +527,7 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
     size_t data_len = 0;
     char *data_buf = RedisModule_StringDMA(table_key, &data_len, REDISMODULE_READ);
     auto data = fbb.CreateString(data_buf, data_len);
-    auto message = CreateGcsTableEntry(fbb, GcsTableNotificationMode::CURRENT_VALUE,
+    auto message = CreateGcsTableEntry(fbb, GcsTableNotificationMode::APPEND_OR_ADD,
                                        RedisStringToFlatbuf(fbb, entry_id),
                                        fbb.CreateVector(&data, 1));
     fbb.Finish(message);
@@ -562,13 +562,13 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
       data.push_back(fbb.CreateString(element_str, len));
     }
     auto message =
-        CreateGcsTableEntry(fbb, GcsTableNotificationMode::CURRENT_VALUE,
+        CreateGcsTableEntry(fbb, GcsTableNotificationMode::APPEND_OR_ADD,
                             RedisStringToFlatbuf(fbb, entry_id), fbb.CreateVector(data));
     fbb.Finish(message);
   } break;
   case REDISMODULE_KEYTYPE_EMPTY: {
     auto message = CreateGcsTableEntry(
-        fbb, GcsTableNotificationMode::CURRENT_VALUE, RedisStringToFlatbuf(fbb, entry_id),
+        fbb, GcsTableNotificationMode::APPEND_OR_ADD, RedisStringToFlatbuf(fbb, entry_id),
         fbb.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>()));
     fbb.Finish(message);
   } break;
