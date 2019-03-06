@@ -53,7 +53,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: <<<HEAD_TYPE>>>
-    ImageId: ami-0d0ff0945ae093aea  # Amazon Deep Learning AMI (Ubuntu) 12/12/2018
+    ImageId: ami-0027dfad6168539c7  # Amazon Deep Learning AMI (Ubuntu), Version 21.2
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
@@ -69,7 +69,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: <<<WORKER_TYPE>>>
-    ImageId: ami-0d0ff0945ae093aea  # Amazon Deep Learning AMI (Ubuntu) 12/12/2018
+    ImageId: ami-0027dfad6168539c7  # Amazon Deep Learning AMI (Ubuntu), Version 21.2
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -92,7 +92,7 @@ setup_commands:
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_<<<PYTHON_VERSION>>>/bin:$PATH"' >> ~/.bashrc
     - ray || wget https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev0-<<<WHEEL_STR>>>-manylinux1_x86_64.whl
     - rllib || pip install -U ray-0.7.0.dev0-<<<WHEEL_STR>>>-manylinux1_x86_64.whl[rllib]
-    - pip install -U tensorflow-gpu
+    - pip install tensorflow-gpu==1.12.0
     - echo "sudo halt" | at now + 60 minutes
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true

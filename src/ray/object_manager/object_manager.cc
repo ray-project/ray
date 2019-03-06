@@ -839,16 +839,17 @@ ray::Status ObjectManager::ExecuteReceiveObject(
 
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
+  ray::Status status;
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
   if (chunk_status.second.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
-    boost::system::error_code ec;
-    conn.ReadBuffer(buffer, ec);
-    if (ec.value() == boost::system::errc::success) {
+    status = conn.ReadBuffer(buffer);
+    if (status.ok()) {
       buffer_pool_.SealChunk(object_id, chunk_index);
     } else {
+      // We may have not have read out the correct data, so abort this chunk.
       buffer_pool_.AbortCreateChunk(object_id, chunk_index);
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
@@ -860,19 +861,24 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     mutable_vec.resize(buffer_length);
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(mutable_vec, buffer_length));
-    boost::system::error_code ec;
-    conn.ReadBuffer(buffer, ec);
-    if (ec.value() != boost::system::errc::success) {
-      RAY_LOG(ERROR) << boost_to_ray_status(ec).ToString();
-    }
+    status = conn.ReadBuffer(buffer);
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
-  conn.ProcessMessages();
+
   RAY_LOG(DEBUG) << "ExecuteReceiveObject completed on " << client_id_ << " from "
                  << client_id << " of object " << object_id << " chunk " << chunk_index
                  << " at " << current_sys_time_ms();
+  if (status.ok()) {
+    // We successfully read the buffer, so we are ready to receive the next
+    // message.
+    conn.ProcessMessages();
+  } else {
+    // Close the connection by skipping the call to ProcessMessages.
+    RAY_LOG(ERROR) << "Failed to ExecuteReceiveObject from remote object manager, error: "
+                   << status;
+  }
 
-  return chunk_status.second;
+  return status;
 }
 
 void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,

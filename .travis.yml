@@ -157,15 +157,15 @@ script:
   # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
   # ray tune tests
-  - python python/ray/tune/test/dependency_test.py
+  - python python/ray/tune/tests/test_dependency.py
   # `cluster_tests.py` runs on Jenkins, not Travis.
-  - python -m pytest -v --durations=30 --ignore=python/ray/tune/cluster_tests.py python/ray/tune/test
+  - python -m pytest -v --durations=30 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests
 
   # ray rllib tests
-  - python python/ray/rllib/test/test_catalog.py
-  - python python/ray/rllib/test/test_filters.py
-  - python python/ray/rllib/test/test_optimizers.py
-  - python python/ray/rllib/test/test_evaluators.py
+  - python python/ray/rllib/tests/test_catalog.py
+  - python python/ray/rllib/tests/test_filters.py
+  - python python/ray/rllib/tests/test_optimizers.py
+  - python python/ray/rllib/tests/test_evaluators.py
 
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.

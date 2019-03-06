@@ -110,5 +110,15 @@ class RayTrialExecutorTest(unittest.TestCase):
         return suggester.next_trials()
 
 
+class LocalModeExecutorTest(RayTrialExecutorTest):
+    def setUp(self):
+        self.trial_executor = RayTrialExecutor(queue_trials=False)
+        ray.init(local_mode=True)
+
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()  # re-register the evicted objects
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

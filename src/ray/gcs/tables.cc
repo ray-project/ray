@@ -412,8 +412,26 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
         AsyncGcsClient *client, const UniqueID &log_key,
         const std::vector<ClientTableDataT> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
+      std::unordered_map<std::string, ClientTableDataT> connected_nodes;
+      std::unordered_map<std::string, ClientTableDataT> disconnected_nodes;
       for (auto &notification : notifications) {
-        HandleNotification(client, notification);
+        // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
+        // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
+        if (notification.is_insertion) {
+          connected_nodes.emplace(notification.client_id, notification);
+        } else {
+          auto iter = connected_nodes.find(notification.client_id);
+          if (iter != connected_nodes.end()) {
+            connected_nodes.erase(iter);
+          }
+          disconnected_nodes.emplace(notification.client_id, notification);
+        }
+      }
+      for (const auto &pair : connected_nodes) {
+        HandleNotification(client, pair.second);
+      }
+      for (const auto &pair : disconnected_nodes) {
+        HandleNotification(client, pair.second);
       }
     };
     // Callback to request notifications from the client table once we've
@@ -428,13 +446,16 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
   return Append(JobID::nil(), client_log_key_, data, add_callback);
 }
 
-Status ClientTable::Disconnect() {
+Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto data = std::make_shared<ClientTableDataT>(local_client_);
   data->is_insertion = false;
-  auto add_callback = [this](AsyncGcsClient *client, const ClientID &id,
-                             const ClientTableDataT &data) {
+  auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
+                                       const ClientTableDataT &data) {
     HandleConnected(client, data);
     RAY_CHECK_OK(CancelNotifications(JobID::nil(), client_log_key_, id));
+    if (callback != nullptr) {
+      callback();
+    }
   };
   RAY_RETURN_NOT_OK(Append(JobID::nil(), client_log_key_, data, add_callback));
   // We successfully added the deletion entry. Mark ourselves as disconnected.
@@ -462,6 +483,11 @@ void ClientTable::GetClient(const ClientID &client_id,
 
 const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients() const {
   return client_cache_;
+}
+
+Status ClientTable::Lookup(const Callback &lookup) {
+  RAY_CHECK(lookup != nullptr);
+  return Log::Lookup(JobID::nil(), client_log_key_, lookup);
 }
 
 std::string ClientTable::DebugString() const {

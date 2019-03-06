@@ -14,7 +14,7 @@ from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
-from ray.rllib.test.mock_evaluator import _MockEvaluator
+from ray.rllib.tests.mock_evaluator import _MockEvaluator
 
 
 class AsyncOptimizerTest(unittest.TestCase):

@@ -268,6 +268,10 @@ public class RunManager {
       cmd.add("-Dray.logging.file.path=" + logFile);
     }
 
+    // socket names
+    cmd.add("-Dray.raylet.socket-name=" + rayConfig.rayletSocketName);
+    cmd.add("-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName);
+
     // Config overwrite
     cmd.add("-Dray.redis.address=" + rayConfig.getRedisAddress());
 
