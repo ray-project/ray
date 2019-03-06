@@ -430,7 +430,7 @@ TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
     // Subscribe to each of the tasks' arguments.
     const auto &arguments = task.GetDependencies();
     task_dependency_manager_.SubscribeDependencies(task.GetTaskSpecification().TaskId(),
-                                                   arguments);
+                                                   arguments, true);
     // Mark each task as pending. A lease entry should be added to the GCS for
     // each task.
     EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _));
@@ -442,7 +442,7 @@ TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
   auto task = tasks.front();
   TaskID task_id = task.GetTaskSpecification().TaskId();
   auto return_id = task.GetTaskSpecification().ReturnId(0);
-  task_dependency_manager_.UnsubscribeDependencies(task_id);
+  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
   // Simulate the object notifications for the task's return values.
   auto ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
   // The second task should be ready to run.

@@ -85,6 +85,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
     auto object_entry = creating_task_entry->second.find(object_id);
     if (object_entry != creating_task_entry->second.end()) {
       for (auto &dependent_task_id : object_entry->second) {
+        UnsubscribeWaitDependency(dependent_task_id, object_id);
         auto &task_entry = task_dependencies_[dependent_task_id];
         task_entry.num_missing_dependencies--;
         // If the dependent task now has all of its arguments ready, it's ready
@@ -198,7 +199,7 @@ bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
     return false;
   }
 
-  const TaskDependencies task_entry = std::move(it->second);
+  TaskDependencies task_entry = it->second;
 
   // Remove the task's dependencies.
   for (const auto &object_id : task_entry.get_dependencies) {
@@ -210,6 +211,8 @@ bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
   for (const auto &object_id : task_entry.get_dependencies) {
     HandleRemoteDependencyCanceled(object_id);
   }
+
+  task_entry.get_dependencies.clear();
 
   if (task_entry.wait_dependencies.empty()) {
     task_dependencies_.erase(it);
@@ -248,7 +251,7 @@ bool TaskDependencyManager::UnsubscribeAllDependencies(const TaskID &task_id) {
   return true;
 }
 
-bool TaskDependencyManager::UnsubscribeDependency(const TaskID &task_id, const ObjectID &object_id) {
+bool TaskDependencyManager::UnsubscribeWaitDependency(const TaskID &task_id, const ObjectID &object_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
   if (it == task_dependencies_.end()) {
@@ -257,13 +260,8 @@ bool TaskDependencyManager::UnsubscribeDependency(const TaskID &task_id, const O
 
   const TaskDependencies task_entry = std::move(it->second);
 
-  auto get_it = task_entry.get_dependencies.find(object_id);
-  bool oid_found = (get_it != task_entry.get_dependencies.end());
-
   auto wait_it = task_entry.wait_dependencies.find(object_id);
-  oid_found |= (wait_it != task_entry.wait_dependencies.end());
-
-  if (!oid_found) {
+  if (wait_it == task_entry.wait_dependencies.end()) {
     return false;
   }
 
@@ -377,8 +375,10 @@ void TaskDependencyManager::RemoveTasksAndRelatedObjects(
     auto task_it = task_dependencies_.find(*it);
     if (task_it != task_dependencies_.end()) {
       // Add the objects that this task was subscribed to.
-      required_objects.insert(task_it->second.object_dependencies.begin(),
-                              task_it->second.object_dependencies.end());
+      required_objects.insert(task_it->second.get_dependencies.begin(),
+                              task_it->second.get_dependencies.end());
+      required_objects.insert(task_it->second.wait_dependencies.begin(),
+                              task_it->second.wait_dependencies.end());
     }
     // The task no longer depends on anything.
     task_dependencies_.erase(*it);

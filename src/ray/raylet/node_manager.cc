@@ -468,7 +468,7 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
     if (state != TaskState::INFEASIBLE) {
       // Don't unsubscribe for infeasible tasks because we never subscribed in
       // the first place.
-      RAY_CHECK(task_dependency_manager_.UnsubscribeAllDependencies(task_id));
+      RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(task_id));
     }
     // Attempt to forward the task. If this fails to forward the task,
     // the task will be resubmit locally.
@@ -997,9 +997,6 @@ void NodeManager::ProcessWaitRequestMessage(
                                  fbb.GetSize(), fbb.GetBufferPointer());
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
-          for (const auto &object_id : found) {
-            task_dependency_manager_.UnsubscribeDependency(current_task_id, object_id);
-          }
           if (client_blocked) {
             HandleTaskUnblocked(client, current_task_id);
           }

@@ -67,8 +67,6 @@ class TaskDependencyManager {
 
   bool UnsubscribeAllDependencies(const TaskID &task_id);
 
-  bool UnsubscribeDependency(const TaskID &task_id, const ObjectID &object_id);
-
   /// Mark that the given task is pending execution. Any objects that it creates
   /// are now considered to be pending creation. If there are any subscribed
   /// tasks that depend on these objects, then the objects will be canceled.
@@ -131,8 +129,9 @@ class TaskDependencyManager {
   struct TaskDependencies {
     /// The objects that the task is dependent on. These must be local before
     /// the task is ready to execute.
-    // std::unordered_set<ObjectID> object_dependencies;
     std::unordered_set<ObjectID> get_dependencies;
+    /// The objects that the task is fetching. These are fetched while the
+    /// the task is executing.
     std::unordered_set<ObjectID> wait_dependencies;
     /// The number of object arguments that are not available locally. This
     /// must be zero before the task is ready to execute.
@@ -173,6 +172,8 @@ class TaskDependencyManager {
   void AcquireTaskLease(const TaskID &task_id);
 
   void RemoveTaskDependency(const TaskID &task_id, const ObjectID &object_id);
+
+  bool UnsubscribeWaitDependency(const TaskID &task_id, const ObjectID &object_id);
 
   /// The object manager, used to fetch required objects from remote nodes.
   ObjectManagerInterface &object_manager_;
