@@ -94,6 +94,7 @@ public class MultiLanguageClusterTest {
     try {
       TimeUnit.SECONDS.sleep(5);
     } catch (InterruptedException e) {
+      e.printStackTrace();
     }
 
     for (File subDir : logDir.listFiles()) {
