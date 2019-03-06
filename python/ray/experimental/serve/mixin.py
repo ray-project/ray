@@ -1,0 +1,56 @@
+import traceback
+from typing import List
+
+import ray
+from ray.experimental.serve import SingleQuery
+
+
+def single_input(func):
+    """Decorator to mark a actor method to accept only single input instead of batch
+    """
+    func.ray_serve_single_input = True
+    return func
+
+
+def _execute_and_seal_error(method, arg, method_name):
+    """Execute method with arg and return the result.
+
+    If the method fails, return a RayTaskError so it can be sealed in the 
+    resultOID and retried by user. 
+    """
+    try:
+        return method(arg)
+    except Exception as e:
+        return ray.worker.RayTaskError(method_name, traceback.format_exc())
+
+
+class RayServeMixin:
+    """Enable a ray actor to interact with ray.serve
+
+    Usage:
+    ```
+        @ray.remote
+        class MyActor(RayServeMixin):
+            # This is optional, by default it is "__call__"
+            serve_method = 'my_method' 
+
+            def my_method(self, arg):
+                ...
+    ```
+    """
+
+    serve_method = "__call__"
+
+    def _dispatch(self, input_batch: List[SingleQuery]):
+        """Helper method to dispatch a batch of input to self.serve_method
+        """
+        method = getattr(self, self.serve_method)
+        if hasattr(method, "ray_serve_single_input"):
+            for inp in input_batch:
+                result = _execute_and_seal_error(method, inp.data, self.serve_method)
+                ray.worker.global_worker.put_object(inp.result_oid, result)
+        else:
+            batch = [inp.data for inp in input_batch]
+            result = _execute_and_seal_error(method, batch, self.serve_method)
+            for res, inp in zip(result, input_batch):
+                ray.worker.global_worker.put_object(inp.result_oid, res)
