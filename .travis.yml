@@ -102,7 +102,7 @@ matrix:
     # Build Linux wheels.
     - os: linux
       dist: trusty
-      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
       install:
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -113,7 +113,7 @@ matrix:
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
       install:
         - ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -128,7 +128,8 @@ matrix:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
         - PYTHONWARNINGS=ignore
-
+        - RAY_USE_CMAKE=1
+        
 
 install:
   - ./ci/suppress_output ./ci/travis/install-bazel.sh
