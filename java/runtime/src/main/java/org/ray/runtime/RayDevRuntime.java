@@ -28,4 +28,9 @@ public class RayDevRuntime extends AbstractRayRuntime {
   public MockObjectStore getObjectStore() {
     return store;
   }
+
+  @Override
+  public Worker getWorker() {
+    return ((MockRayletClient) rayletClient).getCurrentWorker();
+  }
 }
