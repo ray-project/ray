@@ -125,7 +125,7 @@ def list_trials(experiment_path,
 
     if sort:
         if sort not in checkpoints_df:
-            raise KeyError("Sort Index {} not in: {}".format(
+            raise KeyError("Sort Index '{}' not in: {}".format(
                 sort, list(checkpoints_df)))
         checkpoints_df = checkpoints_df.sort_values(by=sort)
 
@@ -139,7 +139,8 @@ def list_experiments(project_path,
     base, experiment_folders, _ = next(os.walk(project_path))
 
     experiment_data_collection = []
-    for experiment_dir in experiment_dirs:
+
+    for experiment_dir in experiment_folders:
         experiment_state = get_experiment_state(
             os.path.join(base, experiment_dir))
         if not experiment_state:
@@ -163,9 +164,19 @@ def list_experiments(project_path,
         }
         experiment_data_collection.append(experiment_data)
 
-    info_df = pd.DataFrame(experiment_data_collection)[list(info_keys)]
+    info_df = pd.DataFrame(experiment_data_collection)
+    col_keys = [k for k in list(info_keys) if k in info_df]
+    if not experiment_data_collection:
+        print("No experiments found!")
+        sys.exit(0)
+    elif not col_keys:
+        print("None of keys {} in experiment data!".format(info_keys))
+        sys.exit(0)
 
     if sort:
+        if sort not in info_df:
+            raise KeyError("Sort Index '{}' not in: {}".format(
+                sort, list(info_df)))
         info_df = info_df.sort_values(by=sort)
 
     print_format_output(info_df)
