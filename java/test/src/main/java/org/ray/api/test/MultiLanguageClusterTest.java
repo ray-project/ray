@@ -57,11 +57,6 @@ public class MultiLanguageClusterTest {
           " because env variable ENABLE_MULTI_LANGUAGE_TESTS isn't set");
       throw new SkipException("Skip test.");
     }
-    // Check whether 'ray' command is installed.
-    boolean rayCommandExists = executeCommand(ImmutableList.of("which", "ray"), 5);
-    if (!rayCommandExists) {
-      Assert.fail("Couldn't run test " + testName + ", because ray command doesn't exist.");
-    }
 
     // Delete existing socket files.
     for (String socket : ImmutableList.of(RAYLET_SOCKET_NAME, PLASMA_STORE_SOCKET_NAME)) {
