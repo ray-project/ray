@@ -75,7 +75,9 @@ public class MultiLanguageClusterTest {
 
     // Start ray cluster.
     String testDir = System.getProperty("user.dir");
-    String classpath = String.format("%s/../../build/java/*:%s/target/*", testDir, testDir);
+    String workerOptions = String.format("-Dray.home=%s/../../", testDir);
+    workerOptions +=
+        " -classpath " + String.format("%s/../../build/java/*:%s/target/*", testDir, testDir);
     final List<String> startCommand = ImmutableList.of(
         "ray",
         "start",
@@ -85,7 +87,7 @@ public class MultiLanguageClusterTest {
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         "--load-code-from-local",
         "--include-java",
-        "--java-worker-options=-classpath " + classpath
+        "--java-worker-options=" + workerOptions
     );
     if (!executeCommand(startCommand, 10)) {
       throw new RuntimeException("Couldn't start ray cluster.");
