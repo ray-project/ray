@@ -8,7 +8,7 @@ PID=$$
 # Print output to avoid travis killing us
 watchdog() {
     for i in `seq 5 5 60`; do
-        sleep 5m
+        sleep 300
         echo "This command has been running for more than $i minutes..."
     done
     echo "Command timed out after 60m, dumping logs:"
