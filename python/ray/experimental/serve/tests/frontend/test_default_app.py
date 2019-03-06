@@ -16,7 +16,7 @@ NUMBER_OF_TRIES = 5
 
 @pytest.fixture(scope="module")
 def ray_start():
-    ray.init()
+    ray.init(num_cpus=1)
     yield
     ray.shutdown()
 
