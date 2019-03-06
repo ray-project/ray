@@ -2,11 +2,9 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import java.io.File;
-import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.io.FileUtils;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
@@ -66,13 +64,6 @@ public class MultiLanguageClusterTest {
       }
     }
 
-    File logDir = new File("/tmp/ray");
-    try {
-      FileUtils.deleteDirectory(logDir);
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-
     // Start ray cluster.
     String testDir = System.getProperty("user.dir");
     String workerOptions = String.format("-Dray.home=%s/../../", testDir);
@@ -91,24 +82,6 @@ public class MultiLanguageClusterTest {
     );
     if (!executeCommand(startCommand, 10)) {
       throw new RuntimeException("Couldn't start ray cluster.");
-    }
-
-    try {
-      TimeUnit.SECONDS.sleep(5);
-    } catch (InterruptedException e) {
-    }
-
-    for (File subDir : logDir.listFiles()) {
-      if (!subDir.getName().contains("session")) {
-        continue;
-      }
-      File rayletErr = new File(subDir.getAbsolutePath() + "/logs/raylet.err");
-      try {
-        System.out.println(">>> " + rayletErr.getAbsolutePath());
-        System.out.println(FileUtils.readFileToString(rayletErr, "UTF-8"));
-      } catch (IOException e) {
-        e.printStackTrace();
-      }
     }
 
     // Connect to the cluster.
