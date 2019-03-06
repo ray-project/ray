@@ -19,7 +19,7 @@ from ray.rllib.agents.dqn.dqn import DQNAgent
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.agents.ppo.ppo import PPOAgent
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-from ray.rllib.test.test_multi_agent_env import MultiCartpole
+from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 

@@ -6,19 +6,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import gym
-
 import ray
+import numpy as np
+import tensorflow as tf
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
+from ray.rllib.models.action_dist import MultiCategorical
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.models.action_dist import Categorical
 
 
 class VTraceLoss(object):
@@ -45,12 +45,20 @@ class VTraceLoss(object):
         handle episode cut boundaries.
 
         Args:
-            actions: An int32 tensor of shape [T, B, NUM_ACTIONS].
+            actions: An int32 tensor of shape [T, B, ACTION_SPACE].
             actions_logp: A float32 tensor of shape [T, B].
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
-            behaviour_logits: A float32 tensor of shape [T, B, NUM_ACTIONS].
-            target_logits: A float32 tensor of shape [T, B, NUM_ACTIONS].
+            behaviour_logits: A list with length of ACTION_SPACE of float32
+                tensors of shapes
+                [T, B, ACTION_SPACE[0]],
+                ...,
+                [T, B, ACTION_SPACE[-1]]
+            target_logits: A list with length of ACTION_SPACE of float32
+                tensors of shapes
+                [T, B, ACTION_SPACE[0]],
+                ...,
+                [T, B, ACTION_SPACE[-1]]
             discount: A float32 scalar.
             rewards: A float32 tensor of shape [T, B].
             values: A float32 tensor of shape [T, B].
@@ -60,10 +68,10 @@ class VTraceLoss(object):
 
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
-            self.vtrace_returns = vtrace.from_logits(
+            self.vtrace_returns = vtrace.multi_from_logits(
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
-                actions=tf.cast(actions, tf.int32),
+                actions=tf.unstack(tf.cast(actions, tf.int32), axis=2),
                 discounts=tf.to_float(~dones) * discount,
                 rewards=rewards,
                 values=values,
@@ -101,6 +109,20 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "Must use `truncate_episodes` batch mode with V-trace."
         self.config = config
         self.sess = tf.get_default_session()
+        self.grads = None
+
+        if isinstance(action_space, gym.spaces.Discrete):
+            is_multidiscrete = False
+            actions_shape = [None]
+            output_hidden_shape = [action_space.n]
+        elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
+            is_multidiscrete = True
+            actions_shape = [None, len(action_space.nvec)]
+            output_hidden_shape = action_space.nvec.astype(np.int32)
+        else:
+            raise UnsupportedSpaceException(
+                "Action space {} is not supported for IMPALA.".format(
+                    action_space))
 
         # Create input placeholders
         if existing_inputs:
@@ -109,21 +131,20 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             existing_state_in = existing_inputs[7:-1]
             existing_seq_lens = existing_inputs[-1]
         else:
-            if isinstance(action_space, gym.spaces.Discrete):
-                ac_size = action_space.n
-                actions = tf.placeholder(tf.int64, [None], name="ac")
-            else:
-                raise UnsupportedSpaceException(
-                    "Action space {} is not supported for IMPALA.".format(
-                        action_space))
+            actions = tf.placeholder(tf.int64, actions_shape, name="ac")
             dones = tf.placeholder(tf.bool, [None], name="dones")
             rewards = tf.placeholder(tf.float32, [None], name="rewards")
             behaviour_logits = tf.placeholder(
-                tf.float32, [None, ac_size], name="behaviour_logits")
+                tf.float32, [None, sum(output_hidden_shape)],
+                name="behaviour_logits")
             observations = tf.placeholder(
                 tf.float32, [None] + list(observation_space.shape))
             existing_state_in = None
             existing_seq_lens = None
+
+        # Unpack behaviour logits
+        unpacked_behaviour_logits = tf.split(
+            behaviour_logits, output_hidden_shape, axis=1)
 
         # Setup the policy
         dist_class, logit_dim = ModelCatalog.get_action_dist(
@@ -143,12 +164,30 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.config["model"],
             state_in=existing_state_in,
             seq_lens=existing_seq_lens)
-        action_dist = dist_class(self.model.outputs)
+        unpacked_outputs = tf.split(
+            self.model.outputs, output_hidden_shape, axis=1)
+
+        dist_inputs = unpacked_outputs if is_multidiscrete else \
+            self.model.outputs
+        action_dist = dist_class(dist_inputs)
+
         values = self.model.value_function()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
 
-        def to_batches(tensor):
+        def make_time_major(tensor, drop_last=False):
+            """Swaps batch and trajectory axis.
+            Args:
+                tensor: A tensor or list of tensors to reshape.
+                drop_last: A bool indicating whether to drop the last
+                trajectory item.
+            Returns:
+                res: A tensor with swapped axes or a list of tensors with
+                swapped axes.
+            """
+            if isinstance(tensor, list):
+                return [make_time_major(t, drop_last) for t in tensor]
+
             if self.model.state_init:
                 B = tf.shape(self.model.seq_lens)[0]
                 T = tf.shape(tensor)[0] // B
@@ -159,10 +198,15 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 B = tf.shape(tensor)[0] // T
             rs = tf.reshape(tensor,
                             tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
+
             # swap B and T axes
-            return tf.transpose(
+            res = tf.transpose(
                 rs,
                 [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
+
+            if drop_last:
+                return res[:-1]
+            return res
 
         if self.model.state_in:
             max_seq_len = tf.reduce_max(self.model.seq_lens) - 1
@@ -171,31 +215,52 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         else:
             mask = tf.ones_like(rewards, dtype=tf.bool)
 
+        # Prepare actions for loss
+        loss_actions = actions if is_multidiscrete else tf.expand_dims(
+            actions, axis=1)
+
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
-            actions=to_batches(actions)[:-1],
-            actions_logp=to_batches(action_dist.logp(actions))[:-1],
-            actions_entropy=to_batches(action_dist.entropy())[:-1],
-            dones=to_batches(dones)[:-1],
-            behaviour_logits=to_batches(behaviour_logits)[:-1],
-            target_logits=to_batches(self.model.outputs)[:-1],
+            actions=make_time_major(loss_actions, drop_last=True),
+            actions_logp=make_time_major(
+                action_dist.logp(actions), drop_last=True),
+            actions_entropy=make_time_major(
+                action_dist.entropy(), drop_last=True),
+            dones=make_time_major(dones, drop_last=True),
+            behaviour_logits=make_time_major(
+                unpacked_behaviour_logits, drop_last=True),
+            target_logits=make_time_major(unpacked_outputs, drop_last=True),
             discount=config["gamma"],
-            rewards=to_batches(rewards)[:-1],
-            values=to_batches(values)[:-1],
-            bootstrap_value=to_batches(values)[-1],
-            valid_mask=to_batches(mask)[:-1],
+            rewards=make_time_major(rewards, drop_last=True),
+            values=make_time_major(values, drop_last=True),
+            bootstrap_value=make_time_major(values)[-1],
+            valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=self.config["vf_loss_coeff"],
             entropy_coeff=self.config["entropy_coeff"],
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
             clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"])
 
         # KL divergence between worker and learner logits for debugging
-        model_dist = Categorical(self.model.outputs)
-        behaviour_dist = Categorical(behaviour_logits)
-        self.KLs = model_dist.kl(behaviour_dist)
-        self.mean_KL = tf.reduce_mean(self.KLs)
-        self.max_KL = tf.reduce_max(self.KLs)
-        self.median_KL = tf.contrib.distributions.percentile(self.KLs, 50.0)
+        model_dist = MultiCategorical(unpacked_outputs)
+        behaviour_dist = MultiCategorical(unpacked_behaviour_logits)
+
+        kls = model_dist.kl(behaviour_dist)
+        if len(kls) > 1:
+            self.KL_stats = {}
+
+            for i, kl in enumerate(kls):
+                self.KL_stats.update({
+                    "mean_KL_{}".format(i): tf.reduce_mean(kl),
+                    "max_KL_{}".format(i): tf.reduce_max(kl),
+                    "median_KL_{}".format(i): tf.contrib.distributions.
+                    percentile(kl, 50.0),
+                })
+        else:
+            self.KL_stats = {
+                "mean_KL": tf.reduce_mean(kls[0]),
+                "max_KL": tf.reduce_max(kls[0]),
+                "median_KL": tf.contrib.distributions.percentile(kls[0], 50.0),
+            }
 
         # Initialize TFPolicyGraph
         loss_in = [
@@ -231,7 +296,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.sess.run(tf.global_variables_initializer())
 
         self.stats_fetches = {
-            "stats": {
+            "stats": dict({
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
@@ -240,11 +305,8 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "vf_loss": self.loss.vf_loss,
                 "vf_explained_var": explained_variance(
                     tf.reshape(self.loss.vtrace_returns.vs, [-1]),
-                    tf.reshape(to_batches(values)[:-1], [-1])),
-                "mean_KL": self.mean_KL,
-                "max_KL": self.max_KL,
-                "median_KL": self.median_KL,
-            },
+                    tf.reshape(make_time_major(values, drop_last=True), [-1])),
+            }, **self.KL_stats),
         }
 
     @override(TFPolicyGraph)

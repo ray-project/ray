@@ -120,4 +120,11 @@ public final class Ray extends RayCall {
   public static RayRuntime internal() {
     return runtime;
   }
+
+  /**
+   * Get the runtime context.
+   */
+  public static RuntimeContext getRuntimeContext() {
+    return runtime.getRuntimeContext();
+  }
 }
