@@ -1,7 +1,6 @@
 #!/bin/bash
 # Run a command, suppressing output unless it hangs or crashes.
 
-TIMEOUT=60m
 TMPFILE=`mktemp`
 COMMAND="$@"
 
@@ -18,11 +17,7 @@ progress() {
 progress & 2>/dev/null
 prog=$!
 
-if which timeout >/dev/null; then
-    timeout -k $TIMEOUT $TIMEOUT $COMMAND >$TMPFILE 2>&1
-else
-    $COMMAND >$TMPFILE 2>&1
-fi
+$COMMAND >$TMPFILE 2>&1
 
 CODE=$?
 if [ $CODE != 0 ]; then
