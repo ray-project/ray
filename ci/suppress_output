@@ -3,28 +3,32 @@
 
 TMPFILE=`mktemp`
 COMMAND="$@"
+PID=$$
 
 # Print output to avoid travis killing us
-progress() {
-    sleep 5m
-    echo "This command has been running for more than 5 minutes..."
-    while true; do
+watchdog() {
+    for i in `seq 5 5 60`; do
         sleep 5m
-        echo "This command is still running..."
+        echo "This command has been running for more than $i minutes..."
     done
+    echo "Command timed out after 60m, dumping logs:"
+    cat $TMPFILE
+    echo "TIMED OUT"
+    kill -SIGKILL $PID
 }
 
-progress & 2>/dev/null
-prog=$!
+watchdog & 2>/dev/null
+WATCHDOG_PID=$!
 
-$COMMAND >$TMPFILE 2>&1
+time $COMMAND >$TMPFILE 2>&1
 
 CODE=$?
 if [ $CODE != 0 ]; then
     cat $TMPFILE
     echo "FAILED $CODE"
-    kill $prog
+    kill $WATCHDOG_PID
     exit $CODE
 fi
 
-kill $prog
+kill $WATCHDOG_PID
+exit 0

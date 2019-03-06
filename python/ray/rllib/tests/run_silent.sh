@@ -1,22 +1,12 @@
 #!/bin/bash
 
-TIMEOUT=30m
-TMPFILE=`mktemp`
 DIRECTORY=`dirname $0`
+SUPPRESS_OUTPUT=$DIRECTORY/../../../../ci/suppress_output
 SCRIPT=$1
 shift
 
 if [ -x $DIRECTORY/../$SCRIPT ]; then
-    time $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
+    exec $SUPPRESS_OUTPUT $DIRECTORY/../$SCRIPT "$@"
 else
-    time python $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
+    exec $SUPPRESS_OUTPUT python $DIRECTORY/../$SCRIPT "$@"
 fi
-
-CODE=$?
-if [ $CODE != 0 ]; then
-    cat $TMPFILE
-    echo "FAILED $CODE"
-    exit $CODE
-fi
-
-exit 0
