@@ -121,6 +121,22 @@ else
   $PYTHON_EXECUTABLE -m pip install \
       --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
+  
+if [ "$RAY_BUILD_JAVA" == "YES" ]; then
+    bazel build //:ray_java_pkg -c opt
+    #soft link
+    mkdir -p $ROOT_DIR/build/src/ray/raylet/
+    mkdir -p $ROOT_DIR/build/src/ray/gcs/redis_module/
+    mkdir -p $ROOT_DIR/build/src/ray/thirdparty/redis/src/
+    mkdir -p $ROOT_DIR/build/src/plasma/
+    ln -sf $ROOT_DIR/bazel-bin/* $ROOT_DIR/build/src/ray/raylet/
+    ln -sf $ROOT_DIR/bazel-bin/external/plasma/* $ROOT_DIR/build/src/plasma/
+    ln -sf $ROOT_DIR/bazel-genfiles/redis-server $ROOT_DIR/build/src/ray/thirdparty/redis/src/redis-server
+    ln -sf $ROOT_DIR/bazel-bin/ray_redis_module.so $ROOT_DIR/build/src/ray/gcs/redis_module/libray_redis_module.so
+    ln -sf $ROOT_DIR/bazel-bin/external/plasma/plasma_store_server $ROOT_DIR/build/src/plasma/plasma_store_server
+    ln -sf $ROOT_DIR/bazel-bin/raylet $ROOT_DIR/build/src/ray/raylet/raylet
+  fi
+
   if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
     bazel build //:ray_pkg -c opt
     # Copy files and keep them writeable. This is a workaround, as Bazel
@@ -130,11 +146,6 @@ else
     # require us to copy the files.
     find $ROOT_DIR/bazel-genfiles/ray_pkg/ -exec chmod +w {} \;
     cp -r $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
-  fi
-  if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-    bazel build //:ray_java_pkg -c opt
-    find $ROOT_DIR/bazel-genfiles/ray_java_pkg/ -exec chmod +w {} \;
-    cp -r $ROOT_DIR/bazel-genfiles/ray_java_pkg/ray/* $ROOT_DIR/build || true
   fi
 fi
 

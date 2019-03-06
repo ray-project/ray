@@ -595,19 +595,8 @@ genrule(
         "@plasma//:plasma_store_server",
         "@plasma//:plasma_client_java",
     ],
-    outs = ["ray_java_pkg"],
+    outs = ["ray_java_pkg.out"],
     cmd = """
-        set -x &&
-        mkdir -p java/ray/src/plasma/ &&
-        cp $(location @plasma//:plasma_client_java) java/ray/src/plasma/ &&
-        cp $(location @plasma//:plasma_store_server) java/ray/src/plasma/ &&
-        mkdir -p java/ray/src/ray/raylet/ &&
-        cp $(location //:raylet) java/ray/src/ray/raylet/ &&
-        cp $(location //:raylet_library_java) java/ray/src/ray/raylet/ &&
-        mkdir -p java/ray/src/ray/gcs/redis_module/ &&
-        cp $(location //:ray_redis_module.so) java/ray/src/ray/gcs/redis_module/libray_redis_module.so &&
-        mkdir -p java/ray/src/ray/thirdparty/redis/src/ &&
-        cp $(location //:redis-server) java/ray/src/ray/thirdparty/redis/src/ &&
-        mv java $(location ray_java_pkg)
+        echo $$(pwd) > $@
     """,
 )

@@ -43,7 +43,7 @@ java_library(
     srcs = glob(["runtime/src/main/java/**/*.java"]),
     resources = glob(["runtime/src/main/resources/**"]),
     visibility = ["//visibility:public"],
-    data = ["//:raylet_library_java", ":copy_java_gcs_fbs"],
+    data = ["//:raylet_library_java", ":generate_java_gcs_fbs"],
     deps = [
         ":org_ray_ray_api",
         "@com_typesafe_config//jar",
@@ -118,15 +118,16 @@ java_test(
 )
 
 #use .py file to generate *.java, but be telled can't to find the generated files
-#genrule(
-#    name = "generate_java_gcs_fbs",
-#    outs = ["generate_java_gcs_fbs.out"],
-#    cmd = """
-#        python3 $$(pwd)/java/modify_generated_java_flatbuffers_files.py $$(pwd)
-#        echo $$(pwd) > $@
-#    """,
-#    local = 1,
-#)
+genrule(
+    name = "generate_java_gcs_fbs",
+    srcs = [":copy_java_gcs_fbs"],
+    outs = ["generate_java_gcs_fbs.out"],
+    cmd = """
+        python3 $$(pwd)/java/modify_generated_java_flatbuffers_files.py $$(pwd)
+        echo $$(pwd) > $@
+    """,
+    local = 1,
+)
 
 flatbuffer_java_library(
     name = "java_gcs_fbs",
@@ -180,9 +181,6 @@ genrule(
         mkdir -p $$GENERATED_DIR
         for f in $(locations //java:java_gcs_fbs); do
             cp $$f $$GENERATED_DIR/;
-            file="$$GENERATED_DIR/$${f#*java/}";
-            chmod +w $$file;
-            sed -i "2i\package org.ray.runtime.generated;" $$file;
         done
         echo $$(pwd) >> $@
     """,
