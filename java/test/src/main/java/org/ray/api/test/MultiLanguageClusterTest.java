@@ -40,8 +40,7 @@ public class MultiLanguageClusterTest {
   private boolean executeCommand(List<String> command, int waitTimeoutSeconds) {
     try {
       LOGGER.info("Executing command: {}", String.join(" ", command));
-      Process process = new ProcessBuilder(command).redirectOutput(Redirect.INHERIT)
-          .redirectError(Redirect.INHERIT).start();
+      Process process = new ProcessBuilder(command).inheritIO().start();
       process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS);
       return process.exitValue() == 0;
     } catch (Exception e) {
