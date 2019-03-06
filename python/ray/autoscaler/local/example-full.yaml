@@ -2,6 +2,7 @@ cluster_name: default
 min_workers: 0
 max_workers: 0
 initial_workers: 0
+aggressive_autoscaling: false
 docker:
     image: ""
     container_name: ""

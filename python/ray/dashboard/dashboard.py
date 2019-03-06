@@ -141,6 +141,7 @@ class Dashboard(object):
                 "min_workers": cfg["min_workers"],
                 "max_workers": cfg["max_workers"],
                 "initial_workers": cfg["initial_workers"],
+                "aggressive_autoscaling": cfg["aggressive_autoscaling"],
                 "idle_timeout_minutes": cfg["idle_timeout_minutes"],
             }
 
@@ -181,7 +182,7 @@ class Dashboard(object):
     def run(self):
         self.log_dashboard_url()
         self.node_stats.start()
-        aiohttp.web.run_app(self.app, host=self.ip, port=self.port)
+        aiohttp.web.run_app(self.app, host="0.0.0.0", port=self.port)
 
 
 class NodeStats(threading.Thread):
