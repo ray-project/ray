@@ -7,6 +7,12 @@ set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
+pushd $ROOT_DIR/../java
+mvn clean install -Dmaven.test.skip
+check_style=$(mvn checkstyle:check)
+echo "${check_style}"
+[[ ${check_style} =~ "BUILD FAILURE" ]] && exit 1
+
 pushd $ROOT_DIR/..
 bazel build -c opt //java:all
 pushd $ROOT_DIR/../java/test
