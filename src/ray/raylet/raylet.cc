@@ -99,7 +99,10 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
 
   RAY_LOG(DEBUG) << "Node manager " << gcs_client_->client_table().GetLocalClientId()
                  << " started on " << client_info.node_manager_address << ":"
-                 << client_info.node_manager_port;
+                 << client_info.node_manager_port << " object manager at "
+                 << client_info.node_manager_address << ":"
+                 << client_info.object_manager_port;
+  ;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
   RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());

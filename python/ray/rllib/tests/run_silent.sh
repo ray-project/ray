@@ -7,17 +7,9 @@ SCRIPT=$1
 shift
 
 if [ -x $DIRECTORY/../$SCRIPT ]; then
-    if which timeout >/dev/null; then
-        timeout -k $TIMEOUT $TIMEOUT $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
-    else
-        $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
-    fi
+    time $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
 else
-    if which timeout >/dev/null; then
-        timeout -k $TIMEOUT $TIMEOUT python $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
-    else
-        python $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
-    fi
+    time python $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
 fi
 
 CODE=$?
