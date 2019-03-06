@@ -106,11 +106,11 @@ matrix:
     # Build Linux wheels.
     - os: linux
       dist: trusty
-      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
       install:
         - ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
-        - docker run --rm -w /ray -v `pwd`:/ray -ti quay.io/xhochy/arrow_manylinux1_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+        - docker run --rm -w /ray -v `pwd`:/ray -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
       script:
         - ./ci/travis/test-wheels.sh
 
