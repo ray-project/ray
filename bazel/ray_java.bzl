@@ -1,6 +1,7 @@
 # The following dependencies were calculated from:
 #
 # generate_workspace --maven_project=/home/admin/ruifang.crf/code/X/arrow/java --repositories=http://mvn.dev.alipay.net:8080/artifactory/repo
+# TODO: now this file is not automatically generated
 
 
 def generated_maven_jars():
