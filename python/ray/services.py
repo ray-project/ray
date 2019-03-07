@@ -1242,7 +1242,7 @@ def build_java_worker_command(
     """
     assert java_worker_options is not None
 
-    command = "java {} ".format(java_worker_options)
+    command = "java ".format(java_worker_options)
     if redis_address is not None:
         command += "-Dray.redis.address={} ".format(redis_address)
 
@@ -1259,6 +1259,11 @@ def build_java_worker_command(
     command += "-Dray.home={} ".format(RAY_HOME)
     # TODO(suquark): We should use temp_dir as the input of a java worker.
     command += "-Dray.log-dir={} ".format(os.path.join(temp_dir, "sockets"))
+
+    if java_worker_options:
+        # Put `java_worker_options` in the last, so it can overwrite the
+        # above options.
+        command += java_worker_options + " "
     command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command

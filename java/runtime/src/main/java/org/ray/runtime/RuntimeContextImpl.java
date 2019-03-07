@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import org.ray.api.RuntimeContext;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
-import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
 
 public class RuntimeContextImpl implements RuntimeContext {
@@ -22,8 +21,10 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public UniqueId getCurrentActorId() {
-    Preconditions.checkState(runtime.rayConfig.workerMode == WorkerMode.WORKER);
-    return runtime.getWorker().getCurrentActorId();
+    Worker worker = runtime.getWorker();
+    Preconditions.checkState(worker != null && !worker.getCurrentActorId().isNil(),
+        "This method should only be called from an actor.");
+    return worker.getCurrentActorId();
   }
 
   @Override

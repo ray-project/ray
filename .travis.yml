@@ -26,9 +26,11 @@ matrix:
         - JDK='Oracle JDK 8'
         - PYTHON=3.5 PYTHONWARNINGS=ignore
         - RAY_USE_CMAKE=1
+        - RAY_INSTALL_JAVA=1
       install:
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/travis/install-ray.sh
       script:
       - ./java/test.sh
 

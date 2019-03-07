@@ -9,7 +9,7 @@ public class TestUtils {
   public static void skipTestUnderSingleProcess() {
     AbstractRayRuntime runtime = (AbstractRayRuntime)Ray.internal();
     if (runtime.getRayConfig().runMode == RunMode.SINGLE_PROCESS) {
-      throw new SkipException("Skip case.");
+      throw new SkipException("This test doesn't work under single-process mode.");
     }
   }
 }
