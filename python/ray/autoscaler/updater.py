@@ -22,15 +22,15 @@ logger = logging.getLogger(__name__)
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
-SSH_CONTROL_PATH = "/tmp/ray_ssh_sockets"
+SSH_CONTROL_PATH = "/tmp/ray_ssh_sockets"  # Default. Override in auth config.
 
 
-def get_default_ssh_options(private_key, connect_timeout):
+def get_default_ssh_options(private_key, connect_timeout, ssh_control_path):
     OPTS = [
         ("ConnectTimeout", "{}s".format(connect_timeout)),
         ("StrictHostKeyChecking", "no"),
         ("ControlMaster", "auto"),
-        ("ControlPath", "{}/%C".format(SSH_CONTROL_PATH)),
+        ("ControlPath", "{}/%C".format(ssh_control_path)),
         ("ControlPersist", "5m"),
     ]
 
@@ -62,6 +62,8 @@ class NodeUpdater(object):
         self.provider = provider
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
+        self.ssh_control_path = auth_config.get("ssh_control_path",
+                                                SSH_CONTROL_PATH)
         self.ssh_ip = None
         self.file_mounts = {
             remote: os.path.expanduser(local)
@@ -113,12 +115,12 @@ class NodeUpdater(object):
         #   persistent sessions later on.
         with open("/dev/null", "w") as redirect:
             self.get_caller(False)(
-                ["mkdir", "-p", SSH_CONTROL_PATH],
+                ["mkdir", "-p", self.ssh_control_path],
                 stdout=redirect,
                 stderr=redirect)
 
             self.get_caller(False)(
-                ["chmod", "0700", SSH_CONTROL_PATH],
+                ["chmod", "0700", self.ssh_control_path],
                 stdout=redirect,
                 stderr=redirect)
 
@@ -233,7 +235,8 @@ class NodeUpdater(object):
             [
                 "rsync", "-e",
                 " ".join(["ssh"] +
-                         get_default_ssh_options(self.ssh_private_key, 120)),
+                         get_default_ssh_options(self.ssh_private_key, 120,
+                                                 self.ssh_control_path)),
                 "--delete", "-avz", source, "{}@{}:{}".format(
                     self.ssh_user, self.ssh_ip, target)
             ],
@@ -246,7 +249,8 @@ class NodeUpdater(object):
             [
                 "rsync", "-e",
                 " ".join(["ssh"] +
-                         get_default_ssh_options(self.ssh_private_key, 120)),
+                         get_default_ssh_options(self.ssh_private_key, 120,
+                                                 self.ssh_control_path)),
                 "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
                                           source), target
             ],
@@ -285,7 +289,8 @@ class NodeUpdater(object):
 
         self.get_caller(expect_error)(
             ssh + ssh_opt + get_default_ssh_options(self.ssh_private_key,
-                                                    connect_timeout) +
+                                                    connect_timeout,
+                                                    self.ssh_control_path) +
             ["{}@{}".format(self.ssh_user, self.ssh_ip), cmd],
             stdout=redirect or sys.stdout,
             stderr=redirect or sys.stderr)
