@@ -55,30 +55,29 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  @Override
-  public void beforeEachCase() {
-    TestUtils.skipTestUnderSingleProcess();
-  }
-
   @Test
   public void testNormalTaskFailure() {
+    TestUtils.skipTestUnderSingleProcess();
     assertTaskFailedWithRayTaskException(Ray.call(FailureTest::badFunc));
   }
 
   @Test
   public void testActorCreationFailure() {
+    TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, true);
     assertTaskFailedWithRayTaskException(Ray.call(BadActor::badMethod, actor));
   }
 
   @Test
   public void testActorTaskFailure() {
+    TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
     assertTaskFailedWithRayTaskException(Ray.call(BadActor::badMethod, actor));
   }
 
   @Test
   public void testWorkerProcessDying() {
+    TestUtils.skipTestUnderSingleProcess();
     try {
       Ray.call(FailureTest::badFunc2).get();
       Assert.fail("This line shouldn't be reached.");
@@ -90,6 +89,7 @@ public class FailureTest extends BaseTest {
 
   @Test
   public void testActorProcessDying() {
+    TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
     try {
       Ray.call(BadActor::badMethod2, actor).get();
