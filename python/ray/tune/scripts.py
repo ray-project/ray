@@ -16,6 +16,7 @@ def cli():
 @click.option(
     '--sort', default=None, type=str, help='Select which column to sort on.')
 def list_trials(experiment_path, sort):
+    """Lists trials in the directory subtree starting at the given path."""
     commands.list_trials(experiment_path, sort)
 
 
@@ -24,6 +25,7 @@ def list_trials(experiment_path, sort):
 @click.option(
     '--sort', default=None, type=str, help='Select which column to sort on.')
 def list_experiments(project_path, sort):
+    """Lists experiments in the directory subtree."""
     commands.list_experiments(project_path, sort)
 
 

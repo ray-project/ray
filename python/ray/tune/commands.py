@@ -40,18 +40,28 @@ DEFAULT_PROJECT_INFO_KEYS = (
     "error_trials",
 )
 
-TERMINAL_HEIGHT, TERMINAL_WIDTH = subprocess.check_output(['stty',
-                                                           'size']).split()
-TERMINAL_HEIGHT, TERMINAL_WIDTH = int(TERMINAL_HEIGHT), int(TERMINAL_WIDTH)
+try:
+    TERM_HEIGHT, TERM_WIDTH = subprocess.check_output(['stty', 'size']).split()
+    TERM_HEIGHT, TERM_WIDTH = int(TERM_HEIGHT), int(TERM_WIDTH)
+except subprocess.CalledProcessError:
+    TERM_HEIGHT, TERM_WIDTH = 100, 100
 
 
 def _check_tabulate():
+    """Checks whether tabulate is installed."""
     if tabulate is None:
         raise Exception(
             "Tabulate not installed. Please run `pip install tabulate`.")
 
 
 def print_format_output(dataframe):
+    """Prints output of given dataframe to fit into terminal.
+
+    Returns:
+        table (pd.DataFrame): Final outputted dataframe.
+        dropped_cols (list): Columns dropped due to terminal size.
+        empty_cols (list): Empty columns (dropped on default).
+    """
     print_df = pd.DataFrame()
     dropped_cols = []
     empty_cols = []
@@ -64,7 +74,7 @@ def print_format_output(dataframe):
 
         print_df[col] = dataframe[col]
         test_table = tabulate(print_df, headers="keys", tablefmt="psql")
-        if str(test_table).index('\n') > TERMINAL_WIDTH:
+        if str(test_table).index('\n') > TERM_WIDTH:
             # Drop all columns beyond terminal width
             print_df.drop(col, axis=1, inplace=True)
             dropped_cols += list(dataframe.columns)[i:]
@@ -104,9 +114,18 @@ def list_trials(experiment_path,
                 sort=None,
                 info_keys=DEFAULT_EXPERIMENT_INFO_KEYS,
                 result_keys=DEFAULT_RESULT_KEYS):
-    """Lists trials in the directory subtree starting at the given path."""
+    """Lists trials in the directory subtree starting at the given path.
+
+    Args:
+        experiment_path (str): Directory where trials are located.
+            Corresponds to Experiment.local_dir/Experiment.name.
+        sort (str): Key to sort by.
+        info_keys (list): Keys that are displayed.
+        result_keys (list): Keys of last result that are displayed.
+    """
     _check_tabulate()
-    experiment_state = _get_experiment_state(experiment_path, exit_on_fail=True)
+    experiment_state = _get_experiment_state(
+        experiment_path, exit_on_fail=True)
 
     checkpoint_dicts = experiment_state["checkpoints"]
     checkpoint_dicts = [flatten_dict(g) for g in checkpoint_dicts]
@@ -135,6 +154,14 @@ def list_trials(experiment_path,
 def list_experiments(project_path,
                      sort=None,
                      info_keys=DEFAULT_PROJECT_INFO_KEYS):
+    """Lists experiments in the directory subtree.
+
+    Args:
+        project_path (str): Directory where experiments are located.
+            Corresponds to Experiment.local_dir.
+        sort (str): Key to sort by.
+        info_keys (list): Keys that are displayed.
+    """
     _check_tabulate()
     base, experiment_folders, _ = next(os.walk(project_path))
 
