@@ -444,7 +444,7 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
       RedisModule_Call(ctx, is_add ? "SADD" : "SREM", "ss", key_string, data);
   if (RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ERROR) {
     *changed = RedisModule_CallReplyInteger(reply) > 0;
-    if (!is_add) {
+    if (!is_add && *changed) {
       // try to delete the empty set.
       RedisModuleKey *key;
       REPLY_AND_RETURN_IF_NOT_OK(
@@ -452,7 +452,7 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
       auto size = RedisModule_ValueLength(key);
       if (size == 0) {
         REPLY_AND_RETURN_IF_FALSE(RedisModule_DeleteKey(key) == REDISMODULE_OK,
-                                  "Failed to delete empty set.");
+                                  "ERR Failed to delete empty set.");
       }
     }
     return REDISMODULE_OK;
@@ -509,10 +509,8 @@ int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
   if (Set_DoWrite(ctx, argv, argc, /*is_add=*/false, &changed) != REDISMODULE_OK) {
     return REDISMODULE_ERR;
   }
-  if (changed) {
-    return Set_DoPublish(ctx, argv, /*is_add=*/false);
-  }
-  return REDISMODULE_OK;
+  REPLY_AND_RETURN_IF_FALSE(changed, "ERR The entry to remove doesn't exist.");
+  return Set_DoPublish(ctx, argv, /*is_add=*/false);
 }
 
 /// A helper function to create and finish a GcsTableEntry, based on the
