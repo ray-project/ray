@@ -299,8 +299,22 @@ class Trial(object):
         self.error_file = None
         self.num_failures = 0
 
+        # AutoML fields
+        self.results = None
+        self.best_result = None
+        self.param_config = None
+        self.extra_arg = None
+
         self._nonjson_fields = [
-            "_checkpoint", "config", "loggers", "sync_function", "last_result"
+            "_checkpoint",
+            "config",
+            "loggers",
+            "sync_function",
+            "last_result",
+            "results",
+            "best_result",
+            "param_config",
+            "extra_arg",
         ]
 
         self.trial_name = None
