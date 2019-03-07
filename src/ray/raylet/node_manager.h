@@ -326,7 +326,7 @@ class NodeManager {
   /// \param id An unused value. TODO(rkn): Should this be removed?
   /// \param driver_data Data associated with a driver table event.
   /// \return Void.
-  void HandleDriverTableUpdate(const ClientID &id,
+  void HandleDriverTableUpdate(const DriverID &id,
                                const std::vector<DriverTableDataT> &driver_data);
 
   /// Check if certain invariants associated with the task dependency manager
