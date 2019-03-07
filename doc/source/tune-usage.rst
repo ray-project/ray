@@ -502,15 +502,15 @@ And stopping a trial (``PUT /trials/:id``):
 Tune CLI (Experimental)
 -----------------------
 
-``tune`` is a powerful, easy-to-use command line interface (CLI) to manage and monitor your experiments on Ray. To do this, verify that you have the ``tabulate`` library installed:
+``tune`` has a easy-to-use command line interface (CLI) to manage and monitor your experiments on Ray. To do this, verify that you have the ``tabulate`` library installed:
 
 .. code-block:: bash
 
     $ pip install tabulate
 
-Here are a few examples of command line calls that can be made and the corresponding terminal output. The commands will resize your output based on the size of your terminal.
+Here are a few examples of command line calls.
 
-- ``tune ls``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns. Empty columns will be removed and reported by default. If the terminal window is not wide enough to fit the entire table, columns will be dropped and reported based on the order of fields requested.
+- ``tune ls``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns.
 
 .. code-block:: bash
 
@@ -527,7 +527,7 @@ Here are a few examples of command line calls that can be made and the correspon
     Please increase your terminal size to view remaining columns.
     Empty columns: ['trial_name']
 
-- ``tune lsx``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--sort`` flag to sort the output by specific columns. Empty columns will be removed and reported by default. If the terminal window is not wide enough to fit the entire table, columns will be dropped and reported based on the order of fields requested.
+- ``tune lsx``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns.
 
 .. code-block:: bash
 
