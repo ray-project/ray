@@ -10,22 +10,14 @@ namespace {
 
 /// Process a notification of the object table entries and store the result in
 /// client_ids. This assumes that client_ids already contains the result of the
-/// object table entries up to but not including this notification. This also stores a
-/// bool in has_been_created indicating whether the object has ever been
-/// created before.
+/// object table entries up to but not including this notification.
 void UpdateObjectLocations(const GcsTableNotificationMode mode,
                            const std::vector<ObjectTableDataT> &location_updates,
                            const ray::gcs::ClientTable &client_table,
-                           std::unordered_set<ClientID> *client_ids,
-                           bool *has_been_created) {
+                           std::unordered_set<ClientID> *client_ids) {
   // location_updates contains the updates of locations of the object.
   // with GcsTableNotificationMode, we can determine whether the update mode is
   // addition or deletion.
-  if (!location_updates.empty()) {
-    // If there are entries, then the object has been created. Once this flag
-    // is set to true, it should never go back to false.
-    *has_been_created = true;
-  }
   for (const auto &object_table_data : location_updates) {
     ClientID client_id = ClientID::from_binary(object_table_data.manager);
     if (mode != GcsTableNotificationMode::REMOVE) {
@@ -57,10 +49,13 @@ void ObjectDirectory::RegisterBackend() {
     if (it == listeners_.end()) {
       return;
     }
+
+    // Once this flag is set to true, it should never go back to false.
+    it->second.subscribed = true;
+
     // Update entries for this object.
     UpdateObjectLocations(mode, location_updates, gcs_client_->client_table(),
-                          &it->second.current_object_locations,
-                          &it->second.has_been_created);
+                          &it->second.current_object_locations);
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
     auto callbacks = it->second.callbacks;
@@ -71,8 +66,7 @@ void ObjectDirectory::RegisterBackend() {
     for (const auto &callback_pair : callbacks) {
       // It is safe to call the callback directly since this is already running
       // in the subscription callback stack.
-      callback_pair.second(object_id, it->second.current_object_locations,
-                           it->second.has_been_created);
+      callback_pair.second(object_id, it->second.current_object_locations);
     }
   };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
@@ -142,14 +136,13 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
       // its locations with an empty update so that the location will be removed.
       UpdateObjectLocations(
           GcsTableNotificationMode::APPEND_OR_ADD, {}, gcs_client_->client_table(),
-          &listener.second.current_object_locations, &listener.second.has_been_created);
+          &listener.second.current_object_locations);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
       for (const auto &callback_pair : listener.second.callbacks) {
         // It is safe to call the callback directly since this is already running
         // in the subscription callback stack.
-        callback_pair.second(object_id, listener.second.current_object_locations,
-                             listener.second.has_been_created);
+        callback_pair.second(object_id, listener.second.current_object_locations);
       }
     }
   }
@@ -173,10 +166,10 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   listener_state.callbacks.emplace(callback_id, callback);
   // If we previously received some notifications about the object's locations,
   // immediately notify the caller of the current known locations.
-  if (listener_state.has_been_created) {
+  if (listener_state.subscribed) {
     auto &locations = listener_state.current_object_locations;
     io_service_.post([callback, locations, object_id]() {
-      callback(object_id, locations, /*has_been_created=*/true);
+      callback(object_id, locations);
     });
   }
   return status;
@@ -202,15 +195,14 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                                              const OnLocationsFound &callback) {
   ray::Status status;
   auto it = listeners_.find(object_id);
-  if (it != listeners_.end() && it->second.has_been_created) {
+  if (it != listeners_.end() && it->second.subscribed) {
     // If we have locations cached due to a concurrent SubscribeObjectLocations
     // call, and we have received at least one notification from the GCS about
     // the object's creation, then call the callback immediately with the
     // cached locations.
     auto &locations = it->second.current_object_locations;
-    bool has_been_created = it->second.has_been_created;
-    io_service_.post([callback, object_id, locations, has_been_created]() {
-      callback(object_id, locations, has_been_created);
+    io_service_.post([callback, object_id, locations]() {
+      callback(object_id, locations);
     });
   } else {
     // We do not have any locations cached due to a concurrent
@@ -222,13 +214,11 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                          const std::vector<ObjectTableDataT> &location_updates) {
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
-          bool has_been_created = false;
           UpdateObjectLocations(GcsTableNotificationMode::APPEND_OR_ADD, location_updates,
-                                gcs_client_->client_table(), &client_ids,
-                                &has_been_created);
+                                gcs_client_->client_table(), &client_ids);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.
-          callback(object_id, client_ids, has_been_created);
+          callback(object_id, client_ids);
         });
   }
   return status;

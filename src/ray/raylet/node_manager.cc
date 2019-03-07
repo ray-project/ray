@@ -60,7 +60,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
-          [this](const TaskID &task_id, bool return_values_lost) {
+          [this](const TaskID &task_id) {
             HandleTaskReconstruction(task_id);
           },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
@@ -1288,14 +1288,11 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
         object_id,
         [this, task_marked_as_failed, task](
             const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients, bool has_been_created) {
-          // TODO(raulchen): LookupLocations will set has_been_created to false if
-          // the object does not exist on any nodes due to eviction
-          has_been_created = true;
+            const std::unordered_set<ray::ClientID> &clients) {
           if (!*task_marked_as_failed) {
             // Only process the object locations if we haven't already marked the
             // task as failed.
-            if (clients.empty() && has_been_created) {
+            if (clients.empty()) {
               // The object does not exist on any nodes but has been created
               // before, so the object has been lost. Mark the task as failed to
               // prevent any tasks that depend on this object from hanging.
