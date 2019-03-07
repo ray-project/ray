@@ -52,7 +52,7 @@ except subprocess.CalledProcessError:
 def _check_tabulate():
     """Checks whether tabulate is installed."""
     if tabulate is None:
-        raise Exception(
+        raise ImportError(
             "Tabulate not installed. Please run `pip install tabulate`.")
 
 
@@ -140,7 +140,9 @@ def list_trials(experiment_path,
     checkpoints_df = checkpoints_df[col_keys]
 
     if "last_update_time" in checkpoints_df:
-        datetime_series = checkpoints_df["last_update_time"].dropna()
+        with pd.option_context('mode.use_inf_as_null', True):
+            datetime_series = checkpoints_df["last_update_time"].dropna()
+
         datetime_series = datetime_series.apply(
             lambda t: datetime.fromtimestamp(t).strftime(TIMESTAMP_FORMAT))
         checkpoints_df["last_update_time"] = datetime_series

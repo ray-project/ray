@@ -502,7 +502,7 @@ And stopping a trial (``PUT /trials/:id``):
 Tune CLI (Experimental)
 -----------------------
 
-``tune`` has a easy-to-use command line interface (CLI) to manage and monitor your experiments on Ray. To do this, verify that you have the ``tabulate`` library installed:
+``tune`` has an easy-to-use command line interface (CLI) to manage and monitor your experiments on Ray. To do this, verify that you have the ``tabulate`` library installed:
 
 .. code-block:: bash
 
@@ -510,11 +510,11 @@ Tune CLI (Experimental)
 
 Here are a few examples of command line calls.
 
-- ``tune ls``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns.
+- ``tune list-trials``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns.
 
 .. code-block:: bash
 
-    $ tune ls [EXPERIMENT_DIR]
+    $ tune list-trials [EXPERIMENT_DIR]
 
     +------------------+-----------------------+------------+
     | trainable_name   | experiment_tag        | trial_id   |
@@ -527,11 +527,11 @@ Here are a few examples of command line calls.
     +------------------+-----------------------+------------+
     Dropped columns: ['status', 'last_update_time']
 
-- ``tune lsx``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns.
+- ``tune list-experiments``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns.
 
 .. code-block:: bash
 
-    $ tune lsx [PROJECT_DIR]
+    $ tune list-experiments [PROJECT_DIR]
 
     +----------------------+----------------+------------------+---------------------+
     | name                 |   total_trials |   running_trials |   terminated_trials |
