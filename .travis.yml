@@ -170,7 +170,7 @@ script:
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py
-  - ./ci/suppress_output python -m pytest --durations=10 python/ray/tests
+  - python -m pytest --durations=10 python/ray/tests
 deploy:
   - provider: s3
     access_key_id: AKIAJ2L7XDUSZVTXI5QA
