@@ -833,6 +833,8 @@ void NodeManager::ProcessDisconnectClientMessage(
         // not safe to pass in the iterator directly.
         const TaskID task_id = *worker->GetBlockedTaskIds().begin();
         HandleTaskUnblocked(client, task_id);
+        // TODO: this will only unsubscribe from the currently executing task.
+        // We should also unsubscribe from previous tasks that have an active ray.wait.
         RAY_CHECK(task_dependency_manager_.UnsubscribeAllDependencies(task_id));
       }
     }
@@ -953,7 +955,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
 
   if (!required_object_ids.empty()) {
     const TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
-    HandleTaskBlocked(client, required_object_ids, task_id, true);
+    HandleTaskBlocked(client, required_object_ids, task_id, /*ray_get=*/true);
   }
 }
 
@@ -979,7 +981,7 @@ void NodeManager::ProcessWaitRequestMessage(
   const TaskID &current_task_id = from_flatbuf<TaskID>(*message->task_id());
   bool client_blocked = !required_object_ids.empty();
   if (client_blocked) {
-    HandleTaskBlocked(client, required_object_ids, current_task_id, false);
+    HandleTaskBlocked(client, required_object_ids, current_task_id, /*ray_get=*/false);
   }
 
   ray::Status status = object_manager_.Wait(

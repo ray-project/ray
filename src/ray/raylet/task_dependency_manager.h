@@ -65,6 +65,12 @@ class TaskDependencyManager {
   /// \return Whether the task was subscribed before.
   bool UnsubscribeGetDependencies(const TaskID &task_id);
 
+  /// Unsubscribe from required and non-blocking object dependencies. If the
+  /// objects were remote and are no longer required by any subscribed task,
+  /// then they will be canceled.
+  ///
+  /// \param task_id The ID of the task whose dependencies to unsubscribe from.
+  /// \return Whether the task was subscribed before.
   bool UnsubscribeAllDependencies(const TaskID &task_id);
 
   /// Mark that the given task is pending execution. Any objects that it creates
@@ -170,9 +176,15 @@ class TaskDependencyManager {
   /// The task lease has an expiration time. If we do not renew the lease
   /// before that time, then other nodes may choose to execute the task.
   void AcquireTaskLease(const TaskID &task_id);
-
+  /// Removes the task from the stored list of tasks that depend on the object.
   void RemoveTaskDependency(const TaskID &task_id, const ObjectID &object_id);
-
+  /// Unsubscribe from the given non-blocking object dependency. If the
+  /// objects were remote and are no longer required by any subscribed task,
+  /// then they will be canceled.
+  ///
+  /// \param task_id The ID of the task whose dependency to unsubscribe from.
+  /// \param object_id The ID of the dependency to unsubscribe from.
+  /// \return Whether the task was subscribed before.
   bool UnsubscribeWaitDependency(const TaskID &task_id, const ObjectID &object_id);
 
   /// The object manager, used to fetch required objects from remote nodes.

@@ -86,8 +86,11 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
     if (object_entry != creating_task_entry->second.end()) {
       for (auto &dependent_task_id : object_entry->second) {
         UnsubscribeWaitDependency(dependent_task_id, object_id);
+        // An task may ray.wait on an object and then call ray.get on it
         auto &task_entry = task_dependencies_[dependent_task_id];
-        task_entry.num_missing_dependencies--;
+        if (task_entry.get_dependencies.find(object_id) == task_entry.get_dependencies.end()) {
+          task_entry.num_missing_dependencies--;
+        }
         // If the dependent task now has all of its arguments ready, it's ready
         // to run.
         if (task_entry.num_missing_dependencies == 0) {
@@ -199,7 +202,7 @@ bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
     return false;
   }
 
-  TaskDependencies task_entry = it->second;
+  TaskDependencies &task_entry = it->second;
 
   // Remove the task's dependencies.
   for (const auto &object_id : task_entry.get_dependencies) {
@@ -258,14 +261,18 @@ bool TaskDependencyManager::UnsubscribeWaitDependency(const TaskID &task_id, con
     return false;
   }
 
-  const TaskDependencies task_entry = std::move(it->second);
+  TaskDependencies &task_entry = it->second;
 
   auto wait_it = task_entry.wait_dependencies.find(object_id);
   if (wait_it == task_entry.wait_dependencies.end()) {
     return false;
   }
+  task_entry.wait_dependencies.erase(wait_it);
 
-  RemoveTaskDependency(task_id, object_id);
+  if (task_entry.get_dependencies.find(object_id) != task_entry.get_dependencies.end()) {
+    RemoveTaskDependency(task_id, object_id);
+  }
+
   HandleRemoteDependencyCanceled(object_id);
 
   if (task_entry.get_dependencies.empty() && task_entry.wait_dependencies.empty()) {
