@@ -24,7 +24,7 @@ def michalewicz_function(config, reporter):
     y = np.dot(sin_x, sin_z)
 
     # Negate y since we want to minimize y value
-    reporter(timesteps_total=1, neg_mean_loss=-y)
+    reporter(timesteps_this_iter=1, neg_mean_loss=-y)
 
 
 if __name__ == "__main__":

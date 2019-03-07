@@ -28,7 +28,7 @@ class StatusReporter(object):
     Example:
         >>> def trainable_function(config, reporter):
         >>>     assert isinstance(reporter, StatusReporter)
-        >>>     reporter(timesteps_total=1)
+        >>>     reporter(timesteps_this_iter=1)
     """
     
     def __init__(self, result_queue, continue_semaphore):
