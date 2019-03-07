@@ -71,6 +71,6 @@ Managed Actor Tier
 
 Managed actors will be managed by routers. These actors can contains
 arbitrary methods. Methods in the actors class are assumed to be able to
-take into a batch of input at a time. If this cannot be assumed, you can
-use the ``@batched_input`` decorator, it will run your method in a for
-loop working on the micro-batch.
+take into a single input. To fully utilize the vectorized instructions, like
+``np.sum``, you can use the ``@batched_input`` decorator, it will run your method 
+in on a micro-batch.
