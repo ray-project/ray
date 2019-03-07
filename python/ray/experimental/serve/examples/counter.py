@@ -1,7 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import ray
-from ray.experimental.serve import RayServeMixin, single_input
+from ray.experimental.serve import RayServeMixin, batched_input
 
 
 @ray.remote
@@ -11,8 +11,7 @@ class Counter(RayServeMixin):
     def __init__(self):
         self.counter = 0
 
-    @single_input
-    def __call__(self, single_input):
+    def __call__(self, batched_input):
         self.counter += 1
         return self.counter
 
@@ -22,6 +21,7 @@ class CustomCounter(RayServeMixin):
     """Return the query id. Used for testing `serve_method` signature."""
 
     serve_method = "count"
-
+    
+    @batched_input
     def count(self, input_batch):
         return [1 for _ in range(len(input_batch))]

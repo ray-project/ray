@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 
 import ray
-from ray.experimental.serve import RayServeMixin, single_input
+from ray.experimental.serve import RayServeMixin, batched_input
 
 
 @ray.remote
@@ -16,6 +16,7 @@ class VectorizedAdder(RayServeMixin):
     def __init__(self, scaler_increment):
         self.inc = scaler_increment
 
+    @batched_input
     def __call__(self, input_batch):
         arr = np.array(input_batch)
         arr += self.inc
@@ -29,7 +30,6 @@ class ScalerAdder(RayServeMixin):
     def __init__(self, scaler_increment):
         self.inc = scaler_increment
 
-    @single_input
     def __call__(self, input_scaler):
         return input_scaler + self.inc
 
@@ -37,7 +37,8 @@ class ScalerAdder(RayServeMixin):
 @ray.remote
 class VectorDouble(RayServeMixin):
     """Actor that doubles the batched input."""
-
+    
+    @batched_input
     def __call__(self, batched_vectors):
         matrix = np.array(batched_vectors)
         matrix *= 2

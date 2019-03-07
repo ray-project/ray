@@ -41,7 +41,7 @@ def test_vadd(ray_start, generated_inputs):
     assert np.array_equal(result_arr, np.array(input_data) + INCREMENT)
 
 
-def test_single_input(ray_start, generated_inputs):
+def test_batched_input(ray_start, generated_inputs):
     counter = Counter.remote()
     counter._dispatch.remote(generated_inputs)
     oids = [inp.result_object_id for inp in generated_inputs]
