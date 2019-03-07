@@ -1,5 +1,5 @@
 """
-`ray.experimental.serve` is a module for publishing your actors to interact with outside world. 
+`ray.experimental.serve` is a module for publishing your actors to interact with outside world.
 """
 
 import sys

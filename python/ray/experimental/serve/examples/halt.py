@@ -1,7 +1,7 @@
 import time
 
 import ray
-from ray.experimental.serve import RayServeMixin, single_input
+from ray.experimental.serve import RayServeMixin
 
 
 @ray.remote

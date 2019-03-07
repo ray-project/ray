@@ -8,8 +8,8 @@ import ray
 
 
 def unwrap(future):
-    """Unwrap the result from ray.experimental.server router. 
-    Router returns a list of object ids when you call them. 
+    """Unwrap the result from ray.experimental.server router.
+    Router returns a list of object ids when you call them.
     """
 
     return ray.get(future)[0]
@@ -19,7 +19,7 @@ def unwrap(future):
 class HTTPFrontendActor:
     """HTTP API for an Actor. This exposes /{actor_name} endpoint for query.
 
-    Request: 
+    Request:
         GET /{actor_name} or POST /{actor_name}
         Content-type: application/json
         {
@@ -29,8 +29,8 @@ class HTTPFrontendActor:
     Response:
         Content-type: application/json
         {
-            "success": bool, 
-            "actor": str, 
+            "success": bool,
+            "actor": str,
             "result": any
         }
     """

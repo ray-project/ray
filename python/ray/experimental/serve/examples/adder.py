@@ -37,7 +37,7 @@ class ScalerAdder(RayServeMixin):
 
 @ray.remote
 class VectorDouble(RayServeMixin):
-    """Actor that doubles the batched input, 
+    """Actor that doubles the batched input,
        in this case the batched input can be N-Dimensional.
 
     result = input_batch * 2

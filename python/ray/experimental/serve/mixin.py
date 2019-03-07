@@ -6,7 +6,8 @@ from ray.experimental.serve import SingleQuery
 
 
 def single_input(func):
-    """Decorator to mark a actor method to accept only single input instead of batch
+    """Decorator to mark a actor method to accept only single input
+       instead of batch.
     """
     func.ray_serve_single_input = True
     return func
@@ -15,12 +16,12 @@ def single_input(func):
 def _execute_and_seal_error(method, arg, method_name):
     """Execute method with arg and return the result.
 
-    If the method fails, return a RayTaskError so it can be sealed in the 
-    resultOID and retried by user. 
+    If the method fails, return a RayTaskError so it can be sealed in the
+    resultOID and retried by user.
     """
     try:
         return method(arg)
-    except Exception as e:
+    except Exception:
         return ray.worker.RayTaskError(method_name, traceback.format_exc())
 
 
@@ -32,7 +33,7 @@ class RayServeMixin:
         @ray.remote
         class MyActor(RayServeMixin):
             # This is optional, by default it is "__call__"
-            serve_method = 'my_method' 
+            serve_method = 'my_method'
 
             def my_method(self, arg):
                 ...

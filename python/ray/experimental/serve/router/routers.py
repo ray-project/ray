@@ -1,5 +1,3 @@
-import logging
-import time
 from collections import defaultdict
 from functools import total_ordering
 from typing import Callable, Dict, List, Set, Tuple
@@ -19,7 +17,7 @@ to regsier it.
 # Use @total_ordering so we can sort SingleQuery
 @total_ordering
 class SingleQuery:
-    """Data container for request data, its result object id, 
+    """Data container for request data, its result object id,
        and corresponding deadline in seconds
     """
 
@@ -72,7 +70,7 @@ class DeadlineAwareRouter:
         num_replicas: int = 1,
         max_batch_size: int = -1,  # Unbounded batch size
     ):
-        """Register a new managed actor. 
+        """Register a new managed actor.
         """
         self.managed_actors[actor_name] = actor_class
         self.actor_init_arguments[actor_name] = (init_args, init_kwargs)
@@ -113,7 +111,7 @@ class DeadlineAwareRouter:
 
         Returns:
             List[ray.ObjectID] with length 1, the object id wrapped inside is the result
-            objectid when the query is executed. 
+            objectid when the query is executed.
         """
         assert actor_name in self.managed_actors, ACTOR_NOT_REGISTERED_MSG(actor_name)
 
