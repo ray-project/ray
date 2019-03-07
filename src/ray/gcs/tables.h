@@ -382,7 +382,7 @@ class HeartbeatBatchTable : public Table<ClientID, HeartbeatBatchTableData> {
   virtual ~HeartbeatBatchTable() {}
 };
 
-class DriverTable : public Log<JobID, DriverTableData> {
+class DriverTable : public Log<DriverID, DriverTableData> {
  public:
   DriverTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
               AsyncGcsClient *client)
@@ -398,7 +398,7 @@ class DriverTable : public Log<JobID, DriverTableData> {
   /// \param driver_id The driver id.
   /// \param is_dead Whether the driver is dead.
   /// \return The return status.
-  Status AppendDriverData(const JobID &driver_id, bool is_dead);
+  Status AppendDriverData(const DriverID &driver_id, bool is_dead);
 };
 
 class FunctionTable : public Table<ObjectID, FunctionTableData> {
@@ -488,7 +488,7 @@ class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
   /// \param checkpoint_id ID of the checkpoint.
   /// \return Status.
   Status AddCheckpointId(const JobID &job_id, const ActorID &actor_id,
-                         const UniqueID &checkpoint_id);
+                         const ActorCheckpointID &checkpoint_id);
 };
 
 namespace raylet {
@@ -511,7 +511,7 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
 
 }  // namespace raylet
 
-class ErrorTable : private Log<JobID, ErrorTableData> {
+class ErrorTable : private Log<DriverID, ErrorTableData> {
  public:
   ErrorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
              AsyncGcsClient *client)
@@ -532,7 +532,7 @@ class ErrorTable : private Log<JobID, ErrorTableData> {
   /// \param error_message The error message to push.
   /// \param timestamp The timestamp of the error.
   /// \return Status.
-  Status PushErrorToDriver(const JobID &job_id, const std::string &type,
+  Status PushErrorToDriver(const DriverID &driver_id, const std::string &type,
                            const std::string &error_message, double timestamp);
 
   /// Returns debug string for class.
@@ -574,7 +574,7 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 /// it should append an entry to the log indicating that it is dead. A client
 /// that is marked as dead should never again be marked as alive; if it needs
 /// to reconnect, it must connect with a different ClientID.
-class ClientTable : private Log<UniqueID, ClientTableData> {
+class ClientTable : private Log<ClientID, ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
       AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
@@ -678,7 +678,7 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// The key at which the log of client information is stored. This key must
   /// be kept the same across all instances of the ClientTable, so that all
   /// clients append and read from the same key.
-  UniqueID client_log_key_;
+  ClientID client_log_key_;
   /// Whether this client has called Disconnect().
   bool disconnected_;
   /// This client's ID.
