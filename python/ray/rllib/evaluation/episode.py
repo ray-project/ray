@@ -58,6 +58,7 @@ class MultiAgentEpisode(object):
         self._agent_to_policy = {}
         self._agent_to_rnn_state = {}
         self._agent_to_last_obs = {}
+        self._agent_to_last_raw_obs = {}
         self._agent_to_last_info = {}
         self._agent_to_last_action = {}
         self._agent_to_last_pi_info = {}
@@ -81,6 +82,12 @@ class MultiAgentEpisode(object):
         """Returns the last observation for the specified agent."""
 
         return self._agent_to_last_obs.get(agent_id)
+
+    @DeveloperAPI
+    def last_raw_obs_for(self, agent_id=_DUMMY_AGENT_ID):
+        """Returns the last un-preprocessed obs for the specified agent."""
+
+        return self._agent_to_last_raw_obs.get(agent_id)
 
     @DeveloperAPI
     def last_info_for(self, agent_id=_DUMMY_AGENT_ID):
@@ -149,10 +156,16 @@ class MultiAgentEpisode(object):
     def _set_last_observation(self, agent_id, obs):
         self._agent_to_last_obs[agent_id] = obs
 
+    def _set_last_raw_obs(self, agent_id, obs):
+        self._agent_to_last_raw_obs[agent_id] = obs
+
     def _set_last_info(self, agent_id, info):
         self._agent_to_last_info[agent_id] = info
 
     def _set_last_action(self, agent_id, action):
+        if agent_id in self._agent_to_last_action:
+            self._agent_to_prev_action[agent_id] = \
+                self._agent_to_last_action[agent_id]
         self._agent_to_last_action[agent_id] = action
 
     def _set_last_pi_info(self, agent_id, pi_info):
