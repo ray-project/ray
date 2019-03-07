@@ -81,7 +81,7 @@ class BaseEnv(object):
                     async_remote_envs=False):
         """Wraps any env type as needed to expose the async interface."""
 
-        from ray.rllib.env.async_remote_env import AsyncRemoteEnv
+        from ray.rllib.env.remote_vector_env import RemoteVectorEnv
         if (remote_envs or async_remote_envs) and num_envs == 1:
             raise ValueError(
                 "Remote envs only make sense to use if num_envs > 1 "
@@ -93,10 +93,10 @@ class BaseEnv(object):
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
                 if remote_envs:
-                    env = AsyncRemoteEnv(
+                    env = RemoteVectorEnv(
                         make_env, num_envs, multiagent=True, sync=True)
                 elif async_remote_envs:
-                    env = AsyncRemoteEnv(
+                    env = RemoteVectorEnv(
                         make_env, num_envs, multiagent=True, sync=False)
                 else:
                     env = _MultiAgentEnvToBaseEnv(
@@ -112,10 +112,10 @@ class BaseEnv(object):
                 env = _VectorEnvToBaseEnv(env)
             else:
                 if remote_envs:
-                    env = AsyncRemoteEnv(
+                    env = RemoteVectorEnv(
                         make_env, num_envs, multiagent=False, sync=True)
                 elif async_remote_envs:
-                    env = AsyncRemoteEnv(
+                    env = RemoteVectorEnv(
                         make_env, num_envs, multiagent=False, sync=False)
                 else:
                     env = VectorEnv.wrap(
