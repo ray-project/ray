@@ -32,16 +32,16 @@ if __name__ == "__main__":
     del c
     print("Successfully put C.")
 
-    # D = (2 ** 30 + 1) * ["h"]
-    # d = ray.put(D)
-    # assert ray.get(d) == D
-    # del D
-    # del d
-    # print("Successfully put D.")
+    D = (2 ** 30 + 1) * ["h"]
+    d = ray.put(D)
+    assert ray.get(d) == D
+    del D
+    del d
+    print("Successfully put D.")
 
-    # E = (2 ** 30 + 1) * ("i",)
-    # e = ray.put(E)
-    # assert ray.get(e) == E
-    # del E
-    # del e
-    # print("Successfully put E.")
+    E = (2 ** 30 + 1) * ("i",)
+    e = ray.put(E)
+    assert ray.get(e) == E
+    del E
+    del e
+    print("Successfully put E.")
