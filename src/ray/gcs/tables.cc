@@ -591,6 +591,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
   return Lookup(job_id, actor_id, lookup_callback, failure_callback);
 }
 
+template class Log<ObjectID, ObjectTableData>;
 template class Set<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;

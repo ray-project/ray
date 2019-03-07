@@ -40,7 +40,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// lease notifications from.
   ReconstructionPolicy(
       boost::asio::io_service &io_service,
-      std::function<void(const TaskID &, bool)> reconstruction_handler,
+      std::function<void(const TaskID &)> reconstruction_handler,
       int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
       gcs::PubsubInterface<TaskID> &task_lease_pubsub,
       std::shared_ptr<ObjectDirectoryInterface> object_directory,

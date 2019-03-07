@@ -294,7 +294,7 @@ class TestObjectManager : public TestObjectManagerBase {
         sub_id, object_1,
         [this, sub_id, object_1, object_2](
             const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients, bool created) {
+            const std::unordered_set<ray::ClientID> &clients) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }
