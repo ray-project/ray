@@ -242,6 +242,10 @@ class Trial(object):
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
 
+    _nonjson_fields = [
+        "_checkpoint", "config", "loggers", "sync_function", "last_result"
+    ]
+
     def __init__(self,
                  trainable_name,
                  config=None,
@@ -299,9 +303,7 @@ class Trial(object):
         self.error_file = None
         self.num_failures = 0
 
-        self._nonjson_fields = [
-            "_checkpoint", "config", "loggers", "sync_function", "last_result"
-        ]
+        self._nonjson_fields = Trial._nonjson_fields.copy()
 
         self.trial_name = None
         if trial_name_creator:
