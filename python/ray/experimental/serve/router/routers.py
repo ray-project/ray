@@ -110,7 +110,7 @@ class DeadlineAwareRouter:
 
     def call(self, actor_name, data, deadline_s):
         """Enqueue a request to one of the actor managed by this router.
-        
+
         Returns:
             List[ray.ObjectID] with length 1, the object id wrapped inside is the result
             objectid when the query is executed. 
@@ -124,7 +124,7 @@ class DeadlineAwareRouter:
 
     def loop(self):
         """Main loop for router. It will does the following things:
-        
+
         1. Check which running actors finished
         2. Iterate over free actors and request queues, dispatch requests batch to free actors
         3. Tail recursively schedule itself.
