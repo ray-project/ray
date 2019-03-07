@@ -41,7 +41,7 @@ class CustomLossModel(Model):
         self.obs_in = input_dict["obs"]
         with tf.variable_scope("shared", reuse=tf.AUTO_REUSE):
             self.fcnet = FullyConnectedNetwork(input_dict, self.obs_space,
-                                               num_outputs, options)
+                                               self.action_space, num_outputs, options)
         return self.fcnet.outputs, self.fcnet.last_layer
 
     def custom_loss(self, policy_loss, loss_inputs):
