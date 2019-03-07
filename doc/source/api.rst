@@ -57,3 +57,11 @@ The Ray Command Line API
 .. click:: ray.scripts.scripts:get_head_ip
    :prog: ray get_head_ip
    :show-nested:
+
+.. click:: ray.scripts.scripts:stack
+   :prog: ray stack
+   :show-nested:
+
+.. click:: ray.scripts.scripts:timeline
+   :prog: ray timeline
+   :show-nested:

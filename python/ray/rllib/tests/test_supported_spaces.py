@@ -105,7 +105,7 @@ def check_support_multiagent(alg, config):
 
 class ModelSupportedSpaces(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=10)
 
     def tearDown(self):
         ray.shutdown()

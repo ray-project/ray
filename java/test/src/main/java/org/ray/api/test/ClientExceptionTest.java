@@ -17,13 +17,9 @@ public class ClientExceptionTest extends BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ClientExceptionTest.class);
 
-  @Override
-  public void beforeEachCase() {
-    TestUtils.skipTestUnderSingleProcess();
-  }
-
   @Test
   public void testWaitAndCrash() {
+    TestUtils.skipTestUnderSingleProcess();
     UniqueId randomId = UniqueId.randomId();
     RayObject<String> notExisting = new RayObjectImpl(randomId);
 
