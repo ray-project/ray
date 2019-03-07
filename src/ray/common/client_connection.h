@@ -59,15 +59,14 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// Write a buffer to this connection.
   ///
   /// \param buffer The buffer.
-  /// \param ec The error code object in which to store error codes.
+  /// \return Status.
   Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
 
   /// Read a buffer from this connection.
   ///
   /// \param buffer The buffer.
-  /// \param ec The error code object in which to store error codes.
-  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
-                  boost::system::error_code &ec);
+  /// \return Status.
+  Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
 
   /// Shuts down socket for this connection.
   void Close() {

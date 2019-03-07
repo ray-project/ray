@@ -287,10 +287,10 @@ class TrialRunner(object):
             trial (Trial): Trial to queue.
         """
         trial.set_verbose(self._verbose)
+        self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
         self.trial_executor.try_checkpoint_metadata(trial)
-        self._trials.append(trial)
 
     def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
         """Returns a human readable message for printing to the console."""
