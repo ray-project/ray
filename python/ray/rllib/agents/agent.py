@@ -135,7 +135,7 @@ COMMON_CONFIG = {
     # can make sense if your envs are very CPU intensive (e.g., for StarCraft).
     "remote_worker_envs": False,
     # Similar to remote_worker_envs, but runs the envs asynchronously in the
-    # background for greater efficiency.
+    # background for greater efficiency. Conflicts with remote_worker_envs.
     "async_remote_worker_envs": False,
 
     # === Offline Datasets ===
