@@ -66,6 +66,7 @@ optional_ray_files += ray_autoscaler_files
 extras = {
     "rllib": ["pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"],
     "debug": ["psutil", "setproctitle", "py-spy"],
+    "serve": ["starlette", "uvicorn"]
 }
 
 
