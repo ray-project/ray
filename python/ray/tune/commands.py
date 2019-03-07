@@ -21,6 +21,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S (%A)"
+
 DEFAULT_EXPERIMENT_INFO_KEYS = (
     "trainable_name",
     "experiment_tag",
@@ -33,7 +35,7 @@ DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS)
 
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
-    "timestamp",
+    "last_updated",
     "total_trials",
     "running_trials",
     "terminated_trials",
@@ -137,6 +139,12 @@ def list_trials(experiment_path,
     ]
     checkpoints_df = checkpoints_df[col_keys]
 
+    if "last_update_time" in checkpoints_df:
+        datetime_series = checkpoints_df["last_update_time"].dropna()
+        datetime_series = datetime_series.apply(
+            lambda t: datetime.fromtimestamp(t).strftime(TIMESTAMP_FORMAT))
+        checkpoints_df["last_update_time"] = datetime_series
+
     if "logdir" in checkpoints_df:
         # logdir often too verbose to view in table, so drop experiment_path
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
@@ -176,29 +184,42 @@ def list_experiments(project_path,
 
         checkpoints = pd.DataFrame(experiment_state["checkpoints"])
         runner_data = experiment_state["runner_data"]
-        timestamp = experiment_state.get("timestamp")
+
+        # Format time-based values.
+        time_values = {
+            "start_time": runner_data.get("_start_time"),
+            "last_updated": experiment_state.get("timestamp"),
+        }
+
+        formatted_time_values = {
+            key: datetime.fromtimestamp(val).strftime(TIMESTAMP_FORMAT)
+            if val else None
+            for key, val in time_values.items()
+        }
 
         experiment_data = {
             "name": experiment_dir,
-            "start_time": runner_data.get("_start_time"),
-            "timestamp": datetime.fromtimestamp(timestamp)
-            if timestamp else None,
             "total_trials": checkpoints.shape[0],
             "running_trials": (checkpoints["status"] == Trial.RUNNING).sum(),
             "terminated_trials": (
                 checkpoints["status"] == Trial.TERMINATED).sum(),
             "error_trials": (checkpoints["status"] == Trial.ERROR).sum(),
+            **formatted_time_values
         }
         experiment_data_collection.append(experiment_data)
 
-    info_df = pd.DataFrame(experiment_data_collection)
-    col_keys = [k for k in list(info_keys) if k in info_df]
     if not experiment_data_collection:
         print("No experiments found!")
         sys.exit(0)
-    elif not col_keys:
+
+    info_df = pd.DataFrame(experiment_data_collection)
+    col_keys = [k for k in list(info_keys) if k in info_df]
+
+    if not col_keys:
         print("None of keys {} in experiment data!".format(info_keys))
         sys.exit(0)
+
+    info_df = info_df[col_keys]
 
     if sort:
         if sort not in info_df:
