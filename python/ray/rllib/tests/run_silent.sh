@@ -1,12 +1,21 @@
 #!/bin/bash
 
+TMPFILE=`mktemp`
 DIRECTORY=`dirname $0`
-SUPPRESS_OUTPUT=$DIRECTORY/../../../../ci/suppress_output
 SCRIPT=$1
 shift
 
 if [ -x $DIRECTORY/../$SCRIPT ]; then
-    exec $SUPPRESS_OUTPUT $DIRECTORY/../$SCRIPT "$@"
+    time $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
 else
-    exec $SUPPRESS_OUTPUT python $DIRECTORY/../$SCRIPT "$@"
+    time python $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
 fi
+
+CODE=$?
+if [ $CODE != 0 ]; then
+    cat $TMPFILE
+    echo "FAILED $CODE"
+    exit $CODE
+fi
+
+exit 0
