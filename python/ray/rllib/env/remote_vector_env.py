@@ -15,7 +15,7 @@ class RemoteVectorEnv(BaseEnv):
 
     This provides dynamic batching of inference as observations are returned
     from the remote simulator actors. Both single and multi-agent child envs
-    are supported.
+    are supported, and envs can be stepped synchronously or async.
     """
 
     def __init__(self, make_env, num_envs, multiagent, sync):
