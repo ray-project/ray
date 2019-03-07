@@ -112,8 +112,9 @@ class TrialRunner(object):
         self._stop_queue = []
         self._metadata_checkpoint_dir = metadata_checkpoint_dir
 
-        self._start_time = datetime.today()
-        self._session = self._start_time.strftime("%Y-%m-%d_%H-%M-%S")
+        self._start_time = time.time()
+        self._session_str = datetime.fromtimestamp(
+            self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
 
     @classmethod
     def checkpoint_exists(cls, directory):
@@ -148,7 +149,7 @@ class TrialRunner(object):
         os.rename(
             tmp_file_name,
             os.path.join(metadata_checkpoint_dir,
-                         TrialRunner.CKPT_FILE_TMPL.format(self._session)))
+                         TrialRunner.CKPT_FILE_TMPL.format(self._session_str)))
         return metadata_checkpoint_dir
 
     @classmethod
@@ -568,18 +569,18 @@ class TrialRunner(object):
                 "trial_executor",
         ]:
             del state[k]
-        state["_start_time"] = self._start_time.timestamp()
         state["launch_web_server"] = bool(self._server)
         return state
 
     def __setstate__(self, state):
         launch_web_server = state.pop("launch_web_server")
 
-        session = state.pop("_session")
-        self.__dict__.setdefault("_session", session)
+        # Use session_str from previous checkpoint if does not exist
+        session_str = state.pop("_session_str")
+        self.__dict__.setdefault("_session_str", session_str)
+        # Use start_time from previous checkpoint if does not exist
         start_time = state.pop("_start_time")
-        self.__dict__.setdefault("_start_time",
-                                 datetime.fromtimestamp(start_time))
+        self.__dict__.setdefault("_start_time", start_time)
 
         self.__dict__.update(state)
         if launch_web_server:
