@@ -7,18 +7,21 @@ set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
+pushd $ROOT_DIR/../java
 echo "Checking code format."
 mvn checkstyle:check
+popd
 
 echo "Compiling Java code."
 pushd $ROOT_DIR/..
 bazel build -c opt //java:all
+popd
 
 pushd $ROOT_DIR/../java/test
-# test raylet
+echo "Running tests under cluster mode."
 ENABLE_MULTI_LANGUAGE_TESTS=1 java -jar -Dray.home=$ROOT_DIR/../ $ROOT_DIR/../bazel-bin/java/AllTests_deploy.jar $ROOT_DIR/../java/testng.xml
 
-# test raylet under SINGLE_PROCESS mode
+echo "Running tests under single-process mode."
 java -jar -Dray.home=$ROOT_DIR/../ -Dray.run-mode=SINGLE_PROCESS $ROOT_DIR/../bazel-bin/java/AllTests_deploy.jar $ROOT_DIR/../java/testng.xml
 
 set +x
