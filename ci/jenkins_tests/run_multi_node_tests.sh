@@ -16,7 +16,7 @@ echo "Using Docker image" $DOCKER_SHA
 
 ######################## RAY BACKEND TESTS #################################
 
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+docker run --rm --shm-size=60G --memory=60G $DOCKER_SHA \
     python /ray/ci/jenkins_tests/miscellaneous/large_memory_test.py
 
 ######################## RLLIB TESTS #################################
