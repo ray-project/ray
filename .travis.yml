@@ -36,7 +36,7 @@ matrix:
 
       # Test Bazel build
       - rm -rf build
-      - ./ci/travis/install-bazel.sh
+      - ./ci/suppress_output ./ci/travis/install-bazel.sh
       - bazel build ...
 
     - os: linux
@@ -84,10 +84,10 @@ matrix:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       install:
-        - ./ci/travis/install-bazel.sh
-        - ./ci/travis/install-dependencies.sh
+        - ./ci/suppress_output ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/travis/install-ray.sh
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
 
       script:
         - bash src/ray/test/run_object_manager_valgrind.sh
@@ -98,11 +98,11 @@ matrix:
         # - export RAY_REDIS_SERVER_VALGRIND=1
 
         # # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
-        - python -m pytest -v --durations=10 python/ray/tests/test_mini.py
-        - python -m pytest -v --durations=10 python/ray/tests/test_array.py
-        - python -m pytest -v --durations=10 python/ray/tests/test_multi_node_2.py
-        - python -m pytest -v --durations=10 python/ray/tests/test_node_manager.py
+        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py
+        - python -m pytest --durations=5 python/ray/tests/test_mini.py
+        - python -m pytest --durations=5 python/ray/tests/test_array.py
+        - python -m pytest --durations=5 python/ray/tests/test_multi_node_2.py
+        - python -m pytest --durations=5 python/ray/tests/test_node_manager.py
 
 
     # Build Linux wheels.
@@ -138,16 +138,16 @@ matrix:
 
 
 install:
-  - ./ci/travis/install-bazel.sh
-  - ./ci/travis/install-dependencies.sh
+  - ./ci/suppress_output ./ci/travis/install-bazel.sh
+  - ./ci/suppress_output ./ci/travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
-  - ./ci/travis/install-ray.sh
-  - ./ci/travis/install-cython-examples.sh
+  - ./ci/suppress_output ./ci/travis/install-ray.sh
+  - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
-  - bash src/ray/test/run_gcs_tests.sh
+  - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
   # Raylet tests.
-  - bash src/ray/test/run_object_manager_tests.sh
-  - bazel test --build_tests_only --test_lang_filters=cc ... -c opt
+  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
+  - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc ... -c opt
 
 
 script:
@@ -159,20 +159,20 @@ script:
   # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
   # ray tune tests
-  - python python/ray/tune/tests/test_dependency.py
+  - ./ci/suppress_output python python/ray/tune/tests/test_dependency.py
   # `cluster_tests.py` runs on Jenkins, not Travis.
-  - python -m pytest -v --durations=30 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests
+  - python -m pytest --durations=10 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests
 
   # ray rllib tests
-  - python python/ray/rllib/tests/test_catalog.py
-  - python python/ray/rllib/tests/test_filters.py
-  - python python/ray/rllib/tests/test_optimizers.py
-  - python python/ray/rllib/tests/test_evaluators.py
+  - python/ray/rllib/tests/run_silent.sh tests/test_catalog.py
+  - python/ray/rllib/tests/run_silent.sh tests/test_filters.py
+  - python/ray/rllib/tests/run_silent.sh tests/test_optimizers.py
+  - python/ray/rllib/tests/run_silent.sh tests/test_evaluators.py
 
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
-  - python -m pytest -v --durations=30 python/ray/tests
+  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py
+  - python -m pytest --durations=10 python/ray/tests
 deploy:
   - provider: s3
     access_key_id: AKIAJ2L7XDUSZVTXI5QA
