@@ -10,11 +10,12 @@ from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID
 logger = logging.getLogger(__name__)
 
 
-class AsyncRemoteEnv(BaseEnv):
-    """Vector env that executes envs asynchronously in remote workers.
+class RemoteVectorEnv(BaseEnv):
+    """Vector env that executes envs in remote workers.
 
     This provides dynamic batching of inference as observations are returned
-    from the remote simulator actors.
+    from the remote simulator actors. Both single and multi-agent child envs
+    are supported.
     """
 
     def __init__(self, make_env, num_envs, multiagent, sync):
