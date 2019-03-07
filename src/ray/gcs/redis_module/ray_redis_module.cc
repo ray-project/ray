@@ -430,7 +430,7 @@ int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
   }
 }
 
-int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is_add, bool &changed) {
+int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is_add, bool *changed) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -443,7 +443,7 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
   RedisModuleCallReply *reply =
       RedisModule_Call(ctx, is_add ? "SADD" : "SREM", "ss", key_string, data);
   if (RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ERROR) {
-    changed = RedisModule_CallReplyInteger(reply) > 0;
+    *changed = RedisModule_CallReplyInteger(reply) > 0;
     if (!is_add) {
       // try to delete the empty set.
       RedisModuleKey *key;
@@ -480,7 +480,7 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
 ///         fails.
 int SetAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   bool changed;
-  if (Set_DoWrite(ctx, argv, argc, /*is_add=*/true, changed) != REDISMODULE_OK) {
+  if (Set_DoWrite(ctx, argv, argc, /*is_add=*/true, &changed) != REDISMODULE_OK) {
     return REDISMODULE_ERR;
   }
   if (changed) {
@@ -506,7 +506,7 @@ int SetAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
 ///         fails.
 int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   bool changed;
-  if (Set_DoWrite(ctx, argv, argc, /*is_add=*/false, changed) != REDISMODULE_OK) {
+  if (Set_DoWrite(ctx, argv, argc, /*is_add=*/false, &changed) != REDISMODULE_OK) {
     return REDISMODULE_ERR;
   }
   if (changed) {
