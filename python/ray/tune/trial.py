@@ -171,6 +171,20 @@ def resources_to_json(resources):
     }
 
 
+class History(object):
+    """Object that records events from each iteration."""
+
+    # TODO(rliaw): Make this extensible
+    ignored_fields = ["config"]
+
+    def __init__(self):
+        self.history = defaultdict()
+
+    def on_result(self, result):
+        for k, v in result.items():
+            if k not in ignored_fields:
+                self.history[k].append(v)
+
 def has_trainable(trainable_name):
     return ray.tune.registry._global_registry.contains(
         ray.tune.registry.TRAINABLE_CLASS, trainable_name)
@@ -284,6 +298,7 @@ class Trial(object):
 
         # Local trial state that is updated during the run
         self.last_result = {}
+        self.history = History()
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
@@ -441,6 +456,23 @@ class Trial(object):
             pieces.append('{} acc'.format(
                 format(self.last_result["mean_accuracy"], '.3g')))
 
+        # TODO(rliaw): Document this
+        if "training_loss" in self.last_result:
+            pieces.append('{} training loss'.format(
+                format(self.last_result["training_loss"], '.3g')))
+
+        if "validation_loss" in self.last_result:
+            pieces.append('{} val loss'.format(
+                format(self.last_result["validation_loss"], '.3g')))
+
+        if "training_acc" in self.last_result:
+            pieces.append('{} training acc'.format(
+                format(self.last_result["training_acc"], '.3g')))
+
+        if "validation_acc" in self.last_result:
+            pieces.append('{} val acc'.format(
+                format(self.last_result["validation_acc"], '.3g')))
+
         return ', '.join(pieces)
 
     def _status_string(self):
@@ -469,6 +501,7 @@ class Trial(object):
     def update_last_result(self, result, terminate=False):
         if terminate:
             result.update(done=True)
+        # TODO(rliaw): move this into a Trial hook
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))
@@ -476,6 +509,7 @@ class Trial(object):
             self.last_debug = time.time()
         self.last_result = result
         self.last_update_time = time.time()
+        self.history.on_result(self.last_result)
         self.result_logger.on_result(self.last_result)
 
     def _get_trainable_cls(self):

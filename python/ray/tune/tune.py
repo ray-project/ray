@@ -52,12 +52,19 @@ def try_restore_runner(checkpoint_dir, search_alg, scheduler, trial_executor):
     return new_runner
 
 
+def quick_init(local_mode=False):
+    if local_mode:
+        ray.init(local_mode=True)
+    else:
+        ray.init(ignore_reinit_errors=True, log_to_driver=False)
+
+
 def run_experiments(experiments,
                     search_alg=None,
                     scheduler=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
-                    verbose=2,
+                    verbose=1,
                     resume=False,
                     queue_trials=False,
                     trial_executor=None,

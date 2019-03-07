@@ -357,7 +357,7 @@ class RayTrialExecutor(TrialExecutor):
         """Returns a human readable message for printing to the console."""
 
         if self._resources_initialized:
-            status = "Resources requested: {}/{} CPUs, {}/{} GPUs".format(
+            status = "Resources requested: {:.3f}/{:.3f} CPUs, {:.3f}/{:.3f} GPUs".format(
                 self._committed_resources.cpu, self._avail_resources.cpu,
                 self._committed_resources.gpu, self._avail_resources.gpu)
             customs = ", ".join([
