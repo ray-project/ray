@@ -26,6 +26,7 @@ from ray.utils import try_to_create_directory
 logger = logging.getLogger(__name__)
 
 PY3 = sys.version_info.major >= 3
+TMP_ROOT = os.path.join(tempfile.gettempdir(), 'ray')
 
 
 class Node(object):
@@ -115,8 +116,7 @@ class Node(object):
             date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             self._temp_dir = self._make_inc_temp(
                 prefix="session_{date_str}_{pid}".format(
-                    pid=os.getpid(), date_str=date_str),
-                directory_name="/tmp/ray")
+                    pid=os.getpid(), date_str=date_str))
 
         try_to_create_directory(self._temp_dir)
         # Create a directory to be used for socket files.
@@ -168,7 +168,7 @@ class Node(object):
         """Get the path of the sockets directory."""
         return self._sockets_dir
 
-    def _make_inc_temp(self, suffix="", prefix="", directory_name="/tmp/ray"):
+    def _make_inc_temp(self, suffix="", prefix="", directory_name=TMP_ROOT):
         """Return a incremental temporary file name. The file is not created.
 
         Args:
