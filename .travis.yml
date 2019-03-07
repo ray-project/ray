@@ -5,11 +5,11 @@ language: generic
 matrix:
   include:
     - os: linux
-      dist: trusty
+      dist: xenial
       env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: linux
-      dist: trusty
+      dist: xenial
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: osx
@@ -21,7 +21,7 @@ matrix:
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: linux
-      dist: trusty
+      dist: xenial
       env:
         - JDK='Oracle JDK 8'
         - PYTHON=3.5 PYTHONWARNINGS=ignore
@@ -38,12 +38,12 @@ matrix:
       - bazel build ...
 
     - os: linux
-      dist: trusty
+      dist: xenial
       env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         # In case we ever want to use a different version of clang-format:
         #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-        #- echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty main" | sudo tee -a /etc/apt/sources.list > /dev/null
+        #- echo "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial main" | sudo tee -a /etc/apt/sources.list > /dev/null
         - sudo apt-get update -qq
         - sudo apt-get install -qq clang-format-3.8
       install: []
@@ -76,7 +76,7 @@ matrix:
         - ./ci/travis/bazel-format.sh
 
     - os: linux
-      dist: trusty
+      dist: xenial
       env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
@@ -105,7 +105,7 @@ matrix:
 
     # Build Linux wheels.
     - os: linux
-      dist: trusty
+      dist: xenial
       env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
       install:
         - ./ci/travis/install-dependencies.sh
@@ -127,7 +127,7 @@ matrix:
 
     # Test GCS integration
     - os: linux
-      dist: trusty
+      dist: xenial
       env:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
