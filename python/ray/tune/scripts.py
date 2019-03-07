@@ -29,9 +29,7 @@ def list_experiments(project_path, sort):
     commands.list_experiments(project_path, sort)
 
 
-cli.add_command(list_trials, name="list-trials")
 cli.add_command(list_trials, name="ls")
-cli.add_command(list_experiments, name="list-experiments")
 cli.add_command(list_experiments, name="lsx")
 
 

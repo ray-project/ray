@@ -138,7 +138,7 @@ class TrialRunner(object):
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
             "runner_data": self.__getstate__(),
-            "timestamp": datetime.now().timestamp()
+            "timestamp": datetime.today().timestamp()
         }
         tmp_file_name = os.path.join(metadata_checkpoint_dir,
                                      ".tmp_checkpoint")

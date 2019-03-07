@@ -514,32 +514,33 @@ Here are a few examples of command line calls.
 
 .. code-block:: bash
 
-    $ tune ls path_to_experiment --sort trial_id
-    +----+------------+------------+----------------+
-    |    | trial_id   | status     |   num_failures |
-    |----+------------+------------+----------------|
-    |  0 | 2a51423e   | TERMINATED |              0 |
-    |  1 | 930a2a93   | TERMINATED |              0 |
-    |  2 | a3be6d03   | TERMINATED |              0 |
-    |  3 | c86c6d43   | TERMINATED |              0 |
-    +----+------------+------------+----------------+
-    Dropped columns: ['logdir']
-    Please increase your terminal size to view remaining columns.
-    Empty columns: ['trial_name']
+    $ tune ls [EXPERIMENT_DIR]
+
+    +------------------+-----------------------+------------+
+    | trainable_name   | experiment_tag        | trial_id   |
+    |------------------+-----------------------+------------|
+    | MyTrainableClass | 0_height=40,width=37  | 87b54a1d   |
+    | MyTrainableClass | 1_height=21,width=70  | 23b89036   |
+    | MyTrainableClass | 2_height=99,width=90  | 518dbe95   |
+    | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
+    | MyTrainableClass | 4_height=90,width=69  | ae4e02fb   |
+    +------------------+-----------------------+------------+
+    Dropped columns: ['status', 'last_update_time']
 
 - ``tune lsx``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns.
 
 .. code-block:: bash
 
-    $ tune lsx path_to_project
-    +----+--------+--------------+----------------+-------------------+--------------+
-    |    | name   | total_trials | running_trials | terminated_trials | error_trials |
-    |----+--------+--------------+----------------+-------------------+--------------|
-    |  0 | exp_1  |            1 |              0 |                 0 |            1 |
-    |  1 | exp_2  |            1 |              0 |                 1 |            0 |
-    |  2 | exp_3  |            6 |              0 |                 6 |            0 |
-    +----+--------+--------------+----------------+-------------------+--------------+
-    Empty columns: ['timestamp']
+    $ tune lsx [PROJECT_DIR]
+
+    +----------------------+----------------+------------------+---------------------+
+    | name                 |   total_trials |   running_trials |   terminated_trials |
+    |----------------------+----------------+------------------+---------------------|
+    | pbt_test             |             10 |                0 |                   0 |
+    | test                 |              1 |                0 |                   0 |
+    | hyperband_test       |              1 |                0 |                   1 |
+    +----------------------+----------------+------------------+---------------------+
+    Dropped columns: ['error_trials', 'last_updated']
 
 
 Further Questions or Issues?

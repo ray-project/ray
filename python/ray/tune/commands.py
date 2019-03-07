@@ -35,11 +35,11 @@ DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS)
 
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
-    "last_updated",
     "total_trials",
     "running_trials",
     "terminated_trials",
     "error_trials",
+    "last_updated",
 )
 
 try:
