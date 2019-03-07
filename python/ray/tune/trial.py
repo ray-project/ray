@@ -494,10 +494,6 @@ class Trial(object):
     def is_finished(self):
         return self.status in [Trial.TERMINATED, Trial.ERROR]
 
-    def serialize_field_to_hex(self, field):
-        """Adds a field of self to whitelist when serializing."""
-        self._nonjson_fields += [field]
-
     def __repr__(self):
         return str(self)
 
