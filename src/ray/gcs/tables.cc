@@ -113,9 +113,9 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
   auto subscribeWrapper = [subscribe](AsyncGcsClient *client, const ID &id,
-                                      const GcsTableNotificationMode mode,
+                                      const GcsTableNotificationMode notification_mode,
                                       const std::vector<DataT> &data) {
-    RAY_CHECK(mode != GcsTableNotificationMode::REMOVE);
+    RAY_CHECK(notification_mode != GcsTableNotificationMode::REMOVE);
     subscribe(client, id, data);
   };
   return Subscribe(job_id, client_id, subscribeWrapper, done);
@@ -151,7 +151,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id,
           data_root->UnPackTo(&result);
           results.emplace_back(std::move(result));
         }
-        subscribe(client_, id, root->mode(), results);
+        subscribe(client_, id, root->notification_mode(), results);
       }
     }
     // We do not delete the callback after calling it since there may be
@@ -591,7 +591,6 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
   return Lookup(job_id, actor_id, lookup_callback, failure_callback);
 }
 
-template class Log<ObjectID, ObjectTableData>;
 template class Set<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;

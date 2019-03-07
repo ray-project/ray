@@ -76,7 +76,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
   using NotificationCallback = std::function<void(AsyncGcsClient *client, const ID &id,
-                                                  const GcsTableNotificationMode mode,
+                                                  const GcsTableNotificationMode notification_mode,
                                                   const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
@@ -214,7 +214,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// to subscribe to all modifications, or to subscribe only to keys that it
   /// requests notifications for. This may only be called once per Log
   /// instance. This function is different from public version due to
-  /// an additional parameter mode in NotificationCallback. Therefore this
+  /// an additional parameter notification_mode in NotificationCallback. Therefore this
   /// function supports notifications of remove operations.
   ///
   /// \param job_id The ID of the job (= driver).

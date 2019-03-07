@@ -193,12 +193,12 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
 /// \param data The appended/removed data.
 /// \return OK if there is no error during a publish.
 int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
-                       RedisModuleString *id, GcsTableNotificationMode mode,
+                       RedisModuleString *id, GcsTableNotificationMode notification_mode,
                        RedisModuleString *data) {
   // Serialize the notification to send.
   flatbuffers::FlatBufferBuilder fbb;
   auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
-  auto message = CreateGcsTableEntry(fbb, mode, RedisStringToFlatbuf(fbb, id),
+  auto message = CreateGcsTableEntry(fbb, notification_mode, RedisStringToFlatbuf(fbb, id),
                                      fbb.CreateVector(&data_flatbuf, 1));
   fbb.Finish(message);
 

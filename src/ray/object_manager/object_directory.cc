@@ -11,7 +11,7 @@ namespace {
 /// Process a notification of the object table entries and store the result in
 /// client_ids. This assumes that client_ids already contains the result of the
 /// object table entries up to but not including this notification.
-void UpdateObjectLocations(const GcsTableNotificationMode mode,
+void UpdateObjectLocations(const GcsTableNotificationMode notification_mode,
                            const std::vector<ObjectTableDataT> &location_updates,
                            const ray::gcs::ClientTable &client_table,
                            std::unordered_set<ClientID> *client_ids) {
@@ -20,7 +20,7 @@ void UpdateObjectLocations(const GcsTableNotificationMode mode,
   // addition or deletion.
   for (const auto &object_table_data : location_updates) {
     ClientID client_id = ClientID::from_binary(object_table_data.manager);
-    if (mode != GcsTableNotificationMode::REMOVE) {
+    if (notification_mode != GcsTableNotificationMode::REMOVE) {
       client_ids->insert(client_id);
     } else {
       client_ids->erase(client_id);
@@ -41,7 +41,7 @@ void UpdateObjectLocations(const GcsTableNotificationMode mode,
 void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback = [this](
       gcs::AsyncGcsClient *client, const ObjectID &object_id,
-      const GcsTableNotificationMode mode,
+      const GcsTableNotificationMode notification_mode,
       const std::vector<ObjectTableDataT> &location_updates) {
     // Objects are added to this map in SubscribeObjectLocations.
     auto it = listeners_.find(object_id);
@@ -54,7 +54,7 @@ void ObjectDirectory::RegisterBackend() {
     it->second.subscribed = true;
 
     // Update entries for this object.
-    UpdateObjectLocations(mode, location_updates, gcs_client_->client_table(),
+    UpdateObjectLocations(notification_mode, location_updates, gcs_client_->client_table(),
                           &it->second.current_object_locations);
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
