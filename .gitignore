@@ -1,6 +1,7 @@
 # The build output should clearly not be checked in
+/bazel-*
 /python/ray/core
-/python/ray/pyarrow_files/pyarrow/
+/python/ray/pyarrow_files/
 /python/build
 /python/dist
 /python/flatbuffers-1.7.1/

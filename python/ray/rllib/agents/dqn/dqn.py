@@ -5,12 +5,14 @@ from __future__ import print_function
 import logging
 import time
 
+from ray import tune
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
+from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,9 @@ DEFAULT_CONFIG = with_common_config({
     # Softmax temperature. Q values are divided by this value prior to softmax.
     # Softmax approaches argmax as the temperature drops to zero.
     "softmax_temp": 1.0,
+    # If True parameter space noise will be used for exploration
+    # See https://blog.openai.com/better-exploration-with-parameter-noise/
+    "parameter_noise": False,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -137,8 +142,25 @@ class DQNAgent(Agent):
     _policy_graph = DQNPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
 
+    @classmethod
+    @override(Agent)
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        Agent._validate_config(cf)
+        if cf["optimizer_class"] == "AsyncReplayOptimizer":
+            extra = cf["optimizer"]["num_replay_buffer_shards"]
+        else:
+            extra = 0
+        return Resources(
+            cpu=cf["num_cpus_for_driver"],
+            gpu=cf["num_gpus"],
+            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"] + extra,
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
+
     @override(Agent)
     def _init(self):
+        self._validate_config()
+
         # Update effective batch size to include n-step
         adjusted_batch_size = max(self.config["sample_batch_size"],
                                   self.config.get("n_step", 1))
@@ -159,6 +181,41 @@ class DQNAgent(Agent):
                 continue
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
+
+        if self.config.get("parameter_noise", False):
+            if self.config["callbacks"]["on_episode_start"]:
+                start_callback = self.config["callbacks"]["on_episode_start"]
+            else:
+                start_callback = None
+
+            def on_episode_start(info):
+                # as a callback function to sample and pose parameter space
+                # noise on the parameters of network
+                policies = info["policy"]
+                for pi in policies.values():
+                    pi.add_parameter_noise()
+                if start_callback:
+                    start_callback(info)
+
+            self.config["callbacks"]["on_episode_start"] = tune.function(
+                on_episode_start)
+            if self.config["callbacks"]["on_episode_end"]:
+                end_callback = self.config["callbacks"]["on_episode_end"]
+            else:
+                end_callback = None
+
+            def on_episode_end(info):
+                # as a callback function to monitor the distance
+                # between noisy policy and original policy
+                policies = info["policy"]
+                episode = info["episode"]
+                episode.custom_metrics["policy_distance"] = policies[
+                    "default"].pi_distance
+                if end_callback:
+                    end_callback(info)
+
+            self.config["callbacks"]["on_episode_end"] = tune.function(
+                on_episode_end)
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
@@ -296,3 +353,14 @@ class DQNAgent(Agent):
         Agent.__setstate__(self, state)
         self.num_target_updates = state["num_target_updates"]
         self.last_target_update_ts = state["last_target_update_ts"]
+
+    def _validate_config(self):
+        if self.config.get("parameter_noise", False):
+            if self.config["batch_mode"] != "complete_episodes":
+                raise ValueError(
+                    "Exploration with parameter space noise requires "
+                    "batch_mode to be complete_episodes.")
+            if self.config.get("noisy", False):
+                raise ValueError(
+                    "Exploration with parameter space noise and noisy network "
+                    "cannot be used at the same time.")

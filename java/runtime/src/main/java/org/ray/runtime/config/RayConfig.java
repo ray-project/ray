@@ -63,6 +63,11 @@ public class RayConfig {
   public final String driverResourcePath;
   public final String pythonWorkerCommand;
 
+  /**
+   * Number of threads that execute tasks.
+   */
+  public final int numberExecThreadsForDevRuntime;
+
   private void validate() {
     if (workerMode == WorkerMode.WORKER) {
       Preconditions.checkArgument(redisAddress != null,
@@ -195,6 +200,9 @@ public class RayConfig {
     } else {
       driverResourcePath = null;
     }
+
+    // Number of threads that execute tasks.
+    numberExecThreadsForDevRuntime = config.getInt("ray.dev-runtime.execution-parallelism");
 
     // validate config
     validate();

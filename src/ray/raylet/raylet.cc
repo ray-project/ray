@@ -41,10 +41,9 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : gcs_client_(gcs_client),
       object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
-      object_manager_(main_service, object_manager_config, object_directory_,
-                      store_client_),
+      object_manager_(main_service, object_manager_config, object_directory_),
       node_manager_(main_service, node_manager_config, object_manager_, gcs_client_,
-                    object_directory_, store_client_),
+                    object_directory_),
       socket_name_(socket_name),
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service),
@@ -57,8 +56,6 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                                                boost::asio::ip::tcp::v4(),
                                                node_manager_config.node_manager_port)),
       node_manager_socket_(main_service) {
-  RAY_ARROW_CHECK_OK(
-      store_client_.Connect(node_manager_config.store_socket_name.c_str(), "", 0, 300));
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
@@ -71,7 +68,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
   RAY_CHECK_OK(RegisterPeriodicTimer(main_service));
 }
 
-Raylet::~Raylet() { RAY_CHECK_OK(gcs_client_->client_table().Disconnect()); }
+Raylet::~Raylet() {}
 
 ray::Status Raylet::RegisterPeriodicTimer(boost::asio::io_service &io_service) {
   boost::posix_time::milliseconds timer_period_ms(100);
@@ -102,7 +99,10 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
 
   RAY_LOG(DEBUG) << "Node manager " << gcs_client_->client_table().GetLocalClientId()
                  << " started on " << client_info.node_manager_address << ":"
-                 << client_info.node_manager_port;
+                 << client_info.node_manager_port << " object manager at "
+                 << client_info.node_manager_address << ":"
+                 << client_info.object_manager_port;
+  ;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
   RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());

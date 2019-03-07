@@ -20,6 +20,7 @@
 
 cimport scipy.linalg.cython_blas as blas
 
+
 def compute_self_corr_for_voxel_sel(py_trans_a, py_trans_b, py_m, py_n, py_k,
                                     py_alpha, py_a, py_lda, int py_start_voxel,
                                     py_b, py_ldb, py_beta, py_c, py_ldc,
@@ -116,7 +117,9 @@ def compute_self_corr_for_voxel_sel(py_trans_a, py_trans_b, py_m, py_n, py_k,
     cdef float[:, :, ::1] C
     C = py_c
     blas.sgemm(trans_a, trans_b, &M, &N, &K, &alpha, &A[0, 0], &lda,
-               &B[0, py_start_voxel], &ldb, &beta, &C[0, py_start_epoch, 0], &ldc)
+               &B[0, py_start_voxel], &ldb, &beta,
+               &C[0, py_start_epoch, 0], &ldc)
+
 
 def compute_kernel_matrix(py_uplo, py_trans, py_n, py_k, py_alpha, py_a,
                           int py_start_voxel, py_lda,
@@ -209,6 +212,7 @@ def compute_kernel_matrix(py_uplo, py_trans, py_n, py_k, py_alpha, py_a,
             for k in range(j):
                 py_c[k, j] = py_c[j, k]
 
+
 def compute_single_self_corr_syrk(py_uplo, py_trans, py_n, py_k,
                                   py_alpha, py_a, py_lda,
                                   py_beta, py_c, py_ldc,
@@ -297,6 +301,7 @@ def compute_single_self_corr_syrk(py_uplo, py_trans, py_n, py_k,
         for j in range(py_c.shape[1]):
             for k in range(j):
                 py_c[py_start_sample, k, j] = py_c[py_start_sample, j, k]
+
 
 def compute_single_self_corr_gemm(py_trans_a, py_trans_b, py_m, py_n,
                                   py_k, py_alpha, py_a, py_lda,
@@ -388,6 +393,7 @@ def compute_single_self_corr_gemm(py_trans_a, py_trans_b, py_m, py_n,
     blas.sgemm(trans_a, trans_b, &M, &N, &K, &alpha, &A[0, 0], &lda,
                &A[0, 0], &ldb, &beta, &C[py_start_sample, 0, 0], &ldc)
 
+
 def compute_corr_vectors(py_trans_a, py_trans_b, py_m, py_n,
                          py_k, py_alpha, py_a, py_lda,
                          py_b, py_ldb, py_beta, py_c, py_ldc,
@@ -478,7 +484,9 @@ def compute_corr_vectors(py_trans_a, py_trans_b, py_m, py_n,
     cdef float[:, :, ::1] C
     C = py_c
     blas.sgemm(trans_a, trans_b, &M, &N, &K, &alpha, &A[0, 0], &lda,
-               &B[0, py_start_voxel], &ldb, &beta, &C[py_start_sample, 0, 0], &ldc)
+               &B[0, py_start_voxel], &ldb, &beta,
+               &C[py_start_sample, 0, 0], &ldc)
+
 
 def compute_single_matrix_multiplication(py_trans_a, py_trans_b, py_m, py_n,
                                          py_k, py_alpha, py_a, py_lda,

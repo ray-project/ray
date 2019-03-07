@@ -1,3 +1,5 @@
+from __future__ import absolute_import, division, print_function
+
 import traceback
 from typing import List
 
@@ -6,8 +8,9 @@ from ray.experimental.serve import SingleQuery
 
 
 def single_input(func):
-    """Decorator to mark a actor method to accept only single input
-       instead of batch.
+    """Decorator to mark an actor method as accepting only a single input.
+
+    By default methods accept a batch.
     """
     func.ray_serve_single_input = True
     return func
@@ -43,15 +46,14 @@ class RayServeMixin:
     serve_method = "__call__"
 
     def _dispatch(self, input_batch: List[SingleQuery]):
-        """Helper method to dispatch a batch of input to self.serve_method
-        """
+        """Helper method to dispatch a batch of input to self.serve_method."""
         method = getattr(self, self.serve_method)
         if hasattr(method, "ray_serve_single_input"):
             for inp in input_batch:
                 result = _execute_and_seal_error(method, inp.data, self.serve_method)
-                ray.worker.global_worker.put_object(inp.result_oid, result)
+                ray.worker.global_worker.put_object(inp.result_object_id, result)
         else:
             batch = [inp.data for inp in input_batch]
             result = _execute_and_seal_error(method, batch, self.serve_method)
             for res, inp in zip(result, input_batch):
-                ray.worker.global_worker.put_object(inp.result_oid, res)
+                ray.worker.global_worker.put_object(inp.result_object_id, res)

@@ -16,6 +16,7 @@ Currently, Tune offers the following search algorithms (and library integrations
 - `HyperOpt <tune-searchalg.html#hyperopt-search-tree-structured-parzen-estimators>`__
 - `SigOpt <tune-searchalg.html#sigopt-search>`__
 - `Nevergrad <tune-searchalg.html#nevergrad-search>`__
+- `Scikit-Optimize <tune-searchalg.html#scikit-optimize-search>`__
 
 
 Variant Generation (Grid Search/Random Search)
@@ -118,7 +119,7 @@ In order to use this search algorithm, you will need to install Nevergrad via th
 
 Keep in mind that ``nevergrad`` is a Python 3.6+ library.
 
-This algorithm requires using an optimizer provided by ``nevergrad``, of which there are many options. A good rundown can be found on their README's `Optimization <https://github.com/facebookresearch/nevergrad>`__ section. You can use ``NevergradSearch`` like follows:
+This algorithm requires using an optimizer provided by ``nevergrad``, of which there are many options. A good rundown can be found on their README's `Optimization <https://github.com/facebookresearch/nevergrad/blob/master/docs/optimization.md#Choosing-an-optimizer>`__ section. You can use ``NevergradSearch`` like follows:
 
 .. code-block:: python
 

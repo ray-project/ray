@@ -3,10 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 from contextlib import contextmanager
+import colorama
 import atexit
 import faulthandler
 import hashlib
 import inspect
+import json
 import logging
 import numpy as np
 import os
@@ -44,6 +46,7 @@ from ray import (
 )
 from ray import import_thread
 from ray import profiling
+
 from ray.core.generated.ErrorType import ErrorType
 from ray.exceptions import (
     RayActorError,
@@ -149,6 +152,7 @@ class Worker(object):
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
+        self.load_code_from_local = False
         self.function_actor_manager = FunctionActorManager(self)
         # Identity of the driver that this worker is processing.
         # It is a DriverID.
@@ -157,6 +161,9 @@ class Worker(object):
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
+        # Index of the current session. This number will
+        # increment every time when `ray.shutdown` is called.
+        self._session_index = 0
 
     @property
     def task_context(self):
@@ -340,7 +347,7 @@ class Worker(object):
         """
         # Make sure that the value is not an object ID.
         if isinstance(value, ObjectID):
-            raise Exception(
+            raise TypeError(
                 "Calling 'put' on an ray.ObjectID is not allowed "
                 "(similarly, returning an ray.ObjectID from a remote "
                 "function is not allowed). If you really want to "
@@ -463,7 +470,7 @@ class Worker(object):
         # Make sure that the values are object IDs.
         for object_id in object_ids:
             if not isinstance(object_id, ObjectID):
-                raise Exception(
+                raise TypeError(
                     "Attempting to call `get` on the value {}, "
                     "which is not an ray.ObjectID.".format(object_id))
         # Do an initial fetch for remote objects. We divide the fetch into
@@ -894,7 +901,7 @@ class Worker(object):
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
         # Send signal with the error.
-        ray_signal.send(ray_signal.ErrorSignal(error))
+        ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -912,8 +919,9 @@ class Worker(object):
             assert self.actor_id.is_nil()
             self.actor_id = task.actor_creation_id()
             self.actor_creation_task_id = task.task_id()
-            self.function_actor_manager.load_actor(driver_id,
-                                                   function_descriptor)
+            actor_class = self.function_actor_manager.load_actor_class(
+                driver_id, function_descriptor)
+            self.actors[self.actor_id] = actor_class.__new__(actor_class)
             self.actor_checkpoint_info[self.actor_id] = ActorCheckpointInfo(
                 num_tasks_since_last_checkpoint=0,
                 last_checkpoint_timestamp=int(1000 * time.time()),
@@ -960,6 +968,9 @@ class Worker(object):
                     # actor. Because the following tasks should all have the
                     # same driver id.
                     self.task_driver_id = DriverID.nil()
+                    # Reset signal counters so that the next task can get
+                    # all past signals.
+                    ray_signal.reset()
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
@@ -1260,7 +1271,7 @@ def init(redis_address=None,
          redis_password=None,
          plasma_directory=None,
          huge_pages=False,
-         include_webui=True,
+         include_webui=False,
          driver_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -1268,6 +1279,7 @@ def init(redis_address=None,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
          temp_dir=None,
+         load_code_from_local=False,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1343,6 +1355,8 @@ def init(redis_address=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        load_code_from_local: Whether code should be loaded from a local module
+            or from the GCS.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -1424,6 +1438,7 @@ def init(redis_address=None,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
+            load_code_from_local=load_code_from_local,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
@@ -1513,7 +1528,8 @@ def init(redis_address=None,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
-        driver_id=driver_id)
+        driver_id=driver_id,
+        load_code_from_local=load_code_from_local)
 
     for hook in _post_init_hooks:
         hook()
@@ -1525,7 +1541,7 @@ def init(redis_address=None,
 _post_init_hooks = []
 
 
-def shutdown():
+def shutdown(exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
     This will automatically run at the end when a Python process that uses Ray
@@ -1537,7 +1553,17 @@ def shutdown():
     defined remote functions or actors after calling ray.shutdown(), then you
     need to redefine them. If they were defined in an imported module, then you
     will need to reload the module.
+
+    Args:
+        exiting_interpreter (bool): True if this is called by the atexit hook
+            and false otherwise. If we are exiting the interpreter, we will
+            wait a little while to print any extra error messages.
     """
+    if exiting_interpreter and global_worker.mode == SCRIPT_MODE:
+        # This is a duration to sleep before shutting down everything in order
+        # to make sure that log messages finish printing.
+        time.sleep(0.5)
+
     disconnect()
 
     # Shut down the Ray processes.
@@ -1549,7 +1575,7 @@ def shutdown():
     global_worker.set_mode(None)
 
 
-atexit.register(shutdown)
+atexit.register(shutdown, True)
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
@@ -1586,6 +1612,7 @@ def print_logs(redis_client, threads_stopped):
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
+    localhost = services.get_node_ip_address()
     try:
         # Keep track of the number of consecutive log messages that have been
         # received with no break in between. If this number grows continually,
@@ -1603,7 +1630,18 @@ def print_logs(redis_client, threads_stopped):
                 threads_stopped.wait(timeout=0.01)
                 continue
             num_consecutive_messages_received += 1
-            print(ray.utils.decode(msg["data"]), file=sys.stderr)
+
+            data = json.loads(ray.utils.decode(msg["data"]))
+            if data["ip"] == localhost:
+                for line in data["lines"]:
+                    print("{}{}(pid={}){} {}".format(
+                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        colorama.Style.RESET_ALL, line))
+            else:
+                for line in data["lines"]:
+                    print("{}{}(pid={}, ip={}){} {}".format(
+                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        data["ip"], colorama.Style.RESET_ALL, line))
 
             if (num_consecutive_messages_received % 100 == 0
                     and num_consecutive_messages_received > 0):
@@ -1642,6 +1680,8 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
         # messages originating from the worker.
         while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
             threads_stopped.wait(timeout=1)
+            if threads_stopped.is_set():
+                break
         if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
             logger.debug("Suppressing error from worker: {}".format(error))
         else:
@@ -1730,7 +1770,8 @@ def connect(info,
             mode=WORKER_MODE,
             log_to_driver=False,
             worker=global_worker,
-            driver_id=None):
+            driver_id=None,
+            load_code_from_local=False):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
     Args:
@@ -1771,7 +1812,7 @@ def connect(info,
             driver_id = DriverID(_random_string())
 
         if not isinstance(driver_id, DriverID):
-            raise Exception("The type of given driver id must be DriverID.")
+            raise TypeError("The type of given driver id must be DriverID.")
 
         worker.worker_id = driver_id.binary()
 
@@ -1787,6 +1828,7 @@ def connect(info,
     worker.actor_id = ActorID.nil()
     worker.connected = True
     worker.set_mode(mode)
+    worker.load_code_from_local = load_code_from_local
 
     # If running Ray in LOCAL_MODE, there is no need to create call
     # create_worker or to start the worker service.
@@ -1840,9 +1882,6 @@ def connect(info,
                      if hasattr(main, "__file__") else "INTERACTIVE MODE")
         }
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
-        if (not worker.redis_client.exists("webui")
-                and info["webui_url"] is not None):
-            worker.redis_client.hmset("webui", {"url": info["webui_url"]})
     elif mode == WORKER_MODE:
         # Register the worker with Redis.
         worker_dict = {
@@ -1862,6 +1901,12 @@ def connect(info,
             # be redirected.
             os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
             os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
+            # We also manually set sys.stdout and sys.stderr because that seems
+            # to have an affect on the output buffering. Without doing this,
+            # stdout and stderr are heavily buffered resulting in seemingly
+            # lost logging statements.
+            sys.stdout = log_stdout_file
+            sys.stderr = log_stderr_file
             # This should always be the first message to appear in the worker's
             # stdout and stderr log files. The string "Ray worker pid:" is
             # parsed in the log monitor process.
@@ -2031,6 +2076,7 @@ def disconnect():
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
+        worker._session_index += 1
 
     worker.connected = False
     worker.cached_functions_to_run = []

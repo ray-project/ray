@@ -2,6 +2,8 @@
 Helper methods for dealing with ray.ObjectID
 """
 
+from __future__ import absolute_import, division, print_function
+
 import ray
 
 

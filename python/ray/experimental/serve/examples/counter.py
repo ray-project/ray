@@ -1,11 +1,12 @@
+from __future__ import absolute_import, division, print_function
+
 import ray
 from ray.experimental.serve import RayServeMixin, single_input
 
 
 @ray.remote
 class Counter(RayServeMixin):
-    """Return the query id. Used for testing router.
-    """
+    """Return the query id. Used for testing router."""
 
     def __init__(self):
         self.counter = 0
@@ -18,8 +19,7 @@ class Counter(RayServeMixin):
 
 @ray.remote
 class CustomCounter(RayServeMixin):
-    """Return the query id. Used for testing `serve_method` signature
-    """
+    """Return the query id. Used for testing `serve_method` signature."""
 
     serve_method = "count"
 

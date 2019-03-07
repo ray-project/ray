@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableMap;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
@@ -27,6 +28,11 @@ public class ResourcesManagementTest extends BaseTest {
     public Integer echo(Integer number) {
       return number;
     }
+  }
+
+  @Override
+  public void beforeEachCase() {
+    TestUtils.skipTestUnderSingleProcess();
   }
 
   @Test

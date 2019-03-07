@@ -1,6 +1,5 @@
 package org.ray.api.test;
 
-import java.io.File;
 import org.ray.api.Ray;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -13,6 +12,7 @@ public class BaseTest {
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
     beforeInitRay();
     Ray.init();
+    beforeEachCase();
   }
 
   @AfterMethod
@@ -36,6 +36,10 @@ public class BaseTest {
   }
 
   protected void afterShutdownRay() {
+
+  }
+
+  protected void beforeEachCase() {
 
   }
 }

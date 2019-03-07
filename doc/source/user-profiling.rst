@@ -9,6 +9,23 @@ If you are interested in pinpointing why your Ray application may not be
 achieving the expected speedup, read on!
 
 
+Visualizing Tasks in the Ray Timeline
+-------------------------------------
+
+The most important tool is the timeline visualization tool. To visualize tasks
+in the Ray timeline, you can dump the timeline as a JSON file using the
+following command.
+
+.. code-block:: python
+
+  ray.global_state.chrome_tracing_dump(filename="/tmp/timeline.json")
+
+Then open `chrome://tracing`_ in the Chrome web browser, and load
+``timeline.json``.
+
+.. _`chrome://tracing`: chrome://tracing
+
+
 A Basic Example to Profile
 --------------------------
 
@@ -549,101 +566,3 @@ Our example in total now takes only 1.5 seconds to run:
   1    0.000    0.000    1.564    1.564 worker.py:424(get_object)
   20    0.001    0.000    0.001    0.000 worker.py:514(submit_task)
   ...
-
-
-Visualizing Tasks in the Ray Timeline
--------------------------------------
-Profiling the performance of your Ray application doesn't need to be
-an eye-straining endeavor of interpreting numbers among hundreds of
-lines of text. Ray comes with its own visual web UI to visualize the
-parallelization (or lack thereof) of user tasks submitted to Ray!
-
-This method does have its own limitations, however. The Ray Timeline
-can only show timing info about Ray tasks, and not timing for normal
-Python functions. This can be an issue especially for debugging slow
-Python code that is running on the driver, and not running as a task on
-one of the workers. The other profiling techniques above are options that
-do cover profiling normal Python functions.
-
-Currently, whenever initializing Ray, a URL is generated and printed
-in the terminal. This URL can be used to view Ray's web UI as a Jupyter
-notebook:
-
-.. code-block:: bash
-
-  ~$: python your_script_here.py
-
-  Process STDOUT and STDERR is being redirected to /tmp/ray/session_2018-11-01_14-31-43_27211/logs.
-  Waiting for redis server at 127.0.0.1:61150 to respond...
-  Waiting for redis server at 127.0.0.1:21607 to respond...
-  Starting local scheduler with the following resources: {'CPU': 4, 'GPU': 0}.
-
-  ======================================================================
-  View the web UI at http://localhost:8897/notebooks/ray_ui84907.ipynb?token=025e8ab295270a57fac209204b37349fdf34e037671a13ff
-  ======================================================================
-
-Ray's web UI attempts to run on localhost at port 8888, and if it fails
-it tries successive ports until it finds an open port. In this above
-example, it has opened on port 8897.
-
-Because this web UI is only available as long as your Ray application
-is currently running, you may need to add a user prompt to prevent
-your Ray application from exiting once it has finished executing,
-such as below. You can then browse the web UI for as long as you like:
-
-.. code-block:: python
-
-  def main():
-      ray.init()
-      ex1()
-      ex2()
-      ex3()
-
-      # Require user input confirmation before exiting
-      hang = input('Examples finished executing. Press enter to exit:')
-
-  if __name__ == "__main__":
-      main()
-
-Now, when executing your python script, you can access the Ray timeline
-by copying the web UI URL into your web browser on the Ray machine. To
-load the web UI in the jupyter notebook, select **Kernel -> Restart and
-Run All** in the jupyter menu.
-
-The Ray timeline can be viewed in the fourth cell of the UI notebook by
-using the task filter options, then clicking on the **View task timeline**
-button.
-
-For example, here are the results of executing ``ex1()``, ``ex2()``, and
-``ex3()`` visualized in the Ray timeline. Each red block is a call to one
-of our user-defined remote functions, namely ``func()``, which sleeps for
-0.5 seconds:
-
-.. image:: user-profiling-timeline.gif
-
-(highlighted color boxes for ``ex1()``, ``ex2()``, and ``ex3()`` added for
-the sake of this example)
-
-Note how ``ex1()`` executes all five calls to ``func()`` in serial,
-while ``ex2()`` and ``ex3()`` are able to parallelize their remote
-function calls.
-
-Because we have 4 CPUs available on our machine, we can only able to
-execute up to 4 remote functions in parallel. So, the fifth call to the
-remote function in ``ex2()`` must wait until the first batch of ``func()``
-calls is finished.
-
-In ``ex3()``, because of the serial dependency on ``other_func()``, we
-aren't even able to use all 4 of our cores to parallelize calls to ``func()``.
-The time gaps between the ``func()`` blocks are a result of staggering the
-calls to ``func()`` in between waiting 0.3 seconds for ``other_func()``.
-
-Also, notice that due to the aforementioned limitation of the Ray timeline,
-``other_func()``, as a driver function and not a Ray task, is never
-visualized on the Ray timeline.
-
-**For more on Ray's Web UI,** such as how to access the UI on a remote
-node over ssh, or for troubleshooting installation, please see our
-`Web UI documentation section`_.
-
-.. _`Web UI documentation section`: http://ray.readthedocs.io/en/latest/webui.html

@@ -1,7 +1,5 @@
 package org.ray.runtime;
 
-import static java.util.stream.Collectors.toList;
-
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,6 +10,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.RuntimeContext;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
@@ -63,12 +62,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected RayletClient rayletClient;
   protected ObjectStoreProxy objectStoreProxy;
   protected FunctionManager functionManager;
+  protected RuntimeContext runtimeContext;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     functionManager = new FunctionManager(rayConfig.driverResourcePath);
     worker = new Worker(this);
-    workerContext = new WorkerContext(rayConfig.workerMode, rayConfig.driverId);
+    workerContext = new WorkerContext(rayConfig.workerMode,
+            rayConfig.driverId, rayConfig.runMode);
+    runtimeContext = new RuntimeContextImpl(this);
   }
 
   /**
@@ -347,4 +349,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public RayConfig getRayConfig() {
     return rayConfig;
   }
+
+  public RuntimeContext getRuntimeContext() {
+    return runtimeContext;
+  }
+
 }

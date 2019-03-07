@@ -1,5 +1,5 @@
 Ray Serve Module
-== == == == == == == ==
+================
 
 ``ray.experimental.serve`` is a module for publishing your actors to
 interact with outside world.
@@ -25,9 +25,9 @@ tier can scale horizontally.
 In the following illustration, call chain goes from top to bottom. Each
 box is one or more replicated ray actors.
 
-: :
+::
 
-                 +-------------------+ +-----------------+ +------------+
+                 +-------------------+     +-----------------+   +------------+
     Frontend     |   HTTP Frontend   |     |    Arrow RPC    |   |    ...     |
       Tier       |                   |     |                 |   |            |
                  +-------------------+     +-----------------+   +------------+

@@ -1,15 +1,3 @@
-from time import perf_counter
-
-import numpy as np
-import pytest
-
-import ray
-from ray.experimental.serve import DeadlineAwareRouter, unwrap
-from ray.experimental.serve.examples.adder import ScalerAdder, VectorizedAdder
-from ray.experimental.serve.examples.halt import SleepCounter, SleepOnFirst
-from ray.experimental.serve.router import start_router
-
-
 @pytest.fixture(scope="module")
 def router():
     ray.init(num_cpus=1)
@@ -24,13 +12,13 @@ def router():
     handle = start_router(DeadlineAwareRouter, "DefaultRouter")
 
     handle.register_actor.remote(
-        "VAdder", VectorizedAdder, init_kwargs=dict(scaler_increment=1)
+        "VAdder", VectorizedAdder, init_kwargs={"scaler_increment": 1}
     )  # init args
     handle.register_actor.remote(
-        "SAdder", ScalerAdder, init_kwargs=dict(scaler_increment=2)
+        "SAdder", ScalerAdder, init_kwargs={"scaler_increment": 2}
     )
     handle.register_actor.remote(
-        "SleepFirst", SleepOnFirst, init_kwargs=dict(sleep_time=1)
+        "SleepFirst", SleepOnFirst, init_kwargs={"sleep_time": 1}
     )
     handle.register_actor.remote("SleepCounter", SleepCounter, max_batch_size=1)
 
@@ -41,7 +29,7 @@ def router():
 
 @pytest.fixture
 def now():
-    return perf_counter()
+    return time.perf_counter()
 
 
 def test_throw_assert(router: DeadlineAwareRouter, now: float):

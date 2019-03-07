@@ -416,13 +416,17 @@ via the Experiment object as follows:
 
 .. code-block:: python
 
+    from ray.tune.logger import DEFAULT_LOGGERS
+
     exp = Experiment(
         name="experiment_name",
         run=MyTrainableClass,
-        custom_loggers=[CustomLogger1, CustomLogger2]
+        loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
     )
 
 These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__.
+
+Tune has default loggers for Tensorboard, CSV, and JSON formats.
 
 You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
 
@@ -457,28 +461,42 @@ be wrapped with ``tune.function``):
     )
 
 
-Client API
-----------
+Tune Client API
+---------------
 
-You can modify an ongoing experiment by adding or deleting trials using the Tune Client API. To do this, verify that you have the ``requests`` library installed:
+You can interact with an ongoing experiment with the Tune Client API. The Tune Client API is organized around REST, which includes resource-oriented URLs, accepts form-encoded requests, returns JSON-encoded responses, and uses standard HTTP protocol.
 
-.. code-block:: bash
-
-    $ pip install requests
-
-To use the Client API, you can start your experiment with ``with_server=True``:
+To allow Tune to receive and respond to your API calls, you have to start your experiment with ``with_server=True``:
 
 .. code-block:: python
 
     run_experiments({...}, with_server=True, server_port=4321)
 
-Then, on the client side, you can use the following class. The server address defaults to ``localhost:4321``. If on a cluster, you may want to forward this port (e.g. ``ssh -L <local_port>:localhost:<remote_port> <address>``) so that you can use the Client on your local machine.
+The easiest way to use the Tune Client API is with the built-in TuneClient. To use TuneClient, verify that you have the ``requests`` library installed:
+
+.. code-block:: bash
+
+    $ pip install requests
+
+Then, on the client side, you can use the following class. If on a cluster, you may want to forward this port (e.g. ``ssh -L <local_port>:localhost:<remote_port> <address>``) so that you can use the Client on your local machine.
 
 .. autoclass:: ray.tune.web_server.TuneClient
     :members:
 
-
 For an example notebook for using the Client API, see the `Client API Example <https://github.com/ray-project/ray/tree/master/python/ray/tune/TuneClient.ipynb>`__.
+
+The API also supports curl. Here are the examples for getting trials (``GET /trials/[:id]``):
+
+.. code-block:: bash
+
+    curl http://<address>:<port>/trials
+    curl http://<address>:<port>/trials/<trial_id>
+
+And stopping a trial (``PUT /trials/:id``):
+
+.. code-block:: bash
+
+    curl -X PUT http://<address>:<port>/trials/<trial_id>
 
 
 Further Questions or Issues?

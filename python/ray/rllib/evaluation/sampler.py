@@ -264,7 +264,8 @@ def _env_runner(base_env,
         if callbacks.get("on_episode_start"):
             callbacks["on_episode_start"]({
                 "env": base_env,
-                "episode": episode
+                "policy": policies,
+                "episode": episode,
             })
         return episode
 
@@ -371,6 +372,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
 
             last_observation = episode.last_observation_for(agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
+            episode._set_last_raw_obs(agent_id, raw_obs)
             episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable
@@ -399,6 +401,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
         # Cut the batch if we're not packing multiple episodes into one,
         # or if we've exceeded the requested batch size.
         if episode.batch_builder.has_pending_data():
+            if dones[env_id]["__all__"]:
+                episode.batch_builder.check_missing_dones()
             if (all_done and not pack) or \
                     episode.batch_builder.count >= unroll_length:
                 outputs.append(episode.batch_builder.build_and_reset(episode))
@@ -412,6 +416,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
             if callbacks.get("on_episode_end"):
                 callbacks["on_episode_end"]({
                     "env": base_env,
+                    "policy": policies,
                     "episode": episode
                 })
             del active_episodes[env_id]

@@ -152,6 +152,17 @@ class MultiAgentSampleBatchBuilder(object):
         self.agent_builders.clear()
         self.agent_to_policy.clear()
 
+    def check_missing_dones(self):
+        for agent_id, builder in self.agent_builders.items():
+            if builder.buffers["dones"][-1] is not True:
+                raise ValueError(
+                    "The environment terminated for all agents, but we still "
+                    "don't have a last observation for "
+                    "agent {} (policy {}). ".format(
+                        agent_id, self.agent_to_policy[agent_id]) +
+                    "Please ensure that you include the last observations "
+                    "of all live agents when setting '__all__' done to True.")
+
     @DeveloperAPI
     def build_and_reset(self, episode):
         """Returns the accumulated sample batches for each policy.

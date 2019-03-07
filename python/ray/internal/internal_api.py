@@ -35,6 +35,12 @@ def free(object_ids, local_only=False):
         raise TypeError("free() expects a list of ObjectID, got {}".format(
             type(object_ids)))
 
+    # Make sure that the values are object IDs.
+    for object_id in object_ids:
+        if not isinstance(object_id, ray.ObjectID):
+            raise TypeError("Attempting to call `free` on the value {}, "
+                            "which is not an ray.ObjectID.".format(object_id))
+
     worker.check_connected()
     with profiling.profile("ray.free"):
         if len(object_ids) == 0:
