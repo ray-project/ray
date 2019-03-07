@@ -64,7 +64,11 @@ if __name__ == "__main__":
             client.log_action(eid, obs, action)
             # debug(f"[loop] action sampled and logged.")
         else:
-            action = client.get_action(eid, obs)
+            # for each agent, get an action separately
+            action = {}
+            for ag, o in obs.items():
+                action.update(client.get_action(eid, {ag: o}))
+            # action = client.get_action(eid, obs)
         debug(f"[loop] action chosen: {action}")
 
         # step the env

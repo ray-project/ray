@@ -214,7 +214,7 @@ class _ExternalEnvToBaseEnv(BaseEnv):
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
-            cur_done = episode.cur_done["__all__"] if self.multiagent else episode.cur_done
+            cur_done = episode.cur_done_dict["__all__"] if self.multiagent else episode.cur_done
             if cur_done:
                 del self.external_env._episodes[eid]
             if data:

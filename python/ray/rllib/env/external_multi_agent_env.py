@@ -8,6 +8,7 @@ import uuid
 
 from ray.rllib.utils.annotations import PublicAPI
 
+DUMMY_REWARD_DICT = { x: 0.0 for x in list(range(200)) }
 
 @PublicAPI
 class ExternalMultiAgentEnv(threading.Thread):
@@ -113,12 +114,12 @@ class ExternalMultiAgentEnv(threading.Thread):
         return episode_id
 
     @PublicAPI
-    def get_action(self, episode_id, observation):
+    def get_action(self, episode_id, observation_dict):
         """Record an observation and get the on-policy action.
 
         Arguments:
             episode_id (str): Episode id returned from start_episode().
-            observation (dict): Current environment observation.
+            observation_dict (dict): Current environment observation.
 
         Returns:
             action (dict): Action from the env action space.
@@ -126,24 +127,24 @@ class ExternalMultiAgentEnv(threading.Thread):
 
         # FIXME handle different agents here
         episode = self._get(episode_id)
-        return episode.wait_for_action(observation)
+        return episode.wait_for_action(observation_dict)
 
     @PublicAPI
-    def log_action(self, episode_id, observation, action):
+    def log_action(self, episode_id, observation_dict, action_dict):
         """Record an observation and (off-policy) action taken.
 
         Arguments:
             episode_id (str): Episode id returned from start_episode().
-            observation (dict): Current environment observation.
-            action (dict): Action for the observation.
+            observation_dict (dict): Current environment observation.
+            action_dict (dict): Action for the observation.
         """
 
         # FIXME handle different agents here
         episode = self._get(episode_id)
-        episode.log_action(observation, action)
+        episode.log_action(observation_dict, action_dict)
 
     @PublicAPI
-    def log_returns(self, episode_id, reward, info=None):
+    def log_returns(self, episode_id, reward_dict, info_dict=None):
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -152,7 +153,7 @@ class ExternalMultiAgentEnv(threading.Thread):
 
         Arguments:
             episode_id (str): Episode id returned from start_episode().
-            reward (dict): Reward from the environment agents.
+            reward_dict (dict): Reward from the environment agents.
             info (dict): Optional info dict.
         """
 
@@ -160,26 +161,26 @@ class ExternalMultiAgentEnv(threading.Thread):
 
         # accumulate reward by agent
         # for existing agents, we want to add the reward up
-        for agent, rew in reward.items():
-            if agent in episode.cur_reward:
-                episode.cur_reward[agent] += rew
+        for agent, rew in reward_dict.items():
+            if agent in episode.cur_reward_dict:
+                episode.cur_reward_dict[agent] += rew
             else:
-                episode.cur_reward[agent] = rew 
-        if info:
-            episode.cur_info = info or {}
+                episode.cur_reward_dict[agent] = rew 
+        if info_dict:
+            episode.cur_info_dict = info_dict or {}
 
     @PublicAPI
-    def end_episode(self, episode_id, observation):
+    def end_episode(self, episode_id, observation_dict):
         """Record the end of an episode.
 
         Arguments:
             episode_id (str): Episode id returned from start_episode().
-            observation (obj): Current environment observation.
+            observation_dict (dict): Current environment observation.
         """
 
         episode = self._get(episode_id)
         self._finished.add(episode.episode_id)
-        episode.done(observation)
+        episode.done(observation_dict)
 
     def _get(self, episode_id):
         """Get a started episode or raise an error."""
@@ -201,8 +202,8 @@ class _ExternalEnvEpisode(object):
     - multiagent dict variables
     """
 
-    def reset_cur_done(self, done=False):
-        self.cur_done = {"__all__": done}
+    def reset_cur_done_dict(self, done=False):
+        self.cur_done_dict = {"__all__": done}
 
     def __init__(self, episode_id, results_avail_condition, training_enabled):
         self.episode_id = episode_id
@@ -210,53 +211,53 @@ class _ExternalEnvEpisode(object):
         self.training_enabled = training_enabled
         self.data_queue = queue.Queue()
         self.action_queue = queue.Queue()
-        self.new_observation = None
-        self.new_action = None
+        self.new_observation_dict = None
+        self.new_action_dict = None
 
         # FIXME dirty. do we need to know all agents here?
         # if I do not set this, the first _send is going to fail
         # and result in a keyerror in the evaluator
-        self.cur_reward = { x: 0.0 for x in list(range(200)) } 
-        # self.cur_reward = {}
+        self.cur_reward_dict = DUMMY_REWARD_DICT 
+        # self.cur_reward_dict = {}
 
-        self.reset_cur_done()
-        self.cur_info = {}
+        self.reset_cur_done_dict()
+        self.cur_info_dict = {}
 
     def get_data(self):
         if self.data_queue.empty():
             return None
         return self.data_queue.get_nowait()
 
-    def log_action(self, observation, action):
-        self.new_observation = observation
-        self.new_action = action
+    def log_action(self, observation_dict, action_dict):
+        self.new_observation_dict = observation_dict
+        self.new_action_dict = action_dict
         self._send()
         self.action_queue.get(True, timeout=60.0)
 
-    def wait_for_action(self, observation):
-        self.new_observation = observation
+    def wait_for_action(self, observation_dict):
+        self.new_observation_dict = observation_dict
         self._send()
         return self.action_queue.get(True, timeout=60.0)
 
-    def done(self, observation):
-        self.new_observation = observation
-        self.reset_cur_done(True)
+    def done(self, observation_dict):
+        self.new_observation_dict = observation_dict
+        self.reset_cur_done_dict(True)
         self._send()
 
     def _send(self):
         item = {
-            "obs": self.new_observation,
-            "reward": self.cur_reward,
-            "done": self.cur_done,
-            "info": self.cur_info,
+            "obs": self.new_observation_dict,
+            "reward": self.cur_reward_dict,
+            "done": self.cur_done_dict,
+            "info": self.cur_info_dict,
         }
-        if self.new_action is not None:
-            item["off_policy_action"] = self.new_action
+        if self.new_action_dict is not None:
+            item["off_policy_action"] = self.new_action_dict
         if not self.training_enabled:
             item["info"]["training_enabled"] = False
-        self.new_observation = None
-        self.new_action = None
-        self.cur_reward = {} 
+        self.new_observation_dict = None
+        self.new_action_dict = None
+        self.cur_reward_dict = DUMMY_REWARD_DICT 
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)
             self.results_avail_condition.notify()
