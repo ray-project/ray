@@ -8,10 +8,6 @@ import time
 import os
 import pytest
 import shutil
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
 
 import ray
 from ray import tune
@@ -134,10 +130,6 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
         runner.step()
 
 
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test.")
-@pytest.mark.timeout(120, method="thread")
 def test_trial_migration(start_connected_emptyhead_cluster):
     """Removing a node while cluster has space should migrate trial.
 
@@ -161,7 +153,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     runner.add_trial(t)
     runner.step()  # start
     runner.step()  # 1 result
-    assert t.last_result is not None
+    assert t.last_result
     node2 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node)
     cluster.wait_for_nodes()
@@ -208,10 +200,6 @@ def test_trial_migration(start_connected_emptyhead_cluster):
         runner.step()
 
 
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test.")
-@pytest.mark.timeout(120, method="thread")
 def test_trial_requeue(start_connected_emptyhead_cluster):
     """Removing a node in full cluster causes Trial to be requeued."""
     cluster = start_connected_emptyhead_cluster
@@ -361,6 +349,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     cluster.shutdown()
 
 
+@pytest.mark.skip(reason="Not very consistent.")
 def test_cluster_rllib_restore(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
@@ -395,7 +384,7 @@ tune.run_experiments(
             runner = TrialRunner.restore(metadata_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
-            if last_res is not None and last_res["training_iteration"]:
+            if last_res and last_res.get("training_iteration"):
                 break
         time.sleep(0.3)
 
@@ -487,7 +476,7 @@ tune.run_experiments(
             runner = TrialRunner.restore(metadata_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
-            if last_res is not None and last_res["training_iteration"] == 3:
+            if last_res and last_res.get("training_iteration") == 3:
                 break
         time.sleep(0.2)
 

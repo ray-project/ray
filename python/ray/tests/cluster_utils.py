@@ -102,7 +102,7 @@ class Cluster(object):
 
         return node
 
-    def remove_node(self, node):
+    def remove_node(self, node, allow_graceful=False):
         """Kills all processes associated with worker node.
 
         Args:
@@ -110,11 +110,13 @@ class Cluster(object):
                 will be removed.
         """
         if self.head_node == node:
-            self.head_node.kill_all_processes(check_alive=False)
+            self.head_node.kill_all_processes(
+                check_alive=False, allow_graceful=allow_graceful)
             self.head_node = None
             # TODO(rliaw): Do we need to kill all worker processes?
         else:
-            node.kill_all_processes(check_alive=False)
+            node.kill_all_processes(
+                check_alive=False, allow_graceful=allow_graceful)
             self.worker_nodes.remove(node)
 
         assert not node.any_processes_alive(), (

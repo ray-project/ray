@@ -157,67 +157,20 @@ script:
   # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
   # ray tune tests
-  - python python/ray/tune/test/dependency_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/trial_runner_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/trial_scheduler_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/experiment_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/tune_server_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/ray_trial_executor_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/automl_searcher_test.py
+  - python python/ray/tune/tests/test_dependency.py
+  # `cluster_tests.py` runs on Jenkins, not Travis.
+  - python -m pytest -v --durations=30 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests
 
   # ray rllib tests
-  - python python/ray/rllib/test/test_catalog.py
-  - python python/ray/rllib/test/test_filters.py
-  - python python/ray/rllib/test/test_optimizers.py
-  - python python/ray/rllib/test/test_evaluators.py
-
-  # streaming library tests
-  - python -m pytest -v --durations=10 python/ray/tests/test_batched_queue.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_logical_graph.py
-
-  # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
+  - python python/ray/rllib/tests/test_catalog.py
+  - python python/ray/rllib/tests/test_filters.py
+  - python python/ray/rllib/tests/test_optimizers.py
+  - python python/ray/rllib/tests/test_evaluators.py
 
   # ray tests
-  # TODO(williamma12): We cannot use pytests built-in test discovery because
-  # it causes a lot of the tests to fail on travis' apple builds even though
-  # it runs without issue on an apple build locally.
-  - python -m pytest -v --durations=10 python/ray/tests/test_global_state.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_queue.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_ray_init.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_mini.py
-
-  - python -m pytest -v --durations=10 python/ray/tests/test_basic.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_array.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_actor.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_autoscaler.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_tensorflow.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_failure.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_microbenchmarks.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_stress.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_component_failures.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_multi_node.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_multi_node_2.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_recursion.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_monitors.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_cython.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_credis.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_node_manager.py
-  - python -m pytest -v --durations=10 python/ray/tests/test_signal.py
-  # TODO(yuhguo): object_manager_test.py requires a lot of CPU/memory, and
-  # better be put in Jenkins. However, it fails frequently in Jenkins, but
-  # works well in Travis. We should consider moving it back to Jenkins once
-  # we figure out the reason.
-  - python -m pytest -v --durations=10 python/ray/tests/test_object_manager.py
-
-  # ray temp file tests
-  - python -m pytest -v --durations=10 python/ray/tests/test_tempfile.py
-
-  # ray debug tools tests
-  - python -m pytest -v --durations=10 python/ray/tests/test_debug_tools.py
-
-  # modin test files
-  - python -m pytest -v --durations=10 python/ray/tests/test_modin.py
+  # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
+  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
+  - python -m pytest -v --durations=30 python/ray/tests
 deploy:
   - provider: s3
     access_key_id: AKIAJ2L7XDUSZVTXI5QA

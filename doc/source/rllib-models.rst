@@ -90,7 +90,7 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
             return tf.reshape(
                 linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
 
-        def custom_loss(self, policy_loss):
+        def custom_loss(self, policy_loss, loss_inputs):
             """Override to customize the loss function used to optimize this model.
 
             This can be used to incorporate self-supervised losses (by defining
@@ -102,6 +102,7 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
 
             Arguments:
                 policy_loss (Tensor): scalar policy loss from the policy graph.
+                loss_inputs (dict): map of input placeholders for rollout data.
 
             Returns:
                 Scalar tensor for the customized loss for this model.
@@ -133,7 +134,7 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
         },
     })
 
-For a full example of a custom model in code, see the `Carla RLlib model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/models.py>`__ and associated `training scripts <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/carla>`__. You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_nested_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
+For a full example of a custom model in code, see the `Carla RLlib model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/models.py>`__ and associated `training scripts <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/carla>`__. You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_nested_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
 
 Custom Recurrent Models
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -380,4 +381,4 @@ With a custom policy graph, you can also perform model-based rollouts and option
                 return action_batch
 
 
-If you want take this rollouts data and append it to the sample batch, use the ``add_extra_batch()`` method of the `episode objects <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ passed in. For an example of this, see the ``testReturningModelBasedRolloutsData`` `unit test <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_multi_agent_env.py>`__.
+If you want take this rollouts data and append it to the sample batch, use the ``add_extra_batch()`` method of the `episode objects <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ passed in. For an example of this, see the ``testReturningModelBasedRolloutsData`` `unit test <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_multi_agent_env.py>`__.

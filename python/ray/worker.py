@@ -161,6 +161,9 @@ class Worker(object):
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
+        # Index of the current session. This number will
+        # increment every time when `ray.shutdown` is called.
+        self._session_index = 0
 
     @property
     def task_context(self):
@@ -344,7 +347,7 @@ class Worker(object):
         """
         # Make sure that the value is not an object ID.
         if isinstance(value, ObjectID):
-            raise Exception(
+            raise TypeError(
                 "Calling 'put' on an ray.ObjectID is not allowed "
                 "(similarly, returning an ray.ObjectID from a remote "
                 "function is not allowed). If you really want to "
@@ -467,7 +470,7 @@ class Worker(object):
         # Make sure that the values are object IDs.
         for object_id in object_ids:
             if not isinstance(object_id, ObjectID):
-                raise Exception(
+                raise TypeError(
                     "Attempting to call `get` on the value {}, "
                     "which is not an ray.ObjectID.".format(object_id))
         # Do an initial fetch for remote objects. We divide the fetch into
@@ -898,7 +901,7 @@ class Worker(object):
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
         # Send signal with the error.
-        ray_signal.send(ray_signal.ErrorSignal(error))
+        ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -965,6 +968,9 @@ class Worker(object):
                     # actor. Because the following tasks should all have the
                     # same driver id.
                     self.task_driver_id = DriverID.nil()
+                    # Reset signal counters so that the next task can get
+                    # all past signals.
+                    ray_signal.reset()
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
@@ -1265,7 +1271,7 @@ def init(redis_address=None,
          redis_password=None,
          plasma_directory=None,
          huge_pages=False,
-         include_webui=True,
+         include_webui=False,
          driver_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -1535,7 +1541,7 @@ def init(redis_address=None,
 _post_init_hooks = []
 
 
-def shutdown():
+def shutdown(exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
     This will automatically run at the end when a Python process that uses Ray
@@ -1547,7 +1553,17 @@ def shutdown():
     defined remote functions or actors after calling ray.shutdown(), then you
     need to redefine them. If they were defined in an imported module, then you
     will need to reload the module.
+
+    Args:
+        exiting_interpreter (bool): True if this is called by the atexit hook
+            and false otherwise. If we are exiting the interpreter, we will
+            wait a little while to print any extra error messages.
     """
+    if exiting_interpreter and global_worker.mode == SCRIPT_MODE:
+        # This is a duration to sleep before shutting down everything in order
+        # to make sure that log messages finish printing.
+        time.sleep(0.5)
+
     disconnect()
 
     # Shut down the Ray processes.
@@ -1559,7 +1575,7 @@ def shutdown():
     global_worker.set_mode(None)
 
 
-atexit.register(shutdown)
+atexit.register(shutdown, True)
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
@@ -1664,6 +1680,8 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
         # messages originating from the worker.
         while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
             threads_stopped.wait(timeout=1)
+            if threads_stopped.is_set():
+                break
         if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
             logger.debug("Suppressing error from worker: {}".format(error))
         else:
@@ -1794,7 +1812,7 @@ def connect(info,
             driver_id = DriverID(_random_string())
 
         if not isinstance(driver_id, DriverID):
-            raise Exception("The type of given driver id must be DriverID.")
+            raise TypeError("The type of given driver id must be DriverID.")
 
         worker.worker_id = driver_id.binary()
 
@@ -1864,9 +1882,6 @@ def connect(info,
                      if hasattr(main, "__file__") else "INTERACTIVE MODE")
         }
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
-        if (not worker.redis_client.exists("webui")
-                and info["webui_url"] is not None):
-            worker.redis_client.hmset("webui", {"url": info["webui_url"]})
     elif mode == WORKER_MODE:
         # Register the worker with Redis.
         worker_dict = {
@@ -2061,6 +2076,7 @@ def disconnect():
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
+        worker._session_index += 1
 
     worker.connected = False
     worker.cached_functions_to_run = []

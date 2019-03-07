@@ -13,6 +13,11 @@ import warnings
 import ray
 from ray.tests.cluster_utils import Cluster
 
+# TODO(yuhguo): This test file requires a lot of CPU/memory, and
+# better be put in Jenkins. However, it fails frequently in Jenkins, but
+# works well in Travis. We should consider moving it back to Jenkins once
+# we figure out the reason.
+
 if (multiprocessing.cpu_count() < 40
         or ray.utils.get_system_memory() < 50 * 10**9):
     warnings.warn("This test must be run on large machines.")

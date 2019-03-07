@@ -8,7 +8,7 @@ import numpy as np
 import ray
 from ray.rllib.utils.filter import RunningStat, MeanStdFilter
 from ray.rllib.utils import FilterManager
-from ray.rllib.test.mock_evaluator import _MockEvaluator
+from ray.rllib.tests.mock_evaluator import _MockEvaluator
 
 
 class RunningStatTest(unittest.TestCase):
