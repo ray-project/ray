@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from gym.spaces import Discrete
+import copy
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
@@ -11,6 +12,7 @@ import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.compression import unpack_if_needed, unpack
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
@@ -293,17 +295,24 @@ class DQNPolicyGraph(TFPolicyGraph):
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
         self.eps = tf.placeholder(tf.float32, (), name="eps")
-        self.cur_observations = tf.placeholder(
-            tf.float32, shape=(None, ) + observation_space.shape)
+        #self.cur_observations = tf.placeholder(
+        #    tf.float32, shape=(None, ) + observation_space.shape)
 
         # Action Q network
-        with tf.variable_scope(Q_SCOPE) as scope:
-            q_values, q_logits, q_dist, _ = self._build_q_network(
-                self.cur_observations, observation_space)
-            self.q_func_vars = _scope_vars(scope.name)
+        #with tf.variable_scope(Q_SCOPE) as scope:
+        #    q_values, q_logits, q_dist, action_model = self._build_q_network(
+        #        self.cur_observations, observation_space)
+
+        #    if self.config["model"]["use_lstm"]:
+        #        existing_state_in = action_model.state_in
+        #        existing_seq_lens = action_model.seq_lens
+        #    else:
+        #        existing_state_in = None
+        #        existing_seq_lens = None
+        #    self.q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
-        self.output_actions = self._build_q_value_policy(q_values)
+        #self.output_actions = self._build_q_value_policy(q_values)
 
         # Replay inputs
         self.obs_t = tf.placeholder(
@@ -317,17 +326,28 @@ class DQNPolicyGraph(TFPolicyGraph):
             tf.float32, [None], name="weight")
 
         # q network evaluation
-        with tf.variable_scope(Q_SCOPE, reuse=True):
+        with tf.variable_scope(Q_SCOPE) as scope:
             prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
             q_t, q_logits_t, q_dist_t, model = self._build_q_network(
                 self.obs_t, observation_space)
+        #        self.obs_t, observation_space, state_in=existing_state_in,
+        #        seq_lens=existing_seq_lens)
+
+            if self.config["model"]["use_lstm"]:
+                self.state_init = model.state_init
+            else:
+                self.state_init = []
             q_batchnorm_update_ops = list(
                 set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
                 prev_update_ops)
+            self.q_func_vars = _scope_vars(scope.name)
+
+        # Action outputs
+        self.output_actions = self._build_q_value_policy(q_t)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1, q_logits_tp1, q_dist_tp1, _ = self._build_q_network(
+            q_tp1, q_logits_tp1, q_dist_tp1, model2 = self._build_q_network(
                 self.obs_tp1, observation_space)
             self.target_q_func_vars = _scope_vars(scope.name)
 
@@ -380,17 +400,34 @@ class DQNPolicyGraph(TFPolicyGraph):
             ("dones", self.done_mask),
             ("weights", self.importance_weights),
         ]
+        print(self.loss_inputs)
+        print(model.state_in)
+        print(model2.state_in)
         TFPolicyGraph.__init__(
             self,
             observation_space,
             action_space,
             self.sess,
-            obs_input=self.cur_observations,
+            obs_input=self.obs_t,
             action_sampler=self.output_actions,
             loss=model.loss() + self.loss.loss,
             loss_inputs=self.loss_inputs,
+            state_inputs=model.state_in + model2.state_in,
+            state_outputs=model.state_out + model2.state_out,
+            seq_lens=model.seq_lens,
+            max_seq_len=self.config["model"]["max_seq_len"],
             update_ops=q_batchnorm_update_ops)
+        # TODO: Initialize Target Network
         self.sess.run(tf.global_variables_initializer())
+        writer = tf.summary.FileWriter("graph", self.sess.graph)
+        writer.flush()
+        writer.close()
+
+    @override(PolicyGraph)
+    def get_initial_state(self):
+        network_init = self.state_init
+        target_init = self.state_init
+        return network_init + target_init
 
     @override(TFPolicyGraph)
     def optimizer(self):
@@ -431,7 +468,7 @@ class DQNPolicyGraph(TFPolicyGraph):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        return _postprocess_dqn(self, sample_batch)
+        return _postprocess_dqn(self, sample_batch, use_lstm=self.config["model"]["use_lstm"])
 
     @override(PolicyGraph)
     def get_state(self):
@@ -474,7 +511,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         return qnet.value, qnet.logits, qnet.dist, qnet.model
 
     def _build_q_value_policy(self, q_values):
-        return QValuePolicy(q_values, self.cur_observations, self.num_actions,
+        return QValuePolicy(q_values, self.obs_t, self.num_actions,
                             self.stochastic, self.eps).action
 
     def _build_q_loss(self, q_t_selected, q_logits_t_selected, q_tp1_best,
@@ -511,11 +548,18 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
                 rewards[i] += gamma**j * rewards[i + j]
 
 
-def _postprocess_dqn(policy_graph, sample_batch):
-    obs, actions, rewards, new_obs, dones = [
+def _postprocess_dqn(policy_graph, sample_batch, use_lstm=False):
+    obs, actions, rewards, new_obs, dones,  = [
         list(x) for x in sample_batch.columns(
             ["obs", "actions", "rewards", "new_obs", "dones"])
     ]
+
+    if use_lstm:
+        eps_ids, agent_indices, in0, in1, out0, out1 = [list(x) for x in sample_batch.columns(
+            ["eps_id", "agent_index", "state_in_0", "state_in_1",
+             "state_out_0", "state_out_1"]
+        )]
+
 
     # N-step Q adjustments
     if policy_graph.config["n_step"] > 1:
@@ -523,14 +567,30 @@ def _postprocess_dqn(policy_graph, sample_batch):
                       policy_graph.config["gamma"], obs, actions, rewards,
                       new_obs, dones)
 
-    batch = SampleBatch({
-        "obs": obs,
-        "actions": actions,
-        "rewards": rewards,
-        "new_obs": new_obs,
-        "dones": dones,
-        "weights": np.ones_like(rewards)
-    })
+    if use_lstm:
+        batch = SampleBatch({
+            "obs": obs,
+            "actions": actions,
+            "rewards": rewards,
+            "new_obs": new_obs,
+            "dones": dones,
+            "eps_id": eps_ids,
+            "agent_index": agent_indices,
+            "state_in_0": in0,
+            "state_in_1": in1,
+            "state_out_0": out0,
+            "state_out_1": out1,
+            "weights": np.ones_like(rewards)
+        })
+    else:
+        batch = SampleBatch({
+            "obs": obs,
+            "actions": actions,
+            "rewards": rewards,
+            "new_obs": new_obs,
+            "dones": dones,
+            "weights": np.ones_like(rewards)
+        })
 
     # Prioritize on the worker side
     if batch.count > 0 and policy_graph.config["worker_side_prioritization"]:

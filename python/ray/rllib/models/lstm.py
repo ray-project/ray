@@ -24,6 +24,7 @@ import tensorflow.contrib.rnn as rnn
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.compression import unpack_if_needed, unpack
 
 
 class LSTM(Model):
@@ -183,7 +184,7 @@ def chop_into_sequences(episode_ids,
 
     feature_sequences = []
     for f in feature_columns:
-        f = np.array(f)
+        f = np.array([unpack_if_needed(o) for o in f])
         f_pad = np.zeros((len(seq_lens) * max_seq_len, ) + np.shape(f)[1:])
         seq_base = 0
         i = 0

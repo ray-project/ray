@@ -73,6 +73,10 @@ def _import_impala():
     from ray.rllib.agents import impala
     return impala.ImpalaAgent
 
+def _import_r2d2():
+    from ray.rllib.agents import dqn
+    return dqn.R2D2Agent
+
 
 ALGORITHMS = {
     "DDPG": _import_ddpg,
@@ -88,6 +92,7 @@ ALGORITHMS = {
     "IMPALA": _import_impala,
     "QMIX": _import_qmix,
     "APEX_QMIX": _import_apex_qmix,
+    "R2D2": _import_r2d2,
 }
 
 
