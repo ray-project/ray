@@ -55,14 +55,14 @@ if __name__ == "__main__":
             RAY_CI_PYTHON_AFFECTED = "1"
             RAY_CI_LINUX_WHEELS_AFFECTED = "1"
             RAY_CI_MACOS_WHEELS_AFFECTED = "1"
-        elif changed_file.startswith("src/"):
-            pass
         elif changed_file.startswith(
                 "java/") and not changed_file.startswith("java/doc/"):
             RAY_CI_JAVA_AFFECTED = "1"
         elif changed_file.startswith("doc/"):
             # nothing is run but linting in this case
             pass
+        # elif changed_file.startswith("src/"):
+        #     pass
         # elif changed_file.startswith("examples/"):
         #     pass
         # elif changed_file.startswith("dev/"):
