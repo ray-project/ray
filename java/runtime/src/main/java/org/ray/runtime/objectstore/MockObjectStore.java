@@ -64,7 +64,7 @@ public class MockObjectStore implements ObjectStoreLink {
   public List<byte[]> get(byte[][] objectIds, int timeoutMs, boolean isMetadata) {
     return get(objectIds, timeoutMs)
             .stream()
-            .map(data -> isMetadata ? data.data : data.metadata)
+            .map(data -> isMetadata ? data.metadata : data.data)
             .collect(Collectors.toList());
   }
 
