@@ -78,10 +78,8 @@ public class ObjectStoreProxy {
 
     List<GetResult<T>> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {
-      // TODO(hchen): Plasma API returns data and metadata in wrong order, this should be fixed
-      //  from the arrow side first.
-      byte[] meta = dataAndMetaList.get(i).data;
-      byte[] data = dataAndMetaList.get(i).metadata;
+      byte[] meta = dataAndMetaList.get(i).metadata;
+      byte[] data = dataAndMetaList.get(i).data;
 
       GetResult<T> result;
       if (meta != null) {
