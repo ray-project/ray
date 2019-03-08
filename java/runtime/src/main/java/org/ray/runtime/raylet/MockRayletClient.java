@@ -39,6 +39,7 @@ public class MockRayletClient implements RayletClient {
   private final ExecutorService exec;
   private final Deque<Worker> idleWorkers;
   private final Map<UniqueId, Worker> actorWorkers;
+  private final ThreadLocal<Worker> currentWorker;
 
   public MockRayletClient(RayDevRuntime runtime, int numberThreads) {
     this.runtime = runtime;
@@ -48,6 +49,7 @@ public class MockRayletClient implements RayletClient {
     exec = Executors.newFixedThreadPool(numberThreads);
     idleWorkers = new LinkedList<>();
     actorWorkers = new HashMap<>();
+    currentWorker = new ThreadLocal<>();
   }
 
   public synchronized void onObjectPut(UniqueId id) {
@@ -60,22 +62,28 @@ public class MockRayletClient implements RayletClient {
     }
   }
 
+  public Worker getCurrentWorker() {
+    return currentWorker.get();
+  }
+
   /**
    * Get a worker from the worker pool to run the given task.
    */
   private Worker getWorker(TaskSpec task) {
-    if (task.isActorTask()) {
-      return actorWorkers.get(task.actorId);
-    }
     Worker worker;
-    if (idleWorkers.size() > 0) {
-      worker = idleWorkers.pop();
+    if (task.isActorTask()) {
+      worker = actorWorkers.get(task.actorId);
     } else {
-      worker = new Worker(runtime);
+      if (idleWorkers.size() > 0) {
+        worker = idleWorkers.pop();
+      } else {
+        worker = new Worker(runtime);
+      }
+      if (task.isActorCreationTask()) {
+        actorWorkers.put(task.actorCreationId, worker);
+      }
     }
-    if (task.isActorCreationTask()) {
-      actorWorkers.put(task.actorCreationId, worker);
-    }
+    currentWorker.set(worker);
     return worker;
   }
 
@@ -83,6 +91,7 @@ public class MockRayletClient implements RayletClient {
    * Return the worker to the worker pool.
    */
   private void returnWorker(Worker worker) {
+    currentWorker.remove();
     idleWorkers.push(worker);
   }
 
@@ -105,9 +114,7 @@ public class MockRayletClient implements RayletClient {
                     new byte[]{}, new byte[]{});
           }
         } finally {
-          if (!task.isActorCreationTask() && !task.isActorTask()) {
-            returnWorker(worker);
-          }
+          returnWorker(worker);
         }
       });
     } else {

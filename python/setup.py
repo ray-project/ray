@@ -80,7 +80,11 @@ class build_ext(_build_ext.build_ext):
         # version of Python to build pyarrow inside the build.sh script. Note
         # that certain flags will not be passed along such as --user or sudo.
         # TODO(rkn): Fix this.
-        subprocess.check_call(["../build.sh", "-p", sys.executable])
+        command = ["../build.sh", "-p", sys.executable]
+        if os.getenv("RAY_INSTALL_JAVA") == "1":
+            # Also build binaries for Java if the above env variable exists.
+            command += ["-l", "python,java"]
+        subprocess.check_call(command)
 
         # We also need to install pyarrow along with Ray, so make sure that the
         # relevant non-Python pyarrow files get copied.

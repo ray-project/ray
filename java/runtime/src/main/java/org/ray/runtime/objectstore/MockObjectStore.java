@@ -95,11 +95,10 @@ public class MockObjectStore implements ObjectStoreLink {
     ArrayList<ObjectStoreData> rets = new ArrayList<>();
     for (byte[] id : objectIds) {
       try {
-        Constructor<ObjectStoreData> constructor = ObjectStoreData.class.getConstructor(
-                byte[].class, byte[].class);
+        Constructor<?> constructor = ObjectStoreData.class.getDeclaredConstructors()[0];
         constructor.setAccessible(true);
-        rets.add(constructor.newInstance(metadata.get(new UniqueId(id)),
-                data.get(new UniqueId(id))));
+        rets.add((ObjectStoreData) constructor.newInstance(data.get(new UniqueId(id)),
+                metadata.get(new UniqueId(id))));
       } catch (Exception e) {
         throw new RuntimeException(e);
       }

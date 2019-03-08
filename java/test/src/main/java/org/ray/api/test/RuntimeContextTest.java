@@ -5,6 +5,8 @@ import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.UniqueId;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 public class RuntimeContextTest extends BaseTest {
@@ -14,11 +16,18 @@ public class RuntimeContextTest extends BaseTest {
   private static String RAYLET_SOCKET_NAME = "/tmp/ray/test/raylet_socket";
   private static String OBJECT_STORE_SOCKET_NAME = "/tmp/ray/test/object_store_socket";
 
-  @Override
-  public void beforeInitRay() {
+  @BeforeClass
+  public void setUp() {
     System.setProperty("ray.driver.id", DRIVER_ID.toString());
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
     System.setProperty("ray.object-store.socket-name", OBJECT_STORE_SOCKET_NAME);
+  }
+
+  @AfterClass
+  public void tearDown() {
+    System.clearProperty("ray.driver.id");
+    System.clearProperty("ray.raylet.socket-name");
+    System.clearProperty("ray.object-store.socket-name");
   }
 
   @Test

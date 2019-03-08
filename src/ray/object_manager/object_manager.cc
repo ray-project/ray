@@ -767,7 +767,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
   // TODO: trash connection on failure.
   auto info =
       flatbuffers::GetRoot<object_manager_protocol::ConnectClientMessage>(message);
-  ClientID client_id = ObjectID::from_binary(info->client_id()->str());
+  ClientID client_id = ClientID::from_binary(info->client_id()->str());
   bool is_transfer = info->is_transfer();
   conn->SetClientID(client_id);
   if (is_transfer) {
@@ -885,7 +885,7 @@ void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &con
                                        const uint8_t *message) {
   auto free_request =
       flatbuffers::GetRoot<object_manager_protocol::FreeRequestMessage>(message);
-  std::vector<ObjectID> object_ids = from_flatbuf(*free_request->object_ids());
+  std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*free_request->object_ids());
   // This RPC should come from another Object Manager.
   // Keep this request local.
   bool local_only = true;

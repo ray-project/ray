@@ -78,7 +78,7 @@ void ObjectDirectory::RegisterBackend() {
     }
   };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
-      UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
       object_notification_callback, nullptr));
 }
 
