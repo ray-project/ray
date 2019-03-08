@@ -101,7 +101,7 @@ fi
 
 pushd "$BUILD_DIR"
 
-if [ ! -z "$RAY_USE_CMAKE" ] ; then
+if [ ! -z "$RAY_USE_CMAKE" ] || [ `uname -m`!="x86_64" ]; then
   # avoid the command failed and exits
   # and cmake will check some directories to determine whether some targets built
   make clean || true
