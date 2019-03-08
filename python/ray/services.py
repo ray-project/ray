@@ -10,7 +10,6 @@ import multiprocessing
 import os
 import random
 import resource
-import shutil
 import socket
 import subprocess
 import sys
