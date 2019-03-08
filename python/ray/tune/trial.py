@@ -555,16 +555,9 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
-<<<<<<< HEAD
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
-        for key in [
-                "_checkpoint", "config", "loggers", "sync_function",
-                "last_result"
-        ]:
-=======
         for key in self._nonjson_fields:
->>>>>>> c3a3360a4a1a7214c93b66ec2746bdec8825bee1
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)
