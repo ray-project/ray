@@ -334,6 +334,38 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.policy_batches["p0"]["t"].tolist(),
                          list(range(25)) * 6)
 
+    def testMultiAgentSampleSyncRemote(self):
+        act_space = gym.spaces.Discrete(2)
+        obs_space = gym.spaces.Discrete(2)
+        ev = PolicyEvaluator(
+            env_creator=lambda _: BasicMultiAgent(5),
+            policy_graph={
+                "p0": (MockPolicyGraph, obs_space, act_space, {}),
+                "p1": (MockPolicyGraph, obs_space, act_space, {}),
+            },
+            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            batch_steps=50,
+            num_envs=4,
+            remote_worker_envs=True)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 200)
+
+    def testMultiAgentSampleAsyncRemote(self):
+        act_space = gym.spaces.Discrete(2)
+        obs_space = gym.spaces.Discrete(2)
+        ev = PolicyEvaluator(
+            env_creator=lambda _: BasicMultiAgent(5),
+            policy_graph={
+                "p0": (MockPolicyGraph, obs_space, act_space, {}),
+                "p1": (MockPolicyGraph, obs_space, act_space, {}),
+            },
+            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            batch_steps=50,
+            num_envs=4,
+            async_remote_worker_envs=True)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 200)
+
     def testMultiAgentSampleWithHorizon(self):
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
@@ -621,5 +653,5 @@ class TestMultiAgentEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(num_cpus=4)
     unittest.main(verbosity=2)

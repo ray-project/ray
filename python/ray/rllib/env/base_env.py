@@ -38,14 +38,22 @@ class BaseEnv(object):
             "env_0": {
                 "car_0": [2.4, 1.6],
                 "car_1": [3.4, -3.2],
-            }
+            },
+            "env_1": {
+                "car_0": [8.0, 4.1],
+            },
+            "env_2": {
+                "car_0": [2.3, 3.3],
+                "car_1": [1.4, -0.2],
+                "car_3": [1.2, 0.1],
+            },
         }
         >>> env.send_actions(
             actions={
                 "env_0": {
                     "car_0": 0,
                     "car_1": 1,
-                }
+                }, ...
             })
         >>> obs, rewards, dones, infos, off_policy_actions = env.poll()
         >>> print(obs)
@@ -53,7 +61,7 @@ class BaseEnv(object):
             "env_0": {
                 "car_0": [4.1, 1.7],
                 "car_1": [3.2, -4.2],
-            }
+            }, ...
         }
         >>> print(dones)
         {
@@ -61,25 +69,40 @@ class BaseEnv(object):
                 "__all__": False,
                 "car_0": False,
                 "car_1": True,
-            }
+            }, ...
         }
     """
 
     @staticmethod
-    def to_base_env(env, make_env=None, num_envs=1, remote_envs=False):
+    def to_base_env(env,
+                    make_env=None,
+                    num_envs=1,
+                    remote_envs=False,
+                    async_remote_envs=False):
         """Wraps any env type as needed to expose the async interface."""
-        if remote_envs and num_envs == 1:
+
+        from ray.rllib.env.remote_vector_env import RemoteVectorEnv
+        if (remote_envs or async_remote_envs) and num_envs == 1:
             raise ValueError(
                 "Remote envs only make sense to use if num_envs > 1 "
                 "(i.e. vectorization is enabled).")
+        if remote_envs and async_remote_envs:
+            raise ValueError("You can only specify one of remote_envs or "
+                             "async_remote_envs.")
+
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
                 if remote_envs:
-                    raise NotImplementedError(
-                        "Remote multiagent environments are not implemented")
-
-                env = _MultiAgentEnvToBaseEnv(
-                    make_env=make_env, existing_envs=[env], num_envs=num_envs)
+                    env = RemoteVectorEnv(
+                        make_env, num_envs, multiagent=True, sync=True)
+                elif async_remote_envs:
+                    env = RemoteVectorEnv(
+                        make_env, num_envs, multiagent=True, sync=False)
+                else:
+                    env = _MultiAgentEnvToBaseEnv(
+                        make_env=make_env,
+                        existing_envs=[env],
+                        num_envs=num_envs)
             elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
                     raise ValueError(
@@ -88,15 +111,21 @@ class BaseEnv(object):
             elif isinstance(env, VectorEnv):
                 env = _VectorEnvToBaseEnv(env)
             else:
-                env = VectorEnv.wrap(
-                    make_env=make_env,
-                    existing_envs=[env],
-                    num_envs=num_envs,
-                    remote_envs=remote_envs,
-                    action_space=env.action_space,
-                    observation_space=env.observation_space)
-                env = _VectorEnvToBaseEnv(env)
-        assert isinstance(env, BaseEnv)
+                if remote_envs:
+                    env = RemoteVectorEnv(
+                        make_env, num_envs, multiagent=False, sync=True)
+                elif async_remote_envs:
+                    env = RemoteVectorEnv(
+                        make_env, num_envs, multiagent=False, sync=False)
+                else:
+                    env = VectorEnv.wrap(
+                        make_env=make_env,
+                        existing_envs=[env],
+                        num_envs=num_envs,
+                        action_space=env.action_space,
+                        observation_space=env.observation_space)
+                    env = _VectorEnvToBaseEnv(env)
+        assert isinstance(env, BaseEnv), env
         return env
 
     @PublicAPI
