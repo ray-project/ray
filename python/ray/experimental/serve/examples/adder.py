@@ -37,7 +37,7 @@ class ScalerAdder(RayServeMixin):
 @ray.remote
 class VectorDouble(RayServeMixin):
     """Actor that doubles the batched input."""
-    
+
     @batched_input
     def __call__(self, batched_vectors):
         matrix = np.array(batched_vectors)

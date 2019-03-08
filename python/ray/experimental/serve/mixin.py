@@ -55,5 +55,7 @@ class RayServeMixin:
                 ray.worker.global_worker.put_object(inp.result_object_id, res)
         else:
             for inp in input_batch:
-                result = _execute_and_seal_error(method, inp.data, self.serve_method)
-                ray.worker.global_worker.put_object(inp.result_object_id, result)
+                result = _execute_and_seal_error(method, inp.data,
+                                                 self.serve_method)
+                ray.worker.global_worker.put_object(inp.result_object_id,
+                                                    result)

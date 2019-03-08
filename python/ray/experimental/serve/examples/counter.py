@@ -21,7 +21,7 @@ class CustomCounter(RayServeMixin):
     """Return the query id. Used for testing `serve_method` signature."""
 
     serve_method = "count"
-    
+
     @batched_input
     def count(self, input_batch):
         return [1 for _ in range(len(input_batch))]

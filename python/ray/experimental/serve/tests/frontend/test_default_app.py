@@ -29,8 +29,7 @@ def test_http_basic(ray_start):
     a.start.remote()
 
     router.register_actor.remote(
-        "VAdder", VectorizedAdder, init_kwargs={"scaler_increment": 1}
-    )
+        "VAdder", VectorizedAdder, init_kwargs={"scaler_increment": 1})
 
     for _ in range(NUMBER_OF_TRIES):
         try:

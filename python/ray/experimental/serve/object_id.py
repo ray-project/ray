@@ -13,8 +13,7 @@ def unwrap(future):
 
 def get_new_oid():
     worker = ray.worker.global_worker
-    oid = ray._raylet.compute_put_id(
-        worker.current_task_id, worker.task_context.put_index
-    )
+    oid = ray._raylet.compute_put_id(worker.current_task_id,
+                                     worker.task_context.put_index)
     worker.task_context.put_index += 1
     return oid
