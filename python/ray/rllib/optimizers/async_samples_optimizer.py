@@ -51,6 +51,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               minibatch_buffer_size=1,
               learner_queue_size=16,
               _fake_gpus=False,
+              old_policy_lag=16,
               old_policy_evaluator=None):
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
@@ -62,8 +63,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         # Added for APPO
         self.old_policy_evaluator = old_policy_evaluator
-        print(self.old_policy_evaluator)
-        self.old_policy_builder = TFRunBuilder(self.old_policy_evaluator.tf_sess, "policy_eval")
+        print("New Policy,", self.local_evaluator)
+        print("Remote Policies", self.remote_evaluators)
+        print("Old Policy", self.old_policy_evaluator)
 
         if num_gpus > 1 or num_data_loader_buffers > 1:
             logger.info(
@@ -88,11 +90,10 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         else:
             self.learner = LearnerThread(self.local_evaluator,
                                          minibatch_buffer_size, num_sgd_iter,
-                                         learner_queue_size, old_policy_evaluator=self.old_policy_evaluator)
+                                         learner_queue_size, old_policy_lag = self.old_policy_lag)
         self.learner.start()
 
-        if len(self.remote_evaluators) == 0:
-            logger.warning("Config num_workers=0 means training will hang!")
+        assert len(self.remote_evaluators) > 0
 
         # Stats
         self._optimizer_step_timer = TimerStat()
@@ -109,9 +110,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             ev.set_weights.remote(weights)
             for _ in range(max_sample_requests_in_flight_per_worker):
                 self.sample_tasks.add(ev, ev.sample.remote())
-
-        if self.old_policy_evaluator:
-            self.old_policy_evaluator.set_weights(weights)
+        #if self.old_policy_evaluator:
+            #self.old_policy_evaluator.set_weights(weights)
+        self.old_policy_lag = old_policy_lag
 
         self.batch_buffer = []
 
@@ -125,6 +126,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.replay_proportion = replay_proportion
         self.replay_buffer_num_slots = replay_buffer_num_slots
         self.replay_batches = []
+
 
     def add_stat_val(self, key, val):
         if key not in self._last_stats_sum:
@@ -194,12 +196,14 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         for ev, sample_batch in self._augment_with_replay(
                 self.sample_tasks.completed_prefetch()):
-
-            old_policy_behaviour_logits = self.old_policy_evaluator.policy_map['default'].compute_actions(
-                sample_batch["obs"],prev_action_batch=sample_batch["prev_actions"],
-                prev_reward_batch=sample_batch["prev_rewards"])[2]['behaviour_logits']
+            '''
+            if self.old_policy_evaluator:
+                old_policy_behaviour_logits = self.old_policy_evaluator.policy_map['default'].compute_actions(
+                    sample_batch["obs"],prev_action_batch=sample_batch["prev_actions"],
+                    prev_reward_batch=sample_batch["prev_rewards"])[2]['behaviour_logits']
             
-            sample_batch["old_policy_behaviour_logits"] = old_policy_behaviour_logits
+                sample_batch["old_policy_behaviour_logits"] = old_policy_behaviour_logits
+            '''
 
             self.batch_buffer.append(sample_batch)
             if sum(b.count
@@ -226,8 +230,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             if weights is None or (self.learner.weights_updated
                                    and num_sent >= self.broadcast_interval):
                 self.learner.weights_updated = False
-                weights = ray.put(self.old_policy_evaluator.get_weights())
-                #weights = ray.put(self.local_evaluator.get_weights())
+                weights = ray.put(self.local_evaluator.get_weights())
                 num_sent = 0
             ev.set_weights.remote(weights)
             self.num_weight_syncs += 1
@@ -271,7 +274,7 @@ class LearnerThread(threading.Thread):
     """
 
     def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_iter,
-                 learner_queue_size, old_policy_evaluator=None):
+                 learner_queue_size):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
         self.local_evaluator = local_evaluator
@@ -287,30 +290,39 @@ class LearnerThread(threading.Thread):
         self.weights_updated = False
         self.stats = {}
         self.stopped = False
+        self.old_policy_lag = 0
         self.standardize_fields = ["advantages"]
-        self.old_policy_evaluator = old_policy_evaluator
-        self.old_policy_counter =0
+        #self.old_policy_evaluator = old_policy_evaluator
+        #self.old_policy_counter =0
 
     def run(self):
         while not self.stopped:
             self.step()
 
     def step(self):
+        print("I AM LEARNING ONE TIME")
         with self.queue_timer:
             batch, _ = self.minibatch_buffer.get()
-
+            if self.old_policy_lag ==0:
+                    self.old_policy_behaviour_logits = self.local_evaluator.policy_map['default'].compute_actions(
+                            batch["obs"],prev_action_batch=batch["prev_actions"],
+                            prev_reward_batch=batch["prev_rewards"])[2]['behaviour_logits']
+            self.old_policy_lag = 0 if self.old_policy_lag==32 else self.old_policy_lag+1
+            batch["old_policy_behaviour_logits"] = self.old_policy_behaviour_logits
+            #for key, value in batch.items():
+                #print("Key ", key, " \nValue ", value[0])
+            
             # The advantages should be importance sampled then standardized, right now we are dealing with raw advantages from multiple workers
             for field in self.standardize_fields:
-                print("Standardizing ", field)
-                value = batch['default'][field]
+                value = batch[field]
                 standardized = (value - value.mean()) / max(1e-4, value.std())
-                batch['default'][field] = standardized
+                batch[field] = standardized
 
         with self.grad_timer:
             fetches = self.local_evaluator.learn_on_batch(batch)
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
-
+        '''
         if self.old_policy_counter == 100:
             self.old_policy_counter=0
             if self.old_policy_evaluator:
@@ -318,6 +330,7 @@ class LearnerThread(threading.Thread):
                 self.old_policy_evaluator.set_weights(weights)
         else:
             self.old_policy_counter+=1
+        '''
 
         self.outqueue.put(batch.count)
         self.learner_queue_size.push(self.inqueue.qsize())

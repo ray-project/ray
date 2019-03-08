@@ -108,18 +108,18 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
     @override(PolicyOptimizer)
     def step(self):
-        print("Remote Evaluators", self.remote_evaluators)
-        print("Sample Batch Size", self.sample_batch_size)
-        print("Train Batch Size", self.train_batch_size)
-        print("Number of Environments per Worker", self.num_envs_per_worker)
-        print("Straggler Mitigation", self.straggler_mitigation)
+        #print("Remote Evaluators", self.remote_evaluators)
+        #print("Sample Batch Size", self.sample_batch_size)
+        #print("Train Batch Size", self.train_batch_size)
+        #print("Number of Environments per Worker", self.num_envs_per_worker)
+        #print("Straggler Mitigation", self.straggler_mitigation)
         with self.update_weights_timer:
             if self.remote_evaluators:
                 weights = ray.put(self.local_evaluator.get_weights())
                 for e in self.remote_evaluators:
                     e.set_weights.remote(weights)
 
-        print("SAMPLING TIME")
+        #print("SAMPLING TIME")
 
         with self.sample_timer:
             if self.remote_evaluators:
@@ -149,7 +149,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     DEFAULT_POLICY_ID: samples
                 }, samples.count)
 
-        print("Observation Batch Size", samples.policy_batches['default']['obs'].shape)
+        #print("Observation Batch Size", samples.policy_batches['default']['obs'].shape)
 
         for policy_id, policy in self.policies.items():
             if policy_id not in samples.policy_batches:
@@ -157,7 +157,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
             batch = samples.policy_batches[policy_id]
             for field in self.standardize_fields:
-                print("Standardizing ", field)
+                #print("Standardizing ", field)
                 value = batch[field]
                 standardized = (value - value.mean()) / max(1e-4, value.std())
                 batch[field] = standardized
@@ -166,42 +166,42 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             if not policy._state_inputs:
                 batch.shuffle()
 
-        print("LOADING TIME")
+        #print("LOADING TIME")
         num_loaded_tuples = {}
         with self.load_timer:
             for policy_id, batch in samples.policy_batches.items():
-                print("Current Policy", policy_id, "Policy Graph", self.policies[policy_id])
+                #print("Current Policy", policy_id, "Policy Graph", self.policies[policy_id])
                 if policy_id not in self.policies:
                     continue
 
                 policy = self.policies[policy_id]
                 tuples = policy._get_loss_inputs_dict(batch)
                 data_keys = [ph for _, ph in policy._loss_inputs]
-                print(policy._loss_inputs)
+                #print(policy._loss_inputs)
                 if policy._state_inputs:
                     state_keys = policy._state_inputs + [policy._seq_lens]
                 else:
                     state_keys = []
-                print(self.optimizers[policy_id])
+                #print(self.optimizers[policy_id])
                 num_loaded_tuples[policy_id] = (
                     self.optimizers[policy_id].load_data(
                         self.sess, [tuples[k] for k in data_keys],
                         [tuples[k] for k in state_keys]))
 
-        print("GRAD TIME")
+        #print("GRAD TIME")
         fetches = {}
         with self.grad_timer:
             for policy_id, tuples_per_device in num_loaded_tuples.items():
-                print("Policy ID", policy_id, "Tuples per Device", tuples_per_device)
+                #print("Policy ID", policy_id, "Tuples per Device", tuples_per_device)
                 optimizer = self.optimizers[policy_id]
-                print(self.per_device_batch_size)
+                #print(self.per_device_batch_size)
                 num_batches = max(
                     1,
                     int(tuples_per_device) // int(self.per_device_batch_size))
-                print(num_batches)
+                #print(num_batches)
                 logger.debug("== sgd epochs for {} ==".format(policy_id))
                 for i in range(self.num_sgd_iter):
-                    print(i)
+                    #print(i)
                     iter_extra_fetches = defaultdict(list)
                     permutation = np.random.permutation(num_batches)
                     for batch_index in range(num_batches):
@@ -212,7 +212,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                             iter_extra_fetches[k].append(v)
                     logger.debug("{} {}".format(i,
                                                 _averaged(iter_extra_fetches)))
-                    print(_averaged(iter_extra_fetches))
+                    #print(_averaged(iter_extra_fetches))
                 fetches[policy_id] = _averaged(iter_extra_fetches)
 
         self.num_steps_sampled += samples.count

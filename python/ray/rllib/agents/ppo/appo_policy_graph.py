@@ -18,7 +18,7 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.models.action_dist import MultiCategorical
+from ray.rllib.models.action_dist import Categorical, MultiCategorical
 from ray.rllib.evaluation.postprocessing import compute_advantages
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class PPOSurrogateLoss(object):
                  clip_param=0.3):
 
         importance_ratio = tf.exp(prev_actions_logp-old_policy_actions_logp)
-        logp_ratio = importance_ratio*tf.exp(actions_logp - *prev_actions_logp)
+        logp_ratio = importance_ratio*tf.exp(actions_logp - prev_actions_logp)
 
         surrogate_loss = tf.minimum(
             advantages * logp_ratio,
@@ -171,14 +171,20 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.sess = tf.get_default_session()
         self.grads = None
 
+        is_multidiscrete = False
         if isinstance(action_space, gym.spaces.Discrete):
-            is_multidiscrete = False
             actions_shape = [None]
             output_hidden_shape = [action_space.n]
+            actions = tf.placeholder(tf.int64, actions_shape, name="ac")
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
-            is_multidiscrete = True
             actions_shape = [None, len(action_space.nvec)]
             output_hidden_shape = action_space.nvec.astype(np.int32)
+            actions = tf.placeholder(tf.int64, actions_shape, name="ac")
+        elif isinstance(action_space, gym.spaces.Box):
+            print("In continuous space")
+            print(action_space)
+            is_multidiscrete = False
+            actions = ModelCatalog.get_action_placeholder(action_space)
         else:
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for APPO.",
@@ -202,7 +208,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 existing_state_in = existing_inputs[9:-1]
                 existing_seq_lens = existing_inputs[-1]
         else:
-            actions = tf.placeholder(tf.int64, actions_shape, name="ac")
             dones = tf.placeholder(tf.bool, [None], name="dones")
             rewards = tf.placeholder(tf.float32, [None], name="rewards")
             behaviour_logits = tf.placeholder(
@@ -217,15 +222,10 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                     tf.float32, name="advantages", shape=(None, ))
                 value_targets = tf.placeholder(
                     tf.float32, name="value_targets", shape=(None, ))
+        
         self.observations = observations
 
-        # Unpack behaviour logits
-        unpacked_behaviour_logits = tf.split(
-            behaviour_logits, output_hidden_shape, axis=1)
-
         # Setup the policy
-        dist_class, logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
         self.model = ModelCatalog.get_model(
@@ -240,25 +240,29 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.config["model"],
             state_in=existing_state_in,
             seq_lens=existing_seq_lens)
-        unpacked_outputs = tf.split(
-            self.model.outputs, output_hidden_shape, axis=1)
 
-        dist_inputs = unpacked_outputs if is_multidiscrete else \
-            self.model.outputs
-        prev_dist_inputs = unpacked_behaviour_logits if is_multidiscrete else \
-            behaviour_logits
+        #Discrete Case
+        if is_multidiscrete or isinstance(action_space, gym.spaces.Discrete):
+            # Unpack behaviour logits
+            unpacked_behaviour_logits = tf.split(
+                behaviour_logits, output_hidden_shape, axis=1)
+            unpacked_outputs = tf.split(
+                self.model.outputs, output_hidden_shape, axis=1)
 
-<<<<<<< HEAD
+        if is_multidiscrete:
+            dist_inputs = unpacked_outputs
+            prev_dist_inputs = unpacked_behaviour_logits
+        else:
+            #Continuous Case and Discrete Case
+            dist_inputs = self.model.outputs
+            prev_dist_inputs = behaviour_logits
+
         old_policy_behaviour_logits = tf.placeholder(
                 tf.float32, [None, logit_dim], name="old_policy_behaviour_logits")
 
-        action_dist = dist_class(self.model.outputs)
-        prev_action_dist = dist_class(behaviour_logits)
-        old_policy_action_dist = dist_class(old_policy_behaviour_logits)
-=======
         action_dist = dist_class(dist_inputs)
         prev_action_dist = dist_class(prev_dist_inputs)
->>>>>>> 180414710e4f43e08f53159bf865d557b7bc0891
+        old_policy_action_dist = dist_class(old_policy_behaviour_logits)
 
         values = self.model.value_function()
         self.value_function = values
@@ -341,15 +345,9 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         else:
             logger.info("Using PPO surrogate loss (vtrace=False)")
             self.loss = PPOSurrogateLoss(
-<<<<<<< HEAD
-                old_policy_actions_logp=to_batches(old_policy_action_dist.logp(actions)),
-                prev_actions_logp=to_batches(prev_action_dist.logp(actions)),
-                actions_logp=to_batches(action_dist.logp(actions)),
-=======
-                prev_actions_logp=make_time_major(
-                    prev_action_dist.logp(actions)),
+                old_policy_actions_logp=make_time_major(old_policy_action_dist.logp(actions)),
+                prev_actions_logp=make_time_major(prev_action_dist.logp(actions)),
                 actions_logp=make_time_major(action_dist.logp(actions)),
->>>>>>> 180414710e4f43e08f53159bf865d557b7bc0891
                 action_kl=prev_action_dist.kl(action_dist),
                 actions_entropy=make_time_major(action_dist.entropy()),
                 values=make_time_major(values),
@@ -361,11 +359,16 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 clip_param=self.config["clip_param"])
 
         # KL divergence between worker and learner logits for debugging
-        model_dist = MultiCategorical(unpacked_outputs)
-        behaviour_dist = MultiCategorical(unpacked_behaviour_logits)
+        if is_multidiscrete or isinstance(action_space, gym.spaces.Discrete):
+            model_dist = MultiCategorical(unpacked_outputs)
+            behaviour_dist = MultiCategorical(unpacked_behaviour_logits)
+        else:
+            model_dist = Categorical(self.model.outputs)
+            behaviour_dist = Categorical(behaviour_logits)
 
         kls = model_dist.kl(behaviour_dist)
-        if len(kls) > 1:
+
+        if isinstance(kls, (list, tuple)) and len(kls) >= 1:
             self.KL_stats = {}
 
             for i, kl in enumerate(kls):
@@ -377,9 +380,9 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 })
         else:
             self.KL_stats = {
-                "mean_KL": tf.reduce_mean(kls[0]),
-                "max_KL": tf.reduce_max(kls[0]),
-                "median_KL": tf.contrib.distributions.percentile(kls[0], 50.0),
+                "mean_KL": tf.reduce_mean(kls),
+                "max_KL": tf.reduce_max(kls),
+                "median_KL": tf.contrib.distributions.percentile(kls, 50.0),
             }
 
         # Initialize TFPolicyGraph
@@ -391,9 +394,9 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             ("obs", observations),
             ("prev_actions", prev_actions),
             ("prev_rewards", prev_rewards),
-            ("old_policy_behaviour_logits", old_policy_behaviour_logits)
         ]
         if not self.config["vtrace"]:
+            loss_in.append(("old_policy_behaviour_logits", old_policy_behaviour_logits))
             loss_in.append(("advantages", adv_ph))
             loss_in.append(("value_targets", value_targets))
         LearningRateSchedule.__init__(self, self.config["lr"],

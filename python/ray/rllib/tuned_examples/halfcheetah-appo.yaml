@@ -10,7 +10,7 @@ halfcheetah-appo:
         lambda: 0.95
         sample_batch_size: 256
         train_batch_size: 4096
-        num_workers: 1
+        num_workers: 16
         num_gpus: 1
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1

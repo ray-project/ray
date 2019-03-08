@@ -5,6 +5,7 @@ pong-appo:
         episode_reward_mean: 18.0
         timesteps_total: 5000000
     config:
+        vtrace: False
         sample_batch_size: 50
         train_batch_size: 750
         num_workers: 32
@@ -12,8 +13,9 @@ pong-appo:
         max_sample_requests_in_flight_per_worker: 1
         num_data_loader_buffers: 1
         num_envs_per_worker: 5
-        minibatch_buffer_size: 4
-        num_sgd_iter: 2
+        minibatch_buffer_size: 2 #4
+        num_sgd_iter: 2 #2
+        old_policy_lag: 16
         vf_loss_coeff: 1.0
         clip_param: 0.3
         num_gpus: 1

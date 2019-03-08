@@ -42,6 +42,9 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     # == PPO surrogate loss options ==
     "clip_param": 0.4,
 
+    # Old Policy Parameters
+    "old_policy_lag": 100,
+
     # == IMPALA optimizer params (see documentation in impala.py) ==
     "sample_batch_size": 50,
     "train_batch_size": 500,
@@ -69,7 +72,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 # __sphinx_doc_end__
 # yapf: enable
 
-
+import time 
 class APPOAgent(impala.ImpalaAgent):
     """PPO surrogate loss with IMPALA-architecture."""
 
@@ -88,9 +91,9 @@ class APPOAgent(impala.ImpalaAgent):
 
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"])
+        #self.old_policy_evaluator = self.make_local_evaluator(self.env_creator, policy_cls)
+        self.old_policy_evaluator = None
 
-        self.old_policy_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)    
         self.config["optimizer"]["old_policy_evaluator"] = self.old_policy_evaluator
         
         self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
