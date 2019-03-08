@@ -77,6 +77,7 @@ class HyperOptSearch(SuggestionAlgorithm):
                  **kwargs):
         _import_hyperopt()
         assert hpo is not None, "HyperOpt must be installed!"
+        from hyperopt.fmin import generate_trials_to_calculate
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent
         self._reward_attr = reward_attr
@@ -87,7 +88,7 @@ class HyperOptSearch(SuggestionAlgorithm):
             self._points_to_evaluate = 0
         else:
             assert type(points_to_evaluate) == list
-            self._hpopt_trials = hpo.fmin.generate_trials_to_calculate(
+            self._hpopt_trials = generate_trials_to_calculate(
                 points_to_evaluate)
             self._hpopt_trials.refresh()
             self._points_to_evaluate = len(points_to_evaluate)
