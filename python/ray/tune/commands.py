@@ -206,8 +206,8 @@ def list_experiments(project_path,
             "terminated_trials": (
                 checkpoints["status"] == Trial.TERMINATED).sum(),
             "error_trials": (checkpoints["status"] == Trial.ERROR).sum(),
-            **formatted_time_values
         }
+        experiment_data.update(formatted_time_values)
         experiment_data_collection.append(experiment_data)
 
     if not experiment_data_collection:
