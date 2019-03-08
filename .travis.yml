@@ -110,9 +110,9 @@ matrix:
       dist: trusty
       env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
       install:
-        - ./ci/travis/install-dependencies.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
-        - docker run --rm -w /ray -v `pwd`:/ray -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+        - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
       script:
         - ./ci/travis/test-wheels.sh
 
