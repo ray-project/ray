@@ -1,4 +1,6 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import time
 
@@ -25,12 +27,12 @@ def get_router():
 
 
 def test_http_basic(get_router):
+    router = get_router
     a = HTTPFrontendActor.remote(router=ROUTER_NAME)
     a.start.remote()
 
     router.register_actor.remote(
-        "VAdder", VectorizedAdder, init_kwargs={"scaler_increment": 1}
-    )
+        "VAdder", VectorizedAdder, init_kwargs={"scaler_increment": 1})
 
     for _ in range(NUMBER_OF_TRIES):
         try:

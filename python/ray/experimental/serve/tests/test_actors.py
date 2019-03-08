@@ -1,4 +1,6 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import numpy as np
 import pytest
@@ -26,7 +28,8 @@ def generated_inputs():
     input_arr = np.arange(10)
     for i in input_arr:
         oid = get_new_oid()
-        inputs.append(SingleQuery(data=i, result_object_id=oid, deadline_s=deadline))
+        inputs.append(
+            SingleQuery(data=i, result_object_id=oid, deadline_s=deadline))
     return inputs
 
 

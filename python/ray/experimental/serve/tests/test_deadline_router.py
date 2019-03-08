@@ -1,4 +1,6 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import time
 
@@ -27,15 +29,14 @@ def router():
     handle = start_router(DeadlineAwareRouter, "DefaultRouter")
 
     handle.register_actor.remote(
-        "VAdder", VectorizedAdder, init_kwargs={"scaler_increment": 1}
-    )  # init args
+        "VAdder", VectorizedAdder,
+        init_kwargs={"scaler_increment": 1})  # init args
     handle.register_actor.remote(
-        "SAdder", ScalerAdder, init_kwargs={"scaler_increment": 2}
-    )
+        "SAdder", ScalerAdder, init_kwargs={"scaler_increment": 2})
     handle.register_actor.remote(
-        "SleepFirst", SleepOnFirst, init_kwargs={"sleep_time": 1}
-    )
-    handle.register_actor.remote("SleepCounter", SleepCounter, max_batch_size=1)
+        "SleepFirst", SleepOnFirst, init_kwargs={"sleep_time": 1})
+    handle.register_actor.remote(
+        "SleepCounter", SleepCounter, max_batch_size=1)
 
     yield handle
 
@@ -68,7 +69,9 @@ def test_scaler_adder(router: DeadlineAwareRouter, now: float):
 
 def test_batching_ability(router: DeadlineAwareRouter, now: float):
     first = unwrap(router.call.remote("SleepFirst", 1, now + 1))
-    rest = [unwrap(router.call.remote("SleepFirst", 1, now + 1)) for _ in range(10)]
+    rest = [
+        unwrap(router.call.remote("SleepFirst", 1, now + 1)) for _ in range(10)
+    ]
     assert ray.get(first) == 1
     assert np.alltrue(np.array(ray.get(rest)) == 10)
 
