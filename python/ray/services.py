@@ -10,7 +10,6 @@ import multiprocessing
 import os
 import random
 import resource
-import shutil
 import socket
 import subprocess
 import sys
@@ -941,75 +940,6 @@ def start_dashboard(redis_address,
     print("View the dashboard at {}".format(dashboard_url))
     print("=" * 70 + "\n")
     return dashboard_url, process_info
-
-
-def start_ui(redis_address, notebook_name, stdout_file=None, stderr_file=None):
-    """Start a UI process.
-
-    Args:
-        redis_address: The address of the primary Redis shard.
-        notebook_name: The destination of the notebook file.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-
-    Returns:
-        A tuple of the web UI url and ProcessInfo for the process that was
-            started.
-    """
-
-    port = 8888
-    while True:
-        try:
-            port_test_socket = socket.socket()
-            port_test_socket.bind(("127.0.0.1", port))
-            port_test_socket.close()
-            break
-        except socket.error:
-            port += 1
-
-    notebook_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "WebUI.ipynb")
-    # We copy the notebook file so that the original doesn't get modified by
-    # the user.
-    shutil.copy(notebook_filepath, notebook_name)
-
-    new_notebook_directory = os.path.dirname(notebook_name)
-    # We generate the token used for authentication ourselves to avoid
-    # querying the jupyter server.
-    token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
-    # The --ip=0.0.0.0 flag is intended to enable connecting to a notebook
-    # running within a docker container (from the outside).
-    command = [
-        "jupyter", "notebook", "--no-browser", "--port={}".format(port),
-        "--ip=0.0.0.0", "--NotebookApp.iopub_data_rate_limit=10000000000",
-        "--NotebookApp.open_browser=False",
-        "--NotebookApp.token={}".format(token)
-    ]
-    # If the user is root, add the --allow-root flag.
-    if os.geteuid() == 0:
-        command.append("--allow-root")
-
-    try:
-        process_info = start_ray_process(
-            command,
-            ray_constants.PROCESS_TYPE_WEB_UI,
-            env_updates={"REDIS_ADDRESS": redis_address},
-            cwd=new_notebook_directory,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file)
-    except Exception:
-        logger.warning("Failed to start the UI, you may need to run "
-                       "'pip install jupyter'.")
-    else:
-        webui_url = ("http://localhost:{}/notebooks/{}?token={}".format(
-            port, os.path.basename(notebook_name), token))
-        print("\n" + "=" * 70)
-        print("View the web UI at {}".format(webui_url))
-        print("=" * 70 + "\n")
-        return webui_url, process_info
-    return None, None
 
 
 def check_and_update_resources(num_cpus, num_gpus, resources):
