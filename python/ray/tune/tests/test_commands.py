@@ -39,7 +39,6 @@ def test_ls(start_ray, capsys, tmpdir):
     commands.list_trials(experiment_path, info_keys=("status", ))
     captured = capsys.readouterr().out.strip()
     lines = captured.split("\n")
-    assert len(list(lines)) == 3 + num_samples + 1
     assert sum("TERMINATED" in line for line in lines) == num_samples
 
 
@@ -64,7 +63,4 @@ def test_lsx(start_ray, capsys, tmpdir):
     commands.list_experiments(project_path, info_keys=("total_trials", ))
     captured = capsys.readouterr().out.strip()
     lines = captured.split("\n")
-    assert len(list(lines)) == 3 + num_experiments + 1
-    # This drops the header and lower border of the output
-    project_output = slice(3, -1)
-    assert all("1" in line for line in lines[project_output])
+    assert sum("1" in line for line in lines) >= 3
