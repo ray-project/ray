@@ -507,7 +507,6 @@ filegroup(
         "python/ray/dashboard/res/main.js",
         "python/ray/experimental/*.py",
         "python/ray/internal/*.py",
-        "python/ray/WebUI.ipynb",
         "python/ray/workers/default_worker.py",
     ]),
 )

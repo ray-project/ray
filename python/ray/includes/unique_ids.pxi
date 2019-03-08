@@ -19,6 +19,7 @@ from ray.includes.unique_ids cimport (
     CConfigID,
     CDriverID,
     CFunctionID,
+    CJobID,
     CObjectID,
     CTaskID,
     CUniqueID,
@@ -45,11 +46,8 @@ cdef class UniqueID:
     cdef CUniqueID data
 
     def __init__(self, id):
-        if not id:
-            self.data = CUniqueID()
-        else:
-            check_id(id)
-            self.data = CUniqueID.from_binary(id)
+        check_id(id)
+        self.data = CUniqueID.from_binary(id)
 
     @classmethod
     def from_binary(cls, id_bytes):
@@ -59,7 +57,7 @@ cdef class UniqueID:
 
     @classmethod
     def nil(cls):
-        return cls(b"")
+        return cls(CUniqueID.nil().binary())
 
     def __hash__(self):
         return self.data.hash()
@@ -106,40 +104,93 @@ cdef class UniqueID:
 
 
 cdef class ObjectID(UniqueID):
-    pass
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CObjectID.from_binary(<c_string>id)
+
+    cdef CObjectID native(self):
+        return <CObjectID>self.data
 
 
 cdef class TaskID(UniqueID):
-    pass
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CTaskID.from_binary(<c_string>id)
+
+    cdef CTaskID native(self):
+        return <CTaskID>self.data
 
 
 cdef class ClientID(UniqueID):
-    pass
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CClientID.from_binary(<c_string>id)
+
+    cdef CClientID native(self):
+        return <CClientID>self.data
 
 
 cdef class DriverID(UniqueID):
-    pass
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CDriverID.from_binary(<c_string>id)
+
+    cdef CDriverID native(self):
+        return <CDriverID>self.data
 
 
 cdef class ActorID(UniqueID):
-    pass
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CActorID.from_binary(<c_string>id)
+
+    cdef CActorID native(self):
+        return <CActorID>self.data
 
 
 cdef class ActorHandleID(UniqueID):
-    pass
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CActorHandleID.from_binary(<c_string>id)
+
+    cdef CActorHandleID native(self):
+        return <CActorHandleID>self.data
 
 
 cdef class ActorCheckpointID(UniqueID):
-    pass
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CActorCheckpointID.from_binary(<c_string>id)
+
+    cdef CActorCheckpointID native(self):
+        return <CActorCheckpointID>self.data
 
 
 cdef class FunctionID(UniqueID):
-    pass
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CFunctionID.from_binary(<c_string>id)
+
+    cdef CFunctionID native(self):
+        return <CFunctionID>self.data
 
 
 cdef class ActorClassID(UniqueID):
-    pass
 
+    def __init__(self, id):
+        check_id(id)
+        self.data = CActorClassID.from_binary(<c_string>id)
+
+    cdef CActorClassID native(self):
+        return <CActorClassID>self.data
 
 _ID_TYPES = [
     ActorCheckpointID,

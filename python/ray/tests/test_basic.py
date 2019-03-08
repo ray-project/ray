@@ -1148,6 +1148,32 @@ def ray_start_cluster():
     cluster.shutdown()
 
 
+def test_wait_cluster(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"RemoteResource": 1})
+    cluster.add_node(num_cpus=1, resources={"RemoteResource": 1})
+    ray.init(redis_address=cluster.redis_address)
+
+    @ray.remote(resources={"RemoteResource": 1})
+    def f():
+        return
+
+    # Make sure we have enough workers on the remote nodes to execute some
+    # tasks.
+    tasks = [f.remote() for _ in range(10)]
+    start = time.time()
+    ray.get(tasks)
+    end = time.time()
+
+    # Submit some more tasks that can only be executed on the remote nodes.
+    tasks = [f.remote() for _ in range(10)]
+    # Sleep for a bit to let the tasks finish.
+    time.sleep((end - start) * 2)
+    _, unready = ray.wait(tasks, num_returns=len(tasks), timeout=0)
+    # All remote tasks should have finished.
+    assert len(unready) == 0
+
+
 def test_object_transfer_dump(ray_start_cluster):
     cluster = ray_start_cluster
 

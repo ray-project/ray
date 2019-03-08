@@ -193,7 +193,7 @@ class Checkpoint(object):
     def __init__(self, storage, value, last_result=None):
         self.storage = storage
         self.value = value
-        self.last_result = last_result
+        self.last_result = last_result or {}
 
     @staticmethod
     def from_object(value=None):
@@ -283,7 +283,7 @@ class Trial(object):
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
-        self.last_result = None
+        self.last_result = {}
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
@@ -298,6 +298,24 @@ class Trial(object):
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
+
+        # AutoML fields
+        self.results = None
+        self.best_result = None
+        self.param_config = None
+        self.extra_arg = None
+
+        self._nonjson_fields = [
+            "_checkpoint",
+            "config",
+            "loggers",
+            "sync_function",
+            "last_result",
+            "results",
+            "best_result",
+            "param_config",
+            "extra_arg",
+        ]
 
         self.trial_name = None
         if trial_name_creator:
@@ -335,6 +353,18 @@ class Trial(object):
                 upload_uri=self.upload_dir,
                 loggers=self.loggers,
                 sync_function=self.sync_function)
+
+    def update_resources(self, cpu, gpu, **kwargs):
+        """EXPERIMENTAL: Updates the resource requirements.
+
+        Should only be called when the trial is not running.
+
+        Raises:
+            ValueError if trial status is running.
+        """
+        if self.status is Trial.RUNNING:
+            raise ValueError("Cannot update resources while Trial is running.")
+        self.resources = Resources(cpu, gpu, **kwargs)
 
     def sync_logger_to_new_location(self, worker_ip):
         """Updates the logger location.
@@ -392,7 +422,7 @@ class Trial(object):
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
 
-        if self.last_result is None:
+        if not self.last_result:
             return self._status_string()
 
         def location_string(hostname, pid):
@@ -402,12 +432,12 @@ class Trial(object):
                 return '{} pid={}'.format(hostname, pid)
 
         pieces = [
-            '{} [{}]'.format(
-                self._status_string(),
-                location_string(
-                    self.last_result.get(HOSTNAME),
-                    self.last_result.get(PID))), '{} s'.format(
-                        int(self.last_result.get(TIME_TOTAL_S)))
+            '{}'.format(self._status_string()), '[{}]'.format(
+                self.resources.summary_string()), '[{}]'.format(
+                    location_string(
+                        self.last_result.get(HOSTNAME),
+                        self.last_result.get(PID))), '{} s'.format(
+                            int(self.last_result.get(TIME_TOTAL_S)))
         ]
 
         if self.last_result.get(TRAINING_ITERATION) is not None:
@@ -509,17 +539,8 @@ class Trial(object):
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 
-        # These are non-pickleable entries.
-        pickle_data = {
-            "_checkpoint": self._checkpoint,
-            "config": self.config,
-            "loggers": self.loggers,
-            "sync_function": self.sync_function,
-            "last_result": self.last_result
-        }
-
-        for key, value in pickle_data.items():
-            state[key] = binary_to_hex(cloudpickle.dumps(value))
+        for key in self._nonjson_fields:
+            state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
         state["result_logger"] = None
@@ -535,10 +556,7 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
-        for key in [
-                "_checkpoint", "config", "loggers", "sync_function",
-                "last_result"
-        ]:
+        for key in self._nonjson_fields:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)

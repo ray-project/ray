@@ -171,16 +171,17 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         if isinstance(action_space, gym.spaces.Discrete):
             is_multidiscrete = False
-            actions_shape = [None]
             output_hidden_shape = [action_space.n]
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
             is_multidiscrete = True
-            actions_shape = [None, len(action_space.nvec)]
             output_hidden_shape = action_space.nvec.astype(np.int32)
-        else:
+        elif self.config["vtrace"]:
             raise UnsupportedSpaceException(
-                "Action space {} is not supported for APPO.",
+                "Action space {} is not supported for APPO + VTrace.",
                 format(action_space))
+        else:
+            is_multidiscrete = False
+            output_hidden_shape = 1
 
         # Policy network model
         dist_class, logit_dim = ModelCatalog.get_action_dist(
@@ -200,7 +201,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 existing_state_in = existing_inputs[9:-1]
                 existing_seq_lens = existing_inputs[-1]
         else:
-            actions = tf.placeholder(tf.int64, actions_shape, name="ac")
+            actions = ModelCatalog.get_action_placeholder(action_space)
             dones = tf.placeholder(tf.bool, [None], name="dones")
             rewards = tf.placeholder(tf.float32, [None], name="rewards")
             behaviour_logits = tf.placeholder(
