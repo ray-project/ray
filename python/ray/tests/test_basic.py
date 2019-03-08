@@ -850,6 +850,7 @@ def test_defining_remote_functions(shutdown_only):
                 args=[], num_cpus=1, num_gpus=1,
                 resources={"Custom": 1})) == [0]
         infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
+        assert ray.get(g._remote()) == [0]
         ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
         assert len(ready_ids) == 0
         assert len(remaining_ids) == 1
@@ -1881,11 +1882,23 @@ def test_gpu_ids(shutdown_only):
                 [str(i) for i in gpu_ids]))
             return self.x
 
+    @ray.remote
+    class Actor2(object):
+        def __init__(self):
+            pass
+
+        def method(self):
+            pass
+
     a0 = Actor0.remote()
     ray.get(a0.test.remote())
 
     a1 = Actor1.remote()
     ray.get(a1.test.remote())
+
+    a2 = Actor2._remote()
+    ray.get(a2.method._remote())
+
 
 
 def test_zero_cpus(shutdown_only):

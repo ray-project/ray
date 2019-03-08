@@ -126,6 +126,10 @@ class ActorMethod(object):
         return self._remote(args, kwargs)
 
     def _remote(self, args=None, kwargs=None, num_return_vals=None):
+        if args is None:
+            args = []
+        if kwargs is None:
+            kwargs = {}
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
@@ -255,6 +259,11 @@ class ActorClass(object):
         Returns:
             A handle to the newly created actor.
         """
+        if args is None:
+            args = []
+        if kwargs is None:
+            kwargs = {}
+
         worker = ray.worker.get_global_worker()
         if worker.mode is None:
             raise Exception("Actors cannot be created before ray.init() "
@@ -293,10 +302,6 @@ class ActorClass(object):
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
 
-            if args is None:
-                args = []
-            if kwargs is None:
-                kwargs = {}
             function_name = "__init__"
             function_signature = self._method_signatures[function_name]
             creation_args = signature.extend_args(function_signature, args,
