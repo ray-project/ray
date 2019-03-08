@@ -23,6 +23,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "broadcast_interval",
     "num_sgd_iter",
     "minibatch_buffer_size",
+    "old_policy_lag",
 ]
 
 # yapf: disable

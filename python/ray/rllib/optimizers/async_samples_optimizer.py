@@ -56,7 +56,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
-
+        self.old_policy_lag = old_policy_lag
         self._stats_start_time = time.time()
         self._last_stats_time = {}
         self._last_stats_sum = {}
@@ -112,7 +112,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 self.sample_tasks.add(ev, ev.sample.remote())
         #if self.old_policy_evaluator:
             #self.old_policy_evaluator.set_weights(weights)
-        self.old_policy_lag = old_policy_lag
 
         self.batch_buffer = []
 
@@ -274,7 +273,7 @@ class LearnerThread(threading.Thread):
     """
 
     def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_iter,
-                 learner_queue_size):
+                 learner_queue_size, old_policy_lag=None):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
         self.local_evaluator = local_evaluator
@@ -293,7 +292,8 @@ class LearnerThread(threading.Thread):
         self.old_policy_lag = 0
         self.standardize_fields = ["advantages"]
         #self.old_policy_evaluator = old_policy_evaluator
-        #self.old_policy_counter =0
+        self.old_policy_lag =old_policy_lag
+        self.counter =0
 
     def run(self):
         while not self.stopped:
@@ -303,11 +303,11 @@ class LearnerThread(threading.Thread):
         print("I AM LEARNING ONE TIME")
         with self.queue_timer:
             batch, _ = self.minibatch_buffer.get()
-            if self.old_policy_lag ==0:
+            if self.counter ==0:
                     self.old_policy_behaviour_logits = self.local_evaluator.policy_map['default'].compute_actions(
                             batch["obs"],prev_action_batch=batch["prev_actions"],
                             prev_reward_batch=batch["prev_rewards"])[2]['behaviour_logits']
-            self.old_policy_lag = 0 if self.old_policy_lag==32 else self.old_policy_lag+1
+            self.counter = 0 if self.counter==self.old_policy_lag else self.counter+1
             batch["old_policy_behaviour_logits"] = self.old_policy_behaviour_logits
             #for key, value in batch.items():
                 #print("Key ", key, " \nValue ", value[0])
