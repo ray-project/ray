@@ -26,7 +26,7 @@ for i in range(num_nodes):
     cluster.add_node(
         redis_port=6379 if i == 0 else None,
         num_redis_shards=num_redis_shards if i == 0 else None,
-        num_cpus=10,
+        num_cpus=5,
         num_gpus=0,
         resources={str(i): 2},
         object_store_memory=object_store_memory,
