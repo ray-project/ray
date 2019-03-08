@@ -75,9 +75,9 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
-  using NotificationCallback = std::function<void(AsyncGcsClient *client, const ID &id,
-                                                  const GcsTableNotificationMode notification_mode,
-                                                  const std::vector<DataT> &data)>;
+  using NotificationCallback = std::function<void(
+      AsyncGcsClient *client, const ID &id,
+      const GcsTableNotificationMode notification_mode, const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
@@ -229,8 +229,8 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// are ready to receive messages.
   /// \return Status
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                                       const NotificationCallback &subscribe,
-                                       const SubscriptionCallback &done);
+                   const NotificationCallback &subscribe,
+                   const SubscriptionCallback &done);
 
   /// The connection to the GCS.
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
@@ -429,8 +429,7 @@ class Set : private Log<ID, Data>,
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done) {
-    return Log<ID, Data>::Subscribe(job_id, client_id, subscribe,
-                                                        done);
+    return Log<ID, Data>::Subscribe(job_id, client_id, subscribe, done);
   }
 
   /// Returns debug string for class.

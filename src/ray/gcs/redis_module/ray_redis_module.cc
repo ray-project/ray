@@ -198,8 +198,9 @@ int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_st
   // Serialize the notification to send.
   flatbuffers::FlatBufferBuilder fbb;
   auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
-  auto message = CreateGcsTableEntry(fbb, notification_mode, RedisStringToFlatbuf(fbb, id),
-                                     fbb.CreateVector(&data_flatbuf, 1));
+  auto message =
+      CreateGcsTableEntry(fbb, notification_mode, RedisStringToFlatbuf(fbb, id),
+                          fbb.CreateVector(&data_flatbuf, 1));
   fbb.Finish(message);
 
   // Write the data back to any subscribers that are listening to all table
@@ -430,7 +431,8 @@ int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
   }
 }
 
-int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is_add, bool *changed) {
+int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is_add,
+                bool *changed) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }

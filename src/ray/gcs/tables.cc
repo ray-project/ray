@@ -122,10 +122,9 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Subscribe(const JobID &job_id,
-                                                    const ClientID &client_id,
-                                                    const NotificationCallback &subscribe,
-                                                    const SubscriptionCallback &done) {
+Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+                                const NotificationCallback &subscribe,
+                                const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
       << "Client called Subscribe twice on the same table";
   auto callback = [this, subscribe, done](const std::string &data) {

@@ -652,9 +652,9 @@ void TestSetSubscribeAll(const JobID &job_id,
 
   // Callback for a notification.
   auto notification_callback = [object_ids, managers](
-                                   gcs::AsyncGcsClient *client, const UniqueID &id,
-                                   const GcsTableNotificationMode notification_mode,
-                                   const std::vector<ObjectTableDataT> data) {
+      gcs::AsyncGcsClient *client, const UniqueID &id,
+      const GcsTableNotificationMode notification_mode,
+      const std::vector<ObjectTableDataT> data) {
     if (test->NumCallbacks() < 3 * 3) {
       ASSERT_EQ(notification_mode, GcsTableNotificationMode::APPEND_OR_ADD);
     } else {

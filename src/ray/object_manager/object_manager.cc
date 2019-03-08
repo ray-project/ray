@@ -579,9 +579,8 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
       // Lookup remaining objects.
       wait_state.requested_objects.insert(object_id);
       RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
-          object_id,
-          [this, wait_id](const ObjectID &lookup_object_id,
-                          const std::unordered_set<ClientID> &client_ids) {
+          object_id, [this, wait_id](const ObjectID &lookup_object_id,
+                                     const std::unordered_set<ClientID> &client_ids) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             if (!client_ids.empty()) {
               wait_state.remaining.erase(lookup_object_id);

@@ -54,7 +54,8 @@ void ObjectDirectory::RegisterBackend() {
     it->second.subscribed = true;
 
     // Update entries for this object.
-    UpdateObjectLocations(notification_mode, location_updates, gcs_client_->client_table(),
+    UpdateObjectLocations(notification_mode, location_updates,
+                          gcs_client_->client_table(),
                           &it->second.current_object_locations);
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
@@ -134,9 +135,9 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
     if (listener.second.current_object_locations.count(client_id) > 0) {
       // If the subscribed object has the removed client as a location, update
       // its locations with an empty update so that the location will be removed.
-      UpdateObjectLocations(
-          GcsTableNotificationMode::APPEND_OR_ADD, {}, gcs_client_->client_table(),
-          &listener.second.current_object_locations);
+      UpdateObjectLocations(GcsTableNotificationMode::APPEND_OR_ADD, {},
+                            gcs_client_->client_table(),
+                            &listener.second.current_object_locations);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
       for (const auto &callback_pair : listener.second.callbacks) {
@@ -168,9 +169,8 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   // immediately notify the caller of the current known locations.
   if (listener_state.subscribed) {
     auto &locations = listener_state.current_object_locations;
-    io_service_.post([callback, locations, object_id]() {
-      callback(object_id, locations);
-    });
+    io_service_.post(
+        [callback, locations, object_id]() { callback(object_id, locations); });
   }
   return status;
 }
@@ -201,9 +201,8 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     // the object's creation, then call the callback immediately with the
     // cached locations.
     auto &locations = it->second.current_object_locations;
-    io_service_.post([callback, object_id, locations]() {
-      callback(object_id, locations);
-    });
+    io_service_.post(
+        [callback, object_id, locations]() { callback(object_id, locations); });
   } else {
     // We do not have any locations cached due to a concurrent
     // SubscribeObjectLocations call, so look up the object's locations
