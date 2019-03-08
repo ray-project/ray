@@ -72,7 +72,7 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
         ObjectID object_id
         c_vector[CObjectID] result
     for object_id in object_ids:
-        result.push_back(object_id.data)
+        result.push_back(object_id.native())
     return result
 
 
@@ -87,11 +87,11 @@ def compute_put_id(TaskID task_id, int64_t put_index):
     if put_index < 1 or put_index > kMaxTaskPuts:
         raise ValueError("The range of 'put_index' should be [1, %d]"
                          % kMaxTaskPuts)
-    return ObjectID(ComputePutId(task_id.data, put_index).binary())
+    return ObjectID(ComputePutId(task_id.native(), put_index).binary())
 
 
 def compute_task_id(ObjectID object_id):
-    return TaskID(ComputeTaskId(object_id.data).binary())
+    return TaskID(ComputeTaskId(object_id.native()).binary())
 
 
 cdef c_bool is_simple_value(value, int *num_elements_contained):
@@ -225,8 +225,8 @@ cdef class RayletClient:
         # parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(
-            raylet_socket.encode("ascii"), client_id.data, is_worker,
-            driver_id.data, LANGUAGE_PYTHON))
+            raylet_socket.encode("ascii"), client_id.native(), is_worker,
+            driver_id.native(), LANGUAGE_PYTHON))
 
     def disconnect(self):
         check_status(self.client.get().Disconnect())
@@ -252,22 +252,23 @@ cdef class RayletClient:
                              TaskID current_task_id=TaskID.nil()):
         cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
         check_status(self.client.get().FetchOrReconstruct(
-            fetch_ids, fetch_only, current_task_id.data))
+            fetch_ids, fetch_only, current_task_id.native()))
 
     def notify_unblocked(self, TaskID current_task_id):
-        check_status(self.client.get().NotifyUnblocked(current_task_id.data))
+        check_status(self.client.get().NotifyUnblocked(current_task_id.native()))
 
     def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds,
              c_bool wait_local, TaskID current_task_id):
         cdef:
             WaitResultPair result
             c_vector[CObjectID] wait_ids
+            CTaskID c_task_id = current_task_id.native()
         wait_ids = ObjectIDsToVector(object_ids)
         with nogil:
             check_status(self.client.get().Wait(wait_ids, num_returns,
                                                 timeout_milliseconds,
                                                 wait_local,
-                                                current_task_id.data, &result))
+                                                c_task_id, &result))
         return (VectorToObjectIDs(result.first),
                 VectorToObjectIDs(result.second))
 
@@ -291,9 +292,9 @@ cdef class RayletClient:
             postincrement(iterator)
         return resources_dict
 
-    def push_error(self, DriverID job_id, error_type, error_message,
+    def push_error(self, DriverID driver_id, error_type, error_message,
                    double timestamp):
-        check_status(self.client.get().PushError(job_id.data,
+        check_status(self.client.get().PushError(driver_id.native(),
                                                  error_type.encode("ascii"),
                                                  error_message.encode("ascii"),
                                                  timestamp))
@@ -354,7 +355,7 @@ cdef class RayletClient:
 
     def prepare_actor_checkpoint(self, ActorID actor_id):
         cdef CActorCheckpointID checkpoint_id
-        cdef CActorID c_actor_id = actor_id.data
+        cdef CActorID c_actor_id = actor_id.native()
         # PrepareActorCheckpoint will wait for raylet's reply, release
         # the GIL so other Python threads can run.
         with nogil:
@@ -365,7 +366,7 @@ cdef class RayletClient:
     def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
                                              ActorCheckpointID checkpoint_id):
         check_status(self.client.get().NotifyActorResumedFromCheckpoint(
-            actor_id.data, checkpoint_id.data))
+            actor_id.native(), checkpoint_id.native()))
 
     @property
     def language(self):

@@ -91,7 +91,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
       std::vector<DataT> results;
       if (!data.empty()) {
         auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
-        RAY_CHECK(from_flatbuf(*root->id()) == id);
+        RAY_CHECK(from_flatbuf<ID>(*root->id()) == id);
         for (size_t i = 0; i < root->entries()->size(); i++) {
           DataT result;
           auto data_root = flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
@@ -141,7 +141,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
         auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
         ID id;
         if (root->id()->size() > 0) {
-          id = from_flatbuf(*root->id());
+          id = from_flatbuf<ID>(*root->id());
         }
         std::vector<DataT> results;
         for (size_t i = 0; i < root->entries()->size(); i++) {
@@ -331,18 +331,18 @@ std::string Set<ID, Data>::DebugString() const {
   return result.str();
 }
 
-Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &type,
+Status ErrorTable::PushErrorToDriver(const DriverID &driver_id, const std::string &type,
                                      const std::string &error_message, double timestamp) {
   auto data = std::make_shared<ErrorTableDataT>();
-  data->job_id = job_id.binary();
+  data->job_id = driver_id.binary();
   data->type = type;
   data->error_message = error_message;
   data->timestamp = timestamp;
-  return Append(job_id, job_id, data, /*done_callback=*/nullptr);
+  return Append(JobID(driver_id), driver_id, data, /*done_callback=*/nullptr);
 }
 
 std::string ErrorTable::DebugString() const {
-  return Log<JobID, ErrorTableData>::DebugString();
+  return Log<DriverID, ErrorTableData>::DebugString();
 }
 
 Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
@@ -359,11 +359,11 @@ std::string ProfileTable::DebugString() const {
   return Log<UniqueID, ProfileTableData>::DebugString();
 }
 
-Status DriverTable::AppendDriverData(const JobID &driver_id, bool is_dead) {
+Status DriverTable::AppendDriverData(const DriverID &driver_id, bool is_dead) {
   auto data = std::make_shared<DriverTableDataT>();
   data->driver_id = driver_id.binary();
   data->is_dead = is_dead;
-  return Append(driver_id, driver_id, data, /*done_callback=*/nullptr);
+  return Append(JobID(driver_id), driver_id, data, /*done_callback=*/nullptr);
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
@@ -549,7 +549,7 @@ Status ClientTable::Lookup(const Callback &lookup) {
 
 std::string ClientTable::DebugString() const {
   std::stringstream result;
-  result << Log<UniqueID, ClientTableData>::DebugString();
+  result << Log<ClientID, ClientTableData>::DebugString();
   result << ", cache size: " << client_cache_.size()
          << ", num removed: " << removed_clients_.size();
   return result.str();
@@ -557,7 +557,7 @@ std::string ClientTable::DebugString() const {
 
 Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
-                                               const UniqueID &checkpoint_id) {
+                                               const ActorCheckpointID &checkpoint_id) {
   auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
       ray::gcs::AsyncGcsClient *client, const UniqueID &id,
       const ActorCheckpointIdDataT &data) {
@@ -569,7 +569,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     while (copy->timestamps.size() > num_to_keep) {
       // Delete the checkpoint from actor checkpoint table.
       const auto &checkpoint_id =
-          UniqueID::from_binary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
+          ActorCheckpointID::from_binary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
       RAY_LOG(DEBUG) << "Deleting checkpoint " << checkpoint_id << " for actor "
                      << actor_id;
       copy->timestamps.erase(copy->timestamps.begin());
@@ -600,9 +600,9 @@ template class Log<TaskID, TaskReconstructionData>;
 template class Table<TaskID, TaskLeaseData>;
 template class Table<ClientID, HeartbeatTableData>;
 template class Table<ClientID, HeartbeatBatchTableData>;
-template class Log<JobID, ErrorTableData>;
-template class Log<UniqueID, ClientTableData>;
-template class Log<JobID, DriverTableData>;
+template class Log<DriverID, ErrorTableData>;
+template class Log<ClientID, ClientTableData>;
+template class Log<DriverID, DriverTableData>;
 template class Log<UniqueID, ProfileTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;

@@ -1185,7 +1185,7 @@ void TestClientTableConnect(const JobID &job_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
         ClientTableNotification(client, id, data, true);
         test->Stop();
       });
@@ -1210,14 +1210,14 @@ void TestClientTableDisconnect(const JobID &job_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
         ClientTableNotification(client, id, data, /*is_insertion=*/true);
         // Disconnect from the client table. We should receive a notification
         // for the removal of our own entry.
         RAY_CHECK_OK(client->client_table().Disconnect());
       });
   client->client_table().RegisterClientRemovedCallback(
-      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
         ClientTableNotification(client, id, data, /*is_insertion=*/false);
         test->Stop();
       });
@@ -1241,11 +1241,11 @@ void TestClientTableImmediateDisconnect(const JobID &job_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
         ClientTableNotification(client, id, data, true);
       });
   client->client_table().RegisterClientRemovedCallback(
-      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
         ClientTableNotification(client, id, data, false);
         test->Stop();
       });

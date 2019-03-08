@@ -13,7 +13,7 @@ auth:
     ssh_user: ubuntu
 
 head_node:
-    InstanceType: m5.2xlarge
+    InstanceType: m5.xlarge
     ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
 
     # Set primary volume to 25 GiB
@@ -51,7 +51,7 @@ setup_commands:
     # - git clone https://github.com/ray-project/ray || true
     # - cd ray/python; git checkout master; git pull; pip install -e . --verbose
     # Install nightly Ray wheels.
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev1-cp36-cp36m-manylinux1_x86_64.whl
     - pip install ray[rllib] ray[debug] tensorflow
     - pip install -U dask  # fix error importing lz4
 
