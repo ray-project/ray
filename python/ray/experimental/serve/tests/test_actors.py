@@ -14,7 +14,7 @@ INCREMENT = 3
 
 @pytest.fixture(scope="module")
 def ray_start():
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=4)
     yield
     ray.shutdown()
 
@@ -26,8 +26,7 @@ def generated_inputs():
     input_arr = np.arange(10)
     for i in input_arr:
         oid = get_new_oid()
-        inputs.append(
-            SingleQuery(data=i, result_object_id=oid, deadline_s=deadline))
+        inputs.append(SingleQuery(data=i, result_object_id=oid, deadline_s=deadline))
     return inputs
 
 

@@ -15,21 +15,22 @@ ROUTER_NAME = "DefaultRouter"
 NUMBER_OF_TRIES = 5
 
 
-@pytest.fixture(scope="module")
-def ray_start():
-    ray.init(num_cpus=1)
-    yield
+@pytest.fixture
+def get_router():
+    # We need this many workers so resource are not oversubscribed
+    ray.init(num_cpus=4)
+    router = start_router(DeadlineAwareRouter, ROUTER_NAME)
+    yield router
     ray.shutdown()
 
 
-def test_http_basic(ray_start):
-    router = start_router(DeadlineAwareRouter, ROUTER_NAME)
-
+def test_http_basic(get_router):
     a = HTTPFrontendActor.remote(router=ROUTER_NAME)
     a.start.remote()
 
     router.register_actor.remote(
-        "VAdder", VectorizedAdder, init_kwargs={"scaler_increment": 1})
+        "VAdder", VectorizedAdder, init_kwargs={"scaler_increment": 1}
+    )
 
     for _ in range(NUMBER_OF_TRIES):
         try:
