@@ -59,6 +59,7 @@ class BayesOptSearch(SuggestionAlgorithm):
                  random_state=1,
                  verbose=0,
                  **kwargs):
+        _import_bayesopt()
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
             " the command: `pip install bayesian-optimization`.")
