@@ -259,8 +259,7 @@ class NodeManager {
   /// \return Void.
   void HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
                          const std::vector<ObjectID> &required_object_ids,
-                         const TaskID &current_task_id,
-                         bool ray_get);
+                         const TaskID &current_task_id, bool ray_get);
 
   /// Handle a task that is unblocked. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),

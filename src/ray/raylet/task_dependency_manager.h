@@ -54,8 +54,7 @@ class TaskDependencyManager {
   /// \return Whether all of the given dependencies for the given task are
   /// local.
   bool SubscribeDependencies(const TaskID &task_id,
-                             const std::vector<ObjectID> &required_objects,
-                             bool ray_get);
+                             const std::vector<ObjectID> &required_objects, bool ray_get);
 
   /// Unsubscribe from the object dependencies required by this task. If the
   /// objects were remote and are no longer required by any subscribed task,

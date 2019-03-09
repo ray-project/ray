@@ -148,7 +148,8 @@ bool TaskDependencyManager::SubscribeDependencies(
 
   // Record the task's dependencies.
   for (const auto &object_id : required_objects) {
-    auto inserted = (ray_get) ? task_entry.get_dependencies.insert(object_id) : task_entry.wait_dependencies.insert(object_id);
+    auto inserted = (ray_get) ? task_entry.get_dependencies.insert(object_id)
+                              : task_entry.wait_dependencies.insert(object_id);
     if (inserted.second) {
       // Get the ID of the task that creates the dependency.
       TaskID creating_task_id = ComputeTaskId(object_id);
@@ -173,7 +174,8 @@ bool TaskDependencyManager::SubscribeDependencies(
   return (task_entry.num_missing_dependencies == 0);
 }
 
-void TaskDependencyManager::RemoveTaskDependency(const TaskID &task_id, const ObjectID &object_id) {
+void TaskDependencyManager::RemoveTaskDependency(const TaskID &task_id,
+                                                 const ObjectID &object_id) {
   // Remove the task from the list of tasks that are dependent on this
   // object.
   // Get the ID of the task that creates the dependency.
