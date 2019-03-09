@@ -426,7 +426,7 @@ import time
 def train_func(config, reporter):  # add a reporter arg
     for i in range(2):
         time.sleep(0.1)
-        reporter(timesteps_this_iter=i, mean_accuracy=i+97)  # report metrics
+        reporter(timesteps_total=i, mean_accuracy=i+97)  # report metrics
 
 os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
 ray.init(redis_address="{}")
