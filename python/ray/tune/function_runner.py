@@ -30,7 +30,7 @@ class StatusReporter(object):
         >>>     assert isinstance(reporter, StatusReporter)
         >>>     reporter(timesteps_this_iter=1)
     """
-    
+
     def __init__(self, result_queue, continue_semaphore):
         self._queue = result_queue
         self._last_report_time = None
@@ -52,7 +52,7 @@ class StatusReporter(object):
             StopIteration: A StopIteration exception is raised if the trial has
                 been signaled to stop.
         """
-        
+
         assert self._last_report_time is not None, (
                 "StatusReporter._start() must be called before the first "
                 "report __call__ is made to ensure correct runtime metrics."
@@ -66,7 +66,7 @@ class StatusReporter(object):
         self._last_report_time = report_time
 
         # add results to a thread-safe queue
-        self._queue.put(kwargs, block=True)
+        self._queue.put(kwargs.copy(), block=True)
 
         # This blocks until notification from the FunctionRunner that the last
         # result has been returned to Tune and that the function is safe to
@@ -203,7 +203,7 @@ class FunctionRunner(Trainable):
                         "Runner error waiting to be raised in main thread. "
                         "Logging all available results first."
                         ))
-        
+
         return result
 
     def _stop(self):
