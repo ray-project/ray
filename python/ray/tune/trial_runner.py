@@ -112,7 +112,9 @@ class TrialRunner(object):
         self._stop_queue = []
         self._metadata_checkpoint_dir = metadata_checkpoint_dir
 
-        self._session = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+        self._start_time = time.time()
+        self._session_str = datetime.fromtimestamp(
+            self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
 
     @classmethod
     def checkpoint_exists(cls, directory):
@@ -136,7 +138,8 @@ class TrialRunner(object):
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
-            "runner_data": self.__getstate__()
+            "runner_data": self.__getstate__(),
+            "timestamp": time.time()
         }
         tmp_file_name = os.path.join(metadata_checkpoint_dir,
                                      ".tmp_checkpoint")
@@ -146,7 +149,7 @@ class TrialRunner(object):
         os.rename(
             tmp_file_name,
             os.path.join(metadata_checkpoint_dir,
-                         TrialRunner.CKPT_FILE_TMPL.format(self._session)))
+                         TrialRunner.CKPT_FILE_TMPL.format(self._session_str)))
         return metadata_checkpoint_dir
 
     @classmethod
@@ -558,8 +561,12 @@ class TrialRunner(object):
         """
         state = self.__dict__.copy()
         for k in [
-                "_trials", "_stop_queue", "_server", "_search_alg",
-                "_scheduler_alg", "trial_executor", "_session"
+                "_trials",
+                "_stop_queue",
+                "_server",
+                "_search_alg",
+                "_scheduler_alg",
+                "trial_executor",
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)
@@ -567,6 +574,14 @@ class TrialRunner(object):
 
     def __setstate__(self, state):
         launch_web_server = state.pop("launch_web_server")
+
+        # Use session_str from previous checkpoint if does not exist
+        session_str = state.pop("_session_str")
+        self.__dict__.setdefault("_session_str", session_str)
+        # Use start_time from previous checkpoint if does not exist
+        start_time = state.pop("_start_time")
+        self.__dict__.setdefault("_start_time", start_time)
+
         self.__dict__.update(state)
         if launch_web_server:
             self._server = TuneServer(self, self._server_port)
