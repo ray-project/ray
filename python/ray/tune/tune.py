@@ -274,5 +274,15 @@ def run_experiments(experiments,
 
     trials = []
     for exp in experiments:
-        trials += run(exp)
+        trials += run(
+            exp,
+            search_alg,
+            scheduler,
+            with_server,
+            server_port,
+            verbose,
+            resume,
+            queue_trials,
+            trial_executor,
+            raise_on_failed_trial)
     return trials
