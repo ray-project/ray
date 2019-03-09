@@ -12,15 +12,8 @@ namespace ray {
 
 namespace perf_counter {
 
-/// Include tag_def.h to define tag items
-#define RAY_TAG(name)                                                       \
-  static opencensus::tags::TagKey name##Key() {                             \
-    static const auto key = opencensus::tags::TagKey::Register(#name);      \
-    return key;                                                             \
-  }
-
-#include "tag_def.h"
-#undef RAY_TAG
+/// Include tag_defs.h to define tag items
+#include "tag_defs.h"
 
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
@@ -29,16 +22,17 @@ class Metric final {
  public:
   Metric(const std::string &name,
          const std::string &description,
-         const std::string &unit) {
-    this->measure_ = std::make_shared<opencensus::stats::Measure<double>>(
-        opencensus::stats::Measure<double>::Register(
-            name, description, unit));
-  }
+         const std::string &unit)
+    : measure_(opencensus::stats::Measure<double>::Register(name, description, unit)) {}
 
   ~Metric() = default;
 
+  Metric& operator()() {
+    return *this;
+  }
+
   std::string GetName() const {
-    return measure_->GetDescriptor().name();
+    return measure_.GetDescriptor().name();
   }
 
   void Record(double value) {
@@ -48,20 +42,21 @@ class Metric final {
   void Record(double value, const std::vector<std::pair<opencensus::tags::TagKey::TagKey, std::string>>& tags) {
     // global tags should be registered here.
     static std::vector<std::pair<opencensus::tags::TagKey, std::string>> global_tags = {
-        {ray::perf_counter::JobNameKey(), "raylet"}
+        {ray::perf_counter::JobNameKey, "raylet"}
     };
 
     std::vector<std::pair<opencensus::tags::TagKey, std::string>> combined_tags(tags);
     combined_tags.insert(std::end(combined_tags), std::begin(global_tags), std::end(global_tags));
-    opencensus::stats::Record({{*this->measure_, value}}, combined_tags);
+    opencensus::stats::Record({{this->measure_, value}}, combined_tags);
   }
 
  private:
-  std::shared_ptr<opencensus::stats::Measure<double>> measure_ = nullptr;
+  opencensus::stats::Measure<double> measure_;
 
 }; // class Metric
 
-/// Include metric_def.h to define tag items
+// TODO(qwang): Remove this macro
+/// Include metric_defs.h to define tag items
 #define RAY_METRIC(name, description, unit)                                 \
   static Metric name##_metric_ = Metric(std::string("raylet/") + #name,     \
                                         description, unit);                 \
@@ -69,18 +64,18 @@ class Metric final {
     return name##_metric_;                                                  \
   }
 
-#include "metrics_def.h"
+#include "metric_defs.h"
 #undef RAY_METRIC
 
 
-/// The helper function for registering a view.
+  /// The helper function for registering a view.
   static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor) {
     opencensus::stats::View view(view_descriptor);
     view_descriptor.RegisterForExport();
   }
 
 
-/// The helper function for registering all views.
+  /// The helper function for registering all views.
   static void RegisterAllViews() {
     {
       const opencensus::stats::ViewDescriptor view_descriptor =
@@ -89,7 +84,7 @@ class Metric final {
               .set_measure(RedisLatency().GetName())
               .set_aggregation(opencensus::stats::Aggregation::Distribution(
                   opencensus::stats::BucketBoundaries::Explicit({0, 25, 50, 75, 1000})))
-              .add_column(JobNameKey());
+              .add_column(JobNameKey);
 
       RegisterAsView(view_descriptor);
     }
@@ -101,8 +96,8 @@ class Metric final {
               .set_measure(TaskElapse().GetName())
               .set_aggregation(opencensus::stats::Aggregation::Distribution(
                   opencensus::stats::BucketBoundaries::Explicit({100, 250, 500, 750, 1000})))
-              .add_column(JobNameKey())
-              .add_column(NodeAddressKey());
+              .add_column(JobNameKey)
+              .add_column(NodeAddressKey);
 
       RegisterAsView(view_descriptor);
     }
@@ -113,8 +108,8 @@ class Metric final {
               .set_description("task count")
               .set_measure(TaskCount().GetName())
               .set_aggregation(opencensus::stats::Aggregation::LastValue())
-              .add_column(JobNameKey())
-              .add_column(NodeAddressKey());
+              .add_column(JobNameKey)
+              .add_column(NodeAddressKey);
 
       RegisterAsView(view_descriptor);
     }
@@ -122,7 +117,7 @@ class Metric final {
   }
 
 
-/// Initialize perf counter.
+  /// Initialize perf counter.
   static void Init(const std::string &address) {
     // Enable the Prometheus exporter.
     // Note that the reason for we using local static variables

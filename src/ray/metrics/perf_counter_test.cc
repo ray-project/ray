@@ -25,13 +25,13 @@ public:
 
 TEST_F(PerfCounterTest, F) {
 
-  for (size_t i = 0; i < 100; ++i) {
+  for (size_t i = 0; i < 10; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     perf_counter::RedisLatency().Record(i % 40, {});
 
     perf_counter::TaskElapse().Record(i * 10,
-        {{perf_counter::NodeAddressKey(), "localhost"}});
+        {{perf_counter::NodeAddressKey, "localhost"}});
 
     perf_counter::TaskCount().Record(i);
 
