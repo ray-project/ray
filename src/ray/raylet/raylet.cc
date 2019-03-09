@@ -24,7 +24,8 @@ const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_p
     enum_names.push_back(name);
     i++;
   }
-  RAY_CHECK(end_index == enum_names.size() - 1) << "Message Type mismatch!";
+  RAY_CHECK(static_cast<size_t>(end_index) == enum_names.size() - 1)
+      << "Message Type mismatch!";
   return enum_names;
 }
 
@@ -32,10 +33,10 @@ static const std::vector<std::string> node_manager_message_enum =
     GenerateEnumNames(ray::protocol::EnumNamesMessageType(),
                       static_cast<int>(ray::protocol::MessageType::MIN),
                       static_cast<int>(ray::protocol::MessageType::MAX));
-static const std::vector<std::string> object_manager_message_enum = GenerateEnumNames(
-    ray::object_manager::protocol::EnumNamesMessageType(),
-    static_cast<int>(ray::object_manager::protocol::MessageType::MIN),
-    static_cast<int>(ray::object_manager::protocol::MessageType::MAX));
+static const std::vector<std::string> object_manager_message_enum =
+    GenerateEnumNames(ray::object_manager::protocol::EnumNamesMessageType(),
+                      static_cast<int>(ray::object_manager::protocol::MessageType::MIN),
+                      static_cast<int>(ray::object_manager::protocol::MessageType::MAX));
 }
 
 namespace ray {
