@@ -755,7 +755,7 @@ def test_variable_number_of_args(shutdown_only):
         def no_op():
             pass
 
-        self.init_ray()
+        self.ray_start()
 
         ray.get(no_op.remote())
 
