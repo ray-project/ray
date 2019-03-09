@@ -12,32 +12,32 @@ from ray.tests.cluster_utils import Cluster
 
 
 @pytest.fixture
-def cluster_start():
-    # Start the Ray processes.
+def remote_node_cluster():
+    internal_config = json.dumps({
+        "initial_reconstruction_timeout_milliseconds": 200,
+        "num_heartbeats_timeout": 10
+    })
+
     cluster = Cluster(
         initialize_head=True,
         connect=True,
         head_node_args={
             "num_cpus": 0,
-            "_internal_config": json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 10
-            })
+            "_internal_config": internal_config
         })
-    yield cluster
+
+    node = cluster.add_node(num_cpus=1, _internal_config=internal_config)
+
+    yield cluster, node
+
     ray.shutdown()
     cluster.shutdown()
 
 
-@pytest.mark.timeout(45)
-def test_dead_actor_methods_ready(cluster_start):
+@pytest.mark.timeout(10)
+def test_dead_actor_methods_ready(remote_node_cluster):
     """Tests that methods completed by dead actors are returned as ready"""
-    cluster = cluster_start
-
-    node = cluster.add_node(
-        num_cpus=1,
-        _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 10
-        }))
+    cluster, node = remote_node_cluster
 
     @ray.remote
     class Actor(object):
