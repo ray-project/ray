@@ -12,7 +12,7 @@ namespace ray {
 
 ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
                        const std::string &ip_address_string, int port) {
-  // Disable Nagle's algorithm. This causes transfer delays of 10s of ms in
+  // Disable Nagle's algorithm, which caused transfer delays of 10s of ms in
   // certain cases.
   socket.open(boost::asio::ip::tcp::v4());
   boost::asio::ip::tcp::no_delay option(true);
