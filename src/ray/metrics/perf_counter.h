@@ -55,18 +55,8 @@ class Metric final {
 
 }; // class Metric
 
-// TODO(qwang): Remove this macro
 /// Include metric_defs.h to define tag items
-#define RAY_METRIC(name, description, unit)                                 \
-  static Metric name##_metric_ = Metric(std::string("raylet/") + #name,     \
-                                        description, unit);                 \
-  static Metric &name() {                                                   \
-    return name##_metric_;                                                  \
-  }
-
 #include "metric_defs.h"
-#undef RAY_METRIC
-
 
   /// The helper function for registering a view.
   static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor) {
