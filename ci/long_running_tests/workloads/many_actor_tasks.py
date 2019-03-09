@@ -36,7 +36,9 @@ ray.init(redis_address=cluster.redis_address)
 # Run the workload.
 
 
-@ray.remote
+# TODO (williamma12): Remove the num_cpus argument once
+# https://github.com/ray-project/ray/issues/4312 gets resolved
+@ray.remote(num_cpus=0.1)
 class Actor(object):
     def __init__(self):
         self.value = 0
@@ -48,7 +50,7 @@ class Actor(object):
 # TODO (williamma12): Update the actors to each have only 0.1 of a cpu once
 # https://github.com/ray-project/ray/issues/4312 gets resolved.
 actors = [
-    Actor._remote([], {}, num_cpus=1, resources={str(i % num_nodes): 0.1})
+    Actor._remote([], {}, resources={str(i % num_nodes): 0.1})
     for i in range(num_nodes * 5)
 ]
 
