@@ -850,7 +850,7 @@ def test_submit_api(shutdown_only):
             args=[], num_cpus=1, num_gpus=1,
             resources={"Custom": 1})) == [0]
     infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
-    assert ray.get(g._remote()) == [0]
+    assert ray.get(g._remote()) == []
     ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
     assert len(ready_ids) == 0
     assert len(remaining_ids) == 1
