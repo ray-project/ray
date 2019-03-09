@@ -11,7 +11,7 @@ import random
 import time
 
 import ray
-from ray.tune import Trainable, run_experiments
+from ray.tune import Trainable, run
 from ray.tune.schedulers import PopulationBasedTraining
 
 
@@ -81,7 +81,7 @@ if __name__ == "__main__":
         })
 
     # Try to find the best factor 1 and factor 2
-    run_experiments(
+    run(
         MyTrainableClass,
         name="pbt_test",
         **{
