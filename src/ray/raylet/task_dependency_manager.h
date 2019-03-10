@@ -128,7 +128,8 @@ class TaskDependencyManager {
   std::string DebugString() const;
 
  private:
-  using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;
+  using ObjectDependencyMap =
+      std::unordered_map<ray::ObjectID, std::unordered_set<ray::TaskID>>;
 
   /// A struct to represent the object dependencies of a task.
   struct TaskDependencies {
@@ -138,7 +139,7 @@ class TaskDependencyManager {
     /// The objects that the task is fetching. These are fetched while the
     /// the task is executing.
     std::unordered_set<ObjectID> wait_dependencies;
-    /// The number of object arguments that are not available locally. This
+    /// The number of get_dependencies that are not available locally. This
     /// must be zero before the task is ready to execute.
     int64_t num_missing_dependencies;
   };
