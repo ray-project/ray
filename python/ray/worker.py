@@ -25,6 +25,7 @@ import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.experimental.signal as ray_signal
+import ray.experimental.no_return
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -93,17 +94,6 @@ try:
     import setproctitle
 except ImportError:
     setproctitle = None
-
-
-class RayNoReturn(object):
-    """Do not store the return value in the object store.
-
-    If a task returns this object, then Ray will not store this object in the
-    object store. Calling `ray.get` on the task's return ObjectIDs may block
-    indefinitely unless the task manually stores a objects corresponding to the
-    ObjectIds.
-    """
-    pass
 
 
 class ActorCheckpointInfo(object):
@@ -888,13 +878,13 @@ class Worker(object):
             self._return_object_ids = []
 
         # Store the outputs in the local object store.
-       if not isinstance(outputs, RayNoReturn):
+        if not isinstance(outputs, ray.experimental.no_return.NoReturn):
             try:
                 with profiling.profile("task:store_outputs"):
                     # If this is an actor task, then the last object ID returned by
                     # the task is a dummy output, not returned by the function
                     # itself. Decrement to get the correct number of return values.
-                   num_returns = len(return_object_ids)
+                    num_returns = len(return_object_ids)
                     if num_returns == 1:
                         outputs = (outputs, )
                     self._store_outputs_in_object_store(
