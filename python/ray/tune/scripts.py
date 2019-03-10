@@ -29,10 +29,20 @@ def list_experiments(project_path, sort):
     commands.list_experiments(project_path, sort)
 
 
+@cli.command()
+@click.argument("experiment_path", required=True, type=str)
+@click.option(
+    '--name', default=None, type=str, help='Specify filename for note.')
+def add_note(experiment_path, name):
+    """Adds user notes as a text file at the given path."""
+    commands.add_note(experiment_path, name)
+
+
 cli.add_command(list_trials, name="ls")
 cli.add_command(list_trials, name="list-trials")
 cli.add_command(list_experiments, name="lsx")
 cli.add_command(list_experiments, name="list-experiments")
+cli.add_command(add_note, name="add-note")
 
 
 def main():
