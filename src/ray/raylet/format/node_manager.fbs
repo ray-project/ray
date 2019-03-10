@@ -196,7 +196,7 @@ table WaitReply {
 // This struct is the same as ErrorTableData.
 table PushErrorRequest {
   // The ID of the job that the error is for.
-  job_id: string;
+  driver_id: string;
   // The type of the error.
   type: string;
   // The error message.

@@ -59,9 +59,9 @@ class RemoteFunction(object):
 
         # Export the function.
         worker = ray.worker.get_global_worker()
-        worker.function_actor_manager.export(self)
         # In which session this function was exported last time.
         self._last_export_session = worker._session_index
+        worker.function_actor_manager.export(self)
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
@@ -107,6 +107,7 @@ class RemoteFunction(object):
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs
+        args = [] if args is None else args
         args = ray.signature.extend_args(self._function_signature, args,
                                          kwargs)
 

@@ -87,7 +87,7 @@ def deep_update(original, new_dict, new_keys_allowed, whitelist):
         if k not in original:
             if not new_keys_allowed:
                 raise Exception("Unknown config parameter `{}` ".format(k))
-        if type(original.get(k)) is dict:
+        if isinstance(original.get(k), dict):
             if k in whitelist:
                 deep_update(original[k], value, True, [])
             else:
@@ -95,6 +95,21 @@ def deep_update(original, new_dict, new_keys_allowed, whitelist):
         else:
             original[k] = value
     return original
+
+
+def flatten_dict(dt):
+    while any(isinstance(v, dict) for v in dt.values()):
+        remove = []
+        add = {}
+        for key, value in dt.items():
+            if isinstance(value, dict):
+                for subkey, v in value.items():
+                    add[":".join([key, subkey])] = v
+                remove.append(key)
+        dt.update(add)
+        for k in remove:
+            del dt[k]
+    return dt
 
 
 def _to_pinnable(obj):
