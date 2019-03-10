@@ -290,13 +290,9 @@ class TrialRunner(object):
             trial (Trial): Trial to queue.
         """
         trial.set_verbose(self._verbose)
-<<<<<<< HEAD
+        self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
-=======
-        self._trials.append(trial)
-        self._scheduler_alg.on_trial_add(self, trial)
->>>>>>> 36cbde651ac237e0822b17ee1a01d81d0a579e5f
         self.trial_executor.try_checkpoint_metadata(trial)
 
     def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
