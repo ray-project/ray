@@ -8,6 +8,6 @@ class TuneError(Exception):
     pass
 
 
-class AbortTrialExecution(Exception):
+class AbortTrialExecution(TuneError):
     """Error that indicates a trial should not be retried."""
     pass
