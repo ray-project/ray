@@ -88,7 +88,8 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
         UnsubscribeWaitDependency(dependent_task_id, object_id);
         // An task may ray.wait on an object and then call ray.get on it
         auto &task_entry = task_dependencies_[dependent_task_id];
-        if (task_entry.get_dependencies.find(object_id) == task_entry.get_dependencies.end()) {
+        if (task_entry.get_dependencies.find(object_id) ==
+            task_entry.get_dependencies.end()) {
           task_entry.num_missing_dependencies--;
         }
         // If the dependent task now has all of its arguments ready, it's ready
@@ -256,7 +257,8 @@ bool TaskDependencyManager::UnsubscribeAllDependencies(const TaskID &task_id) {
   return true;
 }
 
-bool TaskDependencyManager::UnsubscribeWaitDependency(const TaskID &task_id, const ObjectID &object_id) {
+bool TaskDependencyManager::UnsubscribeWaitDependency(const TaskID &task_id,
+                                                      const ObjectID &object_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
   if (it == task_dependencies_.end()) {
