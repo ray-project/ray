@@ -86,7 +86,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         class_trainable_name = "class_trainable"
         register_trainable(class_trainable_name, _WrappedTrainable)
 
-        [trial] = run_experiments({
+        run_experiments({
             "function_api": {
                 "run": _function_trainable,
                 "loggers": [FunctionAPILogger],
@@ -546,7 +546,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                          done=i == 4)
                     for i in range(5)]
 
-        logs1 = self.checkAndReturnConsistentLogging(results1)
+        logs1 = self.checkAndReturnConsistentLogs(results1)
 
         # check if the correct number of results were reported
         self.assertEqual(len(logs1), len(results1))
@@ -571,7 +571,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                          my_score=i**2)
                     for i in range(5)]
 
-        logs1 = self.checkAndReturnConsistentLogging(results1)
+        logs1 = self.checkAndReturnConsistentLogs(results1)
 
         # check if the correct number of results were reported, accounting for
         # the additional {"done": True} result
