@@ -15,18 +15,22 @@ def cli():
 @click.argument("experiment_path", required=True, type=str)
 @click.option(
     '--sort', default=None, type=str, help='Select which column to sort on.')
-def list_trials(experiment_path, sort):
+@click.option(
+    '--output', '-o', default=None, type=str, help='Output information to a pickle file.')
+def list_trials(experiment_path, sort, output):
     """Lists trials in the directory subtree starting at the given path."""
-    commands.list_trials(experiment_path, sort)
+    commands.list_trials(experiment_path, sort, output)
 
 
 @cli.command()
 @click.argument("project_path", required=True, type=str)
 @click.option(
     '--sort', default=None, type=str, help='Select which column to sort on.')
-def list_experiments(project_path, sort):
+@click.option(
+    '--output', '-o', default=None, type=str, help='Output information to a pickle file.')
+def list_experiments(project_path, sort, output):
     """Lists experiments in the directory subtree."""
-    commands.list_experiments(project_path, sort)
+    commands.list_experiments(project_path, sort, output)
 
 
 cli.add_command(list_trials, name="ls")

@@ -114,6 +114,7 @@ def _get_experiment_state(experiment_path, exit_on_fail=False):
 
 def list_trials(experiment_path,
                 sort=None,
+                output=None,
                 info_keys=DEFAULT_EXPERIMENT_INFO_KEYS,
                 result_keys=DEFAULT_RESULT_KEYS):
     """Lists trials in the directory subtree starting at the given path.
@@ -122,6 +123,7 @@ def list_trials(experiment_path,
         experiment_path (str): Directory where trials are located.
             Corresponds to Experiment.local_dir/Experiment.name.
         sort (str): Key to sort by.
+        output (str): Name of pickle file where output is saved.
         info_keys (list): Keys that are displayed.
         result_keys (list): Keys of last result that are displayed.
     """
@@ -160,9 +162,16 @@ def list_trials(experiment_path,
 
     print_format_output(checkpoints_df)
 
+    if output:
+        experiment_path = os.path.expanduser(experiment_path)
+        output_filepath = os.path.join(experiment_path, output + ".pkl")
+        checkpoints_df.to_pickle(output_filepath)
+        print("Output saved at:", output_filepath)
+
 
 def list_experiments(project_path,
                      sort=None,
+                     output=None,
                      info_keys=DEFAULT_PROJECT_INFO_KEYS):
     """Lists experiments in the directory subtree.
 
@@ -170,6 +179,7 @@ def list_experiments(project_path,
         project_path (str): Directory where experiments are located.
             Corresponds to Experiment.local_dir.
         sort (str): Key to sort by.
+        output (str): Name of pickle file where output is saved.
         info_keys (list): Keys that are displayed.
     """
     _check_tabulate()
@@ -230,3 +240,8 @@ def list_experiments(project_path,
         info_df = info_df.sort_values(by=sort)
 
     print_format_output(info_df)
+
+    if output:
+        output_filepath = os.path.join(base, output + ".pkl")
+        info_df.to_pickle(output_filepath)
+        print("Output saved at:", output_filepath)
