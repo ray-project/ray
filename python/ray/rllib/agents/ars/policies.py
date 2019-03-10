@@ -78,7 +78,7 @@ class GenericPolicy(object):
 
         model = ModelCatalog.get_model({
             "obs": self.inputs
-        }, obs_space, dist_dim, model_config)
+        }, obs_space, action_space, dist_dim, model_config)
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
 

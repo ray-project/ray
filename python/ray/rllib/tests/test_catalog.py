@@ -73,13 +73,14 @@ class ModelCatalogTest(unittest.TestCase):
         with tf.variable_scope("test1"):
             p1 = ModelCatalog.get_model({
                 "obs": tf.zeros((10, 3), dtype=tf.float32)
-            }, Box(0, 1, shape=(3, ), dtype=np.float32), 5, {})
+            }, Box(0, 1, shape=(3, ), dtype=np.float32), Discrete(5), 5, {})
             self.assertEqual(type(p1), FullyConnectedNetwork)
 
         with tf.variable_scope("test2"):
             p2 = ModelCatalog.get_model({
                 "obs": tf.zeros((10, 84, 84, 3), dtype=tf.float32)
-            }, Box(0, 1, shape=(84, 84, 3), dtype=np.float32), 5, {})
+            }, Box(0, 1, shape=(84, 84, 3), dtype=np.float32), Discrete(5), 5,
+                                        {})
             self.assertEqual(type(p2), VisionNetwork)
 
     def testCustomModel(self):
@@ -87,7 +88,7 @@ class ModelCatalogTest(unittest.TestCase):
         ModelCatalog.register_custom_model("foo", CustomModel)
         p1 = ModelCatalog.get_model({
             "obs": tf.constant([1, 2, 3])
-        }, Box(0, 1, shape=(3, ), dtype=np.float32), 5,
+        }, Box(0, 1, shape=(3, ), dtype=np.float32), Discrete(5), 5,
                                     {"custom_model": "foo"})
         self.assertEqual(str(type(p1)), str(CustomModel))
 
