@@ -8,9 +8,17 @@ import subprocess
 
 
 def list_changed_files(commit_range):
+    """Returns the list of files changed within the specified commit range. If
+    an error occurs while running git, a RuntimeError will be raised.
+
+    Args:
+        commit_range (string): The commit range to diff, consisting of the two
+        commit id's separated by \'..\'
+
+    Returns:
+        list: List of changes files within the commit range
     """
-    Returns the list of files changed within commit_range.
-    """
+
     command = ["git", "diff", "--name-only", commit_range]
     proc = subprocess.Popen(
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -28,66 +36,70 @@ def list_changed_files(commit_range):
 
 if __name__ == "__main__":
 
-    files = list_changed_files(os.environ['TRAVIS_COMMIT_RANGE'].replace(
-        '...', '..'))
-
     RAY_CI_TUNE_AFFECTED = "0"
     RAY_CI_RLLIB_AFFECTED = "0"
     RAY_CI_JAVA_AFFECTED = "0"
     RAY_CI_PYTHON_AFFECTED = "0"
-
     RAY_CI_LINUX_WHEELS_AFFECTED = "0"
     RAY_CI_MACOS_WHEELS_AFFECTED = "0"
 
-    for changed_file in files:
-        if changed_file.startswith("python/ray/tune/"):
-            RAY_CI_TUNE_AFFECTED = "1"
-            RAY_CI_RLLIB_AFFECTED = "1"
-            RAY_CI_LINUX_WHEELS_AFFECTED = "1"
-            RAY_CI_MACOS_WHEELS_AFFECTED = "1"
-        elif changed_file.startswith("python/ray/rllib/"):
-            RAY_CI_RLLIB_AFFECTED = "1"
-            RAY_CI_LINUX_WHEELS_AFFECTED = "1"
-            RAY_CI_MACOS_WHEELS_AFFECTED = "1"
-        elif changed_file.startswith("python/"):
-            RAY_CI_TUNE_AFFECTED = "1"
-            RAY_CI_RLLIB_AFFECTED = "1"
-            RAY_CI_PYTHON_AFFECTED = "1"
-            RAY_CI_LINUX_WHEELS_AFFECTED = "1"
-            RAY_CI_MACOS_WHEELS_AFFECTED = "1"
-        elif changed_file.startswith(
-                "java/") and not changed_file.startswith("java/doc/"):
-            RAY_CI_JAVA_AFFECTED = "1"
-        elif changed_file.startswith("doc/"):
-            # nothing is run but linting in this case
-            pass
-        # elif changed_file.startswith("src/"):
-        #     pass
-        # elif changed_file.startswith("examples/"):
-        #     pass
-        # elif changed_file.startswith("dev/"):
-        #     pass
-        # elif changed_file.startswith("docker/"):
-        #     pass
-        # elif changed_file.startswith("kubernetes/"):
-        #     pass
-        # elif changed_file.startswith("site/"):
-        #     pass
-        else:
-            RAY_CI_TUNE_AFFECTED = "1"
-            RAY_CI_RLLIB_AFFECTED = "1"
-            RAY_CI_DOC_AFFECTED = "1"
-            RAY_CI_JAVA_AFFECTED = "1"
-            RAY_CI_PYTHON_AFFECTED = "1"
-            RAY_CI_LINUX_WHEELS_AFFECTED = "1"
-            RAY_CI_MACOS_WHEELS_AFFECTED = "1"
+    def enable_all_tests():
+        RAY_CI_TUNE_AFFECTED = "1"
+        RAY_CI_RLLIB_AFFECTED = "1"
+        RAY_CI_DOC_AFFECTED = "1"
+        RAY_CI_JAVA_AFFECTED = "1"
+        RAY_CI_PYTHON_AFFECTED = "1"
+        RAY_CI_LINUX_WHEELS_AFFECTED = "1"
+        RAY_CI_MACOS_WHEELS_AFFECTED = "1"
 
-    print("export RAY_CI_TUNE_AFFECTED=\"%s\"" % RAY_CI_TUNE_AFFECTED)
-    print("export RAY_CI_RLLIB_AFFECTED=\"%s\"" % RAY_CI_RLLIB_AFFECTED)
-    print("export RAY_CI_DOC_AFFECTED=\"%s\"" % RAY_CI_DOC_AFFECTED)
-    print("export RAY_CI_JAVA_AFFECTED=\"%s\"" % RAY_CI_JAVA_AFFECTED)
-    print("export RAY_CI_PYTHON_AFFECTED=\"%s\"" % RAY_CI_PYTHON_AFFECTED)
-    print("export RAY_CI_LINUX_WHEELS_AFFECTED=\"%s\"" %
-          RAY_CI_LINUX_WHEELS_AFFECTED)
-    print("export RAY_CI_MACOS_WHEELS_AFFECTED=\"%s\"" %
-          RAY_CI_MACOS_WHEELS_AFFECTED)
+    if os.environ["TRAVIS_EVENT_TYPE"] == "pull_request":
+
+        files = list_changed_files(os.environ['TRAVIS_COMMIT_RANGE'].replace(
+            '...', '..'))
+
+        for changed_file in files:
+            if changed_file.startswith("python/ray/tune/"):
+                RAY_CI_TUNE_AFFECTED = "1"
+                RAY_CI_RLLIB_AFFECTED = "1"
+                RAY_CI_LINUX_WHEELS_AFFECTED = "1"
+                RAY_CI_MACOS_WHEELS_AFFECTED = "1"
+            elif changed_file.startswith("python/ray/rllib/"):
+                RAY_CI_RLLIB_AFFECTED = "1"
+                RAY_CI_LINUX_WHEELS_AFFECTED = "1"
+                RAY_CI_MACOS_WHEELS_AFFECTED = "1"
+            elif changed_file.startswith("python/"):
+                RAY_CI_TUNE_AFFECTED = "1"
+                RAY_CI_RLLIB_AFFECTED = "1"
+                RAY_CI_PYTHON_AFFECTED = "1"
+                RAY_CI_LINUX_WHEELS_AFFECTED = "1"
+                RAY_CI_MACOS_WHEELS_AFFECTED = "1"
+            elif changed_file.startswith(
+                    "java/") and not changed_file.startswith("java/doc/"):
+                RAY_CI_JAVA_AFFECTED = "1"
+            elif changed_file.startswith("doc/"):
+                # nothing is run but linting in this case
+                pass
+            elif changed_file.startswith("examples/"):
+                pass
+            elif changed_file.startswith("dev/"):
+                pass
+            elif changed_file.startswith("docker/"):
+                pass
+            elif changed_file.startswith("kubernetes/"):
+                pass
+            elif changed_file.startswith("site/"):
+                pass
+            elif changed_file.startswith("src/"):
+                enable_all_tests()
+            else:
+                enable_all_tests()
+    else:
+        enable_all_tests()
+
+    print("export RAY_CI_TUNE_AFFECTED=\"{}\"".format(RAY_CI_TUNE_AFFECTED))
+    print("export RAY_CI_RLLIB_AFFECTED=\"{}\"".format(RAY_CI_RLLIB_AFFECTED))
+    print("export RAY_CI_DOC_AFFECTED=\"{}\"".format(RAY_CI_DOC_AFFECTED))
+    print("export RAY_CI_JAVA_AFFECTED=\"{}\"".format(RAY_CI_JAVA_AFFECTED))
+    print("export RAY_CI_PYTHON_AFFECTED=\"{}\"".format(RAY_CI_PYTHON_AFFECTED))
+    print("export RAY_CI_LINUX_WHEELS_AFFECTED=\"{}\"".format(RAY_CI_LINUX_WHEELS_AFFECTED))
+    print("export RAY_CI_MACOS_WHEELS_AFFECTED=\"{}\"".format(RAY_CI_MACOS_WHEELS_AFFECTED))

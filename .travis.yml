@@ -86,9 +86,6 @@ matrix:
       dist: trusty
       env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
-        - sudo apt-get update -qq
-        - sudo apt-get install -qq valgrind
-      install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - echo $RAY_CI_TUNE_AFFECTED
         - echo $RAY_CI_RLLIB_AFFECTED
@@ -97,6 +94,10 @@ matrix:
         - echo $RAY_CI_LINUX_WHEELS_AFFECTED
         - echo $RAY_CI_MACOS_WHEELS_AFFECTED
 
+        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+        - sudo apt-get update -qq
+        - sudo apt-get install -qq valgrind
+      install:
         - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
         - ./ci/suppress_output ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
@@ -133,7 +134,7 @@ matrix:
         - echo $RAY_CI_LINUX_WHEELS_AFFECTED
         - echo $RAY_CI_MACOS_WHEELS_AFFECTED
 
-        - if [ $RAY_CI_LINUX_WHEELS_AFFECTED == "1" ]; then exit; fi
+        - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
         - docker run --rm -w /ray -v `pwd`:/ray -ti quay.io/xhochy/arrow_manylinux1_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
@@ -154,12 +155,12 @@ matrix:
         - echo $RAY_CI_LINUX_WHEELS_AFFECTED
         - echo $RAY_CI_MACOS_WHEELS_AFFECTED
 
-        - if [ $RAY_CI_MACOS_WHEELS_AFFECTED == "1" ]; then exit; fi
+        - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
         - ./python/build-wheel-macos.sh
       script:
-        - if [ $RAY_CI_MACOS_WHEELS_AFFECTED == "1" ]; then exit; fi
+        - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/test-wheels.sh
 
     # Test GCS integration
@@ -181,7 +182,7 @@ install:
   - echo $RAY_CI_LINUX_WHEELS_AFFECTED
   - echo $RAY_CI_MACOS_WHEELS_AFFECTED
 
-  - if [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then exit; fi
+  - if [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
   - ./ci/suppress_output ./ci/travis/install-bazel.sh
   - ./ci/suppress_output ./ci/travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
@@ -202,20 +203,18 @@ script:
   # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
   # ray tune tests
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then exit; fi
-  - ./ci/suppress_output python python/ray/tune/tests/test_dependency.py
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/tune/tests/test_dependency.py; fi
   # `cluster_tests.py` runs on Jenkins, not Travis.
-  - python -m pytest --durations=10 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then python -m pytest --durations=10 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests; fi
 
   # ray rllib tests
-  - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
-  - python/ray/rllib/tests/run_silent.sh python python/ray/rllib/tests/test_catalog.py
-  - python/ray/rllib/tests/run_silent.sh python python/ray/rllib/tests/test_filters.py
-  - python/ray/rllib/tests/run_silent.sh python python/ray/rllib/tests/test_optimizers.py
-  - python/ray/rllib/tests/run_silent.sh python python/ray/rllib/tests/test_evaluators.py
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh python python/ray/rllib/tests/test_catalog.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh python python/ray/rllib/tests/test_filters.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh python python/ray/rllib/tests/test_optimizers.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh python python/ray/rllib/tests/test_evaluators.py; fi
 
   # ray tests
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then exit; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py
   - python -m pytest --durations=10 python/ray/tests
