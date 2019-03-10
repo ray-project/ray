@@ -232,20 +232,17 @@ def list_experiments(project_path,
     print_format_output(info_df)
 
 
-def add_note(experiment_path, name=None):
+def add_note(experiment_path, filename="note.txt"):
     """Opens a txt file at the given path where user can type and save notes.
 
     Args:
         path (str): Directory where note will be saved.
-        name (str): Name of note. Defaults to "note"
+        filename (str): Name of note. Defaults to "note.txt"
     """
     _get_experiment_state(experiment_path, exit_on_fail=True)
 
     experiment_path = os.path.expanduser(experiment_path)
-    if name:
-        filename = name + ".txt"
-    else:
-        filename = "note.txt"
+
     # TODO (Andrew): validate filename
     filepath = os.path.join(experiment_path, filename)
     exists = os.path.isfile(filepath)

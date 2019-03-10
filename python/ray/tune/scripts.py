@@ -32,10 +32,13 @@ def list_experiments(project_path, sort):
 @cli.command()
 @click.argument("experiment_path", required=True, type=str)
 @click.option(
-    '--name', default=None, type=str, help='Specify filename for note.')
-def add_note(experiment_path, name):
+    '--filename',
+    default="note.txt",
+    type=str,
+    help='Specify filename for note.')
+def add_note(experiment_path, filename):
     """Adds user notes as a text file at the given path."""
-    commands.add_note(experiment_path, name)
+    commands.add_note(experiment_path, filename)
 
 
 cli.add_command(list_trials, name="ls")
