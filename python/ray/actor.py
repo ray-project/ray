@@ -311,7 +311,7 @@ class ActorClass(object):
                 # acquired for the actor's lifetime and no resources are
                 # associated with methods.
                 self._num_cpus = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
-                               if num_cpus is None else num_cpus)
+                                  if num_cpus is None else num_cpus)
                 self._actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE
 
             resources = ray.utils.resources_from_resource_arguments(
@@ -689,8 +689,7 @@ class ActorHandle(object):
         return self._deserialization_helper(state, False)
 
 
-def make_actor(cls, num_cpus, num_gpus, resources,# actor_method_cpus,
-               max_reconstructions):
+def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
     # Give an error if cls is an old-style class.
     if not issubclass(cls, object):
         raise TypeError(
@@ -745,7 +744,7 @@ def make_actor(cls, num_cpus, num_gpus, resources,# actor_method_cpus,
     class_id = ActorClassID(_random_string())
 
     return ActorClass(Class, class_id, max_reconstructions, num_cpus, num_gpus,
-                      resources)#, actor_method_cpus)
+                      resources)
 
 
 ray.worker.global_worker.make_actor = make_actor
