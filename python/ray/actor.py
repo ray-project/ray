@@ -23,12 +23,12 @@ from ray import (ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID,
 
 # Default resource requirements for actors when no resource requirements are
 # specified.
-DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
-DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
+DEFAULT_ACTOR_METHOD_CPUS_SIMPLE = 1
+DEFAULT_ACTOR_CREATION_CPUS_SIMPLE = 0
 # Default resource requirements for actors when some resource requirements are
 # specified.
-DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
-DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
+DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED = 0
+DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED = 1
 # Default number of return values for each actor method.
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
@@ -300,19 +300,24 @@ class ActorClass(object):
                     self._modified_class, self._actor_method_names)
                 self._exported = True
 
-            # Set the actor default resources.
-            if num_cpus is None and num_gpus is None and resources is None and self._num_cpus is None and self._num_gpus is None and self._resources is None:
+            # Set the actor default resources. First three conditions are to
+            # check that no resources were specified when _remote() was called.
+            # Last three conditions are to check that no resources were
+            # specified in the decorator.
+            if (num_cpus is None and num_gpus is None and resources is None
+                    and self._num_cpus is None and self._num_gpus is None
+                    and self._resources is None):
                 # In the default case, actors acquire no resources for
                 # their lifetime, and actor methods will require 1 CPU.
-                self._num_cpus = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE
-                self._actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE
+                self._num_cpus = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE
+                self._actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SIMPLE
             else:
                 # If any resources are specified, then all resources are
                 # acquired for the actor's lifetime and no resources are
                 # associated with methods.
-                self._num_cpus = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
+                self._num_cpus = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED
                                   if num_cpus is None else num_cpus)
-                self._actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE
+                self._actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED
 
             resources = ray.utils.resources_from_resource_arguments(
                 self._num_cpus, self._num_gpus, self._resources, num_cpus,
