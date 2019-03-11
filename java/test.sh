@@ -11,9 +11,9 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 sh $ROOT_DIR/generate_deps.sh
 
 pushd $ROOT_DIR/..
-bazel test -c opt //java:all
+bazel build -c opt //java:all
 
-bazel build -c opt //java:org_ray_ray_java_root
+bazel test -c opt //java:all
 popd
 
 pushd $ROOT_DIR/../java/test
