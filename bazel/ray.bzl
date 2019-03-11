@@ -21,4 +21,3 @@ def flatbuffer_java_library(name, srcs, outs, out_prefix, includes = [], include
         include_paths = include_paths,
         includes = includes,
     )
-
