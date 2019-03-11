@@ -157,9 +157,11 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
                 "train_batch_size": 10,
             })
         self._wait_for(optimizer, 1000, 1000)
-        self.assertLess(optimizer.stats()["num_steps_sampled"], 5000)
-        self.assertGreater(optimizer.stats()["num_steps_replayed"], 8000)
-        self.assertGreater(optimizer.stats()["num_steps_trained"], 8000)
+        stats = optimizer.stats()
+        self.assertLess(stats["num_steps_sampled"], 5000)
+        replay_ratio = stats["num_steps_replayed"] / stats["num_steps_sampled"]
+        self.assertGreater(replay_ratio, 0.7)
+        self.assertLess(stats["num_steps_trained"], stats["num_steps_sampled"])
 
     def testReplayAndMultiplePasses(self):
         local, remotes = self._make_evs()
@@ -173,9 +175,29 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
                 "train_batch_size": 10,
             })
         self._wait_for(optimizer, 1000, 1000)
-        self.assertLess(optimizer.stats()["num_steps_sampled"], 5000)
-        self.assertGreater(optimizer.stats()["num_steps_replayed"], 8000)
-        self.assertGreater(optimizer.stats()["num_steps_trained"], 40000)
+
+        stats = optimizer.stats()
+        print(stats)
+        self.assertLess(stats["num_steps_sampled"], 5000)
+        replay_ratio = stats["num_steps_replayed"] / stats["num_steps_sampled"]
+        train_ratio = stats["num_steps_sampled"] / stats["num_steps_trained"]
+        self.assertGreater(replay_ratio, 0.7)
+        self.assertLess(train_ratio, 0.4)
+
+    def testMultiTierAggregationBadConf(self):
+        local, remotes = self._make_evs()
+        self.assertRaises(
+            ValueError, lambda: AsyncSamplesOptimizer(
+                local, remotes,
+                {"num_aggregation_workers": 4}))
+
+    def testMultiTierAggregation(self):
+        local, remotes = self._make_evs()
+        local, remotes = self._make_evs()
+        optimizer = AsyncSamplesOptimizer(local, remotes, {
+            "num_aggregation_workers": 1,
+        })
+        self._wait_for(optimizer, 1000, 1000)
 
     def testRejectBadConfigs(self):
         local, remotes = self._make_evs()

@@ -85,7 +85,7 @@ class TreeAggregator(Aggregator):
 
     @override(Aggregator)
     def should_broadcast(self):
-        return self.num_sent_since_broadcast > self.broadcast_interval
+        return self.num_sent_since_broadcast >= self.broadcast_interval
 
     @override(Aggregator)
     def stats(self):
