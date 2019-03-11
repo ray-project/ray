@@ -48,6 +48,8 @@ try:
 except subprocess.CalledProcessError:
     TERM_HEIGHT, TERM_WIDTH = 100, 100
 
+EDITOR = os.getenv('EDITOR', 'vim')
+
 
 def _check_tabulate():
     """Checks whether tabulate is installed."""
@@ -230,3 +232,27 @@ def list_experiments(project_path,
         info_df = info_df.sort_values(by=sort)
 
     print_format_output(info_df)
+
+
+def add_note(path, filename="note.txt"):
+    """Opens a txt file at the given path where user can add and save notes.
+
+    Args:
+        path (str): Directory where note will be saved.
+        filename (str): Name of note. Defaults to "note.txt"
+    """
+    path = os.path.expanduser(path)
+    assert os.path.isdir(path), "{} is not a valid directory.".format(path)
+
+    filepath = os.path.join(path, filename)
+    exists = os.path.isfile(filepath)
+
+    try:
+        subprocess.call([EDITOR, filepath])
+    except Exception as exc:
+        logger.error("Editing note failed!")
+        raise exc
+    if exists:
+        print("Note updated at:", filepath)
+    else:
+        print("Note created at:", filepath)
