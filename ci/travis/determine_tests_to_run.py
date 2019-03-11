@@ -8,15 +8,17 @@ import subprocess
 
 
 def list_changed_files(commit_range):
-    """Returns the list of files changed within the specified commit range. If
-    an error occurs while running git, a RuntimeError will be raised.
+    """Returns a list of names of files changed in the given commit range.
+
+    The function works by opening a subprocess and running git. If an error
+    occurs while running git, a RuntimeError will be raised.
 
     Args:
         commit_range (string): The commit range to diff, consisting of the two
-        commit id's separated by \'..\'
+            commit IDs separated by \"..\"
 
     Returns:
-        list: List of changes files within the commit range
+        list: List of changed files within the commit range
     """
 
     command = ["git", "diff", "--name-only", commit_range]
@@ -43,19 +45,10 @@ if __name__ == "__main__":
     RAY_CI_LINUX_WHEELS_AFFECTED = "0"
     RAY_CI_MACOS_WHEELS_AFFECTED = "0"
 
-    def enable_all_tests():
-        RAY_CI_TUNE_AFFECTED = "1"
-        RAY_CI_RLLIB_AFFECTED = "1"
-        RAY_CI_DOC_AFFECTED = "1"
-        RAY_CI_JAVA_AFFECTED = "1"
-        RAY_CI_PYTHON_AFFECTED = "1"
-        RAY_CI_LINUX_WHEELS_AFFECTED = "1"
-        RAY_CI_MACOS_WHEELS_AFFECTED = "1"
-
     if os.environ["TRAVIS_EVENT_TYPE"] == "pull_request":
 
-        files = list_changed_files(os.environ['TRAVIS_COMMIT_RANGE'].replace(
-            '...', '..'))
+        files = list_changed_files(os.environ["TRAVIS_COMMIT_RANGE"].replace(
+            "...", ".."))
 
         for changed_file in files:
             if changed_file.startswith("python/ray/tune/"):
@@ -90,15 +83,29 @@ if __name__ == "__main__":
             elif changed_file.startswith("site/"):
                 pass
             elif changed_file.startswith("src/"):
-                enable_all_tests()
+                RAY_CI_TUNE_AFFECTED = "1"
+                RAY_CI_RLLIB_AFFECTED = "1"
+                RAY_CI_JAVA_AFFECTED = "1"
+                RAY_CI_PYTHON_AFFECTED = "1"
+                RAY_CI_LINUX_WHEELS_AFFECTED = "1"
+                RAY_CI_MACOS_WHEELS_AFFECTED = "1"
             else:
-                enable_all_tests()
+                RAY_CI_TUNE_AFFECTED = "1"
+                RAY_CI_RLLIB_AFFECTED = "1"
+                RAY_CI_JAVA_AFFECTED = "1"
+                RAY_CI_PYTHON_AFFECTED = "1"
+                RAY_CI_LINUX_WHEELS_AFFECTED = "1"
+                RAY_CI_MACOS_WHEELS_AFFECTED = "1"
     else:
-        enable_all_tests()
+        RAY_CI_TUNE_AFFECTED = "1"
+        RAY_CI_RLLIB_AFFECTED = "1"
+        RAY_CI_JAVA_AFFECTED = "1"
+        RAY_CI_PYTHON_AFFECTED = "1"
+        RAY_CI_LINUX_WHEELS_AFFECTED = "1"
+        RAY_CI_MACOS_WHEELS_AFFECTED = "1"
 
     print("export RAY_CI_TUNE_AFFECTED=\"{}\"".format(RAY_CI_TUNE_AFFECTED))
     print("export RAY_CI_RLLIB_AFFECTED=\"{}\"".format(RAY_CI_RLLIB_AFFECTED))
-    print("export RAY_CI_DOC_AFFECTED=\"{}\"".format(RAY_CI_DOC_AFFECTED))
     print("export RAY_CI_JAVA_AFFECTED=\"{}\"".format(RAY_CI_JAVA_AFFECTED))
     print("export RAY_CI_PYTHON_AFFECTED=\"{}\"".format(RAY_CI_PYTHON_AFFECTED))
     print("export RAY_CI_LINUX_WHEELS_AFFECTED=\"{}\"".format(RAY_CI_LINUX_WHEELS_AFFECTED))
