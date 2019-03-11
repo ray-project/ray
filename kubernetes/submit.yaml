@@ -31,11 +31,20 @@ spec:
   selector:
     matchLabels:
       component: ray-head
+      type: ray
   template:
     metadata:
       labels:
         component: ray-head
+        type: ray
     spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoreDuringExecution:
+          - labelSelector:
+              matchLabels:
+                type: ray
+            topologyKey: kubernetes.io/hostname
       containers:
         - name: ray-head
           image: rayproject/examples
@@ -68,11 +77,20 @@ spec:
   selector:
     matchLabels:
       component: ray-worker
+      type: ray
   template:
     metadata:
       labels:
         component: ray-worker
+        type: ray
     spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoreDuringExecution:
+          - labelSelector:
+              matchLabels:
+                type: ray
+            topologyKey: kubernetes.io/hostname
       containers:
         - name: ray-worker
           image: rayproject/examples
