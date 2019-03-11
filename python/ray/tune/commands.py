@@ -242,14 +242,16 @@ def add_note(path, filename="note.txt"):
         filename (str): Name of note. Defaults to "note.txt"
     """
     path = os.path.expanduser(path)
-    if not os.path.isdir(path):
-        print("{} is not a valid directory.".format(path))
-        sys.exit(0)
+    assert os.path.isdir(path), "{} is not a valid directory.".format(path)
 
     filepath = os.path.join(path, filename)
     exists = os.path.isfile(filepath)
 
-    subprocess.call([EDITOR, filepath])
+    try:
+        subprocess.call([EDITOR, filepath])
+    except Exception as exc:
+        logger.error("Editing note failed!")
+        raise exc
     if exists:
         print("Note updated at:", filepath)
     else:
