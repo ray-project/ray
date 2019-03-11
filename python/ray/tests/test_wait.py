@@ -4,6 +4,10 @@ from __future__ import print_function
 
 import json
 import pytest
+try:
+    import pytest_timeout
+except ImportError:
+    pytest_timeout = None
 import time
 
 import ray
@@ -34,6 +38,9 @@ def remote_node_cluster():
     cluster.shutdown()
 
 
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test that may hang.")
 @pytest.mark.timeout(10)
 def test_dead_actor_methods_ready(remote_node_cluster):
     """Tests that methods completed by dead actors are returned as ready"""
