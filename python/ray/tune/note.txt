@@ -1,6 +1,0 @@
-
-# Please enter your note for this experiment. Lines starting
-# with '#' will be ignored, and an empty message aborts the note.
-# 
-# Note filepath:
-#
