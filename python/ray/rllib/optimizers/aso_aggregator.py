@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import random
 
 import ray
 from ray.rllib.utils.actors import TaskPool
@@ -12,7 +13,7 @@ from ray.rllib.utils.actors import TaskPool
 
 class Aggregator(object):
     """Handles sample collection, collation, and broadcasting of new weights.
-    
+
     For performance, aggregators may implement a tree of Ray actors.
     """
 
@@ -23,7 +24,7 @@ class Aggregator(object):
 
     def ready_batches(self):
         """Returns a generator over batches ready to learn on.
-        
+
         Iterating through this generator will also sent out weight updates to
         remote evaluators as needed.
         """
@@ -39,14 +40,15 @@ class Aggregator(object):
 
 
 class SimpleAggregator(Aggregator):
-    def __init__(
-            self, local_evaluator, remote_evaluators,
-            max_sample_requests_in_flight_per_worker=2,
-            replay_proportion=0.0,
-            replay_buffer_num_slots=0,
-            train_batch_size=500,
-            sample_batch_size=50,
-            broadcast_interval=5):
+    def __init__(self,
+                 local_evaluator,
+                 remote_evaluators,
+                 max_sample_requests_in_flight_per_worker=2,
+                 replay_proportion=0.0,
+                 replay_buffer_num_slots=0,
+                 train_batch_size=500,
+                 sample_batch_size=50,
+                 broadcast_interval=5):
         Aggregator.__init__(self, local_evaluator, remote_evaluators)
         self.broadcast_interval = broadcast_interval
         self.num_weight_syncs = 0
@@ -112,7 +114,7 @@ class SimpleAggregator(Aggregator):
         return {
             "num_weight_syncs": self.num_weight_syncs,
             "num_steps_replayed": self.num_replayed,
-        } 
+        }
 
     def _augment_with_replay(self, sample_futures):
         def can_replay():
