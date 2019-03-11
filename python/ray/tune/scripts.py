@@ -35,7 +35,7 @@ def list_trials(experiment_path, sort, output):
     '-o',
     default=None,
     type=str,
-    help='Output information to a pickle file.')
+    help='Select filename to output information to.')
 def list_experiments(project_path, sort, output):
     """Lists experiments in the directory subtree."""
     commands.list_experiments(project_path, sort, output)

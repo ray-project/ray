@@ -123,7 +123,7 @@ def list_trials(experiment_path,
         experiment_path (str): Directory where trials are located.
             Corresponds to Experiment.local_dir/Experiment.name.
         sort (str): Key to sort by.
-        output (str): Name of pickle file where output is saved.
+        output (str): Name of file where output is saved.
         info_keys (list): Keys that are displayed.
         result_keys (list): Keys of last result that are displayed.
     """
@@ -164,9 +164,12 @@ def list_trials(experiment_path,
 
     if output:
         experiment_path = os.path.expanduser(experiment_path)
-        output_filepath = os.path.join(experiment_path, output + ".pkl")
-        checkpoints_df.to_pickle(output_filepath)
-        print("Output saved at:", output_filepath)
+        output_path = os.path.join(experiment_path, output)
+        if output.split('.')[-1].lower() in ['p', 'pkl', 'pickle']:
+            checkpoints_df.to_pickle(output_path)
+        else:
+            checkpoints_df.to_csv(output_path, index=False)
+        print("Output saved at:", output_path)
 
 
 def list_experiments(project_path,
@@ -179,7 +182,7 @@ def list_experiments(project_path,
         project_path (str): Directory where experiments are located.
             Corresponds to Experiment.local_dir.
         sort (str): Key to sort by.
-        output (str): Name of pickle file where output is saved.
+        output (str): Name of file where output is saved.
         info_keys (list): Keys that are displayed.
     """
     _check_tabulate()
@@ -242,6 +245,9 @@ def list_experiments(project_path,
     print_format_output(info_df)
 
     if output:
-        output_filepath = os.path.join(base, output + ".pkl")
-        info_df.to_pickle(output_filepath)
-        print("Output saved at:", output_filepath)
+        output_path = os.path.join(base, output)
+        if output.split('.')[-1].lower() in ['p', 'pkl', 'pickle']:
+            info_df.to_pickle(output_path)
+        else:
+            info_df.to_csv(output_path, index=False)
+        print("Output saved at:", output_path)
