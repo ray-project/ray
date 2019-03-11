@@ -32,7 +32,7 @@ def list_experiments(project_path, sort):
 @cli.command()
 @click.argument("path", required=True, type=str)
 @click.option(
-    '--filename',
+    "--filename",
     default="note.txt",
     type=str,
     help='Specify filename for note.')
