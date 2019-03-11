@@ -49,6 +49,22 @@ def test_set_multiple_outputs(ray_start, set_out0, set_out1, set_out2):
     assert ray.get(result_object_ids) == [set_out0, set_out1, set_out2]
 
 
+def test_set_actor_method(ray_start):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def ping(self):
+            return_object_ids = ray.worker.global_worker._current_task.returns(
+            )
+            ray.worker.global_worker.put_object(return_object_ids[0], 123)
+            return ray.experimental.no_return.NoReturn
+
+    actor = Actor.remote()
+    assert ray.get(actor.ping.remote()) == 123
+
+
 def test_exception(ray_start):
     @ray.remote(num_return_vals=2)
     def f():
