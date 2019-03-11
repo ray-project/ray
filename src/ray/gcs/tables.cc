@@ -112,13 +112,13 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
-  auto subscribeWrapper = [subscribe](AsyncGcsClient *client, const ID &id,
+  auto subscribe_wrapper = [subscribe](AsyncGcsClient *client, const ID &id,
                                       const GcsTableNotificationMode notification_mode,
                                       const std::vector<DataT> &data) {
     RAY_CHECK(notification_mode != GcsTableNotificationMode::REMOVE);
     subscribe(client, id, data);
   };
-  return Subscribe(job_id, client_id, subscribeWrapper, done);
+  return Subscribe(job_id, client_id, subscribe_wrapper, done);
 }
 
 template <typename ID, typename Data>

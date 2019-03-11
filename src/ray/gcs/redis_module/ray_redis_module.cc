@@ -442,6 +442,9 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
   RedisModuleString *data = argv[4];
 
   RedisModuleString *key_string = PrefixedKeyString(ctx, prefix_str, id);
+  // TODO(kfstorm): According to https://redis.io/topics/modules-intro,
+  // set type API is not available yet. We can change RedisModule_Call to
+  // set type API later.
   RedisModuleCallReply *reply =
       RedisModule_Call(ctx, is_add ? "SADD" : "SREM", "ss", key_string, data);
   if (RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ERROR) {
@@ -905,13 +908,13 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.set_add", SetAdd_RedisCommand, "write", 0, 0,
-                                0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.set_add", SetAdd_RedisCommand, "write pubsub",
+                                0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.set_remove", SetRemove_RedisCommand, "write", 0,
-                                0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.set_remove", SetRemove_RedisCommand,
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

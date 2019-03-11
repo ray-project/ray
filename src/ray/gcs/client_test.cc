@@ -260,7 +260,7 @@ TEST_F(TestGcsWithAsio, TestLogAppendAt) {
 }
 
 void TestSet(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
-  // Append some entries to the log at an object ID.
+  // Add some entries to the set at an object ID.
   ObjectID object_id = ObjectID::from_random();
   std::vector<std::string> managers = {"abc", "def", "ghi"};
   for (auto &manager : managers) {
