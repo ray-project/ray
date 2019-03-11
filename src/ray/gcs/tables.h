@@ -67,8 +67,6 @@ class LogInterface {
 /// pubsub_channel_ member if pubsub is required.
 ///
 /// Example tables backed by Log:
-///   ObjectTable: Stores a log of which clients have added or evicted an
-///                object.
 ///   ClientTable: Stores a log of which GCS clients have been added or deleted
 ///                from the system.
 template <typename ID, typename Data>
@@ -77,6 +75,9 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
+  using NotificationCallback = std::function<void(
+      AsyncGcsClient *client, const ID &id,
+      const GcsTableNotificationMode notification_mode, const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
@@ -208,6 +209,29 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
     static std::hash<ray::UniqueID> index;
     return shard_contexts_[index(id) % shard_contexts_.size()];
   }
+
+  /// Subscribe to any modifications to the key. The caller may choose
+  /// to subscribe to all modifications, or to subscribe only to keys that it
+  /// requests notifications for. This may only be called once per Log
+  /// instance. This function is different from public version due to
+  /// an additional parameter notification_mode in NotificationCallback. Therefore this
+  /// function supports notifications of remove operations.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each Add to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
+  /// \param subscribe Callback that is called on each received message. If the
+  /// callback is called with an empty vector, then there was no data at the key.
+  /// \param done Callback that is called when subscription is complete and we
+  /// are ready to receive messages.
+  /// \return Status
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const NotificationCallback &subscribe,
+                   const SubscriptionCallback &done);
+
   /// The connection to the GCS.
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
   /// The GCS client.
@@ -228,7 +252,6 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// Commands to a GCS table can either be regular (default) or chain-replicated.
   CommandType command_type_ = CommandType::kRegular;
 
- private:
   int64_t num_appends_ = 0;
   int64_t num_lookups_ = 0;
 };
@@ -337,24 +360,102 @@ class Table : private Log<ID, Data>,
   using Log<ID, Data>::command_type_;
   using Log<ID, Data>::GetRedisContext;
 
- private:
   int64_t num_adds_ = 0;
   int64_t num_lookups_ = 0;
 };
 
-class ObjectTable : public Log<ObjectID, ObjectTableData> {
+template <typename ID, typename Data>
+class SetInterface {
+ public:
+  using DataT = typename Data::NativeTableType;
+  using WriteCallback = typename Log<ID, Data>::WriteCallback;
+  virtual Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+                     const WriteCallback &done) = 0;
+  virtual Status Remove(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+                        const WriteCallback &done) = 0;
+  virtual ~SetInterface(){};
+};
+
+/// \class Set
+///
+/// A GCS table where every entry is an addable & removable set. This class is not
+/// meant to be used directly. All set classes should derive from this class
+/// and override the prefix_ member with a unique prefix for that set, and the
+/// pubsub_channel_ member if pubsub is required.
+///
+/// Example tables backed by Set:
+///   ObjectTable: Stores a set of which clients have added an object.
+template <typename ID, typename Data>
+class Set : private Log<ID, Data>,
+            public SetInterface<ID, Data>,
+            virtual public PubsubInterface<ID> {
+ public:
+  using DataT = typename Log<ID, Data>::DataT;
+  using Callback = typename Log<ID, Data>::Callback;
+  using WriteCallback = typename Log<ID, Data>::WriteCallback;
+  using NotificationCallback = typename Log<ID, Data>::NotificationCallback;
+  using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
+
+  Set(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
+      : Log<ID, Data>(contexts, client) {}
+
+  using Log<ID, Data>::RequestNotifications;
+  using Log<ID, Data>::CancelNotifications;
+  using Log<ID, Data>::Lookup;
+  using Log<ID, Data>::Delete;
+
+  /// Add an entry to the set.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param data Data to add to the set.
+  /// \param done Callback that is called once the data has been written to the
+  /// GCS.
+  /// \return Status
+  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+             const WriteCallback &done);
+
+  /// Remove an entry from the set.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is removed from the GCS.
+  /// \param data Data to remove from the set.
+  /// \param done Callback that is called once the data has been written to the
+  /// GCS.
+  /// \return Status
+  Status Remove(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+                const WriteCallback &done);
+
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const NotificationCallback &subscribe,
+                   const SubscriptionCallback &done) {
+    return Log<ID, Data>::Subscribe(job_id, client_id, subscribe, done);
+  }
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
+ protected:
+  using Log<ID, Data>::shard_contexts_;
+  using Log<ID, Data>::client_;
+  using Log<ID, Data>::pubsub_channel_;
+  using Log<ID, Data>::prefix_;
+  using Log<ID, Data>::GetRedisContext;
+
+  int64_t num_adds_ = 0;
+  int64_t num_removes_ = 0;
+  using Log<ID, Data>::num_lookups_;
+};
+
+class ObjectTable : public Set<ObjectID, ObjectTableData> {
  public:
   ObjectTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
               AsyncGcsClient *client)
-      : Log(contexts, client) {
+      : Set(contexts, client) {
     pubsub_channel_ = TablePubsub::OBJECT;
     prefix_ = TablePrefix::OBJECT;
-  };
-
-  ObjectTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-              AsyncGcsClient *client, gcs::CommandType command_type)
-      : ObjectTable(contexts, client) {
-    command_type_ = command_type;
   };
 
   virtual ~ObjectTable(){};

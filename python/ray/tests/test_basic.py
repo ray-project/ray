@@ -2505,10 +2505,6 @@ def test_global_state_api(shutdown_only):
     object_table = ray.global_state.object_table()
     assert len(object_table) == 2
 
-    assert object_table[x_id]["IsEviction"][0] is False
-
-    assert object_table[result_id]["IsEviction"][0] is False
-
     assert object_table[x_id] == ray.global_state.object_table(x_id)
     object_table_entry = ray.global_state.object_table(result_id)
     assert object_table[result_id] == object_table_entry
