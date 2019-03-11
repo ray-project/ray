@@ -1542,9 +1542,11 @@ void NodeManager::HandleTaskUnblocked(
   // If the task was previously blocked, then stop waiting for its dependencies
   // and mark the task as unblocked.
   worker->RemoveBlockedTaskId(current_task_id);
-  // Unsubscribe to the objects. Any fetch or reconstruction operations to
-  // make the objects local are canceled.
-  RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(current_task_id));
+  // Unsubscribe to any ray.get dependencies. Any fetch or reconstruction
+  // operations to make the objects local are canceled. We do not check the
+  // return value because the task may have been blocked in a ray.wait, in
+  // which case it would not have had any ray.get dependencies.
+  static_cast<void>(task_dependency_manager_.UnsubscribeGetDependencies(current_task_id));
   local_queues_.RemoveBlockedTaskId(current_task_id);
 }
 
