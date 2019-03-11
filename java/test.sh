@@ -7,14 +7,14 @@ set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-pushd $ROOT_DIR/../java
-echo "Checking code format."
-mvn checkstyle:check
-popd
+# run this file before compile the targets
+sh $ROOT_DIR/generate_deps.sh
 
 echo "Compiling Java code."
 pushd $ROOT_DIR/..
-bazel build -c opt //java:all
+bazel test -c opt //java:all
+
+bazel build -c opt //java:org_ray_ray_java_root
 popd
 
 pushd $ROOT_DIR/../java/test

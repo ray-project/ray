@@ -1,15 +1,15 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("@com_github_riselab_ray//bazel:ray_java.bzl", "generated_java_libraries")
+load("@com_github_ray_project_ray//bazel:ray_java.bzl", "generated_java_libraries")
 
 generated_java_libraries()
 
 java_library(
     name = "org_apache_arrow_arrow_plasma",
     srcs = glob(["java/plasma/src/main/java/**/*.java"]),
-    visibility = ["//visibility:public"],
     data = [":plasma_client_java"],
+    visibility = ["//visibility:public"],
     deps = [
-        "@org_slf4j_slf4j_api//jar",
+        "@mvnorg_slf4j_slf4j_api//jar",
     ],
 )
 
@@ -18,7 +18,10 @@ java_binary(
     srcs = ["java/plasma/src/test/java/org/apache/arrow/plasma/PlasmaClientTest.java"],
     main_class = "org.apache.arrow.plasma.PlasmaClientTest",
     visibility = ["//visibility:public"],
-    deps = [":org_apache_arrow_arrow_plasma", "@junit_junit//jar",],
+    deps = [
+        ":org_apache_arrow_arrow_plasma", 
+        "@mvnjunit_junit//jar",
+    ],
 )
 
 cc_library(

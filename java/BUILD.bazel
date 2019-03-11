@@ -1,8 +1,11 @@
-
+load("//java/tools/checkstyle:checkstyle.bzl", "checkstyle_test")
 load("//bazel:ray.bzl", "flatbuffer_java_library")
-load("//bazel:ray_java.bzl", "generated_java_libraries")
 
-generated_java_libraries()
+java_binary(
+    name = "bazel_deps",
+    main_class = "com.github.johnynek.bazel_deps.ParseProject",
+    runtime_deps = ["@bazel_deps//jar"],
+)
 
 java_import(
     name = "org_ray_ray_java_root",
@@ -33,9 +36,18 @@ java_library(
     name = "org_ray_ray_api",
     srcs = glob(["api/src/main/java/**/*.java"]),
     deps = [
-        "@org_slf4j_slf4j_log4j12//jar",
-        "@log4j_log4j//jar",
+        "@mvnorg_slf4j_slf4j_log4j12//jar",
+        "@mvnlog4j_log4j//jar",
+        "@mvnjavax_xml_bind_jaxb_api//jar",
+        "@mvncom_sun_xml_bind_jaxb_core//jar",
+        "@mvncom_sun_xml_bind_jaxb_impl//jar",
     ],
+)
+
+checkstyle_test(
+    name = "org_ray_ray_api-checkstyle",
+    target = ":org_ray_ray_api",
+    size = "small",
 )
 
 java_library(
@@ -46,25 +58,31 @@ java_library(
     data = ["//:raylet_library_java", ":generate_java_gcs_fbs"],
     deps = [
         ":org_ray_ray_api",
-        "@com_typesafe_config//jar",
-        "@org_apache_commons_commons_lang3//jar",
-        "@de_ruedigermoeller_fst//jar",
-        "@com_github_davidmoten_flatbuffers_java//jar",
-        "@redis_clients_jedis//jar",
         "@plasma//:org_apache_arrow_arrow_plasma",
-        "@commons_io_commons_io//jar",
-        "@com_google_guava_guava//jar",
-        "@net_lingala_zip4j_zip4j//jar",
-        "@org_slf4j_slf4j_log4j12//jar",
-        "@org_slf4j_slf4j_api//jar",
-        "@org_ini4j_ini4j//jar",
-        "@org_ow2_asm_asm//jar",
-        "@com_google_code_gson_gson//jar",
-        "@com_fasterxml_jackson_core_jackson_core//jar",
-        "@org_apache_commons_commons_pool2//jar",
-        "@org_javassist_javassist//jar",
-        "@org_objenesis_objenesis//jar",
+        "@mvnorg_slf4j_slf4j_api//jar",
+        #"@mvncom_google_code_gson_gson//jar",
+        "@mvncom_fasterxml_jackson_core_jackson_core//jar",
+        "@mvnorg_apache_commons_commons_pool2//jar",
+        "@mvnorg_javassist_javassist//jar",
+        "@mvnorg_objenesis_objenesis//jar",
+        "@mvncom_typesafe_config//jar",
+        "@mvnorg_apache_commons_commons_lang3//jar",
+        "@mvnde_ruedigermoeller_fst//jar",
+        "@mvncom_github_davidmoten_flatbuffers_java//jar",
+        "@mvnredis_clients_jedis//jar",
+        "@mvncommons_io_commons_io//jar",
+        "@mvncom_google_guava_guava//jar",
+        "@mvnnet_lingala_zip4j_zip4j//jar",
+        "@mvnorg_slf4j_slf4j_log4j12//jar",
+        "@mvnorg_ini4j_ini4j//jar",
+        "@mvnorg_ow2_asm_asm//jar",
     ],
+)
+
+checkstyle_test(
+    name = "org_ray_ray_runtime-checkstyle",
+    target = ":org_ray_ray_runtime",
+    size = "small",
 )
 
 java_binary(
@@ -75,23 +93,35 @@ java_binary(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@com_google_guava_guava//jar",
+        "@mvncom_google_guava_guava//jar",
     ],
+)
+
+checkstyle_test(
+    name = "org_ray_ray_tutorial-checkstyle",
+    target = ":org_ray_ray_tutorial",
+    size = "small",
 )
 
 java_library(
     name = "org_ray_ray_test",
     srcs = glob(["test/src/main/java/**/*.java"]),
     deps = [
-        "@com_google_guava_guava//jar",
-        "@commons_collections_commons_collections//jar",
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@org_apache_commons_commons_lang3//jar",
-        "@org_slf4j_slf4j_api//jar",
+        "@mvnorg_apache_commons_commons_lang3//jar",
+        "@mvnorg_slf4j_slf4j_api//jar",
         "@plasma//:org_apache_arrow_arrow_plasma",
-        "@org_testng_testng//jar",
+        "@mvnorg_testng_testng//jar",
+        "@mvncommons_collections_commons_collections//jar",
+        "@mvncom_google_guava_guava//jar",
     ],
+)
+
+checkstyle_test(
+    name = "org_ray_ray_test-checkstyle",
+    target = ":org_ray_ray_test",
+    size = "small",
 )
 
 java_library(
@@ -100,15 +130,22 @@ java_library(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@org_testng_testng//jar",
-        "@org_apache_commons_commons_lang3//jar",
-        "@com_beust_jcommander//jar",
+        "@mvnorg_apache_commons_commons_lang3//jar",
+        "@mvncom_beust_jcommander//jar",
+        "@mvnorg_testng_testng//jar",
     ],
 )
 
-java_test(
-    name = "AllTests",
+checkstyle_test(
+    name = "org_ray_ray_runtime_test-checkstyle",
+    target = ":org_ray_ray_runtime_test",
     size = "small",
+)
+
+exports_files(["testng.xml"])
+
+java_binary(
+    name = "AllTests",
     main_class = "org.testng.TestNG",
     data = ["testng.xml"],
     runtime_deps = [
