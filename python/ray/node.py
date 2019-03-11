@@ -111,7 +111,7 @@ class Node(object):
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
         self._temp_dir = self._ray_params.temp_dir
-        if not self._temp_dir:
+        if self._temp_dir is None:
             self._temp_dir = "/tmp/ray"
         date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
         self._temp_dir = self._make_inc_temp(
