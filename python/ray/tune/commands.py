@@ -248,7 +248,7 @@ def add_note(path, filename="note.txt"):
 
     filepath = os.path.join(path, filename)
     exists = os.path.isfile(filepath)
-    
+
     subprocess.call([EDITOR, filepath])
     if exists:
         print("Note updated at:", filepath)
