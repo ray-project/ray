@@ -9,6 +9,8 @@ from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.rllib.utils.annotations import override
+from ray.tune.trainable import Trainable
+from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
     "lr",
@@ -23,6 +25,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "broadcast_interval",
     "num_sgd_iter",
     "minibatch_buffer_size",
+    "num_aggregation_workers",
 ]
 
 # yapf: disable
@@ -49,6 +52,7 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
+    "num_aggregation_workers": 0,
     # number of GPUs the learner should use.
     "num_gpus": 1,
     # set >1 to load data into GPUs in parallel. Increases GPU memory usage
@@ -110,6 +114,18 @@ class ImpalaAgent(Agent):
         self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
                                                self.remote_evaluators,
                                                self.config["optimizer"])
+
+    @classmethod
+    @override(Trainable)
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        Agent._validate_config(cf)
+        return Resources(
+            cpu=cf["num_cpus_for_driver"],
+            gpu=cf["num_gpus"],
+            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"] +
+            cf["num_aggregation_workers"],
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     @override(Agent)
     def _train(self):

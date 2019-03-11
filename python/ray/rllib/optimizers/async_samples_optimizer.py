@@ -10,6 +10,7 @@ import logging
 import time
 
 from ray.rllib.optimizers.aso_aggregator import SimpleAggregator
+from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.optimizers.aso_learner import LearnerThread
 from ray.rllib.optimizers.aso_multi_gpu_learner import TFMultiGPULearner
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -41,6 +42,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               num_sgd_iter=1,
               minibatch_buffer_size=1,
               learner_queue_size=16,
+              num_aggregation_workers=0,
               _fake_gpus=False):
         self._stats_start_time = time.time()
         self._last_stats_time = {}
@@ -77,16 +79,29 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self._stats_start_time = time.time()
         self._last_stats_time = {}
 
-        self.aggregator = SimpleAggregator(
-            self.local_evaluator,
-            self.remote_evaluators,
-            replay_proportion=replay_proportion,
-            max_sample_requests_in_flight_per_worker=(
-                max_sample_requests_in_flight_per_worker),
-            replay_buffer_num_slots=replay_buffer_num_slots,
-            train_batch_size=train_batch_size,
-            sample_batch_size=sample_batch_size,
-            broadcast_interval=broadcast_interval)
+        if num_aggregation_workers > 0:
+            self.aggregator = TreeAggregator(
+                self.local_evaluator,
+                self.remote_evaluators,
+                num_aggregation_workers,
+                replay_proportion=replay_proportion,
+                max_sample_requests_in_flight_per_worker=(
+                    max_sample_requests_in_flight_per_worker),
+                replay_buffer_num_slots=replay_buffer_num_slots,
+                train_batch_size=train_batch_size,
+                sample_batch_size=sample_batch_size,
+                broadcast_interval=broadcast_interval)
+        else:
+            self.aggregator = SimpleAggregator(
+                self.local_evaluator,
+                self.remote_evaluators,
+                replay_proportion=replay_proportion,
+                max_sample_requests_in_flight_per_worker=(
+                    max_sample_requests_in_flight_per_worker),
+                replay_buffer_num_slots=replay_buffer_num_slots,
+                train_batch_size=train_batch_size,
+                sample_batch_size=sample_batch_size,
+                broadcast_interval=broadcast_interval)
 
     def add_stat_val(self, key, val):
         if key not in self._last_stats_sum:
@@ -150,7 +165,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     def _step(self):
         sample_timesteps, train_timesteps = 0, 0
 
-        for train_batch in self.aggregator.ready_batches():
+        for train_batch in self.aggregator.iter_train_batches():
             sample_timesteps += train_batch.count
             self.learner.inqueue.put(train_batch)
             if (self.learner.weights_updated
