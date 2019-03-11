@@ -169,6 +169,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "is_training": self._get_is_training_placeholder(),
             },
             observation_space,
+            action_space,
             logit_dim,
             self.config["model"],
             state_in=existing_state_in,
@@ -208,7 +209,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                         "prev_actions": prev_actions_ph,
                         "prev_rewards": prev_rewards_ph,
                         "is_training": self._get_is_training_placeholder(),
-                    }, observation_space, 1, vf_config).outputs
+                    }, observation_space, action_space, 1, vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])

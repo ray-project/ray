@@ -1,6 +1,5 @@
 package org.ray.runtime.objectstore;
 
-import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -65,7 +64,7 @@ public class MockObjectStore implements ObjectStoreLink {
   public List<byte[]> get(byte[][] objectIds, int timeoutMs, boolean isMetadata) {
     return get(objectIds, timeoutMs)
             .stream()
-            .map(data -> isMetadata ? data.data : data.metadata)
+            .map(data -> isMetadata ? data.metadata : data.data)
             .collect(Collectors.toList());
   }
 
@@ -93,15 +92,9 @@ public class MockObjectStore implements ObjectStoreLink {
       firstCheck = false;
     }
     ArrayList<ObjectStoreData> rets = new ArrayList<>();
-    for (byte[] id : objectIds) {
-      try {
-        Constructor<?> constructor = ObjectStoreData.class.getDeclaredConstructors()[0];
-        constructor.setAccessible(true);
-        rets.add((ObjectStoreData) constructor.newInstance(data.get(new UniqueId(id)),
-                metadata.get(new UniqueId(id))));
-      } catch (Exception e) {
-        throw new RuntimeException(e);
-      }
+    for (byte[] objId : objectIds) {
+      UniqueId uniqueId = new UniqueId(objId);
+      rets.add(new ObjectStoreData(metadata.get(uniqueId), data.get(uniqueId)));
     }
     return rets;
   }

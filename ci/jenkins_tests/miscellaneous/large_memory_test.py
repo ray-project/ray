@@ -32,6 +32,9 @@ if __name__ == "__main__":
     del c
     print("Successfully put C.")
 
+    # The below code runs successfully, but when commented in, the whole test
+    # takes about 10 minutes.
+
     # D = (2 ** 30 + 1) * ["h"]
     # d = ray.put(D)
     # assert ray.get(d) == D

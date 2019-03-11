@@ -121,8 +121,8 @@ else
   $PYTHON_EXECUTABLE -m pip install \
       --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
-  
-if [ "$RAY_BUILD_JAVA" == "YES" ]; then
+
+  if [ "$RAY_BUILD_JAVA" == "YES" ]; then
     bazel build //:ray_java_pkg -c opt
     #soft link
     mkdir -p $ROOT_DIR/build/src/ray/raylet/

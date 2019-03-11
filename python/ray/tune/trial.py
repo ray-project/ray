@@ -25,7 +25,8 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
-                             TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL)
+                             TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL,
+                             EPISODE_REWARD_MEAN, MEAN_LOSS, MEAN_ACCURACY)
 from ray.utils import _random_string, binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -299,9 +300,27 @@ class Trial(object):
         self.error_file = None
         self.num_failures = 0
 
-        self.trial_name = None
+        self.custom_trial_name = None
+
+        # AutoML fields
+        self.results = None
+        self.best_result = None
+        self.param_config = None
+        self.extra_arg = None
+
+        self._nonjson_fields = [
+            "_checkpoint",
+            "config",
+            "loggers",
+            "sync_function",
+            "last_result",
+            "results",
+            "best_result",
+            "param_config",
+            "extra_arg",
+        ]
         if trial_name_creator:
-            self.trial_name = trial_name_creator(self)
+            self.custom_trial_name = trial_name_creator(self)
 
     @classmethod
     def _registration_check(cls, trainable_name):
@@ -429,17 +448,17 @@ class Trial(object):
         if self.last_result.get(TIMESTEPS_TOTAL) is not None:
             pieces.append('{} ts'.format(self.last_result[TIMESTEPS_TOTAL]))
 
-        if self.last_result.get("episode_reward_mean") is not None:
+        if self.last_result.get(EPISODE_REWARD_MEAN) is not None:
             pieces.append('{} rew'.format(
-                format(self.last_result["episode_reward_mean"], '.3g')))
+                format(self.last_result[EPISODE_REWARD_MEAN], '.3g')))
 
-        if self.last_result.get("mean_loss") is not None:
+        if self.last_result.get(MEAN_LOSS) is not None:
             pieces.append('{} loss'.format(
-                format(self.last_result["mean_loss"], '.3g')))
+                format(self.last_result[MEAN_LOSS], '.3g')))
 
-        if self.last_result.get("mean_accuracy") is not None:
+        if self.last_result.get(MEAN_ACCURACY) is not None:
             pieces.append('{} acc'.format(
-                format(self.last_result["mean_accuracy"], '.3g')))
+                format(self.last_result[MEAN_ACCURACY], '.3g')))
 
         return ', '.join(pieces)
 
@@ -496,8 +515,8 @@ class Trial(object):
 
         Can be overriden with a custom string creator.
         """
-        if self.trial_name:
-            return self.trial_name
+        if self.custom_trial_name:
+            return self.custom_trial_name
 
         if "env" in self.config:
             env = self.config["env"]
@@ -521,22 +540,11 @@ class Trial(object):
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 
-        # These are non-pickleable entries.
-        pickle_data = {
-            "_checkpoint": self._checkpoint,
-            "config": self.config,
-            "loggers": self.loggers,
-            "sync_function": self.sync_function,
-            "last_result": self.last_result
-        }
-
-        for key, value in pickle_data.items():
-            state[key] = binary_to_hex(cloudpickle.dumps(value))
+        for key in self._nonjson_fields:
+            state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
         state["result_logger"] = None
-        if self.status == Trial.RUNNING:
-            state["status"] = Trial.PENDING
         if self.result_logger:
             self.result_logger.flush()
             state["__logger_started__"] = True
@@ -547,10 +555,9 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
-        for key in [
-                "_checkpoint", "config", "loggers", "sync_function",
-                "last_result"
-        ]:
+        if state["status"] == Trial.RUNNING:
+            state["status"] = Trial.PENDING
+        for key in self._nonjson_fields:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)
