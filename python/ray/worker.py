@@ -792,7 +792,6 @@ class Worker(object):
             if isinstance(outputs[i], ray.actor.ActorHandle):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
-
             self.put_object(object_ids[i], outputs[i])
 
     def _process_task(self, task, function_execution_info):
@@ -874,21 +873,19 @@ class Worker(object):
             self._current_task = None
 
         # Store the outputs in the local object store.
-        if not isinstance(outputs, ray.experimental.no_return.NoReturn):
-            try:
-                with profiling.profile("task:store_outputs"):
-                    # If this is an actor task, then the last object ID returned by
-                    # the task is a dummy output, not returned by the function
-                    # itself. Decrement to get the correct number of return values.
-                    num_returns = len(return_object_ids)
-                    if num_returns == 1:
-                        outputs = (outputs, )
-                    self._store_outputs_in_object_store(
-                        return_object_ids, outputs)
-            except Exception as e:
-                self._handle_process_task_failure(
-                    function_descriptor, return_object_ids, e,
-                    ray.utils.format_error_message(traceback.format_exc()))
+        try:
+            with profiling.profile("task:store_outputs"):
+                # If this is an actor task, then the last object ID returned by
+                # the task is a dummy output, not returned by the function
+                # itself. Decrement to get the correct number of return values.
+                num_returns = len(return_object_ids)
+                if num_returns == 1:
+                    outputs = (outputs, )
+                self._store_outputs_in_object_store(return_object_ids, outputs)
+        except Exception as e:
+            self._handle_process_task_failure(
+                function_descriptor, return_object_ids, e,
+                ray.utils.format_error_message(traceback.format_exc()))
 
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
