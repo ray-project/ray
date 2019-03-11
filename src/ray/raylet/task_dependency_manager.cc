@@ -100,10 +100,12 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
           if (task_entry.num_missing_dependencies == 0) {
             ready_task_ids.push_back(dependent_task_id);
           }
+          // ray.get dependencies stay active until UnsubscribeDependencies is
+          // called, so we do not remove the dependency here.
         }
 
-        // If the task also called ray.wait on the object, then we can now
-        // remove the task's dependency on the object.
+        // If the task called ray.wait on the object, then we can now remove
+        // the task's dependency on the object.
         auto wait_it = task_entry.wait_dependencies.find(object_id);
         if (wait_it != task_entry.wait_dependencies.end()) {
           // The object is now local, so the ray.wait call has been fulfilled.
@@ -111,9 +113,9 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
           if (task_entry.get_dependencies.find(object_id) ==
               task_entry.get_dependencies.end()) {
             // The task called ray.wait on the object, but not ray.get, so it
-            // no longer depends on the object. Then, it is safe to remove the
-            // dependent task from the set of tasks that depend on the local
-            // object.
+            // no longer depends on the object. Therefore, it is safe to remove
+            // the dependent task from the set of tasks that depend on the
+            // local object.
             task_ids_to_remove.push_back(dependent_task_id);
           }
         }
@@ -147,7 +149,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
 
   // Find any tasks that are dependent on the missing object.
   std::vector<TaskID> waiting_task_ids;
-  TaskID creating_task_id = ComputeTaskId(object_id);
+  const TaskID creating_task_id = ComputeTaskId(object_id);
   auto creating_task_entry = required_tasks_.find(creating_task_id);
   if (creating_task_entry != required_tasks_.end()) {
     auto object_entry = creating_task_entry->second.find(object_id);
