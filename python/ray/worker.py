@@ -2481,8 +2481,7 @@ def make_decorator(num_return_vals=None,
                                 "actors.")
 
             return worker.make_actor(function_or_class, num_cpus, num_gpus,
-                                     resources, #actor_method_cpus,
-                                     max_reconstructions)
+                                     resources, max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")

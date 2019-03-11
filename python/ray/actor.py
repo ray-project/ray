@@ -177,7 +177,7 @@ class ActorClass(object):
     """
 
     def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
-                 num_gpus, resources):#, actor_method_cpus):
+                 num_gpus, resources):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
