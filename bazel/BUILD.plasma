@@ -19,7 +19,7 @@ java_binary(
     main_class = "org.apache.arrow.plasma.PlasmaClientTest",
     visibility = ["//visibility:public"],
     deps = [
-        ":org_apache_arrow_arrow_plasma", 
+        ":org_apache_arrow_arrow_plasma",
         "@mvnjunit_junit//jar",
     ],
 )
