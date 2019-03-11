@@ -111,12 +111,13 @@ class Node(object):
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
         self._temp_dir = self._ray_params.temp_dir
-        if self._temp_dir is None:
-            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            self._temp_dir = self._make_inc_temp(
-                prefix="session_{date_str}_{pid}".format(
-                    pid=os.getpid(), date_str=date_str),
-                directory_name="/tmp/ray")
+        if not self._temp_dir:
+            self._temp_dir = "/tmp/ray"
+        date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+        self._temp_dir = self._make_inc_temp(
+            prefix="session_{date_str}_{pid}".format(
+                pid=os.getpid(), date_str=date_str),
+            directory_name=self._temp_dir)
 
         try_to_create_directory(self._temp_dir)
         # Create a directory to be used for socket files.
