@@ -1,9 +1,9 @@
 workspace(name = "com_github_ray_project_ray")
 
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
-load("//java:tools/checkstyle/repo.bzl", "checkstyle_repositories")
+load("//java:repo.bzl", "java_repositories")
 
-checkstyle_repositories()
+java_repositories()
 
 git_repository(
     name = "com_github_nelhage_rules_boost",
