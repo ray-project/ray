@@ -16,6 +16,6 @@ def __bazel_deps():
         urls = ["https://github.com/oferb/startupos-binaries/releases/download/0.1.01/bazel_deps.jar"],
     )
 
-def checkstyle_repositories():
+def java_repositories():
     __maven_repositories()
     __bazel_deps()
