@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableMap;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
@@ -24,6 +25,7 @@ public class ResourcesManagementTest extends BaseTest {
 
   @RayRemote
   public static class Echo {
+
     public Integer echo(Integer number) {
       return number;
     }
@@ -31,6 +33,7 @@ public class ResourcesManagementTest extends BaseTest {
 
   @Test
   public void testMethods() {
+    TestUtils.skipTestUnderSingleProcess();
     CallOptions callOptions1 = new CallOptions(ImmutableMap.of("CPU", 4.0, "GPU", 0.0));
 
     // This is a case that can satisfy required resources.
@@ -51,6 +54,7 @@ public class ResourcesManagementTest extends BaseTest {
 
   @Test
   public void testActors() {
+    TestUtils.skipTestUnderSingleProcess();
 
     ActorCreationOptions actorCreationOptions1 =
         new ActorCreationOptions(ImmutableMap.of("CPU", 2.0, "GPU", 0.0));

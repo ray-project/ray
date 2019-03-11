@@ -23,7 +23,7 @@ import ray
 from ray import tune
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.models import Model, ModelCatalog
-from ray.rllib.test.test_multi_agent_env import MultiCartpole
+from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
 

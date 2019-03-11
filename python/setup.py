@@ -24,7 +24,8 @@ ray_files = [
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store_server", "ray/_raylet.so",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
-    "ray/WebUI.ipynb"
+    "ray/dashboard/dashboard.py", "ray/dashboard/index.html",
+    "ray/dashboard/res/main.css", "ray/dashboard/res/main.js"
 ]
 
 # These are the directories where automatically generated Python flatbuffer
@@ -35,11 +36,6 @@ generated_python_directories = [
 ]
 
 optional_ray_files = []
-
-ray_ui_files = [
-    "ray/core/src/catapult_files/index.html",
-    "ray/core/src/catapult_files/trace_viewer_full.html"
-]
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
@@ -54,18 +50,14 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
         "ray/core/src/credis/redis/src/redis-server"
     ]
 
-# The UI files are mandatory if the INCLUDE_UI environment variable equals 1.
-# Otherwise, they are optional.
-if "INCLUDE_UI" in os.environ and os.environ["INCLUDE_UI"] == "1":
-    ray_files += ray_ui_files
-else:
-    optional_ray_files += ray_ui_files
-
 optional_ray_files += ray_autoscaler_files
 
 extras = {
-    "rllib": ["pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"],
+    "rllib": [
+        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy"
+    ],
     "debug": ["psutil", "setproctitle", "py-spy"],
+    "dashboard": ["psutil", "aiohttp"],
 }
 
 
@@ -75,7 +67,11 @@ class build_ext(_build_ext.build_ext):
         # version of Python to build pyarrow inside the build.sh script. Note
         # that certain flags will not be passed along such as --user or sudo.
         # TODO(rkn): Fix this.
-        subprocess.check_call(["../build.sh", "-p", sys.executable])
+        command = ["../build.sh", "-p", sys.executable]
+        if os.getenv("RAY_INSTALL_JAVA") == "1":
+            # Also build binaries for Java if the above env variable exists.
+            command += ["-l", "python,java"]
+        subprocess.check_call(command)
 
         # We also need to install pyarrow along with Ray, so make sure that the
         # relevant non-Python pyarrow files get copied.
@@ -119,8 +115,9 @@ class build_ext(_build_ext.build_ext):
         parent_directory = os.path.dirname(destination)
         if not os.path.exists(parent_directory):
             os.makedirs(parent_directory)
-        print("Copying {} to {}.".format(source, destination))
-        shutil.copy(source, destination)
+        if not os.path.exists(destination):
+            print("Copying {} to {}.".format(source, destination))
+            shutil.copy(source, destination)
 
 
 class BinaryDistribution(Distribution):
@@ -148,7 +145,8 @@ requires = [
     "pytest",
     "pyyaml",
     "redis",
-    # The six module is required by pyarrow.
+    # NOTE: Don't upgrade the version of six! Doing so causes installation
+    # problems. See https://github.com/ray-project/ray/issues/4169.
     "six >= 1.0.0",
     # The typing module is required by modin.
     "typing",
@@ -177,7 +175,7 @@ setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]"
+            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
         ]
     },
     include_package_data=True,

@@ -56,7 +56,7 @@ class RayParams(object):
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
-            UI, which is a Jupyter notebook.
+            UI, which displays the status of the Ray cluster.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
             filename, line number, and message. See ray_constants.py.
@@ -73,6 +73,7 @@ class RayParams(object):
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (str): The command options for Java worker.
+        load_code_from_local: Whether load code from local file or from GCS.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -110,6 +111,7 @@ class RayParams(object):
                  autoscaling_config=None,
                  include_java=False,
                  java_worker_options=None,
+                 load_code_from_local=False,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -141,6 +143,7 @@ class RayParams(object):
         self.autoscaling_config = autoscaling_config
         self.include_java = include_java
         self.java_worker_options = java_worker_options
+        self.load_code_from_local = load_code_from_local
         self._internal_config = _internal_config
         self._check_usage()
 
@@ -193,7 +196,3 @@ class RayParams(object):
         if self.redirect_output is not None:
             raise DeprecationWarning(
                 "The redirect_output argument is deprecated.")
-
-        if self.include_java is None and self.java_worker_options is not None:
-            raise ValueError("Should not specify `java-worker-options` "
-                             "without providing `include-java`.")

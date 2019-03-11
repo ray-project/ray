@@ -1,4 +1,5 @@
 #include <string.h>
+#include <sstream>
 
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/format/gcs_generated.h"
@@ -505,6 +506,67 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   return REDISMODULE_OK;
 }
 
+// The deleting helper function.
+static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str,
+                              RedisModuleString *id_data) {
+  RedisModuleKey *delete_key = nullptr;
+  RAY_RETURN_NOT_OK(
+      OpenPrefixedKey(&delete_key, ctx, prefix_str, id_data, REDISMODULE_READ));
+  if (delete_key == nullptr) {
+    return Status::RedisError("Key does not exist.");
+  }
+  auto key_type = RedisModule_KeyType(delete_key);
+  if (key_type == REDISMODULE_KEYTYPE_STRING || key_type == REDISMODULE_KEYTYPE_LIST) {
+    // Current Table or Log only has this two types of entries.
+    RAY_RETURN_NOT_OK(
+        OpenPrefixedKey(&delete_key, ctx, prefix_str, id_data, REDISMODULE_WRITE));
+    RedisModule_DeleteKey(delete_key);
+  } else {
+    std::ostringstream ostream;
+    size_t redis_string_size;
+    const char *redis_string_str = RedisModule_StringPtrLen(id_data, &redis_string_size);
+    auto id_binary = std::string(redis_string_str, redis_string_size);
+    ostream << "Undesired type for RAY.TableDelete: " << key_type
+            << " id:" << ray::UniqueID::from_binary(id_binary);
+    RAY_LOG(ERROR) << ostream.str();
+    return Status::RedisError(ostream.str());
+  }
+  return Status::OK();
+}
+
+/// Delete a list of redis keys in batch mode.
+///
+/// This is called from a client with the command:
+//
+///    RAY.TABLE_DELETE <table_prefix> <pubsub_channel> <id> <data>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel Unused but follow the interface.
+/// \param id This id will be ignored but follow the interface.
+/// \param data The list of Unique Ids, kUniqueIDSize bytes for each.
+/// \return Always return OK unless the arguments are invalid.
+int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *data = argv[4];
+
+  size_t len = 0;
+  const char *data_ptr = nullptr;
+  data_ptr = RedisModule_StringPtrLen(data, &len);
+  REPLY_AND_RETURN_IF_FALSE(
+      len % kUniqueIDSize == 0,
+      "The deletion data length must be a multiple of the UniqueID size.");
+  size_t ids_to_delete = len / kUniqueIDSize;
+  for (size_t i = 0; i < ids_to_delete; ++i) {
+    RedisModuleString *id_data =
+        RedisModule_CreateString(ctx, data_ptr + i * kUniqueIDSize, kUniqueIDSize);
+    RAY_IGNORE_EXPR(DeleteKeyHelper(ctx, prefix_str, id_data));
+  }
+  return RedisModule_ReplyWithSimpleString(ctx, "OK");
+}
+
 /// Request notifications for changes to a key. Returns the current value or
 /// values at the key. Notifications will be sent to the requesting client for
 /// every subsequent TABLE_ADD to the key.
@@ -692,6 +754,7 @@ AUTO_MEMORY(TableAdd_RedisCommand);
 AUTO_MEMORY(TableAppend_RedisCommand);
 AUTO_MEMORY(TableLookup_RedisCommand);
 AUTO_MEMORY(TableRequestNotifications_RedisCommand);
+AUTO_MEMORY(TableDelete_RedisCommand);
 AUTO_MEMORY(TableCancelNotifications_RedisCommand);
 AUTO_MEMORY(TableTestAndUpdate_RedisCommand);
 AUTO_MEMORY(DebugString_RedisCommand);
@@ -724,6 +787,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 
   if (RedisModule_CreateCommand(ctx, "ray.table_lookup", TableLookup_RedisCommand,
                                 "readonly", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_delete", TableDelete_RedisCommand,
+                                "write", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

@@ -56,12 +56,10 @@ class NodeManager {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  /// \param reference to the local object store.
   NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
               ObjectManager &object_manager,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
-              plasma::PlasmaClient &store_client);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
 
   /// Process a new client connection.
   ///
@@ -328,7 +326,7 @@ class NodeManager {
   /// \param id An unused value. TODO(rkn): Should this be removed?
   /// \param driver_data Data associated with a driver table event.
   /// \return Void.
-  void HandleDriverTableUpdate(const ClientID &id,
+  void HandleDriverTableUpdate(const DriverID &id,
                                const std::vector<DriverTableDataT> &driver_data);
 
   /// Check if certain invariants associated with the task dependency manager
@@ -440,7 +438,7 @@ class NodeManager {
   /// A Plasma object store client. This is used exclusively for creating new
   /// objects in the object store (e.g., for actor tasks that can't be run
   /// because the actor died).
-  plasma::PlasmaClient &store_client_;
+  plasma::PlasmaClient store_client_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.

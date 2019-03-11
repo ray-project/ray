@@ -75,9 +75,9 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
     task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
   }
   std::vector<std::string> function_descriptor(3);
-  auto spec = TaskSpecification(UniqueID::nil(), UniqueID::from_random(), 0,
-                                task_arguments, num_returns, required_resources,
-                                Language::PYTHON, function_descriptor);
+  auto spec = TaskSpecification(DriverID::nil(), TaskID::from_random(), 0, task_arguments,
+                                num_returns, required_resources, Language::PYTHON,
+                                function_descriptor);
   auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
   execution_spec.IncrementNumForwards();
   Task task = Task(execution_spec, spec);

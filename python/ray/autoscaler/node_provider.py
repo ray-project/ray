@@ -132,7 +132,7 @@ class NodeProvider(object):
         self.provider_config = provider_config
         self.cluster_name = cluster_name
 
-    def nodes(self, tag_filters):
+    def non_terminated_nodes(self, tag_filters):
         """Return a list of node ids filtered by the specified tags dict.
 
         This list must not include terminated nodes. For performance reasons,
@@ -141,7 +141,7 @@ class NodeProvider(object):
         nodes() must be called again to refresh results.
 
         Examples:
-            >>> provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+            >>> provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
             ["node-1", "node-2"]
         """
         raise NotImplementedError
