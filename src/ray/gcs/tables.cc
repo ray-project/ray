@@ -113,8 +113,8 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
   auto subscribe_wrapper = [subscribe](AsyncGcsClient *client, const ID &id,
-                                      const GcsTableNotificationMode notification_mode,
-                                      const std::vector<DataT> &data) {
+                                       const GcsTableNotificationMode notification_mode,
+                                       const std::vector<DataT> &data) {
     RAY_CHECK(notification_mode != GcsTableNotificationMode::REMOVE);
     subscribe(client, id, data);
   };

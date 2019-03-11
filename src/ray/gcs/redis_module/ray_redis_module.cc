@@ -904,7 +904,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   }
 
   if (RedisModule_CreateCommand(ctx, "ray.table_append", TableAppend_RedisCommand,
-                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
