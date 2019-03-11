@@ -58,7 +58,7 @@ class TreeAggregator(Aggregator):
                 self.broadcasted_weights, assigned_evaluators[i],
                 max_sample_requests_in_flight_per_worker, replay_proportion,
                 replay_buffer_num_slots, train_batch_size, sample_batch_size)
-            for _ in range(num_aggregation_workers)
+            for i in range(num_aggregation_workers)
         ]
 
         self.agg_tasks = TaskPool()
@@ -102,6 +102,7 @@ class AggregationWorker(AggregationWorkerBase):
                  replay_buffer_num_slots, train_batch_size, sample_batch_size):
         logger.info("Assigned evaluators {} to aggregation worker {}".format(
             remote_evaluators, self))
+        assert remote_evaluators
         AggregationWorkerBase.__init__(
             self, initial_weights_obj_id, remote_evaluators,
             max_sample_requests_in_flight_per_worker, replay_proportion,
