@@ -833,8 +833,10 @@ void NodeManager::ProcessDisconnectClientMessage(
         // not safe to pass in the iterator directly.
         const TaskID task_id = *worker->GetBlockedTaskIds().begin();
         HandleTaskUnblocked(client, task_id);
-        // TODO: this will only unsubscribe from the currently executing task.
-        // We should also unsubscribe from previous tasks that have an active ray.wait.
+        // TODO: This will only unsubscribe from the currently executing task.
+        // We should also unsubscribe from previous tasks that have an active
+        // ray.wait. Otherwise, these ray.wait calls may never be satisfied
+        // (e.g., because the driver has exited).
         RAY_CHECK(task_dependency_manager_.UnsubscribeAllDependencies(task_id));
       }
     }
