@@ -164,8 +164,6 @@ class ActorClass(object):
             task.
         _resources: The default resources required by the actor creation task.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
-            This value is set to -1 when the actor is initialized and defined
-            when the actor instance is created in _remote().
         _exported: True if the actor class has been exported and false
             otherwise.
         _actor_methods: The actor methods.
