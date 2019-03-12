@@ -386,14 +386,10 @@ def from_importance_weights(log_rhos,
             pg_advantages=tf.stop_gradient(pg_advantages))
 
 
-def get_log_rhos(behaviour_action_log_probs, target_action_log_probs):
+def get_log_rhos(target_action_log_probs, behaviour_action_log_probs):
     """With the selected log_probs for multi-discrete actions of behaviour
     and target policies we compute the log_rhos for calculating the vtrace."""
-    log_rhos = [
-        t - b
-        for t, b in zip(target_action_log_probs, behaviour_action_log_probs)
-    ]
-    log_rhos = [tf.convert_to_tensor(l, dtype=tf.float32) for l in log_rhos]
-    log_rhos = tf.reduce_sum(tf.stack(log_rhos), axis=0)
-
+    t = tf.stack(target_action_log_probs)
+    b = tf.stack(behaviour_action_log_probs)
+    log_rhos = tf.reduce_sum(t - b, axis=0)
     return log_rhos
