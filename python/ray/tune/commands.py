@@ -43,12 +43,12 @@ DEFAULT_PROJECT_INFO_KEYS = (
 )
 
 try:
-    TERM_HEIGHT, TERM_WIDTH = subprocess.check_output(['stty', 'size']).split()
+    TERM_HEIGHT, TERM_WIDTH = subprocess.check_output(["stty", "size"]).split()
     TERM_HEIGHT, TERM_WIDTH = int(TERM_HEIGHT), int(TERM_WIDTH)
 except subprocess.CalledProcessError:
     TERM_HEIGHT, TERM_WIDTH = 100, 100
 
-EDITOR = os.getenv('EDITOR', 'vim')
+EDITOR = os.getenv("EDITOR", "vim")
 
 
 def _check_tabulate():
@@ -144,7 +144,7 @@ def list_trials(experiment_path,
     checkpoints_df = checkpoints_df[col_keys]
 
     if "last_update_time" in checkpoints_df:
-        with pd.option_context('mode.use_inf_as_null', True):
+        with pd.option_context("mode.use_inf_as_null", True):
             datetime_series = checkpoints_df["last_update_time"].dropna()
 
         datetime_series = datetime_series.apply(
@@ -167,9 +167,9 @@ def list_trials(experiment_path,
     if output:
         experiment_path = os.path.expanduser(experiment_path)
         output_path = os.path.join(experiment_path, output)
-        if output.split('.')[-1].lower() in ['p', 'pkl', 'pickle']:
+        if output.split('.')[-1].lower() in ["p", "pkl", "pickle"]:
             checkpoints_df.to_pickle(output_path)
-        elif output.split('.')[-1].lower() in ['csv', 'txt']:
+        elif output.split('.')[-1].lower() in ["csv", "txt"]:
             checkpoints_df.to_csv(output_path, index=False)
         else:
             raise ValueError("Unsupported filetype: {}".format(output))
@@ -250,9 +250,9 @@ def list_experiments(project_path,
 
     if output:
         output_path = os.path.join(base, output)
-        if output.split('.')[-1].lower() in ['p', 'pkl', 'pickle']:
+        if output.split('.')[-1].lower() in ["p", "pkl", "pickle"]:
             info_df.to_pickle(output_path)
-        elif output.split('.')[-1].lower() in ['csv', 'txt']:
+        elif output.split('.')[-1].lower() in ["csv", "txt"]:
             info_df.to_csv(output_path, index=False)
         else:
             raise ValueError("Unsupported filetype: {}".format(output))
