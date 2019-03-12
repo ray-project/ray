@@ -214,15 +214,15 @@ bool TaskDependencyManager::SubscribeDependencies(
   return (task_entry.num_missing_dependencies == 0);
 }
 
-void TaskDependencyManager::RemoveTaskDependency(const TaskID &task_id,
+void TaskDependencyManager::RemoveTaskDependency(const TaskID &dependent_task_id,
                                                  const ObjectID &object_id) {
   // Remove the task from the list of tasks that are dependent on this
   // object.
   // Get the ID of the task that creates the dependency.
-  TaskID creating_task_id = ComputeTaskId(object_id);
+  const TaskID creating_task_id = ComputeTaskId(object_id);
   auto creating_task_entry = required_tasks_.find(creating_task_id);
   auto &dependent_tasks = creating_task_entry->second[object_id];
-  size_t erased = dependent_tasks.erase(task_id);
+  size_t erased = dependent_tasks.erase(dependent_task_id);
   RAY_CHECK(erased > 0);
   // If the unsubscribed task was the only task dependent on the object, then
   // erase the object entry.
