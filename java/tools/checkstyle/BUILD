@@ -3,5 +3,4 @@ exports_files([
     "license-header.txt",
     "checkstyle.xml",
     "checkstyle-suppressions.xml",
-    "repo.bzl",
 ])

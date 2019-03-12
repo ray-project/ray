@@ -149,6 +149,7 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
+java/third_party/workspace.bzl
 
 # python virtual env
 venv
