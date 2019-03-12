@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 import shutil
 import sys
@@ -49,8 +50,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def checkAndReturnConsistentLogs(self, results, sleep_per_iter=None):
-        class_results = results.copy()
-        function_results = results.copy()
+        class_results = copy.deepcopy(results)
+        function_results = copy.deepcopy(results)
 
         class_output = []
         function_output = []
