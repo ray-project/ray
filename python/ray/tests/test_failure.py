@@ -36,23 +36,6 @@ def shutdown_only():
     ray.shutdown()
 
 
-@pytest.fixture
-def short_heartbeat_timeout():
-    internal_config = json.dumps({
-        "num_heartbeats_timeout": 40,
-        "heartbeat_timeout_milliseconds": 10,
-    })
-    cluster = ray.tests.cluster_utils.Cluster()
-    remote_node = cluster.add_node(
-        num_cpus=1, _internal_config=internal_config)
-    ray.init(redis_address=cluster.redis_address)
-    yield cluster, remote_node
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
-
-
 def test_failed_task(ray_start_regular):
     @ray.remote
     def throw_exception_fct1():
@@ -732,21 +715,26 @@ def test_raylet_crash_when_get(ray_start_regular):
     thread.join()
 
 
-def test_connect_with_disconnected_node(short_heartbeat_timeout):
-    cluster, _ = short_heartbeat_timeout
-    cluster.add_node(num_cpus=0)
+def test_connect_with_disconnected_node(shutdown_only):
+    config = json.dumps({
+        "num_heartbeats_timeout": 50,
+        "heartbeat_timeout_milliseconds": 10,
+    })
+    cluster = Cluster()
+    cluster.add_node(num_cpus=0, _internal_config=config)
+    ray.init(redis_address=cluster.redis_address)
     info = relevant_errors(ray_constants.REMOVED_NODE_ERROR)
     assert len(info) == 0
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
-    dead_node = cluster.add_node(num_cpus=0)
+    dead_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(dead_node, allow_graceful=False)
     wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 1, timeout=2)
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
-    dead_node = cluster.add_node(num_cpus=0)
+    dead_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(dead_node, allow_graceful=False)
     wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=2)
     # This node is killed by SIGTERM, ray_monitor will not mark it again.
-    removing_node = cluster.add_node(num_cpus=0)
+    removing_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(removing_node, allow_graceful=True)
     with pytest.raises(Exception, match=('Timing out of wait.')):
         wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 3, timeout=2)
