@@ -83,9 +83,9 @@ def run(args, parser):
     else:
         with open(config_path, 'rb') as f:
             config = pickle.load(f)
-        if "num_workers" in config:
-            config["num_workers"] = min(2, config["num_workers"])
-    config = merge_dicts(config,args.config)
+    if "num_workers" in config:
+        config["num_workers"] = min(2, config["num_workers"])
+    config = merge_dicts(config, args.config)
     if not args.env:
         if not config.get("env"):
             parser.error("the following arguments are required: --env")
