@@ -6,9 +6,9 @@ SCRIPT=$1
 shift
 
 if [ -x $DIRECTORY/../$SCRIPT ]; then
-    time $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
+    $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
 else
-    time python $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
+    python $DIRECTORY/../$SCRIPT "$@" >$TMPFILE 2>&1
 fi
 
 CODE=$?
