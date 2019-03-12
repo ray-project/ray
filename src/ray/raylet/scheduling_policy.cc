@@ -108,7 +108,15 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
                       << spec.GetRequiredResources().ToString() << " for execution and "
                       << spec.GetRequiredPlacementResources().ToString()
                       << " for placement, but no nodes have the necessary resources. "
-                      << "Check the client table to view node resources.";
+
+        for (const auto &client_resource_pair2 : cluster_resources) {
+          // pair = ClientID, SchedulingResources
+          ClientID node_client_id = client_resource_pair2.first;
+          const auto &node_resources = client_resource_pair2.second;
+          RAY_LOG(INFO) << "Node (" << node_client_id << ")"
+                        << "has total resources "
+                        << node_resources.GetTotalResources().ToString();
+        }
       }
     }
   }
