@@ -28,9 +28,10 @@ RUN apt-get update \
         flatbuffers \
         cython==0.29.0
 
-RUN bash ./ci/travis/install-bazel.sh
-
 COPY . .
+RUN pwd
+RUN bash ci/travis/install-bazel.sh
+
 WORKDIR ./python
 RUN pip install -e .
 WORKDIR ..
