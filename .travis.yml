@@ -191,7 +191,7 @@ script:
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py; fi
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest --durations=10 python/ray/test; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest --durations=10 python/ray/tests; fi
 
 deploy:
   - provider: s3
