@@ -76,10 +76,6 @@ PYTHON_MODE = 3
 
 ERROR_KEY_PREFIX = b"Error:"
 
-# Default resource requirements for actors when no resource requirements are
-# specified.
-DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
-DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
 # Default resource requirements for actors when some resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
@@ -2480,8 +2476,24 @@ def make_decorator(num_return_vals=None,
                 raise Exception("The keyword 'max_calls' is not allowed for "
                                 "actors.")
 
-            return worker.make_actor(function_or_class, num_cpus, num_gpus,
-                                     resources, max_reconstructions)
+            # Set the actor default resources.
+            if num_cpus is None and num_gpus is None and resources is None:
+                # If the resources are not specified in the decorator, we wait
+                # until the actor is instantiated with a _remote() call before
+                # determining if the actor has resources specified.
+                cpus_to_use = None
+                actor_method_cpus = None
+            else:
+                # If any resources are specified, then all resources are
+                # acquired for the actor's lifetime and no resources are
+                # associated with methods.
+                cpus_to_use = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
+                               if num_cpus is None else num_cpus)
+                actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE
+
+            return worker.make_actor(function_or_class, cpus_to_use, num_gpus,
+                                     resources, actor_method_cpus,
+                                     max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")

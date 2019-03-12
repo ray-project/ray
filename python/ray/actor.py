@@ -20,15 +20,14 @@ import ray.worker
 from ray.utils import _random_string
 from ray import (ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID,
                  DriverID)
-
 # Default resource requirements for actors when no resource requirements are
 # specified.
-DEFAULT_ACTOR_METHOD_CPUS_SIMPLE = 1
-DEFAULT_ACTOR_CREATION_CPUS_SIMPLE = 0
+DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
+DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
 # Default resource requirements for actors when some resource requirements are
 # specified.
-DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED = 0
-DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED = 1
+DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
+DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 # Default number of return values for each actor method.
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
@@ -287,6 +286,24 @@ class ActorClass(object):
         # updated to reflect the new invocation.
         actor_cursor = None
 
+        # Set the actor's default resources if not already set. First two
+        # conditions are to check that no resources were specified when
+        # _remote() was called. Last three conditions are to check that no
+        # resources were specified in the decorator.
+        if (self._num_cpus is None and self._actor_method_cpus is None and
+            num_cpus is None and num_gpus is None and resources is None):
+            # In the default case, actors acquire no resources for
+            # their lifetime, and actor methods will require 1 CPU.
+            cpus_to_use = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE
+            actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE
+        else:
+            # If any resources are specified (here or in decorator), then
+            # all resources are acquired for the actor's lifetime and no
+            # resources are associated with methods.
+            cpus_to_use = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
+                           if self._num_cpus is None else self._num_cpus)
+            actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE
+
         # Do not export the actor class or the actor if run in LOCAL_MODE
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
@@ -300,35 +317,17 @@ class ActorClass(object):
                     self._modified_class, self._actor_method_names)
                 self._exported = True
 
-            # Set the actor default resources. First three conditions are to
-            # check that no resources were specified when _remote() was called.
-            # Last three conditions are to check that no resources were
-            # specified in the decorator.
-            if (num_cpus is None and num_gpus is None and resources is None
-                    and self._num_cpus is None and self._num_gpus is None
-                    and self._resources is None):
-                # In the default case, actors acquire no resources for
-                # their lifetime, and actor methods will require 1 CPU.
-                self._num_cpus = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE
-                self._actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SIMPLE
-            else:
-                # If any resources are specified, then all resources are
-                # acquired for the actor's lifetime and no resources are
-                # associated with methods.
-                self._num_cpus = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED
-                                  if num_cpus is None else num_cpus)
-                self._actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED
 
             resources = ray.utils.resources_from_resource_arguments(
-                self._num_cpus, self._num_gpus, self._resources, num_cpus,
+                cpus_to_use, self._num_gpus, self._resources, num_cpus,
                 num_gpus, resources)
 
             # If the actor methods require CPU resources, then set the required
             # placement resources. If actor_placement_resources is empty, then
             # the required placement resources will be the same as resources.
             actor_placement_resources = {}
-            assert self._actor_method_cpus in [0, 1]
-            if self._actor_method_cpus == 1:
+            assert actor_method_cpus in [0, 1]
+            if actor_method_cpus == 1:
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
 
@@ -353,7 +352,7 @@ class ActorClass(object):
             actor_id, self._modified_class.__module__, self._class_name,
             actor_cursor, self._actor_method_names, self._method_signatures,
             self._actor_method_num_return_vals, actor_cursor,
-            self._actor_method_cpus, worker.task_driver_id)
+            actor_method_cpus, worker.task_driver_id)
         # We increment the actor counter by 1 to account for the actor creation
         # task.
         actor_handle._ray_actor_counter += 1
