@@ -34,11 +34,6 @@ matrix:
       script:
       - ./java/test.sh
 
-      # Test Bazel build
-      - rm -rf build
-      - ./ci/suppress_output ./ci/travis/install-bazel.sh
-      - bazel build ...
-
     - os: linux
       dist: trusty
       env: LINT=1 PYTHONWARNINGS=ignore

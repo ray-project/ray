@@ -18,6 +18,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def setUp(self):
         self.trial_executor = RayTrialExecutor(queue_trials=False)
         ray.init()
+        _register_all()  # Needed for flaky tests
 
     def tearDown(self):
         ray.shutdown()

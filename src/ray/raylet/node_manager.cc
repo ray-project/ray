@@ -60,9 +60,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
-          [this](const TaskID &task_id, bool return_values_lost) {
-            HandleTaskReconstruction(task_id);
-          },
+          [this](const TaskID &task_id) { HandleTaskReconstruction(task_id); },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->client_table().GetLocalClientId(), gcs_client_->task_lease_table(),
           object_directory_, gcs_client_->task_reconstruction_log()),
@@ -1287,14 +1285,13 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
     const ObjectID object_id = spec.ReturnId(i);
     // Lookup the return value's locations.
     RAY_CHECK_OK(object_directory_->LookupLocations(
-        object_id,
-        [this, task_marked_as_failed, task](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients, bool has_been_created) {
+        object_id, [this, task_marked_as_failed, task](
+                       const ray::ObjectID &object_id,
+                       const std::unordered_set<ray::ClientID> &clients) {
           if (!*task_marked_as_failed) {
             // Only process the object locations if we haven't already marked the
             // task as failed.
-            if (clients.empty() && has_been_created) {
+            if (clients.empty()) {
               // The object does not exist on any nodes but has been created
               // before, so the object has been lost. Mark the task as failed to
               // prevent any tasks that depend on this object from hanging.
