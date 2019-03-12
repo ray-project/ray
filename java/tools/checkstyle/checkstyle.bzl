@@ -83,14 +83,14 @@ checkstyle_test = rule(
         "config": attr.label(
             allow_single_file=True,
             doc = "A checkstyle configuration file",
-            default = "//java/tools/checkstyle:checkstyle.xml",
+            default = "//java:checkstyle.xml",
         ),
         "suppressions": attr.label(
             allow_single_file=True,
             doc = ("A file for specifying files and lines " +
                    "that should be suppressed from checks." +
                    "Example: https://github.com/checkstyle/checkstyle/blob/master/config/suppressions.xml"),
-            default = "//java/tools/checkstyle:checkstyle-suppressions.xml",
+            default = "//java:checkstyle-suppressions.xml",
         ),
         "license": attr.label(
             allow_single_file=True,
