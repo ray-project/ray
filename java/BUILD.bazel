@@ -52,10 +52,14 @@ checkstyle_test(
 
 java_library(
     name = "org_ray_ray_runtime",
-    srcs = glob(["runtime/src/main/java/**/*.java"]),
+    srcs = glob([
+        "runtime/src/main/java/**/*.java"
+    ]) + [
+        ":generate_java_gcs_fbs",
+    ],
     resources = glob(["runtime/src/main/resources/**"]),
     visibility = ["//visibility:public"],
-    data = ["//:raylet_library_java", ":generate_java_gcs_fbs"],
+    data = ["//:raylet_library_java"],
     deps = [
         ":org_ray_ray_api",
         "@plasma//:org_apache_arrow_arrow_plasma",
@@ -156,11 +160,45 @@ java_binary(
 
 genrule(
     name = "generate_java_gcs_fbs",
-    srcs = [":copy_java_gcs_fbs"],
-    outs = ["generate_java_gcs_fbs.out"],
+    srcs = [":java_gcs_fbs"],
+    outs = [
+        "runtime/src/main/java/org/ray/runtime/generated/ActorCheckpointData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ActorCheckpointIdData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ActorState.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ActorTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/Arg.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ClassTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ClientTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ConfigTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/CustomSerializerData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/DriverTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ErrorTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ErrorType.java",
+        "runtime/src/main/java/org/ray/runtime/generated/FunctionTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/GcsTableEntry.java",
+        "runtime/src/main/java/org/ray/runtime/generated/HeartbeatBatchTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/HeartbeatTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/Language.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ObjectTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ProfileEvent.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ProfileTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/RayResource.java",
+        "runtime/src/main/java/org/ray/runtime/generated/ResourcePair.java",
+        "runtime/src/main/java/org/ray/runtime/generated/SchedulingState.java",
+        "runtime/src/main/java/org/ray/runtime/generated/TablePrefix.java",
+        "runtime/src/main/java/org/ray/runtime/generated/TablePubsub.java",
+        "runtime/src/main/java/org/ray/runtime/generated/TaskInfo.java",
+        "runtime/src/main/java/org/ray/runtime/generated/TaskLeaseData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/TaskReconstructionData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/TaskTableData.java",
+        "runtime/src/main/java/org/ray/runtime/generated/TaskTableTestAndUpdate.java",
+    ],
     cmd = """
-        python $$(pwd)/java/modify_generated_java_flatbuffers_files.py $$(pwd)
-        echo $$(pwd) > $@
+        for f in $(locations //java:java_gcs_fbs); do
+            chmod +w $$f
+            cp -f $$f $(@D)/runtime/src/main/java/org/ray/runtime/generated
+        done
+        python $$(pwd)/java/modify_generated_java_flatbuffers_files.py $(@D)/..
     """,
     local = 1,
 )
@@ -200,26 +238,5 @@ flatbuffer_java_library(
         "TaskTableData.java",
         "TaskTableTestAndUpdate.java",
     ],
-    out_prefix = "java/runtime/src/main/java/org/ray/runtime/generated",
-)
-
-genrule(
-    name = "copy_java_gcs_fbs",
-    srcs = [
-        "//java:java_gcs_fbs",
-    ],
-    outs = [
-        "java_gcs_fbs.out",
-    ],
-    cmd = """
-        WORK_DIR=$$(pwd)
-        GENERATED_DIR=$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
-        mkdir -p $$GENERATED_DIR
-        for f in $(locations //java:java_gcs_fbs); do
-            chmod +w $$f
-            cp -f $$f $$GENERATED_DIR/
-        done
-        echo $$(pwd) >> $@
-    """,
-    local = 1,
+    out_prefix = "runtime/src/main/java/org/ray/runtime/generated",
 )
