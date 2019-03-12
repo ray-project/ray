@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# This file is updated from
+# https://github.com/llvm-mirror/clang/blob/master/tools/clang-format/git-clang-format.
 #
 #===- git-clang-format - ClangFormat Git Integration ---------*- python -*--===#
 #
@@ -568,4 +570,4 @@ def convert_string(bytes_input):
         return str(bytes_input)
 
 if __name__ == '__main__':
-  main()
+    main()
