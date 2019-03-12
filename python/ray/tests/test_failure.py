@@ -17,19 +17,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.utils import _random_string
 from ray.tests.cluster_utils import Cluster
-
-
-def relevant_errors(error_type):
-    return [info for info in ray.error_info() if info["type"] == error_type]
-
-
-def wait_for_errors(error_type, num_errors, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(relevant_errors(error_type)) >= num_errors:
-            return
-        time.sleep(0.1)
-    raise Exception("Timing out of wait.")
+from ray.tests.utils import (relevant_errors, wait_for_errors)
 
 
 @pytest.fixture
@@ -765,28 +753,3 @@ def test_connect_with_disconnected_node(short_heartbeat_timeout):
     # There is no connection error to a dead node.
     info = relevant_errors(ray_constants.RAYLET_CONNECTION_ERROR)
     assert len(info) == 0
-
-
-def test_init_exception_in_checkpointable_actor(short_heartbeat_timeout):
-    @ray.remote(max_reconstructions=1)
-    class CheckpointableActor(ray.actor.Checkpointable):
-        def __init__(self):
-            raise Exception("Exception in __init__.")
-
-        def should_checkpoint(self, checkpoint_context):
-            # Checkpoint the actor when value is increased to 3.
-            return True
-
-        def save_checkpoint(self, actor_id, checkpoint_id):
-            pass
-
-        def load_checkpoint(self, actor_id, available_checkpoints):
-            pass
-
-        def checkpoint_expired(self, actor_id, checkpoint_id):
-            pass
-
-    # This call should not trigger save_checkpoint which would cause crash.
-    CheckpointableActor.remote()
-    with pytest.raises(Exception, match=('Timing out of wait.')):
-        wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 1, timeout=1.5)

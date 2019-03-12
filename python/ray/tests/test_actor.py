@@ -16,6 +16,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.tests.utils
 import ray.tests.cluster_utils
+from ray.tests.utils import wait_for_errors
 
 
 @pytest.fixture
@@ -2563,3 +2564,26 @@ def test_bad_checkpointable_actor_class():
         class BadCheckpointableActor(ray.actor.Checkpointable):
             def should_checkpoint(self, checkpoint_context):
                 return True
+
+
+def test_init_exception_in_checkpointable_actor(shutdown_only,
+                                                ray_checkpointable_actor_cls):
+    internal_config = json.dumps({
+        "num_heartbeats_timeout": 40,
+        "heartbeat_timeout_milliseconds": 10,
+    })
+    ray.init(num_cpus=1, _internal_config=internal_config)
+
+    @ray.remote(max_reconstructions=1)
+    class CheckpointableActor(ray_checkpointable_actor_cls):
+        def __init__(self):
+            raise Exception("Exception in __init__.")
+
+        def should_checkpoint(self, checkpoint_context):
+            return True
+
+    CheckpointableActor.remote()
+    # This call should not trigger save_checkpoint which will cause crash,
+    # because this actor is not created.
+    with pytest.raises(Exception, match=('Timing out of wait.')):
+        wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 1, timeout=1.5)
