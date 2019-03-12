@@ -15,6 +15,11 @@ namespace perf_counter {
 /// Include tag_defs.h to define tag items
 #include "tag_defs.h"
 
+/// The helper function for registering a view.
+static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor) {
+  opencensus::stats::View view(view_descriptor);
+  view_descriptor.RegisterForExport();
+}
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
 class Metric final {
@@ -29,6 +34,53 @@ class Metric final {
 
   Metric& operator()() {
     return *this;
+  }
+
+  /// Last value
+  static Metric MakeGauge(const std::string &name,
+                          const std::string &description,
+                          const std::string &unit,
+                          const std::vector<opencensus::tags::TagKey>& tag_keys = {}) {
+    auto metric = Metric(name, description, unit);
+
+    opencensus::stats::ViewDescriptor view_descriptor =
+          opencensus::stats::ViewDescriptor().set_name(std::string("raylet/") + name)
+              .set_description(description)
+              .set_measure(metric.GetName())
+              .set_aggregation(opencensus::stats::Aggregation::LastValue());
+              // TODO(qwang): .add_column(AllGlobalTagKeys)
+
+      for (const auto &tag_key : tag_keys) {
+        view_descriptor = view_descriptor.add_column(tag_key);
+      }
+
+       RegisterAsView(view_descriptor);
+
+    return metric;
+  }
+
+  /// Histgrom
+  static Metric MakeHistogram(const std::string &name,
+                          const std::string &description,
+                          const std::string &unit,
+                          const std::vector<double> boundaries,
+                          const std::vector<opencensus::tags::TagKey>& tag_keys = {}) {
+    auto metric = Metric(name, description, unit); 
+    opencensus::stats::ViewDescriptor view_descriptor =
+          opencensus::stats::ViewDescriptor().set_name(name)
+              .set_description(description)
+              .set_measure(metric.GetName())
+              .set_aggregation(opencensus::stats::Aggregation::Distribution(
+                opencensus::stats::BucketBoundaries::Explicit(boundaries)));
+              // TODO(qwang): .add_column(AllGlobalTagKeys)
+
+      for (const auto &tag_key : tag_keys) {
+        view_descriptor = view_descriptor.add_column(tag_key);
+      }
+
+    RegisterAsView(view_descriptor);
+    
+    return metric;
   }
 
   std::string GetName() const {
@@ -58,54 +110,21 @@ class Metric final {
 /// Include metric_defs.h to define tag items
 #include "metric_defs.h"
 
-  /// The helper function for registering a view.
-  static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor) {
-    opencensus::stats::View view(view_descriptor);
-    view_descriptor.RegisterForExport();
-  }
-
-
-  /// The helper function for registering all views.
   static void RegisterAllViews() {
     {
-      const opencensus::stats::ViewDescriptor view_descriptor =
-          opencensus::stats::ViewDescriptor().set_name("raylet/latency")
-              .set_description("The latency of redis.")
-              .set_measure(RedisLatency().GetName())
+      /*
+      opencensus::stats::ViewDescriptor view_descriptor =
+          opencensus::stats::ViewDescriptor().set_name("raylet/task_elaspe")
+              .set_description("description")
+              .set_measure("task_elapse")
               .set_aggregation(opencensus::stats::Aggregation::Distribution(
-                  opencensus::stats::BucketBoundaries::Explicit({0, 25, 50, 75, 1000})))
-              .add_column(JobNameKey);
+                opencensus::stats::BucketBoundaries::Explicit({0, 100, 200, 300, 400, 500})));
+              // TODO(qwang): .add_column(AllGlobalTagKeys)
 
-      RegisterAsView(view_descriptor);
+       RegisterAsView(view_descriptor);
+       */
     }
-
-    {
-      const opencensus::stats::ViewDescriptor view_descriptor =
-          opencensus::stats::ViewDescriptor().set_name("raylet/task_elapse")
-              .set_description("task elapse")
-              .set_measure(TaskElapse().GetName())
-              .set_aggregation(opencensus::stats::Aggregation::Distribution(
-                  opencensus::stats::BucketBoundaries::Explicit({100, 250, 500, 750, 1000})))
-              .add_column(JobNameKey)
-              .add_column(NodeAddressKey);
-
-      RegisterAsView(view_descriptor);
-    }
-
-    {
-      const opencensus::stats::ViewDescriptor view_descriptor =
-          opencensus::stats::ViewDescriptor().set_name("raylet/task_count")
-              .set_description("task count")
-              .set_measure(TaskCount().GetName())
-              .set_aggregation(opencensus::stats::Aggregation::LastValue())
-              .add_column(JobNameKey)
-              .add_column(NodeAddressKey);
-
-      RegisterAsView(view_descriptor);
-    }
-
   }
-
 
   /// Initialize perf counter.
   static void Init(const std::string &address) {
@@ -116,7 +135,7 @@ class Metric final {
     static prometheus::Exposer exposer(address);
     exposer.RegisterCollectable(exporter);
 
-    ray::perf_counter::RegisterAllViews();
+    RegisterAllViews();
   }
 
 } // namespace perf_counter
