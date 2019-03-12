@@ -288,8 +288,9 @@ class ActorClass(object):
         # conditions are to check that no resources were specified when
         # _remote() was called. Last three conditions are to check that no
         # resources were specified in the decorator.
-        if (self._num_cpus is None and self._actor_method_cpus is None and
-            num_cpus is None and num_gpus is None and resources is None):
+        if (self._num_cpus is None and self._actor_method_cpus is None
+                and num_cpus is None and num_gpus is None
+                and resources is None):
             # In the default case, actors acquire no resources for
             # their lifetime, and actor methods will require 1 CPU.
             cpus_to_use = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE
@@ -301,7 +302,8 @@ class ActorClass(object):
             cpus_to_use = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
                            if self._num_cpus is None else self._num_cpus)
             actor_method_cpus = (DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE
-                                 if self._actor_method_cpus is None else self._actor_method_cpus)
+                                 if self._actor_method_cpus is None else
+                                 self._actor_method_cpus)
 
         # Do not export the actor class or the actor if run in LOCAL_MODE
         # Instead, instantiate the actor locally and add it to the worker's
@@ -315,7 +317,6 @@ class ActorClass(object):
                 worker.function_actor_manager.export_actor_class(
                     self._modified_class, self._actor_method_names)
                 self._exported = True
-
 
             resources = ray.utils.resources_from_resource_arguments(
                 cpus_to_use, self._num_gpus, self._resources, num_cpus,
