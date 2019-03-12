@@ -13,6 +13,7 @@ import gym
 import ray
 from ray.rllib.agents.registry import get_agent_class
 from ray.tune.util import merge_dicts
+
 EXAMPLE_USAGE = """
 Example Usage via RLlib CLI:
     rllib rollout /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
