@@ -30,7 +30,6 @@ RUN apt-get update \
 
 COPY . .
 RUN bash ci/travis/install-bazel.sh
-RUN source /root/.bazel/bin/bazel-complete.bash
 ENV PATH=/root/bin:$PATH
 
 WORKDIR ./python
