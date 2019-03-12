@@ -169,8 +169,10 @@ def list_trials(experiment_path,
         output_path = os.path.join(experiment_path, output)
         if output.split('.')[-1].lower() in ['p', 'pkl', 'pickle']:
             checkpoints_df.to_pickle(output_path)
-        else:
+        elif output.split('.')[-1].lower() in ['csv', 'txt']:
             checkpoints_df.to_csv(output_path, index=False)
+        else:
+            raise ValueError("Unsupported filetype: {}".format(output))
         print("Output saved at:", output_path)
 
 
@@ -250,9 +252,12 @@ def list_experiments(project_path,
         output_path = os.path.join(base, output)
         if output.split('.')[-1].lower() in ['p', 'pkl', 'pickle']:
             info_df.to_pickle(output_path)
-        else:
+        elif output.split('.')[-1].lower() in ['csv', 'txt']:
             info_df.to_csv(output_path, index=False)
+        else:
+            raise ValueError("Unsupported filetype: {}".format(output))
         print("Output saved at:", output_path)
+
 
 def add_note(path, filename="note.txt"):
     """Opens a txt file at the given path where user can add and save notes.
