@@ -99,6 +99,7 @@ SMALL_CLUSTER = {
     "min_workers": 2,
     "max_workers": 2,
     "initial_workers": 0,
+    "aggressive_autoscaling": False,
     "target_utilization_fraction": 0.8,
     "idle_timeout_minutes": 5,
     "provider": {
