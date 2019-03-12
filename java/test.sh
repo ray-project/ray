@@ -32,7 +32,4 @@ ENABLE_MULTI_LANGUAGE_TESTS=1 java -jar -Dray.home=$ROOT_DIR/../ $ROOT_DIR/../ba
 echo "Running tests under single-process mode."
 java -jar -Dray.home=$ROOT_DIR/../ -Dray.run-mode=SINGLE_PROCESS $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/../java/testng.xml
 
-set +x
-set +e
-
 popd
