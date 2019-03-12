@@ -158,7 +158,8 @@ def list_trials(experiment_path,
             experiment_path, '')
 
     if filter:
-        filter_str = "checkpoints_df[checkpoints_df['{}'] {} {}]".format(*filter)
+        filter_str = "checkpoints_df[checkpoints_df['{}'] {} {}]".format(
+            *filter)
         checkpoints_df = eval(filter_str)
 
     if sort:
