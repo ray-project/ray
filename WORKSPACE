@@ -42,7 +42,7 @@ git_repository(
 new_git_repository(
     name = "plasma",
     build_file = "@//bazel:BUILD.plasma",
-    commit = "6a27c660ea700febf6fd73b2e851ab96e9315134",
+    commit = "fa8967cb9ec228f6544b2eecc0f1bd78f29daa4d",
     remote = "https://github.com/ray-project/arrow",
 )
 
