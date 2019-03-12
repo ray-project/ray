@@ -127,6 +127,7 @@ def list_trials(experiment_path,
             Corresponds to Experiment.local_dir/Experiment.name.
         sort (str): Key to sort by.
         output (str): Name of file where output is saved.
+        filter (tuple): Filter for dataframe in the format (col, op, val).
         info_keys (list): Keys that are displayed.
         result_keys (list): Keys of last result that are displayed.
     """
@@ -194,6 +195,7 @@ def list_experiments(project_path,
             Corresponds to Experiment.local_dir.
         sort (str): Key to sort by.
         output (str): Name of file where output is saved.
+        filter (tuple): Filter for dataframe in the format (col, op, val).
         info_keys (list): Keys that are displayed.
     """
     _check_tabulate()
