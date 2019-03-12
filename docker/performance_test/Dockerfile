@@ -29,8 +29,7 @@ RUN apt-get update \
         cython==0.29.0
 
 COPY . .
-RUN bash ci/travis/install-bazel.sh
-ENV PATH=/root/bin:$PATH
+ENV RAY_USE_CMAKE=1
 
 WORKDIR ./python
 RUN pip install -e .
