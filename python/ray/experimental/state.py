@@ -120,6 +120,14 @@ class GlobalState(object):
             raise Exception("The ray.global_state API cannot be used before "
                             "ray.init has been called.")
 
+
+    def disconnect(self):
+        """Disconnect global state from GCS.
+        """
+        self.redis_client = None
+        self.redis_clients = None
+
+
     def _initialize_global_state(self,
                                  redis_ip_address,
                                  redis_port,

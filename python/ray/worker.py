@@ -2054,7 +2054,7 @@ def connect(info,
 
 
 def disconnect():
-    """Disconnect this worker from the scheduler and object store."""
+    """Disconnect this worker from the scheduler, object store and GCS."""
     # Reset the list of cached remote functions and actors so that if more
     # remote functions or actors are defined and then connect is called again,
     # the remote functions will be exported. This is mostly relevant for the
@@ -2087,6 +2087,9 @@ def disconnect():
         del worker.raylet_client
     if hasattr(worker, "plasma_client"):
         worker.plasma_client.disconnect()
+
+    # Disconnect global state from GCS.
+    global_state.disconnect()
 
 
 @contextmanager
