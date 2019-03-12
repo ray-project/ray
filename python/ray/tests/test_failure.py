@@ -787,6 +787,6 @@ def test_init_exception_in_checkpointable_actor(short_heartbeat_timeout):
             pass
 
     # This call should not trigger save_checkpoint which would cause crash.
-    actor = CheckpointableActor.remote()
+    CheckpointableActor.remote()
     with pytest.raises(Exception, match=('Timing out of wait.')):
         wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 1, timeout=1.5)
