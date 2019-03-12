@@ -176,7 +176,7 @@ class ActorClass(object):
     """
 
     def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
-                 num_gpus, resources):
+                 num_gpus, resources, actor_method_cpus):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
@@ -184,7 +184,7 @@ class ActorClass(object):
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
         self._resources = resources
-        self._actor_method_cpus = -1
+        self._actor_method_cpus = actor_method_cpus
         self._exported = False
 
         self._actor_methods = inspect.getmembers(
@@ -302,7 +302,8 @@ class ActorClass(object):
             # resources are associated with methods.
             cpus_to_use = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
                            if self._num_cpus is None else self._num_cpus)
-            actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE
+            actor_method_cpus = (DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE
+                                 if self._actor_method_cpus is None else self._actor_method_cpus)
 
         # Do not export the actor class or the actor if run in LOCAL_MODE
         # Instead, instantiate the actor locally and add it to the worker's
@@ -693,7 +694,8 @@ class ActorHandle(object):
         return self._deserialization_helper(state, False)
 
 
-def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
+def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
+               max_reconstructions):
     # Give an error if cls is an old-style class.
     if not issubclass(cls, object):
         raise TypeError(
@@ -748,7 +750,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
     class_id = ActorClassID(_random_string())
 
     return ActorClass(Class, class_id, max_reconstructions, num_cpus, num_gpus,
-                      resources)
+                      resources, actor_method_cpus)
 
 
 ray.worker.global_worker.make_actor = make_actor
