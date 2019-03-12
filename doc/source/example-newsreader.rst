@@ -15,13 +15,13 @@ To run this example, you will need to install NPM and a few python dependencies.
 
 To use this example you need to
 
-1.) Start the server with `python server.py`
-2.) Clone the client code with `git clone https://github.com/ray-project/qreader`
-3.) Start the client with `cd qreader;  npm install; npm run dev`
-4.) You can now add a channel by clicking "Add channel" and for example pasting
-    `http://news.ycombinator.com/rss` into the field.
-5.) Star some of the articles and dump the database with `sqlite3 newsreader.db`
-    and enter `SELECT * FROM news;`.
+* Start the server with ``python server.py``
+* Clone the client code with ``git clone https://github.com/ray-project/qreader``
+* Start the client with ``cd qreader;  npm install; npm run dev``
+* You can now add a channel by clicking "Add channel" and for example pasting
+  ``http://news.ycombinator.com/rss`` into the field.
+* Star some of the articles and dump the database with ``sqlite3 newsreader.db``
+  and enter ``SELECT * FROM news;``.
 
 .. _`frontend`: https://github.com/saqueib/qreader
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/newsreader
