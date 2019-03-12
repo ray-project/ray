@@ -21,9 +21,16 @@ def cli():
     default=None,
     type=str,
     help='Output information to a pickle file.')
-def list_trials(experiment_path, sort, output):
+@click.option(
+    '--filter',
+    nargs=3,
+    default=None,
+    type=str,
+    help="Select filter in the format '[col] [op] [val]'.")
+def list_trials(experiment_path, sort, output, filter):
     """Lists trials in the directory subtree starting at the given path."""
-    commands.list_trials(experiment_path, sort, output)
+    print(filter)
+    commands.list_trials(experiment_path, sort, output, filter)
 
 
 @cli.command()
@@ -36,9 +43,15 @@ def list_trials(experiment_path, sort, output):
     default=None,
     type=str,
     help='Select filename to output information to.')
-def list_experiments(project_path, sort, output):
+@click.option(
+    '--filter',
+    nargs=3,
+    default=None,
+    type=str,
+    help="Select filter in the format '[col] [op] [val]'.")
+def list_experiments(project_path, sort, output, filter):
     """Lists experiments in the directory subtree."""
-    commands.list_experiments(project_path, sort, output)
+    commands.list_experiments(project_path, sort, output, filter)
 
 
 @cli.command()

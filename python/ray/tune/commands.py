@@ -117,6 +117,7 @@ def _get_experiment_state(experiment_path, exit_on_fail=False):
 def list_trials(experiment_path,
                 sort=None,
                 output=None,
+                filter=None,
                 info_keys=DEFAULT_EXPERIMENT_INFO_KEYS,
                 result_keys=DEFAULT_RESULT_KEYS):
     """Lists trials in the directory subtree starting at the given path.
@@ -156,6 +157,10 @@ def list_trials(experiment_path,
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
             experiment_path, '')
 
+    if filter:
+        filter_str = "checkpoints_df[checkpoints_df['{}'] {} {}]".format(*filter)
+        checkpoints_df = eval(filter_str)
+
     if sort:
         if sort not in checkpoints_df:
             raise KeyError("Sort Index '{}' not in: {}".format(
@@ -179,6 +184,7 @@ def list_trials(experiment_path,
 def list_experiments(project_path,
                      sort=None,
                      output=None,
+                     filter=None,
                      info_keys=DEFAULT_PROJECT_INFO_KEYS):
     """Lists experiments in the directory subtree.
 
@@ -239,6 +245,10 @@ def list_experiments(project_path,
         sys.exit(0)
 
     info_df = info_df[col_keys]
+
+    if filter:
+        filter_str = "info_df[info_df['{}'] {} {}]".format(*filter)
+        info_df = eval(filter_str)
 
     if sort:
         if sort not in info_df:
