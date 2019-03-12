@@ -9,7 +9,7 @@ import pytest
 num_cpus_test = list(range(2, 32))
 num_cpus_ids = ["{}_cpus".format(i) for i in num_cpus_test]
 
-num_tasks_submitted = [10**n for n in range(2, 10)]
+num_tasks_submitted = [10**n for n in range(1, 7)]
 num_tasks_ids = ["{}_tasks".format(i) for i in num_tasks_submitted]
 
 
