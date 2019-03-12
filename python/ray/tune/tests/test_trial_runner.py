@@ -145,9 +145,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -169,9 +166,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -202,9 +196,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "test",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -416,9 +407,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
                     "stop": {
                         "time": 10
                     },
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
                 }
             })
 
@@ -433,9 +421,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -451,9 +436,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             run_experiments({
                 "foo": {
                     "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
                 }
             })
 
@@ -468,9 +450,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -478,8 +457,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testNoRaiseFlag(self):
         def train(config, reporter):
-            # Finish this trial without any metric,
-            # which leads to a failed trial
             raise Exception()
 
         register_trainable("f1", train)
@@ -502,9 +479,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -730,15 +704,9 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
             },
             "bar": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
             }
         })
         for trial in trials:
@@ -754,9 +722,6 @@ class RunExperimentTest(unittest.TestCase):
         exp1 = Experiment(**{
             "name": "foo",
             "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
-            }
         })
         [trial] = run_experiments(exp1)
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -771,16 +736,10 @@ class RunExperimentTest(unittest.TestCase):
         exp1 = Experiment(**{
             "name": "foo",
             "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
-            }
         })
         exp2 = Experiment(**{
             "name": "bar",
             "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
-            }
         })
         trials = run_experiments([exp1, exp2])
         for trial in trials:
@@ -800,9 +759,6 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments({
             "foo": {
                 "run": train,
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
             },
             "bar": {
                 "run": B
