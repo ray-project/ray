@@ -662,7 +662,7 @@ class PolicyEvaluator(EvaluatorInterface):
         return policy_map, preprocessors
 
     def __del__(self):
-        if isinstance(self.sampler, AsyncSampler):
+        if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
             self.sampler.shutdown = True
 
 
