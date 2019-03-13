@@ -14,6 +14,7 @@ import pandas as pd
 from ray.tune.util import flatten_dict
 from ray.tune.result import TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS
 from ray.tune.trial import Trial
+from ray.tune.web_server import TuneClient
 try:
     from tabulate import tabulate
 except ImportError:
@@ -283,3 +284,16 @@ def add_note(path, filename="note.txt"):
         print("Note updated at:", filepath)
     else:
         print("Note created at:", filepath)
+
+
+def kill(tune_address, port_forward, trial_id):
+    """Terminates trial within running TuneServer with specific trial_id.
+
+    Args:
+        tune_address (str): Address of running TuneServer.
+        port_forward (int): Port number of running TuneServer.
+        trial_id (str): ID of specific trial.
+    """
+    manager = TuneClient(tune_address=tune_address, port_forward=port_forward)
+    manager.stop_trial(trial_id)
+    # TODO(Andrew): add feedback to user based on result of stop_trial
