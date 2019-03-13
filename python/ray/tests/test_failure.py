@@ -655,11 +655,14 @@ def test_redis_module_failure(shutdown_only):
                      -1)
     run_failure_test("Index is not a number.", "RAY.TABLE_APPEND", 1, 1, 2, 1,
                      b"a")
+    run_failure_test("The entry to remove doesn't exist.", "RAY.SET_REMOVE", 1,
+                     1, 3, 1)
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1)
     # It's okay to add duplicate entries.
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1)
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1, 0)
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1, 1)
+    run_one_command("RAY.SET_ADD", 1, 1, 3, 1)
 
 
 @pytest.fixture

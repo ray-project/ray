@@ -26,7 +26,7 @@ for i in range(num_nodes):
     cluster.add_node(
         redis_port=6379 if i == 0 else None,
         num_redis_shards=num_redis_shards if i == 0 else None,
-        num_cpus=2,
+        num_cpus=5,
         num_gpus=0,
         resources={str(i): 2},
         object_store_memory=object_store_memory,
@@ -36,7 +36,9 @@ ray.init(redis_address=cluster.redis_address)
 # Run the workload.
 
 
-@ray.remote
+# TODO (williamma12): Remove the num_cpus argument once
+# https://github.com/ray-project/ray/issues/4312 gets resolved
+@ray.remote(num_cpus=0.1)
 class Actor(object):
     def __init__(self):
         self.value = 0
@@ -45,8 +47,10 @@ class Actor(object):
         self.value += 1
 
 
+# TODO (williamma12): Update the actors to each have only 0.1 of a cpu once
+# https://github.com/ray-project/ray/issues/4312 gets resolved.
 actors = [
-    Actor._remote([], {}, num_cpus=0.1, resources={str(i % num_nodes): 0.1})
+    Actor._remote([], {}, resources={str(i % num_nodes): 0.1})
     for i in range(num_nodes * 5)
 ]
 

@@ -319,22 +319,6 @@ class Node(object):
         redis_client = self.create_redis_client()
         redis_client.hmset("webui", {"url": self._webui_url})
 
-    def start_ui(self):
-        """Start the web UI."""
-        stdout_file, stderr_file = self.new_log_files("webui")
-        notebook_name = self._make_inc_temp(
-            suffix=".ipynb", prefix="ray_ui", directory_name=self._temp_dir)
-        _, process_info = ray.services.start_ui(
-            self._redis_address,
-            notebook_name,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file)
-        assert ray_constants.PROCESS_TYPE_WEB_UI not in self.all_processes
-        if process_info is not None:
-            self.all_processes[ray_constants.PROCESS_TYPE_WEB_UI] = [
-                process_info
-            ]
-
     def start_plasma_store(self):
         """Start the plasma store."""
         assert self._plasma_store_socket_name is None

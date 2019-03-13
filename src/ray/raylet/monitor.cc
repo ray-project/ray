@@ -35,7 +35,7 @@ void Monitor::Start() {
     HandleHeartbeat(id, heartbeat_data);
   };
   RAY_CHECK_OK(gcs_client_.heartbeat_table().Subscribe(
-      UniqueID::nil(), UniqueID::nil(), heartbeat_callback, nullptr, nullptr));
+      JobID::nil(), ClientID::nil(), heartbeat_callback, nullptr, nullptr));
   Tick();
 }
 
@@ -69,7 +69,7 @@ void Monitor::Tick() {
                           << " has missed too many heartbeats from it.";
             // We use the nil JobID to broadcast the message to all drivers.
             RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
-                JobID::nil(), type, error_message.str(), current_time_ms()));
+                DriverID::nil(), type, error_message.str(), current_time_ms()));
           }
         };
         RAY_CHECK_OK(gcs_client_.client_table().Lookup(lookup_callback));
@@ -88,7 +88,7 @@ void Monitor::Tick() {
       batch->batch.push_back(std::unique_ptr<HeartbeatTableDataT>(
           new HeartbeatTableDataT(heartbeat.second)));
     }
-    RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(UniqueID::nil(), UniqueID::nil(),
+    RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(JobID::nil(), ClientID::nil(),
                                                          batch, nullptr));
     heartbeat_buffer_.clear();
   }
