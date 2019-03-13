@@ -1,6 +1,5 @@
 FROM ubuntu:xenial
 
-RUN pip install -q awscli pytest-benchmark
 RUN apt-get update \
     && apt-get install -y \
         git \
@@ -29,6 +28,7 @@ RUN apt-get update \
         cython==0.29.0
 
 ENV PATH "/opt/conda/bin:$PATH"
+RUN pip install -q awscli pytest-benchmark
 ENV RAY_USE_CMAKE=1
 WORKDIR ./python
 RUN pip install -e .
