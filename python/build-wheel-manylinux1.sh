@@ -7,7 +7,6 @@ EOF
 chmod +x /usr/bin/nproc
 
 PYTHONS=("cp27-cp27mu"
-         "cp34-cp34m"
          "cp35-cp35m"
          "cp36-cp36m"
          "cp37-cp37m")
