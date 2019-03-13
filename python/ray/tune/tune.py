@@ -276,13 +276,13 @@ def run_experiments(experiments,
     for exp in experiments:
         trials += run(
             exp,
-            search_alg,
-            scheduler,
-            with_server,
-            server_port,
-            verbose,
-            resume,
-            queue_trials,
-            trial_executor,
-            raise_on_failed_trial)
+            search_alg=search_alg,
+            scheduler=scheduler,
+            with_server=with_server,
+            server_port=server_port,
+            verbose=verbose,
+            resume=resume,
+            queue_trials=queue_trials,
+            trial_executor=trial_executor,
+            raise_on_failed_trial=raise_on_failed_trial)
     return trials
