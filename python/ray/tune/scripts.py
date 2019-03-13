@@ -61,7 +61,7 @@ def list_experiments(project_path, sort, output, filter_op):
     "--filename",
     default="note.txt",
     type=str,
-    help='Specify filename for note.')
+    help="Specify filename for note.")
 def add_note(path, filename):
     """Adds user notes as a text file at the given path."""
     commands.add_note(path, filename)
