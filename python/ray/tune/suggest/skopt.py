@@ -10,6 +10,34 @@ except Exception:
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 
+def _validate_warmstart(names, points, rewards):
+    dimension = len(names)
+    if points:
+        if not isinstance(points, list):
+            raise TypeError(
+                "points_to_evaluate expected to be a list, got {}.".format(
+                    type(points)))
+        for point in points:
+            if not isinstance(point, list):
+                raise TypeError(
+                    "points_to_evaluate expected to include list, got {}.".
+                    format(type(point)))
+
+        if not len(points) == dimension:
+            raise ValueError(
+                "points_to_evaluate expected to be len {}, got {}.".format(
+                    dimension, len(points)))
+    if points and rewards:
+        if not isinstance(rewards, list):
+            raise TypeError(
+                "evaluated_rewards expected to be a list, got {}.".format(
+                    type(rewards)))
+        if not len(rewards) == dimension:
+            raise ValueError(
+                "evaluated_rewards expected to be len {}, got {}.".format(
+                    dimension, len(rewards)))
+
+
 class SkOptSearch(SuggestionAlgorithm):
     """A wrapper around skopt to provide trial suggestions.
 
@@ -24,18 +52,17 @@ class SkOptSearch(SuggestionAlgorithm):
             to 10.
         reward_attr (str): The training result objective value attribute.
             This refers to an increasing value.
-        points_to_evaluate (list of lists): A list of trials you'd like to run
+        points_to_evaluate (list of lists): A list of points you'd like to run
             first before sampling from the optimiser, e.g. these could be
             parameter configurations you already know work well to help
-            the optimiser select good values. Each trial is a list of the
-            parameters of that trial using the order definition given
-            to the optimiser (see example below)
+            the optimiser select good values. Each point is a list of the
+            parameters using the order definition given by parameter_names.
         evaluated_rewards (list): If you have previously evaluated the
             parameters passed in as points_to_evaluate you can avoid
             re-running those trials by passing in the reward attributes
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
-            points_to_evaluate. (See skopt_example.py)
+            points_to_evaluate. (See tune/examples/skopt_example.py)
 
     Example:
         >>> from skopt import Optimizer
@@ -51,8 +78,10 @@ class SkOptSearch(SuggestionAlgorithm):
         >>>     }
         >>> }
         >>> algo = SkOptSearch(optimizer,
-        >>>     ["width", "height"], max_concurrent=4,
-        >>>     reward_attr="neg_mean_loss", points_to_evaluate=current_best_params)
+        >>>     ["width", "height"],
+        >>>     max_concurrent=4,
+        >>>     reward_attr="neg_mean_loss",
+        >>>     points_to_evaluate=current_best_params)
     """
 
     def __init__(self,
@@ -67,14 +96,11 @@ class SkOptSearch(SuggestionAlgorithm):
             You can install Skopt with the command:
             `pip install scikit-optimize`."""
         assert type(max_concurrent) is int and max_concurrent > 0
-        if points_to_evaluate:
-            self._validate_points_to_evaluate(points_to_evaluate,
-                                              len(parameter_names))
-        if evaluated_rewards:
-            assert isinstance(evaluated_rewards, list)
+        _validate_warmstart(parameter_names, points_to_evaluate,
+                            evaluated_rewards)
+
         self._initial_points = []
         if points_to_evaluate and evaluated_rewards:
-            assert len(points_to_evaluate) == len(evaluated_rewards)
             optimizer.tell(points_to_evaluate, evaluated_rewards)
         elif points_to_evaluate:
             self._initial_points = points_to_evaluate
@@ -84,12 +110,6 @@ class SkOptSearch(SuggestionAlgorithm):
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
         super(SkOptSearch, self).__init__(**kwargs)
-
-    def _validate_points_to_evaluate(self, points, dimension):
-        assert isinstance(points, list)
-        for point in points:
-            assert isinstance(point, list)
-            assert len(point) == dimension
 
     def _suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
