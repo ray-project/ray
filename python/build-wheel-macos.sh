@@ -14,23 +14,19 @@ MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 DOWNLOAD_DIR=python_downloads
 
 PY_VERSIONS=("2.7.13"
-             "3.4.4"
              "3.5.3"
              "3.6.1"
              "3.7.0")
 PY_INSTS=("python-2.7.13-macosx10.6.pkg"
-          "python-3.4.4-macosx10.6.pkg"
           "python-3.5.3-macosx10.6.pkg"
           "python-3.6.1-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg")
 PY_MMS=("2.7"
-        "3.4"
         "3.5"
         "3.6"
         "3.7")
 # On python 3.7, a newer version of numpy seems to be necessary.
 NUMPY_VERSIONS=("1.10.4"
-                "1.10.4"
                 "1.10.4"
                 "1.10.4"
                 "1.14.5")
