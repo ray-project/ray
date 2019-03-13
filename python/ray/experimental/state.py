@@ -126,8 +126,7 @@ class GlobalState(object):
         self.redis_clients = None
 
     def _initialize_global_state(self,
-                                 redis_ip_address,
-                                 redis_port,
+                                 redis_address,
                                  redis_password=None,
                                  timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
@@ -137,11 +136,11 @@ class GlobalState(object):
         been populated or we exceed a timeout.
 
         Args:
-            redis_ip_address: The IP address of the node that the Redis server
-                lives on.
-            redis_port: The port that the Redis server is listening on.
+            redis_address: The Redis address to connect.
             redis_password: The password of the redis server.
         """
+        redis_ip_address, redis_port = redis_address.split(":")
+        redis_port = int(redis_port)
         self.redis_client = redis.StrictRedis(
             host=redis_ip_address, port=redis_port, password=redis_password)
 
