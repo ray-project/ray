@@ -27,9 +27,13 @@ ln -sf $ROOT_DIR/../bazel-bin/java/org_ray_ray_tutorial_deploy.jar $ROOT_DIR/tut
 
 pushd $ROOT_DIR/test
 echo "Running tests under cluster mode."
-ENABLE_MULTI_LANGUAGE_TESTS=1 java -jar -Dray.home=$ROOT_DIR/../ $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/../java/testng.xml
+ENABLE_MULTI_LANGUAGE_TESTS=1 java -jar -Dray.home=$ROOT_DIR/../ $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/testng.xml || exit_code=$?
 
 echo "Running tests under single-process mode."
-java -jar -Dray.home=$ROOT_DIR/../ -Dray.run-mode=SINGLE_PROCESS $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/../java/testng.xml
+java -jar -Dray.home=$ROOT_DIR/../ -Dray.run-mode=SINGLE_PROCESS $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/testng.xml || exit_code=$?
+# exit_code == 2 means there are some tests skiped.
+if [ $exit_code -eq 2 ] && [ $exit_code -eq 0 ] ; then
+    exit $exit_code
+fi
 
 popd
