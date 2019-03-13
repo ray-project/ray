@@ -449,7 +449,7 @@ def wrap_function(train_func):
     class WrappedFunc(FunctionRunner):
         def _trainable_func(self, config, reporter):
             output = train_func(config, reporter)
-            reporter(done=True)
+            reporter(done=True, __duplicate__=True)
             return output
 
     return WrappedFunc

@@ -398,7 +398,6 @@ class TrialRunner(object):
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=result)
                 decision = TrialScheduler.STOP
-
             else:
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, result)
@@ -406,8 +405,9 @@ class TrialRunner(object):
                 if decision == TrialScheduler.STOP:
                     self._search_alg.on_trial_complete(
                         trial.trial_id, early_terminated=True)
-            trial.update_last_result(
-                result, terminate=(decision == TrialScheduler.STOP))
+            if not "__duplicate__" in result:
+                trial.update_last_result(
+                    result, terminate=(decision == TrialScheduler.STOP))
 
             # Checkpoints to disk. This should be checked even if
             # the scheduler decision is STOP or PAUSE. Note that

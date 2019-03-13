@@ -134,7 +134,7 @@ class FunctionRunner(Trainable):
 
         self._status_reporter = StatusReporter(self._results_queue,
                                                self._continue_semaphore)
-
+        self._last_result = {}
         config = config.copy()
 
         def entrypoint():
@@ -203,6 +203,13 @@ class FunctionRunner(Trainable):
                     ("Runner error waiting to be raised in main thread. "
                      "Logging all available results first."))
 
+        # Handle reporter thread finishing without 'done'.
+        # TrialRunner will not log this result again.
+        if "__duplicate__" in result:
+            new_result = self._last_result.copy()
+            new_result.update(result)
+            result = new_result
+        self._last_result = result
         return result
 
     def _stop(self):

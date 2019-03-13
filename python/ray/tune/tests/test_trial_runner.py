@@ -447,7 +447,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testSuccess(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(timesteps_total=i, done=i == 99)
+                reporter(timesteps_total=i)
 
         register_trainable("f1", train)
         [trial] = run_experiments({
@@ -475,7 +475,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testReportInfinity(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(mean_accuracy=float('inf'), done=i == 99)
+                reporter(mean_accuracy=float('inf'))
 
         register_trainable("f1", train)
         [trial] = run_experiments({
@@ -700,7 +700,7 @@ class RunExperimentTest(unittest.TestCase):
     def testDict(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(timesteps_total=i, done=i == 99)
+                reporter(timesteps_total=i)
 
         register_trainable("f1", train)
         trials = run_experiments({
@@ -718,7 +718,7 @@ class RunExperimentTest(unittest.TestCase):
     def testExperiment(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(timesteps_total=i, done=i == 99)
+                reporter(timesteps_total=i)
 
         register_trainable("f1", train)
         exp1 = Experiment(**{
@@ -732,7 +732,7 @@ class RunExperimentTest(unittest.TestCase):
     def testExperimentList(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(timesteps_total=i, done=i == 99)
+                reporter(timesteps_total=i)
 
         register_trainable("f1", train)
         exp1 = Experiment(**{
@@ -751,7 +751,7 @@ class RunExperimentTest(unittest.TestCase):
     def testAutoregisterTrainable(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(timesteps_total=i, done=i == 99)
+                reporter(timesteps_total=i)
 
         class B(Trainable):
             def _train(self):
