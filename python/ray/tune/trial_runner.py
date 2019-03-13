@@ -405,7 +405,7 @@ class TrialRunner(object):
                 if decision == TrialScheduler.STOP:
                     self._search_alg.on_trial_complete(
                         trial.trial_id, early_terminated=True)
-            if not "__duplicate__" in result:
+            if "__duplicate__" not in result:
                 trial.update_last_result(
                     result, terminate=(decision == TrialScheduler.STOP))
 
