@@ -172,10 +172,10 @@ def list_trials(experiment_path,
     if filter_op:
         col, op, val = filter_op
         col_type = checkpoints_df[col].dtype
-        if is_string_dtype(col_type):
-            val = str(val)
-        elif is_numeric_dtype(col_type):
+        if is_numeric_dtype(col_type):
             val = float(val)
+        elif is_string_dtype(col_type):
+            val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
             raise ValueError("Unsupported dtype for '{}': {}".format(
@@ -271,10 +271,10 @@ def list_experiments(project_path,
     if filter_op:
         col, op, val = filter_op
         col_type = info_df[col].dtype
-        if is_string_dtype(col_type):
-            val = str(val)
-        elif is_numeric_dtype(col_type):
+        if is_numeric_dtype(col_type):
             val = float(val)
+        elif is_string_dtype(col_type):
+            val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
             raise ValueError("Unsupported dtype for '{}': {}".format(
