@@ -28,13 +28,10 @@ RUN apt-get update \
         flatbuffers \
         cython==0.29.0
 
-COPY . .
-RUN bash ci/travis/install-bazel.sh
-RUN bash /root/.bazel/bin/bazel-complete.bash
-ENV PATH=/root/bin:$PATH
-
+ENV RAY_USE_CMAKE=1
+ADD ray.tar .
+ADD git-rev ./git-rev
 WORKDIR ./python
-RUN touch WORKSPACE
 RUN pip install -e .
 WORKDIR ..
 
