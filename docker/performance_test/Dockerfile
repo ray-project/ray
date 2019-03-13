@@ -31,6 +31,7 @@ ENV PATH "/opt/conda/bin:$PATH"
 RUN pip install -q awscli pytest-benchmark
 ENV RAY_USE_CMAKE=1
 WORKDIR ./python
+RUN ls -la .
 RUN pip install -e .
 WORKDIR ..
 
