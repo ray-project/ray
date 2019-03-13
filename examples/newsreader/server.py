@@ -9,6 +9,7 @@ import sqlite3
 
 import ray
 
+
 @ray.remote
 class NewsServer(object):
 
@@ -31,8 +32,9 @@ class NewsServer(object):
                           "description": item["description"],
                           "description_text": item["summary"],
                           "pubDate": item["published"]})
-            c.execute("""INSERT INTO news (title, link, description, description_text,
-                         published, feed, liked) values (?, ?, ?, ?, ?, ?, ?)""", (
+            c.execute("""INSERT INTO news (title, link, description,
+                         description_text, published, feed, liked)
+                         values (?, ?, ?, ?, ?, ?, ?)""", (
                          item["title"], item["link"], item["description"],
                          item["summary"], item["published"],
                          feed["channel"]["link"], False))
@@ -59,6 +61,7 @@ app.config.from_object(__name__)
 # enable CORS
 CORS(app)
 
+
 @app.route('/api', methods=['POST'])
 def dispatcher():
     req = request.get_json()
@@ -71,7 +74,8 @@ def dispatcher():
         result = ray.get(method.remote(*method_args))
         return jsonify(result)
     else:
-        return jsonify({"error": "method_name '" + method_name + "' not found"})
+        return jsonify(
+            {"error": "method_name '" + method_name + "' not found"})
 
 
 if __name__ == "__main__":
