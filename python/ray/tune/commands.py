@@ -167,9 +167,10 @@ def list_trials(experiment_path,
     if output:
         experiment_path = os.path.expanduser(experiment_path)
         output_path = os.path.join(experiment_path, output)
-        if output.split('.')[-1].lower() in ["p", "pkl", "pickle"]:
+        file_extension = os.path.splitext(output)[1].lower()
+        if file_extension in ("p", "pkl", "pickle"):
             checkpoints_df.to_pickle(output_path)
-        elif output.split('.')[-1].lower() == "csv":
+        elif file_extension == "csv":
             checkpoints_df.to_csv(output_path, index=False)
         else:
             raise ValueError("Unsupported filetype: {}".format(output))
@@ -250,9 +251,10 @@ def list_experiments(project_path,
 
     if output:
         output_path = os.path.join(base, output)
-        if output.split('.')[-1].lower() in ["p", "pkl", "pickle"]:
+        file_extension = os.path.splitext(output)[1].lower()
+        if file_extension in ("p", "pkl", "pickle"):
             info_df.to_pickle(output_path)
-        elif output.split('.')[-1].lower() == "csv":
+        elif file_extension == "csv":
             info_df.to_csv(output_path, index=False)
         else:
             raise ValueError("Unsupported filetype: {}".format(output))
