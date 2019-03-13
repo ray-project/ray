@@ -15,7 +15,6 @@ PYTHONS=("cp27-cp27mu"
 NUMPY_VERSIONS=("1.10.4"
                 "1.10.4"
                 "1.10.4"
-                "1.10.4"
                 "1.14.5")
 
 sudo apt-get install unzip
