@@ -10,32 +10,36 @@ except Exception:
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 
-def _validate_warmstart(names, points, rewards):
-    dimension = len(names)
-    if points:
-        if not isinstance(points, list):
+def _validate_warmstart(parameter_names, points_to_evaluate,
+                        evaluated_rewards):
+    dimension = len(parameter_names)
+    if points_to_evaluate:
+        if not isinstance(points_to_evaluate, list):
             raise TypeError(
                 "points_to_evaluate expected to be a list, got {}.".format(
-                    type(points)))
-        for point in points:
+                    type(points_to_evaluate)))
+        for point in points_to_evaluate:
             if not isinstance(point, list):
                 raise TypeError(
                     "points_to_evaluate expected to include list, got {}.".
-                    format(type(point)))
+                    format(point))
 
-        if not len(points) == dimension:
+        if not len(points_to_evaluate) == dimension:
             raise ValueError(
-                "points_to_evaluate expected to be len {}, got {}.".format(
-                    dimension, len(points)))
-    if points and rewards:
-        if not isinstance(rewards, list):
+                "Dim of points_to_evaluate {}".format(points_to_evaluate) +
+                " and parameter_names {}".format(parameter_names) +
+                " do not match.")
+
+    if points_to_evaluate and evaluated_rewards:
+        if not isinstance(evaluated_rewards, list):
             raise TypeError(
                 "evaluated_rewards expected to be a list, got {}.".format(
-                    type(rewards)))
-        if not len(rewards) == dimension:
+                    type(evaluated_rewards)))
+        if not len(evaluated_rewards) == dimension:
             raise ValueError(
-                "evaluated_rewards expected to be len {}, got {}.".format(
-                    dimension, len(rewards)))
+                "Dim of evaluated_rewards {}".format(evaluated_rewards) +
+                " and parameter_names {}".format(parameter_names) +
+                " do not match.")
 
 
 class SkOptSearch(SuggestionAlgorithm):
