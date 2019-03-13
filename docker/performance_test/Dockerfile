@@ -1,4 +1,4 @@
-FROM python:3.6.6-stretch
+FROM ubuntu:xenial
 
 RUN pip install -q awscli pytest-benchmark
 RUN apt-get update \
@@ -28,9 +28,8 @@ RUN apt-get update \
         flatbuffers \
         cython==0.29.0
 
+ENV PATH "/opt/conda/bin:$PATH"
 ENV RAY_USE_CMAKE=1
-ADD ray.tar .
-ADD git-rev ./git-rev
 WORKDIR ./python
 RUN pip install -e .
 WORKDIR ..
