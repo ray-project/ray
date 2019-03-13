@@ -8,9 +8,11 @@ import logging
 import os
 import sys
 import subprocess
+import operator
 from datetime import datetime
 
 import pandas as pd
+from pandas.api.types import is_string_dtype, is_numeric_dtype
 from ray.tune.util import flatten_dict
 from ray.tune.result import TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS
 from ray.tune.trial import Trial
@@ -20,6 +22,8 @@ except ImportError:
     tabulate = None
 
 logger = logging.getLogger(__name__)
+
+EDITOR = os.getenv('EDITOR', 'vim')
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S (%A)"
 
@@ -48,7 +52,14 @@ try:
 except subprocess.CalledProcessError:
     TERM_HEIGHT, TERM_WIDTH = 100, 100
 
-EDITOR = os.getenv('EDITOR', 'vim')
+OPERATORS = {
+    '<': operator.lt,
+    '<=': operator.le,
+    '==': operator.eq,
+    '!=': operator.ne,
+    '>=': operator.ge,
+    '>': operator.gt,
+}
 
 
 def _check_tabulate():
@@ -117,7 +128,7 @@ def _get_experiment_state(experiment_path, exit_on_fail=False):
 def list_trials(experiment_path,
                 sort=None,
                 output=None,
-                filter=None,
+                filter_op=None,
                 info_keys=DEFAULT_EXPERIMENT_INFO_KEYS,
                 result_keys=DEFAULT_RESULT_KEYS):
     """Lists trials in the directory subtree starting at the given path.
@@ -127,7 +138,7 @@ def list_trials(experiment_path,
             Corresponds to Experiment.local_dir/Experiment.name.
         sort (str): Key to sort by.
         output (str): Name of file where output is saved.
-        filter (tuple): Filter for dataframe in the format (col, op, val).
+        filter_op (tuple): Filter for dataframe in the format (col, op, val).
         info_keys (list): Keys that are displayed.
         result_keys (list): Keys of last result that are displayed.
     """
@@ -158,10 +169,20 @@ def list_trials(experiment_path,
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
             experiment_path, '')
 
-    if filter:
-        filter_str = "checkpoints_df[checkpoints_df['{}'] {} {}]".format(
-            *filter)
-        checkpoints_df = eval(filter_str)
+    if filter_op:
+        col, op, val = filter_op
+        col_type = checkpoints_df[col].dtype
+        if is_string_dtype(col_type):
+            val = str(val)
+        elif is_numeric_dtype(col_type):
+            val = float(val)
+        # TODO(Andrew): add support for datetime and boolean
+        else:
+            raise ValueError("Unsupported dtype for '{}': {}".format(
+                val, col_type))
+        op = OPERATORS[op]
+        filtered_index = op(checkpoints_df[col], val)
+        checkpoints_df = checkpoints_df[filtered_index]
 
     if sort:
         if sort not in checkpoints_df:
@@ -186,7 +207,7 @@ def list_trials(experiment_path,
 def list_experiments(project_path,
                      sort=None,
                      output=None,
-                     filter=None,
+                     filter_op=None,
                      info_keys=DEFAULT_PROJECT_INFO_KEYS):
     """Lists experiments in the directory subtree.
 
@@ -195,7 +216,7 @@ def list_experiments(project_path,
             Corresponds to Experiment.local_dir.
         sort (str): Key to sort by.
         output (str): Name of file where output is saved.
-        filter (tuple): Filter for dataframe in the format (col, op, val).
+        filter_op (tuple): Filter for dataframe in the format (col, op, val).
         info_keys (list): Keys that are displayed.
     """
     _check_tabulate()
@@ -242,16 +263,25 @@ def list_experiments(project_path,
 
     info_df = pd.DataFrame(experiment_data_collection)
     col_keys = [k for k in list(info_keys) if k in info_df]
-
     if not col_keys:
         print("None of keys {} in experiment data!".format(info_keys))
         sys.exit(0)
-
     info_df = info_df[col_keys]
 
-    if filter:
-        filter_str = "info_df[info_df['{}'] {} {}]".format(*filter)
-        info_df = eval(filter_str)
+    if filter_op:
+        col, op, val = filter_op
+        col_type = info_df[col].dtype
+        if is_string_dtype(col_type):
+            val = str(val)
+        elif is_numeric_dtype(col_type):
+            val = float(val)
+        # TODO(Andrew): add support for datetime and boolean
+        else:
+            raise ValueError("Unsupported dtype for '{}': {}".format(
+                val, col_type))
+        op = OPERATORS[op]
+        filtered_index = op(info_df[col], val)
+        info_df = info_df[filtered_index]
 
     if sort:
         if sort not in info_df:
