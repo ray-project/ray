@@ -29,12 +29,12 @@ RUN apt-get update \
         cython==0.29.0
 
 COPY . .
-RUn touch WORKSPACE
 RUN bash ci/travis/install-bazel.sh
 RUN bash /root/.bazel/bin/bazel-complete.bash
 ENV PATH=/root/bin:$PATH
 
 WORKDIR ./python
+RUN touch WORKSPACE
 RUN pip install -e .
 WORKDIR ..
 
