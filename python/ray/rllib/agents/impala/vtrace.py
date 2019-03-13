@@ -340,7 +340,7 @@ def from_importance_weights(log_rhos,
         values_t_plus_1 = tf.concat(
             [values[1:], tf.expand_dims(bootstrap_value, 0)], axis=0)
         deltas = clipped_rhos * (
-                rewards + discounts * values_t_plus_1 - values)
+            rewards + discounts * values_t_plus_1 - values)
 
         # All sequences are reversed, computation starts from the back.
         sequences = (
@@ -378,7 +378,7 @@ def from_importance_weights(log_rhos,
         else:
             clipped_pg_rhos = rhos
         pg_advantages = (
-                clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values))
+            clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values))
 
         # Make sure no gradients backpropagated through the returned values.
         return VTraceReturns(
