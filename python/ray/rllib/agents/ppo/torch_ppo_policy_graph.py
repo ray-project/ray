@@ -16,42 +16,48 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
 
 class PPOLoss(nn.Module):
-    def __init__(self, policy_model):
+    def __init__(self, policy_model, vf_loss_coeff=0.5, entropy_coeff=-0.01):
         nn.Module.__init__(self)
         self.policy_model = policy_model
+        self.vf_loss_coeff = vf_loss_coeff
+        self.entropy_coeff = entropy_coeff
 
-    def forward(self, observations, actions, advantages, logits, clip_param = 0.1):
+    def forward(self, observations, actions, advantages, logits, valid_mask, clip_param = 0.1):
+    	def reduce_mean_valid(t):
+    		return torch.masked_select(t, valid_mask).sum(-1).sum()
+
     	dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
         prev_dist = dist_cls(logits)
 
+        #current probabilities
         curr_logits, _, values, _ = self.policy_model({"obs": observations}, [])
         curr_log_probs = F.log_softmax(curr_logits, dim=1)
         curr_probs = F.softmax(curr_logits, dim=1)
         curr_action_log_probs = cur_log_probs.gather(1, actions.view(-1, 1))
 
+        #previous probabilities
         prev_log_probs = F.log_softmax(logits, dim=1)
         prev_probs = F.softmax(logits, dim=1)
         prev_action_log_probs = prev_log_probs.gather(1, actions.view(-1, 1))
 
         logp_ratio = torch.exp(curr_action_log_probs - prev_action_log_probs)
 
-    	#mean entropy
-    	mean_entropy = 
-    	#mean policy loss
-    	mean_policy_loss = x
-    	#total loss
+        curr_entropy = -(curr_log_probs * curr_probs).sum(-1).sum()
+        mean_entropy = reduce_mean_valid(curr_entropy)
 
+        surrogate_loss = torch.min(
+        	advantages * logp_ratio,
+        	advantages * torch.clamp(logp_ratio, 1 - clip+param, 1 + clip_param))
+    	
+    	#mean policy loss
+    	mean_policy_loss = reduce_mean_valid(-surrogate_loss)
+    	
+    	#total loss
+    	loss = reduce_mean_valid(-surrogate_loss - 
+    							  # vf_loss_coeff * vf_loss - 
+    							  entropy_coeff * curr_entropy)
         
-        curr_entropy = -(log_probs * probs).sum(-1).sum()
-        mean_entropy = x
-        pi_err = -advantages.dot(action_log_probs.reshape(-1))
-        value_err = F.mse_loss(values.reshape(-1), value_targets)
-        overall_err = sum([
-            pi_err,
-            self.vf_loss_coeff * value_err,
-            self.entropy_coeff * entropy,
-        ])
-        return overall_err
+        return loss
 
 class PPOTorchPolicyGraph(TorchPolicyGraph):
     def __init__(self, obs_space, action_space, config, existing_inputs=None):
@@ -78,7 +84,7 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
             action_space,
             self.model,
             loss,
-            loss_inputs=["obs", "actions", "advantages", "logits"])
+            loss_inputs=["obs", "actions", "advantages", "logits", "valid_mask"])
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
