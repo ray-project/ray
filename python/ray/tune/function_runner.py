@@ -54,9 +54,8 @@ class StatusReporter(object):
         """
 
         assert self._last_report_time is not None, (
-                "StatusReporter._start() must be called before the first "
-                "report __call__ is made to ensure correct runtime metrics."
-                )
+            "StatusReporter._start() must be called before the first "
+            "report __call__ is made to ensure correct runtime metrics.")
 
         # time per iteration is recorded directly in the reporter to ensure
         # any delays in logging results aren't counted
@@ -90,9 +89,9 @@ class _RunnerThread(threading.Thread):
         try:
             self._entrypoint()
         except StopIteration:
-            logger.debug((
-                    "Thread runner raised StopIteration. Interperting it as a "
-                    "signal to terminate the thread without error."))
+            logger.debug(
+                ("Thread runner raised StopIteration. Interperting it as a "
+                 "signal to terminate the thread without error."))
         except Exception as e:
             logger.exception("Runner Thread raised error.")
             try:
@@ -101,14 +100,15 @@ class _RunnerThread(threading.Thread):
                 # case that something went terribly wrong
                 err_type, err_value, err_tb = sys.exc_info()
                 err_tb = err_tb.format_exc()
-                self._error_queue.put((err_type, err_value, err_tb),
-                                      block=True,
-                                      timeout=ERROR_REPORT_TIMEOUT)
+                self._error_queue.put(
+                    (err_type, err_value, err_tb),
+                    block=True,
+                    timeout=ERROR_REPORT_TIMEOUT)
             except queue.Full:
-                logger.critical((
-                        "Runner Thread was unable to report error to main "
-                        "function runner thread. This means a previous error "
-                        "was not processed. This should never happen."))
+                logger.critical(
+                    ("Runner Thread was unable to report error to main "
+                     "function runner thread. This means a previous error "
+                     "was not processed. This should never happen."))
             raise e
 
 
@@ -167,8 +167,8 @@ class FunctionRunner(Trainable):
         while result is None and self._runner.is_alive():
             # fetch the next produced result
             try:
-                result = self._results_queue.get(block=True,
-                                                 timeout=RESULT_FETCH_TIMEOUT)
+                result = self._results_queue.get(
+                    block=True, timeout=RESULT_FETCH_TIMEOUT)
             except queue.Empty:
                 pass
 
@@ -193,25 +193,24 @@ class FunctionRunner(Trainable):
             # runner thread never reported any results which should not be
             # possible when wrapping functions with
             # `tune.trainable.wrap_function`.
-            raise TuneError((
-                    "Wrapped function ran until completion without reporting "
-                    "results or raising an exception."))
+            raise TuneError(
+                ("Wrapped function ran until completion without reporting "
+                 "results or raising an exception."))
 
         else:
             if not self._error_queue.empty():
-                logger.warning((
-                        "Runner error waiting to be raised in main thread. "
-                        "Logging all available results first."
-                        ))
+                logger.warning(
+                    ("Runner error waiting to be raised in main thread. "
+                     "Logging all available results first."))
 
         return result
 
     def _stop(self):
         # If everything stayed in synch properly, this should never happen.
         if not self._results_queue.empty():
-            logger.warning((
-                    "Some results were added after the trial stop condition. "
-                    "These results won't be logged."))
+            logger.warning(
+                ("Some results were added after the trial stop condition. "
+                 "These results won't be logged."))
 
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
@@ -219,12 +218,11 @@ class FunctionRunner(Trainable):
     def _report_thread_runner_error(self, block=False):
         try:
             err_type, err_value, err_tb = self._error_queue.get(
-                    block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise TuneError((
-                    "Trial raised a {err_type} exception with value: "
-                    "{err_value}\nWith traceback:\n{err_tb}"
-                    ).format(err_type=err_type,
-                             err_value=err_value,
-                             err_tb=err_tb))
+                block=block, timeout=ERROR_FETCH_TIMEOUT)
+            raise TuneError(("Trial raised a {err_type} exception with value: "
+                             "{err_value}\nWith traceback:\n{err_tb}").format(
+                                 err_type=err_type,
+                                 err_value=err_value,
+                                 err_tb=err_tb))
         except queue.Empty:
             pass

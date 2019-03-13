@@ -100,31 +100,33 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         # skip comparisons of these result fields
         NO_COMPARE_FIELDS = {
-                HOSTNAME,
-                NODE_IP,
-                PID,
-                TIME_THIS_ITER_S,
-                TIME_TOTAL_S,
-                "timestamp",
-                "time_since_restore",
-                "experiment_id",
-                "date",
-                }
+            HOSTNAME,
+            NODE_IP,
+            PID,
+            TIME_THIS_ITER_S,
+            TIME_TOTAL_S,
+            "timestamp",
+            "time_since_restore",
+            "experiment_id",
+            "date",
+        }
 
         def as_comparable_result(result):
-            return {k: v for k, v in result.items()
-                    if k not in NO_COMPARE_FIELDS}
+            return {
+                k: v
+                for k, v in result.items() if k not in NO_COMPARE_FIELDS
+            }
 
-        function_comparable = [as_comparable_result(result)
-                         for result in function_output]
-        class_comparable = [as_comparable_result(result)
-                         for result in class_output]
+        function_comparable = [
+            as_comparable_result(result) for result in function_output
+        ]
+        class_comparable = [
+            as_comparable_result(result) for result in class_output
+        ]
 
         self.assertEqual(function_comparable, class_comparable)
 
         return function_output, trials
-
-
 
     def testPinObject(self):
         X = pin_in_object_store("hello")
@@ -467,8 +469,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "foo": {
                     "run": "f1",
                 }
-            },
-            raise_on_failed_trial=False)
+            }, raise_on_failed_trial=False)
         self.assertEqual(trial.status, Trial.ERROR)
 
     def testReportInfinity(self):
@@ -488,17 +489,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testReportTimeStep(self):
         # Test that no timestep count are logged if never the Trainable never
         # returns any.
-        results1 = [dict(mean_accuracy=5, done=i == 99)
-                    for i in range(100)]
+        results1 = [dict(mean_accuracy=5, done=i == 99) for i in range(100)]
         logs1, _ = self.checkAndReturnConsistentLogs(results1)
 
-        self.assertTrue(all([log[TIMESTEPS_TOTAL] is None
-                             for log in logs1]))
+        self.assertTrue(all([log[TIMESTEPS_TOTAL] is None for log in logs1]))
 
         # Test that no timesteps_this_iter are logged if only timesteps_total
         # are returned.
-        results2 = [dict(timesteps_total=5, done=i == 9)
-                    for i in range(10)]
+        results2 = [dict(timesteps_total=5, done=i == 9) for i in range(10)]
         logs2, _ = self.checkAndReturnConsistentLogs(results2)
 
         # Re-run the same trials but with added delay. This is to catch some
@@ -511,13 +509,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
         # check all timesteps_total report the same value
         self.assertTrue(all([log[TIMESTEPS_TOTAL] == 5 for log in logs2]))
         # check that none of the logs report timesteps_this_iter
-        self.assertFalse(any([hasattr(log, TIMESTEPS_THIS_ITER)
-                              for log in logs2]))
+        self.assertFalse(
+            any([hasattr(log, TIMESTEPS_THIS_ITER) for log in logs2]))
 
         # Test that timesteps_total and episodes_total are reported when
         # timesteps_this_iter and episodes_this_iter despite only return zeros.
-        results3 = [dict(timesteps_this_iter=0, episodes_this_iter=0)
-                    for i in range(10)]
+        results3 = [
+            dict(timesteps_this_iter=0, episodes_this_iter=0)
+            for i in range(10)
+        ]
         logs3, _ = self.checkAndReturnConsistentLogs(results3)
 
         self.assertTrue(all([log[TIMESTEPS_TOTAL] == 0 for log in logs3]))
@@ -526,8 +526,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
         # Test that timesteps_total and episodes_total are properly counted
         # when timesteps_this_iter and episodes_this_iter report non-zero
         # values.
-        results4 = [dict(timesteps_this_iter=3, episodes_this_iter=i)
-                    for i in range(10)]
+        results4 = [
+            dict(timesteps_this_iter=3, episodes_this_iter=i)
+            for i in range(10)
+        ]
         logs4, _ = self.checkAndReturnConsistentLogs(results4)
 
         # The last reported result is a single item dict, {"done": True}.
@@ -539,10 +541,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(logs4[-2][EPISODES_TOTAL], 45)
 
     def testAllValuesReceived(self):
-        results1 = [dict(timesteps_total=(i + 1),
-                         my_score=i**2,
-                         done=i == 4)
-                    for i in range(5)]
+        results1 = [
+            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4)
+            for i in range(5)
+        ]
 
         logs1, _ = self.checkAndReturnConsistentLogs(results1)
 
@@ -565,9 +567,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testNoDoneReceived(self):
         # repeat same test but without explicitly reporting done=True
-        results1 = [dict(timesteps_total=(i + 1),
-                         my_score=i**2)
-                    for i in range(5)]
+        results1 = [
+            dict(timesteps_total=(i + 1), my_score=i**2) for i in range(5)
+        ]
 
         logs1, trials = self.checkAndReturnConsistentLogs(results1)
 
@@ -598,7 +600,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # check that the last reported score was not repeated
         self.assertRaises(KeyError, lambda: logs1[-1]["my_score"])
-
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
