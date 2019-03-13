@@ -1,8 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-import numbers
-from collections import Iterable
 
 try:
     import skopt
@@ -67,21 +65,19 @@ class SkOptSearch(SuggestionAlgorithm):
                  **kwargs):
         assert skopt is not None, """skopt must be installed!
             You can install Skopt with the command:
-            `pip install scikit-optimize`."""    
-        assert type(max_concurrent) is int and max_concurrent > 0    
+            `pip install scikit-optimize`."""
+        assert type(max_concurrent) is int and max_concurrent > 0
         if points_to_evaluate:
-            self._validate_points_to_evaluate(points_to_evaluate, len(parameter_names))
+            self._validate_points_to_evaluate(points_to_evaluate,
+                                              len(parameter_names))
         if evaluated_rewards:
-            self._validate_evaluated_rewards(evaluated_rewards)
+            assert isinstance(evaluated_rewards, list)
         self._initial_points = []
         if points_to_evaluate and evaluated_rewards:
-            if len(points_to_evaluate) != len(evaluated_rewards):
-                raise ValueError(
-                    "`points_to_evaluate` and `evaluated_rewards` should have the same length"
-                )
+            assert len(points_to_evaluate) == len(evaluated_rewards)
             optimizer.tell(points_to_evaluate, evaluated_rewards)
         elif points_to_evaluate:
-            self._initial_points = points_to_evaluate  
+            self._initial_points = points_to_evaluate
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
         self._reward_attr = reward_attr
@@ -90,26 +86,10 @@ class SkOptSearch(SuggestionAlgorithm):
         super(SkOptSearch, self).__init__(**kwargs)
 
     def _validate_points_to_evaluate(self, points, dimension):
-        if not isinstance(points, list):
-                raise TypeError(
-                    "`points_to_evaluate` should be a list, but got %s" %
-                    type(points))
+        assert isinstance(points, list)
         for point in points:
-            if not isinstance(point, list):
-                raise TypeError(
-                    "`points_to_evaluate` should be a list, but got %s" %
-                    type(point))
-            if len(point) != dimension:
-                raise TypeError(
-                    """each point in `points_to_evaluate` should 
-                    have the same dimensions as `parameter_names`"""
-                )
-    
-    def _validate_evaluated_rewards(self, rewards):
-        if not isinstance(rewards, list):
-            raise TypeError(
-                "`evaluated_rewards` should be a list, but got %s" %
-                type(points_to_evaluate))
+            assert isinstance(point, list)
+            assert len(point) == dimension
 
     def _suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
