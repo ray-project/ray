@@ -95,4 +95,5 @@ if __name__ == "__main__":
             },
         },
         scheduler=pbt,
+        reuse_actors=True,
         verbose=False)

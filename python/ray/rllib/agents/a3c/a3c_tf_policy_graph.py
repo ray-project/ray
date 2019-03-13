@@ -58,7 +58,7 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "prev_actions": self.prev_actions,
             "prev_rewards": self.prev_rewards,
             "is_training": self._get_is_training_placeholder(),
-        }, observation_space, logit_dim, self.config["model"])
+        }, observation_space, action_space, logit_dim, self.config["model"])
         action_dist = dist_class(self.model.outputs)
         self.vf = self.model.value_function()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,

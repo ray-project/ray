@@ -827,51 +827,63 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(k2.remote(1)) == 2
     assert ray.get(m.remote(1)) == 2
 
-    def test_submit_api(shutdown_only):
-        ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
 
-        @ray.remote
-        def f(n):
-            return list(range(n))
+def test_submit_api(shutdown_only):
+    ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
 
-        @ray.remote
-        def g():
+    @ray.remote
+    def f(n):
+        return list(range(n))
+
+    @ray.remote
+    def g():
+        return ray.get_gpu_ids()
+
+    assert f._remote([0], num_return_vals=0) is None
+    id1 = f._remote(args=[1], num_return_vals=1)
+    assert ray.get(id1) == [0]
+    id1, id2 = f._remote(args=[2], num_return_vals=2)
+    assert ray.get([id1, id2]) == [0, 1]
+    id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
+    assert ray.get([id1, id2, id3]) == [0, 1, 2]
+    assert ray.get(
+        g._remote(args=[], num_cpus=1, num_gpus=1,
+                  resources={"Custom": 1})) == [0]
+    infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
+    assert ray.get(g._remote()) == []
+    ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
+    assert len(ready_ids) == 0
+    assert len(remaining_ids) == 1
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self, x, y=0):
+            self.x = x
+            self.y = y
+
+        def method(self, a, b=0):
+            return self.x, self.y, a, b
+
+        def gpu_ids(self):
             return ray.get_gpu_ids()
 
-        assert f._remote([0], num_return_vals=0) is None
-        id1 = f._remote(args=[1], num_return_vals=1)
-        assert ray.get(id1) == [0]
-        id1, id2 = f._remote(args=[2], num_return_vals=2)
-        assert ray.get([id1, id2]) == [0, 1]
-        id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
-        assert ray.get([id1, id2, id3]) == [0, 1, 2]
-        assert ray.get(
-            g._remote(
-                args=[], num_cpus=1, num_gpus=1,
-                resources={"Custom": 1})) == [0]
-        infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
-        ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
-        assert len(ready_ids) == 0
-        assert len(remaining_ids) == 1
+    @ray.remote
+    class Actor2(object):
+        def __init__(self):
+            pass
 
-        @ray.remote
-        class Actor(object):
-            def __init__(self, x, y=0):
-                self.x = x
-                self.y = y
+        def method(self):
+            pass
 
-            def method(self, a, b=0):
-                return self.x, self.y, a, b
+    a = Actor._remote(
+        args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
 
-            def gpu_ids(self):
-                return ray.get_gpu_ids()
+    a2 = Actor2._remote()
+    ray.get(a2.method._remote())
 
-        a = Actor._remote(
-            args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
-
-        id1, id2, id3, id4 = a.method._remote(
-            args=["test"], kwargs={"b": 2}, num_return_vals=4)
-        assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
+    id1, id2, id3, id4 = a.method._remote(
+        args=["test"], kwargs={"b": 2}, num_return_vals=4)
+    assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
 def test_get_multiple(shutdown_only):
@@ -2492,10 +2504,6 @@ def test_global_state_api(shutdown_only):
 
     object_table = ray.global_state.object_table()
     assert len(object_table) == 2
-
-    assert object_table[x_id]["IsEviction"][0] is False
-
-    assert object_table[result_id]["IsEviction"][0] is False
 
     assert object_table[x_id] == ray.global_state.object_table(x_id)
     object_table_entry = ray.global_state.object_table(result_id)

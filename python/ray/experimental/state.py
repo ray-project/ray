@@ -243,13 +243,7 @@ class GlobalState(object):
         object_info = {
             "DataSize": entry.ObjectSize(),
             "Manager": entry.Manager(),
-            "IsEviction": [entry.IsEviction()],
         }
-
-        for i in range(1, gcs_entry.EntriesLength()):
-            entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
-                gcs_entry.Entries(i), 0)
-            object_info["IsEviction"].append(entry.IsEviction())
 
         return object_info
 

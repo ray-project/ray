@@ -310,6 +310,9 @@ class Trainable(object):
             self._restore(checkpoint_dict)
         else:
             self._restore(checkpoint_path)
+        self._time_since_restore = 0.0
+        self._timesteps_since_restore = 0
+        self._iterations_since_restore = 0
         self._restored = True
 
     def restore_from_object(self, obj):
@@ -350,12 +353,16 @@ class Trainable(object):
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
 
+        This method is optional, but can be implemented to speed up algorithms
+        such as PBT, and to allow performance optimizations such as running
+        experiments with reuse_actors=True.
+
         Args:
             new_config (dir): Updated hyperparameter configuration
                 for the trainable.
 
         Returns:
-            True if configuration reset successfully else False.
+            True if reset was successful else False.
         """
         return False
 
