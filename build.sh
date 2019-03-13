@@ -139,7 +139,7 @@ else
   fi
 
   if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-    bazel build //:ray_pkg -c opt --verbose_failures
+    bazel build //:ray_pkg -c opt --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
     # Copy files and keep them writeable. This is a workaround, as Bazel
     # marks all generated files non-writeable. If we would just copy them
     # over without adding write permission, the copy would fail the next time.
