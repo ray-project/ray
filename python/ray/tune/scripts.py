@@ -14,16 +14,16 @@ def cli():
 @cli.command()
 @click.argument("experiment_path", required=True, type=str)
 @click.option(
-    '--sort', default=None, type=str, help='Select which column to sort on.')
+    "--sort", default=None, type=str, help="Select which column to sort on.")
 @click.option(
-    '--output',
-    '-o',
+    "--output",
+    "-o",
     default=None,
     type=str,
-    help='Output information to a pickle file.')
+    help="Select file to output information to.")
 @click.option(
-    '--filter',
-    '--filter_op',
+    "--filter",
+    "--filter_op",
     nargs=3,
     default=None,
     type=str,
@@ -36,16 +36,16 @@ def list_trials(experiment_path, sort, output, filter_op):
 @cli.command()
 @click.argument("project_path", required=True, type=str)
 @click.option(
-    '--sort', default=None, type=str, help='Select which column to sort on.')
+    "--sort", default=None, type=str, help="Select which column to sort on.")
 @click.option(
-    '--output',
-    '-o',
+    "--output",
+    "-o",
     default=None,
     type=str,
-    help='Select filename to output information to.')
+    help="Select file to output information to.")
 @click.option(
-    '--filter',
-    '--filter_op',
+    "--filter",
+    "--filter_op",
     nargs=3,
     default=None,
     type=str,
