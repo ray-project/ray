@@ -30,7 +30,6 @@ def cli():
     help="Select filter in the format '<column> <operator> <value>'.")
 def list_trials(experiment_path, sort, output, filter_op):
     """Lists trials in the directory subtree starting at the given path."""
-    print(filter_op)
     commands.list_trials(experiment_path, sort, output, filter_op)
 
 
