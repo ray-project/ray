@@ -201,8 +201,8 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
-RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
-                           bool is_worker, const JobID &driver_id,
+RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &client_id,
+                           bool is_worker, const DriverID &driver_id,
                            const Language &language)
     : client_id_(client_id),
       is_worker_(is_worker),
@@ -323,11 +323,11 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   return ray::Status::OK();
 }
 
-ray::Status RayletClient::PushError(const JobID &job_id, const std::string &type,
+ray::Status RayletClient::PushError(const DriverID &driver_id, const std::string &type,
                                     const std::string &error_message, double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreatePushErrorRequest(
-      fbb, to_flatbuf(fbb, job_id), fbb.CreateString(type),
+      fbb, to_flatbuf(fbb, driver_id), fbb.CreateString(type),
       fbb.CreateString(error_message), timestamp);
   fbb.Finish(message);
 
@@ -373,7 +373,7 @@ ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
   if (!status.ok()) return status;
   auto reply_message =
       flatbuffers::GetRoot<ray::protocol::PrepareActorCheckpointReply>(reply.get());
-  checkpoint_id = ObjectID::from_binary(reply_message->checkpoint_id()->str());
+  checkpoint_id = ActorCheckpointID::from_binary(reply_message->checkpoint_id()->str());
   return ray::Status::OK();
 }
 

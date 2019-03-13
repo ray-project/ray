@@ -93,8 +93,10 @@ void ObjectManager::HandleObjectAdded(
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   auto it = local_objects_.find(object_id);
   RAY_CHECK(it != local_objects_.end());
+  auto object_info = it->second.object_info;
   local_objects_.erase(it);
-  ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
+  ray::Status status =
+      object_directory_->ReportObjectRemoved(object_id, client_id_, object_info);
 }
 
 ray::Status ObjectManager::SubscribeObjAdded(
@@ -127,8 +129,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   // no ordering guarantee between notifications.
   return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
-      [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids,
-             bool created) {
+      [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids) {
         // Exit if the Pull request has already been fulfilled or canceled.
         auto it = pull_requests_.find(object_id);
         if (it == pull_requests_.end()) {
@@ -578,9 +579,8 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
       // Lookup remaining objects.
       wait_state.requested_objects.insert(object_id);
       RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
-          object_id,
-          [this, wait_id](const ObjectID &lookup_object_id,
-                          const std::unordered_set<ClientID> &client_ids, bool created) {
+          object_id, [this, wait_id](const ObjectID &lookup_object_id,
+                                     const std::unordered_set<ClientID> &client_ids) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             if (!client_ids.empty()) {
               wait_state.remaining.erase(lookup_object_id);
@@ -618,7 +618,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
           wait_id, object_id,
           [this, wait_id](const ObjectID &subscribe_object_id,
-                          const std::unordered_set<ClientID> &client_ids, bool created) {
+                          const std::unordered_set<ClientID> &client_ids) {
             if (!client_ids.empty()) {
               RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
@@ -767,7 +767,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
   // TODO: trash connection on failure.
   auto info =
       flatbuffers::GetRoot<object_manager_protocol::ConnectClientMessage>(message);
-  ClientID client_id = ObjectID::from_binary(info->client_id()->str());
+  ClientID client_id = ClientID::from_binary(info->client_id()->str());
   bool is_transfer = info->is_transfer();
   conn->SetClientID(client_id);
   if (is_transfer) {
@@ -885,7 +885,7 @@ void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &con
                                        const uint8_t *message) {
   auto free_request =
       flatbuffers::GetRoot<object_manager_protocol::FreeRequestMessage>(message);
-  std::vector<ObjectID> object_ids = from_flatbuf(*free_request->object_ids());
+  std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*free_request->object_ids());
   // This RPC should come from another Object Manager.
   // Keep this request local.
   bool local_only = true;

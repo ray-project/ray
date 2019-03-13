@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import gym
 import numpy as np
+import random
 import time
 import unittest
 from collections import Counter
@@ -27,7 +28,7 @@ class MockPolicyGraph(PolicyGraph):
                         prev_reward_batch=None,
                         episodes=None,
                         **kwargs):
-        return [0] * len(obs_batch), [], {}
+        return [random.choice([0, 1])] * len(obs_batch), [], {}
 
     def postprocess_trajectory(self,
                                batch,
@@ -138,6 +139,7 @@ class TestPolicyEvaluator(unittest.TestCase):
                 "prev_rewards", "prev_actions"
         ]:
             self.assertIn(key, batch)
+            self.assertGreater(np.abs(np.mean(batch[key])), 0)
 
         def to_prev(vec):
             out = np.zeros_like(vec)

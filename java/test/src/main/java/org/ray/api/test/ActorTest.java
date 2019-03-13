@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.UniqueId;
@@ -90,6 +91,7 @@ public class ActorTest extends BaseTest {
 
   @Test
   public void testUnreconstructableActorObject() throws InterruptedException {
+    TestUtils.skipTestUnderSingleProcess();
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
     // Call an actor method.
     RayObject value = Ray.call(Counter::getValue, counter);

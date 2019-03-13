@@ -67,40 +67,49 @@ class SkOptSearch(SuggestionAlgorithm):
                  **kwargs):
         assert skopt is not None, """skopt must be installed!
             You can install Skopt with the command:
-            `pip install scikit-optimize`."""
-        assert type(max_concurrent) is int and max_concurrent > 0
-        if points_to_evaluate is None:
-            points_to_evaluate = []
-        elif not isinstance(points_to_evaluate[0], (list, tuple)):
-            points_to_evaluate = [points_to_evaluate]
-        if not isinstance(points_to_evaluate, list):
-            raise ValueError(
-                "`points_to_evaluate` should be a list, but got %s" %
-                type(points_to_evaluate))
-        if isinstance(evaluated_rewards, Iterable):
-            evaluated_rewards = list(evaluated_rewards)
-        elif isinstance(evaluated_rewards, numbers.Number):
-            evaluated_rewards = [evaluated_rewards]
+            `pip install scikit-optimize`."""    
+        assert type(max_concurrent) is int and max_concurrent > 0    
+        if points_to_evaluate:
+            self._validate_points_to_evaluate(points_to_evaluate, len(parameter_names))
+        if evaluated_rewards:
+            self._validate_evaluated_rewards(evaluated_rewards)
         self._initial_points = []
         if points_to_evaluate and evaluated_rewards:
-            if not (isinstance(evaluated_rewards, Iterable)
-                    or isinstance(evaluated_rewards, numbers.Number)):
-                raise ValueError(
-                    "`evaluated_rewards` should be an iterable or a scalar, got %s"
-                    % type(evaluated_rewards))
             if len(points_to_evaluate) != len(evaluated_rewards):
                 raise ValueError(
                     "`points_to_evaluate` and `evaluated_rewards` should have the same length"
                 )
             optimizer.tell(points_to_evaluate, evaluated_rewards)
         elif points_to_evaluate:
-            self._initial_points = points_to_evaluate
+            self._initial_points = points_to_evaluate  
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
         self._reward_attr = reward_attr
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
         super(SkOptSearch, self).__init__(**kwargs)
+
+    def _validate_points_to_evaluate(self, points, dimension):
+        if not isinstance(points, list):
+                raise TypeError(
+                    "`points_to_evaluate` should be a list, but got %s" %
+                    type(points))
+        for point in points:
+            if not isinstance(point, list):
+                raise TypeError(
+                    "`points_to_evaluate` should be a list, but got %s" %
+                    type(point))
+            if len(point) != dimension:
+                raise TypeError(
+                    """each point in `points_to_evaluate` should 
+                    have the same dimensions as `parameter_names`"""
+                )
+    
+    def _validate_evaluated_rewards(self, rewards):
+        if not isinstance(rewards, list):
+            raise TypeError(
+                "`evaluated_rewards` should be a list, but got %s" %
+                type(points_to_evaluate))
 
     def _suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
