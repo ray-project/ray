@@ -138,7 +138,8 @@ def list_trials(experiment_path,
             Corresponds to Experiment.local_dir/Experiment.name.
         sort (str): Key to sort by.
         output (str): Name of file where output is saved.
-        filter_op (tuple): Filter output in the form (column, operator, value).
+        filter_op (str): Filter operation in the format
+            "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
         result_keys (list): Keys of last result that are displayed.
     """
@@ -170,7 +171,7 @@ def list_trials(experiment_path,
             experiment_path, '')
 
     if filter_op:
-        col, op, val = filter_op
+        col, op, val = filter_op.split(' ')
         col_type = checkpoints_df[col].dtype
         if is_numeric_dtype(col_type):
             val = float(val)
@@ -217,7 +218,8 @@ def list_experiments(project_path,
             Corresponds to Experiment.local_dir.
         sort (str): Key to sort by.
         output (str): Name of file where output is saved.
-        filter_op (tuple): Filter output in the form (column, operator, value).
+        filter_op (str): Filter operation in the format
+            "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
     """
     _check_tabulate()
@@ -270,7 +272,7 @@ def list_experiments(project_path,
     info_df = info_df[col_keys]
 
     if filter_op:
-        col, op, val = filter_op
+        col, op, val = filter_op.split(' ')
         col_type = info_df[col].dtype
         if is_numeric_dtype(col_type):
             val = float(val)

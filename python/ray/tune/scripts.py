@@ -24,7 +24,7 @@ def cli():
 @click.option(
     "--filter",
     "--filter_op",
-    nargs=3,
+    nargs=1,
     default=None,
     type=str,
     help="Select filter in the format '<column> <operator> <value>'.")
@@ -46,7 +46,7 @@ def list_trials(experiment_path, sort, output, filter_op):
 @click.option(
     "--filter",
     "--filter_op",
-    nargs=3,
+    nargs=1,
     default=None,
     type=str,
     help="Select filter in the format '<column> <operator> <value>'.")

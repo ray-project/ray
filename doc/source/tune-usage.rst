@@ -527,7 +527,7 @@ Here are a few examples of command line calls.
     +------------------+-----------------------+------------+
     Dropped columns: ['status', 'last_update_time']
 
-- ``tune list-experiments``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns.
+- ``tune list-experiments``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``.
 
 .. code-block:: bash
 
@@ -539,6 +539,16 @@ Here are a few examples of command line calls.
     | pbt_test             |             10 |                0 |                   0 |
     | test                 |              1 |                0 |                   0 |
     | hyperband_test       |              1 |                0 |                   1 |
+    +----------------------+----------------+------------------+---------------------+
+    Dropped columns: ['error_trials', 'last_updated']
+
+    $ tune list-experiments [PROJECT_DIR] --filter "total_trials <= 1" --sort name
+
+    +----------------------+----------------+------------------+---------------------+
+    | name                 |   total_trials |   running_trials |   terminated_trials |
+    |----------------------+----------------+------------------+---------------------|
+    | hyperband_test       |              1 |                0 |                   1 |
+    | test                 |              1 |                0 |                   0 |
     +----------------------+----------------+------------------+---------------------+
     Dropped columns: ['error_trials', 'last_updated']
 
