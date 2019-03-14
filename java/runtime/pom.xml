@@ -84,7 +84,7 @@
         <directory>src/main/resources</directory>
       </resource>
       <resource>
-        <directory>bin</directory>
+        <directory>native_dependencies</directory>
       </resource>
     </resources>
     <plugins>
