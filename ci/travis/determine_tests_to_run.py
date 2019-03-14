@@ -11,7 +11,7 @@ def list_changed_files(commit_range):
     """Returns a list of names of files changed in the given commit range.
 
     The function works by opening a subprocess and running git. If an error
-    occurs while running git, a RuntimeError will be raised.
+    occurs while running git, the script will abort.
 
     Args:
         commit_range (string): The commit range to diff, consisting of the two
@@ -22,18 +22,8 @@ def list_changed_files(commit_range):
     """
 
     command = ["git", "diff", "--name-only", commit_range]
-    proc = subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    out, err = proc.communicate()
-    if proc.returncode != 0:
-        raise RuntimeError("Command {cmdline} failed with code {returncode}, "
-                           "stderr was:\n{stderr}\n".format(
-                               cmdline=command,
-                               returncode=proc.returncode,
-                               stderr=err.decode()))
-
-    return list(filter(None, (s.strip() for s in out.decode().splitlines())))
+    out = subprocess.check_output(command)
+    return [s.strip() for s in out.decode().splitlines() if s is not None]
 
 
 if __name__ == "__main__":
@@ -49,6 +39,8 @@ if __name__ == "__main__":
 
         files = list_changed_files(os.environ["TRAVIS_COMMIT_RANGE"].replace(
             "...", ".."))
+
+        skip_prefix_list = ["doc/", "examples/", "dev/", "docker/", "kubernetes/", "site/"]
 
         for changed_file in files:
             if changed_file.startswith("python/ray/tune/"):
@@ -66,21 +58,10 @@ if __name__ == "__main__":
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif changed_file.startswith(
-                    "java/") and not changed_file.startswith("java/doc/"):
+            elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
-            elif changed_file.startswith("doc/"):
-                # nothing is run but linting in this case
-                pass
-            elif changed_file.startswith("examples/"):
-                pass
-            elif changed_file.startswith("dev/"):
-                pass
-            elif changed_file.startswith("docker/"):
-                pass
-            elif changed_file.startswith("kubernetes/"):
-                pass
-            elif changed_file.startswith("site/"):
+            elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list)
+                # nothing is run but linting in these cases
                 pass
             elif changed_file.startswith("src/"):
                 RAY_CI_TUNE_AFFECTED = 1
