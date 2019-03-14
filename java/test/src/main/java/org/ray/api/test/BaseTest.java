@@ -14,7 +14,7 @@ public class BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseTest.class);
 
-  private List<String> filesToDelete;
+  private List<File> filesToDelete;
 
   @BeforeMethod
   public void setUpBase(Method method) {
@@ -22,18 +22,21 @@ public class BaseTest {
         + method.getDeclaringClass().getName() + "." + method.getName());
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
     Ray.init();
-    // Delete socket files in tear-down.
-    filesToDelete = ImmutableList.of(Ray.getRuntimeContext().getRayletSocketName(),
-        Ray.getRuntimeContext().getObjectStoreSocketName());
+    // These files need to be deleted after each test case.
+    filesToDelete = ImmutableList.of(
+        new File(Ray.getRuntimeContext().getRayletSocketName()),
+        new File(Ray.getRuntimeContext().getObjectStoreSocketName())
+    );
+    // Make sure the files will be deleted even if the test doesn't exit gracefully.
+    filesToDelete.forEach(File::deleteOnExit);
   }
 
   @AfterMethod
   public void tearDownBase() {
-
     Ray.shutdown();
 
-    for (String file : filesToDelete) {
-      new File(file).delete();
+    for (File file : filesToDelete) {
+      file.delete();
     }
 
     // Unset system properties.
