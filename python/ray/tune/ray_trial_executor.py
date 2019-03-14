@@ -397,10 +397,26 @@ class RayTrialExecutor(TrialExecutor):
         """Saves the trial's state to a checkpoint."""
         trial._checkpoint.storage = storage
         trial._checkpoint.last_result = trial.last_result
+
+        subdir = ""
+        if trial.keep_best_checkpoint:
+            mean_rew_since_checkpoint = sum(trial.results_since_checkpoint) / len(trial.results_since_checkpoint)
+            if mean_rew_since_checkpoint > trial.past_avg:
+                subdir = "best/"
+                trial.past_avg = mean_rew_since_checkpoint
+            trial.results_since_checkpoint = []
+
         if storage == Checkpoint.MEMORY:
             trial._checkpoint.value = trial.runner.save_to_object.remote()
         else:
-            trial._checkpoint.value = ray.get(trial.runner.save.remote())
+            trial._checkpoint.value, folder_path = ray.get(trial.runner.save_checkpoint_relative.remote(subdir))
+
+            if trial.prefix[subdir]["limit"]:
+                if len(trial.prefix[subdir]["history"]) == trial.prefix[subdir]["limit"]:
+                    ray.get(trial.runner.delete_checkpoint_relative.remote(trial.prefix[subdir]["history"][-1]))
+                    trial.prefix[subdir]["history"].pop()
+                trial.prefix[subdir]["history"].insert(0, folder_path)
+
         return trial._checkpoint.value
 
     def restore(self, trial, checkpoint=None):

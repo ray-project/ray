@@ -253,6 +253,8 @@ class Trial(object):
                  stopping_criterion=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
+                 keep_best_checkpoint=None,
+                 keep_checkpoint=None,
                  export_formats=None,
                  restore_path=None,
                  upload_dir=None,
@@ -288,6 +290,8 @@ class Trial(object):
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
+        self.keep_best_checkpoint = keep_best_checkpoint
+        self.keep_checkpoint = keep_checkpoint
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
         self.export_formats = export_formats
@@ -301,6 +305,18 @@ class Trial(object):
         self.num_failures = 0
 
         self.custom_trial_name = None
+        self.results_since_checkpoint = []
+        self.past_avg = float("-inf")
+        self.prefix = {
+            "best/": {
+                "history": [],
+                "limit": keep_best_checkpoint
+            },
+            "": {
+                "history": [],
+                "limit": keep_checkpoint
+            }
+        }
 
         # AutoML fields
         self.results = None
@@ -496,6 +512,9 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
+
+        if self.keep_best_checkpoint:
+            self.results_since_checkpoint.append(result["episode_reward_mean"])
 
     def _get_trainable_cls(self):
         return ray.tune.registry._global_registry.get(

@@ -104,6 +104,8 @@ def run(args, parser):
             args.experiment_name: {  # i.e. log to ~/ray_results/default
                 "run": args.run,
                 "checkpoint_freq": args.checkpoint_freq,
+                "keep_checkpoint": args.keep_checkpoint,
+                "keep_best_checkpoint": args.keep_best_checkpoint,
                 "local_dir": args.local_dir,
                 "resources_per_trial": (
                     args.resources_per_trial and
