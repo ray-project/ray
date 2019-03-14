@@ -510,7 +510,7 @@ Tune CLI (Experimental)
 
 Here are a few examples of command line calls.
 
-- ``tune list-trials``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns.
+- ``tune list-trials``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``.
 
 .. code-block:: bash
 
@@ -524,6 +524,15 @@ Here are a few examples of command line calls.
     | MyTrainableClass | 2_height=99,width=90  | 518dbe95   |
     | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
     | MyTrainableClass | 4_height=90,width=69  | ae4e02fb   |
+    +------------------+-----------------------+------------+
+    Dropped columns: ['status', 'last_update_time']
+
+    $ tune list-trials [EXPERIMENT_DIR] --filter "trial_id == 7b99a28a"
+
+    +------------------+-----------------------+------------+
+    | trainable_name   | experiment_tag        | trial_id   |
+    |------------------+-----------------------+------------|
+    | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
     +------------------+-----------------------+------------+
     Dropped columns: ['status', 'last_update_time']
 
