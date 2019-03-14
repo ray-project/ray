@@ -9,9 +9,11 @@ import os.path as osp
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
-from ray.tune.util import flatten_dict
+from shutil import copyfile
 
-from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARARM_FILE, EXPR_RESULT_FILE
+from ray.tune.util import flatten_dict
+from ray.tune.result import EXPR_PROGRESS_FILE, \
+    EXPR_PARARM_FILE, EXPR_RESULT_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +22,13 @@ def get_best_trial(trial_list, metric):
     """Retrieve the best trial."""
     return max(trial_list, key=lambda trial: trial.last_result.get(metric, 0))
 
+
 def get_sorted_trials(trial_list, metric):
-    return sorted(trial_list, key=lambda trial: trial.last_result.get(metric, 0), reverse=True)
+    return sorted(
+        trial_list,
+        key=lambda trial: trial.last_result.get(metric, 0),
+        reverse=True)
+
 
 def get_best_result(trial_list, metric):
     """Retrieve the last result from the best trial."""
@@ -37,13 +44,16 @@ def _parse_results(res_path):
                 pass
         res_dict = flatten_dict(json.loads(line.strip()))
     except Exception:
-        logger.exception("Importing {} failed...Perhaps empty?".format(res_path))
+        logger.exception(
+            "Importing {} failed...Perhaps empty?".format(res_path))
     return res_dict
+
 
 def _parse_configs(cfg_path):
     with open(cfg_path) as f:
         cfg_dict = flatten_dict(json.load(f))
     return cfg_dict
+
 
 def _resolve(directory, result_filename):
     try:
@@ -56,6 +66,7 @@ def _resolve(directory, result_filename):
     except Exception:
         return None
 
+
 def load_results_to_df(directory, result_name=EXPR_RESULT_FILE):
     """ Loads results to pandas dataframe """
     exp_directories = [
@@ -65,6 +76,7 @@ def load_results_to_df(directory, result_name=EXPR_RESULT_FILE):
     data = [_resolve(d, result_name) for d in exp_directories]
     data = [d for d in data if d is not None]
     return pd.DataFrame(data)
+
 
 def generate_plotly_dim_dict(df, field):
     dim_dict = {}
