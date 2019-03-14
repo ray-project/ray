@@ -11,6 +11,8 @@ import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from ray.tune.util import flatten_dict
 
+from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARARM_FILE, EXPR_RESULT_FILE
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,36 +37,33 @@ def _parse_results(res_path):
                 pass
         res_dict = flatten_dict(json.loads(line.strip()))
     except Exception:
-        logger.exception("Importing %s failed...Perhaps empty?" % res_path)
+        logger.exception("Importing {} failed...Perhaps empty?".format(res_path))
     return res_dict
 
 def _parse_configs(cfg_path):
-    try:
-        with open(cfg_path) as f:
-            cfg_dict = flatten_dict(json.load(f))
-    except Exception:
-        logger.exception("Config parsing failed.")
+    with open(cfg_path) as f:
+        cfg_dict = flatten_dict(json.load(f))
     return cfg_dict
 
-def _resolve(directory, result_fname):
+def _resolve(directory, result_filename):
     try:
-        resultp = osp.join(directory, result_fname)
-        res_dict = _parse_results(resultp)
-        cfgp = osp.join(directory, "params.json")
+        result_path = osp.join(directory, result_filename)
+        res_dict = _parse_results(result_path)
+        cfgp = osp.join(directory, EXPR_PARARM_FILE)
         cfg_dict = _parse_configs(cfgp)
         cfg_dict.update(res_dict)
         return cfg_dict
     except Exception:
         return None
 
-def load_results_to_df(directory, result_name="result.json"):
+def load_results_to_df(directory, result_name=EXPR_RESULT_FILE):
     """ Loads results to pandas dataframe """
     exp_directories = [
         dirpath for dirpath, dirs, files in os.walk(directory) for f in files
         if f == result_name
     ]
     data = [_resolve(d, result_name) for d in exp_directories]
-    data = [d for d in data if d]
+    data = [d for d in data if d is not None]
     return pd.DataFrame(data)
 
 def generate_plotly_dim_dict(df, field):
@@ -87,7 +86,7 @@ def generate_plotly_dim_dict(df, field):
 
 
 def get_result_path(trial_dir):
-    return os.path.join(trial_dir, "progress.csv")
+    return os.path.join(trial_dir, EXPR_PROGRESS_FILE)
 
 
 def get_result_backup_path(result_path):
