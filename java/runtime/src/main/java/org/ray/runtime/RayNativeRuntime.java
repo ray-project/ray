@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.lang3.SystemUtils;
 import org.ray.api.Checkpointable.Checkpoint;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
@@ -85,14 +84,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       // Load native libraries.
       String[] libraries = new String[]{"raylet_library_java", "plasma_java"};
       for (String library : libraries) {
-        String fileName = "lib" + library;
-        if (SystemUtils.IS_OS_LINUX) {
-          fileName += ".so";
-        } else if (SystemUtils.IS_OS_MAC) {
-          fileName += ".dylib";
-        } else {
-          throw new RuntimeException("Unsupported OS: " + System.getProperty("os.name"));
-        }
+        String fileName = System.mapLibraryName(library);
         // Copy the file from resources to a temp dir, and load the native library.
         File file = File.createTempFile(fileName, "");
         file.deleteOnExit();
