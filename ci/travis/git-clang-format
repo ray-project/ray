@@ -40,8 +40,10 @@ desc = '''
 If zero or one commits are given, run clang-format on all lines that differ
 between the working directory and <commit>, which defaults to HEAD.  Changes are
 only applied to the working directory.
+
 If two commits are given (requires --diff), run clang-format on all lines in the
 second <commit> that differ from the first <commit>.
+
 The following git-config settings set the default of the corresponding option:
   clangFormat.binary
   clangFormat.commit
@@ -102,9 +104,10 @@ def main():
                                     default_extensions),
                  help=('comma-separated list of file extensions to format, '
                        'excluding the period and case-insensitive')),
-  p.add_argument('--exclude', help='Exclude files matching this regex.')
   p.add_argument('-f', '--force', action='store_true',
                  help='allow changes to unstaged files')
+  # This option is added by ray.
+  p.add_argument('--exclude', help='Exclude files matching this regex.')
   p.add_argument('-p', '--patch', action='store_true',
                  help='select hunks interactively')
   p.add_argument('-q', '--quiet', action='count', default=0,
@@ -134,13 +137,15 @@ def main():
     if len(commits) > 2:
       die('at most two commits allowed; %d given' % len(commits))
   changed_lines = compute_diff_and_extract_lines(commits, files)
+  # The following code block is added by ray to exclude some files.
   removed_files = []
   if opts.exclude:
     for filename in changed_lines.keys():
       if re.match(opts.exclude, filename):
         removed_files.append(filename)
     for filename in removed_files:
-      del changed_lines[filename] 
+      del changed_lines[filename]
+
   if opts.verbose >= 1:
     ignored_files = set(changed_lines)
   filter_by_extension(changed_lines, opts.extensions.lower().split(','))
@@ -190,6 +195,7 @@ def main():
 
 def load_git_config(non_string_options=None):
   """Return the git configuration as a dictionary.
+
   All options are assumed to be strings unless in `non_string_options`, in which
   is a dictionary mapping option name (in lower case) to either "--bool" or
   "--int"."""
@@ -207,8 +213,10 @@ def load_git_config(non_string_options=None):
 
 def interpret_args(args, dash_dash, default_commit):
   """Interpret `args` as "[commits] [--] [files]" and return (commits, files).
+
   It is assumed that "--" and everything that follows has been removed from
   args and placed in `dash_dash`.
+
   If "--" is present (i.e., `dash_dash` is non-empty), the arguments to its
   left (if present) are taken as commits.  Otherwise, the arguments are checked
   from left to right if they are commits or files.  If commits are not given,
@@ -280,6 +288,7 @@ def compute_diff_and_extract_lines(commits, files):
 
 def compute_diff(commits, files):
   """Return a subprocess object producing the diff from `commits`.
+
   The return value's `stdin` file object will produce a patch with the
   differences between the working directory and the first commit if a single
   one was specified, or the difference between both specified commits, filtered
@@ -296,8 +305,10 @@ def compute_diff(commits, files):
 
 def extract_lines(patch_file):
   """Extract the changed lines in `patch_file`.
+
   The return value is a dictionary mapping filename to a list of (start_line,
   line_count) pairs.
+
   The input must have been produced with ``-U0``, meaning unidiff format with
   zero lines of context.  The return value is a dict mapping filename to a
   list of line `Range`s."""
@@ -320,6 +331,7 @@ def extract_lines(patch_file):
 
 def filter_by_extension(dictionary, allowed_extensions):
   """Delete every key in `dictionary` that doesn't have an allowed extension.
+
   `allowed_extensions` must be a collection of lowercase file extensions,
   excluding the period."""
   allowed_extensions = frozenset(allowed_extensions)
@@ -339,6 +351,7 @@ def cd_to_toplevel():
 
 def create_tree_from_workdir(filenames):
   """Create a new git tree with the given files from the working directory.
+
   Returns the object ID (SHA-1) of the created tree."""
   return create_tree(filenames, '--stdin')
 
@@ -346,6 +359,7 @@ def create_tree_from_workdir(filenames):
 def run_clang_format_and_save_to_tree(changed_lines, revision=None,
                                       binary='clang-format', style=None):
   """Run clang-format on each file and save the result to a git tree.
+
   Returns the object ID (SHA-1) of the created tree."""
   def iteritems(container):
       try:
@@ -377,6 +391,7 @@ def run_clang_format_and_save_to_tree(changed_lines, revision=None,
 
 def create_tree(input_lines, mode):
   """Create a tree object from the given input.
+
   If mode is '--stdin', it must be a list of filenames.  If mode is
   '--index-info' is must be a list of values suitable for "git update-index
   --index-info", such as "<mode> <SP> <sha1> <TAB> <filename>".  Any other mode
@@ -397,8 +412,10 @@ def create_tree(input_lines, mode):
 def clang_format_to_blob(filename, line_ranges, revision=None,
                          binary='clang-format', style=None):
   """Run clang-format on the given file and save the result to a git blob.
+
   Runs on the file in `revision` if not None, or on the file in the working
   directory if `revision` is None.
+
   Returns the object ID (SHA-1) of the created blob."""
   clang_format_cmd = [binary]
   if style:
@@ -461,6 +478,7 @@ def temporary_index_file(tree=None):
 
 def create_temporary_index(tree=None):
   """Create a temporary index file and return the created file's path.
+
   If `tree` is not None, use that as the tree to read in.  Otherwise, an
   empty index is created."""
   gitdir = run('git', 'rev-parse', '--git-dir')
@@ -486,6 +504,7 @@ def print_diff(old_tree, new_tree):
 
 def apply_changes(old_tree, new_tree, force=False, patch_mode=False):
   """Apply the changes in `new_tree` to the working directory.
+
   Bails if there are local changes in those files and not `force`.  If
   `patch_mode`, runs `git checkout --patch` to select hunks interactively."""
   changed_files = run('git', 'diff-tree', '--diff-filter=M', '-r', '-z',
@@ -570,4 +589,5 @@ def convert_string(bytes_input):
         return str(bytes_input)
 
 if __name__ == '__main__':
-    main()
+  main()
+
