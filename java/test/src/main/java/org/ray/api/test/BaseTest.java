@@ -1,6 +1,9 @@
 package org.ray.api.test;
 
+import com.google.common.collect.ImmutableList;
+import java.io.File;
 import java.lang.reflect.Method;
+import java.util.List;
 import org.ray.api.Ray;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,27 +14,29 @@ public class BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseTest.class);
 
+  private List<String> filesToDelete;
+
   @BeforeMethod
   public void setUpBase(Method method) {
     LOGGER.info("===== Running test: "
         + method.getDeclaringClass().getName() + "." + method.getName());
-    System.setProperty("ray.home", "../..");
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
     Ray.init();
+    // Delete socket files in tear-down.
+    filesToDelete = ImmutableList.of(Ray.getRuntimeContext().getRayletSocketName(),
+        Ray.getRuntimeContext().getObjectStoreSocketName());
   }
 
   @AfterMethod
   public void tearDownBase() {
-    // TODO(qwang): This is double check to check that the socket file is removed actually.
-    // We could not enable this until `systemInfo` enabled.
-    //File rayletSocketFIle = new File(Ray.systemInfo().rayletSocketName());
+
     Ray.shutdown();
 
-    //remove raylet socket file
-    //rayletSocketFIle.delete();
+    for (String file : filesToDelete) {
+      new File(file).delete();
+    }
 
-    // unset system properties
-    System.clearProperty("ray.home");
+    // Unset system properties.
     System.clearProperty("ray.resources");
   }
 
