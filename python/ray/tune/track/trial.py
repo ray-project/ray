@@ -1,7 +1,5 @@
 import os
-import pickle
 from ray.tune.logger import UnifiedLogger, Logger
-# from track.sync import SyncHook
 import uuid
 from datetime import datetime
 from .autodetect import (

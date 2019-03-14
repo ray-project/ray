@@ -1,9 +1,7 @@
 import pickle
 
 from .trial import Trial
-from .project import Project
 from .log import debug
-from .convenience import absl_flags
 
 
 _trial = None
@@ -70,5 +68,5 @@ def trial_dir():
     return _trial.trial_dir()
 
 
-__all__ = ["Trial", "Project", "trial", "absl_flags", "debug", "metric",
+__all__ = ["Trial", "trial", "debug", "metric",
            "save", "load", "trial_dir"]
