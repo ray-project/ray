@@ -6,6 +6,7 @@ from datetime import datetime
 
 import copy
 import io
+import inspect
 import logging
 import os
 import pickle
@@ -450,8 +451,21 @@ class Trainable(object):
 def wrap_function(train_func):
     from ray.tune.function_runner import FunctionRunner
 
+
+    function_args = inspect.getargspec(train_func).args
+    use_track = ("reporter" not in  function_args and len(function_args) == 1)
+
     class WrappedFunc(FunctionRunner):
         def _trainable_func(self):
             return train_func
 
-    return WrappedFunc
+    class WrappedTrackFunc(FunctionRunner):
+        def _trainable_func(self, config, reporter):
+            import track
+            track.init(tune_reporter=reporter, log_dir=os.getcwd())
+            output = train_func(config)
+            reporter(done=True)
+            track.shutdown()
+            return output
+
+    return WrappedTrackFunc if use_track else WrappedFunc
