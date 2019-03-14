@@ -3,6 +3,7 @@ package org.ray.runtime;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import java.io.File;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -95,8 +96,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         // Copy the file from resources to a temp dir, and load the native library.
         File file = File.createTempFile(fileName, "");
         file.deleteOnExit();
-        Files.copy(RayNativeRuntime.class.getResourceAsStream("/" + fileName),
-            Paths.get(file.getAbsolutePath()), StandardCopyOption.REPLACE_EXISTING);
+        InputStream in = RayNativeRuntime.class.getResourceAsStream("/" + fileName);
+        Preconditions.checkNotNull(in, "{} doesn't exist.", fileName);
+        Files.copy(in, Paths.get(file.getAbsolutePath()), StandardCopyOption.REPLACE_EXISTING);
         System.load(file.getAbsolutePath());
       }
     } catch (Exception e) {
