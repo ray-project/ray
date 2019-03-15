@@ -19,6 +19,7 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.util import warn_if_slow
 from ray.tune.web_server import TuneServer
 
+_MEMORY_USAGE_WARNED = False
 MAX_DEBUG_TRIALS = 20
 
 logger = logging.getLogger(__name__)
@@ -375,7 +376,11 @@ class TrialRunner(object):
             return "Memory usage on this node: {}/{} GB{}".format(
                 round(used_gb, 1), round(total_gb, 1), warn)
         except ImportError:
-            return ("Unknown memory usage. Please run `pip install psutil` "
+            if not _MEMORY_USAGE_WARNED:
+                global _MEMORY_USAGE_WARNED
+                _MEMORY_USAGE_WARNED = True
+                return (
+                    "Unknown memory usage. Please run `pip install psutil` "
                     "(or ray[debug]) to resolve)")
 
     def has_resources(self, resources):
