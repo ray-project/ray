@@ -139,7 +139,7 @@ cc_library(
         "cpp/src/plasma/thirdparty/ae/ae_select.c",
         "cpp/src/plasma/thirdparty/ae/config.h",
         "cpp/src/plasma/thirdparty/ae/zmalloc.h",
-        "cpp/src/plasma/thirdparty/dlmalloc.cc",
+        "cpp/src/plasma/thirdparty/dlmalloc.c",
     ],
     strip_include_prefix = "cpp/src",
     deps = [":plasma_client"],
