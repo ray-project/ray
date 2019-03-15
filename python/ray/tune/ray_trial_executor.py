@@ -440,6 +440,7 @@ class RayTrialExecutor(TrialExecutor):
         if storage == Checkpoint.MEMORY:
             trial._checkpoint.value = trial.runner.save_to_object.remote()
         else:
+            # If enabled, saves best checkpoints into a best folder
             if trial.keep_best_checkpoints_num and trial.results_since_checkpoint_cnt > 0:
                 mean_rew_since_checkpoint = trial.results_since_checkpoint_sum / trial.results_since_checkpoint_cnt
                 if mean_rew_since_checkpoint > trial.best_checkpoint_reward:

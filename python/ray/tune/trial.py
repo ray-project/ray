@@ -516,9 +516,12 @@ class Trial(object):
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
 
-        if not math.isnan(result["episode_reward_mean"]):
-            self.results_since_checkpoint_sum += result["episode_reward_mean"]
-            self.results_since_checkpoint_cnt += 1
+        try:
+            if not math.isnan(result["episode_reward_mean"]):
+                self.results_since_checkpoint_sum += result["episode_reward_mean"]
+                self.results_since_checkpoint_cnt += 1
+        except KeyError as e:
+            raise KeyError("Warning: result has no key episde_reward_mean. Keep_best_checkpoint flag will not work.")
 
 
     def _get_trainable_cls(self):
