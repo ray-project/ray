@@ -1,0 +1,3 @@
+# build config
+build --compilation_mode=opt
+

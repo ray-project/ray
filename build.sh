@@ -123,7 +123,7 @@ else
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
 
   if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-    bazel build //:ray_java_pkg -c opt --verbose_failures
+    bazel build //:ray_java_pkg --verbose_failures
     # The following are soft links.
     # TODO: remove this once cmake is removed
     mkdir -p $ROOT_DIR/build/src/ray/raylet/
@@ -139,7 +139,7 @@ else
   fi
 
   if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-    bazel build //:ray_pkg -c opt --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
+    bazel build //:ray_pkg --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
     # Copy files and keep them writeable. This is a workaround, as Bazel
     # marks all generated files non-writeable. If we would just copy them
     # over without adding write permission, the copy would fail the next time.

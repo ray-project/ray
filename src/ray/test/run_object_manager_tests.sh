@@ -6,7 +6,7 @@
 set -e
 set -x
 
-bazel build -c opt "//:object_manager_stress_test" "//:object_manager_test" "@plasma//:plasma_store_server"
+bazel build "//:object_manager_stress_test" "//:object_manager_test" "@plasma//:plasma_store_server"
 
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"
@@ -27,16 +27,16 @@ LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
 
 # Allow cleanup commands to fail.
-bazel run -c opt //:redis-cli -- -p 6379 shutdown || true
+./bazel-genfiles/redis-cli -p 6379 shutdown || true
 sleep 1s
-bazel run -c opt //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
+./bazel-genfiles/redis-server --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
 # Run tests.
 ./bazel-bin/object_manager_stress_test $STORE_EXEC
 sleep 1s
 # Use timeout=1000ms for the Wait tests.
 ./bazel-bin/object_manager_test $STORE_EXEC 1000
-bazel run -c opt //:redis-cli -- -p 6379 shutdown
+./bazel-genfiles/redis-cli -p 6379 shutdown
 sleep 1s
 
 # Include raylet integration test once it's ready.

@@ -60,6 +60,7 @@ def run_experiments(experiments,
                     verbose=2,
                     resume=False,
                     queue_trials=False,
+                    reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True):
     """Runs and blocks until all trials finish.
@@ -84,6 +85,10 @@ def run_experiments(experiments,
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
             automatic scale-up.
+        reuse_actors (bool): Whether to reuse actors between different trials
+            when possible. This can drastically speed up experiments that start
+            and stop actors often (e.g., PBT in time-multiplexing mode). This
+            requires trials to have the same resource requirements.
         trial_executor (TrialExecutor): Manage the execution of trials.
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
@@ -161,6 +166,7 @@ def run_experiments(experiments,
             server_port=server_port,
             verbose=bool(verbose > 1),
             queue_trials=queue_trials,
+            reuse_actors=reuse_actors,
             trial_executor=trial_executor)
 
     if verbose:

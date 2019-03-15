@@ -149,6 +149,7 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/third_party/workspace.bzl
+java/runtime/bin/
 
 # python virtual env
 venv
