@@ -220,7 +220,7 @@ class Trainable(object):
         folder_path = os.path.join(self.logdir, relative_dir)
         return self.save(folder_path), os.path.join(folder_path, "checkpoint_{}".format(self._iteration))
 
-    def delete_checkpoint_relative(self, path):
+    def delete_checkpoint(self, path):
         """Removes subdirectory within checkpoint_folder
 
         Parameters

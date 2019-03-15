@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 from collections import namedtuple
 import ray.cloudpickle as cloudpickle
 import copy
@@ -253,8 +254,8 @@ class Trial(object):
                  stopping_criterion=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
-                 keep_best_checkpoint=None,
-                 keep_checkpoint=None,
+                 keep_best_checkpoints_num=None,
+                 keep_checkpoints_num=None,
                  export_formats=None,
                  restore_path=None,
                  upload_dir=None,
@@ -290,8 +291,8 @@ class Trial(object):
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
-        self.keep_best_checkpoint = keep_best_checkpoint
-        self.keep_checkpoint = keep_checkpoint
+        self.keep_best_checkpoints_num = keep_best_checkpoints_num
+        self.keep_checkpoints_num = keep_checkpoints_num
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
         self.export_formats = export_formats
@@ -305,16 +306,18 @@ class Trial(object):
         self.num_failures = 0
 
         self.custom_trial_name = None
-        self.results_since_checkpoint = []
-        self.past_avg = float("-inf")
+        self.results_since_checkpoint_sum = 0
+        self.results_since_checkpoint_cnt = 0
+
+        self.best_checkpoint_reward = float("-inf")
         self.prefix = {
-            "best/": {
+            "best": {
                 "history": [],
-                "limit": keep_best_checkpoint
+                "limit": keep_best_checkpoints_num
             },
             "": {
                 "history": [],
-                "limit": keep_checkpoint
+                "limit": keep_checkpoints_num
             }
         }
 
@@ -513,8 +516,10 @@ class Trial(object):
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
 
-        if self.keep_best_checkpoint:
-            self.results_since_checkpoint.append(result["episode_reward_mean"])
+        if not math.isnan(result["episode_reward_mean"]):
+            self.results_since_checkpoint_sum += result["episode_reward_mean"]
+            self.results_since_checkpoint_cnt += 1
+
 
     def _get_trainable_cls(self):
         return ray.tune.registry._global_registry.get(
