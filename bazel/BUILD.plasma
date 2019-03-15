@@ -1,5 +1,26 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
+java_library(
+    name = "org_apache_arrow_arrow_plasma",
+    srcs = glob(["java/plasma/src/main/java/**/*.java"]),
+    data = [":plasma_client_java"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@org_slf4j_slf4j_api//jar",
+    ],
+)
+
+java_binary(
+    name = "org_apache_arrow_arrow_plasma_test",
+    srcs = ["java/plasma/src/test/java/org/apache/arrow/plasma/PlasmaClientTest.java"],
+    main_class = "org.apache.arrow.plasma.PlasmaClientTest",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":org_apache_arrow_arrow_plasma",
+        "@junit_junit//jar",
+    ],
+)
+
 cc_library(
     name = "arrow",
     srcs = [
@@ -8,6 +29,7 @@ cc_library(
         "cpp/src/arrow/status.cc",
         "cpp/src/arrow/util/io-util.cc",
         "cpp/src/arrow/util/logging.cc",
+        "cpp/src/arrow/util/memory.cc",
         "cpp/src/arrow/util/thread-pool.cc",
     ],
     hdrs = [
@@ -19,6 +41,7 @@ cc_library(
         "cpp/src/arrow/util/io-util.h",
         "cpp/src/arrow/util/logging.h",
         "cpp/src/arrow/util/macros.h",
+        "cpp/src/arrow/util/memory.h",
         "cpp/src/arrow/util/string_builder.h",
         "cpp/src/arrow/util/string_view.h",
         "cpp/src/arrow/util/thread-pool.h",
@@ -41,6 +64,7 @@ cc_library(
         "cpp/src/plasma/io.cc",
         "cpp/src/plasma/malloc.cc",
         "cpp/src/plasma/plasma.cc",
+        "cpp/src/plasma/plasma_allocator.cc",
         "cpp/src/plasma/protocol.cc",
     ],
     hdrs = [
@@ -52,6 +76,7 @@ cc_library(
         "cpp/src/plasma/io.h",
         "cpp/src/plasma/malloc.h",
         "cpp/src/plasma/plasma.h",
+        "cpp/src/plasma/plasma_allocator.h",
         "cpp/src/plasma/plasma_generated.h",
         "cpp/src/plasma/protocol.h",
     ],
@@ -65,7 +90,7 @@ cc_library(
 )
 
 cc_binary(
-    name = "plasma_client_java.so",
+    name = "libplasma_java.so",
     srcs = [
         "cpp/src/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.cc",
         "cpp/src/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.h",
@@ -101,8 +126,8 @@ genrule(
 
 genrule(
     name = "plasma-jni-darwin-compat",
-    srcs = [":plasma_client_java.so"],
-    outs = ["plasma_client_java.dylib"],
+    srcs = [":libplasma_java.so"],
+    outs = ["libplasma_java.dylib"],
     cmd = "cp $< $@",
     output_to_bindir = 1,
 )
@@ -110,8 +135,8 @@ genrule(
 filegroup(
     name = "plasma_client_java",
     srcs = select({
-        "@bazel_tools//src/conditions:darwin": [":plasma_client_java.dylib"],
-        "//conditions:default": [":plasma_client_java.so"],
+        "@bazel_tools//src/conditions:darwin": [":libplasma_java.dylib"],
+        "//conditions:default": [":libplasma_java.so"],
     }),
     visibility = ["//visibility:public"],
 )
@@ -122,10 +147,12 @@ cc_library(
         "cpp/src/plasma/dlmalloc.cc",
         "cpp/src/plasma/events.cc",
         "cpp/src/plasma/eviction_policy.cc",
+        "cpp/src/plasma/external_store.cc",
     ],
     hdrs = [
         "cpp/src/plasma/events.h",
         "cpp/src/plasma/eviction_policy.h",
+        "cpp/src/plasma/external_store.h",
         "cpp/src/plasma/store.h",
         "cpp/src/plasma/thirdparty/ae/ae.h",
         "cpp/src/plasma/thirdparty/ae/ae_epoll.c",
