@@ -12,7 +12,6 @@ from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 def _validate_warmstart(parameter_names, points_to_evaluate,
                         evaluated_rewards):
-    dimension = len(parameter_names)
     if points_to_evaluate:
         if not isinstance(points_to_evaluate, list):
             raise TypeError(
@@ -24,7 +23,7 @@ def _validate_warmstart(parameter_names, points_to_evaluate,
                     "points_to_evaluate expected to include list, got {}.".
                     format(point))
 
-        if not len(points_to_evaluate) == dimension:
+        if not len(points_to_evaluate[0]) == len(parameter_names):
             raise ValueError(
                 "Dim of points_to_evaluate {}".format(points_to_evaluate) +
                 " and parameter_names {}".format(parameter_names) +
@@ -35,10 +34,10 @@ def _validate_warmstart(parameter_names, points_to_evaluate,
             raise TypeError(
                 "evaluated_rewards expected to be a list, got {}.".format(
                     type(evaluated_rewards)))
-        if not len(evaluated_rewards) == dimension:
+        if not len(evaluated_rewards) == len(points_to_evaluate):
             raise ValueError(
                 "Dim of evaluated_rewards {}".format(evaluated_rewards) +
-                " and parameter_names {}".format(parameter_names) +
+                " and points_to_evaluate {}".format(points_to_evaluate) +
                 " do not match.")
 
 
