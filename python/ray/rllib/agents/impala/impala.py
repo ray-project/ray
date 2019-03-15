@@ -110,6 +110,8 @@ class ImpalaAgent(Agent):
         self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
                                                self.remote_evaluators,
                                                self.config["optimizer"])
+        if self.config["entropy_coeff"] > 0:
+            raise ValueError("IMPALA entropy_coeff must be negative")
 
     @override(Agent)
     def _train(self):
