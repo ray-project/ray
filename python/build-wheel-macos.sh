@@ -33,6 +33,8 @@ NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5")
 
+./ci/travis/install-bazel.sh
+
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
 
