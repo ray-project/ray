@@ -395,7 +395,8 @@ class TrialRunner(object):
         trials_done = all(trial.is_finished() for trial in self._trials)
         wait_for_trial = trials_done and not self._search_alg.is_finished()
         self._update_trial_queue(blocking=wait_for_trial)
-        trial = self._scheduler_alg.choose_trial_to_run(self)
+        with warn_if_slow("choose_trial_to_run"):
+            trial = self._scheduler_alg.choose_trial_to_run(self)
         return trial
 
     def _process_events(self):

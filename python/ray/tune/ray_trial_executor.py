@@ -19,7 +19,7 @@ from ray.tune.util import warn_if_slow
 logger = logging.getLogger(__name__)
 
 BOTTLENECK_WARN_PERIOD_S = 60
-NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 0.001
+NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 
 
 class _LocalWrapper(object):
@@ -286,10 +286,11 @@ class RayTrialExecutor(TrialExecutor):
             self._last_nontrivial_wait = time.time()
         if time.time() - self._last_nontrivial_wait > BOTTLENECK_WARN_PERIOD_S:
             logger.warn(
-                "Over the last {} seconds, ".format(BOTTLENECK_WARN_PERIOD_S) +
-                "the Tune event loop has been backlogged processing new "
-                "results. Consider increasing your period of result reporting "
-                "to improve performance.")
+                "Over the last {} seconds, the Tune event loop has been "
+                "backlogged processing new results. Consider increasing your "
+                "period of result reporting to improve performance.".format(
+                    BOTTLENECK_WARN_PERIOD_S))
+
             self._last_nontrivial_wait = time.time()
         return self._running[result_id]
 
