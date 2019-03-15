@@ -23,7 +23,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-EDITOR = os.getenv('EDITOR', 'vim')
+EDITOR = os.getenv("EDITOR", "vim")
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S (%A)"
 
