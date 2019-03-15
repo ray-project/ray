@@ -27,7 +27,7 @@ DEFAULT_CONFIG = with_common_config({
     # Value Function Loss coefficient
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
-    "entropy_coeff": -0.01,
+    "entropy_coeff": 0.01,
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
@@ -54,8 +54,8 @@ class A3CAgent(Agent):
         else:
             policy_cls = self._policy_graph
 
-        if self.config["entropy_coeff"] > 0:
-            raise ValueError("A2C entropy_coeff cannot be positive")
+        if self.config["entropy_coeff"] < 0:
+            raise DeprecationWarning("entropy_coeff must be >= 0")
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
