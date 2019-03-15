@@ -23,7 +23,8 @@ class FaultInjectEnv(gym.Env):
 
     def step(self, action):
         if self.config.worker_index in self.config["bad_indices"]:
-            raise ValueError("This is a simulated error from {}".format(self.config.worker_index))
+            raise ValueError("This is a simulated error from {}".format(
+                self.config.worker_index))
         return self.env.step(action)
 
 
@@ -67,11 +68,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
         self.doTest("PG", {"optimizer": {}}, fn=self._doTestFaultFatal)
 
     def testAsyncGrads(self):
-        self.doTest("A3C", {
-            "optimizer": {
-                "grads_per_step": 1
-            }
-        })
+        self.doTest("A3C", {"optimizer": {"grads_per_step": 1}})
 
     def testAsyncReplay(self):
         self.doTest(
