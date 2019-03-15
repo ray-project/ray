@@ -17,19 +17,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.utils import _random_string
 from ray.tests.cluster_utils import Cluster
-
-
-def relevant_errors(error_type):
-    return [info for info in ray.error_info() if info["type"] == error_type]
-
-
-def wait_for_errors(error_type, num_errors, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(relevant_errors(error_type)) >= num_errors:
-            return
-        time.sleep(0.1)
-    raise Exception("Timing out of wait.")
+from ray.tests.utils import (relevant_errors, wait_for_errors)
 
 
 @pytest.fixture
