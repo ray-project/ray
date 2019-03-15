@@ -3,11 +3,11 @@ package org.ray.api.runtime;
 import java.util.List;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.RuntimeContext;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
-import org.ray.api.options.BaseTaskOptions;
 import org.ray.api.options.CallOptions;
 
 /**
@@ -94,4 +94,6 @@ public interface RayRuntime {
    */
   <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
       ActorCreationOptions options);
+
+  RuntimeContext getRuntimeContext();
 }

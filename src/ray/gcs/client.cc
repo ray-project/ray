@@ -112,12 +112,14 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   driver_table_.reset(new DriverTable({primary_context_}, this));
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
   // Tables below would be sharded.
-  object_table_.reset(new ObjectTable(shard_contexts_, this, command_type));
+  object_table_.reset(new ObjectTable(shard_contexts_, this));
   raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
   profile_table_.reset(new ProfileTable(shard_contexts_, this));
+  actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
+  actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
   command_type_ = command_type;
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
@@ -218,6 +220,14 @@ ErrorTable &AsyncGcsClient::error_table() { return *error_table_; }
 DriverTable &AsyncGcsClient::driver_table() { return *driver_table_; }
 
 ProfileTable &AsyncGcsClient::profile_table() { return *profile_table_; }
+
+ActorCheckpointTable &AsyncGcsClient::actor_checkpoint_table() {
+  return *actor_checkpoint_table_;
+}
+
+ActorCheckpointIdTable &AsyncGcsClient::actor_checkpoint_id_table() {
+  return *actor_checkpoint_id_table_;
+}
 
 }  // namespace gcs
 

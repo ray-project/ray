@@ -110,7 +110,7 @@ Python API
 
 The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
-Here is an example of the basic usage:
+Here is an example of the basic usage (for a more complete example, see `custom_env.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__):
 
 .. code-block:: python
 
@@ -174,6 +174,11 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
     RUNNING trials:
      - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
+
+Custom Training Workflows
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the `basic training example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your agent once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#training-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_train_fn.py>`__.
 
 Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -296,7 +301,9 @@ Approach 1: Use the Agent API and update the environment between calls to ``trai
                 phase = 1
             else:
                 phase = 0
-            agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
+            agent.optimizer.foreach_evaluator(
+                lambda ev: ev.foreach_env(
+                    lambda env: env.set_phase(phase)))
 
     ray.init()
     tune.run_experiments({
@@ -330,7 +337,9 @@ Approach 2: Use the callbacks API to update the environment on new training resu
         else:
             phase = 0
         agent = info["agent"]
-        agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
+        agent.optimizer.foreach_evaluator(
+            lambda ev: ev.foreach_env(
+                lambda env: env.set_phase(phase)))
 
     ray.init()
     tune.run_experiments({
@@ -363,6 +372,20 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
     openaigym.video.0.31401.video000000.mp4
     openaigym.video.0.31403.video000000.meta.json
     openaigym.video.0.31403.video000000.mp4
+
+Episode Traces
+~~~~~~~~~~~~~~
+
+You can use the `data output API <rllib-offline.html>`__ to save episode traces for debugging. For example, the following command will run PPO while saving episode traces to ``/tmp/debug``.
+
+.. code-block:: bash
+
+    rllib train --run=PPO --env=CartPole-v0 \
+        --config='{"output": "/tmp/debug", "output_compress_columns": []}'
+
+    # episode traces will be saved in /tmp/debug, for example
+    output-2019-02-23_12-02-03_worker-2_0.json
+    output-2019-02-23_12-02-04_worker-1_0.json
 
 Log Verbosity
 ~~~~~~~~~~~~~

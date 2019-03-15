@@ -8,7 +8,7 @@ import threading
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TIMESTEPS_TOTAL
+from ray.tune.result import TIMESTEPS_TOTAL, TRAINING_ITERATION
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +28,24 @@ class StatusReporter(object):
         self._lock = threading.Lock()
         self._error = None
         self._done = False
+        self._iteration = 0
 
     def __call__(self, **kwargs):
         """Report updated training status.
+
+        Pass in `done=True` when the training job is completed.
 
         Args:
             kwargs: Latest training result status.
 
         Example:
             >>> reporter(mean_accuracy=1, training_iteration=4)
+            >>> reporter(mean_accuracy=1, training_iteration=4, done=True)
         """
 
         with self._lock:
             self._latest_result = self._last_result = kwargs.copy()
+        self._iteration += 1
 
     def _get_and_clear_status(self):
         if self._error:
@@ -48,11 +53,17 @@ class StatusReporter(object):
         if self._done and not self._latest_result:
             if not self._last_result:
                 raise TuneError("Trial finished without reporting result!")
+            logger.warning("Trial detected as completed; re-reporting "
+                           "last result. To avoid this, include done=True "
+                           "upon the last reporter call.")
             self._last_result.update(done=True)
+            self._last_result.setdefault(TRAINING_ITERATION, self._iteration)
             return self._last_result
         with self._lock:
             res = self._latest_result
             self._latest_result = None
+            if res:
+                res.setdefault(TRAINING_ITERATION, self._iteration)
             return res
 
     def _stop(self):

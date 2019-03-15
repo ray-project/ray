@@ -225,7 +225,8 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         return sample_timesteps, train_timesteps
 
 
-@ray.remote(num_cpus=0)
+# reserve 1 CPU so that our method calls don't get stalled
+@ray.remote(num_cpus=1)
 class ReplayActor(object):
     """A replay buffer shard.
 
@@ -391,7 +392,7 @@ class LearnerThread(threading.Thread):
         if replay is not None:
             prio_dict = {}
             with self.grad_timer:
-                grad_out = self.local_evaluator.compute_apply(replay)
+                grad_out = self.local_evaluator.learn_on_batch(replay)
                 for pid, info in grad_out.items():
                     prio_dict[pid] = (
                         replay.policy_batches[pid].data.get("batch_indexes"),

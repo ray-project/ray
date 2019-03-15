@@ -9,12 +9,14 @@
 #include "ray/raylet/task_spec.h"
 #include "ray/status.h"
 
+using ray::ActorCheckpointID;
 using ray::ActorID;
+using ray::ClientID;
+using ray::DriverID;
 using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::UniqueID;
-using ray::ClientID;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
@@ -67,8 +69,8 @@ class RayletClient {
   /// additional message will be sent to register as one.
   /// \param driver_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
-  RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
-               bool is_worker, const JobID &driver_id, const Language &language);
+  RayletClient(const std::string &raylet_socket, const ClientID &client_id,
+               bool is_worker, const DriverID &driver_id, const Language &language);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
@@ -129,7 +131,7 @@ class RayletClient {
   /// \param The error message.
   /// \param The timestamp of the error.
   /// \return ray::Status.
-  ray::Status PushError(const JobID &job_id, const std::string &type,
+  ray::Status PushError(const DriverID &driver_id, const std::string &type,
                         const std::string &error_message, double timestamp);
 
   /// Store some profile events in the GCS.
@@ -145,6 +147,22 @@ class RayletClient {
   /// or send it to all the object stores.
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
+
+  /// Request raylet backend to prepare a checkpoint for an actor.
+  ///
+  /// \param actor_id ID of the actor.
+  /// \param checkpoint_id ID of the new checkpoint (output parameter).
+  /// \return ray::Status.
+  ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
+                                     ActorCheckpointID &checkpoint_id);
+
+  /// Notify raylet backend that an actor was resumed from a checkpoint.
+  ///
+  /// \param actor_id ID of the actor.
+  /// \param checkpoint_id ID of the checkpoint from which the actor was resumed.
+  /// \return ray::Status.
+  ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
+                                               const ActorCheckpointID &checkpoint_id);
 
   Language GetLanguage() const { return language_; }
 

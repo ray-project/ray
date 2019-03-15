@@ -56,7 +56,10 @@ class RayParams(object):
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
-            UI, which is a Jupyter notebook.
+            UI, which displays the status of the Ray cluster.
+        logging_level: Logging level, default will be logging.INFO.
+        logging_format: Logging format, default contains a timestamp,
+            filename, line number, and message. See ray_constants.py.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -67,6 +70,10 @@ class RayParams(object):
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
+        include_java (bool): If True, the raylet backend can also support
+            Java worker.
+        java_worker_options (str): The command options for Java worker.
+        load_code_from_local: Whether load code from local file or from GCS.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -84,11 +91,10 @@ class RayParams(object):
                  node_manager_port=None,
                  node_ip_address=None,
                  object_id_seed=None,
-                 num_workers=None,
                  local_mode=False,
                  driver_mode=None,
-                 redirect_worker_output=False,
-                 redirect_output=True,
+                 redirect_worker_output=None,
+                 redirect_output=None,
                  num_redis_shards=None,
                  redis_max_clients=None,
                  redis_password=None,
@@ -103,6 +109,9 @@ class RayParams(object):
                  temp_dir=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
+                 include_java=False,
+                 java_worker_options=None,
+                 load_code_from_local=False,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -116,7 +125,6 @@ class RayParams(object):
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
         self.node_ip_address = node_ip_address
-        self.num_workers = num_workers
         self.local_mode = local_mode
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
@@ -133,6 +141,9 @@ class RayParams(object):
         self.temp_dir = temp_dir
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
+        self.include_java = include_java
+        self.java_worker_options = java_worker_options
+        self.load_code_from_local = load_code_from_local
         self._internal_config = _internal_config
         self._check_usage()
 
@@ -143,7 +154,7 @@ class RayParams(object):
             kwargs: The keyword arguments to set corresponding fields.
         """
         for arg in kwargs:
-            if (hasattr(self, arg)):
+            if hasattr(self, arg):
                 setattr(self, arg, kwargs[arg])
             else:
                 raise ValueError("Invalid RayParams parameter in"
@@ -158,7 +169,7 @@ class RayParams(object):
             kwargs: The keyword arguments to set corresponding fields.
         """
         for arg in kwargs:
-            if (hasattr(self, arg)):
+            if hasattr(self, arg):
                 if getattr(self, arg) is None:
                     setattr(self, arg, kwargs[arg])
             else:
@@ -176,7 +187,12 @@ class RayParams(object):
                 "'GPU' should not be included in the resource dictionary. Use "
                 "num_gpus instead.")
 
-        if self.num_workers is not None:
-            raise Exception(
-                "The 'num_workers' argument is deprecated. Please use "
-                "'num_cpus' instead.")
+        if self.redirect_worker_output is not None:
+            raise DeprecationWarning(
+                "The redirect_worker_output argument is deprecated. To "
+                "control logging to the driver, use the 'log_to_driver' "
+                "argument to 'ray.init()'")
+
+        if self.redirect_output is not None:
+            raise DeprecationWarning(
+                "The redirect_output argument is deprecated.")

@@ -11,7 +11,6 @@
   <modules>
     <module>api</module>
     <module>runtime</module>
-    <module>cli</module>
     <module>test</module>
     <module>tutorial</module>
   </modules>
@@ -29,7 +28,7 @@
       <dependency>
         <groupId>org.apache.arrow</groupId>
         <artifactId>arrow-plasma</artifactId>
-        <version>0.10.0</version>
+        <version>0.13.0-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>de.ruedigermoeller</groupId>

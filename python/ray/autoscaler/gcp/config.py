@@ -11,6 +11,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 from googleapiclient import discovery, errors
 
+logger = logging.getLogger(__name__)
+
 crm = discovery.build("cloudresourcemanager", "v1")
 iam = discovery.build("iam", "v1")
 compute = discovery.build("compute", "v1")
@@ -30,12 +32,11 @@ DEFAULT_SERVICE_ACCOUNT_ROLES = ("roles/storage.objectAdmin",
 MAX_POLLS = 12
 POLL_INTERVAL = 5
 
-logger = logging.getLogger(__name__)
-
 
 def wait_for_crm_operation(operation):
     """Poll for cloud resource manager operation until finished."""
-    logger.info("Waiting for operation {} to finish...".format(operation))
+    logger.info("wait_for_crm_operation: "
+                "Waiting for operation {} to finish...".format(operation))
 
     for _ in range(MAX_POLLS):
         result = crm.operations().get(name=operation["name"]).execute()
@@ -43,7 +44,7 @@ def wait_for_crm_operation(operation):
             raise Exception(result["error"])
 
         if "done" in result and result["done"]:
-            logger.info("Done.")
+            logger.info("wait_for_crm_operation: Operation done.")
             break
 
         time.sleep(POLL_INTERVAL)
@@ -53,8 +54,9 @@ def wait_for_crm_operation(operation):
 
 def wait_for_compute_global_operation(project_name, operation):
     """Poll for global compute operation until finished."""
-    logger.info("Waiting for operation {} to finish...".format(
-        operation["name"]))
+    logger.info("wait_for_compute_global_operation: "
+                "Waiting for operation {} to finish...".format(
+                    operation["name"]))
 
     for _ in range(MAX_POLLS):
         result = compute.globalOperations().get(
@@ -65,7 +67,8 @@ def wait_for_compute_global_operation(project_name, operation):
             raise Exception(result["error"])
 
         if result["status"] == "DONE":
-            logger.info("Done.")
+            logger.info("wait_for_compute_global_operation: "
+                        "Operation done.")
             break
 
         time.sleep(POLL_INTERVAL)
@@ -124,7 +127,6 @@ def _configure_project(config):
     assert config["provider"]["project_id"] is not None, (
         "'project_id' must be set in the 'provider' section of the autoscaler"
         " config. Notice that the project id must be globally unique.")
-
     project = _get_project(project_id)
 
     if project is None:
@@ -158,8 +160,9 @@ def _configure_iam_role(config):
     service_account = _get_service_account(email, config)
 
     if service_account is None:
-        logger.info("Creating new service account {}".format(
-            DEFAULT_SERVICE_ACCOUNT_ID))
+        logger.info("_configure_iam_role: "
+                    "Creating new service account {}".format(
+                        DEFAULT_SERVICE_ACCOUNT_ID))
 
         service_account = _create_service_account(
             DEFAULT_SERVICE_ACCOUNT_ID, DEFAULT_SERVICE_ACCOUNT_CONFIG, config)
@@ -231,7 +234,8 @@ def _configure_key_pair(config):
 
         # Create a key since it doesn't exist locally or in GCP
         if not key_found and not os.path.exists(private_key_path):
-            logger.info("Creating new key pair {}".format(key_name))
+            logger.info("_configure_key_pair: "
+                        "Creating new key pair {}".format(key_name))
             public_key, private_key = generate_rsa_key_pair()
 
             _create_project_ssh_key_pair(project, public_key, ssh_user)
@@ -256,8 +260,9 @@ def _configure_key_pair(config):
         "Private key file {} not found for user {}"
         "".format(private_key_path, ssh_user))
 
-    logger.info("Private key not specified in config, using {}"
-                "".format(private_key_path))
+    logger.info("_configure_key_pair: "
+                "Private key not specified in config, using"
+                "{}".format(private_key_path))
 
     config["auth"]["ssh_private_key"] = private_key_path
 
@@ -380,19 +385,28 @@ def _add_iam_policy_binding(service_account, roles):
 
     policy = crm.projects().getIamPolicy(resource=project_id).execute()
 
+    already_configured = True
+
     for role in roles:
         role_exists = False
         for binding in policy["bindings"]:
             if binding["role"] == role:
                 if member_id not in binding["members"]:
                     binding["members"].append(member_id)
+                    already_configured = False
                 role_exists = True
 
         if not role_exists:
+            already_configured = False
             policy["bindings"].append({
                 "members": [member_id],
                 "role": role,
             })
+
+    if already_configured:
+        # In some managed environments, an admin needs to grant the
+        # roles, so only call setIamPolicy if needed.
+        return
 
     result = crm.projects().setIamPolicy(
         resource=project_id, body={

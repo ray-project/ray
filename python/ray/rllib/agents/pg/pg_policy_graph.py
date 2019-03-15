@@ -39,7 +39,7 @@ class PGPolicyGraph(TFPolicyGraph):
             "prev_actions": prev_actions,
             "prev_rewards": prev_rewards,
             "is_training": self._get_is_training_placeholder(),
-        }, obs_space, self.logit_dim, self.config["model"])
+        }, obs_space, action_space, self.logit_dim, self.config["model"])
         action_dist = dist_class(self.model.outputs)  # logit for each action
 
         # Setup policy loss
@@ -67,8 +67,10 @@ class PGPolicyGraph(TFPolicyGraph):
             sess,
             obs_input=obs,
             action_sampler=action_dist.sample(),
-            loss=self.model.loss() + loss,
+            action_prob=action_dist.sampled_action_prob(),
+            loss=loss,
             loss_inputs=loss_in,
+            model=self.model,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
             prev_action_input=prev_actions,

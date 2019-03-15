@@ -88,9 +88,10 @@ def make_parser(parser_creator=None, **kwargs):
         "then it must be a string template for syncer to run and needs to "
         "include replacement fields '{local_dir}' and '{remote_dir}'.")
     parser.add_argument(
-        "--custom-loggers",
+        "--loggers",
         default=None,
-        help="List of custom logger creators to be used with each Trial.")
+        help="List of logger creators to be used with each Trial. "
+        "Defaults to ray.tune.logger.DEFAULT_LOGGERS.")
     parser.add_argument(
         "--checkpoint-freq",
         default=0,
@@ -102,6 +103,12 @@ def make_parser(parser_creator=None, **kwargs):
         action="store_true",
         help="Whether to checkpoint at the end of the experiment. "
         "Default is False.")
+    parser.add_argument(
+        "--export-formats",
+        default=None,
+        help="List of formats that exported at the end of the experiment. "
+        "Default is None. For RLlib, 'checkpoint' and 'model' are "
+        "supported for TensorFlow policy graphs.")
     parser.add_argument(
         "--max-failures",
         default=3,
@@ -181,11 +188,12 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         stopping_criterion=spec.get("stop", {}),
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_at_end=args.checkpoint_at_end,
+        export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,
         trial_name_creator=spec.get("trial_name_creator"),
-        custom_loggers=spec.get("custom_loggers"),
+        loggers=spec.get("loggers"),
         # str(None) doesn't create None
         sync_function=spec.get("sync_function"),
         max_failures=args.max_failures,

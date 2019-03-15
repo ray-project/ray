@@ -7,33 +7,47 @@ git_repository(
 )
 
 load("@com_github_nelhage_rules_boost//:boost/boost.bzl", "boost_deps")
+
 boost_deps()
 
 git_repository(
     name = "com_github_google_flatbuffers",
-    remote = "https://github.com/google/flatbuffers.git",
     commit = "63d51afd1196336a7d1f56a988091ef05deb1c62",
+    remote = "https://github.com/google/flatbuffers.git",
 )
 
 git_repository(
     name = "com_google_googletest",
-    remote = "https://github.com/google/googletest",
     commit = "3306848f697568aacf4bcca330f6bdd5ce671899",
+    remote = "https://github.com/google/googletest",
+)
+
+git_repository(
+    name = "com_github_gflags_gflags",
+    remote = "https://github.com/gflags/gflags.git",
+    tag = "v2.2.2",
+)
+
+git_repository(
+    name = "com_github_google_glog",
+    commit = "5c576f78c49b28d89b23fbb1fc80f54c879ec02e",
+    remote = "https://github.com/google/glog",
 )
 
 new_git_repository(
     name = "plasma",
     build_file = "@//bazel:BUILD.plasma",
+    commit = "6a27c660ea700febf6fd73b2e851ab96e9315134",
     remote = "https://github.com/ray-project/arrow",
-    commit = "f5d1be2fed69899aea636bd074aaeaa4149acc79",
 )
 
 new_git_repository(
-    name="cython",
-    build_file="@//bazel:BUILD.cython",
-    remote = "https://github.com/cython/cython",
+    name = "cython",
+    build_file = "@//bazel:BUILD.cython",
     commit = "49414dbc7ddc2ca2979d6dbe1e44714b10d72e7e",
+    remote = "https://github.com/cython/cython",
 )
 
 load("@//bazel:python_configure.bzl", "python_configure")
-python_configure(name="local_config_python")
+
+python_configure(name = "local_config_python")

@@ -20,7 +20,7 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
       num_adds_processed_(0),
       num_removes_processed_(0),
       socket_(io_service) {
-  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str()));
+  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
 
   RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
   boost::system::error_code ec;
@@ -58,7 +58,7 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
 
   const auto &object_info =
       flatbuffers::GetRoot<object_manager::protocol::ObjectInfo>(notification_.data());
-  const auto &object_id = from_flatbuf(*object_info->object_id());
+  const auto &object_id = from_flatbuf<ObjectID>(*object_info->object_id());
   if (object_info->is_deletion()) {
     ProcessStoreRemove(object_id);
   } else {

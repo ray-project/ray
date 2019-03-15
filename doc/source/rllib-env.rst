@@ -62,6 +62,12 @@ You can also register a custom env creator function with a string name. This fun
     register_env("my_env", env_creator)
     trainer = ppo.PPOAgent(env="my_env")
 
+For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__.
+
+.. warning::
+
+   The gym registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
+
 Configuring Environments
 ------------------------
 
@@ -103,11 +109,17 @@ There are two ways to scale experience collection with Gym environments:
 
 You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v0 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_worker=64``.
 
+Expensive Environments
+~~~~~~~~~~~~~~~~~~~~~~
+
+Some environments may be very resource-intensive to create. RLlib will create ``num_workers + 1`` copies of the environment since one copy is needed for the driver process. To avoid paying the extra overhead of the driver copy, which is needed to access the env's action and observation spaces, you can defer environment initialization until ``reset()`` is called.
 
 Vectorized
 ----------
 
 RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs_per_worker`` config is set, or you can define a custom environment class that subclasses `VectorEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/vector_env.py>`__ to implement ``vector_step()`` and ``vector_reset()``.
+
+Note that auto-vectorization only applies to policy inference by default. This means that policy inference will be batched, but your envs will still be stepped one at a time. If you would like your envs to be stepped in parallel, you can set ``"remote_worker_envs": True`` or ``"async_remote_worker_envs": True``. This will create env instances in Ray actors and step them in parallel. These remote processes introduce communication overheads, so this only helps if your env is very expensive to step.
 
 Multi-Agent and Hierarchical
 ----------------------------
@@ -234,6 +246,8 @@ This can be implemented as a multi-agent environment with three types of agents.
 
 In this setup, the appropriate rewards for training lower-level agents must be provided by the multi-agent env implementation. The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level agents to lower-level agents as part of the lower-level agent observation.
 
+See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__.
+
 
 Grouping Agents
 ~~~~~~~~~~~~~~~
@@ -305,11 +319,9 @@ Note that envs can read from different partitions of the logs based on the ``wor
 
 .. seealso::
 
-    `RLlib I/O <rllib-offline.html>`__ provides higher-level interfaces for working with offline experience datasets.
+    `Offline Datasets <rllib-offline.html>`__ provide higher-level interfaces for working with offline experience datasets.
 
-Batch Asynchronous
-------------------
+Advanced Integrations
+---------------------
 
-The lowest-level "catch-all" environment supported by RLlib is `BaseEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/base_env.py>`__. BaseEnv models multiple agents executing asynchronously in multiple environments. A call to ``poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents can be sent back via ``send_actions()``. This interface can be subclassed directly to support batched simulators such as `ELF <https://github.com/facebookresearch/ELF>`__.
-
-Under the hood, all other envs are converted to BaseEnv by RLlib so that there is a common internal path for policy evaluation.
+For more complex / high-performance environment integrations, you can instead extend the low-level `BaseEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/base_env.py>`__ class. This low-level API models multiple agents executing asynchronously in multiple environments. A call to ``BaseEnv:poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents are sent back via ``BaseEnv:send_actions()``. BaseEnv is used to implement all the other env types in RLlib, so it offers a superset of their functionality. For example, ``BaseEnv`` is used to implement dynamic batching of observations for inference over `multiple simulator actors <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/remote_vector_env.py>`__.

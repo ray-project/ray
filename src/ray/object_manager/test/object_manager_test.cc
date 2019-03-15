@@ -7,6 +7,11 @@
 
 #include "ray/object_manager/object_manager.h"
 
+namespace {
+std::string store_executable;
+int64_t wait_timeout_ms;
+}
+
 namespace ray {
 
 static inline void flushall_redis(void) {
@@ -14,8 +19,6 @@ static inline void flushall_redis(void) {
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   redisFree(context);
 }
-
-std::string store_executable;
 
 class MockServer {
  public:
@@ -69,7 +72,7 @@ class MockServer {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
         client_handler, message_handler, std::move(object_manager_socket_),
-        "object manager",
+        "object manager", {},
         static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
     DoAcceptObjectManager();
   }
@@ -288,10 +291,9 @@ class TestObjectManager : public TestObjectManagerBase {
     UniqueID sub_id = ray::ObjectID::from_random();
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
-        sub_id, object_1,
-        [this, sub_id, object_1, object_2](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients, bool created) {
+        sub_id, object_1, [this, sub_id, object_1, object_2](
+                              const ray::ObjectID &object_id,
+                              const std::unordered_set<ray::ClientID> &clients) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }
@@ -331,32 +333,33 @@ class TestObjectManager : public TestObjectManagerBase {
   }
 
   void NextWaitTest() {
+    int data_size = 600;
     current_wait_test += 1;
     switch (current_wait_test) {
     case 0: {
       // Ensure timeout_ms = 0 is handled correctly.
       // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
-      TestWait(100, 5, 3, /*timeout_ms=*/0, false, false);
+      TestWait(data_size, 5, 3, /*timeout_ms=*/0, false, false);
     } break;
     case 1: {
       // Ensure timeout_ms = 1000 is handled correctly.
       // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
-      TestWait(100, 5, 3, /*timeout_ms=*/1000, false, false);
+      TestWait(data_size, 5, 3, wait_timeout_ms, false, false);
     } break;
     case 2: {
       // Generate objects locally to ensure local object code-path works properly.
       // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
-      TestWait(100, 5, 3, 1000, false, /*test_local=*/true);
+      TestWait(data_size, 5, 3, wait_timeout_ms, false, /*test_local=*/true);
     } break;
     case 3: {
       // Wait on an object that's never registered with GCS to ensure timeout works
       // properly.
-      TestWait(100, /*num_objects=*/5, /*required_objects=*/6, 1000,
+      TestWait(data_size, /*num_objects=*/5, /*required_objects=*/6, wait_timeout_ms,
                /*include_nonexistent=*/true, false);
     } break;
     case 4: {
       // Ensure infinite time code-path works properly.
-      TestWait(100, 5, 5, /*timeout_ms=*/-1, false, false);
+      TestWait(data_size, 5, 5, /*timeout_ms=*/-1, false, false);
     } break;
     }
   }
@@ -469,6 +472,7 @@ class TestObjectManager : public TestObjectManagerBase {
 };
 
 TEST_F(TestObjectManager, StartTestObjectManager) {
+  // TODO: Break this test suite into unit tests.
   auto AsyncStartTests = main_service.wrap([this]() { WaitConnections(); });
   AsyncStartTests();
   main_service.run();
@@ -478,6 +482,7 @@ TEST_F(TestObjectManager, StartTestObjectManager) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ray::store_executable = std::string(argv[1]);
+  store_executable = std::string(argv[1]);
+  wait_timeout_ms = std::stoi(std::string(argv[2]));
   return RUN_ALL_TESTS();
 }

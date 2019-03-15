@@ -10,6 +10,11 @@ from ray.rllib.utils.annotations import override
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # You should override this to point to an offline dataset (see agent.py).
+    "input": "sampler",
+    # Use importance sampling estimators for reward
+    "input_evaluation": ["is", "wis"],
+
     # Scaling of advantages in exponential terms
     # When beta is 0, MARWIL is reduced to imitation learning
     "beta": 1.0,
@@ -19,8 +24,6 @@ DEFAULT_CONFIG = with_common_config({
     "postprocess_inputs": True,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "complete_episodes",
-    # Read data from historic data and evaluate by a sampler
-    "input_evaluation": "simulation",
     # Learning rate for adam optimizer
     "lr": 1e-4,
     # Number of timesteps collected for each SGD round

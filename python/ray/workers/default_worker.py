@@ -3,13 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import logging
 import traceback
 
 import ray
 import ray.actor
+import ray.node
 import ray.ray_constants as ray_constants
-import ray.tempfile_services as tempfile_services
+import ray.utils
+from ray.parameter import RayParams
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -56,6 +57,11 @@ parser.add_argument(
     type=str,
     default=None,
     help="Specify the path of the temporary directory use by Ray process.")
+parser.add_argument(
+    "--load-code-from-local",
+    default=False,
+    action='store_true',
+    help="True if code is loaded from local files, as opposed to the GCS.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -68,15 +74,27 @@ if __name__ == "__main__":
         "raylet_socket_name": args.raylet_name,
     }
 
-    logging.basicConfig(
-        level=logging.getLevelName(args.logging_level.upper()),
-        format=args.logging_format)
+    ray.utils.setup_logger(args.logging_level, args.logging_format)
 
-    # Override the temporary directory.
-    tempfile_services.set_temp_root(args.temp_dir)
+    ray_params = RayParams(
+        node_ip_address=args.node_ip_address,
+        redis_address=args.redis_address,
+        redis_password=args.redis_password,
+        plasma_store_socket_name=args.object_store_name,
+        raylet_socket_name=args.raylet_name,
+        temp_dir=args.temp_dir,
+        load_code_from_local=args.load_code_from_local)
 
+    node = ray.node.Node(
+        ray_params, head=False, shutdown_at_exit=False, connect_only=True)
+    ray.worker._global_node = node
+
+    # TODO(suquark): Use "node" as the input of "connect".
     ray.worker.connect(
-        info, redis_password=args.redis_password, mode=ray.WORKER_MODE)
+        info,
+        redis_password=args.redis_password,
+        mode=ray.WORKER_MODE,
+        load_code_from_local=args.load_code_from_local)
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
