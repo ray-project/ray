@@ -19,6 +19,8 @@ from ray.tune.util import warn_if_slow
 logger = logging.getLogger(__name__)
 
 RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
+BOTTLENECK_WARN_PERIOD_S = 60
+NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 
 
 class _LocalWrapper(object):
@@ -50,6 +52,7 @@ class RayTrialExecutor(TrialExecutor):
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._refresh_period = refresh_period
         self._last_resource_refresh = float("-inf")
+        self._last_nontrivial_wait = time.time()
         if ray.is_initialized():
             self._update_avail_resources()
 
@@ -282,7 +285,19 @@ class RayTrialExecutor(TrialExecutor):
         # the first available result, and we want to guarantee that slower
         # trials (i.e. trials that run remotely) also get fairly reported.
         # See https://github.com/ray-project/ray/issues/4211 for details.
+        start = time.time()
         [result_id], _ = ray.wait(shuffled_results)
+        wait_time = time.time() - start
+        if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
+            self._last_nontrivial_wait = time.time()
+        if time.time() - self._last_nontrivial_wait > BOTTLENECK_WARN_PERIOD_S:
+            logger.warn(
+                "Over the last {} seconds, the Tune event loop has been "
+                "backlogged processing new results. Consider increasing your "
+                "period of result reporting to improve performance.".format(
+                    BOTTLENECK_WARN_PERIOD_S))
+
+            self._last_nontrivial_wait = time.time()
         return self._running[result_id]
 
     def fetch_result(self, trial):
