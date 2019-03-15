@@ -81,8 +81,7 @@ if __name__ == "__main__":
         })
 
     # Try to find the best factor 1 and factor 2
-    run(
-        MyTrainableClass,
+    run(MyTrainableClass,
         name="pbt_test",
         **{
             "stop": {
