@@ -13,7 +13,7 @@ import tensorflow as tf
 from types import FunctionType
 
 import ray
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayError
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
 from ray.rllib.models import MODEL_DEFAULTS
@@ -299,7 +299,7 @@ class Agent(Trainable):
         for _ in range(4):
             try:
                 result = Trainable.train(self)
-            except RayTaskError as e:
+            except RayError as e:
                 if self.config["ignore_worker_failures"]:
                     logger.exception(
                         "Error in train call, attempting to recover")
@@ -607,7 +607,7 @@ class Agent(Trainable):
                 ray.get(obj_id)
                 healthy_evaluators.append(ev)
                 logger.info("Worker {} looks healthy".format(i + 1))
-            except RayTaskError:
+            except RayError:
                 logger.exception("Blacklisting worker {}".format(i + 1))
                 try:
                     ev.__ray_terminate__.remote()
