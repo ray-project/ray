@@ -137,7 +137,7 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.10.4",
+    "numpy >= 1.14.5",
     "filelock",
     "funcsigs",
     "click",

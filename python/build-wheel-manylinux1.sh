@@ -15,10 +15,10 @@ PYTHONS=("cp27-cp27mu"
          "cp37-cp37m")
 
 # On python 3.7, a newer version of numpy seems to be necessary.
-NUMPY_VERSIONS=("1.10.4"
-                "1.10.4"
-                "1.10.4"
-                "1.10.4"
+NUMPY_VERSIONS=("1.14.5"
+                "1.14.5"
+                "1.14.5"
+                "1.14.5"
                 "1.14.5")
 
 # Remove this old Python 2.4.3 executable, and make the "python2" command find
