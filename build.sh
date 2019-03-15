@@ -122,6 +122,7 @@ else
       --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
 
+  # This is for mvn compile.
   if [ "$RAY_BUILD_JAVA" == "YES" ]; then
     bazel build //:ray_java_pkg --verbose_failures
     find $ROOT_DIR/bazel-genfiles/ray_java_pkg/ -exec chmod +w {} \;

@@ -395,7 +395,7 @@ cc_binary(
         "//conditions:default": ["external/bazel_tools/tools/jdk/include/linux"],
     }),
     linkshared = 1,
-    linkstatic = 0,
+    linkstatic = 1,
     deps = [
         "//:raylet_lib",
         "@plasma//:plasma_client",
@@ -416,13 +416,12 @@ filegroup(
         "@bazel_tools//src/conditions:darwin": [":libraylet_library_java.dylib"],
         "//conditions:default": [":libraylet_library_java.so"],
     }),
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "gcs_fbs_file",
     srcs = ["src/ray/gcs/format/gcs.fbs"],
-    visibility = ["//visibility:public"],
+    visibility = ["//java:__subpackages__"],
 )
 
 flatbuffer_py_library(
@@ -536,7 +535,7 @@ genrule(
 )
 
 cc_binary(
-    name = "ray_redis_module.so",
+    name = "libray_redis_module.so",
     srcs = [
         "src/ray/gcs/redis_module/ray_redis_module.cc",
         "src/ray/gcs/redis_module/redis_string.h",
@@ -559,7 +558,7 @@ genrule(
         "//:python_node_manager_fbs",
         "//:redis-server",
         "//:redis-cli",
-        "//:ray_redis_module.so",
+        "//:libray_redis_module.so",
         "//:raylet",
         "//:raylet_monitor",
         "@plasma//:plasma_store_server",
@@ -573,7 +572,7 @@ genrule(
         cp $(location //:redis-server) python/ray/core/src/ray/thirdparty/redis/src/ &&
         cp $(location //:redis-cli) python/ray/core/src/ray/thirdparty/redis/src/ &&
         mkdir -p python/ray/core/src/ray/gcs/redis_module/ &&
-        cp $(locations //:ray_redis_module.so) python/ray/core/src/ray/gcs/redis_module/libray_redis_module.so &&
+        cp $(locations //:libray_redis_module.so) python/ray/core/src/ray/gcs/redis_module/ &&
         mkdir -p python/ray/core/src/ray/raylet/ &&
         cp $(location //:raylet_monitor) python/ray/core/src/ray/raylet/ &&
         mkdir -p python/ray/core/src/plasma &&
@@ -586,25 +585,30 @@ genrule(
         """,
 )
 
-genrule(
-    name = "ray_java_pkg",
+filegroup(
+    name = "ray_java_deps_files",
     srcs = [
         "//:redis-server",
-        "//:ray_redis_module.so",
+        "//:libray_redis_module.so",
         "//:raylet",
         "//:raylet_library_java",
         "@plasma//:plasma_store_server",
         "@plasma//:plasma_client_java",
     ],
-    outs = ["ray_java_pkg/java/runtime/src/main/resources/native"],
+    visibility = ["//java:__subpackages__"],
+)
+
+genrule(
+    name = "ray_java_pkg",
+    srcs = [
+        ":ray_java_deps_files",
+    ],
+    outs = ["ray_java_pkg/java/runtime/native_dependencies"],
     cmd = """
         set -x &&
-        mkdir -p $(@D)/native &&
-        cp $(location //:redis-server) $(@D)/native/ &&
-        cp $(location //:ray_redis_module.so) $(@D)/native/libray_redis_module.so &&
-        cp $(location //:raylet) $(@D)/native/ &&
-        cp $(location //:raylet_library_java) $(@D)/native/ &&
-        cp $(location @plasma//:plasma_store_server) $(@D)/native/ &&
-        cp $(location @plasma//:plasma_client_java) $(@D)/native/
+        mkdir -p $(@D)/native_dependencies &&
+        for f in $(locations //:ray_java_deps_files); do
+            cp $$f $(@D)/native_dependencies/;
+        done
     """,
 )

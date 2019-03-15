@@ -205,7 +205,7 @@ public class RunManager {
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
     List<String> command = Lists.newArrayList(
         // The redis-server executable file.
-        getTempFile("/native/redis-server").getAbsolutePath(),
+        getTempFile("/redis-server").getAbsolutePath(),
         "--protected-mode",
         "no",
         "--port",
@@ -214,7 +214,7 @@ public class RunManager {
         "warning",
         "--loadmodule",
         // The redis module file.
-        getTempFile("/native/libray_redis_module.so").getAbsolutePath()
+        getTempFile("/libray_redis_module.so").getAbsolutePath()
     );
 
     if (!StringUtil.isNullOrEmpty(password)) {
@@ -252,7 +252,7 @@ public class RunManager {
     // See `src/ray/raylet/main.cc` for the meaning of each parameter.
     List<String> command = ImmutableList.of(
         // The raylet executable file.
-        getTempFile("/native/raylet").getAbsolutePath(),
+        getTempFile("/raylet").getAbsolutePath(),
         rayConfig.rayletSocketName,
         rayConfig.objectStoreSocketName,
         "0",  // The object manager port.
@@ -328,7 +328,7 @@ public class RunManager {
   private void startObjectStore() {
     List<String> command = ImmutableList.of(
         // The plasma store executable file.
-        getTempFile("/native/plasma_store_server").getAbsolutePath(),
+        getTempFile("/plasma_store_server").getAbsolutePath(),
         "-s",
         rayConfig.objectStoreSocketName,
         "-m",

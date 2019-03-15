@@ -68,8 +68,9 @@ java_library(
     ],
     resources = glob([
         "runtime/src/main/resources/**",
-    ]),
-    data = ["//:raylet_library_java"],
+    ]) + [
+        "//:ray_java_deps_files",
+    ],
     deps = [
         ":org_ray_ray_api",
         "@plasma//:org_apache_arrow_arrow_plasma",

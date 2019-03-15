@@ -102,7 +102,7 @@ cc_binary(
         "cpp/src",
     ],
     linkshared = 1,
-    linkstatic = 0,
+    linkstatic = 1,
     deps = [":plasma_client"],
 )
 
