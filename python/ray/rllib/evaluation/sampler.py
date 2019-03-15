@@ -171,6 +171,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 queue_putter(item)
 
     def get_data(self):
+        if not self.is_alive():
+            raise RuntimeError("Sampling thread has died")
         rollout = self.queue.get(timeout=600.0)
 
         # Propagate errors

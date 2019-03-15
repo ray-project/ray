@@ -134,6 +134,11 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         self.learner.stopped = True
 
     @override(PolicyOptimizer)
+    def reset(self, remote_evaluators):
+        self.remote_evaluators = remote_evaluators
+        self.sample_tasks.reset_evaluators(remote_evaluators)
+
+    @override(PolicyOptimizer)
     def stats(self):
         replay_stats = ray.get(self.replay_actors[0].stats.remote(self.debug))
         timing = {
