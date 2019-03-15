@@ -129,6 +129,7 @@ matrix:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
         - PYTHONWARNINGS=ignore
+        - RAY_USE_CMAKE=1
 
 
 install:
