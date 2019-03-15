@@ -205,12 +205,12 @@ class _ExternalEnvEpisode(object):
         self.new_observation = observation
         self.new_action = action
         self._send()
-        self.action_queue.get(True, timeout=600.0)
+        self.action_queue.get(True, timeout=60.0)
 
     def wait_for_action(self, observation):
         self.new_observation = observation
         self._send()
-        return self.action_queue.get(True, timeout=600.0)
+        return self.action_queue.get(True, timeout=60.0)
 
     def done(self, observation):
         self.new_observation = observation
