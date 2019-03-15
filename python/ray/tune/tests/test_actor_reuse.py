@@ -15,7 +15,7 @@ class FrequentPausesScheduler(FIFOScheduler):
         return TrialScheduler.PAUSE
 
 
-def create_class():
+def create_resettable_class():
     class MyResettableClass(Trainable):
         def _setup(self, config):
             self.config = config
@@ -52,7 +52,7 @@ class ActorReuseTest(unittest.TestCase):
         trials = run_experiments(
             {
                 "foo": {
-                    "run": create_class(),
+                    "run": create_resettable_class(),
                     "num_samples": 4,
                     "config": {},
                 }
@@ -66,7 +66,7 @@ class ActorReuseTest(unittest.TestCase):
         trials = run_experiments(
             {
                 "foo": {
-                    "run": create_class(),
+                    "run": create_resettable_class(),
                     "num_samples": 4,
                     "config": {},
                 }
@@ -81,7 +81,7 @@ class ActorReuseTest(unittest.TestCase):
             run_experiments(
                 {
                     "foo": {
-                        "run": create_class(),
+                        "run": create_resettable_class(),
                         "max_failures": 1,
                         "num_samples": 4,
                         "config": {
