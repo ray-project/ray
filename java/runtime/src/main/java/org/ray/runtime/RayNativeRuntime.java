@@ -2,8 +2,13 @@ package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
+import java.io.File;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -72,11 +77,22 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void start() throws Exception {
-    // Load native libraries.
     try {
+      // Reset library path at runtime.
       resetLibraryPath();
-      System.loadLibrary("raylet_library_java");
-      System.loadLibrary("plasma_java");
+
+      // Load native libraries.
+      String[] libraries = new String[]{"raylet_library_java", "plasma_java"};
+      for (String library : libraries) {
+        String fileName = System.mapLibraryName(library);
+        // Copy the file from resources to a temp dir, and load the native library.
+        File file = File.createTempFile(fileName, "");
+        file.deleteOnExit();
+        InputStream in = RayNativeRuntime.class.getResourceAsStream("/" + fileName);
+        Preconditions.checkNotNull(in, "{} doesn't exist.", fileName);
+        Files.copy(in, Paths.get(file.getAbsolutePath()), StandardCopyOption.REPLACE_EXISTING);
+        System.load(file.getAbsolutePath());
+      }
     } catch (Exception e) {
       LOGGER.error("Failed to load native libraries.", e);
       throw e;
