@@ -32,7 +32,7 @@ class A3CLoss(nn.Module):
         overall_err = sum([
             pi_err,
             self.vf_loss_coeff * value_err,
-            - self.entropy_coeff * entropy,
+            -self.entropy_coeff * entropy,
         ])
         return overall_err
 
