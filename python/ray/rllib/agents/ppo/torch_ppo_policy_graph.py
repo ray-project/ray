@@ -16,13 +16,18 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
 
 class PPOLoss(nn.Module):
-    def __init__(self, policy_model, vf_loss_coeff=0.5, entropy_coeff=-0.01):
+    def __init__(self, policy_model, vf_loss_coeff=0.5, entropy_coeff=-0.01, 
+    	         clip_param, vf_clip_param, vf_loss_coeff, use_gae):
         nn.Module.__init__(self)
         self.policy_model = policy_model
         self.vf_loss_coeff = vf_loss_coeff
         self.entropy_coeff = entropy_coeff
+        self.clip_param = clip_param
+        self.vf_clip_param = vf_clip_param
+        self.vf_loss_coeff = vf_loss_coeff
+        self.use_gae = use_gae
 
-    def forward(self, observations, actions, advantages, logits, valid_mask, clip_param = 0.1):
+    def forward(self, observations, value_target, advantages, actions, logits, vf_preds):
     	def reduce_mean_valid(t):
     		return torch.masked_select(t, valid_mask).sum(-1).sum()
 
@@ -76,7 +81,10 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
             action_space, self.config["model"])
         self.model = ModelCatalog.get_torch_model(obs_space, self.logit_dim,
                                                   self.config["model"])
-        loss = PPOLoss(self.model)
+        loss = PPOLoss(self.model, self.config["vf_loss_coeff"],
+                       self.config["entropy_coeff"], self.config["clip_param"], 
+                       self.config["vf_clip_param"], self.config["vf_loss_coeff"], 
+                       self.config["use_gae"])
 
         TorchPolicyGraph.__init__(
             self,
@@ -84,7 +92,7 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
             action_space,
             self.model,
             loss,
-            loss_inputs=["obs", "actions", "advantages", "logits", "valid_mask"])
+            loss_inputs=["obs", "value_targets", "advantages", "actions", "logits", "vf_preds"])
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):

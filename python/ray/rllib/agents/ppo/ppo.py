@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    #Use PyTorch as backend
+    "use_pytorch": False,
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
@@ -71,10 +73,16 @@ class PPOAgent(Agent):
     @override(Agent)
     def _init(self):
         self._validate_config()
+        if self.config["use_pytorch"]:
+            from ray.rllib.agents.pg.torch_pg_policy_graph import \
+                PPOTorchPolicyGraph
+            policy_cls = PPOTorchPolicyGraph
+        else:
+            policy_cls = self._policy_graph
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, self._policy_graph)
+            self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"])
+            self.env_creator, policy_cls, self.config["num_workers"])
         if self.config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
