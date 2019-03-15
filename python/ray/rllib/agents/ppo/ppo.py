@@ -151,7 +151,7 @@ class PPOAgent(Agent):
 
     def _validate_config(self):
         if self.config["entropy_coeff"] < 0:
-            raise ValueError("PPO entropy_coeff must be positive")
+            raise ValueError("PPO entropy_coeff cannot be negative")
         if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
             raise ValueError(
                 "Minibatch size {} must be <= train batch size {}.".format(

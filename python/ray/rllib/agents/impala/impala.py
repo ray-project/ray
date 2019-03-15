@@ -111,7 +111,7 @@ class ImpalaAgent(Agent):
                                                self.remote_evaluators,
                                                self.config["optimizer"])
         if self.config["entropy_coeff"] > 0:
-            raise ValueError("IMPALA entropy_coeff must be negative")
+            raise ValueError("IMPALA entropy_coeff cannot be positive")
 
     @override(Agent)
     def _train(self):

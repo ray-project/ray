@@ -55,7 +55,7 @@ class A3CAgent(Agent):
             policy_cls = self._policy_graph
 
         if self.config["entropy_coeff"] > 0:
-            raise ValueError("A2C entropy_coeff must be negative")
+            raise ValueError("A2C entropy_coeff cannot be positive")
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
