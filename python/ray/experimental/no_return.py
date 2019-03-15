@@ -1,3 +1,8 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+
 class NoReturn(object):
     """Do not store the return value in the object store.
 
