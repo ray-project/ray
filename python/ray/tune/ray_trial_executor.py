@@ -50,6 +50,7 @@ class RayTrialExecutor(TrialExecutor):
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
+        self._resources_initialized = False
         self._refresh_period = refresh_period
         self._last_resource_refresh = float("-inf")
         self._last_nontrivial_wait = time.time()
