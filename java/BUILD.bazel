@@ -175,6 +175,7 @@ java_test(
         ":org_ray_ray_test",
         ":org_ray_ray_runtime_test",
     ],
+    size = "large",
 )
 
 flatbuffers_generate_files = [

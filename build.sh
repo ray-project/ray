@@ -126,12 +126,6 @@ else
     bazel build //:ray_java_pkg --verbose_failures
     find $ROOT_DIR/bazel-genfiles/ray_java_pkg/ -exec chmod +w {} \;
     cp -r $ROOT_DIR/bazel-genfiles/ray_java_pkg/java $ROOT_DIR/ || true
-    # The following are soft links.
-    # TODO: remove this once cmake is removed
-    mkdir -p $ROOT_DIR/build/src/ray/raylet/
-    mkdir -p $ROOT_DIR/build/src/plasma/
-    ln -sf $ROOT_DIR/bazel-bin/* $ROOT_DIR/build/src/ray/raylet/
-    ln -sf $ROOT_DIR/bazel-bin/external/plasma/* $ROOT_DIR/build/src/plasma/
   fi
 
   if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
