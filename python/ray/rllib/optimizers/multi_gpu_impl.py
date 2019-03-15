@@ -188,7 +188,7 @@ class LocalSyncParallelOptimizer(object):
 
         sess.run([t.init_op for t in self._towers], feed_dict=feed_dict)
 
-        tuples_per_device = truncated_len / len(self.devices)
+        tuples_per_device = truncated_len // len(self.devices)
         assert tuples_per_device > 0, "No data loaded?"
         assert tuples_per_device % self._loaded_per_device_batch_size == 0
         return tuples_per_device
