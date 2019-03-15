@@ -376,8 +376,8 @@ class TrialRunner(object):
             return "Memory usage on this node: {}/{} GB{}".format(
                 round(used_gb, 1), round(total_gb, 1), warn)
         except ImportError:
+            global _MEMORY_USAGE_WARNED
             if not _MEMORY_USAGE_WARNED:
-                global _MEMORY_USAGE_WARNED
                 _MEMORY_USAGE_WARNED = True
                 return (
                     "Unknown memory usage. Please run `pip install psutil` "

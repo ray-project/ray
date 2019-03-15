@@ -18,6 +18,8 @@ from ray.tune.util import warn_if_slow
 
 logger = logging.getLogger(__name__)
 
+RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
+
 
 class _LocalWrapper(object):
     def __init__(self, result):
@@ -31,18 +33,23 @@ class _LocalWrapper(object):
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
-    def __init__(self, queue_trials=False, reuse_actors=False):
+    def __init__(self,
+                 queue_trials=False,
+                 reuse_actors=False,
+                 refresh_period=RESOURCE_REFRESH_PERIOD):
         super(RayTrialExecutor, self).__init__(queue_trials)
         self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object id generated.
         # We use self._paused to store paused trials here.
         self._paused = {}
-        self._avail_resources = Resources(cpu=0, gpu=0)
-        self._committed_resources = Resources(cpu=0, gpu=0)
-        self._resources_initialized = False
         self._reuse_actors = reuse_actors
         self._cached_actor = None
+
+        self._avail_resources = Resources(cpu=0, gpu=0)
+        self._committed_resources = Resources(cpu=0, gpu=0)
+        self._refresh_period = refresh_period
+        self._last_resource_refresh = float("-inf")
         if ray.is_initialized():
             self._update_avail_resources()
 
@@ -354,10 +361,14 @@ class RayTrialExecutor(TrialExecutor):
 
         self._avail_resources = Resources(
             int(num_cpus), int(num_gpus), custom_resources=custom_resources)
+        self._last_resource_refresh = time.time()
         self._resources_initialized = True
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
+        if time.time() - self._last_resource_refresh > self._refresh_period:
+            self._update_avail_resources()
+
         currently_available = Resources.subtract(self._avail_resources,
                                                  self._committed_resources)
 
