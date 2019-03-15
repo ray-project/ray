@@ -99,6 +99,7 @@ cc_test(
     args = ["--gtest_filter=PrintLogTest*"],
     copts = COPTS,
     deps = [
+        "@boost//:asio",
         ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],
