@@ -3,10 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
 
 import ray
 import ray.exceptions
@@ -86,10 +82,6 @@ def test_exception(ray_start):
         ray.get(exception_id)
 
 
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(5)
 def test_no_set_and_no_return(ray_start):
     @ray.remote
     def f():
