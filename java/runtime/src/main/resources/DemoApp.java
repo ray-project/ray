@@ -1,5 +1,3 @@
-package demo;
-
 import org.ray.api.annotation.RayRemote;
 
 public class DemoApp {
