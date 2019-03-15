@@ -33,6 +33,7 @@ public class BaseTest {
 
   @AfterMethod
   public void tearDownBase() {
+
     Ray.shutdown();
 
     for (File file : filesToDelete) {

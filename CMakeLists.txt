@@ -167,8 +167,8 @@ if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
   endforeach()
 add_custom_command(TARGET copy_ray POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${ARROW_HOME}/bin/plasma_store_server
-    ${CMAKE_SOURCE_DIR}/java/runtime/native_dependencies)
+    ${CMAKE_SOURCE_DIR}/java/runtime/src/main/resources/native)
   add_custom_command(TARGET copy_ray POST_BUILD
     COMMAND $(CMAKE_COMMAND) -E copy ${ARROW_LIBRARY_DIR}/libplasma_java.*
-      ${CMAKE_SOURCE_DIR}/java/runtime/native_dependencies)
+      ${CMAKE_SOURCE_DIR}/java/runtime/src/main/resources/native)
 endif()

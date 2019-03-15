@@ -125,7 +125,7 @@ else
   if [ "$RAY_BUILD_JAVA" == "YES" ]; then
     bazel build //:ray_java_pkg --verbose_failures
     find $ROOT_DIR/bazel-genfiles/ray_java_pkg/ -exec chmod +w {} \;
-    cp -r $ROOT_DIR/bazel-genfiles/ray_java_pkg/java $ROOT_DIR/ || true  
+    cp -r $ROOT_DIR/bazel-genfiles/ray_java_pkg/java $ROOT_DIR/ || true
   fi
 
   if [ "$RAY_BUILD_PYTHON" == "YES" ]; then

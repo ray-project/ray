@@ -601,10 +601,10 @@ genrule(
         set -x &&
         mkdir -p $(@D)/native &&
         cp $(location //:redis-server) $(@D)/native/ &&
-        cp $(location //:ray_redis_module.so) $(@D)/native/ &&
-        cp $(location //:raylet) $(@D)/native &&
-        cp $(location //:raylet_library_java) $(@D)/native &&
-        cp $(location @plasma//:plasma_store_server) $(@D)/native &&
-        cp $(location @plasma//:plasma_client_java) $(@D)/native
+        cp $(location //:ray_redis_module.so) $(@D)/native/libray_redis_module.so &&
+        cp $(location //:raylet) $(@D)/native/ &&
+        cp $(location //:raylet_library_java) $(@D)/native/ &&
+        cp $(location @plasma//:plasma_store_server) $(@D)/native/ &&
+        cp $(location @plasma//:plasma_client_java) $(@D)/native/
     """,
 )

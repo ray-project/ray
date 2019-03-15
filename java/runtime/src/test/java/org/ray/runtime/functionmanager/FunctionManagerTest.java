@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.annotation.RayRemote;
@@ -15,6 +16,8 @@ import org.ray.runtime.functionmanager.FunctionManager.DriverFunctionTable;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 
 /**
  * Tests for {@link FunctionManager}
@@ -117,25 +120,57 @@ public class FunctionManagerTest {
 
   //TODO(qwang): This is an integration test case, and we should move it to test folder in the future.
   @Test
-  public void testGetFunctionFromLocalResource() throws Exception{
-    UniqueId driverId = UniqueId.fromHexString("0123456789012345678901234567890123456789");
+  public void testGetFunctionFromLocalResource() throws Exception {
+    final String resourcePath = "/tmp/ray/java_test/resource";
+    UniqueId driverId = UniqueId.randomId();
+    final String driverResourcePath = resourcePath + "/" + driverId.toString();
+    final String destDir = System.getProperty("user.dir") + "/org/ray/demo";
+    compileAndPack("../runtime/src/main/resources/DemoApp.java", destDir);
 
-    //TODO(qwang): We should use a independent app demo instead of `tutorial`.
-    final String resourcePath = "/tmp/ray/test/resource";
-    final String srcJarPath = System.getProperty("user.dir") +
-                                  "/../tutorial/target/ray-tutorial-0.1-SNAPSHOT.jar";
-    final String destJarPath = resourcePath + "/" + driverId.toString() +
-                                   "/ray-tutorial-0.1-SNAPSHOT.jar";
-
-    File file = new File(resourcePath + "/" + driverId.toString());
+    final String sourcePath = destDir + "/DemoApp.jar";
+    final String destPath = driverResourcePath + "/DemoApp.jar";
+    File file = new File(destPath);
     file.mkdirs();
-    Files.copy(Paths.get(srcJarPath), Paths.get(destJarPath), StandardCopyOption.REPLACE_EXISTING);
+    Files.move(Paths.get(sourcePath), Paths.get(destPath),
+      StandardCopyOption.REPLACE_EXISTING);
 
+    FunctionDescriptor sayHelloDescriptor = new FunctionDescriptor(
+        "org.ray.demo.DemoApp", "sayHello", "()Ljava/lang/String;");
     final FunctionManager functionManager = new FunctionManager(resourcePath);
-    FunctionDescriptor sayHelloDescriptor = new FunctionDescriptor("org.ray.exercise.Exercise02",
-        "sayHello", "()Ljava/lang/String;");
+
     RayFunction func = functionManager.getFunction(driverId, sayHelloDescriptor);
     Assert.assertEquals(func.getFunctionDescriptor(), sayHelloDescriptor);
+  }
+
+  private static void compileAndPack(String sourceFilePath, String destDir) throws Exception {
+    JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+    int result = compiler.run(null, null, null, sourceFilePath);
+
+    if (result != 0) {
+      throw new RuntimeException(String.format("Failed to compile file : %s", sourceFilePath));
+    }
+
+
+    String[] packJarCommand = new String[]{
+      "jar",
+      "-cvf",
+      destDir + "/DemoApp.jar",
+      "org/ray/demo/DemoApp.class"
+    };
+
+    Runtime.getRuntime().exec(packJarCommand);
+
+    // Move to destination directory.
+    final String sourceFileDir = (new File(sourceFilePath)).getParent();
+    final String classFileSourcePath = sourceFileDir + "/DemoApp.class";
+    final String classFileDestPath = destDir + "/DemoApp.class";
+    File file = new File(classFileDestPath);
+    file.mkdirs();
+    Files.move(Paths.get(classFileSourcePath), Paths.get(classFileDestPath),
+      StandardCopyOption.REPLACE_EXISTING);
+
+    // Sleep for waiting for jar.
+    TimeUnit.SECONDS.sleep(1);
   }
 
 }
