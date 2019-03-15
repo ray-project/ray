@@ -40,7 +40,9 @@ if __name__ == "__main__":
         files = list_changed_files(os.environ["TRAVIS_COMMIT_RANGE"].replace(
             "...", ".."))
 
-        skip_prefix_list = ["doc/", "examples/", "dev/", "docker/", "kubernetes/", "site/"]
+        skip_prefix_list = [
+            "doc/", "examples/", "dev/", "docker/", "kubernetes/", "site/"
+        ]
 
         for changed_file in files:
             if changed_file.startswith("python/ray/tune/"):
@@ -60,7 +62,9 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
-            elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list)
+            elif any(
+                    changed_file.startswith(prefix)
+                    for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass
             elif changed_file.startswith("src/"):
