@@ -26,8 +26,8 @@ PY_MMS=("2.7"
         "3.6"
         "3.7")
 
-# The numpy version the arrow wheels are built against
-# https://github.com/apache/arrow/blob/4cfd6d3877e28624e271e022f7c98a8b1e3c5a5a/python/requirements-wheel.txt
+# The minimum supported numpy version is 1.14, see
+# https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5"
