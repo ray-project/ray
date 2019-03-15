@@ -12,5 +12,6 @@ SUPPRESS_OUTPUT=$ROOT_DIR/../suppress_output
 echo "Using Docker image" $DOCKER_SHA
 
 cd ../../../
+ls -la
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA ./ci/perf_integration_tests/run_perf_integration.sh
