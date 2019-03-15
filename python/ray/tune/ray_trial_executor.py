@@ -358,7 +358,6 @@ class RayTrialExecutor(TrialExecutor):
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
-        self._update_avail_resources()
         currently_available = Resources.subtract(self._avail_resources,
                                                  self._committed_resources)
 
@@ -429,7 +428,6 @@ class RayTrialExecutor(TrialExecutor):
 
     def on_step_begin(self):
         """Before step() called, update the available resources."""
-
         self._update_avail_resources()
 
     def save(self, trial, storage=Checkpoint.DISK):
