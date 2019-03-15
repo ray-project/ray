@@ -100,6 +100,7 @@ cc_test(
     copts = COPTS,
     deps = [
         ":ray_util",
+        "@boost//:asio",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -595,8 +596,15 @@ genrule(
         "@plasma//:plasma_store_server",
         "@plasma//:plasma_client_java",
     ],
-    outs = ["ray_java_pkg.out"],
+    outs = ["ray_java_pkg/java/runtime/src/main/resources/native"],
     cmd = """
-        echo $$(pwd) > $@
+        set -x &&
+        mkdir -p $(@D)/native &&
+        cp $(location //:redis-server) $(@D)/native/ &&
+        cp $(location //:ray_redis_module.so) $(@D)/native/libray_redis_module.so &&
+        cp $(location //:raylet) $(@D)/native/ &&
+        cp $(location //:raylet_library_java) $(@D)/native/ &&
+        cp $(location @plasma//:plasma_store_server) $(@D)/native/ &&
+        cp $(location @plasma//:plasma_client_java) $(@D)/native/
     """,
 )

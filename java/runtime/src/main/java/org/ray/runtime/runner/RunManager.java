@@ -1,6 +1,7 @@
 package org.ray.runtime.runner;
 
 import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import java.io.File;
@@ -94,6 +95,7 @@ public class RunManager {
         file = File.createTempFile(fileName, "");
         file.deleteOnExit();
         try (InputStream in = RunManager.class.getResourceAsStream(fileName)) {
+          Preconditions.checkNotNull(in, "{} doesn't exist.", fileName);
           Files.copy(in, Paths.get(file.getCanonicalPath()), StandardCopyOption.REPLACE_EXISTING);
         }
         file.setExecutable(true);
@@ -203,7 +205,7 @@ public class RunManager {
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
     List<String> command = Lists.newArrayList(
         // The redis-server executable file.
-        getTempFile("/redis-server").getAbsolutePath(),
+        getTempFile("/native/redis-server").getAbsolutePath(),
         "--protected-mode",
         "no",
         "--port",
@@ -212,7 +214,7 @@ public class RunManager {
         "warning",
         "--loadmodule",
         // The redis module file.
-        getTempFile("/libray_redis_module.so").getAbsolutePath()
+        getTempFile("/native/libray_redis_module.so").getAbsolutePath()
     );
 
     if (!StringUtil.isNullOrEmpty(password)) {
@@ -250,7 +252,7 @@ public class RunManager {
     // See `src/ray/raylet/main.cc` for the meaning of each parameter.
     List<String> command = ImmutableList.of(
         // The raylet executable file.
-        getTempFile("/raylet").getAbsolutePath(),
+        getTempFile("/native/raylet").getAbsolutePath(),
         rayConfig.rayletSocketName,
         rayConfig.objectStoreSocketName,
         "0",  // The object manager port.
@@ -326,7 +328,7 @@ public class RunManager {
   private void startObjectStore() {
     List<String> command = ImmutableList.of(
         // The plasma store executable file.
-        getTempFile("/plasma_store_server").getAbsolutePath(),
+        getTempFile("/native/plasma_store_server").getAbsolutePath(),
         "-s",
         rayConfig.objectStoreSocketName,
         "-m",

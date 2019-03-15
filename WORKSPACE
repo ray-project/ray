@@ -6,6 +6,12 @@ load("//java:repo.bzl", "java_repositories")
 java_repositories()
 
 git_repository(
+    name = "com_github_checkstyle_java",
+    remote = "https://github.com/alegithub111/checkstyle_java.git",
+    commit = "85f37871ca03b9d3fee63c69c8107f167e24e77b",
+)
+
+git_repository(
     name = "com_github_nelhage_rules_boost",
     commit = "6d6fd834281cb8f8e758dd9ad76df86304bf1869",
     remote = "https://github.com/nelhage/rules_boost",

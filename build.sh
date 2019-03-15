@@ -123,23 +123,19 @@ else
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
 
   if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-    bazel build //:ray_java_pkg -c opt --verbose_failures
+    bazel build //:ray_java_pkg --verbose_failures
+    find $ROOT_DIR/bazel-genfiles/ray_java_pkg/ -exec chmod +w {} \;
+    cp -r $ROOT_DIR/bazel-genfiles/ray_java_pkg/java $ROOT_DIR/ || true
     # The following are soft links.
     # TODO: remove this once cmake is removed
     mkdir -p $ROOT_DIR/build/src/ray/raylet/
-    mkdir -p $ROOT_DIR/build/src/ray/gcs/redis_module/
-    mkdir -p $ROOT_DIR/build/src/ray/thirdparty/redis/src/
     mkdir -p $ROOT_DIR/build/src/plasma/
     ln -sf $ROOT_DIR/bazel-bin/* $ROOT_DIR/build/src/ray/raylet/
     ln -sf $ROOT_DIR/bazel-bin/external/plasma/* $ROOT_DIR/build/src/plasma/
-    ln -sf $ROOT_DIR/bazel-genfiles/redis-server $ROOT_DIR/build/src/ray/thirdparty/redis/src/redis-server
-    ln -sf $ROOT_DIR/bazel-bin/ray_redis_module.so $ROOT_DIR/build/src/ray/gcs/redis_module/libray_redis_module.so
-    ln -sf $ROOT_DIR/bazel-bin/external/plasma/plasma_store_server $ROOT_DIR/build/src/plasma/plasma_store_server
-    ln -sf $ROOT_DIR/bazel-bin/raylet $ROOT_DIR/build/src/ray/raylet/raylet
   fi
 
   if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-    bazel build //:ray_pkg -c opt --verbose_failures
+    bazel build //:ray_pkg --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
     # Copy files and keep them writeable. This is a workaround, as Bazel
     # marks all generated files non-writeable. If we would just copy them
     # over without adding write permission, the copy would fail the next time.

@@ -70,7 +70,7 @@ dependencies:
   com.google.guava:
     guava:
       lang: java
-      version: "19.0"
+      version: "27.0.1-jre"
 
   commons-collections:
     commons-collections:

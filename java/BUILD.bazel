@@ -1,5 +1,11 @@
-load("//java/tools/checkstyle:checkstyle.bzl", "checkstyle_test")
+load("@com_github_checkstyle_java//checkstyle:checkstyle.bzl", "checkstyle_test")
 load("//bazel:ray.bzl", "flatbuffer_java_library")
+
+exports_files([
+    "testng.xml",
+    "checkstyle.xml",
+    "checkstyle-suppressions.xml",
+])
 
 java_binary(
     name = "bazel_deps",
@@ -47,7 +53,10 @@ java_library(
 checkstyle_test(
     name = "org_ray_ray_api-checkstyle",
     target = ":org_ray_ray_api",
+    config = "//java:checkstyle.xml",
+    suppressions = "//java:checkstyle-suppressions.xml",
     size = "small",
+    tags = ["checkstyle"],
 )
 
 java_library(
@@ -57,7 +66,9 @@ java_library(
     ]) + [
         ":generate_java_gcs_fbs",
     ],
-    resources = glob(["runtime/src/main/resources/**"]),
+    resources = glob([
+        "runtime/src/main/resources/**",
+    ]),
     data = ["//:raylet_library_java"],
     deps = [
         ":org_ray_ray_api",
@@ -84,7 +95,10 @@ java_library(
 checkstyle_test(
     name = "org_ray_ray_runtime-checkstyle",
     target = ":org_ray_ray_runtime",
+    config = "//java:checkstyle.xml",
+    suppressions = "//java:checkstyle-suppressions.xml",
     size = "small",
+    tags = ["checkstyle"],
 )
 
 java_binary(
@@ -101,7 +115,10 @@ java_binary(
 checkstyle_test(
     name = "org_ray_ray_tutorial-checkstyle",
     target = ":org_ray_ray_tutorial",
+    config = "//java:checkstyle.xml",
+    suppressions = "//java:checkstyle-suppressions.xml",
     size = "small",
+    tags = ["checkstyle"],
 )
 
 java_library(
@@ -122,7 +139,10 @@ java_library(
 checkstyle_test(
     name = "org_ray_ray_test-checkstyle",
     target = ":org_ray_ray_test",
+    config = "//java:checkstyle.xml",
+    suppressions = "//java:checkstyle-suppressions.xml",
     size = "small",
+    tags = ["checkstyle"],
 )
 
 java_library(
@@ -140,15 +160,17 @@ java_library(
 checkstyle_test(
     name = "org_ray_ray_runtime_test-checkstyle",
     target = ":org_ray_ray_runtime_test",
+    config = "//java:checkstyle.xml",
+    suppressions = "//java:checkstyle-suppressions.xml",
     size = "small",
+    tags = ["checkstyle"],
 )
 
-exports_files(["testng.xml"])
-
-java_binary(
+java_test(
     name = "all_tests",
     main_class = "org.testng.TestNG",
     data = ["testng.xml"],
+    args = ["java/testng.xml"],
     runtime_deps = [
         ":org_ray_ray_test",
         ":org_ray_ray_runtime_test",
