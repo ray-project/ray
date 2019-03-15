@@ -12,11 +12,10 @@ sh $ROOT_DIR/generate_deps.sh
 
 echo "Compiling Java code."
 pushd $ROOT_DIR/..
-# bazel checkstyle for java
-bazel test //java:all -c opt
 # compile all the targets
-bazel build //java:all -c opt --verbose_failures
-popd
+bazel build //java:all --verbose_failures
+# bazel checkstyle for java
+bazel test //java:all --test_tag_filters="checkstyle"
 
 # The following are soft links
 # TODO: remove this once cmake is removed
@@ -25,9 +24,8 @@ ln -sf $ROOT_DIR/../bazel-bin/java/* $ROOT_DIR/../build/java/
 mkdir -p $ROOT_DIR/tutorial/target/
 ln -sf $ROOT_DIR/../bazel-bin/java/org_ray_ray_tutorial_deploy.jar $ROOT_DIR/tutorial/target/ray-tutorial-0.1-SNAPSHOT.jar
 
-pushd $ROOT_DIR/test
 echo "Running tests under cluster mode."
-ENABLE_MULTI_LANGUAGE_TESTS=1 java -jar -Dray.home=$ROOT_DIR/../ $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/testng.xml || cluster_exit_code=$?
+ENABLE_MULTI_LANGUAGE_TESTS=1 bazel test //java:all_tests || cluster_exit_code=$?
 
 # exit_code == 2 means there are some tests skiped.
 if [ $cluster_exit_code -eq 2 ] && [ $cluster_exit_code -eq 0 ] ; then
@@ -35,7 +33,8 @@ if [ $cluster_exit_code -eq 2 ] && [ $cluster_exit_code -eq 0 ] ; then
 fi
 
 echo "Running tests under single-process mode."
-java -jar -Dray.home=$ROOT_DIR/../ -Dray.run-mode=SINGLE_PROCESS $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/testng.xml || single_exit_code=$?
+bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" || single_exit_code=$?
+
 # exit_code == 2 means there are some tests skiped.
 if [ $single_exit_code -eq 2 ] && [ $single_exit_code -eq 0 ] ; then
     exit $exit_code

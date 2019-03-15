@@ -154,7 +154,7 @@ if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
 
   # Copy java native dependencies.
   add_custom_command(TARGET copy_ray POST_BUILD
-    COMMAND mkdir -p ${CMAKE_SOURCE_DIR}/java/runtime/native_dependencies)
+    COMMAND mkdir -p ${CMAKE_SOURCE_DIR}/java/runtime/src/main/resources/native)
   set(java_native_dependencies
     "src/ray/thirdparty/redis/src/redis-server"
     "src/ray/gcs/redis_module/libray_redis_module.so"
@@ -163,7 +163,7 @@ if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
   foreach(file ${java_native_dependencies})
   add_custom_command(TARGET copy_ray POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/${file}
-      ${CMAKE_SOURCE_DIR}/java/runtime/native_dependencies)
+      ${CMAKE_SOURCE_DIR}/java/runtime/src/main/resources/native)
   endforeach()
 add_custom_command(TARGET copy_ray POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${ARROW_HOME}/bin/plasma_store_server
