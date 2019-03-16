@@ -168,6 +168,8 @@ if __name__ == "__main__":
     tune.run(
         lambda cfg, rprtr: train_mnist(args, cfg, rprtr),
         name="exp",
+        verbose=0,
+        scheduler=sched,
         **{
             "stop": {
                 "mean_accuracy": 0.98,
@@ -184,6 +186,4 @@ if __name__ == "__main__":
                 "momentum": tune.sample_from(
                     lambda spec: np.random.uniform(0.1, 0.9)),
             }
-        },
-        verbose=0,
-        scheduler=sched)
+        })

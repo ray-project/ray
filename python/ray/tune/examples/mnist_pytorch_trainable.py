@@ -179,6 +179,8 @@ if __name__ == "__main__":
         time_attr="training_iteration", reward_attr="neg_mean_loss")
     tune.run(
         TrainMNIST,
+        verbose=0,
+        scheduler=sched,
         **{
             "stop": {
                 "mean_accuracy": 0.95,
@@ -197,6 +199,4 @@ if __name__ == "__main__":
                 "momentum": tune.sample_from(
                     lambda spec: np.random.uniform(0.1, 0.9)),
             }
-        },
-        verbose=0,
-        scheduler=sched)
+        })

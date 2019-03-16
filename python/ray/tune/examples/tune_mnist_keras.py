@@ -180,6 +180,8 @@ if __name__ == "__main__":
     tune.run(
         lambda cfg, rprtr: train_mnist(args, cfg, rprtr),
         name="exp",
+        verbose=0,
+        scheduler=sched,
         **{
             "stop": {
                 "mean_accuracy": 0.99,
@@ -201,6 +203,4 @@ if __name__ == "__main__":
                 "dropout1": tune.sample_from(
                     lambda spec: np.random.uniform(0.2, 0.8)),
             }
-        },
-        verbose=0,
-        scheduler=sched)
+        })

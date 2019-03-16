@@ -83,6 +83,9 @@ if __name__ == "__main__":
     # Try to find the best factor 1 and factor 2
     run(MyTrainableClass,
         name="pbt_test",
+        scheduler=pbt,
+        reuse_actors=True,
+        verbose=False,
         **{
             "stop": {
                 "training_iteration": 20 if args.smoke_test else 99999
@@ -92,7 +95,4 @@ if __name__ == "__main__":
                 "factor_1": 4.0,
                 "factor_2": 1.0,
             },
-        },
-        scheduler=pbt,
-        reuse_actors=True,
-        verbose=False)
+        })

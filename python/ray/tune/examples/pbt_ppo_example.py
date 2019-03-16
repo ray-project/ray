@@ -48,6 +48,7 @@ if __name__ == "__main__":
     run(
         "PPO",
         name="pbt_humanoid_test",
+        scheduler=pbt,
         **{
             "env": "Humanoid-v1",
             "num_samples": 8,
@@ -70,5 +71,4 @@ if __name__ == "__main__":
                 "train_batch_size": sample_from(
                     lambda spec: random.choice([10000, 20000, 40000]))
             },
-        },
-        scheduler=pbt)
+        })
