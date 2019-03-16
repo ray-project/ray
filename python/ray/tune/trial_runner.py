@@ -426,6 +426,11 @@ class TrialRunner(object):
                         self._search_alg.on_trial_complete(
                             trial.trial_id, early_terminated=True)
 
+            # __duplicate__ is a magic keyword used internally to
+            # avoid double-logging results when using the Function API.
+            # TrialScheduler and SearchAlgorithm still receive a
+            # notification because there may be special handling for
+            # the `on_trial_complete` hook.
             if "__duplicate__" not in result:
                 trial.update_last_result(
                     result, terminate=(decision == TrialScheduler.STOP))

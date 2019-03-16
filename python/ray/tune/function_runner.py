@@ -149,6 +149,13 @@ class FunctionRunner(Trainable):
         raise NotImplementedError
 
     def _train(self):
+        """Implements train() for a Function API.
+
+        If the RunnerThread finishes without reporting "done",
+        Tune will automatically provide a magic keyword __duplicate__
+        along with a result with "done=True". The TrialRunner will handle the
+        result accordingly (see tune/trial_runner.py).
+        """
         if self._runner.is_alive():
             # if started and alive, inform the reporter to continue and
             # generate the next result
@@ -191,8 +198,7 @@ class FunctionRunner(Trainable):
             # this branch should only be visited if the runner thread raised
             # an exception. If no exception were raised, it means that the
             # runner thread never reported any results which should not be
-            # possible when wrapping functions with
-            # `tune.trainable.wrap_function`.
+            # possible when wrapping functions with `wrap_function`.
             raise TuneError(
                 ("Wrapped function ran until completion without reporting "
                  "results or raising an exception."))
@@ -233,3 +239,16 @@ class FunctionRunner(Trainable):
                                  err_tb=err_tb))
         except queue.Empty:
             pass
+
+
+def wrap_function(train_func):
+    class WrappedFunc(FunctionRunner):
+        def _trainable_func(self, config, reporter):
+            output = train_func(config, reporter)
+            # If train_func returns, we need to notify the main event loop
+            # of the last result while avoiding double logging. This is done
+            # with the keyword "__duplicate__" -- see tune/function_runner.py,
+            reporter(done=True, __duplicate__=True)
+            return output
+
+    return WrappedFunc
