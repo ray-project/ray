@@ -178,7 +178,7 @@ if __name__ == "__main__":
         grace_period=20)
 
     tune.run(
-        lambda cfg, rprtr: train_mnist(args, cfg, rprtr),
+        lambda config, reporter: train_mnist(args, config, reporter),
         name="exp",
         verbose=0,
         scheduler=sched,
