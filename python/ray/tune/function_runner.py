@@ -209,12 +209,14 @@ class FunctionRunner(Trainable):
                     ("Runner error waiting to be raised in main thread. "
                      "Logging all available results first."))
 
-        # Handle reporter thread finishing without 'done'.
-        # TrialRunner will not log this result again.
+        # This keyword appears if the train_func using the Function API
+        # finishes without "done=True". This duplicates the last result, but
+        # the TrialRunner will not log this result again.
         if "__duplicate__" in result:
             new_result = self._last_result.copy()
             new_result.update(result)
             result = new_result
+
         self._last_result = result
         return result
 
