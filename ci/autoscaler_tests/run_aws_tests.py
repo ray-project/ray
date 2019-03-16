@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
 import os
 import yaml
 import subprocess
@@ -19,7 +18,6 @@ import ray
 
 
 def _check(cond, timeout=60):
-    detected = False
     for i in timeout:
         time.sleep(1)
         if cond():
@@ -27,24 +25,20 @@ def _check(cond, timeout=60):
     return False
 
 
-# TODO(rliaw): make sure secrets are on Jenkins
-
 @pytest.fixture
 def setup_file_path():
     cluster_file_path = os.path.join(
         os.path.dirname(ray.__file__), "autoscaler/aws/example-full.yaml")
     yield cluster_file_path
-    subprocess.check_call(
-        ("ray down {cluster_file_path} -y".format(
-            cluster_file_path=cluster_file_path).split()))
+    subprocess.check_call(("ray down {cluster_file_path} -y".format(
+        cluster_file_path=cluster_file_path).split()))
     subprocess.check_call(["ray", "stop"])
 
 
 def test_ray_up_down(setup_file_path):
     cluster_file_path = setup_file_path
-    result = subprocess.check_call(
-        ("ray up {cluster_file_path} -y".format(
-            cluster_file_path=cluster_file_path).split()))
+    subprocess.check_call(("ray up {cluster_file_path} -y".format(
+        cluster_file_path=cluster_file_path).split()))
     with open(cluster_file_path) as f:
         cfg = yaml.load(f)
 
@@ -63,16 +57,14 @@ def test_ray_up_down(setup_file_path):
 
 def test_ray_autoscale(setup_file_path):
     cluster_file_path = setup_file_path
-    result = subprocess.check_call(
-        ("ray up {cluster_file_path} -y".format(
-            cluster_file_path=cluster_file_path).split()))
+    subprocess.check_call(("ray up {cluster_file_path} -y".format(
+        cluster_file_path=cluster_file_path).split()))
     with open(cluster_file_path) as f:
         cfg = yaml.load(f)
 
     provider = AWSNodeProvider(cfg["provider"], cfg["cluster_name"])
     assert len(list(provider.nodes({TAG_RAY_NODE_TYPE: "head"}))) == 1
     assert len(list(provider.nodes({TAG_RAY_NODE_TYPE: "worker"}))) == 0
-
 
     workload_file_path = os.path.join(
         os.path.dirname(ray.__file__), "../tune_workload.py")
@@ -95,14 +87,11 @@ def test_ray_autoscale(setup_file_path):
     assert len(list(provider.nodes({TAG_RAY_NODE_TYPE: "worker"}))) == 0
 
 
-def test_ray_kill(setup_file_path):
-    pass
-
 def test_ray_exec(setup_file_path):
     cluster_file_path = setup_file_path
     subprocess.check_call(
-        ("ray exec {cluster_file_path} 'ls && sleep 10' --start --stop --tmux".format(
-            cluster_file_path=cluster_file_path).split()))
+        ("ray exec {cluster_file_path} 'ls && sleep 10' --start --stop --tmux".
+         format(cluster_file_path=cluster_file_path).split()))
 
     with open(cluster_file_path) as f:
         cfg = yaml.load(f)
@@ -112,5 +101,5 @@ def test_ray_exec(setup_file_path):
     assert _check(
         lambda: list(provider.nodes({TAG_RAY_NODE_TYPE: "head"})), timeout=30)
     # Stop runs after
-    assert _check(lambda: not list(provider.nodes({TAG_RAY_NODE_TYPE: "head"})))
-
+    assert _check(lambda: not list(provider.nodes(
+        {TAG_RAY_NODE_TYPE: "head"})))
