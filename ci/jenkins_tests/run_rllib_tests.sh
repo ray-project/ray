@@ -411,3 +411,6 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/ci/suppress_output /ray/python/ray/rllib/agents/impala/vtrace_test.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/python/ray/ci/suppress_output /ray/python/ray/rllib/tests/test_ignore_worker_failure.py

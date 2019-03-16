@@ -18,6 +18,7 @@ from ray.tune.util import warn_if_slow
 
 logger = logging.getLogger(__name__)
 
+RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
 BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 
@@ -34,18 +35,24 @@ class _LocalWrapper(object):
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
-    def __init__(self, queue_trials=False, reuse_actors=False):
+    def __init__(self,
+                 queue_trials=False,
+                 reuse_actors=False,
+                 refresh_period=RESOURCE_REFRESH_PERIOD):
         super(RayTrialExecutor, self).__init__(queue_trials)
         self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object id generated.
         # We use self._paused to store paused trials here.
         self._paused = {}
+        self._reuse_actors = reuse_actors
+        self._cached_actor = None
+
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
-        self._reuse_actors = reuse_actors
-        self._cached_actor = None
+        self._refresh_period = refresh_period
+        self._last_resource_refresh = float("-inf")
         self._last_nontrivial_wait = time.time()
         if ray.is_initialized():
             self._update_avail_resources()
@@ -370,11 +377,19 @@ class RayTrialExecutor(TrialExecutor):
 
         self._avail_resources = Resources(
             int(num_cpus), int(num_gpus), custom_resources=custom_resources)
+        self._last_resource_refresh = time.time()
         self._resources_initialized = True
 
     def has_resources(self, resources):
-        """Returns whether this runner has at least the specified resources."""
-        self._update_avail_resources()
+        """Returns whether this runner has at least the specified resources.
+
+        This refreshes the Ray cluster resources if the time since last update
+        has exceeded self._refresh_period. This also assumes that the
+        cluster is not resizing very frequently.
+        """
+        if time.time() - self._last_resource_refresh > self._refresh_period:
+            self._update_avail_resources()
+
         currently_available = Resources.subtract(self._avail_resources,
                                                  self._committed_resources)
 
@@ -445,7 +460,6 @@ class RayTrialExecutor(TrialExecutor):
 
     def on_step_begin(self):
         """Before step() called, update the available resources."""
-
         self._update_avail_resources()
 
     def save(self, trial, storage=Checkpoint.DISK):
