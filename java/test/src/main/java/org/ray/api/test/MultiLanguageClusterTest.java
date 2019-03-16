@@ -66,8 +66,7 @@ public class MultiLanguageClusterTest {
 
     // Start ray cluster.
     String testDir = System.getProperty("user.dir");
-    String workerOptions = String.format("-Dray.home=%s/../../", testDir);
-    workerOptions +=
+    String workerOptions =
         " -classpath " + String.format("%s/../../build/java/*:%s/target/*", testDir, testDir);
     final List<String> startCommand = ImmutableList.of(
         "ray",
@@ -85,7 +84,6 @@ public class MultiLanguageClusterTest {
     }
 
     // Connect to the cluster.
-    System.setProperty("ray.home", "../..");
     System.setProperty("ray.redis.address", "127.0.0.1:6379");
     System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
@@ -96,7 +94,6 @@ public class MultiLanguageClusterTest {
   public void tearDown() {
     // Disconnect to the cluster.
     Ray.shutdown();
-    System.clearProperty("ray.home");
     System.clearProperty("ray.redis.address");
     System.clearProperty("ray.object-store.socket-name");
     System.clearProperty("ray.raylet.socket-name");
