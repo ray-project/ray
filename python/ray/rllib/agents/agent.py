@@ -30,6 +30,10 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 
 logger = logging.getLogger(__name__)
 
+# Max number of times to retry a worker failure. We shouldn't try too many
+# times in a row since that would indicate a persistent cluster issue.
+MAX_WORKER_FAILURE_RETRIES = 3
+
 # yapf: disable
 # __sphinx_doc_begin__
 COMMON_CONFIG = {
@@ -296,7 +300,7 @@ class Agent(Trainable):
             logger.debug("updated global vars: {}".format(self.global_vars))
 
         result = None
-        for _ in range(4):
+        for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             try:
                 result = Trainable.train(self)
             except RayError as e:
