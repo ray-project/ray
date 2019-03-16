@@ -29,10 +29,7 @@ def test_set_single_output(ray_start):
     assert ray.get(f.remote()) == 123
 
 
-@pytest.mark.parametrize("set_out0", [True, False])
-@pytest.mark.parametrize("set_out1", [True, False])
-@pytest.mark.parametrize("set_out2", [True, False])
-def test_set_multiple_outputs(ray_start, set_out0, set_out1, set_out2):
+def test_set_multiple_outputs(ray_start):
     @ray.remote(num_return_vals=3)
     def f(set_out0, set_out1, set_out3):
         returns = []
@@ -45,8 +42,13 @@ def test_set_multiple_outputs(ray_start, set_out0, set_out1, set_out2):
                 returns.append(False)
         return tuple(returns)
 
-    result_object_ids = f.remote(set_out0, set_out1, set_out2)
-    assert ray.get(result_object_ids) == [set_out0, set_out1, set_out2]
+    for set_out0 in [True, False]:
+        for set_out1 in [True, False]:
+            for set_out2 in [True, False]:
+                result_object_ids = f.remote(set_out0, set_out1, set_out2)
+                assert ray.get(result_object_ids) == [
+                    set_out0, set_out1, set_out2
+                ]
 
 
 def test_set_actor_method(ray_start):
@@ -71,7 +73,7 @@ def test_exception(ray_start):
         return_object_ids = ray.worker.global_worker._current_task.returns()
         # The first return value is successfully stored in the object store
         ray.worker.global_worker.put_object(return_object_ids[0], 123)
-        raise Exception
+        raise Exception("Error")
         # The exception is stored at the second return objcet ID.
         return ray.experimental.no_return.NoReturn, 456
 
