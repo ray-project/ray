@@ -24,7 +24,7 @@ from ray.tune import run_experiments
 from ray.tune.examples.tune_mnist_ray import deepnn
 from ray.experimental.sgd.model import Model
 from ray.experimental.sgd.sgd import DistributedSGD
-from ray.experimental.tfutils import TensorFlowVariables
+import ray.experimental.tf_utils as ray_tf_utils
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--redis-address", default=None, type=str)
@@ -67,8 +67,8 @@ class MNISTModel(Model):
             tf.nn.softmax_cross_entropy_with_logits(
                 labels=self.y_, logits=y_conv))
         self.optimizer = tf.train.AdamOptimizer(1e-4)
-        self.variables = TensorFlowVariables(self.loss,
-                                             tf.get_default_session())
+        self.variables = ray_tf_utils.TensorFlowVariables(
+            self.loss, tf.get_default_session())
 
         # For evaluating test accuracy
         correct_prediction = tf.equal(

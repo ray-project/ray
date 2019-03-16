@@ -8,10 +8,12 @@ import pickle
 import tensorflow as tf
 
 import ray
-from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
     DEFAULT_POLICY_ID
@@ -120,7 +122,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  input_creator=lambda ioctx: ioctx.default_sampler_input(),
                  input_evaluation=frozenset([]),
                  output_creator=lambda ioctx: NoopOutput(),
-                 remote_worker_envs=False):
+                 remote_worker_envs=False,
+                 async_remote_worker_envs=False):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -199,6 +202,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 those new envs in remote processes instead of in the current
                 process. This adds overheads, but can make sense if your envs
                 are very CPU intensive (e.g., for StarCraft).
+            async_remote_worker_envs (bool): Similar to remote_worker_envs,
+                but runs the envs asynchronously in the background.
         """
 
         if log_level:
@@ -222,7 +227,7 @@ class PolicyEvaluator(EvaluatorInterface):
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
 
-        self.env = env_creator(env_context)
+        self.env = _validate_env(env_creator(env_context))
         if isinstance(self.env, MultiAgentEnv) or \
                 isinstance(self.env, BaseEnv):
 
@@ -305,7 +310,8 @@ class PolicyEvaluator(EvaluatorInterface):
             self.env,
             make_env=make_env,
             num_envs=num_envs,
-            remote_envs=remote_worker_envs)
+            remote_envs=remote_worker_envs,
+            async_remote_envs=async_remote_worker_envs)
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
@@ -656,7 +662,7 @@ class PolicyEvaluator(EvaluatorInterface):
         return policy_map, preprocessors
 
     def __del__(self):
-        if isinstance(self.sampler, AsyncSampler):
+        if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
             self.sampler.shutdown = True
 
 
@@ -699,6 +705,20 @@ def _validate_and_canonicalize(policy_graph, env):
             DEFAULT_POLICY_ID: (policy_graph, env.observation_space,
                                 env.action_space, {})
         }
+
+
+def _validate_env(env):
+    # allow this as a special case (assumed gym.Env)
+    if hasattr(env, "observation_space") and hasattr(env, "action_space"):
+        return env
+
+    allowed_types = [gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv]
+    if not any(isinstance(env, tpe) for tpe in allowed_types):
+        raise ValueError(
+            "Returned env should be an instance of gym.Env, MultiAgentEnv, "
+            "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
+            "function returned {} ({}).".format(env, type(env)))
+    return env
 
 
 def _monitor(env, path):

@@ -8,67 +8,30 @@ ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
 
 namespace {
 
-/// Process a suffix of the object table log.
-/// If object is inlined (inline_object_flag = TRUE), its data and metadata are
-/// stored with the object's entry so we read them into inline_object_data, and
-/// inline_object_metadata, respectively.
-/// If object is not inlined, store the result in client_ids.
-/// This assumes that client_ids already contains the result of the
-/// object table log up to but not including this suffix.
-/// This function also stores a bool in has_been_created indicating whether the
-/// object has ever been created before.
-void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history,
+/// Process a notification of the object table entries and store the result in
+/// client_ids. This assumes that client_ids already contains the result of the
+/// object table entries up to but not including this notification.
+void UpdateObjectLocations(const GcsTableNotificationMode notification_mode,
+                           const std::vector<ObjectTableDataT> &location_updates,
                            const ray::gcs::ClientTable &client_table,
-                           std::unordered_set<ClientID> *client_ids,
-                           bool *inline_object_flag,
-                           std::vector<uint8_t> *inline_object_data,
-                           std::string *inline_object_metadata, bool *has_been_created) {
-  // location_history contains the history of locations of the object (it is a log),
-  // which might look like the following:
-  //   client1.is_eviction = false
-  //   client1.is_eviction = true
-  //   client2.is_eviction = false
-  // In such a scenario, we want to indicate client2 is the only client that contains
-  // the object, which the following code achieves.
-  //
-  // If object is inlined each entry contains both the object's data and metadata,
-  // so we don't care about its location.
-  if (!location_history.empty()) {
-    // If there are entries, then the object has been created. Once this flag
-    // is set to true, it should never go back to false.
-    *has_been_created = true;
-  }
-  for (const auto &object_table_data : location_history) {
+                           std::unordered_set<ClientID> *client_ids) {
+  // location_updates contains the updates of locations of the object.
+  // with GcsTableNotificationMode, we can determine whether the update mode is
+  // addition or deletion.
+  for (const auto &object_table_data : location_updates) {
     ClientID client_id = ClientID::from_binary(object_table_data.manager);
-    if (object_table_data.inline_object_flag) {
-      if (!*inline_object_flag) {
-        // This is the first time we're receiving the inline object data. Read
-        // object's data from the GCS entry.
-        *inline_object_flag = object_table_data.inline_object_flag;
-        inline_object_data->assign(object_table_data.inline_object_data.begin(),
-                                   object_table_data.inline_object_data.end());
-        inline_object_metadata->assign(object_table_data.inline_object_metadata.begin(),
-                                       object_table_data.inline_object_metadata.end());
-      }
-      // We got the data and metadata of the object so exit the loop.
-      break;
-    }
-
-    if (!object_table_data.is_eviction) {
+    if (notification_mode != GcsTableNotificationMode::REMOVE) {
       client_ids->insert(client_id);
     } else {
       client_ids->erase(client_id);
     }
   }
-
-  if (!*inline_object_flag) {
-    // Filter out the removed clients from the object locations.
-    for (auto it = client_ids->begin(); it != client_ids->end();) {
-      if (client_table.IsRemoved(*it)) {
-        it = client_ids->erase(it);
-      } else {
-        it++;
-      }
+  // Filter out the removed clients from the object locations.
+  for (auto it = client_ids->begin(); it != client_ids->end();) {
+    if (client_table.IsRemoved(*it)) {
+      it = client_ids->erase(it);
+    } else {
+      it++;
     }
   }
 }
@@ -78,19 +41,22 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
 void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback = [this](
       gcs::AsyncGcsClient *client, const ObjectID &object_id,
-      const std::vector<ObjectTableDataT> &location_history) {
+      const GcsTableNotificationMode notification_mode,
+      const std::vector<ObjectTableDataT> &location_updates) {
     // Objects are added to this map in SubscribeObjectLocations.
     auto it = listeners_.find(object_id);
     // Do nothing for objects we are not listening for.
     if (it == listeners_.end()) {
       return;
     }
+
+    // Once this flag is set to true, it should never go back to false.
+    it->second.subscribed = true;
+
     // Update entries for this object.
-    UpdateObjectLocations(location_history, gcs_client_->client_table(),
-                          &it->second.current_object_locations,
-                          &it->second.inline_object_flag, &it->second.inline_object_data,
-                          &it->second.inline_object_metadata,
-                          &it->second.has_been_created);
+    UpdateObjectLocations(notification_mode, location_updates,
+                          gcs_client_->client_table(),
+                          &it->second.current_object_locations);
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
     auto callbacks = it->second.callbacks;
@@ -101,52 +67,37 @@ void ObjectDirectory::RegisterBackend() {
     for (const auto &callback_pair : callbacks) {
       // It is safe to call the callback directly since this is already running
       // in the subscription callback stack.
-      callback_pair.second(object_id, it->second.current_object_locations,
-                           it->second.inline_object_flag, it->second.inline_object_data,
-                           it->second.inline_object_metadata,
-                           it->second.has_been_created);
+      callback_pair.second(object_id, it->second.current_object_locations);
     }
   };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
-      UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
       object_notification_callback, nullptr));
 }
 
 ray::Status ObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,
-    const object_manager::protocol::ObjectInfoT &object_info, bool inline_object_flag,
-    const plasma::ObjectBuffer &plasma_buffer) {
-  RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id << " inline? "
-                 << inline_object_flag;
+    const object_manager::protocol::ObjectInfoT &object_info) {
+  RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
   // Append the addition entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
-  data->is_eviction = false;
   data->object_size = object_info.data_size;
-  data->inline_object_flag = inline_object_flag;
-  if (inline_object_flag) {
-    // Add object's data to its GCS entry.
-    data->inline_object_data.assign(
-        plasma_buffer.data->data(),
-        plasma_buffer.data->data() + plasma_buffer.data->size());
-    data->inline_object_metadata.assign(
-        plasma_buffer.metadata->data(),
-        plasma_buffer.metadata->data() + plasma_buffer.metadata->size());
-  }
   ray::Status status =
-      gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Add(JobID::nil(), object_id, data, nullptr);
   return status;
 }
 
-ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
-                                                 const ClientID &client_id) {
+ray::Status ObjectDirectory::ReportObjectRemoved(
+    const ObjectID &object_id, const ClientID &client_id,
+    const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   // Append the eviction entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
-  data->is_eviction = true;
+  data->object_size = object_info.data_size;
   ray::Status status =
-      gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Remove(JobID::nil(), object_id, data, nullptr);
   return status;
 };
 
@@ -183,20 +134,16 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
     const ObjectID &object_id = listener.first;
     if (listener.second.current_object_locations.count(client_id) > 0) {
       // If the subscribed object has the removed client as a location, update
-      // its locations with an empty log so that the location will be removed.
-      UpdateObjectLocations(
-          {}, gcs_client_->client_table(), &listener.second.current_object_locations,
-          &listener.second.inline_object_flag, &listener.second.inline_object_data,
-          &listener.second.inline_object_metadata, &listener.second.has_been_created);
+      // its locations with an empty update so that the location will be removed.
+      UpdateObjectLocations(GcsTableNotificationMode::APPEND_OR_ADD, {},
+                            gcs_client_->client_table(),
+                            &listener.second.current_object_locations);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
       for (const auto &callback_pair : listener.second.callbacks) {
         // It is safe to call the callback directly since this is already running
         // in the subscription callback stack.
-        callback_pair.second(
-            object_id, listener.second.current_object_locations,
-            listener.second.inline_object_flag, listener.second.inline_object_data,
-            listener.second.inline_object_metadata, listener.second.has_been_created);
+        callback_pair.second(object_id, listener.second.current_object_locations);
       }
     }
   }
@@ -220,17 +167,10 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   listener_state.callbacks.emplace(callback_id, callback);
   // If we previously received some notifications about the object's locations,
   // immediately notify the caller of the current known locations.
-  if (listener_state.has_been_created) {
+  if (listener_state.subscribed) {
     auto &locations = listener_state.current_object_locations;
-    auto inline_object_flag = listener_state.inline_object_flag;
-    const auto &inline_object_data = listener_state.inline_object_data;
-    const auto &inline_object_metadata = listener_state.inline_object_metadata;
-    io_service_.post([callback, locations, inline_object_flag, inline_object_data,
-                      inline_object_metadata, object_id]() {
-      callback(object_id, locations, inline_object_flag, inline_object_data,
-               inline_object_metadata,
-               /*has_been_created=*/true);
-    });
+    io_service_.post(
+        [callback, locations, object_id]() { callback(object_id, locations); });
   }
   return status;
 }
@@ -255,39 +195,30 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                                              const OnLocationsFound &callback) {
   ray::Status status;
   auto it = listeners_.find(object_id);
-  if (it == listeners_.end()) {
+  if (it != listeners_.end() && it->second.subscribed) {
+    // If we have locations cached due to a concurrent SubscribeObjectLocations
+    // call, and we have received at least one notification from the GCS about
+    // the object's creation, then call the callback immediately with the
+    // cached locations.
+    auto &locations = it->second.current_object_locations;
+    io_service_.post(
+        [callback, object_id, locations]() { callback(object_id, locations); });
+  } else {
+    // We do not have any locations cached due to a concurrent
+    // SubscribeObjectLocations call, so look up the object's locations
+    // directly from the GCS.
     status = gcs_client_->object_table().Lookup(
         JobID::nil(), object_id,
         [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
-                         const std::vector<ObjectTableDataT> &location_history) {
+                         const std::vector<ObjectTableDataT> &location_updates) {
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
-          bool inline_object_flag = false;
-          std::vector<uint8_t> inline_object_data;
-          std::string inline_object_metadata;
-          bool has_been_created = false;
-          UpdateObjectLocations(location_history, gcs_client_->client_table(),
-                                &client_ids, &inline_object_flag, &inline_object_data,
-                                &inline_object_metadata, &has_been_created);
+          UpdateObjectLocations(GcsTableNotificationMode::APPEND_OR_ADD, location_updates,
+                                gcs_client_->client_table(), &client_ids);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.
-          callback(object_id, client_ids, inline_object_flag, inline_object_data,
-                   inline_object_metadata, has_been_created);
+          callback(object_id, client_ids);
         });
-  } else {
-    // If we have locations cached due to a concurrent SubscribeObjectLocations
-    // call, call the callback immediately with the cached locations.
-    // If object inlined, we already have the object's data.
-    auto &locations = it->second.current_object_locations;
-    bool has_been_created = it->second.has_been_created;
-    bool inline_object_flag = it->second.inline_object_flag;
-    const auto &inline_object_data = it->second.inline_object_data;
-    const auto &inline_object_metadata = it->second.inline_object_metadata;
-    io_service_.post([callback, object_id, locations, inline_object_flag,
-                      inline_object_data, inline_object_metadata, has_been_created]() {
-      callback(object_id, locations, inline_object_flag, inline_object_data,
-               inline_object_metadata, has_been_created);
-    });
   }
   return status;
 }

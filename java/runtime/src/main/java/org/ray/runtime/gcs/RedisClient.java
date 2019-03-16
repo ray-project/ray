@@ -85,4 +85,14 @@ public class RedisClient {
       return jedis.lrange(key, start, end);
     }
   }
+
+  /**
+   * Whether the key exists in Redis.
+   */
+  public boolean exists(byte[] key) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.exists(key);
+    }
+  }
+
 }

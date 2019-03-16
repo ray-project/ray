@@ -10,7 +10,6 @@
 namespace {
 std::string store_executable;
 int64_t wait_timeout_ms;
-bool test_inline_objects = false;
 }
 
 namespace ray {
@@ -25,16 +24,13 @@ class MockServer {
  public:
   MockServer(boost::asio::io_service &main_service,
              const ObjectManagerConfig &object_manager_config,
-             std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-             const std::string &store_name)
+             std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
       : object_manager_acceptor_(
             main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
         object_manager_(main_service, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_),
-                        store_client_) {
-    RAY_ARROW_CHECK_OK(store_client_.Connect(store_name.c_str()));
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
@@ -86,7 +82,6 @@ class MockServer {
   boost::asio::ip::tcp::acceptor object_manager_acceptor_;
   boost::asio::ip::tcp::socket object_manager_socket_;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
-  plasma::PlasmaClient store_client_;
   ObjectManager object_manager_;
 };
 
@@ -135,7 +130,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.max_receives = max_receives;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
-    server1.reset(new MockServer(main_service, om_config_1, gcs_client_1, store_id_1));
+    server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
@@ -147,7 +142,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.max_receives = max_receives;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
-    server2.reset(new MockServer(main_service, om_config_2, gcs_client_2, store_id_2));
+    server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
     RAY_ARROW_CHECK_OK(client1.Connect(store_id_1));
@@ -296,13 +291,10 @@ class TestObjectManager : public TestObjectManagerBase {
     UniqueID sub_id = ray::ObjectID::from_random();
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
-        sub_id, object_1,
-        [this, sub_id, object_1, object_2](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients, bool inline_object_flag,
-            const std::vector<uint8_t> inline_object_data,
-            const std::string inline_object_metadata, bool created) {
-          if (!clients.empty() || inline_object_flag) {
+        sub_id, object_1, [this, sub_id, object_1, object_2](
+                              const ray::ObjectID &object_id,
+                              const std::unordered_set<ray::ClientID> &clients) {
+          if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }
         }));
@@ -341,14 +333,7 @@ class TestObjectManager : public TestObjectManagerBase {
   }
 
   void NextWaitTest() {
-    int data_size;
-    // Set the data size under or over the inline objects limit depending on
-    // the test configuration.
-    if (test_inline_objects) {
-      data_size = RayConfig::instance().inline_object_max_size_bytes() / 2;
-    } else {
-      data_size = RayConfig::instance().inline_object_max_size_bytes() * 2;
-    }
+    int data_size = 600;
     current_wait_test += 1;
     switch (current_wait_test) {
     case 0: {
@@ -499,9 +484,5 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   store_executable = std::string(argv[1]);
   wait_timeout_ms = std::stoi(std::string(argv[2]));
-  // If a third argument is provided, then test with inline objects.
-  if (argc > 3) {
-    test_inline_objects = true;
-  }
   return RUN_ALL_TESTS();
 }

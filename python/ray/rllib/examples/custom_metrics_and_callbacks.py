@@ -20,6 +20,8 @@ def on_episode_start(info):
 def on_episode_step(info):
     episode = info["episode"]
     pole_angle = abs(episode.last_observation_for()[2])
+    raw_angle = abs(episode.last_raw_obs_for()[2])
+    assert pole_angle == raw_angle
     episode.user_data["pole_angles"].append(pole_angle)
 
 
