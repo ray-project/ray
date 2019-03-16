@@ -55,6 +55,6 @@ if __name__ == "__main__":
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
     run(easy_objective,
         name="my_exp",
-        **config,
         search_alg=algo,
-        scheduler=scheduler)
+        scheduler=scheduler,
+        **config)
