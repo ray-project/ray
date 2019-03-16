@@ -212,4 +212,4 @@ if __name__ == "__main__":
             "dropout": lambda _: np.random.uniform(0, 1),
         })
 
-    run(Cifar10Model, name="pbt_cifar10", **train_spec, scheduler=pbt)
+    run(Cifar10Model, name="pbt_cifar10", scheduler=pbt, **train_spec)

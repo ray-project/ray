@@ -238,9 +238,9 @@ if __name__ == "__main__":
     from ray.tune.schedulers import AsyncHyperBandScheduler
     run(train,
         name='tune_mnist_test',
-        **mnist_spec,
         scheduler=AsyncHyperBandScheduler(
             time_attr="timesteps_total",
             reward_attr="mean_accuracy",
             max_t=600,
-        ))
+        ),
+        **mnist_spec)
