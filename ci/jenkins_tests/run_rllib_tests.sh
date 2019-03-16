@@ -369,10 +369,8 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/ci/suppress_output python /ray/python/ray/rllib/examples/cartpole_lstm.py --stop=200 --use-prev-action-reward
 
-# TODO(ericl): reenable the test after fix the arrow serialization error.
-# https://github.com/ray-project/ray/pull/4127#issuecomment-468903577
-#docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-#    /ray/python/ray/ci/suppress_output /ray/python/ray/rllib/examples/custom_loss.py --iters=2
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/python/ray/ci/suppress_output python /ray/python/ray/rllib/examples/custom_loss.py --iters=2
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/ci/suppress_output python /ray/python/ray/rllib/examples/custom_metrics_and_callbacks.py --num-iters=2
