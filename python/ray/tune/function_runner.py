@@ -247,7 +247,7 @@ def wrap_function(train_func):
             output = train_func(config, reporter)
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
-            # with the keyword "__duplicate__" -- see tune/function_runner.py,
+            # with the keyword "__duplicate__" -- see tune/trial_runner.py,
             reporter(done=True, __duplicate__=True)
             return output
 
