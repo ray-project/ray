@@ -167,8 +167,25 @@ def run(run_or_experiment,
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
 
-    TODO:
-        Add examples
+    Returns:
+        List of Trial objects.
+
+    Raises:
+        TuneError if any trials failed and `raise_on_failed_trial` is True.
+
+    Examples:
+        >>> tune.run(mytrainable, scheduler=PopulationBasedTraining())
+
+        >>> tune.run(mytrainable, num_samples=5, reuse_actors=True)
+
+        >>> tune.run(
+                "PG",
+                num_samples=5,
+                config={
+                    "env": "CartPole-v0",
+                    "lr": tune.sample_from(lambda _: np.random.rand())
+                }
+            )
     """
     experiment = run_or_experiment
     if not isinstance(run_or_experiment, Experiment):

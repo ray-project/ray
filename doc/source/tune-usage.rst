@@ -62,8 +62,8 @@ Both the Trainable and function-based API will have `autofilled metrics <tune-us
 See the `experiment specification <tune-usage.html#specifying-experiments>`__ section on how to specify and execute your training.
 
 
-Specifying Experiments
-~~~~~~~~~~~~~~~~~~~~~~
+Launching an Experiment
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Tune provides a ``run`` function that generates and runs the trials.
 
