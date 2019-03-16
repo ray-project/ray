@@ -6,7 +6,7 @@
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest
 
-.. image:: https://img.shields.io/badge/pypi-0.6.3-blue.svg
+.. image:: https://img.shields.io/badge/pypi-0.6.4-blue.svg
     :target: https://pypi.org/project/ray/
 
 |

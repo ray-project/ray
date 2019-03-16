@@ -90,13 +90,13 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
                 A = []
             else:
                 A = [
-                    node_id for node_id in provider.nodes({
+                    node_id for node_id in provider.non_terminated_nodes({
                         TAG_RAY_NODE_TYPE: "head"
                     })
                 ]
 
             A += [
-                node_id for node_id in provider.nodes({
+                node_id for node_id in provider.non_terminated_nodes({
                     TAG_RAY_NODE_TYPE: "worker"
                 })
             ]
@@ -128,7 +128,7 @@ def kill_node(config_file, yes, override_cluster_name):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
-        nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+        nodes = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
         node = random.choice(nodes)
         logger.info("kill_node: Terminating worker {}".format(node))
 
@@ -165,7 +165,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         head_node_tags = {
             TAG_RAY_NODE_TYPE: "head",
         }
-        nodes = provider.nodes(head_node_tags)
+        nodes = provider.non_terminated_nodes(head_node_tags)
         if len(nodes) > 0:
             head_node = nodes[0]
         else:
@@ -192,7 +192,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                 config["cluster_name"])
             provider.create_node(config["head_node"], head_node_tags, 1)
 
-        nodes = provider.nodes(head_node_tags)
+        nodes = provider.non_terminated_nodes(head_node_tags)
         assert len(nodes) == 1, "Failed to create head node."
         head_node = nodes[0]
 
@@ -248,7 +248,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         updater.join()
 
         # Refresh the node cache so we see the external ip if available
-        provider.nodes(head_node_tags)
+        provider.non_terminated_nodes(head_node_tags)
 
         if config.get("provider", {}).get("use_internal_ips", False) is True:
             head_node_ip = provider.internal_ip(head_node)
@@ -484,7 +484,7 @@ def get_worker_node_ips(config_file, override_cluster_name):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
-        nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+        nodes = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
 
         if config.get("provider", {}).get("use_internal_ips", False) is True:
             return [provider.internal_ip(node) for node in nodes]
@@ -503,7 +503,7 @@ def _get_head_node(config,
         head_node_tags = {
             TAG_RAY_NODE_TYPE: "head",
         }
-        nodes = provider.nodes(head_node_tags)
+        nodes = provider.non_terminated_nodes(head_node_tags)
     finally:
         provider.cleanup()
 

@@ -17,3 +17,4 @@ pendulum-ppo:
         model:
             fcnet_hiddens: [64, 64]
         batch_mode: complete_episodes
+        observation_filter: MeanStdFilter

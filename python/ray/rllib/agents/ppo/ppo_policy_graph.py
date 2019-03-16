@@ -148,6 +148,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             existing_state_in = None
             existing_seq_lens = None
         self.observations = obs_ph
+        self.prev_actions = prev_actions_ph
+        self.prev_rewards = prev_rewards_ph
 
         self.loss_in = [
             ("obs", obs_ph),
@@ -167,6 +169,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "is_training": self._get_is_training_placeholder(),
             },
             observation_space,
+            action_space,
             logit_dim,
             self.config["model"],
             state_in=existing_state_in,
@@ -206,7 +209,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                         "prev_actions": prev_actions_ph,
                         "prev_rewards": prev_rewards_ph,
                         "is_training": self._get_is_training_placeholder(),
-                    }, observation_space, 1, vf_config).outputs
+                    }, observation_space, action_space, 1, vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
@@ -245,7 +248,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             obs_input=obs_ph,
             action_sampler=self.sampler,
             action_prob=curr_action_dist.sampled_action_prob(),
-            loss=self.model.loss() + self.loss_obj.loss,
+            loss=self.loss_obj.loss,
+            model=self.model,
             loss_inputs=self.loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
@@ -289,7 +293,9 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             next_state = []
             for i in range(len(self.model.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch["new_obs"][-1], *next_state)
+            last_r = self._value(sample_batch["new_obs"][-1],
+                                 sample_batch["actions"][-1],
+                                 sample_batch["rewards"][-1], *next_state)
         batch = compute_advantages(
             sample_batch,
             last_r,
@@ -336,8 +342,13 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
         return self.kl_coeff_val
 
-    def _value(self, ob, *args):
-        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
+    def _value(self, ob, prev_action, prev_reward, *args):
+        feed_dict = {
+            self.observations: [ob],
+            self.prev_actions: [prev_action],
+            self.prev_rewards: [prev_reward],
+            self.model.seq_lens: [1]
+        }
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):

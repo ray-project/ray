@@ -58,12 +58,6 @@ bash "$TP_SCRIPT_DIR/build_credis.sh"
 #bash "$TP_SCRIPT_DIR/build_arrow.sh" $PYTHON_EXECUTABLE
 
 ##############################################
-# catapult
-##############################################
-# Clone catapult and build the static HTML needed for the UI.
-bash "$TP_SCRIPT_DIR/build_ui.sh"
-
-##############################################
 # rDSN (optional)
 ##############################################
 # bash "$TP_SCRIPT_DIR/build_rdsn.sh"

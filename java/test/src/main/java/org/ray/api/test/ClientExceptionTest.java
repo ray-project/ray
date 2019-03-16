@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayObjectImpl;
@@ -18,6 +19,7 @@ public class ClientExceptionTest extends BaseTest {
 
   @Test
   public void testWaitAndCrash() {
+    TestUtils.skipTestUnderSingleProcess();
     UniqueId randomId = UniqueId.randomId();
     RayObject<String> notExisting = new RayObjectImpl(randomId);
 
