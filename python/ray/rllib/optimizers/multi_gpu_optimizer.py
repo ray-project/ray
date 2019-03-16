@@ -196,7 +196,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 fetches[policy_id] = _averaged(iter_extra_fetches)
 
         self.num_steps_sampled += samples.count
-        self.num_steps_trained += samples.count
+        self.num_steps_trained += tuples_per_device * len(self.devices)
         return fetches
 
     @override(PolicyOptimizer)
