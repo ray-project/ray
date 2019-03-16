@@ -381,7 +381,12 @@ class RayTrialExecutor(TrialExecutor):
         self._resources_initialized = True
 
     def has_resources(self, resources):
-        """Returns whether this runner has at least the specified resources."""
+        """Returns whether this runner has at least the specified resources.
+
+        This refreshes the Ray cluster resources if the time since last update
+        has exceeded self._refresh_period. This also assumes that the
+        cluster is not resizing very frequently.
+        """
         if time.time() - self._last_resource_refresh > self._refresh_period:
             self._update_avail_resources()
 
