@@ -17,19 +17,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.utils import _random_string
 from ray.tests.cluster_utils import Cluster
-
-
-def relevant_errors(error_type):
-    return [info for info in ray.error_info() if info["type"] == error_type]
-
-
-def wait_for_errors(error_type, num_errors, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(relevant_errors(error_type)) >= num_errors:
-            return
-        time.sleep(0.1)
-    raise Exception("Timing out of wait.")
+from ray.tests.utils import (relevant_errors, wait_for_errors)
 
 
 @pytest.fixture
@@ -655,11 +643,14 @@ def test_redis_module_failure(shutdown_only):
                      -1)
     run_failure_test("Index is not a number.", "RAY.TABLE_APPEND", 1, 1, 2, 1,
                      b"a")
+    run_failure_test("The entry to remove doesn't exist.", "RAY.SET_REMOVE", 1,
+                     1, 3, 1)
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1)
     # It's okay to add duplicate entries.
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1)
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1, 0)
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1, 1)
+    run_one_command("RAY.SET_ADD", 1, 1, 3, 1)
 
 
 @pytest.fixture

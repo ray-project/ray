@@ -28,16 +28,16 @@ matrix:
         - RAY_USE_CMAKE=1
         - RAY_INSTALL_JAVA=1
       install:
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
+
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/travis/install-ray.sh
       script:
-      - ./java/test.sh
+        - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
 
-      # Test Bazel build
-      - rm -rf build
-      - ./ci/suppress_output ./ci/travis/install-bazel.sh
-      - bazel build ...
+        - ./java/test.sh
 
     - os: linux
       dist: trusty
@@ -81,15 +81,22 @@ matrix:
       dist: trusty
       env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       install:
+        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+
         - ./ci/suppress_output ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
 
       script:
+        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+
         - bash src/ray/test/run_object_manager_valgrind.sh
 
         - export RAY_PLASMA_STORE_VALGRIND=1
@@ -108,23 +115,33 @@ matrix:
     # Build Linux wheels.
     - os: linux
       dist: trusty
-      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
       install:
-        - ./ci/travis/install-dependencies.sh
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+
         # This command should be kept in sync with ray/python/README-building-wheels.md.
-        - docker run --rm -w /ray -v `pwd`:/ray -ti quay.io/xhochy/arrow_manylinux1_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+        - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
       script:
+        - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
+
         - ./ci/travis/test-wheels.sh
 
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore RAY_USE_CMAKE=1
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
       install:
-        - ./ci/travis/install-dependencies.sh
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
+
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
         - ./python/build-wheel-macos.sh
       script:
+        - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
+
         - ./ci/travis/test-wheels.sh
 
     # Test GCS integration
@@ -138,6 +155,9 @@ matrix:
 
 
 install:
+  - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+  - if [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+
   - ./ci/suppress_output ./ci/travis/install-bazel.sh
   - ./ci/suppress_output ./ci/travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
@@ -149,7 +169,6 @@ install:
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
   - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc ... -c opt
 
-
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
   # The following is needed so cloudpickle can find some of the
@@ -159,20 +178,21 @@ script:
   # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
   # ray tune tests
-  - ./ci/suppress_output python python/ray/tune/tests/test_dependency.py
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/tune/tests/test_dependency.py; fi
   # `cluster_tests.py` runs on Jenkins, not Travis.
-  - python -m pytest --durations=10 --ignore=python/ray/tune/tests/test_cluster.py python/ray/tune/tests
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then python -m pytest --durations=10 --ignore=python/ray/tune/tests/test_cluster.py --ignore=python/ray/tune/tests/test_actor_reuse.py python/ray/tune/tests; fi
 
   # ray rllib tests
-  - python/ray/rllib/tests/run_silent.sh tests/test_catalog.py
-  - python/ray/rllib/tests/run_silent.sh tests/test_filters.py
-  - python/ray/rllib/tests/run_silent.sh tests/test_optimizers.py
-  - python/ray/rllib/tests/run_silent.sh tests/test_evaluators.py
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh tests/test_catalog.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh tests/test_filters.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh tests/test_optimizers.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh tests/test_evaluators.py; fi
 
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py
-  - python -m pytest --durations=10 python/ray/tests
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest --durations=10 python/ray/tests; fi
+
 deploy:
   - provider: s3
     access_key_id: AKIAJ2L7XDUSZVTXI5QA

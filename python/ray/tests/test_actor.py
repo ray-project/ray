@@ -16,6 +16,10 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.tests.utils
 import ray.tests.cluster_utils
+from ray.tests.utils import (
+    wait_for_errors,
+    relevant_errors,
+)
 
 
 @pytest.fixture
@@ -2563,3 +2567,38 @@ def test_bad_checkpointable_actor_class():
         class BadCheckpointableActor(ray.actor.Checkpointable):
             def should_checkpoint(self, checkpoint_context):
                 return True
+
+
+def test_init_exception_in_checkpointable_actor(ray_start_regular,
+                                                ray_checkpointable_actor_cls):
+    # This test is similar to test_failure.py::test_failed_actor_init.
+    # This test is used to guarantee that checkpointable actor does not
+    # break the same logic.
+    error_message1 = "actor constructor failed"
+    error_message2 = "actor method failed"
+
+    @ray.remote
+    class CheckpointableFailedActor(ray_checkpointable_actor_cls):
+        def __init__(self):
+            raise Exception(error_message1)
+
+        def fail_method(self):
+            raise Exception(error_message2)
+
+        def should_checkpoint(self, checkpoint_context):
+            return True
+
+    a = CheckpointableFailedActor.remote()
+
+    # Make sure that we get errors from a failed constructor.
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1, timeout=2)
+    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
+    assert len(errors) == 1
+    assert error_message1 in errors[0]["message"]
+
+    # Make sure that we get errors from a failed method.
+    a.fail_method.remote()
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2, timeout=2)
+    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
+    assert len(errors) == 2
+    assert error_message1 in errors[1]["message"]

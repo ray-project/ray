@@ -143,6 +143,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.learner.stopped = True
 
     @override(PolicyOptimizer)
+    def reset(self, remote_evaluators):
+        self.remote_evaluators = remote_evaluators
+        self.sample_tasks.reset_evaluators(remote_evaluators)
+
+    @override(PolicyOptimizer)
     def stats(self):
         def timer_to_ms(timer):
             return round(1000 * timer.mean, 3)
