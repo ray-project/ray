@@ -265,21 +265,19 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --stop '{"training_iteration": 1}' \
     --config '{"num_workers": 2, "optimizer": {"num_replay_buffer_shards": 1}, "learning_starts": 100, "min_iter_time_s": 1, "batch_mode": "complete_episodes", "parameter_noise": true}'
 
-# TODO(ericl): reenable the test after fix the arrow serialization error.
-# https://github.com/ray-project/ray/pull/4127#issuecomment-468903577
-#docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-#    /ray/python/ray/ci/suppress_output /ray/python/ray/rllib/train.py \
-#    --env CartPole-v0 \
-#    --run MARWIL \
-#    --stop '{"training_iteration": 1}' \
-#    --config '{"input": "/ray/python/ray/rllib/tests/data/cartpole_small", "learning_starts": 0, "input_evaluation": ["wis", "is"], "shuffle_buffer_size": 10}'
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/python/ray/ci/suppress_output /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run MARWIL \
+    --stop '{"training_iteration": 1}' \
+    --config '{"input": "/ray/python/ray/rllib/tests/data/cartpole_small", "learning_starts": 0, "input_evaluation": ["wis", "is"], "shuffle_buffer_size": 10}'
 
-#docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-#    /ray/python/ray/ci/suppress_output /ray/python/ray/rllib/train.py \
-#    --env CartPole-v0 \
-#    --run DQN \
-#    --stop '{"training_iteration": 1}' \
-#    --config '{"input": "/ray/python/ray/rllib/tests/data/cartpole_small", "learning_starts": 0, "input_evaluation": ["wis", "is"], "soft_q": true}'
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/python/ray/ci/suppress_output /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run DQN \
+    --stop '{"training_iteration": 1}' \
+    --config '{"input": "/ray/python/ray/rllib/tests/data/cartpole_small", "learning_starts": 0, "input_evaluation": ["wis", "is"], "soft_q": true}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/ci/suppress_output python /ray/python/ray/rllib/tests/test_local.py
