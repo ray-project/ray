@@ -34,7 +34,8 @@ class TFMultiGPULearner(LearnerThread):
                  num_sgd_iter=1,
                  learner_queue_size=16,
                  num_data_load_threads=16,
-                 _fake_gpus=False):
+                 _fake_gpus=False,
+                 _fake_learner=False):
         # Multi-GPU requires TensorFlow to function.
         import tensorflow as tf
 
@@ -93,6 +94,7 @@ class TFMultiGPULearner(LearnerThread):
 
         self.minibatch_buffer = MinibatchBuffer(
             self.ready_optimizers, minibatch_buffer_size, num_sgd_iter)
+        self._fake = _fake_learner
 
     @override(LearnerThread)
     def step(self):
@@ -103,7 +105,10 @@ class TFMultiGPULearner(LearnerThread):
                 self.idle_optimizers.put(opt)
 
         with self.grad_timer:
-            fetches = opt.optimize(self.sess, 0)
+            if self._fake:
+                fetches = {}
+            else:
+                fetches = opt.optimize(self.sess, 0)
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 

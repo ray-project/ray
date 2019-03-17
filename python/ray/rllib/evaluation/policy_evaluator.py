@@ -123,7 +123,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  input_evaluation=frozenset([]),
                  output_creator=lambda ioctx: NoopOutput(),
                  remote_worker_envs=False,
-                 async_remote_worker_envs=False):
+                 async_remote_worker_envs=False,
+                 _fake_sampler=False):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -204,6 +205,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 are very CPU intensive (e.g., for StarCraft).
             async_remote_worker_envs (bool): Similar to remote_worker_envs,
                 but runs the envs asynchronously in the background.
+            _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
 
         if log_level:
@@ -226,6 +228,8 @@ class PolicyEvaluator(EvaluatorInterface):
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
+        self.last_batch = None
+        self._fake_sampler = _fake_sampler
 
         self.env = _validate_env(env_creator(env_context))
         if isinstance(self.env, MultiAgentEnv) or \
@@ -390,6 +394,9 @@ class PolicyEvaluator(EvaluatorInterface):
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
 
+        if self._fake_sampler and self.last_batch is not None:
+            return self.last_batch
+
         batches = [self.input_reader.next()]
         steps_so_far = batches[0].count
 
@@ -432,6 +439,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 batch["obs"] = [pack(o) for o in batch["obs"]]
                 batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
 
+        if self._fake_sampler:
+            self.last_batch = batch
         return batch
 
     @DeveloperAPI

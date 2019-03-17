@@ -700,7 +700,8 @@ class Agent(Trainable):
             input_evaluation=input_evaluation,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
-            async_remote_worker_envs=config["async_remote_worker_envs"])
+            async_remote_worker_envs=config["async_remote_worker_envs"],
+            _fake_sampler=config.get("_fake_sampler", False))
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):
