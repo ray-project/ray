@@ -924,6 +924,13 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Submit the task to the local scheduler. Since the task was submitted
   // locally, there is no uncommitted lineage.
   SubmitTask(task, Lineage());
+
+  // We can flush tasks any time, so do that now.
+  if (!lineage_cache_.AddReadyTask(task)) {
+    RAY_LOG(WARNING) << "Task " << task_spec.TaskId() << " already in lineage cache."
+                     << " This is most likely due to reconstruction.";
+  }
+
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1677,11 +1684,6 @@ bool NodeManager::AssignTask(const Task &task) {
             RAY_CHECK(spec.NewActorHandles().empty());
           }
 
-          // We started running the task, so the task is ready to write to GCS.
-          if (!lineage_cache_.AddReadyTask(assigned_task)) {
-            RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache."
-                             << " This is most likely due to reconstruction.";
-          }
           // Mark the task as running.
           // (See design_docs/task_states.rst for the state transition diagram.)
           local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
@@ -2060,7 +2062,7 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   } else {
     // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
     // This is a bug but is not fatal to the application.
-    RAY_DCHECK(false) << "No lineage cache entry found for task " << task_id;
+    RAY_CHECK(false) << "No lineage cache entry found for task " << task_id;
     uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
   }
   auto entry = uncommitted_lineage.GetEntryMutable(task_id);
