@@ -13,6 +13,7 @@ import tensorflow as tf
 from types import FunctionType
 
 import ray
+from ray.exceptions import RayError
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
 from ray.rllib.models import MODEL_DEFAULTS
@@ -28,6 +29,10 @@ from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
 logger = logging.getLogger(__name__)
+
+# Max number of times to retry a worker failure. We shouldn't try too many
+# times in a row since that would indicate a persistent cluster issue.
+MAX_WORKER_FAILURE_RETRIES = 3
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -48,6 +53,8 @@ COMMON_CONFIG = {
         "on_sample_end": None,     # arg: {"samples": .., "evaluator": ...}
         "on_train_result": None,   # arg: {"agent": ..., "result": ...}
     },
+    # Whether to attempt to continue training if a worker crashes.
+    "ignore_worker_failures": False,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the
@@ -99,7 +106,7 @@ COMMON_CONFIG = {
     "train_batch_size": 200,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "truncate_episodes",
-    # Whether to use a background thread for sampling (slightly off-policy)
+    # (Deprecated) Use a background thread for sampling (slightly off-policy)
     "sample_async": False,
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter"
     "observation_filter": "NoFilter",
@@ -285,15 +292,32 @@ class Agent(Trainable):
     def train(self):
         """Overrides super.train to synchronize global vars."""
 
-        if hasattr(self, "optimizer") and isinstance(self.optimizer,
-                                                     PolicyOptimizer):
+        if self._has_policy_optimizer():
             self.global_vars["timestep"] = self.optimizer.num_steps_sampled
             self.optimizer.local_evaluator.set_global_vars(self.global_vars)
             for ev in self.optimizer.remote_evaluators:
                 ev.set_global_vars.remote(self.global_vars)
             logger.debug("updated global vars: {}".format(self.global_vars))
 
-        result = Trainable.train(self)
+        result = None
+        for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
+            try:
+                result = Trainable.train(self)
+            except RayError as e:
+                if self.config["ignore_worker_failures"]:
+                    logger.exception(
+                        "Error in train call, attempting to recover")
+                    self._try_recover()
+                else:
+                    logger.info(
+                        "Worker crashed during call to train(). To attempt to "
+                        "continue training without the failed worker, set "
+                        "`'ignore_worker_failures': True`.")
+                    raise e
+            else:
+                break
+        if result is None:
+            raise RuntimeError("Failed to recover from worker crash")
 
         if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
                 and hasattr(self, "local_evaluator")):
@@ -304,6 +328,9 @@ class Agent(Trainable):
             logger.debug("synchronized filters: {}".format(
                 self.local_evaluator.filters))
 
+        if self._has_policy_optimizer():
+            result["num_healthy_workers"] = len(
+                self.optimizer.remote_evaluators)
         return result
 
     @override(Trainable)
@@ -557,6 +584,49 @@ class Agent(Trainable):
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(
                     config["input_evaluation"]))
+
+    def _try_recover(self):
+        """Try to identify and blacklist any unhealthy workers.
+
+        This method is called after an unexpected remote error is encountered
+        from a worker. It issues check requests to all current workers and
+        blacklists any that respond with error. If no healthy workers remain,
+        an error is raised.
+        """
+
+        if not self._has_policy_optimizer():
+            raise NotImplementedError(
+                "Recovery is not supported for this algorithm")
+
+        logger.info("Health checking all workers...")
+        checks = []
+        for ev in self.optimizer.remote_evaluators:
+            _, obj_id = ev.sample_with_count.remote()
+            checks.append(obj_id)
+
+        healthy_evaluators = []
+        for i, obj_id in enumerate(checks):
+            ev = self.optimizer.remote_evaluators[i]
+            try:
+                ray.get(obj_id)
+                healthy_evaluators.append(ev)
+                logger.info("Worker {} looks healthy".format(i + 1))
+            except RayError:
+                logger.exception("Blacklisting worker {}".format(i + 1))
+                try:
+                    ev.__ray_terminate__.remote()
+                except Exception:
+                    logger.exception("Error terminating unhealthy worker")
+
+        if len(healthy_evaluators) < 1:
+            raise RuntimeError(
+                "Not enough healthy workers remain to continue.")
+
+        self.optimizer.reset(healthy_evaluators)
+
+    def _has_policy_optimizer(self):
+        return hasattr(self, "optimizer") and isinstance(
+            self.optimizer, PolicyOptimizer)
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
                         config):

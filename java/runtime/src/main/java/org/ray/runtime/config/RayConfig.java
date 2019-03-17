@@ -1,13 +1,11 @@
 package org.ray.runtime.config;
 
-
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValue;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
