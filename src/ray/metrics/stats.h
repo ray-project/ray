@@ -1,5 +1,5 @@
-#ifndef _RAY_PERF_COUNTER_H_
-#define _RAY_PERF_COUNTER_H_
+#ifndef _RAY_STATS_H_
+#define _RAY_STATS_H_
 
 #include <string>
 
@@ -10,7 +10,7 @@
 
 namespace ray {
 
-namespace perf_counter {
+namespace stats {
 
 /// Include tag_defs.h to define tag items
 #include "tag_defs.h"
@@ -24,12 +24,13 @@ static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor) {
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
 class Metric final {
 
- public:
+ private:
   Metric(const std::string &name,
          const std::string &description,
          const std::string &unit)
     : measure_(opencensus::stats::Measure<double>::Register(name, description, unit)) {}
 
+ public:
   ~Metric() = default;
 
   Metric& operator()() {
@@ -94,7 +95,7 @@ class Metric final {
   void Record(double value, const std::vector<std::pair<opencensus::tags::TagKey::TagKey, std::string>>& tags) {
     // global tags should be registered here.
     static std::vector<std::pair<opencensus::tags::TagKey, std::string>> global_tags = {
-        {ray::perf_counter::JobNameKey, "raylet"}
+        {ray::stats::JobNameKey, "raylet"}
     };
 
     std::vector<std::pair<opencensus::tags::TagKey, std::string>> combined_tags(tags);
@@ -110,22 +111,6 @@ class Metric final {
 /// Include metric_defs.h to define tag items
 #include "metric_defs.h"
 
-  static void RegisterAllViews() {
-    {
-      /*
-      opencensus::stats::ViewDescriptor view_descriptor =
-          opencensus::stats::ViewDescriptor().set_name("raylet/task_elaspe")
-              .set_description("description")
-              .set_measure("task_elapse")
-              .set_aggregation(opencensus::stats::Aggregation::Distribution(
-                opencensus::stats::BucketBoundaries::Explicit({0, 100, 200, 300, 400, 500})));
-              // TODO(qwang): .add_column(AllGlobalTagKeys)
-
-       RegisterAsView(view_descriptor);
-       */
-    }
-  }
-
   /// Initialize perf counter.
   static void Init(const std::string &address) {
     // Enable the Prometheus exporter.
@@ -134,13 +119,11 @@ class Metric final {
     static auto exporter = std::make_shared<opencensus::exporters::stats::PrometheusExporter>();
     static prometheus::Exposer exposer(address);
     exposer.RegisterCollectable(exporter);
-
-    RegisterAllViews();
   }
 
-} // namespace perf_counter
+} // namespace stats
 
 
 } // namespace ray
 
-#endif // _RAY_PERF_COUNTER_H_
+#endif // _RAY_STATS_H_

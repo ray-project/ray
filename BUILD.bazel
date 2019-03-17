@@ -33,7 +33,7 @@ cc_binary(
 )
 
 cc_library(
-    name = "metrics_lib",
+    name = "stats_lib",
     srcs = glob(
         [
             "src/ray/metrics/*.cc",
@@ -198,10 +198,10 @@ cc_test(
 )
 
 cc_test(
-    name = "perf_counter_test",
-    srcs = ["src/ray/metrics/perf_counter_test.cc"],
+    name = "stats_test",
+    srcs = ["src/ray/metrics/stats_test.cc"],
     deps = [
-        ":metrics_lib",
+        ":stats_lib",
         "@com_google_googletest//:gtest_main",
     ]
 )
