@@ -40,7 +40,7 @@ class TFMultiGPULearner(LearnerThread):
         import tensorflow as tf
 
         LearnerThread.__init__(self, local_evaluator, minibatch_buffer_size,
-                               num_sgd_iter, learner_queue_size)
+                               num_sgd_iter, learner_queue_size, _fake_learner)
         self.lr = lr
         self.train_batch_size = train_batch_size
         if not num_gpus:
