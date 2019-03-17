@@ -1138,7 +1138,7 @@ def test_profiling_api(shutdown_only):
 
 
 def test_wait_cluster(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     cluster.add_node(num_cpus=1, resources={"RemoteResource": 1})
     cluster.add_node(num_cpus=1, resources={"RemoteResource": 1})
     ray.init(redis_address=cluster.redis_address)
@@ -1164,7 +1164,7 @@ def test_wait_cluster(ray_start_cluster):
 
 
 def test_object_transfer_dump(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
 
     num_nodes = 3
     for i in range(num_nodes):
@@ -1437,7 +1437,7 @@ def test_free_objects_multi_node(ray_start_cluster):
     # tasks, so the flushing operations may be executed in different
     # workers and the plasma client holding the deletion target
     # may not be flushed.
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     config = json.dumps({"object_manager_repeated_push_delay_ms": 1000})
     for i in range(3):
         cluster.add_node(
@@ -1889,7 +1889,7 @@ def test_zero_cpus(shutdown_only):
 
 
 def test_zero_cpus_actor(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     cluster.add_node(num_cpus=0)
     cluster.add_node(num_cpus=2)
     ray.init(redis_address=cluster.redis_address)
@@ -1961,7 +1961,7 @@ def test_multiple_local_schedulers(ray_start_cluster):
     # This test will define a bunch of tasks that can only be assigned to
     # specific local schedulers, and we will check that they are assigned
     # to the correct local schedulers.
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     cluster.add_node(num_cpus=11, num_gpus=0)
     cluster.add_node(num_cpus=5, num_gpus=5)
     cluster.add_node(num_cpus=10, num_gpus=1)
@@ -2084,7 +2084,7 @@ def test_multiple_local_schedulers(ray_start_cluster):
 
 
 def test_custom_resources(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     cluster.add_node(num_cpus=3, resources={"CustomResource": 0})
     cluster.add_node(num_cpus=3, resources={"CustomResource": 1})
     ray.init(redis_address=cluster.redis_address)
@@ -2120,7 +2120,7 @@ def test_custom_resources(ray_start_cluster):
 
 
 def test_two_custom_resources(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     cluster.add_node(
         num_cpus=3, resources={
             "CustomResource1": 1,
@@ -2330,7 +2330,7 @@ def attempt_to_load_balance(remote_function,
 def test_load_balancing(ray_start_cluster):
     # This test ensures that tasks are being assigned to all local
     # schedulers in a roughly equal manner.
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     num_nodes = 3
     num_cpus = 7
     for _ in range(num_nodes):
@@ -2350,7 +2350,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     # This test ensures that tasks are being assigned to all local
     # schedulers in a roughly equal manner even when the tasks have
     # dependencies.
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     num_nodes = 3
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=1)

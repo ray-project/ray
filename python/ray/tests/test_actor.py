@@ -803,7 +803,7 @@ def test_actors_on_nodes_with_no_cpus(ray_start_regular):
 
 
 def test_actor_load_balancing(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(num_cpus=1)
@@ -848,7 +848,7 @@ def test_actor_load_balancing(ray_start_cluster):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_actor_gpus(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     num_nodes = 3
     num_gpus_per_raylet = 4
     for i in range(num_nodes):
@@ -887,7 +887,7 @@ def test_actor_gpus(ray_start_cluster):
 
 
 def test_actor_multiple_gpus(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     num_nodes = 3
     num_gpus_per_raylet = 5
     for i in range(num_nodes):
@@ -959,7 +959,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
 def test_actor_different_numbers_of_gpus(ray_start_cluster):
     # Test that we can create actors on two nodes that have different
     # numbers of GPUs.
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     cluster.add_node(num_cpus=10, num_gpus=0)
     cluster.add_node(num_cpus=10, num_gpus=5)
     cluster.add_node(num_cpus=10, num_gpus=10)
@@ -997,7 +997,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
 
 
 def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     num_nodes = 5
     num_gpus_per_raylet = 5
     for i in range(num_nodes):
@@ -1076,7 +1076,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
 @pytest.mark.skipif(
     sys.version_info < (3, 0), reason="This test requires Python 3.")
 def test_actors_and_tasks_with_gpus(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     num_nodes = 3
     num_gpus_per_raylet = 6
     for i in range(num_nodes):
@@ -1334,7 +1334,7 @@ def test_blocking_actor_task(shutdown_only):
 
 
 def test_exception_raised_when_actor_node_dies(ray_start_cluster_init):
-    remote_node = ray_start_cluster_init.add_node()
+    remote_node, _ = ray_start_cluster_init.add_node()
 
     @ray.remote
     class Counter(object):
@@ -1374,7 +1374,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_init):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_actor_init_fails(ray_start_cluster_init):
-    remote_node = ray_start_cluster_init.add_node()
+    remote_node, _ = ray_start_cluster_init.add_node()
 
     @ray.remote(max_reconstructions=1)
     class Counter(object):
@@ -1978,7 +1978,7 @@ def test_lifetime_and_transient_resources(ray_start_regular):
 
 
 def test_custom_label_placement(ray_start_cluster):
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
     cluster.add_node(num_cpus=2, resources={"CustomResource1": 2})
     cluster.add_node(num_cpus=2, resources={"CustomResource2": 2})
     ray.init(redis_address=cluster.redis_address)
@@ -2147,7 +2147,7 @@ def test_actor_reconstruction(ray_start_regular):
 
 def test_actor_reconstruction_on_node_failure(ray_start_cluster_init):
     """Test actor reconstruction when node dies unexpectedly."""
-    cluster = ray_start_cluster_init
+    cluster, _ = ray_start_cluster_init
     max_reconstructions = 3
     # Add a few nodes to the cluster.
     # Use custom resource to make sure the actor is only created on worker
@@ -2363,15 +2363,19 @@ def test_remote_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
 
 
-def test_checkpointing_on_node_failure(two_node_cluster,
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_nodes": 2
+    }], indirect=True)
+def test_checkpointing_on_node_failure(ray_start_cluster,
                                        ray_checkpointable_actor_cls):
     """Test actor checkpointing on a remote node."""
     # Place the actor on the remote node.
-    cluster, remote_node = two_node_cluster
+    (cluster, remote_node) = ray_start_cluster
     actor_cls = ray.remote(max_reconstructions=1)(ray_checkpointable_actor_cls)
     actor = actor_cls.remote()
     while (ray.get(actor.local_plasma.remote()) !=
-           remote_node.plasma_store_socket_name):
+           remote_node[1].plasma_store_socket_name):
         actor = actor_cls.remote()
 
     # Call increase several times.
@@ -2382,7 +2386,7 @@ def test_checkpointing_on_node_failure(two_node_cluster,
     # Assert that the actor wasn't resumed from a checkpoint.
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
     # Kill actor process.
-    cluster.remove_node(remote_node)
+    cluster.remove_node(remote_node[1])
     # Assert that the actor was resumed from a checkpoint and its value is
     # still correct.
     assert ray.get(actor.get.remote()) == expected

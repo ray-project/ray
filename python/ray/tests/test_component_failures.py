@@ -369,7 +369,7 @@ def test_plasma_store_failed(ray_initialize_cluster):
     indirect=True)
 def test_actor_creation_node_failure(ray_start_cluster):
     # TODO(swang): Refactor test_raylet_failed, etc to reuse the below code.
-    cluster = ray_start_cluster
+    cluster, _ = ray_start_cluster
 
     @ray.remote
     class Child(object):
