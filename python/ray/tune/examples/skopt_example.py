@@ -43,10 +43,24 @@ if __name__ == "__main__":
         },
     }
     optimizer = Optimizer([(0, 20), (-100, 100)])
+    previously_run_params = [[10, 0], [15, -20]]
+    known_rewards = [-189, -1144]
     algo = SkOptSearch(
         optimizer, ["width", "height"],
         max_concurrent=4,
-        reward_attr="neg_mean_loss")
+        reward_attr="neg_mean_loss",
+        points_to_evaluate=previously_run_params,
+        evaluated_rewards=known_rewards)
+    scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
+    run_experiments(config, search_alg=algo, scheduler=scheduler)
+
+    # Now run the experiment without known rewards
+
+    algo = SkOptSearch(
+        optimizer, ["width", "height"],
+        max_concurrent=4,
+        reward_attr="neg_mean_loss",
+        points_to_evaluate=previously_run_params)
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
     run(easy_objective,
         name="skopt_exp",
