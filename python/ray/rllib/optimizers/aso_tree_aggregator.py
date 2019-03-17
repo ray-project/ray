@@ -64,8 +64,7 @@ class TreeAggregator(Aggregator):
         self.agg_tasks = TaskPool()
         for agg in self.workers:
             agg.set_weights.remote(self.broadcasted_weights)
-            for _ in range(max_sample_requests_in_flight_per_worker):
-                self.agg_tasks.add(agg, agg.get_train_batches.remote())
+            self.agg_tasks.add(agg, agg.get_train_batches.remote())
 
     @override(Aggregator)
     def iter_train_batches(self):
@@ -113,8 +112,7 @@ class AggregationWorker(AggregationWorkerBase):
 
     def get_train_batches(self):
         result = []
-        # we're the 2nd level of the tree, so blocking is fine
-        for batch in self.iter_train_batches(blocking_wait=True):
+        for batch in self.iter_train_batches():
             result.append(batch)
         while not result:
             time.sleep(0.01)

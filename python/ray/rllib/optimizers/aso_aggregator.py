@@ -18,15 +18,13 @@ class Aggregator(object):
     For performance, aggregators may implement a tree of Ray actors.
     """
 
-    def iter_train_batches(self, blocking_wait=False):
+    def iter_train_batches(self):
         """Returns a generator over batches ready to learn on.
 
         Iterating through this generator will also send out weight updates to
         remote evaluators as needed.
 
-        Arguments:
-            blocking_wait (bool): Whether to use blocking waits when no items
-                are available.
+        This call may block until results are available.
         """
         raise NotImplementedError
 
@@ -77,10 +75,9 @@ class AggregationWorkerBase(object):
         self.num_replayed = 0
 
     @override(Aggregator)
-    def iter_train_batches(self, blocking_wait=False):
+    def iter_train_batches(self):
         for ev, sample_batch in self._augment_with_replay(
-                self.sample_tasks.completed_prefetch(
-                    blocking_wait=blocking_wait)):
+                self.sample_tasks.completed_prefetch(blocking_wait=True)):
             sample_batch.decompress_if_needed()
             self.batch_buffer.append(sample_batch)
             if sum(b.count
