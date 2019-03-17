@@ -551,11 +551,11 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // known.
     auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
     for (const auto &method : created_actor_methods) {
-      if (!lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId())) {
-        RAY_LOG(WARNING) << "Task " << method.GetTaskSpecification().TaskId()
-                         << " already removed from the lineage cache. This is most "
-                            "likely due to reconstruction.";
-      }
+      // if (!lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId())) {
+      //   RAY_LOG(WARNING) << "Task " << method.GetTaskSpecification().TaskId()
+      //                    << " already removed from the lineage cache. This is most "
+      //                       "likely due to reconstruction.";
+      // }
       // Maintain the invariant that if a task is in the
       // MethodsWaitingForActorCreation queue, then it is subscribed to its
       // respective actor creation task. Since the actor location is now known,
@@ -1329,12 +1329,12 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     return;
   }
 
-  // Add the task and its uncommitted lineage to the lineage cache.
-  if (!lineage_cache_.AddWaitingTask(task, uncommitted_lineage)) {
-    RAY_LOG(WARNING)
-        << "Task " << task_id
-        << " already in lineage cache. This is most likely due to reconstruction.";
-  }
+  // // Add the task and its uncommitted lineage to the lineage cache.
+  // if (!lineage_cache_.AddWaitingTask(task, uncommitted_lineage)) {
+  //   RAY_LOG(WARNING)
+  //       << "Task " << task_id
+  //       << " already in lineage cache. This is most likely due to reconstruction.";
+  // }
 
   if (spec.IsActorTask()) {
     // Check whether we know the location of the actor.
@@ -2038,9 +2038,9 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
                           << " because ForwardTask failed.";
             SubmitTask(task, Lineage());
           });
-      // Remove the task from the lineage cache. The task will get added back
-      // once it is resubmitted.
-      lineage_cache_.RemoveWaitingTask(task_id);
+      // // Remove the task from the lineage cache. The task will get added back
+      // // once it is resubmitted.
+      // lineage_cache_.RemoveWaitingTask(task_id);
     } else {
       // The task is not for an actor and may therefore be placed on another
       // node immediately. Send it to the scheduling policy to be placed again.
@@ -2095,17 +2095,19 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
       fbb.GetBufferPointer(),
       [this, on_error, task_id, node_id, spec](ray::Status status) {
         if (status.ok()) {
-          // If we were able to forward the task, remove the forwarded task from the
-          // lineage cache since the receiving node is now responsible for writing
-          // the task to the GCS.
-          if (!lineage_cache_.RemoveWaitingTask(task_id)) {
-            RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage"
-                             << " cache. This is most likely due to reconstruction.";
-          } else {
-            // Mark as forwarded so that the task and its lineage is not
-            // re-forwarded in the future to the receiving node.
-            lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
-          }
+          // // If we were able to forward the task, remove the forwarded task from the
+          // // lineage cache since the receiving node is now responsible for writing
+          // // the task to the GCS.
+          // if (!lineage_cache_.RemoveWaitingTask(task_id)) {
+          //   RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage"
+          //                    << " cache. This is most likely due to reconstruction.";
+          // } else {
+          //   // Mark as forwarded so that the task and its lineage is not
+          //   // re-forwarded in the future to the receiving node.
+          //   lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
+          // }
+
+          lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
 
           // Notify the task dependency manager that we are no longer responsible
           // for executing this task.
