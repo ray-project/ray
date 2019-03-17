@@ -25,6 +25,17 @@ DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
 
+# Default resource requirements for actors when no resource requirements are
+# specified.
+DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
+DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
+# Default resource requirements for actors when some resource requirements are
+# specified in .
+DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
+DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
+# Default number of return values for each actor method.
+DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
+
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
 PICKLE_OBJECT_WARNING_SIZE = 10**7

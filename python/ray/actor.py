@@ -20,16 +20,6 @@ import ray.worker
 from ray.utils import _random_string
 from ray import (ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID,
                  DriverID)
-# Default resource requirements for actors when no resource requirements are
-# specified.
-DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
-DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
-# Default resource requirements for actors when some resource requirements are
-# specified.
-DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
-DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
-# Default number of return values for each actor method.
-DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +164,7 @@ class ActorClass(object):
     """
 
     def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
-                 num_gpus, resources, actor_method_cpus):
+                 num_gpus, resources):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
@@ -182,7 +172,6 @@ class ActorClass(object):
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
         self._resources = resources
-        self._actor_method_cpus = actor_method_cpus
         self._exported = False
 
         self._actor_methods = inspect.getmembers(
@@ -223,7 +212,7 @@ class ActorClass(object):
                     method.__ray_num_return_vals__)
             else:
                 self._actor_method_num_return_vals[method_name] = (
-                    DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
+                    ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actors methods cannot be instantiated directly. "
@@ -284,26 +273,25 @@ class ActorClass(object):
         # updated to reflect the new invocation.
         actor_cursor = None
 
-        # Set the actor's default resources if not already set. First two
-        # conditions are to check that no resources were specified when
-        # _remote() was called. Last three conditions are to check that no
-        # resources were specified in the decorator.
-        if (self._num_cpus is None and self._actor_method_cpus is None
-                and num_cpus is None and num_gpus is None
-                and resources is None):
+        # Set the actor's default resources if not already set. First three
+        # conditions are to check that no resources were specified in the
+        # decorator. Last three conditions are to check that no resources were
+        # specified when _remote() was called.
+        if (self._num_cpus is None and self._num_gpus is None
+                and self._resources is None and num_cpus is None
+                and num_gpus is None and resources is None):
             # In the default case, actors acquire no resources for
             # their lifetime, and actor methods will require 1 CPU.
-            cpus_to_use = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE
-            actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE
+            cpus_to_use = ray_constants.DEFAULT_ACTOR_CREATION_CPUS_SIMPLE
+            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPUS_SIMPLE
         else:
             # If any resources are specified (here or in decorator), then
             # all resources are acquired for the actor's lifetime and no
             # resources are associated with methods.
-            cpus_to_use = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
-                           if self._num_cpus is None else self._num_cpus)
-            actor_method_cpus = (DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE
-                                 if self._actor_method_cpus is None else
-                                 self._actor_method_cpus)
+            cpus_to_use = (ray_constants.DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED
+                           if self._num_cpus is None and num_cpus is None
+                           else max(self._num_cpus, num_cpus)
+            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED
 
         # Do not export the actor class or the actor if run in LOCAL_MODE
         # Instead, instantiate the actor locally and add it to the worker's
@@ -326,8 +314,8 @@ class ActorClass(object):
             # placement resources. If actor_placement_resources is empty, then
             # the required placement resources will be the same as resources.
             actor_placement_resources = {}
-            assert actor_method_cpus in [0, 1]
-            if actor_method_cpus == 1:
+            assert actor_method_cpu in [0, 1]
+            if actor_method_cpu == 1:
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
 
@@ -352,7 +340,7 @@ class ActorClass(object):
             actor_id, self._modified_class.__module__, self._class_name,
             actor_cursor, self._actor_method_names, self._method_signatures,
             self._actor_method_num_return_vals, actor_cursor,
-            actor_method_cpus, worker.task_driver_id)
+            actor_method_cpu, worker.task_driver_id)
         # We increment the actor counter by 1 to account for the actor creation
         # task.
         actor_handle._ray_actor_counter += 1
@@ -693,8 +681,7 @@ class ActorHandle(object):
         return self._deserialization_helper(state, False)
 
 
-def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
-               max_reconstructions):
+def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
     # Give an error if cls is an old-style class.
     if not issubclass(cls, object):
         raise TypeError(
@@ -749,7 +736,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
     class_id = ActorClassID(_random_string())
 
     return ActorClass(Class, class_id, max_reconstructions, num_cpus, num_gpus,
-                      resources, actor_method_cpus)
+                      resources)
 
 
 ray.worker.global_worker.make_actor = make_actor
