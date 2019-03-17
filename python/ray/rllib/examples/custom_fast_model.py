@@ -55,7 +55,7 @@ if __name__ == "__main__":
             "config": {
                 "model": {"custom_model": "fast_model"},
                 "num_gpus": 0,
-                "num_workers": 2,
+                "num_workers": 1,
                 "num_envs_per_worker": 10,
                 "num_data_loader_buffers": 1,
                 "num_aggregation_workers": 1,

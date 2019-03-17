@@ -70,9 +70,9 @@ class TreeAggregator(Aggregator):
     @override(Aggregator)
     def iter_train_batches(self):
         for agg, batches in self.agg_tasks.completed_prefetch():
+            self.agg_tasks.add(agg, agg.get_train_batches.remote())
             for b in ray.get(batches):
                 self.num_sent_since_broadcast += 1
-                self.agg_tasks.add(agg, agg.get_train_batches.remote())
                 yield b
             agg.set_weights.remote(self.broadcasted_weights)
             self.num_batches_processed += 1
