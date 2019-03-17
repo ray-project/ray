@@ -792,7 +792,15 @@ class Worker(object):
             if isinstance(outputs[i], ray.actor.ActorHandle):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
-            self.put_object(object_ids[i], outputs[i])
+            if outputs[i] is ray.experimental.no_return.NoReturn:
+                if not self.plasma_client.contains(
+                        pyarrow.plasma.ObjectID(object_ids[i].binary())):
+                    raise ValueError(
+                        "Attempting to return `ray.experimental.NoReturn` "
+                        "from a remote function, but the corresponding "
+                        "ObjectID does not exist in the local object store.")
+            else:
+                self.put_object(object_ids[i], outputs[i])
 
     def _process_task(self, task, function_execution_info):
         """Execute a task assigned to this worker.

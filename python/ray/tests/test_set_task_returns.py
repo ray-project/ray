@@ -31,7 +31,7 @@ def test_set_single_output(ray_start):
 
 def test_set_multiple_outputs(ray_start):
     @ray.remote(num_return_vals=3)
-    def f(set_out0, set_out1, set_out3):
+    def f(set_out0, set_out1, set_out2):
         returns = []
         return_object_ids = ray.worker.global_worker._current_task.returns()
         for i, set_out in enumerate([set_out0, set_out1, set_out2]):
@@ -90,4 +90,5 @@ def test_no_set_and_no_return(ray_start):
         return ray.experimental.no_return.NoReturn
 
     object_id = f.remote()
-    assert ray.get(object_id) is ray.experimental.no_return.NoReturn
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(object_id)
