@@ -187,7 +187,6 @@ if __name__ == "__main__":
                 "mean_accuracy": 0.99,
                 "timesteps_total": 10 if args.smoke_test else 300
             },
-            "run": "train_mnist",
             "num_samples": 1 if args.smoke_test else 10,
             "resources_per_trial": {
                 "cpu": args.threads,

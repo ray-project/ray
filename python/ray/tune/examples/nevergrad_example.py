@@ -33,10 +33,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    register_trainable("exp", )
-
     config = {
-        "run": "exp",
         "num_samples": 10 if args.smoke_test else 50,
         "config": {
             "iterations": 100,

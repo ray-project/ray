@@ -28,15 +28,6 @@ class SkOptSearch(SuggestionAlgorithm):
     Example:
         >>> from skopt import Optimizer
         >>> optimizer = Optimizer([(0,20),(-100,100)])
-        >>> config = {
-        >>>     "my_exp": {
-        >>>         "run": "exp",
-        >>>         "num_samples": 10,
-        >>>         "stop": {
-        >>>             "training_iteration": 100
-        >>>         },
-        >>>     }
-        >>> }
         >>> algo = SkOptSearch(optimizer,
         >>>     ["width", "height"], max_concurrent=4,
         >>>     reward_attr="neg_mean_loss")
