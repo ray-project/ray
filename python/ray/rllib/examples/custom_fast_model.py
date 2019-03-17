@@ -2,7 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-"""Fast image env and model, suitable for running perf microbenchmarks."""
+"""Example of using a custom image env and model.
+
+Both the model and env are trivial (and super-fast), so they are useful
+for running perf microbenchmarks.
+"""
 
 from gym.spaces import Discrete, Box
 import gym
@@ -51,10 +55,10 @@ if __name__ == "__main__":
             "config": {
                 "model": {"custom_model": "fast_model"},
                 "num_gpus": 0,
-                "num_workers": 4,
+                "num_workers": 2,
                 "num_envs_per_worker": 10,
                 "num_data_loader_buffers": 1,
-                "num_aggregation_workers": 2,
+                "num_aggregation_workers": 1,
                 "broadcast_interval": 50,
                 "sample_batch_size": 100,
                 "train_batch_size": sample_from(
