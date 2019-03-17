@@ -2107,7 +2107,7 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
           //   lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
           // }
 
-          lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
+          // lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
 
           // Notify the task dependency manager that we are no longer responsible
           // for executing this task.
