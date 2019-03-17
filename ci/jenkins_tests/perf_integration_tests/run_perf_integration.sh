@@ -3,6 +3,8 @@
 # Show explicitly which commands are currently running.
 set -ex
 
+python -m pip install pytest-benchmark
+
 python -m pytest --benchmark-autosave python/ray/tests/test_perf_integration.py
 
 # This is how Modin stores the values in an S3 bucket
