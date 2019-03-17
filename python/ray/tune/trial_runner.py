@@ -245,7 +245,7 @@ class TrialRunner(object):
                             ("Insufficient cluster resources to launch trial: "
                              "trial requested {} but the cluster has only {}. "
                              "Pass `queue_trials=True` in "
-                             "ray.tune.run_experiments() or on the command "
+                             "ray.tune.run() or on the command "
                              "line to queue trials until the cluster scales "
                              "up. {}").format(
                                  trial.resources.summary_string(),
