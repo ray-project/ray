@@ -36,15 +36,15 @@ cc_library(
     name = "stats_lib",
     srcs = glob(
         [
-            "src/ray/metrics/*.cc",
+            "src/ray/stats/*.cc",
         ],
         exclude = [
-            "src/ray/metrics/*_test.cc",
+            "src/ray/stats/*_test.cc",
         ],
     ),
     hdrs = glob(
         [
-            "src/ray/metrics/*.h",
+            "src/ray/stats/*.h",
         ],
     ),
     includes = [
@@ -199,7 +199,7 @@ cc_test(
 
 cc_test(
     name = "stats_test",
-    srcs = ["src/ray/metrics/stats_test.cc"],
+    srcs = ["src/ray/stats/stats_test.cc"],
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",

@@ -7,24 +7,23 @@
 static Metric TaskElapse = Metric::MakeHistogram("task_elapse",
                                                  "the task elapse in raylet",
                                                  "ms",
-                                                 {0, 25, 50, 75, 100, 200},
-                                                 {JobNameKey, NodeAddressKey});
+                                                 {0, 25, 50, 75, 100},
+                                                 {NodeAddressKey, CustomKey});
 
 static Metric RedisLatency = Metric::MakeHistogram("redis_latency",
                                                    "the latency of redis",
                                                    "ms",
-                                                   {0, 25, 50, 75, 100, 200},
-                                                   {JobNameKey, NodeAddressKey});
+                                                   {0, 200, 400, 600, 800, 1000},
+                                                   {NodeAddressKey, CustomKey});
 
 
 static Metric TaskCount = Metric::MakeGauge("task_count",
                                             "the task count that the raylet received",
-                                            "pcs",
-                                            {JobNameKey});
+                                            "pcs");
 
 static Metric WorkerCount = Metric::MakeGauge("worker_count",
                                             "the worker count",
                                             "pcs",
-                                            {JobNameKey, NodeAddressKey});
+                                            {CustomKey});
 
 #endif // RAY_METRIC_DEFS_H_

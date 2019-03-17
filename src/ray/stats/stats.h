@@ -8,7 +8,7 @@
 #include "opencensus/tags/tag_key.h"
 #include "opencensus/stats/stats.h"
 
-#include "ray/metrics/metric.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 
@@ -21,7 +21,7 @@ namespace stats {
   static void Init(const std::string &address) {
     // Enable the Prometheus exporter.
     // Note that the reason for we using local static variables
-    // here is to make sure they are single instances.
+    // here is to make sure they are single-instances.
     static auto exporter = std::make_shared<opencensus::exporters::stats::PrometheusExporter>();
     static prometheus::Exposer exposer(address);
     exposer.RegisterCollectable(exporter);
