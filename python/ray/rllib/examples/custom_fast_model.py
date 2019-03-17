@@ -57,7 +57,7 @@ if __name__ == "__main__":
                 "model": {
                     "custom_model": "fast_model"
                 },
-                "num_gpus": 1,
+                "num_gpus": 0,
                 "num_workers": 1,
                 "num_envs_per_worker": 10,
                 "num_data_loader_buffers": 2,
@@ -65,7 +65,7 @@ if __name__ == "__main__":
                 "broadcast_interval": 50,
                 "sample_batch_size": 100,
                 "train_batch_size": sample_from(
-                    lambda spec: 1000 * spec.config.num_gpus),
+                    lambda spec: 1000 * max(1, spec.config.num_gpus)),
                 "_fake_sampler": True,
                 "_fake_learner": True,
                 "_fake_gpus": False,

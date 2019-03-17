@@ -113,7 +113,8 @@ class AggregationWorker(AggregationWorkerBase):
 
     def get_train_batches(self):
         result = []
-        for batch in self.iter_train_batches():
+        # we're the 2nd level of the tree, so blocking is fine
+        for batch in self.iter_train_batches(blocking_wait=True):
             result.append(batch)
         while not result:
             time.sleep(0.01)

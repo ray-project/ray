@@ -25,20 +25,21 @@ class TaskPool(object):
         self._tasks[obj_id] = worker
         self._objects[obj_id] = all_obj_ids
 
-    def completed(self):
+    def completed(self, blocking_wait=False):
         pending = list(self._tasks)
         if pending:
-            ready, _ = ray.wait(
-                pending, num_returns=len(pending), timeout=0.01)
+            ready, _ = ray.wait(pending, num_returns=len(pending), timeout=0)
+            if not ready and blocking_wait:
+                ready, _ = ray.wait(pending, num_returns=1, timeout=10.0)
             for obj_id in ready:
                 yield (self._tasks.pop(obj_id), self._objects.pop(obj_id))
 
-    def completed_prefetch(self):
+    def completed_prefetch(self, blocking_wait=False):
         """Similar to completed but only returns once the object is local.
 
         Assumes obj_id only is one id."""
 
-        for worker, obj_id in self.completed():
+        for worker, obj_id in self.completed(blocking_wait=blocking_wait):
             plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.binary())
             (ray.worker.global_worker.raylet_client.fetch_or_reconstruct(
                 [obj_id], True))
