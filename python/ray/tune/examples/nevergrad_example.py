@@ -7,7 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tune import run, register_trainable
+from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest import NevergradSearch
 

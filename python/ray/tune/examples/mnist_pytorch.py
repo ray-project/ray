@@ -165,8 +165,11 @@ if __name__ == "__main__":
         reward_attr="neg_mean_loss",
         max_t=400,
         grace_period=20)
+    tune.register_trainable(
+        "TRAIN_FN",
+        lambda config, reporter: train_mnist(args, config, reporter))
     tune.run(
-        lambda config, reporter: train_mnist(args, config, reporter),
+        "TRAIN_FN",
         name="exp",
         verbose=0,
         scheduler=sched,

@@ -52,7 +52,11 @@ if __name__ == "__main__":
         points_to_evaluate=previously_run_params,
         evaluated_rewards=known_rewards)
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
-    run_experiments(config, search_alg=algo, scheduler=scheduler)
+    run(easy_objective,
+        name="skopt_exp_with_warmstart",
+        search_alg=algo,
+        scheduler=scheduler,
+        **config)
 
     # Now run the experiment without known rewards
 
