@@ -76,6 +76,7 @@ class AggregationWorkerBase(object):
     def iter_train_batches(self):
         for ev, sample_batch in self._augment_with_replay(
                 self.sample_tasks.completed_prefetch()):
+            sample_batch.decompress_if_needed()
             self.batch_buffer.append(sample_batch)
             if sum(b.count
                    for b in self.batch_buffer) >= self.train_batch_size:
