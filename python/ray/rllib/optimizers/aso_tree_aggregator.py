@@ -67,19 +67,12 @@ class TreeAggregator(Aggregator):
             for _ in range(max_sample_requests_in_flight_per_worker):
                 self.agg_tasks.add(agg, agg.get_train_batches.remote())
 
-        self._b = None
-
     @override(Aggregator)
     def iter_train_batches(self):
-        if self._b:
-            yield self._b
-            return
-
         for agg, batches in self.agg_tasks.completed_prefetch():
             for b in ray.get(batches):
                 self.num_sent_since_broadcast += 1
                 self.agg_tasks.add(agg, agg.get_train_batches.remote())
-                self._b = b
                 yield b
             agg.set_weights.remote(self.broadcasted_weights)
             self.num_batches_processed += 1
