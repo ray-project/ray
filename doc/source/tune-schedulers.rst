@@ -5,7 +5,7 @@ By default, Tune schedules trials in serial order with the ``FIFOScheduler`` cla
 
 .. code-block:: python
 
-    tune.run_experiments({...}, scheduler=AsyncHyperBandScheduler())
+    tune.run( ... , scheduler=AsyncHyperBandScheduler())
 
 Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`__. Currently, all schedulers take in a ``reward_attr``, which is assumed to be maximized.
 
@@ -19,7 +19,7 @@ Current Available Trial Schedulers:
 Population Based Training (PBT)
 -------------------------------
 
-Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__. This can be enabled by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
+Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__. This can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.
 
 .. code-block:: python
 
@@ -32,7 +32,7 @@ Tune includes a distributed implementation of `Population Based Training (PBT) <
                 "alpha": lambda: random.uniform(0.0, 1.0),
                 ...
             })
-    run_experiments({...}, scheduler=pbt_scheduler)
+    tune.run( ... , scheduler=pbt_scheduler)
 
 When the PBT scheduler is enabled, each trial variant is treated as a member of the population. Periodically, top-performing trials are checkpointed (this requires your Trainable to support `checkpointing <tune-usage.html#trial-checkpointing>`__). Low-performing trials clone the checkpoints of top performers and perturb the configurations in the hope of discovering an even better variation.
 
@@ -46,7 +46,7 @@ You can run this `toy PBT example <https://github.com/ray-project/ray/blob/maste
 Asynchronous HyperBand
 ----------------------
 
-The `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be used by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
+The `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be used by setting the ``scheduler`` parameter of ``tune.run``, e.g.
 
 .. code-block:: python
 
@@ -57,7 +57,7 @@ The `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlR
         grace_period=10,
         reduction_factor=3,
         brackets=3)
-    run_experiments({...}, scheduler=async_hb_scheduler)
+    tune.run( ... , scheduler=async_hb_scheduler)
 
 Compared to the original version of HyperBand, this implementation provides better parallelism and avoids straggler issues during eliminations. An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__. **We recommend using this over the standard HyperBand scheduler.**
 
@@ -73,7 +73,7 @@ Tune also implements the `standard version of HyperBand <https://arxiv.org/abs/1
 
 .. code-block:: python
 
-    run_experiments({...}, scheduler=HyperBandScheduler())
+    tune.run( ... , scheduler=HyperBandScheduler())
 
 An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. The progress of one such HyperBand run is shown below.
 
@@ -143,7 +143,7 @@ The Median Stopping Rule implements the simple strategy of stopping a trial if i
 
 .. code-block:: python
 
-    run_experiments({...}, scheduler=MedianStoppingRule())
+    tune.run( ... , scheduler=MedianStoppingRule())
 
 .. autoclass:: ray.tune.schedulers.MedianStoppingRule
     :noindex:
