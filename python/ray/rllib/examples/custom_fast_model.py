@@ -57,10 +57,10 @@ if __name__ == "__main__":
                 "model": {
                     "custom_model": "fast_model"
                 },
-                "num_gpus": 0,
+                "num_gpus": 1,
                 "num_workers": 1,
                 "num_envs_per_worker": 10,
-                "num_data_loader_buffers": 1,
+                "num_data_loader_buffers": 2,
                 "num_aggregation_workers": 1,
                 "broadcast_interval": 50,
                 "sample_batch_size": 100,
