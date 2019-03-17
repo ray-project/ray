@@ -289,8 +289,7 @@ class ActorClass(object):
             # all resources are acquired for the actor's lifetime and no
             # resources are associated with methods.
             cpus_to_use = (ray_constants.DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED
-                           if self._num_cpus is None and num_cpus is None
-                           else max(self._num_cpus, num_cpus)
+                           if self._num_cpus is None else self._num_cpus)
             actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED
 
         # Do not export the actor class or the actor if run in LOCAL_MODE
