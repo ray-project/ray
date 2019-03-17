@@ -14,35 +14,12 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 from ray.tests.cluster_utils import Cluster
+from ray.tests.fixtures import (
+    ray_start_2_cpus,
+    ray_start_cluster,
+    ray_start_regular,
+)
 from ray.tests.utils import run_string_as_driver_nonblocking
-
-
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_cluster():
-    node_args = {
-        "num_cpus": 4,
-        "_internal_config": json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 1000,
-            "num_heartbeats_timeout": 10
-        })
-    }
-    # Start with 3 worker nodes and 4 cores each.
-    cluster = Cluster(
-        initialize_head=True, connect=True, head_node_args=node_args)
-    workers = []
-    for _ in range(3):
-        workers.append(cluster.add_node(**node_args))
-    cluster.wait_for_nodes()
-    yield cluster
-    ray.shutdown()
-    cluster.shutdown()
 
 
 # This test checks that when a worker dies in the middle of a get, the plasma
@@ -50,10 +27,7 @@ def ray_start_cluster():
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Not working with new GCS API.")
-def test_dying_worker_get(shutdown_only):
-    # Start the Ray processes.
-    ray.init(num_cpus=2)
-
+def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
     def sleep_forever():
         time.sleep(10**6)
@@ -100,9 +74,9 @@ def test_dying_worker_get(shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Not working with new GCS API.")
-def test_dying_driver_get(shutdown_only):
+def test_dying_driver_get(ray_start_regular):
     # Start the Ray processes.
-    address_info = ray.init(num_cpus=1)
+    address_info = ray_start_regular
 
     @ray.remote
     def sleep_forever():
@@ -143,9 +117,7 @@ ray.get(ray.ObjectID(ray.utils.hex_to_binary("{}")))
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Not working with new GCS API.")
-def test_dying_worker_wait(shutdown_only):
-    ray.init(num_cpus=2)
-
+def test_dying_worker_wait(ray_start_2_cpus):
     @ray.remote
     def sleep_forever():
         time.sleep(10**6)
@@ -185,9 +157,9 @@ def test_dying_worker_wait(shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Not working with new GCS API.")
-def test_dying_driver_wait(shutdown_only):
+def test_dying_driver_wait(ray_start_regular):
     # Start the Ray processes.
-    address_info = ray.init(num_cpus=1)
+    address_info = ray_start_regular
 
     @ray.remote
     def sleep_forever():
@@ -388,6 +360,13 @@ def test_plasma_store_failed(ray_initialize_cluster):
     check_components_alive(cluster, ray_constants.PROCESS_TYPE_RAYLET, False)
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 4,
+        "num_nodes": 3,
+        "initialize_head": True
+    }],
+    indirect=True)
 def test_actor_creation_node_failure(ray_start_cluster):
     # TODO(swang): Refactor test_raylet_failed, etc to reuse the below code.
     cluster = ray_start_cluster
@@ -434,8 +413,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_driver_lives_sequential(shutdown_only):
-    ray.init(num_cpus=1)
+def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_raylet()
     ray.worker._global_node.kill_plasma_store()
     ray.worker._global_node.kill_log_monitor()
@@ -448,8 +426,7 @@ def test_driver_lives_sequential(shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_driver_lives_parallel(shutdown_only):
-    ray.init(num_cpus=1)
+def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
     process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
                      all_processes[ray_constants.PROCESS_TYPE_RAYLET] +

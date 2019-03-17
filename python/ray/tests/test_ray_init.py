@@ -8,6 +8,7 @@ import redis
 
 import ray
 from ray.tests.cluster_utils import Cluster
+from ray.tests.fixtures import shutdown_only
 
 
 @pytest.fixture
@@ -16,13 +17,6 @@ def password():
     if hasattr(random_bytes, "hex"):
         return random_bytes.hex()  # Python 3
     return random_bytes.encode("hex")  # Python 2
-
-
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 class TestRedisPassword(object):

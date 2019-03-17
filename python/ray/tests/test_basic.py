@@ -28,28 +28,17 @@ import pytest
 import ray
 import ray.tests.cluster_utils
 import ray.tests.utils
+from ray.tests.fixtures import (
+    shutdown_only,
+    ray_start_cluster,
+    ray_start_regular,
+)
 from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def ray_start():
-    # Start the Ray processes.
-    ray.init(num_cpus=1)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def test_simple_serialization(ray_start):
+def test_simple_serialization(ray_start_regular):
     primitive_objects = [
         # Various primitive types.
         0,
@@ -116,7 +105,7 @@ def test_simple_serialization(ray_start):
             assert type(obj) == type(new_obj_2)
 
 
-def test_complex_serialization(ray_start):
+def test_complex_serialization(ray_start_regular):
     def assert_equal(obj1, obj2):
         module_numpy = (type(obj1).__module__ == np.__name__
                         or type(obj2).__module__ == np.__name__)
@@ -319,7 +308,7 @@ def test_complex_serialization(ray_start):
         assert_equal(obj, ray.get(ray.put(obj)))
 
 
-def test_ray_recursive_objects(ray_start):
+def test_ray_recursive_objects(ray_start_regular):
     class ClassA(object):
         pass
 
@@ -347,7 +336,7 @@ def test_ray_recursive_objects(ray_start):
             ray.put(obj)
 
 
-def test_passing_arguments_by_value_out_of_the_box(ray_start):
+def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
     @ray.remote
     def f(x):
         return x
@@ -379,7 +368,7 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start):
     ray.get(ray.put(Foo))
 
 
-def test_putting_object_that_closes_over_object_id(ray_start):
+def test_putting_object_that_closes_over_object_id(ray_start_regular):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
 
@@ -422,9 +411,7 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
-def test_custom_serializers(shutdown_only):
-    ray.init(num_cpus=1)
-
+def test_custom_serializers(ray_start_regular):
     class Foo(object):
         def __init__(self):
             self.x = 3
@@ -454,7 +441,7 @@ def test_custom_serializers(shutdown_only):
     assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
 
 
-def test_serialization_final_fallback(ray_start):
+def test_serialization_final_fallback(ray_start_regular):
     pytest.importorskip("catboost")
     # This test will only run when "catboost" is installed.
     from catboost import CatBoostClassifier
@@ -1148,16 +1135,6 @@ def test_profiling_api(shutdown_only):
         if all(expected_type in event_types
                for expected_type in expected_types):
             break
-
-
-@pytest.fixture()
-def ray_start_cluster():
-    cluster = ray.tests.cluster_utils.Cluster()
-    yield cluster
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
 
 
 def test_wait_cluster(ray_start_cluster):
@@ -2820,7 +2797,7 @@ def test_raylet_is_robust_to_random_messages(shutdown_only):
     assert ray.get(f.remote()) == 1
 
 
-def test_non_ascii_comment(ray_start):
+def test_non_ascii_comment(ray_start_regular):
     @ray.remote
     def f():
         # 日本語 Japanese comment

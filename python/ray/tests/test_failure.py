@@ -17,23 +17,15 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.utils import _random_string
 from ray.tests.cluster_utils import Cluster
-from ray.tests.utils import (relevant_errors, wait_for_errors)
-
-
-@pytest.fixture
-def ray_start_regular():
-    # Start the Ray processes.
-    ray.init(num_cpus=2)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+from ray.tests.fixtures import (
+    shutdown_only,
+    ray_start_regular,
+    ray_start_2_cpus,
+)
+from ray.tests.utils import (
+    relevant_errors,
+    wait_for_errors,
+)
 
 
 def test_failed_task(ray_start_regular):
@@ -89,7 +81,7 @@ def test_failed_task(ray_start_regular):
         assert False
 
 
-def test_fail_importing_remote_function(ray_start_regular):
+def test_fail_importing_remote_function(ray_start_2_cpus):
     # Create the contents of a temporary Python file.
     temporary_python_file = """
 def temporary_helper_function():
@@ -129,7 +121,7 @@ def temporary_helper_function():
     sys.path.pop(-1)
 
 
-def test_failed_function_to_run(ray_start_regular):
+def test_failed_function_to_run(ray_start_2_cpus):
     def f(worker):
         if ray.worker.global_worker.mode == ray.WORKER_MODE:
             raise Exception("Function to run failed.")

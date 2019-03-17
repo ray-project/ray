@@ -5,13 +5,7 @@ from __future__ import print_function
 import pytest
 
 import ray
-
-
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+from ray.tests.fixtures import shutdown_only
 
 
 def test_modin_import_with_ray_init(shutdown_only):
