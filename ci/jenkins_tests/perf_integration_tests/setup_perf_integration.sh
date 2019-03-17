@@ -11,7 +11,4 @@ DOCKER_SHA=$($ROOT_DIR/../../../build-docker.sh --output-sha --no-cache)
 SUPPRESS_OUTPUT=$ROOT_DIR/../suppress_output
 echo "Using Docker image" $DOCKER_SHA
 
-pwd
-ls -la
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA ./ci/perf_integration_tests/run_perf_integration.sh
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA ./ci/jenkins_tests/perf_integration_tests/run_perf_integration.sh
