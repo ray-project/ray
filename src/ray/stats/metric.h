@@ -61,9 +61,9 @@ class Metric final {
   /// Histgrom
   static Metric MakeHistogram(const std::string &name,
                               const std::string &description,
-                          const std::string &unit,
-                          const std::vector<double> boundaries,
-                          const std::vector<opencensus::tags::TagKey>& keys = {}) {
+                              const std::string &unit,
+                              const std::vector<double> boundaries,
+                              const std::vector<opencensus::tags::TagKey>& keys = {}) {
     auto metric = Metric(name, description, unit); 
     opencensus::stats::ViewDescriptor view_descriptor =
           opencensus::stats::ViewDescriptor().set_name(name)
@@ -83,6 +83,8 @@ class Metric final {
   void Record(double value) {
     Record(value, {});
   }
+
+  /// TODO(qwang): `MakeCount` and `MakeSum`
 
   void Record(double value, const std::vector<std::pair<opencensus::tags::TagKey::TagKey, std::string>>& tags) {
     std::vector<std::pair<opencensus::tags::TagKey, std::string>> combined_tags(tags);
