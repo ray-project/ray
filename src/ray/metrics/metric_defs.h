@@ -1,5 +1,8 @@
-// Use `RAY_METRIC(name, description, unit)` to define a metric
-// which parameters are `metric_name`, `description` and `unit`.
+#ifndef RAY_METRIC_DEFS_H_
+#define RAY_METRIC_DEFS_H_
+
+/// Use `RAY_METRIC(name, description, unit)` to define a metric
+/// which parameters are `metric_name`, `description` and `unit`.
 
 static Metric TaskElapse = Metric::MakeHistogram("task_elapse",
                                                  "the task elapse in raylet",
@@ -23,3 +26,5 @@ static Metric WorkerCount = Metric::MakeGauge("worker_count",
                                             "the worker count",
                                             "pcs",
                                             {JobNameKey, NodeAddressKey});
+
+#endif // RAY_METRIC_DEFS_H_
