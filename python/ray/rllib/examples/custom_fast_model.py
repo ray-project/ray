@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 """Example of using a custom image env and model.
 
 Both the model and env are trivial (and super-fast), so they are useful
@@ -21,10 +20,11 @@ from ray.tune import run_experiments, sample_from
 class FastModel(Model):
     def _build_layers_v2(self, input_dict, num_outputs, options):
         bias = tf.get_variable(
-            dtype=tf.float32, name="bias",
-            initializer=tf.zeros_initializer, shape=())
-        output = bias + tf.zeros(
-            [tf.shape(input_dict["obs"])[0], num_outputs])
+            dtype=tf.float32,
+            name="bias",
+            initializer=tf.zeros_initializer,
+            shape=())
+        output = bias + tf.zeros([tf.shape(input_dict["obs"])[0], num_outputs])
         return output, output
 
 
@@ -53,7 +53,10 @@ if __name__ == "__main__":
             "run": "IMPALA",
             "env": FastImageEnv,
             "config": {
-                "model": {"custom_model": "fast_model"},
+                "compress_observations": True,
+                "model": {
+                    "custom_model": "fast_model"
+                },
                 "num_gpus": 0,
                 "num_workers": 1,
                 "num_envs_per_worker": 10,

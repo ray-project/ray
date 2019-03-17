@@ -52,9 +52,14 @@ def unpack(data):
 
 @DeveloperAPI
 def unpack_if_needed(data):
-    if isinstance(data, bytes) or isinstance(data, string_types):
+    if is_compressed(data):
         data = unpack(data)
     return data
+
+
+@DeveloperAPI
+def is_compressed(data):
+    return isinstance(data, bytes) or isinstance(data, string_types)
 
 
 # Intel(R) Core(TM) i7-4600U CPU @ 2.10GHz

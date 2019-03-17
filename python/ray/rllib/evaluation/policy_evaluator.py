@@ -27,7 +27,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
@@ -431,13 +430,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     estimator.process(sub_batch)
 
         if self.compress_observations:
-            if isinstance(batch, MultiAgentBatch):
-                for data in batch.policy_batches.values():
-                    data["obs"] = [pack(o) for o in data["obs"]]
-                    data["new_obs"] = [pack(o) for o in data["new_obs"]]
-            else:
-                batch["obs"] = [pack(o) for o in batch["obs"]]
-                batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
+            batch.compress()
 
         if self._fake_sampler:
             self.last_batch = batch
