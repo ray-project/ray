@@ -89,6 +89,7 @@ cc_library(
         ":object_manager",
         ":ray_common",
         ":ray_util",
+        ":stats_lib",
         "@boost//:asio",
         "@com_google_googletest//:gtest",
         "@plasma//:plasma_client",
