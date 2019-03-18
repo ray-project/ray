@@ -499,7 +499,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         results1 = [dict(mean_accuracy=5, done=i == 99) for i in range(100)]
         logs1, _ = self.checkAndReturnConsistentLogs(results1)
 
-        self.assertTrue(all([log[TIMESTEPS_TOTAL] is None for log in logs1]))
+        self.assertTrue(all(log[TIMESTEPS_TOTAL] is None for log in logs1))
 
         # Test that no timesteps_this_iter are logged if only timesteps_total
         # are returned.
@@ -514,10 +514,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
         logs2, _ = self.checkAndReturnConsistentLogs(results2, 0.5)
 
         # check all timesteps_total report the same value
-        self.assertTrue(all([log[TIMESTEPS_TOTAL] == 5 for log in logs2]))
+        self.assertTrue(all(log[TIMESTEPS_TOTAL] == 5 for log in logs2))
         # check that none of the logs report timesteps_this_iter
         self.assertFalse(
-            any([hasattr(log, TIMESTEPS_THIS_ITER) for log in logs2]))
+            any(hasattr(log, TIMESTEPS_THIS_ITER) for log in logs2))
 
         # Test that timesteps_total and episodes_total are reported when
         # timesteps_this_iter and episodes_this_iter despite only return zeros.
@@ -527,8 +527,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         ]
         logs3, _ = self.checkAndReturnConsistentLogs(results3)
 
-        self.assertTrue(all([log[TIMESTEPS_TOTAL] == 0 for log in logs3]))
-        self.assertTrue(all([log[EPISODES_TOTAL] == 0 for log in logs3]))
+        self.assertTrue(all(log[TIMESTEPS_TOTAL] == 0 for log in logs3))
+        self.assertTrue(all(log[EPISODES_TOTAL] == 0 for log in logs3))
 
         # Test that timesteps_total and episodes_total are properly counted
         # when timesteps_this_iter and episodes_this_iter report non-zero
