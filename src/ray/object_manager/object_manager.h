@@ -310,7 +310,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// Executes on send_service_ thread pool.
   ray::Status ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
                                 uint64_t data_size, uint64_t metadata_size,
-                                uint64_t chunk_index,
+                                uint64_t chunk_index, double start_push_time,
                                 const RemoteConnectionInfo &connection_info);
 
   /// This method synchronously sends the object id and object size
@@ -318,6 +318,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// Executes on send_service_ thread pool.
   ray::Status SendObjectHeaders(const ObjectID &object_id, uint64_t data_size,
                                 uint64_t metadata_size, uint64_t chunk_index,
+                                double start_push_time,
                                 std::shared_ptr<SenderConnection> &conn);
 
   /// This method initiates the actual object transfer.
