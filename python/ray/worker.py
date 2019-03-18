@@ -796,7 +796,7 @@ class Worker(object):
                 if not self.plasma_client.contains(
                         pyarrow.plasma.ObjectID(object_ids[i].binary())):
                     raise RuntimeError(
-                        "Attempting to return `ray.experimental.NoReturn` "
+                        "Attempting to return 'ray.experimental.NoReturn' "
                         "from a remote function, but the corresponding "
                         "ObjectID does not exist in the local object store.")
             else:

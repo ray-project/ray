@@ -90,5 +90,6 @@ def test_no_set_and_no_return(ray_start):
         return ray.experimental.no_return.NoReturn
 
     object_id = f.remote()
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(ray.exceptions.RayTaskError) as e:
         ray.get(object_id)
+    assert "Attempting to return 'ray.experimental.NoReturn'" in str(e.value)
