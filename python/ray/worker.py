@@ -2057,7 +2057,7 @@ def connect(info,
 
 
 def disconnect():
-    """Disconnect this worker from the raylet and object store"""
+    """Disconnect this worker from the raylet and object store."""
     # Reset the list of cached remote functions and actors so that if more
     # remote functions or actors are defined and then connect is called again,
     # the remote functions will be exported. This is mostly relevant for the
