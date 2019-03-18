@@ -49,8 +49,9 @@ class TaskPool(object):
         num_yielded = 0
         for worker, obj_id in self._fetching:
             plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.binary())
-            if (num_yielded < max_yield and
-                   ray.worker.global_worker.plasma_client.contains(plasma_id)):
+            if (num_yielded < max_yield
+                    and ray.worker.global_worker.plasma_client.contains(
+                        plasma_id)):
                 yield (worker, obj_id)
                 num_yielded += 1
             else:
@@ -96,8 +97,10 @@ def split_colocated(actors):
 
 def try_create_colocated(cls, args, count):
     actors = [cls.remote(*args) for _ in range(count)]
-    local, _ = split_colocated(actors)
+    local, rest = split_colocated(actors)
     logger.info("Got {} colocated actors of {}".format(len(local), count))
+    for a in rest:
+        a.__ray_terminate__.remote()
     return local
 
 
@@ -111,4 +114,6 @@ def create_colocated(cls, args, count):
         i += 1
     if len(ok) < count:
         raise Exception("Unable to create enough colocated actors, abort.")
+    for a in ok[count:]:
+        a.__ray_terminate__.remote()
     return ok[:count]

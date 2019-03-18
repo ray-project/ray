@@ -8,6 +8,7 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
+from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.utils.annotations import override
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Resources
@@ -116,11 +117,21 @@ class ImpalaAgent(Agent):
         policy_cls = self._get_policy_graph()
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
+
+        if self.config["num_aggregation_workers"] > 0:
+            # Create co-located aggregator actors first for placement pref
+            aggregators = TreeAggregator.precreate_aggregators(
+                self.config["num_aggregation_workers"])
+
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"])
         self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
                                                self.remote_evaluators,
                                                self.config["optimizer"])
+
+        if self.config["num_aggregation_workers"] > 0:
+            # Assign the pre-created aggregators to the optimizer
+            self.optimizer.aggregator.init(aggregators)
 
     @classmethod
     @override(Trainable)

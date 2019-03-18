@@ -244,7 +244,8 @@ class SampleBatch(object):
                 if bulk:
                     self.data[key] = pack(self.data[key])
                 else:
-                    self.data[key] = np.array([pack(o) for o in self.data[key]])
+                    self.data[key] = np.array(
+                        [pack(o) for o in self.data[key]])
 
     @DeveloperAPI
     def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
