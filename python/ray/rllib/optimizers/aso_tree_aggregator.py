@@ -69,11 +69,11 @@ class TreeAggregator(Aggregator):
     @override(Aggregator)
     def iter_train_batches(self):
         for agg, batches in self.agg_tasks.completed_prefetch():
-            self.agg_tasks.add(agg, agg.get_train_batches.remote())
             for b in ray.get(batches):
                 self.num_sent_since_broadcast += 1
                 yield b
             agg.set_weights.remote(self.broadcasted_weights)
+            self.agg_tasks.add(agg, agg.get_train_batches.remote())
             self.num_batches_processed += 1
 
     @override(Aggregator)
@@ -111,11 +111,15 @@ class AggregationWorker(AggregationWorkerBase):
         self.broadcasted_weights = weights
 
     def get_train_batches(self):
+        start = time.time()
         result = []
-        for batch in self.iter_train_batches():
+        for batch in self.iter_train_batches(max_yield=5):
             result.append(batch)
         while not result:
             time.sleep(0.01)
-            for batch in self.iter_train_batches():
+            for batch in self.iter_train_batches(max_yield=5):
                 result.append(batch)
+        logger.info(
+            "Returning {} train batches, {}s".format(
+                len(result), time.time() - start))
         return result

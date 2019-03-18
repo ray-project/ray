@@ -2,14 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.utils.annotations import DeveloperAPI
+
 import logging
 import time
 import base64
 import numpy as np
 import pyarrow
 from six import string_types
-
-from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 

@@ -75,9 +75,10 @@ class AggregationWorkerBase(object):
         self.num_replayed = 0
 
     @override(Aggregator)
-    def iter_train_batches(self):
+    def iter_train_batches(self, max_yield=999):
         for ev, sample_batch in self._augment_with_replay(
-                self.sample_tasks.completed_prefetch(blocking_wait=True)):
+                self.sample_tasks.completed_prefetch(
+                    blocking_wait=True, max_yield=max_yield)):
             sample_batch.decompress_if_needed()
             self.batch_buffer.append(sample_batch)
             if sum(b.count
