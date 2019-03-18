@@ -228,6 +228,16 @@ class _ExternalEnvToBaseEnv(BaseEnv):
                 if "off_policy_action" in data:
                     off_policy_actions[eid] = data["off_policy_action"]
         if self.multiagent:
+            # ensure a consistent set of keys
+            # rely on all_obs having all possible keys for now
+            for eid, eid_dict in all_obs.items():
+                for agent_id in eid_dict.keys():
+                    def fix(d, zero_val):
+                        if agent_id not in d[eid]:
+                            d[eid][agent_id] = zero_val
+                    fix(all_rewards, 0.0)
+                    fix(all_dones, False)
+                    fix(all_infos, {})
             return all_obs, all_rewards, all_dones, all_infos, off_policy_actions
         else:
             return _with_dummy_agent_id(all_obs), \

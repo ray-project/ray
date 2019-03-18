@@ -8,7 +8,6 @@ import uuid
 
 from ray.rllib.utils.annotations import PublicAPI
 
-DUMMY_REWARD_DICT = { x: 0.0 for x in list(range(200)) }
 
 @PublicAPI
 class ExternalMultiAgentEnv(threading.Thread):
@@ -214,11 +213,7 @@ class _ExternalEnvEpisode(object):
         self.new_observation_dict = None
         self.new_action_dict = None
 
-        # FIXME dirty. do we need to know all agents here?
-        # if I do not set this, the first _send is going to fail
-        # and result in a keyerror in the evaluator
-        self.cur_reward_dict = DUMMY_REWARD_DICT 
-        # self.cur_reward_dict = {}
+        self.cur_reward_dict = {}
 
         self.reset_cur_done_dict()
         self.cur_info_dict = {}
@@ -257,7 +252,7 @@ class _ExternalEnvEpisode(object):
             item["info"]["training_enabled"] = False
         self.new_observation_dict = None
         self.new_action_dict = None
-        self.cur_reward_dict = DUMMY_REWARD_DICT 
+        self.cur_reward_dict = {}
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)
             self.results_avail_condition.notify()

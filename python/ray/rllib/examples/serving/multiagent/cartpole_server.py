@@ -31,7 +31,7 @@ from constants import *
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9990
-CHECKPOINT_FILE = "last_checkpoint.out"
+CHECKPOINT_FILE = "last_checkpoint_ppo.out"
 
 parser = argparse.ArgumentParser()
 
@@ -63,27 +63,11 @@ if __name__ == "__main__":
 
     policy_graphs = {
         "ppo_policy": (PPOPolicyGraph, OBS_SPACE, ACT_SPACE, {}),
-        "dqn_policy": (DQNPolicyGraph, OBS_SPACE, ACT_SPACE, {}),
     }
     policy_ids = list(policy_graphs.keys())
 
     def policy_mapper(agent_id):
         return random.choice(policy_ids)
-
-    dqn_trainer = DQNAgent(
-        env="srv",
-        config={
-            "num_workers": 0,
-            "multiagent": {
-                "policy_graphs": policy_graphs,
-                "policy_mapping_fn": policy_mapper,
-                "policies_to_train": ["dqn_policy"],
-            },
-            "log_level": "INFO",
-            "exploration_fraction": 0.01,
-            "learning_starts": 100,
-            "timesteps_per_iteration": 200,
-        })
 
     ppo_trainer = PPOAgent(
         env="srv",
@@ -106,9 +90,9 @@ if __name__ == "__main__":
         })
 
     # disable DQN exploration when used by the PPO trainer
-    ppo_trainer.optimizer.foreach_evaluator(
-        lambda ev: ev.for_policy(
-            lambda pi: pi.set_epsilon(0.0), policy_id="dqn_policy"))
+    # ppo_trainer.optimizer.foreach_evaluator(
+    #     lambda ev: ev.for_policy(
+    #         lambda pi: pi.set_epsilon(0.0), policy_id="dqn_policy"))
 
 
     # Attempt to restore from checkpoint if possible.
@@ -116,20 +100,17 @@ if __name__ == "__main__":
         if os.path.exists(CHECKPOINT_FILE):
             checkpoint_path = open(CHECKPOINT_FILE).read()
             print("Restoring from checkpoint path", checkpoint_path)
-            dqn_trainer.restore(checkpoint_path)
+            ppo_trainer.restore(checkpoint_path)
     except:
         print("restore failed")
 
     # Serving and training loop
     while True:
-        print("\n-- DQN --")
-        print(pretty_print(dqn_trainer.train()))
-        checkpoint_path = dqn_trainer.save()
+        print("\n-- PPO --")
+        print(pretty_print(ppo_trainer.train()))
+        sleep(10)
+        checkpoint_path = ppo_trainer.save()
         print("Last checkpoint", checkpoint_path)
         with open(CHECKPOINT_FILE, "w") as f:
             f.write(checkpoint_path)
-        sleep(0.5)
-
-        print("\n-- PPO --")
-        print(pretty_print(ppo_trainer.train()))
         sleep(0.5)

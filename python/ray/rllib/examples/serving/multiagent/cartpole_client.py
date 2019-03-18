@@ -65,10 +65,10 @@ if __name__ == "__main__":
             # debug(f"[loop] action sampled and logged.")
         else:
             # for each agent, get an action separately
-            action = {}
-            for ag, o in obs.items():
-                action.update(client.get_action(eid, {ag: o}))
-            # action = client.get_action(eid, obs)
+            # action = {}
+            # for ag, o in obs.items():
+            #     action.update(client.get_action(eid, {ag: o}))
+            action = client.get_action(eid, obs)
         debug(f"[loop] action chosen: {action}")
 
         # step the env
@@ -91,7 +91,7 @@ if __name__ == "__main__":
             print("Total rewards:")
             print(all_rewards)
             print("----")
-            sleep(2)
+            sleep(0.7)
             if rewards >= args.stop_at_reward:
                 print("Target reward achieved, exiting")
                 exit(0)
