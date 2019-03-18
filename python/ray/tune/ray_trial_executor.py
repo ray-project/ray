@@ -32,6 +32,7 @@ class _LocalWrapper(object):
         return self._result
 
 
+
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
@@ -472,9 +473,9 @@ class RayTrialExecutor(TrialExecutor):
         else:
             # If enabled, saves best checkpoints into a best folder
             if trial.keep_best_checkpoints_num and trial.results_since_checkpoint_cnt > 0:
-                mean_rew_since_checkpoint = trial.results_since_checkpoint_sum / trial.results_since_checkpoint_cnt
-                if mean_rew_since_checkpoint > trial.best_checkpoint_reward:
-                    trial.best_checkpoint_reward = mean_rew_since_checkpoint
+                current_attr_mean = trial.results_since_checkpoint_sum / trial.results_since_checkpoint_cnt
+                if trial.compare_checkpoints(current_attr_mean):
+                    trial.best_checkpoint_attr_value = current_attr_mean
                     self._checkpoint_and_erase("best", trial)
                 trial.results_since_checkpoint_sum, trial.results_since_checkpoint_cnt = 0, 0
 

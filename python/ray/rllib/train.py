@@ -106,6 +106,7 @@ def run(args, parser):
                 "checkpoint_freq": args.checkpoint_freq,
                 "keep_checkpoints_num": args.keep_checkpoints_num,
                 "keep_best_checkpoints_num": args.keep_best_checkpoints_num,
+                "checkpoint_score_attr": args.checkpoint_score_attr,
                 "local_dir": args.local_dir,
                 "resources_per_trial": (
                     args.resources_per_trial and

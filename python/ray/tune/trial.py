@@ -256,6 +256,7 @@ class Trial(object):
                  checkpoint_at_end=False,
                  keep_best_checkpoints_num=None,
                  keep_checkpoints_num=None,
+                 checkpoint_score_attr=None,
                  export_formats=None,
                  restore_path=None,
                  upload_dir=None,
@@ -293,6 +294,13 @@ class Trial(object):
         self.checkpoint_at_end = checkpoint_at_end
         self.keep_best_checkpoints_num = keep_best_checkpoints_num
         self.keep_checkpoints_num = keep_checkpoints_num
+        self.checkpoint_score_attr = checkpoint_score_attr
+        self._cmp_greater = True
+        self.best_checkpoint_attr_value = -float("inf")
+        if checkpoint_score_attr and checkpoint_score_attr.startswith("min-"):
+            self._cmp_greater = False
+            self.checkpoint_score_attr = checkpoint_score_attr[4:]
+            self.best_checkpoint_attr_value = float("inf")
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
         self.export_formats = export_formats
@@ -309,7 +317,6 @@ class Trial(object):
         self.results_since_checkpoint_sum = 0
         self.results_since_checkpoint_cnt = 0
 
-        self.best_checkpoint_reward = float("-inf")
         self.prefix = {
             "best": {
                 "history": [],
@@ -517,12 +524,38 @@ class Trial(object):
         self.result_logger.on_result(self.last_result)
 
         try:
-            if not math.isnan(result["episode_reward_mean"]):
-                self.results_since_checkpoint_sum += result["episode_reward_mean"]
+            if not math.isnan(result[self.checkpoint_score_attr]):
+                self.results_since_checkpoint_sum += result[self.checkpoint_score_attr]
                 self.results_since_checkpoint_cnt += 1
         except KeyError as e:
-            raise KeyError("Warning: result has no key episde_reward_mean. Keep_best_checkpoint flag will not work.")
+            raise KeyError("Warning: result dict has no key: {}. "
+                           "Keep_best_checkpoint flag will not work.".format(self.checkpoint_score_attr))
 
+    def compare_checkpoints(self, attr_mean):
+        """Compares two checkpoints based on the attribute attr_mean param.
+
+        Greater than is used by default. If  command-line parameter checkpoint_score_attr
+        starts with "min-" less than is used.
+
+        Parameters
+        ----------
+            attr_mean : mean of attribute value for the current checkpoint
+
+        Returns
+        -------
+            True: when attr_mean is greater than previous checkpoint attr_mean
+                  and greater than function is selected
+
+                  when attr_mean is less than previous checkpoint attr_mean and
+                  less than function is selected
+
+            False: when attr_mean is not in alignment with selected cmp function
+        """
+        if self._cmp_greater and attr_mean > self.best_checkpoint_attr_value:
+            return True
+        elif not self._cmp_greater and attr_mean < self.best_checkpoint_attr_value:
+            return True
+        return False
 
     def _get_trainable_cls(self):
         return ray.tune.registry._global_registry.get(

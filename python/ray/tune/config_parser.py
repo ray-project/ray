@@ -118,6 +118,14 @@ def make_parser(parser_creator=None, **kwargs):
              "deleted. Default (None) keeps all checkpoints."
     )
     parser.add_argument(
+        "--checkpoint-score-attr",
+        default=None,
+        type=str,
+        help="Specifies by which attribute to rank the best checkpoint. Default is"
+             "increasing order. If attribute starts with min- it will rank "
+             "attribute in decreasing order. example: min-validation_loss"
+    )
+    parser.add_argument(
         "--export-formats",
         default=None,
         help="List of formats that exported at the end of the experiment. "
@@ -206,6 +214,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         checkpoint_at_end=args.checkpoint_at_end,
         keep_best_checkpoints_num=args.keep_best_checkpoints_num,
         keep_checkpoints_num=args.keep_checkpoints_num,
+        checkpoint_score_attr=args.checkpoint_score_attr,
         export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
