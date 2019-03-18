@@ -24,10 +24,11 @@ enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3
 
 #ifdef NDEBUG
 
-#define RAY_DCHECK(condition) \
-  RAY_IGNORE_EXPR(condition); \
-  while (false) ::ray::RayLogBase()
-
+#define RAY_DCHECK(condition)                                                  \
+  (condition) ? RAY_IGNORE_EXPR(0)                                             \
+              : ::ray::Voidify() &                                             \
+                    ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
+                        << " Debug check failed: " #condition " "
 #else
 
 #define RAY_DCHECK(condition) RAY_CHECK(condition)

@@ -35,6 +35,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "num_sgd_iter": 1,
     "replay_proportion": 0.0,
     "replay_buffer_num_slots": 100,
+    "learner_queue_size": 16,
     "max_sample_requests_in_flight_per_worker": 2,
     "broadcast_interval": 1,
     "grad_clip": 40.0,
@@ -45,7 +46,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "momentum": 0.0,
     "epsilon": 0.1,
     "vf_loss_coeff": 0.5,
-    "entropy_coeff": -0.01,
+    "entropy_coeff": 0.01,
 })
 # __sphinx_doc_end__
 # yapf: enable

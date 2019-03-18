@@ -4,12 +4,12 @@ from __future__ import print_function
 
 from gym.spaces import Discrete
 import numpy as np
+from scipy.stats import entropy
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 import ray
-from ray.rllib.models import ModelCatalog
-from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.models import ModelCatalog, Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -29,7 +29,8 @@ class QNetwork(object):
                  num_atoms=1,
                  v_min=-10.0,
                  v_max=10.0,
-                 sigma0=0.5):
+                 sigma0=0.5,
+                 parameter_noise=False):
         self.model = model
         with tf.variable_scope("action_value"):
             if hiddens:
@@ -42,7 +43,9 @@ class QNetwork(object):
                         action_out = layers.fully_connected(
                             action_out,
                             num_outputs=hiddens[i],
-                            activation_fn=tf.nn.relu)
+                            activation_fn=tf.nn.relu,
+                            normalizer_fn=layers.layer_norm
+                            if parameter_noise else None)
             else:
                 # Avoid postprocessing the outputs. This enables custom models
                 # to be used for parametric action DQN.
@@ -90,7 +93,9 @@ class QNetwork(object):
                         state_out = layers.fully_connected(
                             state_out,
                             num_outputs=hiddens[i],
-                            activation_fn=tf.nn.relu)
+                            activation_fn=tf.nn.relu,
+                            normalizer_fn=layers.layer_norm
+                            if parameter_noise else None)
                 if use_noisy:
                     state_score = self.noisy_layer(
                         "dueling_output",
@@ -182,7 +187,14 @@ class QNetwork(object):
 
 
 class QValuePolicy(object):
-    def __init__(self, q_values, observations, num_actions, stochastic, eps):
+    def __init__(self, q_values, observations, num_actions, stochastic, eps,
+                 softmax, softmax_temp):
+        if softmax:
+            action_dist = Categorical(q_values / softmax_temp)
+            self.action = action_dist.sample()
+            self.action_prob = action_dist.sampled_action_prob()
+            return
+
         deterministic_actions = tf.argmax(q_values, axis=1)
         batch_size = tf.shape(observations)[0]
 
@@ -200,6 +212,7 @@ class QValuePolicy(object):
                                       deterministic_actions)
         self.action = tf.cond(stochastic, lambda: stochastic_actions,
                               lambda: deterministic_actions)
+        self.action_prob = None
 
 
 class QLoss(object):
@@ -299,11 +312,20 @@ class DQNPolicyGraph(TFPolicyGraph):
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
             q_values, q_logits, q_dist, _ = self._build_q_network(
-                self.cur_observations, observation_space)
+                self.cur_observations, observation_space, action_space)
+            self.q_values = q_values
             self.q_func_vars = _scope_vars(scope.name)
 
+        # Noise vars for Q network except for layer normalization vars
+        if self.config["parameter_noise"]:
+            self._build_parameter_noise([
+                var for var in self.q_func_vars if "LayerNorm" not in var.name
+            ])
+            self.action_probs = tf.nn.softmax(self.q_values)
+
         # Action outputs
-        self.output_actions = self._build_q_value_policy(q_values)
+        self.output_actions, self.action_prob = self._build_q_value_policy(
+            q_values)
 
         # Replay inputs
         self.obs_t = tf.placeholder(
@@ -320,7 +342,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         with tf.variable_scope(Q_SCOPE, reuse=True):
             prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
             q_t, q_logits_t, q_dist_t, model = self._build_q_network(
-                self.obs_t, observation_space)
+                self.obs_t, observation_space, action_space)
             q_batchnorm_update_ops = list(
                 set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
                 prev_update_ops)
@@ -328,7 +350,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
             q_tp1, q_logits_tp1, q_dist_tp1, _ = self._build_q_network(
-                self.obs_tp1, observation_space)
+                self.obs_tp1, observation_space, action_space)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
@@ -342,7 +364,7 @@ class DQNPolicyGraph(TFPolicyGraph):
             with tf.variable_scope(Q_SCOPE, reuse=True):
                 q_tp1_using_online_net, q_logits_tp1_using_online_net, \
                     q_dist_tp1_using_online_net, _ = self._build_q_network(
-                        self.obs_tp1, observation_space)
+                        self.obs_tp1, observation_space, action_space)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best_one_hot_selection = tf.one_hot(
                 q_tp1_best_using_online_net, self.num_actions)
@@ -387,7 +409,9 @@ class DQNPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=model.loss() + self.loss.loss,
+            action_prob=self.action_prob,
+            loss=self.loss.loss,
+            model=model,
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
@@ -413,6 +437,13 @@ class DQNPolicyGraph(TFPolicyGraph):
         return grads_and_vars
 
     @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self), **{
+                "q_values": self.q_values,
+            })
+
+    @override(TFPolicyGraph)
     def extra_compute_action_feed_dict(self):
         return {
             self.stochastic: True,
@@ -431,6 +462,28 @@ class DQNPolicyGraph(TFPolicyGraph):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
+        if self.config["parameter_noise"]:
+            # adjust the sigma of parameter space noise
+            states = [list(x) for x in sample_batch.columns(["obs"])][0]
+
+            noisy_action_distribution = self.sess.run(
+                self.action_probs, feed_dict={self.cur_observations: states})
+            self.sess.run(self.remove_noise_op)
+            clean_action_distribution = self.sess.run(
+                self.action_probs, feed_dict={self.cur_observations: states})
+            distance_in_action_space = np.mean(
+                entropy(clean_action_distribution.T,
+                        noisy_action_distribution.T))
+            self.pi_distance = distance_in_action_space
+            if (distance_in_action_space <
+                    -np.log(1 - self.cur_epsilon +
+                            self.cur_epsilon / self.num_actions)):
+                self.parameter_noise_sigma_val *= 1.01
+            else:
+                self.parameter_noise_sigma_val /= 1.01
+            self.parameter_noise_sigma.load(
+                self.parameter_noise_sigma_val, session=self.sess)
+
         return _postprocess_dqn(self, sample_batch)
 
     @override(PolicyGraph)
@@ -441,6 +494,43 @@ class DQNPolicyGraph(TFPolicyGraph):
     def set_state(self, state):
         TFPolicyGraph.set_state(self, state[0])
         self.set_epsilon(state[1])
+
+    def _build_parameter_noise(self, pnet_params):
+        self.parameter_noise_sigma_val = 1.0
+        self.parameter_noise_sigma = tf.get_variable(
+            initializer=tf.constant_initializer(
+                self.parameter_noise_sigma_val),
+            name="parameter_noise_sigma",
+            shape=(),
+            trainable=False,
+            dtype=tf.float32)
+        self.parameter_noise = list()
+        # No need to add any noise on LayerNorm parameters
+        for var in pnet_params:
+            noise_var = tf.get_variable(
+                name=var.name.split(':')[0] + "_noise",
+                shape=var.shape,
+                initializer=tf.constant_initializer(.0),
+                trainable=False)
+            self.parameter_noise.append(noise_var)
+        remove_noise_ops = list()
+        for var, var_noise in zip(pnet_params, self.parameter_noise):
+            remove_noise_ops.append(tf.assign_add(var, -var_noise))
+        self.remove_noise_op = tf.group(*tuple(remove_noise_ops))
+        generate_noise_ops = list()
+        for var_noise in self.parameter_noise:
+            generate_noise_ops.append(
+                tf.assign(
+                    var_noise,
+                    tf.random_normal(
+                        shape=var_noise.shape,
+                        stddev=self.parameter_noise_sigma)))
+        with tf.control_dependencies(generate_noise_ops):
+            add_noise_ops = list()
+            for var, var_noise in zip(pnet_params, self.parameter_noise):
+                add_noise_ops.append(tf.assign_add(var, var_noise))
+            self.add_noise_op = tf.group(*tuple(add_noise_ops))
+        self.pi_distance = None
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
@@ -456,26 +546,34 @@ class DQNPolicyGraph(TFPolicyGraph):
             })
         return td_err
 
+    def add_parameter_noise(self):
+        if self.config["parameter_noise"]:
+            self.sess.run(self.add_noise_op)
+
     def update_target(self):
         return self.sess.run(self.update_target_expr)
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
 
-    def _build_q_network(self, obs, space):
+    def _build_q_network(self, obs, obs_space, action_space):
         qnet = QNetwork(
             ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
-            }, space, self.num_actions, self.config["model"]),
-            self.num_actions, self.config["dueling"], self.config["hiddens"],
+            }, obs_space, action_space, self.num_actions,
+                                   self.config["model"]), self.num_actions,
+            self.config["dueling"], self.config["hiddens"],
             self.config["noisy"], self.config["num_atoms"],
-            self.config["v_min"], self.config["v_max"], self.config["sigma0"])
+            self.config["v_min"], self.config["v_max"], self.config["sigma0"],
+            self.config["parameter_noise"])
         return qnet.value, qnet.logits, qnet.dist, qnet.model
 
     def _build_q_value_policy(self, q_values):
-        return QValuePolicy(q_values, self.cur_observations, self.num_actions,
-                            self.stochastic, self.eps).action
+        policy = QValuePolicy(
+            q_values, self.cur_observations, self.num_actions, self.stochastic,
+            self.eps, self.config["soft_q"], self.config["softmax_temp"])
+        return policy.action, policy.action_prob
 
     def _build_q_loss(self, q_t_selected, q_logits_t_selected, q_tp1_best,
                       q_dist_tp1_best):
@@ -511,26 +609,16 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
                 rewards[i] += gamma**j * rewards[i + j]
 
 
-def _postprocess_dqn(policy_graph, sample_batch):
-    obs, actions, rewards, new_obs, dones = [
-        list(x) for x in sample_batch.columns(
-            ["obs", "actions", "rewards", "new_obs", "dones"])
-    ]
-
+def _postprocess_dqn(policy_graph, batch):
     # N-step Q adjustments
     if policy_graph.config["n_step"] > 1:
         _adjust_nstep(policy_graph.config["n_step"],
-                      policy_graph.config["gamma"], obs, actions, rewards,
-                      new_obs, dones)
+                      policy_graph.config["gamma"], batch["obs"],
+                      batch["actions"], batch["rewards"], batch["new_obs"],
+                      batch["dones"])
 
-    batch = SampleBatch({
-        "obs": obs,
-        "actions": actions,
-        "rewards": rewards,
-        "new_obs": new_obs,
-        "dones": dones,
-        "weights": np.ones_like(rewards)
-    })
+    if "weights" not in batch:
+        batch["weights"] = np.ones_like(batch["rewards"])
 
     # Prioritize on the worker side
     if batch.count > 0 and policy_graph.config["worker_side_prioritization"]:

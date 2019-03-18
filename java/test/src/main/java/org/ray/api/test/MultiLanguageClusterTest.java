@@ -2,8 +2,7 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import java.io.File;
-import java.io.IOException;
-import java.lang.ProcessBuilder.Redirect;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
@@ -34,13 +33,13 @@ public class MultiLanguageClusterTest {
 
   /**
    * Execute an external command.
+   *
    * @return Whether the command succeeded.
    */
   private boolean executeCommand(List<String> command, int waitTimeoutSeconds) {
     try {
       LOGGER.info("Executing command: {}", String.join(" ", command));
-      Process process = new ProcessBuilder(command).redirectOutput(Redirect.INHERIT)
-          .redirectError(Redirect.INHERIT).start();
+      Process process = new ProcessBuilder(command).inheritIO().start();
       process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS);
       return process.exitValue() == 0;
     } catch (Exception e) {
@@ -49,11 +48,12 @@ public class MultiLanguageClusterTest {
   }
 
   @BeforeMethod
-  public void setUp() {
-    // Check whether 'ray' command is installed.
-    boolean rayCommandExists = executeCommand(ImmutableList.of("which", "ray"), 5);
-    if (!rayCommandExists) {
-      throw new SkipException("Skipping test, because ray command doesn't exist.");
+  public void setUp(Method method) {
+    String testName = method.getName();
+    if (!"1".equals(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS"))) {
+      LOGGER.info("Skip " + testName +
+          " because env variable ENABLE_MULTI_LANGUAGE_TESTS isn't set");
+      throw new SkipException("Skip test.");
     }
 
     // Delete existing socket files.
@@ -65,22 +65,25 @@ public class MultiLanguageClusterTest {
     }
 
     // Start ray cluster.
+    String testDir = System.getProperty("user.dir");
+    String workerOptions =
+        " -classpath " + String.format("%s/../../build/java/*:%s/target/*", testDir, testDir);
     final List<String> startCommand = ImmutableList.of(
         "ray",
         "start",
         "--head",
         "--redis-port=6379",
-        "--include-java",
         String.format("--plasma-store-socket-name=%s", PLASMA_STORE_SOCKET_NAME),
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
-        "--java-worker-options=-classpath ../../build/java/*:../../java/test/target/*"
+        "--load-code-from-local",
+        "--include-java",
+        "--java-worker-options=" + workerOptions
     );
     if (!executeCommand(startCommand, 10)) {
       throw new RuntimeException("Couldn't start ray cluster.");
     }
 
     // Connect to the cluster.
-    System.setProperty("ray.home", "../..");
     System.setProperty("ray.redis.address", "127.0.0.1:6379");
     System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
@@ -91,7 +94,6 @@ public class MultiLanguageClusterTest {
   public void tearDown() {
     // Disconnect to the cluster.
     Ray.shutdown();
-    System.clearProperty("ray.home");
     System.clearProperty("ray.redis.address");
     System.clearProperty("ray.object-store.socket-name");
     System.clearProperty("ray.raylet.socket-name");

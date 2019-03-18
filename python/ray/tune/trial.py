@@ -11,10 +11,10 @@ import json
 import time
 import tempfile
 import os
+from numbers import Number
 
 # For compatibility under py2 to consider unicode as str
 from six import string_types
-from numbers import Number
 
 import ray
 from ray.tune import TuneError
@@ -25,8 +25,9 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
-                             TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL)
-from ray.utils import random_string, binary_to_hex, hex_to_binary
+                             TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL,
+                             EPISODE_REWARD_MEAN, MEAN_LOSS, MEAN_ACCURACY)
+from ray.utils import _random_string, binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
@@ -38,10 +39,11 @@ def date_str():
 
 
 class Resources(
-        namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"])):
+        namedtuple("Resources", [
+            "cpu", "gpu", "extra_cpu", "extra_gpu", "custom_resources",
+            "extra_custom_resources"
+        ])):
     """Ray resources required to schedule a trial.
-
-    TODO: Custom resources.
 
     Attributes:
         cpu (float): Number of CPUs to allocate to the trial.
@@ -50,27 +52,91 @@ class Resources(
             launch additional Ray actors that use CPUs.
         extra_gpu (float): Extra GPUs to reserve in case the trial needs to
             launch additional Ray actors that use GPUs.
+        custom_resources (dict): Mapping of resource to quantity to allocate
+            to the trial.
+        extra_custom_resources (dict): Extra custom resources to reserve in
+            case the trial needs to launch additional Ray actors that use
+            any of these custom resources.
 
     """
 
     __slots__ = ()
 
-    def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
-        for entry in [cpu, gpu, extra_cpu, extra_gpu]:
+    def __new__(cls,
+                cpu,
+                gpu,
+                extra_cpu=0,
+                extra_gpu=0,
+                custom_resources=None,
+                extra_custom_resources=None):
+        custom_resources = custom_resources or {}
+        extra_custom_resources = extra_custom_resources or {}
+        leftovers = set(custom_resources) ^ set(extra_custom_resources)
+
+        for value in leftovers:
+            custom_resources.setdefault(value, 0)
+            extra_custom_resources.setdefault(value, 0)
+
+        all_values = [cpu, gpu, extra_cpu, extra_gpu]
+        all_values += list(custom_resources.values())
+        all_values += list(extra_custom_resources.values())
+        assert len(custom_resources) == len(extra_custom_resources)
+        for entry in all_values:
             assert isinstance(entry, Number), "Improper resource value."
-            assert entry >= 0, "Resource cannot be negative."
-        return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
-                                             extra_gpu)
+        return super(Resources,
+                     cls).__new__(cls, cpu, gpu, extra_cpu, extra_gpu,
+                                  custom_resources, extra_custom_resources)
 
     def summary_string(self):
-        return "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
-                                         self.gpu + self.extra_gpu)
+        summary = "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
+                                            self.gpu + self.extra_gpu)
+        custom_summary = ", ".join([
+            "{} {}".format(self.get_res_total(res), res)
+            for res in self.custom_resources
+        ])
+        if custom_summary:
+            summary += " ({})".format(custom_summary)
+        return summary
 
     def cpu_total(self):
         return self.cpu + self.extra_cpu
 
     def gpu_total(self):
         return self.gpu + self.extra_gpu
+
+    def get_res_total(self, key):
+        return self.custom_resources.get(
+            key, 0) + self.extra_custom_resources.get(key, 0)
+
+    def get(self, key):
+        return self.custom_resources.get(key, 0)
+
+    def is_nonnegative(self):
+        all_values = [self.cpu, self.gpu, self.extra_cpu, self.extra_gpu]
+        all_values += list(self.custom_resources.values())
+        all_values += list(self.extra_custom_resources.values())
+        return all(v >= 0 for v in all_values)
+
+    @classmethod
+    def subtract(cls, original, to_remove):
+        cpu = original.cpu - to_remove.cpu
+        gpu = original.gpu - to_remove.gpu
+        extra_cpu = original.extra_cpu - to_remove.extra_cpu
+        extra_gpu = original.extra_gpu - to_remove.extra_gpu
+        all_resources = set(original.custom_resources).union(
+            set(to_remove.custom_resources))
+        new_custom_res = {
+            k: original.custom_resources.get(k, 0) -
+            to_remove.custom_resources.get(k, 0)
+            for k in all_resources
+        }
+        extra_custom_res = {
+            k: original.extra_custom_resources.get(k, 0) -
+            to_remove.extra_custom_resources.get(k, 0)
+            for k in all_resources
+        }
+        return Resources(cpu, gpu, extra_cpu, extra_gpu, new_custom_res,
+                         extra_custom_res)
 
 
 def json_to_resources(data):
@@ -84,12 +150,13 @@ def json_to_resources(data):
                 "The field `{}` is no longer supported. Use `extra_cpu` "
                 "or `extra_gpu` instead.".format(k))
         if k not in Resources._fields:
-            raise TuneError(
-                "Unknown resource type {}, must be one of {}".format(
+            raise ValueError(
+                "Unknown resource field {}, must be one of {}".format(
                     k, Resources._fields))
     return Resources(
         data.get("cpu", 1), data.get("gpu", 0), data.get("extra_cpu", 0),
-        data.get("extra_gpu", 0))
+        data.get("extra_gpu", 0), data.get("custom_resources"),
+        data.get("extra_custom_resources"))
 
 
 def resources_to_json(resources):
@@ -100,6 +167,8 @@ def resources_to_json(resources):
         "gpu": resources.gpu,
         "extra_cpu": resources.extra_cpu,
         "extra_gpu": resources.extra_gpu,
+        "custom_resources": resources.custom_resources.copy(),
+        "extra_custom_resources": resources.extra_custom_resources.copy()
     }
 
 
@@ -125,7 +194,7 @@ class Checkpoint(object):
     def __init__(self, storage, value, last_result=None):
         self.storage = storage
         self.value = value
-        self.last_result = last_result
+        self.last_result = last_result or {}
 
     @staticmethod
     def from_object(value=None):
@@ -149,11 +218,13 @@ class ExportFormat(object):
         Raises:
             ValueError if the format is unknown.
         """
-        for export_format in export_formats:
-            if export_format not in [
+        for i in range(len(export_formats)):
+            export_formats[i] = export_formats[i].strip().lower()
+            if export_formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL
             ]:
-                raise TuneError("Unsupported export format: " + export_format)
+                raise TuneError("Unsupported export format: " +
+                                export_formats[i])
 
 
 class Trial(object):
@@ -186,7 +257,7 @@ class Trial(object):
                  restore_path=None,
                  upload_dir=None,
                  trial_name_creator=None,
-                 custom_loggers=None,
+                 loggers=None,
                  sync_function=None,
                  max_failures=0):
         """Initialize a new trial.
@@ -206,14 +277,14 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
-        self.custom_loggers = custom_loggers
+        self.loggers = loggers
         self.sync_function = sync_function
         validate_sync_function(sync_function)
         self.verbose = True
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
-        self.last_result = None
+        self.last_result = {}
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
@@ -229,9 +300,27 @@ class Trial(object):
         self.error_file = None
         self.num_failures = 0
 
-        self.trial_name = None
+        self.custom_trial_name = None
+
+        # AutoML fields
+        self.results = None
+        self.best_result = None
+        self.param_config = None
+        self.extra_arg = None
+
+        self._nonjson_fields = [
+            "_checkpoint",
+            "config",
+            "loggers",
+            "sync_function",
+            "last_result",
+            "results",
+            "best_result",
+            "param_config",
+            "extra_arg",
+        ]
         if trial_name_creator:
-            self.trial_name = trial_name_creator(self)
+            self.custom_trial_name = trial_name_creator(self)
 
     @classmethod
     def _registration_check(cls, trainable_name):
@@ -243,7 +332,7 @@ class Trial(object):
 
     @classmethod
     def generate_id(cls):
-        return binary_to_hex(random_string())[:8]
+        return binary_to_hex(_random_string())[:8]
 
     def init_logger(self):
         """Init logger."""
@@ -263,8 +352,20 @@ class Trial(object):
                 self.config,
                 self.logdir,
                 upload_uri=self.upload_dir,
-                custom_loggers=self.custom_loggers,
+                loggers=self.loggers,
                 sync_function=self.sync_function)
+
+    def update_resources(self, cpu, gpu, **kwargs):
+        """EXPERIMENTAL: Updates the resource requirements.
+
+        Should only be called when the trial is not running.
+
+        Raises:
+            ValueError if trial status is running.
+        """
+        if self.status is Trial.RUNNING:
+            raise ValueError("Cannot update resources while Trial is running.")
+        self.resources = Resources(cpu, gpu, **kwargs)
 
     def sync_logger_to_new_location(self, worker_ip):
         """Updates the logger location.
@@ -322,7 +423,7 @@ class Trial(object):
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
 
-        if self.last_result is None:
+        if not self.last_result:
             return self._status_string()
 
         def location_string(hostname, pid):
@@ -332,12 +433,12 @@ class Trial(object):
                 return '{} pid={}'.format(hostname, pid)
 
         pieces = [
-            '{} [{}]'.format(
-                self._status_string(),
-                location_string(
-                    self.last_result.get(HOSTNAME),
-                    self.last_result.get(PID))), '{} s'.format(
-                        int(self.last_result.get(TIME_TOTAL_S)))
+            '{}'.format(self._status_string()), '[{}]'.format(
+                self.resources.summary_string()), '[{}]'.format(
+                    location_string(
+                        self.last_result.get(HOSTNAME),
+                        self.last_result.get(PID))), '{} s'.format(
+                            int(self.last_result.get(TIME_TOTAL_S)))
         ]
 
         if self.last_result.get(TRAINING_ITERATION) is not None:
@@ -347,17 +448,17 @@ class Trial(object):
         if self.last_result.get(TIMESTEPS_TOTAL) is not None:
             pieces.append('{} ts'.format(self.last_result[TIMESTEPS_TOTAL]))
 
-        if self.last_result.get("episode_reward_mean") is not None:
+        if self.last_result.get(EPISODE_REWARD_MEAN) is not None:
             pieces.append('{} rew'.format(
-                format(self.last_result["episode_reward_mean"], '.3g')))
+                format(self.last_result[EPISODE_REWARD_MEAN], '.3g')))
 
-        if self.last_result.get("mean_loss") is not None:
+        if self.last_result.get(MEAN_LOSS) is not None:
             pieces.append('{} loss'.format(
-                format(self.last_result["mean_loss"], '.3g')))
+                format(self.last_result[MEAN_LOSS], '.3g')))
 
-        if self.last_result.get("mean_accuracy") is not None:
+        if self.last_result.get(MEAN_ACCURACY) is not None:
             pieces.append('{} acc'.format(
-                format(self.last_result["mean_accuracy"], '.3g')))
+                format(self.last_result[MEAN_ACCURACY], '.3g')))
 
         return ', '.join(pieces)
 
@@ -414,8 +515,8 @@ class Trial(object):
 
         Can be overriden with a custom string creator.
         """
-        if self.trial_name:
-            return self.trial_name
+        if self.custom_trial_name:
+            return self.custom_trial_name
 
         if "env" in self.config:
             env = self.config["env"]
@@ -439,21 +540,11 @@ class Trial(object):
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 
-        pickle_data = {
-            "_checkpoint": self._checkpoint,
-            "config": self.config,
-            "custom_loggers": self.custom_loggers,
-            "sync_function": self.sync_function,
-            "last_result": self.last_result
-        }
-
-        for key, value in pickle_data.items():
-            state[key] = binary_to_hex(cloudpickle.dumps(value))
+        for key in self._nonjson_fields:
+            state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
         state["result_logger"] = None
-        if self.status == Trial.RUNNING:
-            state["status"] = Trial.PENDING
         if self.result_logger:
             self.result_logger.flush()
             state["__logger_started__"] = True
@@ -464,10 +555,9 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
-        for key in [
-                "_checkpoint", "config", "custom_loggers", "sync_function",
-                "last_result"
-        ]:
+        if state["status"] == Trial.RUNNING:
+            state["status"] = Trial.PENDING
+        for key in self._nonjson_fields:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)

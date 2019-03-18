@@ -6,11 +6,18 @@ from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
-
 from ray.includes.common cimport (
-    CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
-    CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
-    CLanguage, CRayStatus)
+    CLanguage,
+    CRayStatus,
+)
+from ray.includes.unique_ids cimport (
+    CActorCheckpointID,
+    CActorID,
+    CClientID,
+    CDriverID,
+    CObjectID,
+    CTaskID,
+)
 from ray.includes.task cimport CTaskSpecification
 
 
@@ -30,7 +37,8 @@ cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
         GCSProfileTableDataT()
 
 
-ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] ResourceMappingType
+ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
+    ResourceMappingType
 ctypedef pair[c_vector[CObjectID], c_vector[CObjectID]] WaitResultPair
 
 
@@ -41,22 +49,29 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
                       c_bool is_worker, const CDriverID &driver_id,
                       const CLanguage &language)
         CRayStatus Disconnect()
-        CRayStatus SubmitTask(const c_vector[CObjectID] &execution_dependencies,
-                             const CTaskSpecification &task_spec)
+        CRayStatus SubmitTask(
+            const c_vector[CObjectID] &execution_dependencies,
+            const CTaskSpecification &task_spec)
         CRayStatus GetTask(unique_ptr[CTaskSpecification] *task_spec)
         CRayStatus TaskDone()
         CRayStatus FetchOrReconstruct(c_vector[CObjectID] &object_ids,
-                                     c_bool fetch_only,
-                                     const CTaskID &current_task_id)
+                                      c_bool fetch_only,
+                                      const CTaskID &current_task_id)
         CRayStatus NotifyUnblocked(const CTaskID &current_task_id)
-        CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_returns,
-                       int64_t timeout_milliseconds, c_bool wait_local,
-                       const CTaskID &current_task_id, WaitResultPair *result)
-        CRayStatus PushError(const CDriverID &job_id, const c_string &type,
+        CRayStatus Wait(const c_vector[CObjectID] &object_ids,
+                        int num_returns, int64_t timeout_milliseconds,
+                        c_bool wait_local, const CTaskID &current_task_id,
+                        WaitResultPair *result)
+        CRayStatus PushError(const CDriverID &driver_id, const c_string &type,
                              const c_string &error_message, double timestamp)
-        CRayStatus PushProfileEvents(const GCSProfileTableDataT &profile_events)
+        CRayStatus PushProfileEvents(
+            const GCSProfileTableDataT &profile_events)
         CRayStatus FreeObjects(const c_vector[CObjectID] &object_ids,
-                              c_bool local_only)
+                               c_bool local_only)
+        CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,
+                                          CActorCheckpointID &checkpoint_id)
+        CRayStatus NotifyActorResumedFromCheckpoint(
+            const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
         CLanguage GetLanguage() const
         CClientID GetClientID() const
         CDriverID GetDriverID() const

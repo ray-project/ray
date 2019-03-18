@@ -7,7 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tune import run_experiments, register_trainable
+from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest import SigOptSearch
 
@@ -23,7 +23,7 @@ def easy_objective(config, reporter):
         time.sleep(0.02)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
     import os
 
@@ -34,9 +34,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init(redirect_output=True)
-
-    register_trainable("exp", easy_objective)
+    ray.init()
 
     space = [
         {
@@ -58,16 +56,13 @@ if __name__ == '__main__':
     ]
 
     config = {
-        "my_exp": {
-            "run": "exp",
-            "num_samples": 10 if args.smoke_test else 1000,
-            "config": {
-                "iterations": 100,
-            },
-            "stop": {
-                "timesteps_total": 100
-            },
-        }
+        "num_samples": 10 if args.smoke_test else 1000,
+        "config": {
+            "iterations": 100,
+        },
+        "stop": {
+            "timesteps_total": 100
+        },
     }
     algo = SigOptSearch(
         space,
@@ -75,4 +70,8 @@ if __name__ == '__main__':
         max_concurrent=1,
         reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
-    run_experiments(config, search_alg=algo, scheduler=scheduler)
+    run(easy_objective,
+        name="my_exp",
+        search_alg=algo,
+        scheduler=scheduler,
+        **config)

@@ -29,10 +29,9 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
       const ObjectID object_id = callback.first;
       auto it = locations_.find(object_id);
       if (it == locations_.end()) {
-        callback.second(object_id, std::unordered_set<ray::ClientID>(),
-                        /*created=*/false);
+        callback.second(object_id, std::unordered_set<ray::ClientID>());
       } else {
-        callback.second(object_id, it->second, /*created=*/true);
+        callback.second(object_id, it->second);
       }
     }
     callbacks_.clear();
@@ -63,7 +62,9 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MOCK_METHOD3(ReportObjectAdded,
                ray::Status(const ObjectID &, const ClientID &,
                            const object_manager::protocol::ObjectInfoT &));
-  MOCK_METHOD2(ReportObjectRemoved, ray::Status(const ObjectID &, const ClientID &));
+  MOCK_METHOD3(ReportObjectRemoved,
+               ray::Status(const ObjectID &, const ClientID &,
+                           const object_manager::protocol::ObjectInfoT &));
 
  private:
   std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;
@@ -151,8 +152,8 @@ class ReconstructionPolicyTest : public ::testing::Test {
         mock_object_directory_(std::make_shared<MockObjectDirectory>()),
         reconstruction_timeout_ms_(50),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
-            io_service_, [this](const TaskID &task_id,
-                                bool created) { TriggerReconstruction(task_id); },
+            io_service_,
+            [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
             reconstruction_timeout_ms_, ClientID::from_random(), mock_gcs_,
             mock_object_directory_, mock_gcs_)),
         timer_canceled_(false) {
@@ -322,7 +323,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   task_lease_data->node_manager_id = ClientID::from_random().binary();
   task_lease_data->acquired_at = current_sys_time_ms();
   task_lease_data->timeout = 2 * test_period;
-  mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
+  mock_gcs_.Add(JobID::nil(), task_id, task_lease_data);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -350,7 +351,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
     task_lease_data->node_manager_id = ClientID::from_random().binary();
     task_lease_data->acquired_at = current_sys_time_ms();
     task_lease_data->timeout = reconstruction_timeout_ms_;
-    mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
+    mock_gcs_.Add(JobID::nil(), task_id, task_lease_data);
   });
   // Run the test for much longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 2);
@@ -404,7 +405,7 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   task_reconstruction_data->node_manager_id = ClientID::from_random().binary();
   task_reconstruction_data->num_reconstructions = 0;
   RAY_CHECK_OK(
-      mock_gcs_.AppendAt(DriverID::nil(), task_id, task_reconstruction_data, nullptr,
+      mock_gcs_.AppendAt(JobID::nil(), task_id, task_reconstruction_data, nullptr,
                          /*failure_callback=*/
                          [](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
                             const TaskReconstructionDataT &data) { ASSERT_TRUE(false); },

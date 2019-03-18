@@ -11,7 +11,8 @@ import time
 import ray
 from ray.function_manager import FunctionDescriptor
 import ray.gcs_utils
-import ray.ray_constants as ray_constants
+
+from ray.ray_constants import ID_SIZE
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
@@ -242,13 +243,7 @@ class GlobalState(object):
         object_info = {
             "DataSize": entry.ObjectSize(),
             "Manager": entry.Manager(),
-            "IsEviction": [entry.IsEviction()],
         }
-
-        for i in range(1, gcs_entry.EntriesLength()):
-            entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
-                gcs_entry.Entries(i), 0)
-            object_info["IsEviction"].append(entry.IsEviction())
 
         return object_info
 
@@ -310,6 +305,7 @@ class GlobalState(object):
         function_descriptor_list = task.function_descriptor_list()
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
+
         task_spec_info = {
             "DriverID": task.driver_id().hex(),
             "TaskID": task.task_id().hex(),
@@ -400,34 +396,6 @@ class GlobalState(object):
         self._check_connected()
 
         return parse_client_table(self.redis_client)
-
-    def log_files(self):
-        """Fetch and return a dictionary of log file names to outputs.
-
-        Returns:
-            IP address to log file name to log file contents mappings.
-        """
-        relevant_files = self.redis_client.keys("LOGFILE*")
-
-        ip_filename_file = {}
-
-        for filename in relevant_files:
-            filename = decode(filename)
-            filename_components = filename.split(":")
-            ip_addr = filename_components[1]
-
-            file = self.redis_client.lrange(filename, 0, -1)
-            file_str = []
-            for x in file:
-                y = decode(x)
-                file_str.append(y)
-
-            if ip_addr not in ip_filename_file:
-                ip_filename_file[ip_addr] = {}
-
-            ip_filename_file[ip_addr][filename] = file_str
-
-        return ip_filename_file
 
     def _profile_table(self, batch_id):
         """Get the profile events for a given batch of profile events.
@@ -748,7 +716,7 @@ class GlobalState(object):
         for key in actor_keys:
             info = self.redis_client.hgetall(key)
             actor_id = key[len("Actor:"):]
-            assert len(actor_id) == ray_constants.ID_SIZE
+            assert len(actor_id) == ID_SIZE
             actor_info[binary_to_hex(actor_id)] = {
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),
@@ -869,6 +837,10 @@ class GlobalState(object):
             for resource_id, num_available in available_resources.items():
                 total_available_resources[resource_id] += num_available
 
+        # Close the pubsub clients to avoid leaking file descriptors.
+        for subscribe_client in subscribe_clients:
+            subscribe_client.close()
+
         return dict(total_available_resources)
 
     def _error_messages(self, job_id):
@@ -929,4 +901,43 @@ class GlobalState(object):
         return {
             binary_to_hex(job_id): self._error_messages(ray.DriverID(job_id))
             for job_id in job_ids
+        }
+
+    def actor_checkpoint_info(self, actor_id):
+        """Get checkpoint info for the given actor id.
+         Args:
+            actor_id: Actor's ID.
+         Returns:
+            A dictionary with information about the actor's checkpoint IDs and
+            their timestamps.
+        """
+        self._check_connected()
+        message = self._execute_command(
+            actor_id,
+            "RAY.TABLE_LOOKUP",
+            ray.gcs_utils.TablePrefix.ACTOR_CHECKPOINT_ID,
+            "",
+            actor_id.binary(),
+        )
+        if message is None:
+            return None
+        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
+        entry = (
+            ray.gcs_utils.ActorCheckpointIdData.GetRootAsActorCheckpointIdData(
+                gcs_entry.Entries(0), 0))
+        checkpoint_ids_str = entry.CheckpointIds()
+        num_checkpoints = len(checkpoint_ids_str) // ID_SIZE
+        assert len(checkpoint_ids_str) % ID_SIZE == 0
+        checkpoint_ids = [
+            ray.ActorCheckpointID(
+                checkpoint_ids_str[(i * ID_SIZE):((i + 1) * ID_SIZE)])
+            for i in range(num_checkpoints)
+        ]
+        return {
+            "ActorID": ray.utils.binary_to_hex(entry.ActorId()),
+            "CheckpointIds": checkpoint_ids,
+            "Timestamps": [
+                entry.Timestamps(i) for i in range(num_checkpoints)
+            ],
         }

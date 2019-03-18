@@ -13,7 +13,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop", type=int, default=50000)
-parser.add_argument("--run", type=str, default="QMIX")
+parser.add_argument("--run", type=str, default="PG")
 
 
 class TwoStepGame(MultiAgentEnv):
@@ -86,6 +86,7 @@ if __name__ == "__main__":
             "num_workers": 0,
             "mixer": grid_search([None, "qmix", "vdn"]),
         }
+        group = True
     elif args.run == "APEX_QMIX":
         config = {
             "num_gpus": 0,
@@ -101,14 +102,16 @@ if __name__ == "__main__":
             "target_network_update_freq": 500,
             "timesteps_per_iteration": 1000,
         }
+        group = True
     else:
         config = {}
+        group = False
 
     ray.init()
     run_experiments({
         "two_step": {
             "run": args.run,
-            "env": "grouped_twostep",
+            "env": "grouped_twostep" if group else TwoStepGame,
             "stop": {
                 "timesteps_total": args.stop,
             },

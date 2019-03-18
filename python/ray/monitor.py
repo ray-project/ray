@@ -36,17 +36,15 @@ class Monitor(object):
             receive notifications about failed components.
     """
 
-    def __init__(self,
-                 redis_address,
-                 redis_port,
-                 autoscaling_config,
-                 redis_password=None):
+    def __init__(self, redis_address, autoscaling_config, redis_password=None):
         # Initialize the Redis clients.
         self.state = ray.experimental.state.GlobalState()
+        redis_ip_address = get_ip_address(args.redis_address)
+        redis_port = get_port(args.redis_address)
         self.state._initialize_global_state(
-            redis_address, redis_port, redis_password=redis_password)
-        self.redis = redis.StrictRedis(
-            host=redis_address, port=redis_port, db=0, password=redis_password)
+            redis_ip_address, redis_port, redis_password=redis_password)
+        self.redis = ray.services.create_redis_client(
+            redis_address, password=redis_password)
         # Setup subscriptions to the primary Redis server and the Redis shards.
         self.primary_subscribe_client = self.redis.pubsub(
             ignore_subscribe_messages=True)
@@ -87,6 +85,11 @@ class Monitor(object):
                         "Turning off flushing due to exception: {}".format(
                             str(e)))
                     self.issue_gcs_flushes = False
+
+    def __del__(self):
+        """Destruct the monitor object."""
+        # We close the pubsub client to avoid leaking file descriptors.
+        self.primary_subscribe_client.close()
 
     def subscribe(self, channel):
         """Subscribe to the given channel on the primary Redis shard.
@@ -366,17 +369,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     setup_logger(args.logging_level, args.logging_format)
 
-    redis_ip_address = get_ip_address(args.redis_address)
-    redis_port = get_port(args.redis_address)
-
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)
     else:
         autoscaling_config = None
 
     monitor = Monitor(
-        redis_ip_address,
-        redis_port,
+        args.redis_address,
         autoscaling_config,
         redis_password=args.redis_password)
 
@@ -384,10 +383,8 @@ if __name__ == "__main__":
         monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = redis.StrictRedis(
-            host=redis_ip_address,
-            port=redis_port,
-            password=args.redis_password)
+        redis_client = ray.services.create_redis_client(
+            args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = "The monitor failed with the following error:\n{}".format(
             traceback_str)

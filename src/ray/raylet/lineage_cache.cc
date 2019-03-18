@@ -324,8 +324,8 @@ void GetUncommittedLineageHelper(const TaskID &task_id, const Lineage &lineage_f
   }
 }
 
-Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
-                                            const ClientID &node_id) const {
+Lineage LineageCache::GetUncommittedLineageOrDie(const TaskID &task_id,
+                                                 const ClientID &node_id) const {
   Lineage uncommitted_lineage;
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
@@ -358,8 +358,9 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   auto task_data = std::make_shared<protocol::TaskT>();
   auto root = flatbuffers::GetRoot<protocol::Task>(fbb.GetBufferPointer());
   root->UnPackTo(task_data.get());
-  RAY_CHECK_OK(task_storage_.Add(task->TaskData().GetTaskSpecification().DriverId(),
-                                 task_id, task_data, task_callback));
+  RAY_CHECK_OK(
+      task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().DriverId()),
+                        task_id, task_data, task_callback));
 
   // We successfully wrote the task, so mark it as committing.
   // TODO(swang): Use a batched interface and write with all object entries.
@@ -445,7 +446,7 @@ void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
   UnsubscribeTask(task_id);
 }
 
-const Task &LineageCache::GetTask(const TaskID &task_id) const {
+const Task &LineageCache::GetTaskOrDie(const TaskID &task_id) const {
   const auto &entries = lineage_.GetEntries();
   auto it = entries.find(task_id);
   RAY_CHECK(it != entries.end());
