@@ -2085,7 +2085,8 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   RAY_LOG(DEBUG) << "Forwarding task " << task_id << " from "
                  << gcs_client_->client_table().GetLocalClientId() << " to " << node_id
                  << " spillback="
-                 << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
+                 << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards()
+                 << " num lineage entries=" << uncommitted_lineage.GetEntries().size();
 
   // Lookup remote server connection for this node_id and use it to send the request.
   auto it = remote_server_connections_.find(node_id);
