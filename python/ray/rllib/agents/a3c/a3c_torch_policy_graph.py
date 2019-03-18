@@ -15,7 +15,7 @@ from ray.rllib.utils.annotations import override
 
 
 class A3CLoss(nn.Module):
-    def __init__(self, policy_model, vf_loss_coeff=0.5, entropy_coeff=-0.01):
+    def __init__(self, policy_model, vf_loss_coeff=0.5, entropy_coeff=0.01):
         nn.Module.__init__(self)
         self.policy_model = policy_model
         self.vf_loss_coeff = vf_loss_coeff
@@ -32,7 +32,7 @@ class A3CLoss(nn.Module):
         overall_err = sum([
             pi_err,
             self.vf_loss_coeff * value_err,
-            self.entropy_coeff * entropy,
+            -self.entropy_coeff * entropy,
         ])
         return overall_err
 
