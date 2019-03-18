@@ -121,8 +121,7 @@ class GlobalState(object):
                             "ray.init has been called.")
 
     def disconnect(self):
-        """Disconnect global state from GCS.
-        """
+        """Disconnect global state from GCS."""
         self.redis_client = None
         self.redis_clients = None
 
