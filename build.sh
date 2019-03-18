@@ -122,9 +122,9 @@ else
       --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
 
-  # This is for mvn compile.
   if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-    bazel build //java:copy_java_native_deps --verbose_failures
+    bazel run //java:bazel_deps -- generate -r $ROOT_DIR -s java/third_party/workspace.bzl -d java/dependencies.yaml
+    bazel build //java:all --verbose_failures
   fi
 
   if [ "$RAY_BUILD_PYTHON" == "YES" ]; then

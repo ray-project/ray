@@ -17,8 +17,6 @@ import org.ray.runtime.functionmanager.FunctionManager.DriverFunctionTable;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
 
 /**
  * Tests for {@link FunctionManager}

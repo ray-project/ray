@@ -582,7 +582,9 @@ genrule(
         cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
         for f in $(locations //:python_gcs_fbs); do cp -f $$f $$WORK_DIR/python/ray/core/generated/; done &&
         mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
-        for f in $(locations //:python_node_manager_fbs); do cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/; done &&
+        for f in $(locations //:python_node_manager_fbs); do 
+            cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/; 
+        done &&
         echo $$WORK_DIR > $@
     """,
     local = 1,
