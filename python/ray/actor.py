@@ -282,15 +282,15 @@ class ActorClass(object):
                 and num_gpus is None and resources is None):
             # In the default case, actors acquire no resources for
             # their lifetime, and actor methods will require 1 CPU.
-            cpus_to_use = ray_constants.DEFAULT_ACTOR_CREATION_CPUS_SIMPLE
-            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPUS_SIMPLE
+            cpus_to_use = ray_constants.DEFAULT_ACTOR_CREATION_CPU_SIMPLE
+            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SIMPLE
         else:
             # If any resources are specified (here or in decorator), then
             # all resources are acquired for the actor's lifetime and no
             # resources are associated with methods.
-            cpus_to_use = (ray_constants.DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED
+            cpus_to_use = (ray_constants.DEFAULT_ACTOR_CREATION_CPU_SPECIFIED
                            if self._num_cpus is None else self._num_cpus)
-            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED
+            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
 
         # Do not export the actor class or the actor if run in LOCAL_MODE
         # Instead, instantiate the actor locally and add it to the worker's
@@ -338,8 +338,8 @@ class ActorClass(object):
         actor_handle = ActorHandle(
             actor_id, self._modified_class.__module__, self._class_name,
             actor_cursor, self._actor_method_names, self._method_signatures,
-            self._actor_method_num_return_vals, actor_cursor,
-            actor_method_cpu, worker.task_driver_id)
+            self._actor_method_num_return_vals, actor_cursor, actor_method_cpu,
+            worker.task_driver_id)
         # We increment the actor counter by 1 to account for the actor creation
         # task.
         actor_handle._ray_actor_counter += 1

@@ -1710,10 +1710,13 @@ def test_resource_assignment(shutdown_only):
     class Actor1(object):
         def __init__(self):
             self.resources = ray.get_resource_ids()
+
         def get_resources(self):
             return self.resources
+
         def method(self):
             return ray.get_resource_ids()
+
         def kill(self):
             exit(0)
 
@@ -1722,94 +1725,127 @@ def test_resource_assignment(shutdown_only):
     a1_resources = ray.get(a1.get_resources.remote())
     assert 'CPU' not in a1_resources, "Assigned actor cpu"
     a1_method_resources = ray.get(a1.method.remote())
-    assert a1_method_resources['CPU'][0][1] == 1, "Assigned wrong number of actor method cpus"
+    assert a1_method_resources['CPU'][0][
+        1] == 1, "Assigned wrong number of actor method cpus"
     ray.wait([a1.kill.remote()])
 
     # Test one actor cpu and no actor method cpus when num_gpus is given at
     # instantiation
     a2 = Actor1._remote([], {}, num_gpus=0.2)
     a2_resources = ray.get(a2.get_resources.remote())
-    assert a2_resources['CPU'][0][1] == 1, "Assigned wrong number of actor cpus"
-    assert a2_resources['GPU'][0][1] == 0.2, "Assigned wrong number of actor gpus"
+    assert a2_resources['CPU'][0][
+        1] == 1, "Assigned wrong number of actor cpus"
+    assert a2_resources['GPU'][0][
+        1] == 0.2, "Assigned wrong number of actor gpus"
     a2_method_resources = ray.get(a2.method.remote())
-    assert a2_resources['CPU'][0][0] == a2_method_resources['CPU'][0][0], "Actor method assigned wrong cpu"
-    assert a2_method_resources['CPU'][0][1] == 1, "Assigned wrong number of actor method cpus"
-    assert a2_method_resources['GPU'][0][1] == 0.2, "Assigned wrong number of actor method gpus"
+    assert a2_resources['CPU'][0][0] == a2_method_resources['CPU'][0][
+        0], "Actor method assigned wrong cpu"
+    assert a2_method_resources['CPU'][0][
+        1] == 1, "Assigned wrong number of actor method cpus"
+    assert a2_method_resources['GPU'][0][
+        1] == 0.2, "Assigned wrong number of actor method gpus"
     ray.wait([a2.kill.remote()])
 
     # Test one actor cpu and no actor method cpus when custom resource is given
     # at instantiation
     a3 = Actor1._remote([], {}, resources={'Custom': 0.2})
     a3_resources = ray.get(a3.get_resources.remote())
-    assert a3_resources['CPU'][0][1] == 1, "Assigned wrong number of actor cpus"
-    assert a3_resources['Custom'][0][1] == 0.2, "Assigned wrong amount of 'Custom' resource"
+    assert a3_resources['CPU'][0][
+        1] == 1, "Assigned wrong number of actor cpus"
+    assert a3_resources['Custom'][0][
+        1] == 0.2, "Assigned wrong amount of 'Custom' resource"
     a3_method_resources = ray.get(a3.method.remote())
-    assert a3_resources['CPU'][0][0] == a3_method_resources['CPU'][0][0], "Actor method assigned wrong cpu"
-    assert a3_method_resources['CPU'][0][1] == 1, "Assigned wrong number of actor method cpus"
-    assert a3_method_resources['Custom'][0][1] == 0.2, "Assigned wrong amount of 'Custom' resource in actor method"
+    assert a3_resources['CPU'][0][0] == a3_method_resources['CPU'][0][
+        0], "Actor method assigned wrong cpu"
+    assert a3_method_resources['CPU'][0][
+        1] == 1, "Assigned wrong number of actor method cpus"
+    assert a3_method_resources['Custom'][0][
+        1] == 0.2, "Assigned wrong amount of 'Custom' resource in actor method"
     ray.wait([a3.kill.remote()])
 
     # Test assigning cpu at instantiation gives defined num_cpus to actor and
     # method cpus
     a4 = Actor1._remote([], {}, num_cpus=0.2)
     a4_resources = ray.get(a4.get_resources.remote())
-    assert a4_resources['CPU'][0][1] == 0.2, "Assigned wrong number of actor cpus"
+    assert a4_resources['CPU'][0][
+        1] == 0.2, "Assigned wrong number of actor cpus"
     a4_method_resources = ray.get(a4.method.remote())
-    assert a4_resources['CPU'][0][0] == a4_method_resources['CPU'][0][0], "Actor method assigned wrong cpu"
-    assert a4_method_resources['CPU'][0][1] == 0.2, "Assigned wrong number of actor method cpus"
+    assert a4_resources['CPU'][0][0] == a4_method_resources['CPU'][0][
+        0], "Actor method assigned wrong cpu"
+    assert a4_method_resources['CPU'][0][
+        1] == 0.2, "Assigned wrong number of actor method cpus"
     ray.wait([a4.kill.remote()])
 
     @ray.remote(num_cpus=0.1)
     class Actor2(object):
         def __init__(self):
             self.resources = ray.get_resource_ids()
+
         def get_resources(self):
             return self.resources
+
         def method(self):
             return ray.get_resource_ids()
+
         def kill(self):
             exit(0)
 
     # Test defaults to 0.1 actor cpus and no actor method cpu.
     a5 = Actor2._remote([], {})
     a5_resources = ray.get(a5.get_resources.remote())
-    assert a5_resources['CPU'][0][1] == 0.1, "Assigned wrong number of actor cpus"
+    assert a5_resources['CPU'][0][
+        1] == 0.1, "Assigned wrong number of actor cpus"
     a5_method_resources = ray.get(a5.method.remote())
-    assert a5_resources['CPU'][0][0] == a5_method_resources['CPU'][0][0], "Actor method assigned wrong cpu"
-    assert a5_method_resources['CPU'][0][1] == 0.1, "Assigned wrong number of actor method cpus"
+    assert a5_resources['CPU'][0][0] == a5_method_resources['CPU'][0][
+        0], "Actor method assigned wrong cpu"
+    assert a5_method_resources['CPU'][0][
+        1] == 0.1, "Assigned wrong number of actor method cpus"
     ray.wait([a5.kill.remote()])
 
     # Test defaults to 0.1 actor cpus and no actor method cpu.
     a6 = Actor2._remote([], {}, num_gpus=0.2)
     a6_resources = ray.get(a6.get_resources.remote())
-    assert a6_resources['CPU'][0][1] == 0.1, "Assigned wrong number of actor cpus"
-    assert a6_resources['GPU'][0][1] == 0.2, "Assigned wrong number of actor gpus"
+    assert a6_resources['CPU'][0][
+        1] == 0.1, "Assigned wrong number of actor cpus"
+    assert a6_resources['GPU'][0][
+        1] == 0.2, "Assigned wrong number of actor gpus"
     a6_method_resources = ray.get(a6.method.remote())
-    assert a6_resources['CPU'][0][0] == a6_method_resources['CPU'][0][0], "Actor method assigned wrong cpu"
-    assert a6_method_resources['CPU'][0][1] == 0.1, "Assigned wrong number of actor method cpus"
-    assert a6_method_resources['GPU'][0][1] == 0.2, "Assigned wrong number of actor method gpus"
+    assert a6_resources['CPU'][0][0] == a6_method_resources['CPU'][0][
+        0], "Actor method assigned wrong cpu"
+    assert a6_method_resources['CPU'][0][
+        1] == 0.1, "Assigned wrong number of actor method cpus"
+    assert a6_method_resources['GPU'][0][
+        1] == 0.2, "Assigned wrong number of actor method gpus"
     ray.wait([a6.kill.remote()])
 
     # Test zero actor cpus and one actor method cpu when custom resource is
     # given at instantiation
     a7 = Actor2._remote([], {}, resources={'Custom': 0.2})
     a7_resources = ray.get(a7.get_resources.remote())
-    assert a7_resources['CPU'][0][1] == 0.1, "Assigned wrong number of actor cpus"
-    assert a7_resources['Custom'][0][1] == 0.2, "Assigned wrong actor 'Custom' resource"
+    assert a7_resources['CPU'][0][
+        1] == 0.1, "Assigned wrong number of actor cpus"
+    assert a7_resources['Custom'][0][
+        1] == 0.2, "Assigned wrong actor 'Custom' resource"
     a7_method_resources = ray.get(a7.method.remote())
-    assert a7_resources['CPU'][0][0] == a7_method_resources['CPU'][0][0], "Actor method assigned wrong cpu"
-    assert a7_method_resources['CPU'][0][1] == 0.1, "Assigned wrong number of actor method cpus"
-    assert a7_method_resources['Custom'][0][1] == 0.2, "Assigned wrong amount of actor method 'Custom' resource"
+    assert a7_resources['CPU'][0][0] == a7_method_resources['CPU'][0][
+        0], "Actor method assigned wrong cpu"
+    assert a7_method_resources['CPU'][0][
+        1] == 0.1, "Assigned wrong number of actor method cpus"
+    assert a7_method_resources['Custom'][0][
+        1] == 0.2, "Assigned wrong amount of actor method 'Custom' resource"
     ray.wait([a7.kill.remote()])
 
     # Test assigning cpu at instantiation gives defined num_cpus to actor and
     # method cpus
     a8 = Actor2._remote([], {}, num_cpus=0.2)
     a8_resources = ray.get(a8.get_resources.remote())
-    assert a8_resources['CPU'][0][1] == 0.2, "Assigned wrong number of actor cpus"
+    assert a8_resources['CPU'][0][
+        1] == 0.2, "Assigned wrong number of actor cpus"
     a8_method_resources = ray.get(a8.method.remote())
-    assert a8_resources['CPU'][0][0] == a8_method_resources['CPU'][0][0], "Actor method assigned wrong cpu"
-    assert a8_method_resources['CPU'][0][1] == 0.2, "Assigned wrong number of actor method cpus"
+    assert a8_resources['CPU'][0][0] == a8_method_resources['CPU'][0][
+        0], "Actor method assigned wrong cpu"
+    assert a8_method_resources['CPU'][0][
+        1] == 0.2, "Assigned wrong number of actor method cpus"
     ray.wait([a8.kill.remote()])
 
 
