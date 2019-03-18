@@ -66,9 +66,9 @@ class MultiAgentBatch(object):
         return ct
 
     @DeveloperAPI
-    def compress(self, columns=frozenset(["obs", "new_obs"])):
+    def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
         for batch in self.policy_batches.values():
-            batch.compress(columns)
+            batch.compress(columns, bulk=bulk)
 
     @DeveloperAPI
     def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
@@ -238,17 +238,22 @@ class SampleBatch(object):
         self.data[key] = item
 
     @DeveloperAPI
-    def compress(self, columns=frozenset(["obs", "new_obs"])):
+    def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
         for key in columns:
             if key in self.data:
-                self.data[key] = np.array([pack(o) for o in self.data[key]])
+                if bulk:
+                    self.data[key] = pack(self.data[key])
+                else:
+                    self.data[key] = np.array([pack(o) for o in self.data[key]])
 
     @DeveloperAPI
     def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
         for key in columns:
             if key in self.data:
                 arr = self.data[key]
-                if len(arr) > 0 and is_compressed(arr[0]):
+                if is_compressed(arr):
+                    self.data[key] = unpack(arr)
+                elif len(arr) > 0 and is_compressed(arr[0]):
                     self.data[key] = np.array(
                         [unpack(o) for o in self.data[key]])
 

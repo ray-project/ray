@@ -429,7 +429,9 @@ class PolicyEvaluator(EvaluatorInterface):
                 for estimator in self.reward_estimators:
                     estimator.process(sub_batch)
 
-        if self.compress_observations:
+        if self.compress_observations == "entire_batch":
+            batch.compress(bulk=True)
+        elif self.compress_observations:
             batch.compress()
 
         if self._fake_sampler:
