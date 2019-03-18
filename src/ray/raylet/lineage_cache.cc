@@ -193,7 +193,8 @@ LineageCache::LineageCache(const ClientID &client_id,
                            gcs::TableInterface<TaskID, protocol::Task> &task_storage,
                            gcs::PubsubInterface<TaskID> &task_pubsub,
                            uint64_t max_lineage_size)
-    : client_id_(client_id), task_storage_(task_storage), task_pubsub_(task_pubsub) {}
+    : client_id_(client_id), task_storage_(task_storage), task_pubsub_(task_pubsub),
+      num_evicted_tasks_(0) {}
 
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
@@ -421,6 +422,7 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Evicting task " << task_id << " on " << client_id_;
   lineage_.PopEntry(task_id);
   committed_tasks_.erase(commit_it);
+  num_evicted_tasks_++;
   // Try to evict the children of the evict task. These are the tasks that have
   // a dependency on the evicted task.
   const auto children = lineage_.GetChildren(task_id);

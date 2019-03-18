@@ -341,6 +341,8 @@ class LineageCache {
   /// The tasks that we've subscribed to notifications for from the pubsub
   /// storage system. We will receive a notification for these tasks on commit.
   std::unordered_set<TaskID> subscribed_tasks_;
+  /// The number of tasks that have been evicted from the lineage cache.
+  int64_t num_evicted_tasks_;
 };
 
 }  // namespace raylet
