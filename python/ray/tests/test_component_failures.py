@@ -255,28 +255,6 @@ def test_worker_failed(ray_start_workers_separate_multinode):
             pass
 
 
-@pytest.fixture
-def ray_initialize_cluster():
-    # Start with 4 workers and 4 cores.
-    num_nodes = 4
-    num_workers_per_scheduler = 8
-
-    cluster = Cluster()
-    for _ in range(num_nodes):
-        cluster.add_node(
-            num_cpus=num_workers_per_scheduler,
-            _internal_config=json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 1000,
-                "num_heartbeats_timeout": 10,
-            }))
-    ray.init(redis_address=cluster.redis_address)
-
-    yield cluster
-
-    ray.shutdown()
-    cluster.shutdown()
-
-
 def _test_component_failed(cluster, component_type):
     """Kill a component on all worker nodes and check workload succeeds."""
     # Submit many tasks with many dependencies.
@@ -336,8 +314,13 @@ def check_components_alive(cluster, component_type, check_component_alive):
             assert not process.poll() is None
 
 
-def test_raylet_failed(ray_initialize_cluster):
-    cluster = ray_initialize_cluster
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 8,
+        "num_nodes": 4
+    }], indirect=True)
+def test_raylet_failed(ray_start_cluster):
+    cluster, _ = ray_start_cluster
     # Kill all local schedulers on worker nodes.
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_RAYLET)
 
@@ -349,8 +332,13 @@ def test_raylet_failed(ray_initialize_cluster):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_plasma_store_failed(ray_initialize_cluster):
-    cluster = ray_initialize_cluster
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 8,
+        "num_nodes": 4
+    }], indirect=True)
+def test_plasma_store_failed(ray_start_cluster):
+    cluster, _ = ray_start_cluster
     # Kill all plasma stores on worker nodes.
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE)
 
@@ -364,7 +352,7 @@ def test_plasma_store_failed(ray_initialize_cluster):
     "ray_start_cluster", [{
         "num_cpus": 4,
         "num_nodes": 3,
-        "initialize_head": True
+        "do_init": True
     }],
     indirect=True)
 def test_actor_creation_node_failure(ray_start_cluster):

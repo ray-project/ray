@@ -18,9 +18,11 @@ import ray.ray_constants as ray_constants
 from ray.utils import _random_string
 from ray.tests.cluster_utils import Cluster
 from ray.tests.fixtures import (
-    shutdown_only,
-    ray_start_regular,
     ray_start_2_cpus,
+    ray_start_cluster_2_nodes,
+    ray_start_object_store_memory,
+    ray_start_regular,
+    shutdown_only,
 )
 from ray.tests.utils import (
     relevant_errors,
@@ -378,17 +380,9 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular):
         "Should not have propogated an error - {}".format(ray.error_info()))
 
 
-@pytest.fixture
-def ray_start_object_store_memory():
-    # Start the Ray processes.
-    store_size = 10**6
-    ray.init(num_cpus=1, object_store_memory=store_size)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
 @pytest.mark.skip("This test does not work yet.")
+@pytest.mark.parametrize(
+    "ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error1(ray_start_object_store_memory):
     num_objects = 3
     object_size = 4 * 10**5
@@ -431,6 +425,8 @@ def test_put_error1(ray_start_object_store_memory):
 
 
 @pytest.mark.skip("This test does not work yet.")
+@pytest.mark.parametrize(
+    "ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error2(ray_start_object_store_memory):
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3
@@ -600,8 +596,8 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
     wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)
 
 
-def test_redis_module_failure(shutdown_only):
-    address_info = ray.init(num_cpus=1)
+def test_redis_module_failure(ray_start_regular):
+    address_info = ray_start_regular
     redis_address = address_info["redis_address"]
     redis_address = redis_address.split(":")
     assert len(redis_address) == 2
@@ -645,28 +641,10 @@ def test_redis_module_failure(shutdown_only):
     run_one_command("RAY.SET_ADD", 1, 1, 3, 1)
 
 
-@pytest.fixture
-def ray_start_two_nodes():
-    # Start the Ray processes.
-    cluster = Cluster()
-    for _ in range(2):
-        cluster.add_node(
-            num_cpus=0,
-            _internal_config=json.dumps({
-                "num_heartbeats_timeout": 40
-            }))
-    ray.init(redis_address=cluster.redis_address)
-
-    yield cluster
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
-
-
 # Note that this test will take at least 10 seconds because it must wait for
 # the monitor to detect enough missed heartbeats.
-def test_warning_for_dead_node(ray_start_two_nodes):
-    cluster = ray_start_two_nodes
+def test_warning_for_dead_node(ray_start_cluster_2_nodes):
+    cluster, _ = ray_start_cluster_2_nodes
     cluster.wait_for_nodes()
 
     client_ids = {item["ClientID"] for item in ray.global_state.client_table()}

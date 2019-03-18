@@ -18,32 +18,17 @@ import ray.tests.utils
 import ray.tests.cluster_utils
 from ray.tests.fixtures import (
     shutdown_only,
+    ray_start_10_cpus,
     ray_start_cluster,
-    ray_start_cluster_init,
+    ray_start_cluster_head,
+    ray_start_cluster_2_nodes,
+    ray_start_object_store_memory,
     ray_start_regular,
-)
+)  # noqa: F401,F811
 from ray.tests.utils import (
     relevant_errors,
     wait_for_errors,
 )
-
-
-@pytest.fixture()
-def two_node_cluster():
-    internal_config = json.dumps({
-        "initial_reconstruction_timeout_milliseconds": 200,
-        "num_heartbeats_timeout": 10,
-    })
-    cluster = ray.tests.cluster_utils.Cluster()
-    for _ in range(2):
-        remote_node = cluster.add_node(
-            num_cpus=1, _internal_config=internal_config)
-    ray.init(redis_address=cluster.redis_address)
-    yield cluster, remote_node
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
 
 
 @pytest.fixture
@@ -564,16 +549,7 @@ def test_multiple_actors(ray_start_regular):
         assert v == num_actors * [j + 1]
 
 
-@pytest.fixture
-def ray_start_bigger():
-    # Start the Ray processes.
-    ray.init(num_cpus=10)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def test_remote_function_within_actor(ray_start_bigger):
+def test_remote_function_within_actor(ray_start_10_cpus):
     # Make sure we can use remote funtions within actors.
 
     # Create some values to close over.
@@ -621,7 +597,7 @@ def test_remote_function_within_actor(ray_start_bigger):
         range(1, 6))
 
 
-def test_define_actor_within_actor(ray_start_bigger):
+def test_define_actor_within_actor(ray_start_10_cpus):
     # Make sure we can use remote funtions within actors.
 
     @ray.remote
@@ -648,7 +624,7 @@ def test_define_actor_within_actor(ray_start_bigger):
     assert ray.get(actor1.get_values.remote(5)) == (3, 5)
 
 
-def test_use_actor_within_actor(ray_start_bigger):
+def test_use_actor_within_actor(ray_start_10_cpus):
     # Make sure we can use actors within actors.
 
     @ray.remote
@@ -672,7 +648,7 @@ def test_use_actor_within_actor(ray_start_bigger):
     assert ray.get(actor2.get_values.remote(5)) == (3, 4)
 
 
-def test_define_actor_within_remote_function(ray_start_bigger):
+def test_define_actor_within_remote_function(ray_start_10_cpus):
     # Make sure we can define and actors within remote funtions.
 
     @ray.remote
@@ -693,7 +669,7 @@ def test_define_actor_within_remote_function(ray_start_bigger):
         [f.remote(i, 20) for i in range(10)]) == [20 * [i] for i in range(10)]
 
 
-def test_use_actor_within_remote_function(ray_start_bigger):
+def test_use_actor_within_remote_function(ray_start_10_cpus):
     # Make sure we can create and use actors within remote funtions.
 
     @ray.remote
@@ -712,7 +688,7 @@ def test_use_actor_within_remote_function(ray_start_bigger):
     assert ray.get(f.remote(3)) == 3
 
 
-def test_actor_import_counter(ray_start_bigger):
+def test_actor_import_counter(ray_start_10_cpus):
     # This is mostly a test of the export counters to make sure that when
     # an actor is imported, all of the necessary remote functions have been
     # imported.
@@ -1333,8 +1309,9 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
 
-def test_exception_raised_when_actor_node_dies(ray_start_cluster_init):
-    remote_node, _ = ray_start_cluster_init.add_node()
+def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
+    cluster, _ = ray_start_cluster_head
+    remote_node = cluster.add_node()
 
     @ray.remote
     class Counter(object):
@@ -1355,7 +1332,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_init):
         actor = Counter.remote()
 
     # Kill the second node.
-    ray_start_cluster_init.remove_node(remote_node)
+    cluster.remove_node(remote_node)
 
     # Submit some new actor tasks both before and after the node failure is
     # detected. Make sure that getting the result raises an exception.
@@ -1373,8 +1350,9 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_init):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_actor_init_fails(ray_start_cluster_init):
-    remote_node, _ = ray_start_cluster_init.add_node()
+def test_actor_init_fails(ray_start_cluster_head):
+    cluster, _ = ray_start_cluster_head
+    remote_node = cluster.add_node()
 
     @ray.remote(max_reconstructions=1)
     class Counter(object):
@@ -1390,18 +1368,17 @@ def test_actor_init_fails(ray_start_cluster_init):
     # Allow some time to forward the actor creation tasks to the other node.
     time.sleep(0.1)
     # Kill the second node.
-    ray_start_cluster_init.remove_node(remote_node)
+    cluster.remove_node(remote_node)
 
     # Get all of the results
     results = ray.get([actor.inc.remote() for actor in actors])
     assert results == [1 for actor in actors]
 
 
-def test_reconstruction_suppression(ray_start_cluster_init):
+def test_reconstruction_suppression(ray_start_cluster_head):
+    cluster, _ = ray_start_cluster_head
     num_nodes = 10
-    worker_nodes = [
-        ray_start_cluster_init.add_node() for _ in range(num_nodes)
-    ]
+    worker_nodes = [cluster.add_node() for _ in range(num_nodes)]
 
     @ray.remote(max_reconstructions=1)
     class Counter(object):
@@ -1421,7 +1398,7 @@ def test_reconstruction_suppression(ray_start_cluster_init):
     ray.get([actor.inc.remote() for actor in actors])
 
     # Kill a node.
-    ray_start_cluster_init.remove_node(worker_nodes[0])
+    cluster.remove_node(worker_nodes[0])
 
     # Submit several tasks per actor. These should be randomly scheduled to the
     # nodes, so that multiple nodes will detect and try to reconstruct the
@@ -1493,8 +1470,8 @@ def setup_counter_actor(test_checkpoint=False,
 
 
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
-def test_distributed_handle(two_node_cluster):
-    cluster = two_node_cluster
+def test_distributed_handle(ray_start_cluster_2_nodes):
+    cluster, _ = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=False)
 
     @ray.remote
@@ -1531,8 +1508,8 @@ def test_distributed_handle(two_node_cluster):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_remote_checkpoint_distributed_handle(two_node_cluster):
-    cluster = two_node_cluster
+def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
+    cluster, _ = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
 
     @ray.remote
@@ -1572,8 +1549,8 @@ def test_remote_checkpoint_distributed_handle(two_node_cluster):
 
 
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
-def test_checkpoint_distributed_handle(two_node_cluster):
-    cluster = two_node_cluster
+def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
+    cluster, _ = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
 
     @ray.remote
@@ -1675,16 +1652,17 @@ def _test_nondeterministic_reconstruction(
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Currently doesn't work with the new GCS.")
-def test_nondeterministic_reconstruction(two_node_cluster):
-    cluster = two_node_cluster
+def test_nondeterministic_reconstruction(ray_start_cluster_2_nodes):
+    cluster, _ = ray_start_cluster_2_nodes
     _test_nondeterministic_reconstruction(cluster, 10, 100, 10)
 
 
 @pytest.mark.skip("Nondeterministic reconstruction currently not supported "
                   "when there are concurrent forks that didn't finish "
                   "initial execution.")
-def test_nondeterministic_reconstruction_concurrent_forks(two_node_cluster):
-    cluster = two_node_cluster
+def test_nondeterministic_reconstruction_concurrent_forks(
+        ray_start_cluster_2_nodes):
+    cluster, _ = ray_start_cluster_2_nodes
     _test_nondeterministic_reconstruction(cluster, 10, 100, 1)
 
 
@@ -2054,7 +2032,11 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.get(results)
 
 
-def test_actor_eviction(shutdown_only):
+@pytest.mark.parametrize(
+    "ray_start_object_store_memory", [10**8], indirect=True)
+def test_actor_eviction(ray_start_object_store_memory):
+    object_store_memory = ray_start_object_store_memory
+
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -2062,13 +2044,6 @@ def test_actor_eviction(shutdown_only):
 
         def create_object(self, size):
             return np.random.rand(size)
-
-    object_store_memory = 10**8
-    ray.init(
-        object_store_memory=object_store_memory,
-        _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 200
-        }))
 
     a = Actor.remote()
     # Submit enough methods on the actor so that they exceed the size of the
@@ -2145,9 +2120,9 @@ def test_actor_reconstruction(ray_start_regular):
         ray.get(actor.increase.remote())
 
 
-def test_actor_reconstruction_on_node_failure(ray_start_cluster_init):
+def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
     """Test actor reconstruction when node dies unexpectedly."""
-    cluster, _ = ray_start_cluster_init
+    cluster, _ = ray_start_cluster_head
     max_reconstructions = 3
     # Add a few nodes to the cluster.
     # Use custom resource to make sure the actor is only created on worker
@@ -2210,13 +2185,14 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_init):
 # may happen and cause the test fauilure. If the value is too large, this test
 # could be very slow. We can remove this once we support dynamic timeout.
 @pytest.mark.parametrize(
-    "ray_start_cluster_init", [{
+    "ray_start_cluster_head", [{
         "_internal_config": json.dumps({
             "initial_reconstruction_timeout_milliseconds": 1000,
         })
     }],
     indirect=True)
-def test_multiple_actor_reconstruction(ray_start_cluster_init):
+def test_multiple_actor_reconstruction(ray_start_cluster_head):
+    cluster, _ = ray_start_cluster_head
     # This test can be made more stressful by increasing the numbers below.
     # The total number of actors created will be
     # num_actors_at_a_time * num_nodes.
@@ -2225,7 +2201,7 @@ def test_multiple_actor_reconstruction(ray_start_cluster_init):
     num_function_calls_at_a_time = 10
 
     worker_nodes = [
-        ray_start_cluster_init.add_node(
+        cluster.add_node(
             num_cpus=3,
             _internal_config=json.dumps({
                 "initial_reconstruction_timeout_milliseconds": 200,
@@ -2265,7 +2241,7 @@ def test_multiple_actor_reconstruction(ray_start_cluster_init):
             for _ in range(num_function_calls_at_a_time):
                 result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
         # Kill a node.
-        ray_start_cluster_init.remove_node(node)
+        cluster.remove_node(node)
 
         # Run some more methods.
         for j in range(len(actors)):
