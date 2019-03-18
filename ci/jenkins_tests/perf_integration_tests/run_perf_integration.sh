@@ -12,5 +12,3 @@ python -m pytest --benchmark-autosave python/ray/tests/test_perf_integration.py
 # save the results to S3
 #aws s3 cp .benchmarks/*/*.json s3://modin-jenkins-result/${sha_tag}-perf-${BUCKET_SUFFIX}/ --acl public-read
 #rm -rf .benchmarks
-cat .benchmarks/*/*.json
-rm -rf .benchmarks
