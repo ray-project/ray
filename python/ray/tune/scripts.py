@@ -22,8 +22,8 @@ def cli():
     type=str,
     help="Select file to output information to.")
 @click.option(
-    "--filter_op",
     "--filter",
+    "filter_op",
     nargs=1,
     default=None,
     type=str,
@@ -44,8 +44,8 @@ def list_trials(experiment_path, sort, output, filter_op):
     type=str,
     help="Select file to output information to.")
 @click.option(
-    "--filter_op",
     "--filter",
+    "filter_op",
     nargs=1,
     default=None,
     type=str,
