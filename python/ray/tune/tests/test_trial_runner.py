@@ -831,22 +831,6 @@ class RunExperimentTest(unittest.TestCase):
 
         self.assertRaises(TuneError, fail_trial)
 
-    def testDeprecatedResources(self):
-        class train(Trainable):
-            def _train(self):
-                return {"timesteps_this_iter": 1, "done": True}
-
-        trials = run_experiments({
-            "foo": {
-                "run": train,
-                "trial_resources": {
-                    "cpu": 1
-                }
-            }
-        })
-        for trial in trials:
-            self.assertEqual(trial.status, Trial.TERMINATED)
-
     def testCustomResources(self):
         ray.shutdown()
         ray.init(resources={"hi": 3})
