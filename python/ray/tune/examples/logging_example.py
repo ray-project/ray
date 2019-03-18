@@ -13,7 +13,7 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.tune import Trainable, run_experiments, Experiment
+from ray.tune import Trainable, run, Experiment
 
 
 class TestLogger(tune.logger.Logger):
@@ -74,4 +74,4 @@ if __name__ == "__main__":
             "height": tune.sample_from(lambda spec: int(100 * random.random()))
         })
 
-    trials = run_experiments(exp)
+    trials = run(exp)

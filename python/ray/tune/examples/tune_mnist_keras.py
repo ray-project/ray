@@ -176,32 +176,33 @@ if __name__ == "__main__":
         reward_attr="mean_accuracy",
         max_t=400,
         grace_period=20)
-    tune.register_trainable("train_mnist",
-                            lambda cfg, rprtr: train_mnist(args, cfg, rprtr))
-    tune.run_experiments(
-        {
-            "exp": {
-                "stop": {
-                    "mean_accuracy": 0.99,
-                    "timesteps_total": 10 if args.smoke_test else 300
-                },
-                "run": "train_mnist",
-                "num_samples": 1 if args.smoke_test else 10,
-                "resources_per_trial": {
-                    "cpu": args.threads,
-                    "gpu": 0.5 if args.use_gpu else 0
-                },
-                "config": {
-                    "lr": tune.sample_from(
-                        lambda spec: np.random.uniform(0.001, 0.1)),
-                    "momentum": tune.sample_from(
-                        lambda spec: np.random.uniform(0.1, 0.9)),
-                    "hidden": tune.sample_from(
-                        lambda spec: np.random.randint(32, 512)),
-                    "dropout1": tune.sample_from(
-                        lambda spec: np.random.uniform(0.2, 0.8)),
-                }
-            }
-        },
+
+    tune.register_trainable(
+        "TRAIN_FN",
+        lambda config, reporter: train_mnist(args, config, reporter))
+    tune.run(
+        "TRAIN_FN",
+        name="exp",
         verbose=0,
-        scheduler=sched)
+        scheduler=sched,
+        **{
+            "stop": {
+                "mean_accuracy": 0.99,
+                "timesteps_total": 10 if args.smoke_test else 300
+            },
+            "num_samples": 1 if args.smoke_test else 10,
+            "resources_per_trial": {
+                "cpu": args.threads,
+                "gpu": 0.5 if args.use_gpu else 0
+            },
+            "config": {
+                "lr": tune.sample_from(
+                    lambda spec: np.random.uniform(0.001, 0.1)),
+                "momentum": tune.sample_from(
+                    lambda spec: np.random.uniform(0.1, 0.9)),
+                "hidden": tune.sample_from(
+                    lambda spec: np.random.randint(32, 512)),
+                "dropout1": tune.sample_from(
+                    lambda spec: np.random.uniform(0.2, 0.8)),
+            }
+        })

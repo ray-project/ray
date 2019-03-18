@@ -46,7 +46,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "momentum": 0.0,
     "epsilon": 0.1,
     "vf_loss_coeff": 0.5,
-    "entropy_coeff": -0.01,
+    "entropy_coeff": 0.01,
 })
 # __sphinx_doc_end__
 # yapf: enable

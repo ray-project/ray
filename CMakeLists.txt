@@ -152,8 +152,23 @@ if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
   get_raylet_library("java" RAYLET_LIBRARY_JAVA)
   add_dependencies(copy_ray ${RAYLET_LIBRARY_JAVA})
 
-  # copy libplasma_java files
+  # Copy java native dependencies.
   add_custom_command(TARGET copy_ray POST_BUILD
-    COMMAND bash -c "mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/src/plasma"
-    COMMAND bash -c "cp ${ARROW_LIBRARY_DIR}/libplasma_java.* ${CMAKE_CURRENT_BINARY_DIR}/src/plasma/")
+    COMMAND mkdir -p ${CMAKE_SOURCE_DIR}/java/runtime/native_dependencies)
+  set(java_native_dependencies
+    "src/ray/thirdparty/redis/src/redis-server"
+    "src/ray/gcs/redis_module/libray_redis_module.so"
+    "src/ray/raylet/raylet"
+    "src/ray/raylet/libraylet_library_java.*")
+  foreach(file ${java_native_dependencies})
+  add_custom_command(TARGET copy_ray POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/${file}
+      ${CMAKE_SOURCE_DIR}/java/runtime/native_dependencies)
+  endforeach()
+add_custom_command(TARGET copy_ray POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${ARROW_HOME}/bin/plasma_store_server
+    ${CMAKE_SOURCE_DIR}/java/runtime/native_dependencies)
+  add_custom_command(TARGET copy_ray POST_BUILD
+    COMMAND $(CMAKE_COMMAND) -E copy ${ARROW_LIBRARY_DIR}/libplasma_java.*
+      ${CMAKE_SOURCE_DIR}/java/runtime/native_dependencies)
 endif()

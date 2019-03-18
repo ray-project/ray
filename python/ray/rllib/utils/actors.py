@@ -53,6 +53,18 @@ class TaskPool(object):
                 remaining.append((worker, obj_id))
         self._fetching = remaining
 
+    def reset_evaluators(self, evaluators):
+        """Notify that some evaluators may be removed."""
+        for obj_id, ev in self._tasks.copy().items():
+            if ev not in evaluators:
+                del self._tasks[obj_id]
+                del self._objects[obj_id]
+        ok = []
+        for ev, obj_id in self._fetching:
+            if ev in evaluators:
+                ok.append((ev, obj_id))
+        self._fetching = ok
+
     @property
     def count(self):
         return len(self._tasks)
