@@ -165,35 +165,4 @@ public class FunctionManagerTest {
     }
   }
 
-  private static void compileAndPack(String sourceFilePath, String destDir) throws Exception {
-    JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    int result = compiler.run(null, null, null, sourceFilePath);
-
-    if (result != 0) {
-      throw new RuntimeException(String.format("Failed to compile file : %s", sourceFilePath));
-    }
-
-
-    String[] packJarCommand = new String[]{
-      "jar",
-      "-cvf",
-      destDir + "/DemoApp.jar",
-      "org/ray/demo/DemoApp.class"
-    };
-
-    Runtime.getRuntime().exec(packJarCommand);
-
-    // Move to destination directory.
-    final String sourceFileDir = (new File(sourceFilePath)).getParent();
-    final String classFileSourcePath = sourceFileDir + "/DemoApp.class";
-    final String classFileDestPath = destDir + "/DemoApp.class";
-    File file = new File(classFileDestPath);
-    file.mkdirs();
-    Files.move(Paths.get(classFileSourcePath), Paths.get(classFileDestPath),
-      StandardCopyOption.REPLACE_EXISTING);
-
-    // Sleep for waiting for jar.
-    TimeUnit.SECONDS.sleep(1);
-  }
-
 }

@@ -13,16 +13,9 @@ sh $ROOT_DIR/generate_deps.sh
 echo "Compiling Java code."
 pushd $ROOT_DIR/..
 # compile all the targets
-bazel build //java:all --verbose_failures
+bazel build //java:all_modules --verbose_failures
 # bazel checkstyle for java
 bazel test //java:all --test_tag_filters="checkstyle"
-
-# The following are soft links
-# TODO: remove this once cmake is removed
-mkdir -p $ROOT_DIR/../build/java/
-ln -sf $ROOT_DIR/../bazel-bin/java/* $ROOT_DIR/../build/java/
-mkdir -p $ROOT_DIR/tutorial/target/
-ln -sf $ROOT_DIR/../bazel-bin/java/org_ray_ray_tutorial_deploy.jar $ROOT_DIR/tutorial/target/ray-tutorial-0.1-SNAPSHOT.jar
 
 echo "Running tests under cluster mode."
 ENABLE_MULTI_LANGUAGE_TESTS=1 bazel test //java:all_tests --test_output="errors" || cluster_exit_code=$?

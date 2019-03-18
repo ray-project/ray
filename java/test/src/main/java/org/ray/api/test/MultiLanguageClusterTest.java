@@ -67,7 +67,7 @@ public class MultiLanguageClusterTest {
     // Start ray cluster.
     String testDir = System.getProperty("user.dir");
     String workerOptions =
-        " -classpath " + String.format("%s/../../build/java/*:%s/target/*", testDir, testDir);
+        " -classpath " + System.getProperty("java.class.path");
     final List<String> startCommand = ImmutableList.of(
         "ray",
         "start",

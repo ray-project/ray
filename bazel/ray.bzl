@@ -1,4 +1,5 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
+load("@com_github_checkstyle_java//checkstyle:checkstyle.bzl", "checkstyle_test")
 
 def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_paths = []):
     flatbuffer_library_public(
@@ -21,3 +22,33 @@ def flatbuffer_java_library(name, srcs, outs, out_prefix, includes = [], include
         include_paths = include_paths,
         includes = includes,
     )
+
+def define_java_module(name, additional_srcs = [], additional_resources = [], define_test_lib = False, test_deps = [], **kwargs):
+    native.java_library(
+        name = "org_ray_ray_" + name,
+        srcs = additional_srcs + native.glob([name + "/src/main/java/**/*.java"]),
+        resources = native.glob([name + "/src/main/resources/**"]) + additional_resources,
+        **kwargs
+    )
+    checkstyle_test(
+        name = "org_ray_ray_" + name + "-checkstyle",
+        target = "//java:org_ray_ray_" + name,
+        config = "//java:checkstyle.xml",
+        suppressions = "//java:checkstyle-suppressions.xml",
+        size = "small",
+        tags = ["checkstyle"]
+    )
+    if define_test_lib:
+        native.java_library(
+            name = "org_ray_ray_" + name + "_test",
+            srcs = native.glob([name + "/src/test/java/**/*.java"]),
+            deps = test_deps
+        )
+        checkstyle_test(
+            name = "org_ray_ray_" + name + "_test-checkstyle",
+            target = "//java:org_ray_ray_" + name + "_test",
+            config = "//java:checkstyle.xml",
+            suppressions = "//java:checkstyle-suppressions.xml",
+            size = "small",
+            tags = ["checkstyle"]
+        )

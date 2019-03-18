@@ -1,5 +1,4 @@
-load("@com_github_checkstyle_java//checkstyle:checkstyle.bzl", "checkstyle_test")
-load("//bazel:ray.bzl", "flatbuffer_java_library")
+load("//bazel:ray.bzl", "flatbuffer_java_library", "define_java_module")
 
 exports_files([
     "testng.xml",
@@ -14,33 +13,24 @@ java_binary(
 )
 
 java_import(
-    name = "org_ray_ray_java_root",
+    name = "all_modules",
     jars = [
         "liborg_ray_ray_api.jar",
         "liborg_ray_ray_api-src.jar",
         "liborg_ray_ray_runtime.jar",
         "liborg_ray_ray_runtime-src.jar",
-        "liborg_ray_ray_runtime_test.jar",
-        "liborg_ray_ray_runtime_test-src.jar",
-        "liborg_ray_ray_test.jar",
-        "liborg_ray_ray_test-src.jar",
-        "org_ray_ray_tutorial_deploy.jar",
-        "org_ray_ray_tutorial_deploy-src.jar",
-        "all_tests_deploy.jar",
-        "all_tests_deploy-src.jar",
+        "liborg_ray_ray_tutorial.jar",
+        "liborg_ray_ray_tutorial-src.jar",
     ],
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
         ":org_ray_ray_tutorial",
-        ":org_ray_ray_test",
-        ":org_ray_ray_runtime_test",
     ],
 )
 
-java_library(
-    name = "org_ray_ray_api",
-    srcs = glob(["api/src/main/java/**/*.java"]),
+define_java_module(
+    name = "api",
     deps = [
         "@org_slf4j_slf4j_log4j12//jar",
         "@log4j_log4j//jar",
@@ -50,26 +40,22 @@ java_library(
     ],
 )
 
-checkstyle_test(
-    name = "org_ray_ray_api-checkstyle",
-    target = ":org_ray_ray_api",
-    config = "//java:checkstyle.xml",
-    suppressions = "//java:checkstyle-suppressions.xml",
-    size = "small",
-    tags = ["checkstyle"],
-)
-
-java_library(
-    name = "org_ray_ray_runtime",
-    srcs = glob([
-        "runtime/src/main/java/**/*.java"
-    ]) + [
+define_java_module(
+    name = "runtime",
+    additional_srcs = [
         ":generate_java_gcs_fbs",
     ],
-    resources = glob([
-        "runtime/src/main/resources/**",
-    ]) + [
-        "//:ray_java_deps_files",
+    additional_resources = [
+        ":java_native_deps",
+    ],
+    define_test_lib = True,
+    test_deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@org_apache_commons_commons_lang3//jar",
+        "@com_beust_jcommander//jar",
+        "@org_testng_testng//jar",
+        "@commons_io_commons_io//jar",
     ],
     deps = [
         ":org_ray_ray_api",
@@ -93,19 +79,8 @@ java_library(
     ],
 )
 
-checkstyle_test(
-    name = "org_ray_ray_runtime-checkstyle",
-    target = ":org_ray_ray_runtime",
-    config = "//java:checkstyle.xml",
-    suppressions = "//java:checkstyle-suppressions.xml",
-    size = "small",
-    tags = ["checkstyle"],
-)
-
-java_binary(
-    name = "org_ray_ray_tutorial",
-    srcs = glob(["tutorial/src/main/java/**/*.java"]),
-    resources = glob(["tutorial/src/main/resources/**"]),
+define_java_module(
+    name = "tutorial",
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
@@ -113,18 +88,8 @@ java_binary(
     ],
 )
 
-checkstyle_test(
-    name = "org_ray_ray_tutorial-checkstyle",
-    target = ":org_ray_ray_tutorial",
-    config = "//java:checkstyle.xml",
-    suppressions = "//java:checkstyle-suppressions.xml",
-    size = "small",
-    tags = ["checkstyle"],
-)
-
-java_library(
-    name = "org_ray_ray_test",
-    srcs = glob(["test/src/main/java/**/*.java"]),
+define_java_module(
+    name = "test",
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
@@ -135,36 +100,6 @@ java_library(
         "@commons_collections_commons_collections//jar",
         "@com_google_guava_guava//jar",
     ],
-)
-
-checkstyle_test(
-    name = "org_ray_ray_test-checkstyle",
-    target = ":org_ray_ray_test",
-    config = "//java:checkstyle.xml",
-    suppressions = "//java:checkstyle-suppressions.xml",
-    size = "small",
-    tags = ["checkstyle"],
-)
-
-java_library(
-    name = "org_ray_ray_runtime_test",
-    srcs = glob(["runtime/src/test/java/**/*.java"]),
-    deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
-        "@org_apache_commons_commons_lang3//jar",
-        "@com_beust_jcommander//jar",
-        "@org_testng_testng//jar",
-    ],
-)
-
-checkstyle_test(
-    name = "org_ray_ray_runtime_test-checkstyle",
-    target = ":org_ray_ray_runtime_test",
-    config = "//java:checkstyle.xml",
-    suppressions = "//java:checkstyle-suppressions.xml",
-    size = "small",
-    tags = ["checkstyle"],
 )
 
 java_test(
@@ -178,7 +113,7 @@ java_test(
     ],
 )
 
-flatbuffers_generate_files = [
+flatbuffers_generated_files = [
     "ActorCheckpointData.java",
     "ActorCheckpointIdData.java",
     "ActorState.java",
@@ -214,7 +149,7 @@ flatbuffers_generate_files = [
 flatbuffer_java_library(
     name = "java_gcs_fbs",
     srcs = ["//:gcs_fbs_file"],
-    outs = flatbuffers_generate_files,
+    outs = flatbuffers_generated_files,
     out_prefix = "",
 )
 
@@ -222,7 +157,7 @@ genrule(
     name = "generate_java_gcs_fbs",
     srcs = [":java_gcs_fbs"],
     outs = [
-        "runtime/src/main/java/org/ray/runtime/generated/" + file for file in flatbuffers_generate_files
+        "runtime/src/main/java/org/ray/runtime/generated/" + file for file in flatbuffers_generated_files
     ],
     cmd = """
         for f in $(locations //java:java_gcs_fbs); do
@@ -230,6 +165,37 @@ genrule(
             cp -f $$f $(@D)/runtime/src/main/java/org/ray/runtime/generated
         done
         python $$(pwd)/java/modify_generated_java_flatbuffers_files.py $(@D)/..
+    """,
+    local = 1,
+)
+
+filegroup(
+    name = "java_native_deps",
+    srcs = [
+        "//:redis-server",
+        "//:libray_redis_module.so",
+        "//:raylet",
+        "//:raylet_library_java",
+        "@plasma//:plasma_store_server",
+        "@plasma//:plasma_client_java",
+    ],
+)
+
+genrule(
+    name = "copy_java_native_deps",
+    srcs = [
+        ":java_native_deps",
+    ],
+    outs = ["copy_java_native_deps.out"],
+    cmd = """
+        set -x
+        WORK_DIR=$$(pwd)
+        mkdir -p $$WORK_DIR/java/runtime/native_dependencies/
+        for f in $(locations //java:java_native_deps); do
+            chmod +w $$f
+            cp -f $$f $$WORK_DIR/java/runtime/native_dependencies
+        done
+        echo $$WORK_DIR > $@
     """,
     local = 1,
 )

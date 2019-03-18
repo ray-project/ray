@@ -124,20 +124,11 @@ else
 
   # This is for mvn compile.
   if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-    bazel build //:ray_java_pkg --verbose_failures
-    find $ROOT_DIR/bazel-genfiles/ray_java_pkg/ -exec chmod +w {} \;
-    cp -r $ROOT_DIR/bazel-genfiles/ray_java_pkg/java $ROOT_DIR/ || true
+    bazel build //java:copy_java_native_deps --verbose_failures
   fi
 
   if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
     bazel build //:ray_pkg --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
-    # Copy files and keep them writeable. This is a workaround, as Bazel
-    # marks all generated files non-writeable. If we would just copy them
-    # over without adding write permission, the copy would fail the next time.
-    # TODO(pcm): It would be great to have a solution here that does not
-    # require us to copy the files.
-    find $ROOT_DIR/bazel-genfiles/ray_pkg/ -exec chmod +w {} \;
-    cp -r $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
   fi
 fi
 
