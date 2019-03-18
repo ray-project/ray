@@ -1707,7 +1707,7 @@ def test_resource_assignment(shutdown_only):
     ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
 
     @ray.remote
-    class Actor1():
+    class Actor1(object):
         def __init__(self):
             self.resources = ray.get_resource_ids()
         def get_resources(self):
@@ -1760,7 +1760,7 @@ def test_resource_assignment(shutdown_only):
     ray.wait([a4.kill.remote()])
 
     @ray.remote(num_cpus=0.1)
-    class Actor2():
+    class Actor2(object):
         def __init__(self):
             self.resources = ray.get_resource_ids()
         def get_resources(self):
