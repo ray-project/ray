@@ -67,7 +67,6 @@ if __name__ == "__main__":
                 "train_batch_size": sample_from(
                     lambda spec: 1000 * max(1, spec.config.num_gpus)),
                 "_fake_sampler": True,
-                "_fake_learner": True,
                 "_fake_gpus": False,
             },
         },

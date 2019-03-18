@@ -34,13 +34,12 @@ class TFMultiGPULearner(LearnerThread):
                  num_sgd_iter=1,
                  learner_queue_size=16,
                  num_data_load_threads=16,
-                 _fake_gpus=False,
-                 _fake_learner=False):
+                 _fake_gpus=False):
         # Multi-GPU requires TensorFlow to function.
         import tensorflow as tf
 
         LearnerThread.__init__(self, local_evaluator, minibatch_buffer_size,
-                               num_sgd_iter, learner_queue_size, _fake_learner)
+                               num_sgd_iter, learner_queue_size)
         self.lr = lr
         self.train_batch_size = train_batch_size
         if not num_gpus:
@@ -94,7 +93,6 @@ class TFMultiGPULearner(LearnerThread):
 
         self.minibatch_buffer = MinibatchBuffer(
             self.ready_optimizers, minibatch_buffer_size, num_sgd_iter)
-        self._fake = _fake_learner
 
     @override(LearnerThread)
     def step(self):
@@ -103,10 +101,7 @@ class TFMultiGPULearner(LearnerThread):
             opt, released = self.minibatch_buffer.get()
 
         with self.grad_timer:
-            if self._fake:
-                fetches = {}
-            else:
-                fetches = opt.optimize(self.sess, 0)
+            fetches = opt.optimize(self.sess, 0)
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
@@ -137,6 +132,8 @@ class _LoaderThread(threading.Thread):
         s = self.learner
         with self.queue_timer:
             batch = s.inqueue.get()
+
+
 #            assert batch["obs"].ctypes.data % 64 == 0, "Not 64-byte aligned"
 
         opt = s.idle_optimizers.get()

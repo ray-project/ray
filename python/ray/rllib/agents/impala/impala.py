@@ -27,7 +27,6 @@ OPTIMIZER_SHARED_CONFIGS = [
     "num_sgd_iter",
     "minibatch_buffer_size",
     "num_aggregation_workers",
-    "_fake_learner",
     "_fake_gpus",
 ]
 
@@ -93,9 +92,8 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     "entropy_coeff": -0.01,
 
-    # use fake (infinite speed) sampler or learner for testing
+    # use fake (infinite speed) sampler for testing
     "_fake_sampler": False,
-    "_fake_learner": False,
     "_fake_gpus": False,
 })
 # __sphinx_doc_end__

@@ -25,7 +25,7 @@ class LearnerThread(threading.Thread):
     """
 
     def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_iter,
-                 learner_queue_size, _fake_learner):
+                 learner_queue_size):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
         self.local_evaluator = local_evaluator
@@ -41,7 +41,6 @@ class LearnerThread(threading.Thread):
         self.weights_updated = False
         self.stats = {}
         self.stopped = False
-        self._fake = _fake_learner
 
     def run(self):
         while not self.stopped:
@@ -52,10 +51,7 @@ class LearnerThread(threading.Thread):
             batch, _ = self.minibatch_buffer.get()
 
         with self.grad_timer:
-            if self._fake:
-                fetches = {}
-            else:
-                fetches = self.local_evaluator.learn_on_batch(batch)
+            fetches = self.local_evaluator.learn_on_batch(batch)
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 

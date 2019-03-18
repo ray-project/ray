@@ -43,8 +43,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               minibatch_buffer_size=1,
               learner_queue_size=16,
               num_aggregation_workers=0,
-              _fake_gpus=False,
-              _fake_learner=False):
+              _fake_gpus=False):
         self._stats_start_time = time.time()
         self._last_stats_time = {}
         self._last_stats_sum = {}
@@ -68,15 +67,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 minibatch_buffer_size=minibatch_buffer_size,
                 num_sgd_iter=num_sgd_iter,
                 learner_queue_size=learner_queue_size,
-                _fake_gpus=_fake_gpus,
-                _fake_learner=_fake_learner)
+                _fake_gpus=_fake_gpus)
         else:
-            self.learner = LearnerThread(
-                self.local_evaluator,
-                minibatch_buffer_size,
-                num_sgd_iter,
-                learner_queue_size,
-                _fake_learner=_fake_learner)
+            self.learner = LearnerThread(self.local_evaluator,
+                                         minibatch_buffer_size, num_sgd_iter,
+                                         learner_queue_size)
         self.learner.start()
 
         # Stats
