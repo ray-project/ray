@@ -470,6 +470,7 @@ std::string LineageCache::DebugString() const {
   result << "\n- child map size: " << lineage_.GetChildrenSize();
   result << "\n- num subscribed tasks: " << subscribed_tasks_.size();
   result << "\n- lineage size: " << lineage_.GetEntries().size();
+  result << "\n- num evicted tasks: " << num_evicted_tasks_;
   return result.str();
 }
 
