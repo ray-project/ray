@@ -65,7 +65,30 @@ class SACPolicyGraph(TFPolicyGraph):
 
         self.session.run(tf.global_variables_initializer())
 
+        # Q_mean, Q_var = tf.nn.moments(self.Q_values, axes=[0, 1])
+        actions_mean = tf.reduce_mean(self._actions_ph)
+        actions_min = tf.reduce_min(self._actions_ph)
+        actions_max = tf.reduce_max(self._actions_ph)
+        self.diagnostics = {
+            'stats': {
+                'actions-avg': actions_mean,
+                'actions-min': actions_min,
+                'actions-max': actions_max,
+                # 'Q-avg': Q_mean,
+                # 'Q-std': Q_var,
+                'Q_loss': self.Q_loss,
+                'alpha': self.alpha,
+                'log_pis': tf.reduce_mean(self.log_pis),
+                'policy_loss': self.policy_loss,
+                'entropy_loss': self.entropy_loss,
+            }
+        }
+
         self.update_target(tau=1.0)
+
+    @override(TFPolicyGraph)
+    def extra_compute_grad_fetches(self):
+        return self.diagnostics
 
     def _init_placeholders(self, observation_space, action_space):
         observation_shape = observation_space.shape
@@ -169,6 +192,7 @@ class SACPolicyGraph(TFPolicyGraph):
         actions = self.policy.actions([self._observations_ph])
         log_pis = self.policy.log_pis([self._observations_ph], actions)
 
+        self.log_pis = log_pis
         entropy_loss_weight = self.config['optimization']['entropy_loss_weight']
         self.entropy_loss = -1.0 * entropy_loss_weight * tf.reduce_mean(
             self.log_alpha * tf.stop_gradient(log_pis + target_entropy))
