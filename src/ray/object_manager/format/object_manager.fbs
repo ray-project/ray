@@ -34,8 +34,8 @@ enum MessageType:int {
 }
 
 table PushRequestMessage {
-  // Time that the object started to be sent.
-  start_push_time: long;
+  // The push ID associated with this push.
+  push_id: string;
   // The object ID being transferred.
   object_id: string;
   // The index of the chunk being transferred.
