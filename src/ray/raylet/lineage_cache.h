@@ -212,6 +212,13 @@ class Lineage {
 /// committed and if their parents have been all evicted. Thus, the invariant
 /// is that if g depends on f, and g has been evicted, then f must have been
 /// committed.
+///
+/// We attempt to flush tasks as soon as they are submitted. When a task is
+/// resubmitted or forwarded to and received by another node, that also counts
+/// as a submission, so forwarded tasks will be committed to the GCS many
+/// times. This is an idempotent operation, so that's ok. It will add extra GCS
+/// overhead, so it will decrease GCS throughput, but it shouldn't affect
+/// latency because it is not on the critical path.
 class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.

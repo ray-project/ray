@@ -925,12 +925,12 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // locally, there is no uncommitted lineage.
   SubmitTask(task, Lineage());
 
-  // We can flush tasks any time, so do that now.
-  if (!lineage_cache_.AddReadyTask(task)) {
-    RAY_LOG(WARNING) << "Task " << task_spec.TaskId() << " already in lineage cache."
-                     << " This is most likely due to reconstruction.";
-  }
-
+  // // We can flush tasks any time, so do that now.
+  // if (!lineage_cache_.AddReadyTask(task)) {
+  //   RAY_LOG(WARNING) << "Task " << task_spec.TaskId() << " already in lineage cache."
+  //                    << " This is most likely due to reconstruction.";
+  // }
+  //
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1435,6 +1435,13 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // resources locally.
     }
   }
+
+  // We can flush tasks any time, so do that now.
+  if (!lineage_cache_.AddReadyTask(task)) {
+    RAY_LOG(WARNING) << "Task " << task_id << " already in lineage cache."
+                     << " This is most likely due to reconstruction.";
+  }
+
 }
 
 void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
