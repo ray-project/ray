@@ -2890,7 +2890,7 @@ def test_load_code_from_local(shutdown_only):
 
 
 def test_shutdown_disconnect_global_state():
-    ray.init()
+    ray.init(num_cpus=0)
     ray.shutdown()
 
     with pytest.raises(Exception) as e:
