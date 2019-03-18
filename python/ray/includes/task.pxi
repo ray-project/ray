@@ -77,7 +77,7 @@ cdef class Task:
             driver_id.native(), parent_task_id.native(), parent_counter, actor_creation_id.native(),
             actor_creation_dummy_object_id.native(), max_actor_reconstructions, actor_id.native(),
             actor_handle_id.native(), actor_counter, task_new_actor_handles, task_args, num_returns,
-            required_resources, required_placement_resources, LANGUAGE_PYTHON,
+            required_resources, required_placement_resources, <CLanguage>language,
             c_function_descriptor))
 
         # Set the task's execution dependencies.
