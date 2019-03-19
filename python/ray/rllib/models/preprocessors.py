@@ -44,7 +44,7 @@ class Preprocessor(object):
 
     def write(self, observation, array, offset):
         """Alternative to transform for more efficient flattening."""
-        raise NotImplementedError
+        array[offset:offset+self._size] = self.transform(observation)
 
     @property
     @PublicAPI
@@ -144,7 +144,7 @@ class NoPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def write(self, observation, array, offset):
-        array[offset:offset+self.size] = observation.ravel()
+        array[offset:offset+self._size] = observation.ravel()
 
 
 class TupleFlatteningPreprocessor(Preprocessor):
