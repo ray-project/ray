@@ -47,7 +47,7 @@ def ray_start_regular(request):
 @pytest.fixture
 def ray_start_2_cpus(request):
     parameter = getattr(request, "param", {})
-    parameter['num_cpus'] = 2
+    parameter["num_cpus"] = 2
     request.param = parameter
     address_info = ray_start_with_parameter(request)
     yield address_info
