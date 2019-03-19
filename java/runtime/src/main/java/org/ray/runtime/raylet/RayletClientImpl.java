@@ -18,6 +18,7 @@ import org.ray.runtime.generated.Language;
 import org.ray.runtime.generated.ResourcePair;
 import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.task.FunctionArg;
+import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.UniqueIdUtil;
 import org.slf4j.Logger;
@@ -190,7 +191,7 @@ public class RayletClientImpl implements RayletClient {
     );
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
         maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
-        args, returnIds, resources, functionDescriptor, null);
+        args, returnIds, resources, TaskLanguage.JAVA, functionDescriptor);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -254,22 +255,22 @@ public class RayletClientImpl implements RayletClient {
     int language;
     int functionDescriptorOffset;
 
-    if (task.functionDescriptor != null) {
+    if (task.language == TaskLanguage.JAVA) {
       // This is a Java task.
       language = Language.JAVA;
       int[] functionDescriptorOffsets = new int[]{
-          fbb.createString(task.functionDescriptor.className),
-          fbb.createString(task.functionDescriptor.name),
-          fbb.createString(task.functionDescriptor.typeDescriptor)
+          fbb.createString(task.getFunctionDescriptor().className),
+          fbb.createString(task.getFunctionDescriptor().name),
+          fbb.createString(task.getFunctionDescriptor().typeDescriptor)
       };
       functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
     } else {
       // This is a Python task.
       language = Language.PYTHON;
       int[] functionDescriptorOffsets = new int[]{
-          fbb.createString(task.pyFunctionDescriptor.moduleName),
-          fbb.createString(task.pyFunctionDescriptor.className),
-          fbb.createString(task.pyFunctionDescriptor.functionName),
+          fbb.createString(task.getPyFunctionDescriptor().moduleName),
+          fbb.createString(task.getPyFunctionDescriptor().className),
+          fbb.createString(task.getPyFunctionDescriptor().functionName),
           fbb.createString("")
       };
       functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);

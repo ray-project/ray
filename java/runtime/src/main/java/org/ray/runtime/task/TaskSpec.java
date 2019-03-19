@@ -1,5 +1,6 @@
 package org.ray.runtime.task;
 
+import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -52,11 +53,13 @@ public class TaskSpec {
   // The task's resource demands.
   public final Map<String, Double> resources;
 
-  // Descriptor of the target function. This field is only valid for Java tasks.
-  public final FunctionDescriptor functionDescriptor;
+  // Language of this task.
+  public final TaskLanguage language;
 
-  // Descriptor of the target Python function. This field is only valid for Python tasks.
-  public final PyFunctionDescriptor pyFunctionDescriptor;
+  // Descriptor of the remote function.
+  // Note, if task language is Java, this is an instance of FunctionDescriptor. If the task language
+  // is Python, this is an instance of PyFunctionDescriptor.
+  private final Object functionDescriptor;
 
   private List<UniqueId> executionDependencies;
 
@@ -82,8 +85,8 @@ public class TaskSpec {
       FunctionArg[] args,
       UniqueId[] returnIds,
       Map<String, Double> resources,
-      FunctionDescriptor functionDescriptor,
-      PyFunctionDescriptor pyFunctionDescriptor) {
+      TaskLanguage language,
+      Object functionDescriptor) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
@@ -97,9 +100,28 @@ public class TaskSpec {
     this.args = args;
     this.returnIds = returnIds;
     this.resources = resources;
+    this.language = language;
+    if (language == TaskLanguage.JAVA) {
+      Preconditions.checkArgument(functionDescriptor instanceof FunctionDescriptor,
+          "Expect FunctionDescriptor type, but got {}.", functionDescriptor.getClass());
+    } else if (language == TaskLanguage.PYTHON) {
+      Preconditions.checkArgument(functionDescriptor instanceof PyFunctionDescriptor,
+          "Expect PyFunctionDescriptor type, but got {}.", functionDescriptor.getClass());
+    } else {
+      Preconditions.checkArgument(false, "Unknown task language: {}.", language);
+    }
     this.functionDescriptor = functionDescriptor;
-    this.pyFunctionDescriptor = pyFunctionDescriptor;
     this.executionDependencies = new ArrayList<>();
+  }
+
+  public FunctionDescriptor getFunctionDescriptor() {
+    Preconditions.checkState(language == TaskLanguage.JAVA);
+    return (FunctionDescriptor) functionDescriptor;
+  }
+
+  public PyFunctionDescriptor getPyFunctionDescriptor() {
+    Preconditions.checkState(language == TaskLanguage.PYTHON);
+    return (PyFunctionDescriptor) functionDescriptor;
   }
 
   public List<UniqueId> getExecutionDependencies() {
@@ -122,8 +144,8 @@ public class TaskSpec {
         ", args=" + Arrays.toString(args) +
         ", returnIds=" + Arrays.toString(returnIds) +
         ", resources=" + resources +
+        ", language=" + language +
         ", functionDescriptor=" + functionDescriptor +
-        ", pyFunctionDescriptor=" + pyFunctionDescriptor +
         ", executionDependencies=" + executionDependencies +
         '}';
   }

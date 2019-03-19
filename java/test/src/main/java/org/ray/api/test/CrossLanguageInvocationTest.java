@@ -36,7 +36,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
-    
+
     return ImmutableMap.of("PYTHONPATH", tempDir.getAbsolutePath());
   }
 

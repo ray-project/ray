@@ -22,13 +22,13 @@ import org.ray.api.options.BaseTaskOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
+import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.UniqueIdUtil;
@@ -331,6 +331,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private TaskSpec createTaskSpec(RayFunc func, PyFunctionDescriptor pyFunctionDescriptor,
       RayActorImpl<?> actor, Object[] args,
       boolean isActorCreationTask, BaseTaskOptions taskOptions) {
+    Preconditions.checkArgument((func == null) != (pyFunctionDescriptor == null));
     UniqueId taskId = rayletClient.generateTaskId(workerContext.getCurrentDriverId(),
         workerContext.getCurrentTaskId(), workerContext.nextTaskIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
@@ -358,10 +359,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
     }
 
-    FunctionDescriptor functionDescriptor = null;
+    TaskLanguage language;
+    Object functionDescriptor;
     if (func != null) {
+      language = TaskLanguage.JAVA;
       functionDescriptor = functionManager.getFunction(workerContext.getCurrentDriverId(), func)
           .getFunctionDescriptor();
+    } else {
+      language = TaskLanguage.PYTHON;
+      functionDescriptor = pyFunctionDescriptor;
     }
 
     return new TaskSpec(
@@ -375,11 +381,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.getHandleId(),
         actor.increaseTaskCounter(),
         actor.getNewActorHandles().toArray(new UniqueId[0]),
-        ArgumentsBuilder.wrap(args, functionDescriptor == null),
+        ArgumentsBuilder.wrap(args, language == TaskLanguage.PYTHON),
         returnIds,
         resources,
-        functionDescriptor,
-        pyFunctionDescriptor
+        language,
+        functionDescriptor
     );
   }
 
