@@ -9,7 +9,7 @@ static opencensus::tags::TagKey NodeAddressKey = opencensus::tags::TagKey::Regis
 
 static opencensus::tags::TagKey VersionKey = opencensus::tags::TagKey::Register("VersionKey");
 
-/// Global tags defination.
+/// Global tags definition.
 static std::vector<std::pair<opencensus::tags::TagKey, std::string>> GlobalTags = {
     {JobNameKey, "raylet"},
     {VersionKey, "0.6.4"}
