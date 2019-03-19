@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def ray_start():
     # Start the Ray processes.
-    ray.init(num_cpus=1, object_store_memory=10**8)
+    ray.init(num_cpus=1)
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
