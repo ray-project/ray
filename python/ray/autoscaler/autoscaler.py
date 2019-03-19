@@ -82,7 +82,6 @@ CLUSTER_CONFIG_SCHEMA = {
         {
             "ssh_user": (str, REQUIRED),  # e.g. ubuntu
             "ssh_private_key": (str, OPTIONAL),
-            "ssh_control_path": (str, OPTIONAL),
         },
         REQUIRED),
 
