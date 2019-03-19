@@ -1702,7 +1702,7 @@ def test_multi_resource_constraints(shutdown_only):
 
 
 def test_resource_assignment(shutdown_only):
-    """Test to make sure that we assign resources to actors at instantiation."""
+    """Test to make sure that we assign resource to actors at instantiation."""
     ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
 
     class Actor(object):
@@ -1715,35 +1715,67 @@ def test_resource_assignment(shutdown_only):
         def get_actor_method_resources(self):
             return ray.get_resource_ids()
 
-    for decorator_args in [{}, {"num_cpus": 0.1}, {"num_gpus": 0.1}, {"resources": {"Custom": 0.1}}]:
-        for instantiation_args in [{}, {"num_cpus": 0.2}, {"num_gpus": 0.2}, {"resources": {"Custom": 0.2}}]:
+    decorator_resource_args = [{}, {
+        "num_cpus": 0.1
+    }, {
+        "num_gpus": 0.1
+    }, {
+        "resources": {
+            "Custom": 0.1
+        }
+    }]
+    instantiation_resource_args = [{}, {
+        "num_cpus": 0.2
+    }, {
+        "num_gpus": 0.2
+    }, {
+        "resources": {
+            "Custom": 0.2
+        }
+    }]
+    for decorator_args in decorator_resource_args:
+        for instantiation_args in instantiation_resource_args:
             if len(decorator_args) == 0:
                 actor_class = ray.remote(Actor)
             else:
                 actor_class = ray.remote(**decorator_args)(Actor)
             actor = actor_class._remote([], {}, **instantiation_args)
             actor_resources = ray.get(actor.get_actor_resources.remote())
-            actor_method_resources = ray.get(actor.get_actor_method_resources.remote())
+            actor_method_resources = ray.get(
+                actor.get_actor_method_resources.remote())
             if len(decorator_args) == 0 and len(instantiation_args) == 0:
-                assert len(actor_resources) == 0, "Actor should not be assigned resources."
-                assert actor_method_resources["CPU"][0][1] == 1, "Actor method should default to one cpu."
+                assert len(actor_resources) == 0, \
+                        "Actor should not be assigned resources."
+                assert actor_method_resources["CPU"][0][1] == 1, \
+                    "Actor method should default to one cpu."
             else:
-                if "num_cpus" not in decorator_args and "num_cpus" not in instantiation_args:
-                    assert actor_resources["CPU"][0][1] == 1, "Actor should default to one cpu."
+                if ("num_cpus" not in decorator_args
+                        and "num_cpus" not in instantiation_args):
+                    assert actor_resources["CPU"][0][1] == 1, \
+                            "Actor should default to one cpu."
                 correct_resources = {}
                 defined_resources = {**decorator_args, **instantiation_args}
                 for resource, value in defined_resources.items():
-                    if resource is "num_cpus":
+                    if resource == "num_cpus":
                         correct_resources["CPU"] = value
-                    elif resource is "num_gpus":
+                    elif resource == "num_gpus":
                         correct_resources["GPU"] = value
-                    elif resource is "resources":
+                    elif resource == "resources":
                         for custom_resource, amount in value.items():
                             correct_resources[custom_resource] = amount
                 for resource, amount in correct_resources.items():
-                    assert actor_resources[resource][0][0] == actor_method_resources[resource][0][0], "Should have assigned same {} for both actor and actor method.".format(resource)
-                    assert actor_resources[resource][0][1] == actor_method_resources[resource][0][1], "Should have assigned same amount of {} for both actor and actor method.".format(resource)
-                    assert actor_resources[resource][0][1] == amount, "Actor should have {amount} {resource} but has {amount} {resource}".format(amount=amount, resource=resource)
+                    assert (actor_resources[resource][0][0] ==
+                            actor_method_resources[resource][0][0]), (
+                                "Should have assigned same {} for both actor ",
+                                "and actor method.".format(resource))
+                    assert (actor_resources[resource][0][
+                        1] == actor_method_resources[resource][0][1]), (
+                            "Should have assigned same amount of {} for both ",
+                            "actor and actor method.".format(resource))
+                    assert actor_resources[resource][0][1] == amount, (
+                        "Actor should have {amount} {resource} but has ",
+                        "{amount} {resource}".format(
+                            amount=amount, resource=resource))
 
 
 def test_gpu_ids(shutdown_only):

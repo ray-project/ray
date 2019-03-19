@@ -142,7 +142,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
         Actor._remote(
             args=[],
             kwargs={},
-            num_cpus=1 / 100,
+            num_cpus=0.01,
             resources={str(i % num_nodes): 1}) for i in range(100)
     ]
 
