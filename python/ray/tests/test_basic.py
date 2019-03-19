@@ -2887,3 +2887,12 @@ def test_load_code_from_local(shutdown_only):
     base_actor_class = ray.remote(num_cpus=1)(BaseClass)
     base_actor = base_actor_class.remote(message)
     assert ray.get(base_actor.get_data.remote()) == message
+
+
+def test_shutdown_disconnect_global_state():
+    ray.init(num_cpus=0)
+    ray.shutdown()
+
+    with pytest.raises(Exception) as e:
+        ray.global_state.object_table()
+    assert str(e.value).endswith("ray.init has been called.")

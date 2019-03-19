@@ -7,7 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tune import run_experiments, register_trainable
+from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest import SkOptSearch
 
@@ -33,24 +33,41 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    register_trainable("exp", easy_objective)
-
     config = {
-        "skopt_exp": {
-            "run": "exp",
-            "num_samples": 10 if args.smoke_test else 50,
-            "config": {
-                "iterations": 100,
-            },
-            "stop": {
-                "timesteps_total": 100
-            },
-        }
+        "num_samples": 10 if args.smoke_test else 50,
+        "config": {
+            "iterations": 100,
+        },
+        "stop": {
+            "timesteps_total": 100
+        },
     }
     optimizer = Optimizer([(0, 20), (-100, 100)])
+    previously_run_params = [[10, 0], [15, -20]]
+    known_rewards = [-189, -1144]
     algo = SkOptSearch(
         optimizer, ["width", "height"],
         max_concurrent=4,
-        reward_attr="neg_mean_loss")
+        reward_attr="neg_mean_loss",
+        points_to_evaluate=previously_run_params,
+        evaluated_rewards=known_rewards)
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
-    run_experiments(config, search_alg=algo, scheduler=scheduler)
+    run(easy_objective,
+        name="skopt_exp_with_warmstart",
+        search_alg=algo,
+        scheduler=scheduler,
+        **config)
+
+    # Now run the experiment without known rewards
+
+    algo = SkOptSearch(
+        optimizer, ["width", "height"],
+        max_concurrent=4,
+        reward_attr="neg_mean_loss",
+        points_to_evaluate=previously_run_params)
+    scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
+    run(easy_objective,
+        name="skopt_exp",
+        search_alg=algo,
+        scheduler=scheduler,
+        **config)

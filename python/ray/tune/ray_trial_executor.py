@@ -368,7 +368,7 @@ class RayTrialExecutor(TrialExecutor):
         if not resources or "CPU" not in resources:
             raise TuneError("Cluster resources cannot be detected. "
                             "You can resume this experiment by passing in "
-                            "`resume=True` to `run_experiments`.")
+                            "`resume=True` to `run`.")
 
         resources = resources.copy()
         num_cpus = resources.pop("CPU")
@@ -418,7 +418,7 @@ class RayTrialExecutor(TrialExecutor):
                 "may appear to hang until enough resources are added to the "
                 "cluster (e.g., via autoscaling). You can disable this "
                 "behavior by specifying `queue_trials=False` in "
-                "ray.tune.run_experiments().")
+                "ray.tune.run().")
             return True
 
         return False

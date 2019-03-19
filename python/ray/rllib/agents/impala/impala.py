@@ -90,7 +90,7 @@ DEFAULT_CONFIG = with_common_config({
     "epsilon": 0.1,
     # balancing the three losses
     "vf_loss_coeff": 0.5,
-    "entropy_coeff": -0.01,
+    "entropy_coeff": 0.01,
 
     # use fake (infinite speed) sampler for testing
     "_fake_sampler": False,
@@ -126,6 +126,8 @@ class ImpalaAgent(Agent):
         self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
                                                self.remote_evaluators,
                                                self.config["optimizer"])
+        if self.config["entropy_coeff"] < 0:
+            raise DeprecationWarning("entropy_coeff must be >= 0")
 
         if self.config["num_aggregation_workers"] > 0:
             # Assign the pre-created aggregators to the optimizer

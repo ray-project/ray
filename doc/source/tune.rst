@@ -58,7 +58,7 @@ Tune uses Ray as a backend, so we will first import and initialize Ray.
 .. code-block:: python
 
     import ray
-    import ray.tune as tune
+    from ray import tune
 
     ray.init()
 
@@ -82,13 +82,12 @@ For the function you wish to tune, pass in a ``reporter`` object:
 
 .. code-block:: python
 
-    all_trials = tune.run_experiments({
-        "my_experiment": {
-            "run": train_func,
-            "stop": {"mean_accuracy": 99},
-            "config": {"momentum": tune.grid_search([0.1, 0.2])}
-        }
-    })
+    all_trials = tune.run(
+        train_func,
+        name="quick-start",
+        stop={"mean_accuracy": 99},
+        config={"momentum": tune.grid_search([0.1, 0.2])}
+    )
 
 Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
 
