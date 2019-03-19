@@ -10,16 +10,7 @@ import ray.experimental.no_return
 import ray.worker
 
 
-@pytest.fixture
-def ray_start():
-    # Start the Ray processes.
-    ray.init(num_cpus=1)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def test_set_single_output(ray_start):
+def test_set_single_output(ray_start_regular):
     @ray.remote
     def f():
         return_object_ids = ray.worker.global_worker._current_task.returns()
@@ -29,7 +20,7 @@ def test_set_single_output(ray_start):
     assert ray.get(f.remote()) == 123
 
 
-def test_set_multiple_outputs(ray_start):
+def test_set_multiple_outputs(ray_start_regular):
     @ray.remote(num_return_vals=3)
     def f(set_out0, set_out1, set_out2):
         returns = []
@@ -51,7 +42,7 @@ def test_set_multiple_outputs(ray_start):
                 ]
 
 
-def test_set_actor_method(ray_start):
+def test_set_actor_method(ray_start_regular):
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -67,7 +58,7 @@ def test_set_actor_method(ray_start):
     assert ray.get(actor.ping.remote()) == 123
 
 
-def test_exception(ray_start):
+def test_exception(ray_start_regular):
     @ray.remote(num_return_vals=2)
     def f():
         return_object_ids = ray.worker.global_worker._current_task.returns()
@@ -84,7 +75,7 @@ def test_exception(ray_start):
         ray.get(exception_id)
 
 
-def test_no_set_and_no_return(ray_start):
+def test_no_set_and_no_return(ray_start_regular):
     @ray.remote
     def f():
         return ray.experimental.no_return.NoReturn
