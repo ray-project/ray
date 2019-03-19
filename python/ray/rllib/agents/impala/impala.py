@@ -27,7 +27,6 @@ OPTIMIZER_SHARED_CONFIGS = [
     "num_sgd_iter",
     "minibatch_buffer_size",
     "num_aggregation_workers",
-    "_fake_gpus",
 ]
 
 # yapf: disable
@@ -94,7 +93,6 @@ DEFAULT_CONFIG = with_common_config({
 
     # use fake (infinite speed) sampler for testing
     "_fake_sampler": False,
-    "_fake_gpus": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
