@@ -150,6 +150,8 @@ class Trainable(object):
         start = time.time()
         result = self._train()
         assert isinstance(result, dict), "_train() needs to return a dict."
+
+        # We do not modify internal state nor update this result if duplicate.
         if RESULT_DUPLICATE in result:
             return result
 
