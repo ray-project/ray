@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
-SSH_CONTROL_PATH = "/tmp/ray_ssh_sockets"  # Default. Override in auth config.
 
 
 def get_default_ssh_options(private_key, connect_timeout, ssh_control_path):
@@ -54,6 +53,10 @@ class NodeUpdater(object):
                  runtime_hash,
                  process_runner=subprocess,
                  use_internal_ip=False):
+
+        ssh_control_path = '/tmp/{}_ray_ssh_sockets/{}'.format(
+            os.environ['USER'], cluster_name)
+
         self.daemon = True
         self.process_runner = process_runner
         self.node_id = node_id
@@ -62,8 +65,7 @@ class NodeUpdater(object):
         self.provider = provider
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
-        self.ssh_control_path = auth_config.get("ssh_control_path",
-                                                SSH_CONTROL_PATH)
+        self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
         self.file_mounts = {
             remote: os.path.expanduser(local)
