@@ -35,7 +35,7 @@ def concat_aligned(items):
         return items[0]
 
     dtype = items[0].dtype
-    if dtype in [np.float32, np.float64, np.int32, np.int64]:
+    if dtype in [np.float32, np.float64]:
         flat = tf_aligned(sum(s.size for s in items), dtype)
         batch_dim = sum(s.shape[0] for s in items)
         new_shape = (batch_dim, ) + items[0].shape[1:]
