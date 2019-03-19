@@ -84,7 +84,7 @@ class TreeAggregator(Aggregator):
 
     @override(Aggregator)
     def iter_train_batches(self):
-        assert self.initialized
+        assert self.initialized, "Must call init() before using this class."
         for agg, batches in self.agg_tasks.completed_prefetch():
             for b in ray.get(batches):
                 self.num_sent_since_broadcast += 1
@@ -138,7 +138,7 @@ class AggregationWorker(AggregationWorkerBase):
         self.broadcasted_weights = weights
 
     def get_train_batches(self):
-        assert self.initialized
+        assert self.initialized, "Must call init() before using this class."
         start = time.time()
         result = []
         for batch in self.iter_train_batches(max_yield=5):

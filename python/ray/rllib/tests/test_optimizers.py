@@ -14,6 +14,7 @@ from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
+from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.tests.mock_evaluator import _MockEvaluator
 
 
@@ -186,17 +187,20 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
     def testMultiTierAggregationBadConf(self):
         local, remotes = self._make_evs()
-        self.assertRaises(
-            ValueError, lambda: AsyncSamplesOptimizer(
-                local, remotes,
-                {"num_aggregation_workers": 4}))
+        aggregators = TreeAggregator.precreate_aggregators(4)
+        optimizer = AsyncSamplesOptimizer(local, remotes,
+                                          {"num_aggregation_workers": 4})
+        self.assertRaises(ValueError,
+                          lambda: optimizer.aggregator.init(aggregators))
 
     def testMultiTierAggregation(self):
         local, remotes = self._make_evs()
         local, remotes = self._make_evs()
+        aggregators = TreeAggregator.precreate_aggregators(1)
         optimizer = AsyncSamplesOptimizer(local, remotes, {
             "num_aggregation_workers": 1,
         })
+        optimizer.aggregator.init(aggregators)
         self._wait_for(optimizer, 1000, 1000)
 
     def testRejectBadConfigs(self):

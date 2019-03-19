@@ -53,7 +53,6 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
-    "num_aggregation_workers": 0,
     # number of GPUs the learner should use.
     "num_gpus": 1,
     # set >1 to load data into GPUs in parallel. Increases GPU memory usage
@@ -76,6 +75,9 @@ DEFAULT_CONFIG = with_common_config({
     "max_sample_requests_in_flight_per_worker": 2,
     # max number of workers to broadcast one set of weights to
     "broadcast_interval": 1,
+    # use intermediate actors for multi-level aggregation. This can make sense
+    # if ingesting >2GB/s of samples, or if the data requires decompression.
+    "num_aggregation_workers": 0,
 
     # Learning params.
     "grad_clip": 40.0,
