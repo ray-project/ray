@@ -560,7 +560,7 @@ class Agent(Trainable):
     @DeveloperAPI
     def collect_metrics(self, selected_evaluators=None):
         """Collects metrics from the remote evaluators of this agent.
-        
+
         This is the same data as returned by a call to train().
         """
         return self.optimizer.collect_metrics(
