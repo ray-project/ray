@@ -18,7 +18,15 @@ def shutdown_only():
     ray.shutdown()
 
 
-def get_default_fixure_config():
+def generate_internal_config_map(**kargs):
+    internal_config = json.dumps(kargs)
+    ray_kargs = {
+        "_internal_config": internal_config,
+    }
+    return ray_kargs
+
+
+def get_default_fixure_internal_config():
     internal_config = json.dumps({
         "initial_reconstruction_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
@@ -26,12 +34,18 @@ def get_default_fixure_config():
     return internal_config
 
 
-def ray_start_with_parameter(request):
-    internal_config = get_default_fixure_config()
-    init_kargs = {
+def get_default_fixture_ray_kargs():
+    internal_config = get_default_fixure_internal_config()
+    ray_kargs = {
         "num_cpus": 1,
+        "object_store_memory": 10**8,
         "_internal_config": internal_config,
     }
+    return ray_kargs
+
+
+def ray_start_with_parameter(request):
+    init_kargs = get_default_fixture_ray_kargs()
     parameter = getattr(request, "param", {})
     init_kargs.update(parameter)
     # Start the Ray processes.
@@ -71,11 +85,7 @@ def ray_start_10_cpus(request):
 
 
 def ray_start_cluster_with_parameter(request):
-    internal_config = get_default_fixure_config()
-    init_kargs = {
-        "num_cpus": 1,
-        "_internal_config": internal_config,
-    }
+    init_kargs = get_default_fixture_ray_kargs()
     parameter = getattr(request, "param", {})
     if "num_nodes" in parameter:
         num_nodes = parameter["num_nodes"]
@@ -137,7 +147,7 @@ def ray_start_cluster_2_nodes(request):
 def ray_start_object_store_memory(request):
     # Start the Ray processes.
     store_size = request.param
-    internal_config = get_default_fixure_config()
+    internal_config = get_default_fixture_ray_kargs()
     init_kargs = {
         "num_cpus": 1,
         "_internal_config": internal_config,

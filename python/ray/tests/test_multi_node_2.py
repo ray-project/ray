@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
 import logging
 import pytest
 import time
@@ -10,6 +9,7 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 from ray.tests.cluster_utils import Cluster
+from ray.tests.conftest import generate_internal_config_map
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +35,8 @@ def test_shutdown():
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "_internal_config": json.dumps({
-            "num_heartbeats_timeout": 20,
-        })
-    }],
+    "ray_start_cluster_head",
+    [generate_internal_config_map(num_heartbeats_timeout=20)],
     indirect=True)
 def test_internal_config(ray_start_cluster_head):
     """Checks that the internal configuration setting works.

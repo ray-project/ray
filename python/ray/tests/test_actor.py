@@ -16,6 +16,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.tests.utils
 import ray.tests.cluster_utils
+from ray.tests.conftest import generate_internal_config_map
 from ray.tests.utils import (
     relevant_errors,
     wait_for_errors,
@@ -2176,11 +2177,10 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
 # may happen and cause the test fauilure. If the value is too large, this test
 # could be very slow. We can remove this once we support dynamic timeout.
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "_internal_config": json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 1000,
-        })
-    }],
+    "ray_start_cluster_head", [
+        generate_internal_config_map(
+            initial_reconstruction_timeout_milliseconds=1000)
+    ],
     indirect=True)
 def test_multiple_actor_reconstruction(ray_start_cluster_head):
     cluster, _ = ray_start_cluster_head
@@ -2452,11 +2452,7 @@ def test_checkpointing_load_exception(ray_start_regular,
     "ray_start_regular",
     # This overwrite currently isn't effective,
     # see https://github.com/ray-project/ray/issues/3926.
-    [{
-        "_internal_config": json.dumps({
-            "num_actor_checkpoints_to_keep": 20,
-        })
-    }],
+    [generate_internal_config_map(num_actor_checkpoints_to_keep=20)],
     indirect=True,
 )
 def test_deleting_actor_checkpoint(ray_start_regular):
