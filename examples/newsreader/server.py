@@ -2,9 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import feedparser
+import atoma
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import requests
 import sqlite3
 
 import ray
@@ -18,31 +19,31 @@ class NewsServer(object):
         c = self.conn.cursor()
         c.execute("""CREATE TABLE IF NOT EXISTS news
                      (title text, link text,
-                     description text, description_text text,
-                     published timestamp, feed url, liked bool)""")
+                     description text, published timestamp,
+                     feed url, liked bool)""")
         self.conn.commit()
 
     def retrieve_feed(self, url):
-        feed = feedparser.parse(url)
+        response = requests.get(url)
+        feed = atoma.parse_rss_bytes(response.content)
         items = []
         c = self.conn.cursor()
-        for item in feed["items"]:
-            items.append({"title": item["title"],
-                          "link": item["link"],
-                          "description": item["description"],
-                          "description_text": item["summary"],
-                          "pubDate": item["published"]})
+        for item in feed.items:
+            items.append({"title": item.title,
+                          "link": item.link,
+                          "description": item.description,
+                          "description_text": item.description,
+                          "pubDate": str(item.pub_date)})
             c.execute("""INSERT INTO news (title, link, description,
-                         description_text, published, feed, liked)
-                         values (?, ?, ?, ?, ?, ?, ?)""", (
-                         item["title"], item["link"], item["description"],
-                         item["summary"], item["published"],
-                         feed["channel"]["link"], False))
+                         published, feed, liked) values
+                         (?, ?, ?, ?, ?, ?)""", (
+                         item.title, item.link, item.description,
+                         item.pub_date, feed.link, False))
         self.conn.commit()
 
-        return {"channel": {"title": feed["feed"]["title"],
-                            "link": feed["feed"]["link"],
-                            "url": feed["channel"]["link"]},
+        return {"channel": {"title": feed.title,
+                            "link": feed.link,
+                            "url": feed.link},
                 "items": items}
 
     def like_item(self, url, is_faved):
