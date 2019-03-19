@@ -486,6 +486,7 @@ print("success")
         assert "success" in out
 
     nonexistent_id_bytes = _random_string()
+    nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
     # Define a driver that creates one task that depends on a nonexistent
     # object. This task will be queued as waiting to execute.
     driver_script = """
@@ -495,10 +496,10 @@ ray.init(redis_address="{}")
 @ray.remote
 def g(x):
     return
-g.remote(ray.ObjectID({}))
+g.remote(ray.ObjectID(ray.utils.hex_to_binary({})))
 time.sleep(1)
 print("success")
-""".format(redis_address, nonexistent_id_bytes)
+""".format(redis_address, nonexistent_id_hex)
 
     # Create some drivers and let them exit and make sure everything is
     # still alive.
