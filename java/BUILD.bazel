@@ -181,6 +181,8 @@ filegroup(
     ],
 )
 
+# This rule copies Java native dependencies to 'java/runtime/native_dependencies',
+# this is only needed by Maven (see 'java/runtime/pom.xml').
 genrule(
     name = "copy_java_native_deps",
     srcs = [
