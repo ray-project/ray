@@ -32,6 +32,8 @@ def concat_aligned(items):
     if len(items) == 0:
         return []
     elif len(items) == 1:
+        # we assume the input is aligned. In any case, it doesn't help
+        # performance to force align it since that incurs a needless copy.
         return items[0]
 
     dtype = items[0].dtype
