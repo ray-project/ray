@@ -24,9 +24,8 @@ ray_files = [
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store_server", "ray/_raylet.so",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
-    "ray/WebUI.ipynb", "ray/dashboard/dashboard.py",
-    "ray/dashboard/index.html", "ray/dashboard/res/main.css",
-    "ray/dashboard/res/main.js"
+    "ray/dashboard/dashboard.py", "ray/dashboard/index.html",
+    "ray/dashboard/res/main.css", "ray/dashboard/res/main.js"
 ]
 
 # These are the directories where automatically generated Python flatbuffer
@@ -37,11 +36,6 @@ generated_python_directories = [
 ]
 
 optional_ray_files = []
-
-ray_ui_files = [
-    "ray/core/src/catapult_files/index.html",
-    "ray/core/src/catapult_files/trace_viewer_full.html"
-]
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
@@ -55,13 +49,6 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
         "ray/core/src/credis/build/src/libmaster.so",
         "ray/core/src/credis/redis/src/redis-server"
     ]
-
-# The UI files are mandatory if the INCLUDE_UI environment variable equals 1.
-# Otherwise, they are optional.
-if "INCLUDE_UI" in os.environ and os.environ["INCLUDE_UI"] == "1":
-    ray_files += ray_ui_files
-else:
-    optional_ray_files += ray_ui_files
 
 optional_ray_files += ray_autoscaler_files
 
@@ -80,7 +67,11 @@ class build_ext(_build_ext.build_ext):
         # version of Python to build pyarrow inside the build.sh script. Note
         # that certain flags will not be passed along such as --user or sudo.
         # TODO(rkn): Fix this.
-        subprocess.check_call(["../build.sh", "-p", sys.executable])
+        command = ["../build.sh", "-p", sys.executable]
+        if os.getenv("RAY_INSTALL_JAVA") == "1":
+            # Also build binaries for Java if the above env variable exists.
+            command += ["-l", "python,java"]
+        subprocess.check_call(command)
 
         # We also need to install pyarrow along with Ray, so make sure that the
         # relevant non-Python pyarrow files get copied.
@@ -146,7 +137,7 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.10.4",
+    "numpy >= 1.14",
     "filelock",
     "funcsigs",
     "click",
@@ -184,7 +175,7 @@ setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]"
+            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
         ]
     },
     include_package_data=True,

@@ -6,6 +6,7 @@ import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.id.UniqueId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -18,6 +19,7 @@ public class StressTest extends BaseTest {
 
   @Test
   public void testSubmittingTasks() {
+    TestUtils.skipTestUnderSingleProcess();
     for (int numIterations : ImmutableList.of(1, 10, 100, 1000)) {
       int numTasks = 1000 / numIterations;
       for (int i = 0; i < numIterations; i++) {
@@ -34,6 +36,7 @@ public class StressTest extends BaseTest {
 
   @Test
   public void testDependency() {
+    TestUtils.skipTestUnderSingleProcess();
     RayObject<Integer> x = Ray.call(StressTest::echo, 1);
     for (int i = 0; i < 1000; i++) {
       x = Ray.call(StressTest::echo, x);
@@ -71,6 +74,7 @@ public class StressTest extends BaseTest {
 
   @Test
   public void testSubmittingManyTasksToOneActor() {
+    TestUtils.skipTestUnderSingleProcess();
     RayActor<Actor> actor = Ray.createActor(Actor::new);
     List<UniqueId> objectIds = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
@@ -84,6 +88,7 @@ public class StressTest extends BaseTest {
 
   @Test
   public void testPuttingAndGettingManyObjects() {
+    TestUtils.skipTestUnderSingleProcess();
     Integer objectToPut = 1;
     List<RayObject<Integer>> objects = new ArrayList<>();
     for (int i = 0; i < 100_000; i++) {

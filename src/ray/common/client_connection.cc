@@ -12,6 +12,12 @@ namespace ray {
 
 ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
                        const std::string &ip_address_string, int port) {
+  // Disable Nagle's algorithm, which caused transfer delays of 10s of ms in
+  // certain cases.
+  socket.open(boost::asio::ip::tcp::v4());
+  boost::asio::ip::tcp::no_delay option(true);
+  socket.set_option(option);
+
   boost::asio::ip::address ip_address =
       boost::asio::ip::address::from_string(ip_address_string);
   boost::asio::ip::tcp::endpoint endpoint(ip_address, port);
@@ -74,25 +80,26 @@ Status ServerConnection<T>::WriteBuffer(
 }
 
 template <class T>
-void ServerConnection<T>::ReadBuffer(
-    const std::vector<boost::asio::mutable_buffer> &buffer,
-    boost::system::error_code &ec) {
+Status ServerConnection<T>::ReadBuffer(
+    const std::vector<boost::asio::mutable_buffer> &buffer) {
+  boost::system::error_code error;
   // Loop until all bytes are read while handling interrupts.
   for (const auto &b : buffer) {
     uint64_t bytes_remaining = boost::asio::buffer_size(b);
     uint64_t position = 0;
     while (bytes_remaining != 0) {
       size_t bytes_read =
-          socket_.read_some(boost::asio::buffer(b + position, bytes_remaining), ec);
+          socket_.read_some(boost::asio::buffer(b + position, bytes_remaining), error);
       position += bytes_read;
       bytes_remaining -= bytes_read;
-      if (ec.value() == EINTR) {
+      if (error.value() == EINTR) {
         continue;
-      } else if (ec.value() != boost::system::errc::errc_t::success) {
-        return;
+      } else if (error.value() != boost::system::errc::errc_t::success) {
+        return boost_to_ray_status(error);
       }
     }
   }
+  return Status::OK();
 }
 
 template <class T>

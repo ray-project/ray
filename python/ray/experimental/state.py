@@ -120,6 +120,11 @@ class GlobalState(object):
             raise Exception("The ray.global_state API cannot be used before "
                             "ray.init has been called.")
 
+    def disconnect(self):
+        """Disconnect global state from GCS."""
+        self.redis_client = None
+        self.redis_clients = None
+
     def _initialize_global_state(self,
                                  redis_ip_address,
                                  redis_port,
@@ -243,13 +248,7 @@ class GlobalState(object):
         object_info = {
             "DataSize": entry.ObjectSize(),
             "Manager": entry.Manager(),
-            "IsEviction": [entry.IsEviction()],
         }
-
-        for i in range(1, gcs_entry.EntriesLength()):
-            entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
-                gcs_entry.Entries(i), 0)
-            object_info["IsEviction"].append(entry.IsEviction())
 
         return object_info
 

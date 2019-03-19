@@ -30,9 +30,9 @@ git_repository(
 
 new_git_repository(
     name = "com_github_google_glog",
-    build_file = "//bazel:BUILD.glog",
-    remote = "https://github.com/google/glog.git",
-    tag = "v0.3.5",
+    build_file = "@//bazel:BUILD.glog",
+    commit = "5c576f78c49b28d89b23fbb1fc80f54c879ec02e",
+    remote = "https://github.com/google/glog",
 )
 
 new_git_repository(

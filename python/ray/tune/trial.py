@@ -25,7 +25,8 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
-                             TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL)
+                             TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL,
+                             EPISODE_REWARD_MEAN, MEAN_LOSS, MEAN_ACCURACY)
 from ray.utils import _random_string, binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -193,7 +194,7 @@ class Checkpoint(object):
     def __init__(self, storage, value, last_result=None):
         self.storage = storage
         self.value = value
-        self.last_result = last_result
+        self.last_result = last_result or {}
 
     @staticmethod
     def from_object(value=None):
@@ -283,7 +284,7 @@ class Trial(object):
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
-        self.last_result = None
+        self.last_result = {}
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
@@ -299,9 +300,27 @@ class Trial(object):
         self.error_file = None
         self.num_failures = 0
 
-        self.trial_name = None
+        self.custom_trial_name = None
+
+        # AutoML fields
+        self.results = None
+        self.best_result = None
+        self.param_config = None
+        self.extra_arg = None
+
+        self._nonjson_fields = [
+            "_checkpoint",
+            "config",
+            "loggers",
+            "sync_function",
+            "last_result",
+            "results",
+            "best_result",
+            "param_config",
+            "extra_arg",
+        ]
         if trial_name_creator:
-            self.trial_name = trial_name_creator(self)
+            self.custom_trial_name = trial_name_creator(self)
 
     @classmethod
     def _registration_check(cls, trainable_name):
@@ -335,6 +354,18 @@ class Trial(object):
                 upload_uri=self.upload_dir,
                 loggers=self.loggers,
                 sync_function=self.sync_function)
+
+    def update_resources(self, cpu, gpu, **kwargs):
+        """EXPERIMENTAL: Updates the resource requirements.
+
+        Should only be called when the trial is not running.
+
+        Raises:
+            ValueError if trial status is running.
+        """
+        if self.status is Trial.RUNNING:
+            raise ValueError("Cannot update resources while Trial is running.")
+        self.resources = Resources(cpu, gpu, **kwargs)
 
     def sync_logger_to_new_location(self, worker_ip):
         """Updates the logger location.
@@ -392,7 +423,7 @@ class Trial(object):
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
 
-        if self.last_result is None:
+        if not self.last_result:
             return self._status_string()
 
         def location_string(hostname, pid):
@@ -402,12 +433,12 @@ class Trial(object):
                 return '{} pid={}'.format(hostname, pid)
 
         pieces = [
-            '{} [{}]'.format(
-                self._status_string(),
-                location_string(
-                    self.last_result.get(HOSTNAME),
-                    self.last_result.get(PID))), '{} s'.format(
-                        int(self.last_result.get(TIME_TOTAL_S)))
+            '{}'.format(self._status_string()), '[{}]'.format(
+                self.resources.summary_string()), '[{}]'.format(
+                    location_string(
+                        self.last_result.get(HOSTNAME),
+                        self.last_result.get(PID))), '{} s'.format(
+                            int(self.last_result.get(TIME_TOTAL_S)))
         ]
 
         if self.last_result.get(TRAINING_ITERATION) is not None:
@@ -417,17 +448,17 @@ class Trial(object):
         if self.last_result.get(TIMESTEPS_TOTAL) is not None:
             pieces.append('{} ts'.format(self.last_result[TIMESTEPS_TOTAL]))
 
-        if self.last_result.get("episode_reward_mean") is not None:
+        if self.last_result.get(EPISODE_REWARD_MEAN) is not None:
             pieces.append('{} rew'.format(
-                format(self.last_result["episode_reward_mean"], '.3g')))
+                format(self.last_result[EPISODE_REWARD_MEAN], '.3g')))
 
-        if self.last_result.get("mean_loss") is not None:
+        if self.last_result.get(MEAN_LOSS) is not None:
             pieces.append('{} loss'.format(
-                format(self.last_result["mean_loss"], '.3g')))
+                format(self.last_result[MEAN_LOSS], '.3g')))
 
-        if self.last_result.get("mean_accuracy") is not None:
+        if self.last_result.get(MEAN_ACCURACY) is not None:
             pieces.append('{} acc'.format(
-                format(self.last_result["mean_accuracy"], '.3g')))
+                format(self.last_result[MEAN_ACCURACY], '.3g')))
 
         return ', '.join(pieces)
 
@@ -484,8 +515,8 @@ class Trial(object):
 
         Can be overriden with a custom string creator.
         """
-        if self.trial_name:
-            return self.trial_name
+        if self.custom_trial_name:
+            return self.custom_trial_name
 
         if "env" in self.config:
             env = self.config["env"]
@@ -509,22 +540,11 @@ class Trial(object):
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 
-        # These are non-pickleable entries.
-        pickle_data = {
-            "_checkpoint": self._checkpoint,
-            "config": self.config,
-            "loggers": self.loggers,
-            "sync_function": self.sync_function,
-            "last_result": self.last_result
-        }
-
-        for key, value in pickle_data.items():
-            state[key] = binary_to_hex(cloudpickle.dumps(value))
+        for key in self._nonjson_fields:
+            state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
         state["result_logger"] = None
-        if self.status == Trial.RUNNING:
-            state["status"] = Trial.PENDING
         if self.result_logger:
             self.result_logger.flush()
             state["__logger_started__"] = True
@@ -535,10 +555,9 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
-        for key in [
-                "_checkpoint", "config", "loggers", "sync_function",
-                "last_result"
-        ]:
+        if state["status"] == Trial.RUNNING:
+            state["status"] = Trial.PENDING
+        for key in self._nonjson_fields:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)

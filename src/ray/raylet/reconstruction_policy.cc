@@ -6,7 +6,7 @@ namespace raylet {
 
 ReconstructionPolicy::ReconstructionPolicy(
     boost::asio::io_service &io_service,
-    std::function<void(const TaskID &, bool)> reconstruction_handler,
+    std::function<void(const TaskID &)> reconstruction_handler,
     int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
     gcs::PubsubInterface<TaskID> &task_lease_pubsub,
     std::shared_ptr<ObjectDirectoryInterface> object_directory,
@@ -74,14 +74,13 @@ void ReconstructionPolicy::HandleReconstructionLogAppend(const TaskID &task_id,
   SetTaskTimeout(it, initial_reconstruction_timeout_ms_);
 
   if (success) {
-    reconstruction_handler_(task_id, it->second.return_values_lost);
+    reconstruction_handler_(task_id);
   }
 }
 
 void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
                                                  const ObjectID &required_object_id,
-                                                 int reconstruction_attempt,
-                                                 bool created) {
+                                                 int reconstruction_attempt) {
   // If we are no longer listening for objects created by this task, give up.
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
@@ -91,10 +90,6 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   // If the object is no longer required, give up.
   if (it->second.created_objects.count(required_object_id) == 0) {
     return;
-  }
-
-  if (created) {
-    it->second.return_values_lost = true;
   }
 
   // Suppress duplicate reconstructions of the same task. This can happen if,
@@ -142,14 +137,13 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
   // attempted asynchronously.
   for (const auto &created_object_id : it->second.created_objects) {
     RAY_CHECK_OK(object_directory_->LookupLocations(
-        created_object_id,
-        [this, task_id, reconstruction_attempt](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients, bool created) {
+        created_object_id, [this, task_id, reconstruction_attempt](
+                               const ray::ObjectID &object_id,
+                               const std::unordered_set<ray::ClientID> &clients) {
           if (clients.empty()) {
             // The required object no longer exists on any live nodes. Attempt
             // reconstruction.
-            AttemptReconstruction(task_id, object_id, reconstruction_attempt, created);
+            AttemptReconstruction(task_id, object_id, reconstruction_attempt);
           }
         }));
   }

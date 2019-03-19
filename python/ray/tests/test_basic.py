@@ -755,7 +755,7 @@ def test_variable_number_of_args(shutdown_only):
         def no_op():
             pass
 
-        self.init_ray()
+        self.ray_start()
 
         ray.get(no_op.remote())
 
@@ -827,51 +827,63 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(k2.remote(1)) == 2
     assert ray.get(m.remote(1)) == 2
 
-    def test_submit_api(shutdown_only):
-        ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
 
-        @ray.remote
-        def f(n):
-            return list(range(n))
+def test_submit_api(shutdown_only):
+    ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
 
-        @ray.remote
-        def g():
+    @ray.remote
+    def f(n):
+        return list(range(n))
+
+    @ray.remote
+    def g():
+        return ray.get_gpu_ids()
+
+    assert f._remote([0], num_return_vals=0) is None
+    id1 = f._remote(args=[1], num_return_vals=1)
+    assert ray.get(id1) == [0]
+    id1, id2 = f._remote(args=[2], num_return_vals=2)
+    assert ray.get([id1, id2]) == [0, 1]
+    id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
+    assert ray.get([id1, id2, id3]) == [0, 1, 2]
+    assert ray.get(
+        g._remote(args=[], num_cpus=1, num_gpus=1,
+                  resources={"Custom": 1})) == [0]
+    infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
+    assert ray.get(g._remote()) == []
+    ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
+    assert len(ready_ids) == 0
+    assert len(remaining_ids) == 1
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self, x, y=0):
+            self.x = x
+            self.y = y
+
+        def method(self, a, b=0):
+            return self.x, self.y, a, b
+
+        def gpu_ids(self):
             return ray.get_gpu_ids()
 
-        assert f._remote([0], num_return_vals=0) is None
-        id1 = f._remote(args=[1], num_return_vals=1)
-        assert ray.get(id1) == [0]
-        id1, id2 = f._remote(args=[2], num_return_vals=2)
-        assert ray.get([id1, id2]) == [0, 1]
-        id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
-        assert ray.get([id1, id2, id3]) == [0, 1, 2]
-        assert ray.get(
-            g._remote(
-                args=[], num_cpus=1, num_gpus=1,
-                resources={"Custom": 1})) == [0]
-        infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
-        ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
-        assert len(ready_ids) == 0
-        assert len(remaining_ids) == 1
+    @ray.remote
+    class Actor2(object):
+        def __init__(self):
+            pass
 
-        @ray.remote
-        class Actor(object):
-            def __init__(self, x, y=0):
-                self.x = x
-                self.y = y
+        def method(self):
+            pass
 
-            def method(self, a, b=0):
-                return self.x, self.y, a, b
+    a = Actor._remote(
+        args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
 
-            def gpu_ids(self):
-                return ray.get_gpu_ids()
+    a2 = Actor2._remote()
+    ray.get(a2.method._remote())
 
-        a = Actor._remote(
-            args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
-
-        id1, id2, id3, id4 = a.method._remote(
-            args=["test"], kwargs={"b": 2}, num_return_vals=4)
-        assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
+    id1, id2, id3, id4 = a.method._remote(
+        args=["test"], kwargs={"b": 2}, num_return_vals=4)
+    assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
 def test_get_multiple(shutdown_only):
@@ -1146,6 +1158,32 @@ def ray_start_cluster():
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+
+
+def test_wait_cluster(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"RemoteResource": 1})
+    cluster.add_node(num_cpus=1, resources={"RemoteResource": 1})
+    ray.init(redis_address=cluster.redis_address)
+
+    @ray.remote(resources={"RemoteResource": 1})
+    def f():
+        return
+
+    # Make sure we have enough workers on the remote nodes to execute some
+    # tasks.
+    tasks = [f.remote() for _ in range(10)]
+    start = time.time()
+    ray.get(tasks)
+    end = time.time()
+
+    # Submit some more tasks that can only be executed on the remote nodes.
+    tasks = [f.remote() for _ in range(10)]
+    # Sleep for a bit to let the tasks finish.
+    time.sleep((end - start) * 2)
+    _, unready = ray.wait(tasks, num_returns=len(tasks), timeout=0)
+    # All remote tasks should have finished.
+    assert len(unready) == 0
 
 
 def test_object_transfer_dump(ray_start_cluster):
@@ -2467,10 +2505,6 @@ def test_global_state_api(shutdown_only):
     object_table = ray.global_state.object_table()
     assert len(object_table) == 2
 
-    assert object_table[x_id]["IsEviction"][0] is False
-
-    assert object_table[result_id]["IsEviction"][0] is False
-
     assert object_table[x_id] == ray.global_state.object_table(x_id)
     object_table_entry = ray.global_state.object_table(result_id)
     assert object_table[result_id] == object_table_entry
@@ -2853,3 +2887,12 @@ def test_load_code_from_local(shutdown_only):
     base_actor_class = ray.remote(num_cpus=1)(BaseClass)
     base_actor = base_actor_class.remote(message)
     assert ray.get(base_actor.get_data.remote()) == message
+
+
+def test_shutdown_disconnect_global_state():
+    ray.init(num_cpus=0)
+    ray.shutdown()
+
+    with pytest.raises(Exception) as e:
+        ray.global_state.object_table()
+    assert str(e.value).endswith("ray.init has been called.")

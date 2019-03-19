@@ -25,6 +25,7 @@ import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.experimental.signal as ray_signal
+import ray.experimental.no_return
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -161,6 +162,10 @@ class Worker(object):
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
+        # Index of the current session. This number will
+        # increment every time when `ray.shutdown` is called.
+        self._session_index = 0
+        self._current_task = None
 
     @property
     def task_context(self):
@@ -344,7 +349,7 @@ class Worker(object):
         """
         # Make sure that the value is not an object ID.
         if isinstance(value, ObjectID):
-            raise Exception(
+            raise TypeError(
                 "Calling 'put' on an ray.ObjectID is not allowed "
                 "(similarly, returning an ray.ObjectID from a remote "
                 "function is not allowed). If you really want to "
@@ -467,7 +472,7 @@ class Worker(object):
         # Make sure that the values are object IDs.
         for object_id in object_ids:
             if not isinstance(object_id, ObjectID):
-                raise Exception(
+                raise TypeError(
                     "Attempting to call `get` on the value {}, "
                     "which is not an ray.ObjectID.".format(object_id))
         # Do an initial fetch for remote objects. We divide the fetch into
@@ -787,8 +792,15 @@ class Worker(object):
             if isinstance(outputs[i], ray.actor.ActorHandle):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
-
-            self.put_object(object_ids[i], outputs[i])
+            if outputs[i] is ray.experimental.no_return.NoReturn:
+                if not self.plasma_client.contains(
+                        pyarrow.plasma.ObjectID(object_ids[i].binary())):
+                    raise RuntimeError(
+                        "Attempting to return 'ray.experimental.NoReturn' "
+                        "from a remote function, but the corresponding "
+                        "ObjectID does not exist in the local object store.")
+            else:
+                self.put_object(object_ids[i], outputs[i])
 
     def _process_task(self, task, function_execution_info):
         """Execute a task assigned to this worker.
@@ -844,6 +856,7 @@ class Worker(object):
 
         # Execute the task.
         try:
+            self._current_task = task
             with profiling.profile("task:execute"):
                 if (task.actor_id().is_nil()
                         and task.actor_creation_id().is_nil()):
@@ -864,6 +877,8 @@ class Worker(object):
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e, traceback_str)
             return
+        finally:
+            self._current_task = None
 
         # Store the outputs in the local object store.
         try:
@@ -898,7 +913,7 @@ class Worker(object):
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
         # Send signal with the error.
-        ray_signal.send(ray_signal.ErrorSignal(error))
+        ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -1339,7 +1354,7 @@ def init(redis_address=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
-            UI, which is a Jupyter notebook.
+            UI, which displays the status of the Ray cluster.
         driver_id: The ID of driver.
         configure_logging: True if allow the logging cofiguration here.
             Otherwise, the users may want to configure it by their own.
@@ -1538,7 +1553,7 @@ def init(redis_address=None,
 _post_init_hooks = []
 
 
-def shutdown():
+def shutdown(exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
     This will automatically run at the end when a Python process that uses Ray
@@ -1550,8 +1565,21 @@ def shutdown():
     defined remote functions or actors after calling ray.shutdown(), then you
     need to redefine them. If they were defined in an imported module, then you
     will need to reload the module.
+
+    Args:
+        exiting_interpreter (bool): True if this is called by the atexit hook
+            and false otherwise. If we are exiting the interpreter, we will
+            wait a little while to print any extra error messages.
     """
+    if exiting_interpreter and global_worker.mode == SCRIPT_MODE:
+        # This is a duration to sleep before shutting down everything in order
+        # to make sure that log messages finish printing.
+        time.sleep(0.5)
+
     disconnect()
+
+    # Disconnect global state from GCS.
+    global_state.disconnect()
 
     # Shut down the Ray processes.
     global _global_node
@@ -1562,7 +1590,7 @@ def shutdown():
     global_worker.set_mode(None)
 
 
-atexit.register(shutdown)
+atexit.register(shutdown, True)
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
@@ -1667,6 +1695,8 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
         # messages originating from the worker.
         while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
             threads_stopped.wait(timeout=1)
+            if threads_stopped.is_set():
+                break
         if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
             logger.debug("Suppressing error from worker: {}".format(error))
         else:
@@ -1797,7 +1827,7 @@ def connect(info,
             driver_id = DriverID(_random_string())
 
         if not isinstance(driver_id, DriverID):
-            raise Exception("The type of given driver id must be DriverID.")
+            raise TypeError("The type of given driver id must be DriverID.")
 
         worker.worker_id = driver_id.binary()
 
@@ -1867,9 +1897,6 @@ def connect(info,
                      if hasattr(main, "__file__") else "INTERACTIVE MODE")
         }
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
-        if (not worker.redis_client.exists("webui")
-                and info["webui_url"] is not None):
-            worker.redis_client.hmset("webui", {"url": info["webui_url"]})
     elif mode == WORKER_MODE:
         # Register the worker with Redis.
         worker_dict = {
@@ -2042,7 +2069,7 @@ def connect(info,
 
 
 def disconnect():
-    """Disconnect this worker from the scheduler and object store."""
+    """Disconnect this worker from the raylet and object store."""
     # Reset the list of cached remote functions and actors so that if more
     # remote functions or actors are defined and then connect is called again,
     # the remote functions will be exported. This is mostly relevant for the
@@ -2064,6 +2091,7 @@ def disconnect():
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
+        worker._session_index += 1
 
     worker.connected = False
     worker.cached_functions_to_run = []

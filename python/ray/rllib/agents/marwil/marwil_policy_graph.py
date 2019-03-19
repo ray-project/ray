@@ -73,7 +73,8 @@ class MARWILPolicyGraph(TFPolicyGraph):
                 "prev_actions": prev_actions_ph,
                 "prev_rewards": prev_rewards_ph,
                 "is_training": self._get_is_training_placeholder(),
-            }, observation_space, logit_dim, self.config["model"])
+            }, observation_space, action_space, logit_dim,
+                                                self.config["model"])
             logits = self.model.outputs
             self.p_func_vars = _scope_vars(scope.name)
 
