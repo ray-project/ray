@@ -5,7 +5,7 @@ from __future__ import print_function
 import numpy as np
 
 
-def tf_aligned(size, dtype, align=64):
+def aligned_array(size, dtype, align=64):
     """Returns an array of a given size that is 64-byte aligned.
 
     The returned array can be efficiently copied into GPU memory by TensorFlow.
@@ -36,7 +36,7 @@ def concat_aligned(items):
 
     dtype = items[0].dtype
     if dtype in [np.float32, np.float64]:
-        flat = tf_aligned(sum(s.size for s in items), dtype)
+        flat = aligned_array(sum(s.size for s in items), dtype)
         batch_dim = sum(s.shape[0] for s in items)
         new_shape = (batch_dim, ) + items[0].shape[1:]
         output = flat.reshape(new_shape)
