@@ -316,6 +316,8 @@ class ReplayActor(object):
         return stat
 
 
+# note: we set num_cpus=0 to avoid failing to create replay actors when
+# resources are fragmented. This isn't ideal.
 @ray.remote(num_cpus=0)
 class BatchReplayActor(object):
     """The batch replay version of the replay actor.
