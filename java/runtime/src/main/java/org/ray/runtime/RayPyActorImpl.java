@@ -38,7 +38,7 @@ public class RayPyActorImpl extends RayActorImpl implements RayPyActor {
     return className;
   }
 
-  public RayPyActorImpl fork(boolean random) {
+  public RayPyActorImpl fork() {
     RayPyActorImpl ret = new RayPyActorImpl();
     ret.id = this.id;
     ret.taskCounter = 0;
