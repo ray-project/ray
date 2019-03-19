@@ -415,10 +415,11 @@ class TrialRunner(object):
             if is_duplicate:
                 logger.debug("Trial finished without logging 'done'.")
                 result = trial.last_result
+                result.update(done=True)
 
             self._total_time += result[TIME_THIS_ITER_S]
 
-            if trial.should_stop(result) or is_duplicate:
+            if trial.should_stop(result):
                 # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, result)
                 self._search_alg.on_trial_complete(
