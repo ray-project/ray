@@ -106,14 +106,11 @@ class Lineage {
   boost::optional<const LineageEntry &> GetEntry(const TaskID &entry_id) const;
   boost::optional<LineageEntry &> GetEntryMutable(const TaskID &task_id);
 
-  /// Set an entry in the lineage. If an entry with this ID already exists,
-  /// then the entry is overwritten if and only if the new entry has a higher
-  /// GCS status than the current. The current entry's object or task data will
-  /// also be overwritten.
+  /// Add a task to the lineage.
   ///
-  /// \param task The task data to set, if status is greater than the current entry.
-  /// \return Whether the entry was set.
-  bool SetEntry(const Task &task);
+  /// \param task The task to add.
+  /// \return True if the task was added and false if it already existed.
+  bool AddTask(const Task &task);
 
   /// Delete and return an entry from the lineage.
   ///
@@ -190,10 +187,12 @@ class LineageCache {
   /// mutable fields in the execution specification.
   ///
   /// \param task The task to set as ready.
-  /// \return Whether the task was successfully marked as ready to be
-  /// committed. This will return false if the task is already ready to be
-  /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
-  bool AddTask(const Task &task);
+  /// \param uncommitted_lineage The task's uncommitted lineage. These are the
+  /// tasks that the given task is data-dependent on, but that have not
+  /// been made durable in the GCS, as far the task's submitter knows.
+  /// \return True if the task was successfully added to the lineage cache and
+  /// false if it was already present.
+  bool AddTask(const Task &task, const Lineage &uncommitted_lineage);
 
   /// Mark a task as having been explicitly forwarded to a node.
   /// The lineage of the task is implicitly assumed to have also been forwarded.
@@ -252,8 +251,7 @@ class LineageCache {
   /// to evict the task's children.
   void EvictTask(const TaskID &task_id);
   /// Add a task and its uncommitted lineage to the local stash.
-  void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage,
-                             std::unordered_set<TaskID> &subscribe_tasks);
+  void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage);
 
   /// The client ID, used to request notifications for specific tasks.
   /// TODO(swang): Move the ClientID into the generic Table implementation.

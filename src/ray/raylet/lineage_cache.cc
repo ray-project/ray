@@ -51,7 +51,7 @@ Lineage::Lineage(const protocol::ForwardTaskRequest &task_request) {
   auto tasks = task_request.uncommitted_tasks();
   for (auto it = tasks->begin(); it != tasks->end(); it++) {
     const auto &task = **it;
-    RAY_CHECK(SetEntry(task));
+    RAY_CHECK(AddTask(task));
   }
 }
 
@@ -86,25 +86,16 @@ void Lineage::AddChild(const TaskID &parent_id, const TaskID &child_id) {
   RAY_CHECK(inserted.second);
 }
 
-bool Lineage::SetEntry(const Task &task) {
+bool Lineage::AddTask(const Task &task) {
   // Get the status of the current entry at the key.
   auto task_id = task.GetTaskSpecification().TaskId();
   auto it = entries_.find(task_id);
-  bool updated = false;
+  bool added = false;
   std::unordered_set<TaskID> old_parents;
-  if (it != entries_.end()) {
-    // if (it->second.SetStatus(status)) {
-    //   // The task's spec may have changed, so record its old dependencies.
-    //   old_parents = it->second.GetParentTaskIds();
-    //   // SetStatus() would check if the new status is greater,
-    //   // if it succeeds, go ahead to update the task field.
-    //   it->second.UpdateTaskData(task);
-    //   updated = true;
-    // }
-  } else {
+  if (it == entries_.end()) {
     LineageEntry new_entry(task);
     it = entries_.emplace(std::make_pair(task_id, std::move(new_entry))).first;
-    updated = true;
+    added = true;
   }
 
   // If the task data was updated, then record which tasks it depends on. Add
@@ -113,7 +104,7 @@ bool Lineage::SetEntry(const Task &task) {
   // TODO(swang): Updating the task data every time could be inefficient for
   // tasks that have lots of dependencies and/or large specs. A flag could be
   // passed in for tasks whose data has not changed.
-  if (updated) {
+  if (added) {
     for (const auto &parent_id : it->second.GetParentTaskIds()) {
       if (old_parents.count(parent_id) == 0) {
         AddChild(parent_id, task_id);
@@ -125,7 +116,7 @@ bool Lineage::SetEntry(const Task &task) {
       RemoveChild(old_parent_id, task_id);
     }
   }
-  return updated;
+  return added;
 }
 
 boost::optional<LineageEntry> Lineage::PopEntry(const TaskID &task_id) {
@@ -182,8 +173,7 @@ LineageCache::LineageCache(const ClientID &client_id,
 
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
-                                         const Lineage &uncommitted_lineage,
-                                         std::unordered_set<TaskID> &subscribe_tasks) {
+                                         const Lineage &uncommitted_lineage) {
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
   auto entry = uncommitted_lineage.GetEntry(task_id);
@@ -196,27 +186,24 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
   // If the insert is successful, then continue the DFS. The insert will fail
   // if the new entry has an equal or lower GCS status than the current entry
   // in our cache. This also prevents us from traversing the same node twice.
-  // if (lineage_.SetEntry(entry->TaskData(), entry->GetStatus())) {
-  if (lineage_.SetEntry(entry->TaskData())) {
-    subscribe_tasks.insert(task_id);
+  if (lineage_.AddTask(entry->TaskData())) {
     for (const auto &parent_id : parent_ids) {
-      AddUncommittedLineage(parent_id, uncommitted_lineage, subscribe_tasks);
+      AddUncommittedLineage(parent_id, uncommitted_lineage);
     }
   }
 }
 
-bool LineageCache::AddTask(const Task &task) {
+bool LineageCache::AddTask(const Task &task, const Lineage &uncommitted_lineage) {
   const TaskID task_id = task.GetTaskSpecification().TaskId();
-  RAY_LOG(DEBUG) << "Add ready task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Adding task " << task_id << " on " << client_id_;
 
-  // Set the task to READY.
-  if (lineage_.SetEntry(task)) {
+  if (lineage_.AddTask(task)) {
+    AddUncommittedLineage(task_id, uncommitted_lineage);
     // Attempt to flush the task.
     FlushTask(task_id);
     return true;
   } else {
-    // The task was already ready to be committed (UNCOMMITTED_READY) or
-    // committing (COMMITTING).
+    // The task was already present.
     return false;
   }
 }
@@ -244,7 +231,7 @@ void GetUncommittedLineageHelper(const TaskID &task_id, const Lineage &lineage_f
   // then continue the DFS. The insert will fail if the new entry has an equal
   // or lower GCS status than the current entry in lineage_to. This also
   // prevents us from traversing the same node twice.
-  if (lineage_to.SetEntry(entry->TaskData())) {
+  if (lineage_to.AddTask(entry->TaskData())) {
     for (const auto &parent_id : entry->GetParentTaskIds()) {
       GetUncommittedLineageHelper(parent_id, lineage_from, lineage_to, node_id);
     }
@@ -263,7 +250,7 @@ Lineage LineageCache::GetUncommittedLineageOrDie(const TaskID &task_id,
   if (uncommitted_lineage.GetEntries().empty()) {
     auto entry = lineage_.GetEntry(task_id);
     RAY_CHECK(entry);
-    RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData()));
+    RAY_CHECK(uncommitted_lineage.AddTask(entry->TaskData()));
   }
   return uncommitted_lineage;
 }
