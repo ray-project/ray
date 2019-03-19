@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include "opencensus/exporters/stats/stdout/stdout_exporter.h"
 #include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
 #include "prometheus/exposer.h"
 #include "opencensus/tags/tag_key.h"
@@ -17,7 +18,7 @@ namespace stats {
 /// Include metric_defs.h to define measure items.
 #include "metric_defs.h"
 
-  /// Initialize perf counter.
+  /// Initialize stats.
   static void Init(const std::string &address) {
     // Enable the Prometheus exporter.
     // Note that the reason for we using local static variables
@@ -25,6 +26,9 @@ namespace stats {
     static auto exporter = std::make_shared<opencensus::exporters::stats::PrometheusExporter>();
     static prometheus::Exposer exposer(address);
     exposer.RegisterCollectable(exporter);
+
+    // Also enable stdout exporter by default.
+    opencensus::exporters::stats::StdoutExporter::Register();
   }
 
 } // namespace stats

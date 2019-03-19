@@ -1,19 +1,20 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include "ray/stats/stats.h"
-
+#include <iostream>
+#include <vector>
 #include <chrono>
 #include <thread>
 
-namespace ray {
+#include "ray/stats/stats.h"
 
+namespace ray {
 
 class StatsTest : public ::testing::Test {
 
 public:
   void SetUp() {
-    stats::Init("127.0.0.1:8888");
+    ray::stats::Init("127.0.0.1:8888");
   }
 
   void Shutdown() {
@@ -33,7 +34,7 @@ TEST_F(StatsTest, F) {
     stats::TaskElapse().Record(i * 10,
         {{stats::NodeAddressKey, "localhost"}, {stats::CustomKey, "BBBBB"}});
 
-    stats::TaskCount().Record(i);
+    stats::TaskCount().Record(1);
 
     stats::WorkerCount().Record(i * 1000, {{stats::CustomKey, "DDDDD"}});
   }

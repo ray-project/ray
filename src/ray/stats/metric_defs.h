@@ -17,7 +17,7 @@ static Metric RedisLatency = Metric::MakeHistogram("redis_latency",
                                                    {NodeAddressKey, CustomKey});
 
 
-static Metric TaskCount = Metric::MakeGauge("task_count",
+static Metric TaskCount = Metric::MakeCount("task_count",
                                             "the task count that the raylet received",
                                             "pcs");
 

@@ -58,7 +58,7 @@ class Metric final {
     return metric;
   }
 
-  /// Histgrom
+  /// Histogram
   static Metric MakeHistogram(const std::string &name,
                               const std::string &description,
                               const std::string &unit,
@@ -76,6 +76,38 @@ class Metric final {
     return metric;
   }
 
+  /// Count
+  static Metric MakeCount(const std::string &name,
+                          const std::string &description,
+                          const std::string &unit,
+                          const std::vector<opencensus::tags::TagKey>& keys = {}) {
+    auto metric = Metric(name, description, unit);
+    opencensus::stats::ViewDescriptor view_descriptor =
+        opencensus::stats::ViewDescriptor().set_name(name)
+            .set_description(description)
+            .set_measure(metric.GetName())
+            .set_aggregation(opencensus::stats::Aggregation::Count());
+
+    RegisterAsView(view_descriptor, keys);
+    return metric;
+  }
+
+    /// Sum
+    static Metric MakeSum(const std::string &name,
+                            const std::string &description,
+                            const std::string &unit,
+                            const std::vector<opencensus::tags::TagKey>& keys = {}) {
+      auto metric = Metric(name, description, unit);
+      opencensus::stats::ViewDescriptor view_descriptor =
+          opencensus::stats::ViewDescriptor().set_name(name)
+              .set_description(description)
+              .set_measure(metric.GetName())
+              .set_aggregation(opencensus::stats::Aggregation::Sum());
+
+      RegisterAsView(view_descriptor, keys);
+      return metric;
+    }
+
   std::string GetName() const {
     return measure_.GetDescriptor().name();
   }
@@ -83,8 +115,6 @@ class Metric final {
   void Record(double value) {
     Record(value, {});
   }
-
-  /// TODO(qwang): `MakeCount` and `MakeSum`
 
   void Record(double value, const std::vector<std::pair<opencensus::tags::TagKey::TagKey, std::string>>& tags) {
     std::vector<std::pair<opencensus::tags::TagKey, std::string>> combined_tags(tags);
