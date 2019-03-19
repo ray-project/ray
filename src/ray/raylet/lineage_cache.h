@@ -16,20 +16,6 @@ namespace ray {
 
 namespace raylet {
 
-/// The status of a lineage cache entry according to its status in the GCS.
-enum class GcsStatus {
-  // /// The task is not in the lineage cache.
-  // NONE = 0,
-  // /// The task is being executed or created on a remote node.
-  // UNCOMMITTED_REMOTE,
-  // /// The task has started execution, but the entry has not been written to the
-  // /// GCS yet.
-  // UNCOMMITTED_READY,
-  /// The task has been written to the GCS, and we are waiting for an
-  /// acknowledgement of the commit.
-  COMMITTING,
-};
-
 /// \class LineageEntry
 ///
 /// A task entry in the data lineage. Each entry's parents are the tasks that
@@ -39,29 +25,7 @@ class LineageEntry {
   /// Create an entry for a task.
   ///
   /// \param task The task data to eventually be written back to the GCS.
-  /// \param status The status of this entry, according to its write status in
-  /// the GCS.
-  LineageEntry(const Task &task, GcsStatus status);
-
-  // /// Get this entry's GCS status.
-  // ///
-  // /// \return The entry's status in the GCS.
-  // GcsStatus GetStatus() const;
-  //
-  // /// Set this entry's GCS status. The status is only set if the new status
-  // /// is strictly greater than the entry's previous status, according to the
-  // /// GcsStatus enum.
-  // ///
-  // /// \param new_status Set the entry's status to this value if it is greater
-  // /// than the current status.
-  // /// \return Whether the entry was set to the new status.
-  // bool SetStatus(GcsStatus new_status);
-  //
-  // /// Reset this entry's GCS status to a lower status. The new status must
-  // /// be lower than the current status.
-  // ///
-  // /// \param new_status This must be lower than the current status.
-  // void ResetStatus(GcsStatus new_status);
+  LineageEntry(const Task &task);
 
   /// Mark this entry as having been explicitly forwarded to a remote node manager.
   ///
@@ -106,8 +70,6 @@ class LineageEntry {
   /// by these tasks.
   void ComputeParentTaskIds();
 
-  /// The current state of this entry according to its status in the GCS.
-  GcsStatus status_;
   /// The task data to be written to the GCS. This is nullptr if the entry is
   /// an object.
   //  const Task task_;
@@ -150,9 +112,7 @@ class Lineage {
   /// also be overwritten.
   ///
   /// \param task The task data to set, if status is greater than the current entry.
-  /// \param status The GCS status.
   /// \return Whether the entry was set.
-  // bool SetEntry(const Task &task, GcsStatus status);
   bool SetEntry(const Task &task);
 
   /// Delete and return an entry from the lineage.
@@ -291,12 +251,6 @@ class LineageCache {
   /// parents have also been evicted. If successful, then we will also attempt
   /// to evict the task's children.
   void EvictTask(const TaskID &task_id);
-  /// Subscribe to notifications for a task. Returns whether the operation
-  /// was successful (whether we were not already subscribed).
-  bool SubscribeTask(const TaskID &task_id);
-  /// Unsubscribe from notifications for a task. Returns whether the operation
-  /// was successful (whether we were subscribed).
-  bool UnsubscribeTask(const TaskID &task_id);
   /// Add a task and its uncommitted lineage to the local stash.
   void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage,
                              std::unordered_set<TaskID> &subscribe_tasks);

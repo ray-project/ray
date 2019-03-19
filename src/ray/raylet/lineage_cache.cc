@@ -6,26 +6,10 @@ namespace ray {
 
 namespace raylet {
 
-LineageEntry::LineageEntry(const Task &task, GcsStatus status)
-    : status_(status), task_(task) {
+LineageEntry::LineageEntry(const Task &task)
+    : task_(task) {
   ComputeParentTaskIds();
 }
-
-// GcsStatus LineageEntry::GetStatus() const { return status_; }
-
-// bool LineageEntry::SetStatus(GcsStatus new_status) {
-//   if (status_ < new_status) {
-//     status_ = new_status;
-//     return true;
-//   } else {
-//     return false;
-//   }
-// }
-
-// void LineageEntry::ResetStatus(GcsStatus new_status) {
-//   RAY_CHECK(new_status < status_);
-//   status_ = new_status;
-// }
 
 void LineageEntry::MarkExplicitlyForwarded(const ClientID &node_id) {
   forwarded_to_.insert(node_id);
@@ -67,7 +51,6 @@ Lineage::Lineage(const protocol::ForwardTaskRequest &task_request) {
   auto tasks = task_request.uncommitted_tasks();
   for (auto it = tasks->begin(); it != tasks->end(); it++) {
     const auto &task = **it;
-    // RAY_CHECK(SetEntry(task, GcsStatus::UNCOMMITTED_REMOTE));
     RAY_CHECK(SetEntry(task));
   }
 }
@@ -103,7 +86,6 @@ void Lineage::AddChild(const TaskID &parent_id, const TaskID &child_id) {
   RAY_CHECK(inserted.second);
 }
 
-// bool Lineage::SetEntry(const Task &task, GcsStatus status) {
 bool Lineage::SetEntry(const Task &task) {
   // Get the status of the current entry at the key.
   auto task_id = task.GetTaskSpecification().TaskId();
@@ -120,8 +102,7 @@ bool Lineage::SetEntry(const Task &task) {
     //   updated = true;
     // }
   } else {
-    GcsStatus status;
-    LineageEntry new_entry(task, status);
+    LineageEntry new_entry(task);
     it = entries_.emplace(std::make_pair(task_id, std::move(new_entry))).first;
     updated = true;
   }
@@ -209,7 +190,6 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
   if (!entry) {
     return;
   }
-  // RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_REMOTE);
 
   // Insert a copy of the entry into our cache.
   const auto &parent_ids = entry->GetParentTaskIds();
@@ -224,37 +204,6 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
     }
   }
 }
-
-// bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage) {
-//   auto task_id = task.GetTaskSpecification().TaskId();
-//   RAY_LOG(DEBUG) << "Add waiting task " << task_id << " on " << client_id_;
-//
-//   // Merge the uncommitted lineage into the lineage cache. Collect the IDs of
-//   // tasks that we should subscribe to. These are all of the tasks that were
-//   // included in the uncommitted lineage that we did not already have in our
-//   // stash.
-//   std::unordered_set<TaskID> subscribe_tasks;
-//   AddUncommittedLineage(task_id, uncommitted_lineage, subscribe_tasks);
-//   // Add the submitted task to the lineage cache as UNCOMMITTED_WAITING. It
-//   // should be marked as UNCOMMITTED_READY once the task starts execution.
-//   auto added = lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_WAITING);
-//
-//   // Do not subscribe to the waiting task itself. We just added it as
-//   // UNCOMMITTED_WAITING, so the task is local.
-//   subscribe_tasks.erase(task_id);
-//   // Unsubscribe to the waiting task since we may have previously been
-//   // subscribed to it.
-//   UnsubscribeTask(task_id);
-//   // Subscribe to all other tasks that were included in the uncommitted lineage
-//   // and that were not already in the local stash. These tasks haven't been
-//   // committed yet and will be committed by a different node, so we will not
-//   // evict them until a notification for their commit is received.
-//   for (const auto &task_id : subscribe_tasks) {
-//     RAY_CHECK(SubscribeTask(task_id));
-//   }
-//
-//   return added;
-// }
 
 bool LineageCache::AddTask(const Task &task) {
   const TaskID task_id = task.GetTaskSpecification().TaskId();
@@ -271,33 +220,6 @@ bool LineageCache::AddTask(const Task &task) {
     return false;
   }
 }
-
-// bool LineageCache::RemoveWaitingTask(const TaskID &task_id) {
-//   RAY_LOG(DEBUG) << "Remove waiting task " << task_id << " on " << client_id_;
-//   auto entry = lineage_.GetEntryMutable(task_id);
-//   if (!entry) {
-//     // The task was already evicted.
-//     return false;
-//   }
-//
-//   // If the task is already not in WAITING status, then exit. This should only
-//   // happen when there are two copies of the task executing at the node, due to
-//   // a spurious reconstruction. Then, either the task is already past WAITING
-//   // status, in which case it will be committed, or it is in
-//   // UNCOMMITTED_REMOTE, in which case it was already removed.
-//   if (entry->GetStatus() != GcsStatus::UNCOMMITTED_WAITING) {
-//     return false;
-//   }
-//
-//   // Reset the status to REMOTE. We keep the task instead of removing it
-//   // completely in case another task is submitted locally that depends on this
-//   // one.
-//   entry->ResetStatus(GcsStatus::UNCOMMITTED_REMOTE);
-//   // The task is now remote, so subscribe to the task to make sure that we'll
-//   // eventually clean it up.
-//   RAY_CHECK(SubscribeTask(task_id));
-//   return true;
-// }
 
 void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id) {
   RAY_CHECK(!node_id.is_nil());
@@ -349,7 +271,6 @@ Lineage LineageCache::GetUncommittedLineageOrDie(const TaskID &task_id,
 void LineageCache::FlushTask(const TaskID &task_id) {
   auto entry = lineage_.GetEntryMutable(task_id);
   RAY_CHECK(entry);
-  // RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_READY);
 
   gcs::TaskTable::WriteCallback task_callback = [this](
       ray::gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
@@ -367,36 +288,8 @@ void LineageCache::FlushTask(const TaskID &task_id) {
       task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().DriverId()),
                         task_id, task_data, task_callback));
 
-  // // We successfully wrote the task, so mark it as committing.
-  // // TODO(swang): Use a batched interface and write with all object entries.
-  // RAY_CHECK(entry->SetStatus(GcsStatus::COMMITTING));
-}
-
-bool LineageCache::SubscribeTask(const TaskID &task_id) {
-  auto inserted = subscribed_tasks_.insert(task_id);
-  bool unsubscribed = inserted.second;
-  if (unsubscribed) {
-    // Request notifications for the task if we haven't already requested
-    // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.RequestNotifications(JobID::nil(), task_id, client_id_));
-  }
-  // Return whether we were previously unsubscribed to this task and are now
-  // subscribed.
-  return unsubscribed;
-}
-
-bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
-  auto it = subscribed_tasks_.find(task_id);
-  bool subscribed = (it != subscribed_tasks_.end());
-  if (subscribed) {
-    // Cancel notifications for the task if we previously requested
-    // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_));
-    subscribed_tasks_.erase(it);
-  }
-  // Return whether we were previously subscribed to this task and are now
-  // unsubscribed.
-  return subscribed;
+  // We successfully wrote the task.
+  // TODO(swang): Use a batched interface and write with all object entries.
 }
 
 void LineageCache::EvictTask(const TaskID &task_id) {
@@ -410,11 +303,6 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   if (!entry) {
     return;
   }
-  // // Only evict tasks that we were subscribed to or that we were committing.
-  // if (!(entry->GetStatus() == GcsStatus::UNCOMMITTED_REMOTE ||
-  //       entry->GetStatus() == GcsStatus::COMMITTING)) {
-  //   return;
-  // }
   // Entries cannot be safely evicted until their parents are all evicted.
   for (const auto &parent_id : entry->GetParentTaskIds()) {
     if (ContainsTask(parent_id)) {
@@ -447,9 +335,9 @@ void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
   // Record the commit acknowledgement and attempt to evict the task.
   committed_tasks_.insert(task_id);
   EvictTask(task_id);
-  // We got the notification about the task's commit, so no longer need any
-  // more notifications.
-  UnsubscribeTask(task_id);
+  // // We got the notification about the task's commit, so no longer need any
+  // // more notifications.
+  // UnsubscribeTask(task_id);
 }
 
 const Task &LineageCache::GetTaskOrDie(const TaskID &task_id) const {
