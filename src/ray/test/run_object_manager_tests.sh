@@ -22,7 +22,7 @@ if [ ! -d "$RAY_ROOT/python" ]; then
   exit 1
 fi
 
-REDIS_MODULE="./bazel-genfiles/ray_pkg/ray/core/src/ray/gcs/redis_module/libray_redis_module.so"
+REDIS_MODULE="./bazel-bin/libray_redis_module.so"
 LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
 
