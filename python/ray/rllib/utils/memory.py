@@ -25,6 +25,8 @@ def aligned_array(size, dtype, align=64):
 def concat_aligned(items):
     """Concatenate arrays, ensuring the output is 64-byte aligned.
 
+    We only align float arrays; other arrays are concatenated as normal.
+
     This should be used instead of np.concatenate() to improve performance
     when the output array is likely to be fed into TensorFlow.
     """
