@@ -125,12 +125,10 @@ cc_library(
         "cpp/src/plasma/dlmalloc.cc",
         "cpp/src/plasma/events.cc",
         "cpp/src/plasma/eviction_policy.cc",
-        "cpp/src/plasma/plasma_allocator.cc",
     ],
     hdrs = [
         "cpp/src/plasma/events.h",
         "cpp/src/plasma/eviction_policy.h",
-        "cpp/src/plasma/plasma_allocator.h",
         "cpp/src/plasma/store.h",
         "cpp/src/plasma/thirdparty/ae/ae.h",
         "cpp/src/plasma/thirdparty/ae/ae_epoll.c",
