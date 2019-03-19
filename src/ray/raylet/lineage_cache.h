@@ -18,16 +18,14 @@ namespace raylet {
 
 /// The status of a lineage cache entry according to its status in the GCS.
 enum class GcsStatus {
-  /// The task is not in the lineage cache.
-  NONE = 0,
-  /// The task is being executed or created on a remote node.
-  UNCOMMITTED_REMOTE,
-  /// The task is waiting to be executed or created locally.
-  UNCOMMITTED_WAITING,
-  /// The task has started execution, but the entry has not been written to the
-  /// GCS yet.
-  UNCOMMITTED_READY,
-  /// The task has been written to the GCS and we are waiting for an
+  // /// The task is not in the lineage cache.
+  // NONE = 0,
+  // /// The task is being executed or created on a remote node.
+  // UNCOMMITTED_REMOTE,
+  // /// The task has started execution, but the entry has not been written to the
+  // /// GCS yet.
+  // UNCOMMITTED_READY,
+  /// The task has been written to the GCS, and we are waiting for an
   /// acknowledgement of the commit.
   COMMITTING,
 };
@@ -45,25 +43,25 @@ class LineageEntry {
   /// the GCS.
   LineageEntry(const Task &task, GcsStatus status);
 
-  /// Get this entry's GCS status.
-  ///
-  /// \return The entry's status in the GCS.
-  GcsStatus GetStatus() const;
-
-  /// Set this entry's GCS status. The status is only set if the new status
-  /// is strictly greater than the entry's previous status, according to the
-  /// GcsStatus enum.
-  ///
-  /// \param new_status Set the entry's status to this value if it is greater
-  /// than the current status.
-  /// \return Whether the entry was set to the new status.
-  bool SetStatus(GcsStatus new_status);
-
-  /// Reset this entry's GCS status to a lower status. The new status must
-  /// be lower than the current status.
-  ///
-  /// \param new_status This must be lower than the current status.
-  void ResetStatus(GcsStatus new_status);
+  // /// Get this entry's GCS status.
+  // ///
+  // /// \return The entry's status in the GCS.
+  // GcsStatus GetStatus() const;
+  //
+  // /// Set this entry's GCS status. The status is only set if the new status
+  // /// is strictly greater than the entry's previous status, according to the
+  // /// GcsStatus enum.
+  // ///
+  // /// \param new_status Set the entry's status to this value if it is greater
+  // /// than the current status.
+  // /// \return Whether the entry was set to the new status.
+  // bool SetStatus(GcsStatus new_status);
+  //
+  // /// Reset this entry's GCS status to a lower status. The new status must
+  // /// be lower than the current status.
+  // ///
+  // /// \param new_status This must be lower than the current status.
+  // void ResetStatus(GcsStatus new_status);
 
   /// Mark this entry as having been explicitly forwarded to a remote node manager.
   ///
@@ -154,7 +152,8 @@ class Lineage {
   /// \param task The task data to set, if status is greater than the current entry.
   /// \param status The GCS status.
   /// \return Whether the entry was set.
-  bool SetEntry(const Task &task, GcsStatus status);
+  // bool SetEntry(const Task &task, GcsStatus status);
+  bool SetEntry(const Task &task);
 
   /// Delete and return an entry from the lineage.
   ///
@@ -227,19 +226,6 @@ class LineageCache {
                gcs::TableInterface<TaskID, protocol::Task> &task_storage,
                gcs::PubsubInterface<TaskID> &task_pubsub, uint64_t max_lineage_size);
 
-  /// Add a task that is waiting for execution and its uncommitted lineage.
-  /// These entries will not be written to the GCS until set to ready.
-  ///
-  /// \param task The waiting task to add.
-  /// \param uncommitted_lineage The task's uncommitted lineage. These are the
-  /// tasks that the given task is data-dependent on, but that have not
-  /// been made durable in the GCS, as far the task's submitter knows.
-  /// \return Whether the task was successfully marked as waiting to be
-  /// committed. This will return false if the task is already waiting to be
-  /// committed (UNCOMMITTED_WAITING), ready to be committed
-  /// (UNCOMMITTED_READY), or committing (COMMITTING).
-  bool AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage);
-
   /// Add a task that is ready for GCS writeback. This overwrites the task’s
   /// mutable fields in the execution specification.
   ///
@@ -247,17 +233,7 @@ class LineageCache {
   /// \return Whether the task was successfully marked as ready to be
   /// committed. This will return false if the task is already ready to be
   /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
-  bool AddReadyTask(const Task &task);
-
-  /// Remove a task that was waiting for execution. Its uncommitted lineage
-  /// will remain unchanged.
-  ///
-  /// \param task_id The ID of the waiting task to remove.
-  /// \return Whether the task was successfully removed. This will return false
-  /// if the task is not waiting to be committed. Then, the waiting task has
-  /// already been removed (UNCOMMITTED_REMOTE), or if it's ready to be
-  /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
-  bool RemoveWaitingTask(const TaskID &task_id);
+  bool AddTask(const Task &task);
 
   /// Mark a task as having been explicitly forwarded to a node.
   /// The lineage of the task is implicitly assumed to have also been forwarded.

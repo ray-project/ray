@@ -1262,7 +1262,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   // A task failing is equivalent to assigning and finishing the task, so clean
   // up any leftover state as for any task dispatched and removed from the
   // local queue.
-  lineage_cache_.AddReadyTask(task);
+  lineage_cache_.AddTask(task);
   task_dependency_manager_.TaskCanceled(spec.TaskId());
   // Notify the task dependency manager that we no longer need this task's
   // object dependencies. TODO(swang): Ideally, we would check the return value
@@ -1437,7 +1437,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   }
 
   // We can flush tasks any time, so do that now.
-  if (!lineage_cache_.AddReadyTask(task)) {
+  if (!lineage_cache_.AddTask(task)) {
     RAY_LOG(WARNING) << "Task " << task_id << " already in lineage cache."
                      << " This is most likely due to reconstruction.";
   }
@@ -2062,15 +2062,18 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
 
+  // This whole section should be cleaned up a bit.
+
   // Get and serialize the task's unforwarded, uncommitted lineage.
   Lineage uncommitted_lineage;
   if (lineage_cache_.ContainsTask(task_id)) {
-    uncommitted_lineage = lineage_cache_.GetUncommittedLineageOrDie(task_id, node_id);
+      uncommitted_lineage = lineage_cache_.GetUncommittedLineageOrDie(task_id, node_id);
   } else {
-    // // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
-    // // This is a bug but is not fatal to the application.
-    // RAY_CHECK(false) << "No lineage cache entry found for task " << task_id;
-    uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
+    // This means that the task has already been committed and evicted.
+    // // // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
+    // // // This is a bug but is not fatal to the application.
+    // // RAY_CHECK(false) << "No lineage cache entry found for task " << task_id;
+    uncommitted_lineage.SetEntry(task);
   }
   auto entry = uncommitted_lineage.GetEntryMutable(task_id);
   Task &lineage_cache_entry_task = entry->TaskDataMutable();
