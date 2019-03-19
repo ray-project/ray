@@ -7,6 +7,7 @@ import collections
 import numpy as np
 
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.memory import concat_aligned
 
 # Defaults policy id for single agent environments
 DEFAULT_POLICY_ID = "default"
@@ -104,7 +105,7 @@ class SampleBatch(object):
         out = {}
         samples = [s for s in samples if s.count > 0]
         for k in samples[0].keys():
-            out[k] = np.concatenate([s[k] for s in samples])
+            out[k] = concat_aligned([s[k] for s in samples])
         return SampleBatch(out)
 
     @PublicAPI
@@ -121,7 +122,7 @@ class SampleBatch(object):
         assert self.keys() == other.keys(), "must have same columns"
         out = {}
         for k in self.keys():
-            out[k] = np.concatenate([self[k], other[k]])
+            out[k] = concat_aligned([self[k], other[k]])
         return SampleBatch(out)
 
     @PublicAPI
