@@ -415,7 +415,6 @@ class TrialRunner(object):
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=result)
                 decision = TrialScheduler.STOP
-
             else:
                 with warn_if_slow("scheduler.on_trial_result"):
                     decision = self._scheduler_alg.on_trial_result(
@@ -426,8 +425,15 @@ class TrialRunner(object):
                     with warn_if_slow("search_alg.on_trial_complete"):
                         self._search_alg.on_trial_complete(
                             trial.trial_id, early_terminated=True)
-            trial.update_last_result(
-                result, terminate=(decision == TrialScheduler.STOP))
+
+            # __duplicate__ is a magic keyword used internally to
+            # avoid double-logging results when using the Function API.
+            # TrialScheduler and SearchAlgorithm still receive a
+            # notification because there may be special handling for
+            # the `on_trial_complete` hook.
+            if "__duplicate__" not in result:
+                trial.update_last_result(
+                    result, terminate=(decision == TrialScheduler.STOP))
 
             # Checkpoints to disk. This should be checked even if
             # the scheduler decision is STOP or PAUSE. Note that
