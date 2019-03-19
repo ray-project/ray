@@ -133,9 +133,6 @@ class _LoaderThread(threading.Thread):
         with self.queue_timer:
             batch = s.inqueue.get()
 
-
-#            assert batch["obs"].ctypes.data % 64 == 0, "Not 64-byte aligned"
-
         opt = s.idle_optimizers.get()
 
         with self.load_timer:

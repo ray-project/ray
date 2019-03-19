@@ -13,9 +13,12 @@ from ray.rllib.utils.annotations import override
 
 
 class Aggregator(object):
-    """Handles sample collection, collation, and broadcasting of new weights.
+    """An aggregator collects and processes samples from evaluators.
 
-    For performance, aggregators may implement a tree of Ray actors.
+    This class is used to abstract away the strategy for sample collection.
+    For example, you may want to use a tree of actors to collect samples. The
+    use of multiple actors can be necessary to offload expensive work such
+    as concatenating and decompressing sample batches.
     """
 
     def iter_train_batches(self):
@@ -42,6 +45,8 @@ class Aggregator(object):
 
 
 class AggregationWorkerBase(object):
+    """Aggregators should extend from this class."""
+
     def __init__(self, initial_weights_obj_id, remote_evaluators,
                  max_sample_requests_in_flight_per_worker, replay_proportion,
                  replay_buffer_num_slots, train_batch_size, sample_batch_size):
@@ -76,6 +81,14 @@ class AggregationWorkerBase(object):
 
     @override(Aggregator)
     def iter_train_batches(self, max_yield=999):
+        """Iterate over train batches.
+
+        Arguments:
+            max_yield (int): Max number of batches to iterate over in this
+                cycle. Setting this avoids iter_train_batches returning too
+                much data at once.
+        """
+
         for ev, sample_batch in self._augment_with_replay(
                 self.sample_tasks.completed_prefetch(
                     blocking_wait=True, max_yield=max_yield)):
@@ -132,6 +145,8 @@ class AggregationWorkerBase(object):
 
 
 class SimpleAggregator(AggregationWorkerBase, Aggregator):
+    """Simple single-threaded implementation of an Aggregator."""
+
     def __init__(self,
                  local_evaluator,
                  remote_evaluators,
