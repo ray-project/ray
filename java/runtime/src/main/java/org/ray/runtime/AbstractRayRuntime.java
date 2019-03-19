@@ -316,7 +316,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return actor;
   }
 
-
   /**
    * Create the task specification.
    *

@@ -6,5 +6,6 @@ package org.ray.runtime.task;
 public enum TaskLanguage {
 
   JAVA,
+
   PYTHON,
 }

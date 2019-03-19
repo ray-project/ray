@@ -57,8 +57,8 @@ public class TaskSpec {
   public final TaskLanguage language;
 
   // Descriptor of the remote function.
-  // Note, if task language is Java, this is an instance of FunctionDescriptor. If the task language
-  // is Python, this is an instance of PyFunctionDescriptor.
+  // Note, if task language is Java, the type is FunctionDescriptor. If the task language
+  // is Python, the type is PyFunctionDescriptor.
   private final Object functionDescriptor;
 
   private List<UniqueId> executionDependencies;
