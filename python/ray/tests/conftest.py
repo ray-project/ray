@@ -1,3 +1,7 @@
+"""
+This file defines the common pytest fixtures used in current directory.
+"""
+
 import json
 import pytest
 import subprocess
