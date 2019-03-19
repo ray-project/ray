@@ -11,11 +11,11 @@ cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
     copts = COPTS,
+    visibility = ["//java:__subpackages__"],
     deps = [
         ":ray_util",
         ":raylet_lib",
     ],
-    visibility = ["//java:__subpackages__"],
 )
 
 cc_binary(
@@ -547,10 +547,10 @@ cc_binary(
     copts = COPTS,
     linkshared = 1,
     linkstatic = 1,
+    visibility = ["//java:__subpackages__"],
     deps = [
         ":ray_common",
     ],
-    visibility = ["//java:__subpackages__"],
 )
 
 genrule(

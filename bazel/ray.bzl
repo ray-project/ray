@@ -36,13 +36,13 @@ def define_java_module(name, additional_srcs = [], additional_resources = [], de
         config = "//java:checkstyle.xml",
         suppressions = "//java:checkstyle-suppressions.xml",
         size = "small",
-        tags = ["checkstyle"]
+        tags = ["checkstyle"],
     )
     if define_test_lib:
         native.java_library(
             name = "org_ray_ray_" + name + "_test",
             srcs = native.glob([name + "/src/test/java/**/*.java"]),
-            deps = test_deps
+            deps = test_deps,
         )
         checkstyle_test(
             name = "org_ray_ray_" + name + "_test-checkstyle",
@@ -50,5 +50,5 @@ def define_java_module(name, additional_srcs = [], additional_resources = [], de
             config = "//java:checkstyle.xml",
             suppressions = "//java:checkstyle-suppressions.xml",
             size = "small",
-            tags = ["checkstyle"]
+            tags = ["checkstyle"],
         )

@@ -6,7 +6,7 @@
 set -e
 set -x
 
-bazel build "//:gcs_client_test" "//:asio_test" "//:ray_redis_module.so"
+bazel build "//:gcs_client_test" "//:asio_test" "//:libray_redis_module.so"
 
 # Start Redis.
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
