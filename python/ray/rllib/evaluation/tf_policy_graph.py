@@ -129,7 +129,7 @@ class TFPolicyGraph(PolicyGraph):
 
         self._optimizer = self.optimizer()
         self._grads_and_vars = [(g, v)
-                                for (g, v) in self.gradients(self._optimizer)
+                                for (g, v) in self.gradients(self._optimizer, self._loss)
                                 if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
         self._variables = ray.experimental.tf_utils.TensorFlowVariables(
@@ -281,9 +281,9 @@ class TFPolicyGraph(PolicyGraph):
         return tf.train.AdamOptimizer()
 
     @DeveloperAPI
-    def gradients(self, optimizer):
+    def gradients(self, optimizer, loss):
         """Override for custom gradient computation."""
-        return optimizer.compute_gradients(self._loss)
+        return optimizer.compute_gradients(loss)
 
     @DeveloperAPI
     def _get_is_training_placeholder(self):
