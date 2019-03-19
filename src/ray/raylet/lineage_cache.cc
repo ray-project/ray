@@ -322,9 +322,6 @@ void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
   // Record the commit acknowledgement and attempt to evict the task.
   committed_tasks_.insert(task_id);
   EvictTask(task_id);
-  // // We got the notification about the task's commit, so no longer need any
-  // // more notifications.
-  // UnsubscribeTask(task_id);
 }
 
 const Task &LineageCache::GetTaskOrDie(const TaskID &task_id) const {
@@ -347,7 +344,6 @@ std::string LineageCache::DebugString() const {
   result << "LineageCache:";
   result << "\n- committed tasks: " << committed_tasks_.size();
   result << "\n- child map size: " << lineage_.GetChildrenSize();
-  result << "\n- num subscribed tasks: " << subscribed_tasks_.size();
   result << "\n- lineage size: " << lineage_.GetEntries().size();
   result << "\n- num evicted tasks: " << num_evicted_tasks_;
   return result.str();

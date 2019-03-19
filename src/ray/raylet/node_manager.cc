@@ -551,11 +551,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // known.
     auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
     for (const auto &method : created_actor_methods) {
-      // if (!lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId())) {
-      //   RAY_LOG(WARNING) << "Task " << method.GetTaskSpecification().TaskId()
-      //                    << " already removed from the lineage cache. This is most "
-      //                       "likely due to reconstruction.";
-      // }
       // Maintain the invariant that if a task is in the
       // MethodsWaitingForActorCreation queue, then it is subscribed to its
       // respective actor creation task. Since the actor location is now known,
@@ -924,13 +919,6 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Submit the task to the local scheduler. Since the task was submitted
   // locally, there is no uncommitted lineage.
   SubmitTask(task, Lineage());
-
-  // // We can flush tasks any time, so do that now.
-  // if (!lineage_cache_.AddReadyTask(task)) {
-  //   RAY_LOG(WARNING) << "Task " << task_spec.TaskId() << " already in lineage cache."
-  //                    << " This is most likely due to reconstruction.";
-  // }
-  //
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -2038,9 +2026,6 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
                           << " because ForwardTask failed.";
             SubmitTask(task, Lineage());
           });
-      // // Remove the task from the lineage cache. The task will get added back
-      // // once it is resubmitted.
-      // lineage_cache_.RemoveWaitingTask(task_id);
     } else {
       // The task is not for an actor and may therefore be placed on another
       // node immediately. Send it to the scheduling policy to be placed again.
@@ -2055,17 +2040,12 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
 
-  // This whole section should be cleaned up a bit.
-
   // Get and serialize the task's unforwarded, uncommitted lineage.
   Lineage uncommitted_lineage;
   if (lineage_cache_.ContainsTask(task_id)) {
-      uncommitted_lineage = lineage_cache_.GetUncommittedLineageOrDie(task_id, node_id);
+    uncommitted_lineage = lineage_cache_.GetUncommittedLineageOrDie(task_id, node_id);
   } else {
     // This means that the task has already been committed and evicted.
-    // // // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
-    // // // This is a bug but is not fatal to the application.
-    // // RAY_CHECK(false) << "No lineage cache entry found for task " << task_id;
     uncommitted_lineage.AddTask(task);
   }
   auto entry = uncommitted_lineage.GetEntryMutable(task_id);
@@ -2099,19 +2079,7 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
       fbb.GetBufferPointer(),
       [this, on_error, task_id, node_id, spec](ray::Status status) {
         if (status.ok()) {
-          // // If we were able to forward the task, remove the forwarded task from the
-          // // lineage cache since the receiving node is now responsible for writing
-          // // the task to the GCS.
-          // if (!lineage_cache_.RemoveWaitingTask(task_id)) {
-          //   RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage"
-          //                    << " cache. This is most likely due to reconstruction.";
-          // } else {
-          //   // Mark as forwarded so that the task and its lineage is not
-          //   // re-forwarded in the future to the receiving node.
-          //   lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
-          // }
-
-          // lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
+          // lineage_cache_.MarkTaskAsForwarded(task_id, node_id);  // Probably remove this. status.ok() doesn't actually mean forwarding succeeded.
 
           // Notify the task dependency manager that we are no longer responsible
           // for executing this task.
