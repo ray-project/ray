@@ -1001,7 +1001,7 @@ def test_multiple_waits_and_gets(shutdown_only):
     ray.get([h.remote([x]), h.remote([x])])
 
 
-def test_caching_functions_to_run(ray_start_regular):
+def test_caching_functions_to_run(shutdown_only):
     # Test that we export functions to run on all workers before the driver
     # is connected.
     def f(worker_info):
@@ -1023,6 +1023,8 @@ def test_caching_functions_to_run(ray_start_regular):
         sys.path.append(4)
 
     ray.worker.global_worker.run_function_on_all_workers(f)
+
+    ray.init(num_cpus=1)
 
     @ray.remote
     def get_state():
