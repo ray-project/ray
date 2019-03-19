@@ -2,6 +2,7 @@
 This file defines the common pytest fixtures used in current directory.
 """
 
+from contextlib import contextmanager
 import json
 import pytest
 import subprocess
@@ -18,12 +19,12 @@ def shutdown_only():
     ray.shutdown()
 
 
-def generate_internal_config_map(**kargs):
-    internal_config = json.dumps(kargs)
-    ray_kargs = {
+def generate_internal_config_map(**kwargs):
+    internal_config = json.dumps(kwargs)
+    ray_kwargs = {
         "_internal_config": internal_config,
     }
-    return ray_kargs
+    return ray_kwargs
 
 
 def get_default_fixure_internal_config():
@@ -34,126 +35,109 @@ def get_default_fixure_internal_config():
     return internal_config
 
 
-def get_default_fixture_ray_kargs():
+def get_default_fixture_ray_kwargs():
     internal_config = get_default_fixure_internal_config()
-    ray_kargs = {
+    ray_kwargs = {
         "num_cpus": 1,
         "object_store_memory": 10**8,
         "_internal_config": internal_config,
     }
-    return ray_kargs
+    return ray_kwargs
 
 
-def ray_start_with_parameter(request):
-    init_kargs = get_default_fixture_ray_kargs()
-    parameter = getattr(request, "param", {})
-    init_kargs.update(parameter)
+@contextmanager
+def _ray_start(**kwargs):
+    init_kwargs = get_default_fixture_ray_kwargs()
+    init_kwargs.update(kwargs)
     # Start the Ray processes.
-    address_info = ray.init(**init_kargs)
-    return address_info
+    address_info = ray.init(**init_kwargs)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
 def ray_start_regular(request):
-    address_info = ray_start_with_parameter(request)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+    param = getattr(request, "param", {})
+    with _ray_start(**param) as res:
+        yield res
 
 
 @pytest.fixture
 def ray_start_2_cpus(request):
-    parameter = getattr(request, "param", {})
-    parameter["num_cpus"] = 2
-    request.param = parameter
-    address_info = ray_start_with_parameter(request)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
+        yield res
 
 
 @pytest.fixture
 def ray_start_10_cpus(request):
-    parameter = getattr(request, "param", {})
-    parameter['num_cpus'] = 10
-    request.param = parameter
-    address_info = ray_start_with_parameter(request)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=10, **param) as res:
+        yield res
 
 
-def ray_start_cluster_with_parameter(request):
-    init_kargs = get_default_fixture_ray_kargs()
-    parameter = getattr(request, "param", {})
-    if "num_nodes" in parameter:
-        num_nodes = parameter["num_nodes"]
-        del parameter["num_nodes"]
-    else:
-        num_nodes = 0
+@contextmanager
+def _ray_start_cluster(**kwargs):
+    init_kwargs = get_default_fixture_ray_kwargs()
+    num_nodes = 0
     do_init = False
-    if "do_init" in parameter:
-        do_init = parameter["do_init"]
-        del parameter["do_init"]
+    # num_nodes & do_init are not arguments for ray.init, so delete them.
+    if "num_nodes" in kwargs:
+        num_nodes = kwargs["num_nodes"]
+        del kwargs["num_nodes"]
+    if "do_init" in kwargs:
+        do_init = kwargs["do_init"]
+        del kwargs["do_init"]
     elif num_nodes > 0:
         do_init = True
-    init_kargs.update(parameter)
+    init_kwargs.update(kwargs)
     cluster = Cluster()
     remote_nodes = []
     for _ in range(num_nodes):
-        remote_nodes.append(cluster.add_node(**init_kargs))
+        remote_nodes.append(cluster.add_node(**init_kwargs))
     if do_init:
         ray.init(redis_address=cluster.redis_address)
-    return cluster, remote_nodes
-
-
-@pytest.fixture
-def ray_start_cluster(request):
-    cluster, remote_nodes = ray_start_cluster_with_parameter(request)
-    yield cluster, remote_nodes
+    yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+
+
+# This fixture will start a cluster with empty nodes.
+@pytest.fixture
+def ray_start_cluster(request):
+    param = getattr(request, "param", {})
+    with _ray_start_cluster(**param) as res:
+        yield res
 
 
 @pytest.fixture
 def ray_start_cluster_head(request):
-    parameter = getattr(request, "param", {})
-    parameter['do_init'] = True
-    parameter['num_nodes'] = 1
-    request.param = parameter
-    cluster, remote_nodes = ray_start_cluster_with_parameter(request)
-    yield cluster, remote_nodes
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
+    param = getattr(request, "param", {})
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
 
 
 @pytest.fixture
 def ray_start_cluster_2_nodes(request):
-    parameter = getattr(request, "param", {})
-    parameter['do_init'] = True
-    parameter['num_nodes'] = 2
-    request.param = parameter
-    cluster, remote_nodes = ray_start_cluster_with_parameter(request)
-    yield cluster, remote_nodes
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
+    param = getattr(request, "param", {})
+    with _ray_start_cluster(do_init=True, num_nodes=2, **param) as res:
+        yield res
 
 
 @pytest.fixture
 def ray_start_object_store_memory(request):
     # Start the Ray processes.
     store_size = request.param
-    internal_config = get_default_fixture_ray_kargs()
-    init_kargs = {
+    internal_config = get_default_fixure_internal_config()
+    init_kwargs = {
         "num_cpus": 1,
         "_internal_config": internal_config,
         "object_store_memory": store_size,
     }
-    ray.init(**init_kargs)
+    ray.init(**init_kwargs)
     yield store_size
     # The code after the yield will run as teardown code.
     ray.shutdown()

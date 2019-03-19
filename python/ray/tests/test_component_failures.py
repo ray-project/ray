@@ -314,7 +314,7 @@ def check_components_alive(cluster, component_type, check_component_alive):
         "num_nodes": 4
     }], indirect=True)
 def test_raylet_failed(ray_start_cluster):
-    cluster, _ = ray_start_cluster
+    cluster = ray_start_cluster
     # Kill all local schedulers on worker nodes.
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_RAYLET)
 
@@ -332,7 +332,7 @@ def test_raylet_failed(ray_start_cluster):
         "num_nodes": 4
     }], indirect=True)
 def test_plasma_store_failed(ray_start_cluster):
-    cluster, _ = ray_start_cluster
+    cluster = ray_start_cluster
     # Kill all plasma stores on worker nodes.
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE)
 
@@ -351,7 +351,7 @@ def test_plasma_store_failed(ray_start_cluster):
     indirect=True)
 def test_actor_creation_node_failure(ray_start_cluster):
     # TODO(swang): Refactor test_raylet_failed, etc to reuse the below code.
-    cluster, _ = ray_start_cluster
+    cluster = ray_start_cluster
 
     @ray.remote
     class Child(object):

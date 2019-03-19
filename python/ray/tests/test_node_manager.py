@@ -9,7 +9,7 @@ from ray.tests.utils import run_string_as_driver
 # This tests the queue transitions for infeasible tasks. This has been an issue
 # in the past, e.g., https://github.com/ray-project/ray/issues/3275.
 def test_infeasible_tasks(ray_start_cluster):
-    cluster, _ = ray_start_cluster
+    cluster = ray_start_cluster
 
     @ray.remote
     def f():

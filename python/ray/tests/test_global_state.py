@@ -63,7 +63,7 @@ def test_uses_resources(ray_start_regular):
 @pytest.mark.timeout(20)
 def test_add_remove_cluster_resources(ray_start_cluster_head):
     """Tests that Global State API is consistent with actual cluster."""
-    cluster, _ = ray_start_cluster_head
+    cluster = ray_start_cluster_head
     assert ray.global_state.cluster_resources()["CPU"] == 1
     nodes = []
     nodes += [cluster.add_node(num_cpus=1)]

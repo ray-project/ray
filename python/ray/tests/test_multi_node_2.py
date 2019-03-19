@@ -46,7 +46,7 @@ def test_internal_config(ray_start_cluster_head):
     of sync, then wait another 2 seconds (giving 1 second of leeway) to check
     that the client has timed out.
     """
-    cluster, _ = ray_start_cluster_head
+    cluster = ray_start_cluster_head
     worker = cluster.add_node()
     cluster.wait_for_nodes()
 
@@ -64,7 +64,7 @@ def test_wait_for_nodes(ray_start_cluster_head):
     Adds 4 workers, waits, then removes 4 workers, waits,
     then adds 1 worker, waits, and removes 1 worker, waits.
     """
-    cluster, _ = ray_start_cluster_head
+    cluster = ray_start_cluster_head
     workers = [cluster.add_node() for i in range(4)]
     cluster.wait_for_nodes()
     [cluster.remove_node(w) for w in workers]
@@ -79,7 +79,7 @@ def test_wait_for_nodes(ray_start_cluster_head):
 
 
 def test_worker_plasma_store_failure(ray_start_cluster_head):
-    cluster, _ = ray_start_cluster_head
+    cluster = ray_start_cluster_head
     worker = cluster.add_node()
     cluster.wait_for_nodes()
     # Log monitor doesn't die for some reason

@@ -637,7 +637,7 @@ def test_redis_module_failure(ray_start_regular):
 # Note that this test will take at least 10 seconds because it must wait for
 # the monitor to detect enough missed heartbeats.
 def test_warning_for_dead_node(ray_start_cluster_2_nodes):
-    cluster, _ = ray_start_cluster_2_nodes
+    cluster = ray_start_cluster_2_nodes
     cluster.wait_for_nodes()
 
     client_ids = {item["ClientID"] for item in ray.global_state.client_table()}
