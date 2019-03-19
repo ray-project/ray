@@ -161,7 +161,7 @@ class SACPolicyGraph(TFPolicyGraph):
         next_log_pis = self.policy.log_pis(
             [self._next_observations_ph], next_actions)
 
-        next_Q_values = self.Q([self._next_observations_ph, next_actions])
+        next_Q_values = self.Q_target([self._next_observations_ph, next_actions])
 
         next_values = next_Q_values - self.alpha * next_log_pis
         discount = self.config['gamma']
