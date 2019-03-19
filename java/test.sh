@@ -12,9 +12,9 @@ sh $ROOT_DIR/generate_deps.sh
 
 echo "Compiling Java code."
 pushd $ROOT_DIR/..
-# compile all the targets
+# Compile all the targets.
 bazel build //java:all_modules --verbose_failures
-# bazel checkstyle for java
+# Lint Java code with checkstyle.
 bazel test //java:all --test_tag_filters="checkstyle"
 
 echo "Running tests under cluster mode."
