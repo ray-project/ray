@@ -52,6 +52,7 @@
         <version>2.21.0</version>
         <configuration>
           <testSourceDirectory>${basedir}/src/main/java/</testSourceDirectory>
+          <testResourcesDirectory>${basedir}/src/main/resources/</testResourcesDirectory>
           <testClassesDirectory>${project.build.directory}/classes/</testClassesDirectory>
         </configuration>
       </plugin>

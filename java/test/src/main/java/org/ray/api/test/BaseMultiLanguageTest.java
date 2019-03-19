@@ -1,18 +1,21 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import java.io.File;
-import java.lang.reflect.Method;
+import java.lang.ProcessBuilder.Redirect;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.SkipException;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 
-public class BaseMultiLanguageTest {
+public abstract class BaseMultiLanguageTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseMultiLanguageTest.class);
 
@@ -24,10 +27,16 @@ public class BaseMultiLanguageTest {
    *
    * @return Whether the command succeeded.
    */
-  private boolean executeCommand(List<String> command, int waitTimeoutSeconds) {
+  private boolean executeCommand(List<String> command, int waitTimeoutSeconds,
+      Map<String, String> env) {
     try {
       LOGGER.info("Executing command: {}", String.join(" ", command));
-      Process process = new ProcessBuilder(command).inheritIO().start();
+      ProcessBuilder processBuilder = new ProcessBuilder(command).redirectOutput(Redirect.INHERIT)
+          .redirectError(Redirect.INHERIT);
+      for (Entry<String, String> entry : env.entrySet()) {
+        processBuilder.environment().put(entry.getKey(), entry.getValue());
+      }
+      Process process = processBuilder.start();
       process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS);
       return process.exitValue() == 0;
     } catch (Exception e) {
@@ -35,12 +44,11 @@ public class BaseMultiLanguageTest {
     }
   }
 
-  @BeforeMethod
-  public void setUp(Method method) {
-    String testName = method.getName();
+  @BeforeClass
+  public void setUp() {
     if (!"1".equals(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS"))) {
-      LOGGER.info("Skip " + testName +
-          " because env variable ENABLE_MULTI_LANGUAGE_TESTS isn't set");
+      LOGGER.info("Skip Multi-language tests because environment variable "
+          + "ENABLE_MULTI_LANGUAGE_TESTS isn't set");
       throw new SkipException("Skip test.");
     }
 
@@ -66,7 +74,7 @@ public class BaseMultiLanguageTest {
         "--include-java",
         "--java-worker-options=" + workerOptions
     );
-    if (!executeCommand(startCommand, 10)) {
+    if (!executeCommand(startCommand, 10, getRayStartEnv())) {
       throw new RuntimeException("Couldn't start ray cluster.");
     }
 
@@ -77,7 +85,14 @@ public class BaseMultiLanguageTest {
     Ray.init();
   }
 
-  @AfterMethod
+  /**
+   * @return The environment variables needed for the `ray start` command.
+   */
+  protected Map<String, String> getRayStartEnv() {
+    return ImmutableMap.of();
+  }
+
+  @AfterClass
   public void tearDown() {
     // Disconnect to the cluster.
     Ray.shutdown();
@@ -90,7 +105,7 @@ public class BaseMultiLanguageTest {
         "ray",
         "stop"
     );
-    if (!executeCommand(stopCommand, 10)) {
+    if (!executeCommand(stopCommand, 10, ImmutableMap.of())) {
       throw new RuntimeException("Couldn't stop ray cluster");
     }
   }
