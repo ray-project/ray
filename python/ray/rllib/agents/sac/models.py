@@ -11,7 +11,7 @@ SCALE_DIAG_MIN_MAX = (-20, 2)
 
 class GaussianLatentSpacePolicy(object):
     def __init__(self,
-                 input_shape,
+                 input_shapes,
                  output_shape,
                  hidden_layer_sizes,
                  squash=True,
@@ -22,7 +22,10 @@ class GaussianLatentSpacePolicy(object):
                  **kwargs):
         self._squash = squash
 
-        self.condition_inputs = [tf.keras.layers.Input(shape=input_shape)]
+        self.condition_inputs = [
+            tf.keras.layers.Input(shape=input_shape)
+            for input_shape in input_shapes
+        ]
 
         conditions = (
             tf.keras.layers.Concatenate(axis=-1)(self.condition_inputs)
@@ -150,7 +153,7 @@ class GaussianLatentSpacePolicy(object):
         return OrderedDict({})
 
 
-def feedforward_model(input_shape,
+def feedforward_model(input_shapes,
                       hidden_layer_sizes,
                       output_size,
                       activation='relu',
@@ -158,11 +161,14 @@ def feedforward_model(input_shape,
                       name=None,
                       *args,
                       **kwargs):
-    input_ = tf.keras.layers.Input(shape=input_shape)
+    inputs = [
+        tf.keras.layers.Input(shape=input_shape)
+        for input_shape in input_shapes
+    ]
 
     concatenated_input = tf.keras.layers.Lambda(
         lambda x: tf.concat(x, axis=-1)
-    )(input_)
+    )(inputs)
 
     out = concatenated_input
     for units in hidden_layer_sizes:
@@ -174,6 +180,6 @@ def feedforward_model(input_shape,
         output_size, *args, activation=output_activation, **kwargs
     )(out)
 
-    model = tf.keras.Model(input_, output)
+    model = tf.keras.Model(inputs, output)
 
     return model

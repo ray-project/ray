@@ -121,7 +121,7 @@ class SACPolicyGraph(TFPolicyGraph):
         policy_kwargs = self.config['policy']['kwargs']
 
         self.policy = GaussianLatentSpacePolicy(
-            input_shape=observation_space.shape,
+            input_shapes=(observation_space.shape, ),
             output_shape=action_space.shape,
             **policy_kwargs)
 
@@ -136,7 +136,7 @@ class SACPolicyGraph(TFPolicyGraph):
         assert Q_type == 'FeedforwardQ', Q_type
         Q_kwargs = self.config['Q']['kwargs']
         self.Q = feedforward_model(
-            input_shape=observation_space.shape,
+            input_shapes=(observation_space.shape, action_space.shape),
             output_size=1,
             **Q_kwargs)
         self.Q_target = tf.keras.models.clone_model(self.Q)
