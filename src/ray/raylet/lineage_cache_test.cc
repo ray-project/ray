@@ -18,7 +18,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
  public:
   MockGcs() {}
 
-  void Subscribe(const gcs::raylet::TaskTable::WriteCallback &notification_callback) {
+  void Subscribe(const gcs::TaskTable::WriteCallback &notification_callback) {
     notification_callback_ = notification_callback;
   }
 
@@ -27,7 +27,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
              const gcs::TableInterface<TaskID, protocol::Task>::WriteCallback &done) {
     task_table_[task_id] = task_data;
     callbacks_.push_back(
-        std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>(done, task_id));
+        std::pair<gcs::TaskTable::WriteCallback, TaskID>(done, task_id));
     return ray::Status::OK();
   }
 
@@ -80,8 +80,8 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
 
  private:
   std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>> task_table_;
-  std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
-  gcs::raylet::TaskTable::WriteCallback notification_callback_;
+  std::vector<std::pair<gcs::TaskTable::WriteCallback, TaskID>> callbacks_;
+  gcs::TaskTable::WriteCallback notification_callback_;
   std::unordered_set<TaskID> subscribed_tasks_;
   int num_requested_notifications_ = 0;
 };

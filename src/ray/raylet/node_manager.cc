@@ -70,7 +70,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->task_lease_table()),
       lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
-                     gcs_client_->raylet_task_table(), gcs_client_->raylet_task_table(),
+                     gcs_client_->task_table(), gcs_client_->task_table(),
                      config.max_lineage_size),
       remote_clients_(),
       remote_server_connections_(),
@@ -103,7 +103,7 @@ ray::Status NodeManager::RegisterGcs() {
                                               const ray::protocol::TaskT &task_data) {
     lineage_cache_.HandleEntryCommitted(task_id);
   };
-  RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
+  RAY_RETURN_NOT_OK(gcs_client_->task_table().Subscribe(
       JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
       task_committed_callback, nullptr, nullptr));
 
@@ -1887,7 +1887,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
   // Retrieve the task spec in order to re-execute the task.
-  RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
+  RAY_CHECK_OK(gcs_client_->task_table().Lookup(
       JobID::nil(), task_id,
       /*success_callback=*/
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,

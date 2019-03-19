@@ -108,8 +108,8 @@ void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   };
 
   // Add the task, then do a lookup.
-  RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, add_callback));
-  RAY_CHECK_OK(client->raylet_task_table().Lookup(job_id, task_id, lookup_callback,
+  RAY_CHECK_OK(client->task_table().Add(job_id, task_id, data, add_callback));
+  RAY_CHECK_OK(client->task_table().Lookup(job_id, task_id, lookup_callback,
                                                   failure_callback));
   // Run the event loop. The loop will only stop if the Lookup callback is
   // called (or an assertion failure).
@@ -189,7 +189,7 @@ void TestTableLookupFailure(const JobID &job_id,
   };
 
   // Lookup the task. We have not done any writes, so the key should be empty.
-  RAY_CHECK_OK(client->raylet_task_table().Lookup(job_id, task_id, lookup_callback,
+  RAY_CHECK_OK(client->task_table().Lookup(job_id, task_id, lookup_callback,
                                                   failure_callback));
   // Run the event loop. The loop will only stop if the failure callback is
   // called (or an assertion failure).
@@ -388,7 +388,7 @@ void TestDeleteKeysFromTable(const JobID &job_id,
       ASSERT_EQ(data->task_specification, d.task_specification);
       test->IncrementNumCallbacks();
     };
-    RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, add_callback));
+    RAY_CHECK_OK(client->task_table().Add(job_id, task_id, data, add_callback));
   }
   for (const auto &task_id : ids) {
     auto task_lookup_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
@@ -396,13 +396,13 @@ void TestDeleteKeysFromTable(const JobID &job_id,
       ASSERT_EQ(id, task_id);
       test->IncrementNumCallbacks();
     };
-    RAY_CHECK_OK(client->raylet_task_table().Lookup(job_id, task_id, task_lookup_callback,
+    RAY_CHECK_OK(client->task_table().Lookup(job_id, task_id, task_lookup_callback,
                                                     nullptr));
   }
   if (ids.size() == 1) {
-    client->raylet_task_table().Delete(job_id, ids[0]);
+    client->task_table().Delete(job_id, ids[0]);
   } else {
-    client->raylet_task_table().Delete(job_id, ids);
+    client->task_table().Delete(job_id, ids);
   }
   auto expected_failure_callback = [](AsyncGcsClient *client, const TaskID &id) {
     ASSERT_TRUE(true);
@@ -411,13 +411,13 @@ void TestDeleteKeysFromTable(const JobID &job_id,
   auto undesired_callback = [](gcs::AsyncGcsClient *client, const TaskID &id,
                                const protocol::TaskT &data) { ASSERT_TRUE(false); };
   for (size_t i = 0; i < ids.size(); ++i) {
-    RAY_CHECK_OK(client->raylet_task_table().Lookup(job_id, task_id, undesired_callback,
+    RAY_CHECK_OK(client->task_table().Lookup(job_id, task_id, undesired_callback,
                                                     expected_failure_callback));
   }
   if (stop_at_end) {
     auto stop_callback = [](AsyncGcsClient *client, const TaskID &id) { test->Stop(); };
     RAY_CHECK_OK(
-        client->raylet_task_table().Lookup(job_id, ids[0], nullptr, stop_callback));
+        client->task_table().Lookup(job_id, ids[0], nullptr, stop_callback));
   }
 }
 
@@ -752,25 +752,25 @@ void TestTableSubscribeId(const JobID &job_id,
   auto subscribe_callback = [job_id, task_id1, task_id2, task_specs1,
                              task_specs2](gcs::AsyncGcsClient *client) {
     // Request notifications for one of the keys.
-    RAY_CHECK_OK(client->raylet_task_table().RequestNotifications(
+    RAY_CHECK_OK(client->task_table().RequestNotifications(
         job_id, task_id2, client->client_table().GetLocalClientId()));
     // Write both keys. We should only receive notifications for the key that
     // we requested them for.
     for (const auto &task_spec : task_specs1) {
       auto data = std::make_shared<protocol::TaskT>();
       data->task_specification = task_spec;
-      RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id1, data, nullptr));
+      RAY_CHECK_OK(client->task_table().Add(job_id, task_id1, data, nullptr));
     }
     for (const auto &task_spec : task_specs2) {
       auto data = std::make_shared<protocol::TaskT>();
       data->task_specification = task_spec;
-      RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id2, data, nullptr));
+      RAY_CHECK_OK(client->task_table().Add(job_id, task_id2, data, nullptr));
     }
   };
 
   // Subscribe to notifications for this client. This allows us to request and
   // receive notifications for specific keys.
-  RAY_CHECK_OK(client->raylet_task_table().Subscribe(
+  RAY_CHECK_OK(client->task_table().Subscribe(
       job_id, client->client_table().GetLocalClientId(), notification_callback,
       failure_callback, subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
@@ -946,7 +946,7 @@ void TestTableSubscribeCancel(const JobID &job_id,
   std::vector<std::string> task_specs = {"jkl", "mno", "pqr"};
   auto data = std::make_shared<protocol::TaskT>();
   data->task_specification = task_specs[0];
-  RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
+  RAY_CHECK_OK(client->task_table().Add(job_id, task_id, data, nullptr));
 
   // The failure callback should not be called since all keys are non-empty
   // when notifications are requested.
@@ -977,9 +977,9 @@ void TestTableSubscribeCancel(const JobID &job_id,
   auto subscribe_callback = [job_id, task_id, task_specs](gcs::AsyncGcsClient *client) {
     // Request notifications, then cancel immediately. We should receive a
     // notification for the current value at the key.
-    RAY_CHECK_OK(client->raylet_task_table().RequestNotifications(
+    RAY_CHECK_OK(client->task_table().RequestNotifications(
         job_id, task_id, client->client_table().GetLocalClientId()));
-    RAY_CHECK_OK(client->raylet_task_table().CancelNotifications(
+    RAY_CHECK_OK(client->task_table().CancelNotifications(
         job_id, task_id, client->client_table().GetLocalClientId()));
     // Write to the key. Since we canceled notifications, we should not receive
     // a notification for these writes.
@@ -987,17 +987,17 @@ void TestTableSubscribeCancel(const JobID &job_id,
     for (const auto &task_spec : remaining) {
       auto data = std::make_shared<protocol::TaskT>();
       data->task_specification = task_spec;
-      RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
+      RAY_CHECK_OK(client->task_table().Add(job_id, task_id, data, nullptr));
     }
     // Request notifications again. We should receive a notification for the
     // current value at the key.
-    RAY_CHECK_OK(client->raylet_task_table().RequestNotifications(
+    RAY_CHECK_OK(client->task_table().RequestNotifications(
         job_id, task_id, client->client_table().GetLocalClientId()));
   };
 
   // Subscribe to notifications for this client. This allows us to request and
   // receive notifications for specific keys.
-  RAY_CHECK_OK(client->raylet_task_table().Subscribe(
+  RAY_CHECK_OK(client->task_table().Subscribe(
       job_id, client->client_table().GetLocalClientId(), notification_callback,
       failure_callback, subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription

@@ -592,8 +592,6 @@ class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
                          const ActorCheckpointID &checkpoint_id);
 };
 
-namespace raylet {
-
 class TaskTable : public Table<TaskID, ray::protocol::Task> {
  public:
   TaskTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
@@ -609,8 +607,6 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
     command_type_ = command_type;
   };
 };
-
-}  // namespace raylet
 
 class ErrorTable : private Log<DriverID, ErrorTableData> {
  public:
