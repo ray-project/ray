@@ -230,8 +230,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         return sample_timesteps, train_timesteps
 
 
-# reserve 1 CPU so that our method calls don't get stalled
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=0)
 class ReplayActor(object):
     """A replay buffer shard.
 
@@ -317,6 +316,8 @@ class ReplayActor(object):
         return stat
 
 
+# note: we set num_cpus=0 to avoid failing to create replay actors when
+# resources are fragmented. This isn't ideal.
 @ray.remote(num_cpus=0)
 class BatchReplayActor(object):
     """The batch replay version of the replay actor.
