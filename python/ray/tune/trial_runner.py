@@ -13,7 +13,7 @@ import traceback
 
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TIME_THIS_ITER_S
+from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.util import warn_if_slow
@@ -413,7 +413,7 @@ class TrialRunner(object):
             # TrialScheduler and SearchAlgorithm still receive a
             # notification because there may be special handling for
             # the `on_trial_complete` hook.
-            is_duplicate = "__duplicate__" in result
+            is_duplicate = RESULT_DUPLICATE in result
             if is_duplicate:
                 logger.debug("Trial finished with logging 'done'.")
                 result = trial.last_result
