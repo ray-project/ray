@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tests.fixtures import ray_start_regular
 
 test_values = [1, 1.0, "test", b"test", (0, 1), [0, 1], {0: 1}]
 

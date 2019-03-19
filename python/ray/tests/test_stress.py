@@ -11,7 +11,6 @@ import time
 import ray
 from ray.tests.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
-from ray.tests.fixtures import ray_start_object_store_memory
 
 
 @pytest.fixture(params=[1, 20])

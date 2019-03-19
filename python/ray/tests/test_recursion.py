@@ -7,7 +7,6 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tests.fixtures import ray_start_regular
 
 
 @ray.remote

@@ -17,13 +17,6 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.utils import _random_string
 from ray.tests.cluster_utils import Cluster
-from ray.tests.fixtures import (
-    ray_start_2_cpus,
-    ray_start_cluster_2_nodes,
-    ray_start_object_store_memory,
-    ray_start_regular,
-    shutdown_only,
-)
 from ray.tests.utils import (
     relevant_errors,
     wait_for_errors,

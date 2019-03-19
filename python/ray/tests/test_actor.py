@@ -16,15 +16,6 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.tests.utils
 import ray.tests.cluster_utils
-from ray.tests.fixtures import (
-    shutdown_only,
-    ray_start_10_cpus,
-    ray_start_cluster,
-    ray_start_cluster_head,
-    ray_start_cluster_2_nodes,
-    ray_start_object_store_memory,
-    ray_start_regular,
-)  # noqa: F401,F811
 from ray.tests.utils import (
     relevant_errors,
     wait_for_errors,

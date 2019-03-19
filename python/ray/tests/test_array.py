@@ -11,10 +11,6 @@ import ray
 import ray.experimental.array.remote as ra
 import ray.experimental.array.distributed as da
 import ray.tests.cluster_utils
-from ray.tests.fixtures import (
-    ray_start_2_cpus,
-    ray_start_cluster_2_nodes,
-)  # noqa: F401,F811
 
 if sys.version_info >= (3, 0):
     from importlib import reload

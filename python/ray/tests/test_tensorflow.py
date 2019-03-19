@@ -3,12 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 from numpy.testing import assert_almost_equal
-import pytest
 import tensorflow as tf
 
 import ray
 import ray.experimental.tf_utils
-from ray.tests.fixtures import ray_start_2_cpus
 
 
 def make_linear_network(w_name=None, b_name=None):

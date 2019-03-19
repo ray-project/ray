@@ -10,7 +10,6 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 from ray.tests.cluster_utils import Cluster
-from ray.tests.fixtures import ray_start_cluster_head
 
 logger = logging.getLogger(__name__)
 

@@ -28,12 +28,6 @@ import pytest
 import ray
 import ray.tests.cluster_utils
 import ray.tests.utils
-from ray.tests.fixtures import (
-    ray_start_2_cpus,
-    ray_start_cluster,
-    ray_start_regular,
-    shutdown_only,
-)  # noqa: F401,F811
 from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)

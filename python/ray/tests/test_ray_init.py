@@ -8,7 +8,6 @@ import redis
 
 import ray
 from ray.tests.cluster_utils import Cluster
-from ray.tests.fixtures import shutdown_only
 
 
 @pytest.fixture

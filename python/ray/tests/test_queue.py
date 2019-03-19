@@ -7,7 +7,6 @@ import time
 
 import ray
 from ray.experimental.queue import Queue, Empty, Full
-from ray.tests.fixtures import ray_start_regular
 
 
 def test_queue(ray_start_regular):

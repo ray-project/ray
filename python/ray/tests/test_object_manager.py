@@ -12,7 +12,6 @@ import warnings
 
 import ray
 from ray.tests.cluster_utils import Cluster
-from ray.tests.fixtures import ray_start_cluster
 
 # TODO(yuhguo): This test file requires a lot of CPU/memory, and
 # better be put in Jenkins. However, it fails frequently in Jenkins, but

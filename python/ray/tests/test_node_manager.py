@@ -2,10 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pytest
-
 import ray
-from ray.tests.fixtures import ray_start_cluster  # noqa: F401,F811
 from ray.tests.utils import run_string_as_driver
 
 

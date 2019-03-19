@@ -5,7 +5,6 @@ from __future__ import print_function
 import pytest
 
 import ray
-from ray.tests.fixtures import shutdown_only
 
 
 def test_modin_import_with_ray_init(shutdown_only):

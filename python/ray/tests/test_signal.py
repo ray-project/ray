@@ -1,9 +1,7 @@
-import pytest
 import time
 
 import ray
 import ray.experimental.signal as signal
-from ray.tests.fixtures import ray_start_regular
 
 
 class UserSignal(signal.Signal):

@@ -8,7 +8,6 @@ import time
 import numpy as np
 
 import ray
-from ray.tests.fixtures import ray_start_regular
 
 
 def test_timing(ray_start_regular):

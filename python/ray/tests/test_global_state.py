@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
 import pytest
 try:
     import pytest_timeout
@@ -11,11 +10,6 @@ except ImportError:
 import time
 
 import ray
-from ray.tests.cluster_utils import Cluster
-from ray.tests.fixtures import (
-    ray_start_regular,
-    ray_start_cluster_head,
-)
 
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.

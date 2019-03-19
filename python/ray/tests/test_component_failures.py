@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import json
 import signal
 import sys
 import time
@@ -14,11 +13,6 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 from ray.tests.cluster_utils import Cluster
-from ray.tests.fixtures import (
-    ray_start_2_cpus,
-    ray_start_cluster,
-    ray_start_regular,
-)
 from ray.tests.utils import run_string_as_driver_nonblocking
 
 

@@ -10,10 +10,6 @@ import time
 import ray
 from ray.tests.utils import (run_and_get_output, run_string_as_driver,
                              run_string_as_driver_nonblocking)
-from ray.tests.fixtures import (
-    call_ray_start,
-    ray_start_regular,
-)
 
 
 def test_error_isolation(call_ray_start):
