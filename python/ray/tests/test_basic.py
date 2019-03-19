@@ -1754,7 +1754,8 @@ def test_resource_assignment(shutdown_only):
                     assert actor_resources["CPU"][0][1] == 1, \
                             "Actor should default to one cpu."
                 correct_resources = {}
-                defined_resources = {**decorator_args, **instantiation_args}
+                defined_resources = decorator_args.copy()
+                defined_resources.update(instantiation_args)
                 for resource, value in defined_resources.items():
                     if resource == "num_cpus":
                         correct_resources["CPU"] = value
