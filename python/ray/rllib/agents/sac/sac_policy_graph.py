@@ -65,17 +65,20 @@ class SACPolicyGraph(TFPolicyGraph):
 
         self.session.run(tf.global_variables_initializer())
 
-        # Q_mean, Q_var = tf.nn.moments(self.Q_values, axes=[0, 1])
-        actions_mean = tf.reduce_mean(self._actions_ph)
+        Q_mean, Q_var = tf.nn.moments(self.Q_values, axes=[0, 1])
+        Q_std = tf.sqrt(Q_var)
+        actions_mean, actions_var = tf.nn.moments(self._actions_ph, axes=[0, 1])
+        actions_std = tf.sqrt(actions_var)
         actions_min = tf.reduce_min(self._actions_ph)
         actions_max = tf.reduce_max(self._actions_ph)
         self.diagnostics = {
             'stats': {
                 'actions-avg': actions_mean,
+                'actions-std': actions_std,
                 'actions-min': actions_min,
                 'actions-max': actions_max,
-                # 'Q-avg': Q_mean,
-                # 'Q-std': Q_var,
+                'Q-avg': Q_mean,
+                'Q-std': Q_std,
                 'Q_loss': self.Q_loss,
                 'alpha': self.alpha,
                 'log_pis': tf.reduce_mean(self.log_pis),
@@ -176,7 +179,7 @@ class SACPolicyGraph(TFPolicyGraph):
 
         assert Q_targets.shape.as_list() == [None, 1]
 
-        Q_values = self.Q([self._observations_ph, self._actions_ph])
+        Q_values = self.Q_values = self.Q([self._observations_ph, self._actions_ph])
         Q_loss_weight = self.config['optimization']['Q_loss_weight']
         self.Q_loss = Q_loss_weight * tf.losses.mean_squared_error(
             labels=Q_targets, predictions=Q_values, weights=0.5)
