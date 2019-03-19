@@ -149,6 +149,8 @@ class Trainable(object):
         start = time.time()
         result = self._train()
         assert isinstance(result, dict), "_train() needs to return a dict."
+        if "__duplicate__" in result:
+            return result
 
         result = result.copy()
 

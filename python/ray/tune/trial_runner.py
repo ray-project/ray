@@ -407,6 +407,18 @@ class TrialRunner(object):
     def _process_trial(self, trial):
         try:
             result = self.trial_executor.fetch_result(trial)
+
+            # __duplicate__ is a magic keyword used internally to
+            # avoid double-logging results when using the Function API.
+            # TrialScheduler and SearchAlgorithm still receive a
+            # notification because there may be special handling for
+            # the `on_trial_complete` hook.
+            is_duplicate = "__duplicate__" in result
+            if is_duplicate:
+                logger.debug("Trial finished with logging 'done'.")
+                result = trial.last_result
+                result.update(done=True)
+
             self._total_time += result[TIME_THIS_ITER_S]
 
             if trial.should_stop(result):
@@ -426,12 +438,7 @@ class TrialRunner(object):
                         self._search_alg.on_trial_complete(
                             trial.trial_id, early_terminated=True)
 
-            # __duplicate__ is a magic keyword used internally to
-            # avoid double-logging results when using the Function API.
-            # TrialScheduler and SearchAlgorithm still receive a
-            # notification because there may be special handling for
-            # the `on_trial_complete` hook.
-            if "__duplicate__" not in result:
+            if not is_duplicate:
                 trial.update_last_result(
                     result, terminate=(decision == TrialScheduler.STOP))
 
