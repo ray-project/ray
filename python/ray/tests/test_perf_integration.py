@@ -5,11 +5,7 @@ from __future__ import print_function
 import ray
 import pytest
 
-# This evaluates tests for each number of CPUs between 2 and 32
-num_cpus_test = list(range(2, 32))
-num_cpus_ids = ["{}_cpus".format(i) for i in num_cpus_test]
-
-num_tasks_submitted = [10**n for n in range(1, 5)]
+num_tasks_submitted = [10**n for n in range(0, 6)]
 num_tasks_ids = ["{}_tasks".format(i) for i in num_tasks_submitted]
 
 
@@ -31,9 +27,11 @@ def benchmark_task_submission(num_tasks):
 
 
 @pytest.mark.benchmark
-@pytest.mark.parametrize("num_cpus", num_cpus_test, ids=num_cpus_ids)
 @pytest.mark.parametrize("num_tasks", num_tasks_submitted, ids=num_tasks_ids)
-def test_task_submission_benchmark(benchmark, num_cpus, num_tasks):
+def test_task_submission(benchmark, num_tasks):
+    num_cpus = 16
     init_ray(num_cpus=num_cpus)
+    # Warm up the plasma store
+    ray.get([ray.put(i) for i in range(num_tasks)])
     benchmark(benchmark_task_submission, num_tasks)
     teardown_ray()

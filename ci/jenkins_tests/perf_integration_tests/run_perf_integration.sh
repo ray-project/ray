@@ -11,7 +11,7 @@ python -c "import sys; print(sys.version_info)"
 
 cp -R .benchmarks current_pr_benchmarks
 
-pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev1-cp36-cp36m-manylinux1_x86_64.whl
+pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev1-cp27-cp27mu-manylinux1_x86_64.whl
 python -m pytest --benchmark-autosave python/ray/tests/test_perf_integration.py
 
 echo "Old"
