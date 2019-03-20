@@ -1739,20 +1739,23 @@ def test_resource_assignment(shutdown_only):
                 actor_class = ray.remote(Actor)
             else:
                 actor_class = ray.remote(**decorator_args)(Actor)
-            actor = actor_class._remote([], {}, **instantiation_args)
+            actor = actor_class._remote(**instantiation_args)
             actor_resources = ray.get(actor.get_actor_resources.remote())
             actor_method_resources = ray.get(
                 actor.get_actor_method_resources.remote())
             if len(decorator_args) == 0 and len(instantiation_args) == 0:
-                assert len(actor_resources) == 0, \
-                        "Actor should not be assigned resources."
-                assert actor_method_resources["CPU"][0][1] == 1, \
-                    "Actor method should default to one cpu."
+                assert len(actor_resources) == 0, (
+                    "Actor should not be assigned resources.")
+                assert list(actor_method_resources.keys()) == [
+                    "CPU"
+                ], ("Actor method should only have CPUs")
+                assert actor_method_resources["CPU"][0][1] == 1, (
+                    "Actor method should default to one cpu.")
             else:
                 if ("num_cpus" not in decorator_args
                         and "num_cpus" not in instantiation_args):
-                    assert actor_resources["CPU"][0][1] == 1, \
-                            "Actor should default to one cpu."
+                    assert actor_resources["CPU"][0][1] == 1, (
+                        "Actor should default to one cpu.")
                 correct_resources = {}
                 defined_resources = decorator_args.copy()
                 defined_resources.update(instantiation_args)
