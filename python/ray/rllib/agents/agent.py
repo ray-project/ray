@@ -99,7 +99,9 @@ COMMON_CONFIG = {
     # === Execution ===
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
-    # Default sample batch size
+    # Default sample batch size (unroll length). Batches of this size are
+    # collected from workers until train_batch_size is met. When using
+    # multiple envs per worker, this is multiplied by num_envs_per_worker.
     "sample_batch_size": 200,
     # Training batch size, if applicable. Should be >= sample_batch_size.
     # Samples batches will be concatenated together to this size for training.
