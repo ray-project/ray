@@ -10,7 +10,7 @@ from six.moves import queue
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TIME_THIS_ITER_S, DONE, RESULT_DUPLICATE
+from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
 
 logger = logging.getLogger(__name__)
 
