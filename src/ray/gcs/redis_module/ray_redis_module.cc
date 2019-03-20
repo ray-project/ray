@@ -514,8 +514,12 @@ int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
   if (Set_DoWrite(ctx, argv, argc, /*is_add=*/false, &changed) != REDISMODULE_OK) {
     return REDISMODULE_ERR;
   }
-  REPLY_AND_RETURN_IF_FALSE(changed, "ERR The entry to remove doesn't exist.");
-  return Set_DoPublish(ctx, argv, /*is_add=*/false);
+  if (changed) {
+    return Set_DoPublish(ctx, argv, /*is_add=*/false);
+  } else {
+    RAY_LOG(ERROR) << "The entry to remove doesn't exist.";
+  }
+  return REDISMODULE_OK;
 }
 
 /// A helper function to create and finish a GcsTableEntry, based on the
