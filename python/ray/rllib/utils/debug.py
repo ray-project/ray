@@ -4,11 +4,14 @@ from __future__ import print_function
 
 import numpy as np
 import pprint
+import time
 
 from ray.rllib.evaluation.sample_batch import SampleBatch, MultiAgentBatch
 
 _logged = set()
 _disabled = False
+_periodic_log = True
+_last_logged = 0.0
 _printer = pprint.PrettyPrinter(indent=2, width=60)
 
 
@@ -20,10 +23,17 @@ def log_once(key):
         ...     logger.info("Some verbose logging statement")
     """
 
+    global _last_logged
+
     if _disabled:
         return False
     elif key not in _logged:
         _logged.add(key)
+        _last_logged = time.time()
+        return True
+    elif _periodic_log and time.time() - _last_logged > 60.0:
+        _logged.clear()
+        _last_logged = time.time()
         return True
     else:
         return False
@@ -34,6 +44,13 @@ def disable_log_once_globally():
 
     global _disabled
     _disabled = True
+
+
+def enable_periodic_logging():
+    """Make log_once() periodically return True in this process."""
+
+    global _periodic_log
+    _periodic_log = True
 
 
 def summarize(obj):

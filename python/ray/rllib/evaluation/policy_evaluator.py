@@ -29,7 +29,7 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
-    summarize
+    summarize, enable_periodic_logging
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
@@ -213,6 +213,8 @@ class PolicyEvaluator(EvaluatorInterface):
 
         if worker_index > 1:
             disable_log_once_globally()  # only need 1 evaluator to log
+        elif log_level == "DEBUG":
+            enable_periodic_logging()
 
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
@@ -436,7 +438,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     estimator.process(sub_batch)
 
         if log_once("sample_end"):
-            logger.info("First complete sample batch:\n\n{}\n".format(
+            logger.info("Example of completed sample batch:\n\n{}\n".format(
                 summarize(batch)))
 
         if self.compress_observations:
