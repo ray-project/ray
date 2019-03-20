@@ -12,6 +12,7 @@ import pickle
 import gym
 import ray
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.tune.util import merge_dicts
 
 EXAMPLE_USAGE = """
@@ -147,7 +148,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
                         action_dict[agent_id] = a_action
                 action = action_dict
             else:
-                if use_lstm["default"]:
+                if use_lstm[DEFAULT_POLICY_ID]:
                     action, state_init, _ = agent.compute_action(
                         state, state=state_init)
                 else:

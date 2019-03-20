@@ -10,6 +10,7 @@ from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
@@ -194,7 +195,7 @@ class DQNAgent(Agent):
                 policies = info["policy"]
                 episode = info["episode"]
                 episode.custom_metrics["policy_distance"] = policies[
-                    "default"].pi_distance
+                    DEFAULT_POLICY_ID].pi_distance
                 if end_callback:
                     end_callback(info)
 

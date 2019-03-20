@@ -406,7 +406,7 @@ class Agent(Trainable):
                        prev_action=None,
                        prev_reward=None,
                        info=None,
-                       policy_id="default"):
+                       policy_id=DEFAULT_POLICY_ID):
         """Computes an action for the specified policy.
 
         Note that you can also access the policy object through

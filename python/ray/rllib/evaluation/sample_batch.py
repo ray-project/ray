@@ -9,7 +9,7 @@ import numpy as np
 from ray.rllib.utils.annotations import PublicAPI
 
 # Defaults policy id for single agent environments
-DEFAULT_POLICY_ID = "default"
+DEFAULT_POLICY_ID = "default_policy"
 
 
 @PublicAPI
