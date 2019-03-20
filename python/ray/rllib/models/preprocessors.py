@@ -44,7 +44,7 @@ class Preprocessor(object):
 
     def write(self, observation, array, offset):
         """Alternative to transform for more efficient flattening."""
-        array[offset:offset+self._size] = self.transform(observation)
+        array[offset:offset + self._size] = self.transform(observation)
 
     @property
     @PublicAPI
@@ -127,7 +127,7 @@ class OneHotPreprocessor(Preprocessor):
                              self._obs_space, observation)
         arr[observation] = 1
         return arr
-        
+
     @override(Preprocessor)
     def write(self, observation, array, offset):
         array[offset + observation] = 1
@@ -144,7 +144,7 @@ class NoPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def write(self, observation, array, offset):
-        array[offset:offset+self._size] = observation.ravel()
+        array[offset:offset + self._size] = observation.ravel()
 
 
 class TupleFlatteningPreprocessor(Preprocessor):
@@ -178,7 +178,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
         for o, p in zip(observation, self.preprocessors):
             p.write(o, array, offset)
             offset += p.size
-        
+
 
 class DictFlatteningPreprocessor(Preprocessor):
     """Preprocesses each dict value, then flattens it all into a vector.
@@ -213,7 +213,7 @@ class DictFlatteningPreprocessor(Preprocessor):
         for o, p in zip(observation.values(), self.preprocessors):
             p.write(o, array, offset)
             offset += p.size
-        
+
 
 @PublicAPI
 def get_preprocessor(space):
