@@ -16,7 +16,7 @@ ENABLE_MULTI_LANGUAGE_TESTS=1 bazel test //java:all_tests --test_output="errors"
 
 # exit_code == 2 means there are some tests skiped.
 if [ $cluster_exit_code -ne 2 ] && [ $cluster_exit_code -ne 0 ] ; then
-    exit $exit_code
+    exit $cluster_exit_code
 fi
 
 echo "Running tests under single-process mode."
@@ -24,7 +24,7 @@ bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --test_outp
 
 # exit_code == 2 means there are some tests skiped.
 if [ $single_exit_code -ne 2 ] && [ $single_exit_code -ne 0 ] ; then
-    exit $exit_code
+    exit $single_exit_code
 fi
 
 popd
