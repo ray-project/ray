@@ -3,10 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import click
+from datetime import datetime
 import json
 import logging
 import os
 import subprocess
+import sys
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -146,7 +148,7 @@ def cli(logging_level, logging_format):
     default=False,
     help="provide this argument for the head node")
 @click.option(
-    "--no-ui",
+    "--include-webui",
     is_flag=True,
     default=False,
     help="provide this argument if the UI should not be started")
@@ -216,8 +218,8 @@ def cli(logging_level, logging_format):
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head, no_ui, block,
-          plasma_directory, huge_pages, autoscaling_config,
+          redis_max_memory, num_cpus, num_gpus, resources, head, include_webui,
+          block, plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config):
@@ -290,7 +292,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
-            include_webui=(not no_ui),
+            include_webui=include_webui,
             autoscaling_config=autoscaling_config,
             include_java=False,
         )
@@ -332,9 +334,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if redis_max_clients is not None:
             raise Exception("If --head is not passed in, --redis-max-clients "
                             "must not be provided.")
-        if no_ui:
-            raise Exception("If --head is not passed in, the --no-ui flag is "
-                            "not relevant.")
+        if include_webui:
+            raise Exception("If --head is not passed in, the --include-webui "
+                            "flag is not relevant.")
         if include_java is not None:
             raise ValueError("--include-java should only be set for the head "
                              "node.")
@@ -378,83 +380,24 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @cli.command()
 def stop():
-    # Find the PID of the plasma_store_server process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep plasma_store_server | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
+    processes_to_kill = [
+        "plasma_store_server",
+        "raylet",
+        "raylet_monitor",
+        "monitor.py",
+        "redis-server",
+        "default_worker.py",  # Python worker.
+        " ray_",  # Python worker.
+        "org.ray.runtime.runner.worker.DefaultWorker",  # Java worker.
+        "log_monitor.py",
+        "reporter.py",
+        "dashboard.py",
+    ]
 
-    # Find the PID of the raylet process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep raylet | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the raylet_monitor process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep raylet_monitor | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the monitor process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep monitor.py | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the Redis process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep redis-server | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PIDs of the worker processes and kill them.
-    subprocess.call(
-        [
-            "kill -9 $(ps aux | grep default_worker.py | "
-            "grep -v grep | awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-    subprocess.call(
-        [
-            "kill -9 $(ps aux | grep ' ray_' | "
-            "grep -v grep | awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the Ray log monitor process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep log_monitor.py | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the Ray reporter process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep reporter.py | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
-    # Find the PID of the Ray dashboard process and kill it.
-    subprocess.call(
-        [
-            "kill $(ps aux | grep dashboard.py | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
+    for process in processes_to_kill:
+        command = ("kill $(ps aux | grep '" + process + "' | grep -v grep | " +
+                   "awk '{ print $2 }') 2> /dev/null")
+        subprocess.call([command], shell=True)
 
     # Find the PID of the jupyter process and kill it.
     try:
@@ -465,6 +408,8 @@ def stop():
         ]
         subprocess.call(
             ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
+    except ImportError:
+        pass
     except Exception:
         logger.exception("Error shutting down jupyter")
 
@@ -611,6 +556,11 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
+    "--docker",
+    is_flag=True,
+    default=False,
+    help="Runs command in the docker container specified in cluster_config.")
+@click.option(
     "--stop",
     is_flag=True,
     default=False,
@@ -637,8 +587,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     "--port-forward", required=False, type=int, help="Port to forward.")
 @click.argument("script", required=True, type=str)
 @click.argument("script_args", required=False, type=str, nargs=-1)
-def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
-           port_forward, script, script_args):
+def submit(cluster_config_file, docker, screen, tmux, stop, start,
+           cluster_name, port_forward, script, script_args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -655,7 +605,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
     cmd = " ".join(["python", target] + list(script_args))
-    exec_cluster(cluster_config_file, cmd, screen, tmux, stop, False,
+    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
                  cluster_name, port_forward)
 
 
@@ -737,7 +687,7 @@ export IFS="
 # Call sudo to prompt for password before anything has been printed.
 sudo true
 workers=$(
-    ps aux | grep ' ray_' | grep -v grep
+    ps aux | grep -E ' ray_|default_worker.py' | grep -v grep
 )
 for worker in $workers; do
     echo "Stack dump for $worker";
@@ -747,6 +697,52 @@ for worker in $workers; do
 done
     """
     subprocess.call(COMMAND, shell=True)
+
+
+@cli.command()
+@click.option(
+    "--redis-address",
+    required=False,
+    type=str,
+    help="Override the redis address to connect to.")
+def timeline(redis_address):
+    if not redis_address:
+        import psutil
+        pids = psutil.pids()
+        redis_addresses = set()
+        for pid in pids:
+            try:
+                proc = psutil.Process(pid)
+                for arglist in proc.cmdline():
+                    for arg in arglist.split(" "):
+                        if arg.startswith("--redis-address="):
+                            addr = arg.split("=")[1]
+                            redis_addresses.add(addr)
+            except psutil.AccessDenied:
+                pass
+            except psutil.NoSuchProcess:
+                pass
+        if len(redis_addresses) > 1:
+            logger.info(
+                "Found multiple active Ray instances: {}. ".format(
+                    redis_addresses) +
+                "Please specify the one to connect to with --redis-address.")
+            sys.exit(1)
+        elif not redis_addresses:
+            logger.info(
+                "Could not find any running Ray instance. "
+                "Please specify the one to connect to with --redis-address.")
+            sys.exit(1)
+        redis_address = redis_addresses.pop()
+    logger.info("Connecting to Ray instance at {}.".format(redis_address))
+    ray.init(redis_address=redis_address)
+    time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = "/tmp/ray-timeline-{}.json".format(time)
+    ray.global_state.chrome_tracing_dump(filename=filename)
+    size = os.path.getsize(filename)
+    logger.info("Trace file written to {} ({} bytes).".format(filename, size))
+    logger.info(
+        "You can open this with chrome://tracing in the Chrome browser.")
 
 
 cli.add_command(start)
@@ -763,6 +759,7 @@ cli.add_command(kill_random_node)
 cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(get_worker_ips)
 cli.add_command(stack)
+cli.add_command(timeline)
 
 
 def main():

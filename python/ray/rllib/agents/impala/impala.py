@@ -84,7 +84,7 @@ DEFAULT_CONFIG = with_common_config({
     "epsilon": 0.1,
     # balancing the three losses
     "vf_loss_coeff": 0.5,
-    "entropy_coeff": -0.01,
+    "entropy_coeff": 0.01,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -110,13 +110,16 @@ class ImpalaAgent(Agent):
         self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
                                                self.remote_evaluators,
                                                self.config["optimizer"])
+        if self.config["entropy_coeff"] < 0:
+            raise DeprecationWarning("entropy_coeff must be >= 0")
 
     @override(Agent)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()
         self.optimizer.step()
-        while time.time() - start < self.config["min_iter_time_s"]:
+        while (time.time() - start < self.config["min_iter_time_s"]
+               or self.optimizer.num_steps_sampled == prev_steps):
             self.optimizer.step()
         result = self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"])

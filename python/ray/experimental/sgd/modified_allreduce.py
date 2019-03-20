@@ -27,7 +27,6 @@ import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib import nccl
 from tensorflow.contrib.all_reduce.python import all_reduce
 
 logger = logging.getLogger(__name__)
@@ -309,7 +308,8 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
         #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
         scaled_grads = [g for g, _ in grad_and_vars]
         if alg == 'nccl':
-            summed_grads = nccl.all_sum(scaled_grads)
+            from tensorflow.python.ops import nccl_ops
+            summed_grads = nccl_ops.all_sum(scaled_grads)
         elif alg == 'simple':
             summed_grads = build_reduce_sum(scaled_grads)
         elif alg == 'trivial':

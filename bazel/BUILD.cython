@@ -20,11 +20,9 @@ py_library(
 )
 
 # May not be named "cython", since that conflicts with Cython/ on OSX
-py_binary(
+filegroup(
     name="cython_binary",
     srcs=["cython.py"],
-    main="cython.py",
-    srcs_version="PY2AND3",
     visibility=["//visibility:public"],
-    deps=["cython_lib"],
+    data=["cython_lib"],
 )

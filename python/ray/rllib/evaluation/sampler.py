@@ -171,6 +171,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 queue_putter(item)
 
     def get_data(self):
+        if not self.is_alive():
+            raise RuntimeError("Sampling thread has died")
         rollout = self.queue.get(timeout=600.0)
 
         # Propagate errors
@@ -372,6 +374,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
 
             last_observation = episode.last_observation_for(agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
+            episode._set_last_raw_obs(agent_id, raw_obs)
             episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable

@@ -96,7 +96,7 @@ class TaskSpecification {
   /// \param num_returns The number of values returned by the task.
   /// \param required_resources The task's resource demands.
   /// \param language The language of the worker that must execute the function.
-  TaskSpecification(const UniqueID &driver_id, const TaskID &parent_task_id,
+  TaskSpecification(const DriverID &driver_id, const TaskID &parent_task_id,
                     int64_t parent_counter,
                     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
                     int64_t num_returns,
@@ -129,7 +129,7 @@ class TaskSpecification {
   /// \param language The language of the worker that must execute the function.
   /// \param function_descriptor The function descriptor.
   TaskSpecification(
-      const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
+      const DriverID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
       const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
       int64_t max_actor_reconstructions, const ActorID &actor_id,
       const ActorHandleID &actor_handle_id, int64_t actor_counter,
@@ -164,7 +164,7 @@ class TaskSpecification {
 
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
-  UniqueID DriverId() const;
+  DriverID DriverId() const;
   TaskID ParentTaskId() const;
   int64_t ParentCounter() const;
   std::vector<std::string> FunctionDescriptor() const;
