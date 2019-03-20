@@ -165,14 +165,12 @@ Status GetBroadcastKey(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_st
   return Status::OK();
 }
 
-/**
- * This is a helper method to convert a redis module string to a flatbuffer
- * string.
- *
- * @param fbb The flatbuffer builder.
- * @param redis_string The redis string.
- * @return The flatbuffer string.
- */
+/// This is a helper method to convert a redis module string to a flatbuffer
+/// string.
+///
+/// \param fbb The flatbuffer builder.
+/// \param redis_string The redis string.
+/// \return The flatbuffer string.
 flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
     flatbuffers::FlatBufferBuilder &fbb, RedisModuleString *redis_string) {
   size_t redis_string_size;
@@ -186,8 +184,8 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
 /// has requested notifications for this key.
 ///
 /// \param pubsub_channel_str The pubsub channel name that notifications for
-///        this key should be published to. When publishing to a specific
-///        client, the channel name should be <pubsub_channel>:<client_id>.
+/// this key should be published to. When publishing to a specific client, the
+/// channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key that the notification is about.
 /// \param mode the update mode, such as append or remove.
 /// \param data The appended/removed data.
@@ -285,8 +283,8 @@ int TableAdd_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 ///
 /// \param table_prefix The prefix string for keys in this table.
 /// \param pubsub_channel The pubsub channel name that notifications for
-///  this key should be published to. When publishing to a specific
-///  client, the channel name should be <pubsub_channel>:<client_id>.
+/// this key should be published to. When publishing to a specific client, the
+/// channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to set.
 /// \param data The data to insert at the key.
 /// \return The current value at the key, or OK if there is no value.
@@ -384,17 +382,16 @@ int TableAppend_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int /*a
 ///                     <index (optional)>
 ///
 /// \param table_prefix The prefix string for keys in this table.
-/// \param pubsub_channel The pubsub channel name that notifications for
-///        this key should be published to. When publishing to a specific
-///        client, the channel name should be <pubsub_channel>:<client_id>.
+/// \param pubsub_channel The pubsub channel name that notifications for this
+/// key should be published to. When publishing to a specific client, the
+/// channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to append to.
 /// \param data The data to append to the key.
 /// \param index If this is set, then the data must be appended at this index.
-///        If the current log is shorter or longer than the requested index,
-///        then the append will fail and an error message will be returned as a
-///        string.
+/// If the current log is shorter or longer than the requested index, then the
+/// append will fail and an error message will be returned as a string.
 /// \return OK if the append succeeds, or an error message string if the append
-///         fails.
+/// fails.
 int TableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   if (TableAppend_DoWrite(ctx, argv, argc, /*mutated_key_str=*/nullptr) !=
       REDISMODULE_OK) {
@@ -476,13 +473,12 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
 ///    RAY.SET_ADD <table_prefix> <pubsub_channel> <id> <data>
 ///
 /// \param table_prefix The prefix string for keys in this set.
-/// \param pubsub_channel The pubsub channel name that notifications for
-///        this key should be published to. When publishing to a specific
-///        client, the channel name should be <pubsub_channel>:<client_id>.
+/// \param pubsub_channel The pubsub channel name that notifications for this
+/// key should be published to. When publishing to a specific client, the
+/// channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to add to.
 /// \param data The data to add to the key.
-/// \return OK if the add succeeds, or an error message string if the add
-///         fails.
+/// \return OK if the add succeeds, or an error message string if the add fails.
 int SetAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   bool changed;
   if (Set_DoWrite(ctx, argv, argc, /*is_add=*/true, &changed) != REDISMODULE_OK) {
@@ -502,13 +498,13 @@ int SetAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
 ///    RAY.SET_REMOVE <table_prefix> <pubsub_channel> <id> <data>
 ///
 /// \param table_prefix The prefix string for keys in this table.
-/// \param pubsub_channel The pubsub channel name that notifications for
-///        this key should be published to. When publishing to a specific
-///        client, the channel name should be <pubsub_channel>:<client_id>.
+/// \param pubsub_channel The pubsub channel name that notifications for this
+/// key should be published to. When publishing to a specific client, the
+/// channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to remove from.
 /// \param data The data to remove from the key.
 /// \return OK if the remove succeeds, or an error message string if the remove
-///         fails.
+/// fails.
 int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   bool changed;
   if (Set_DoWrite(ctx, argv, argc, /*is_add=*/false, &changed) != REDISMODULE_OK) {
@@ -892,8 +888,8 @@ AUTO_MEMORY(ChainTableAppend_RedisCommand);
 
 extern "C" {
 
-/* This function must be present on each Redis module. It is used in order to
- * register the commands into the Redis server. */
+/// This function must be present on each Redis module. It is used in order to
+/// register the commands into the Redis server.
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   REDISMODULE_NOT_USED(argv);
   REDISMODULE_NOT_USED(argc);
@@ -971,4 +967,4 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   return REDISMODULE_OK;
 }
 
-} /* extern "C" */
+} /// extern "C"
