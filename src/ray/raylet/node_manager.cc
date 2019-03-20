@@ -502,7 +502,7 @@ void NodeManager::PublishActorStateTransition(
     // RECONSTRUCTING or DEAD entries have an odd index.
     log_length += 1;
   }
-  // If we were successful to append a record to the GCS table that the actor
+  // If we successful appended a record to the GCS table of the actor that
   // has died, signal this to anyone receiving signals from this actor.
   auto success_callback = [](gcs::AsyncGcsClient *client, const ActorID &id,
                              const ActorTableDataT &data) {
