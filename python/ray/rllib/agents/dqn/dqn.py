@@ -128,6 +128,10 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+
+    # === Other ===
+    # Use PyTorch as backend
+    "use_pytorch": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -143,6 +147,13 @@ class DQNAgent(Agent):
 
     @override(Agent)
     def _init(self):
+        if self.config["use_pytorch"]:
+            from ray.rllib.agents.dqn.torch_dqn_policy_graph import \
+                DQNTorchPolicyGraph
+            policy_cls = DQNTorchPolicyGraph
+        else:
+            policy_cls = self._policy_graph
+
         self._validate_config()
 
         # Update effective batch size to include n-step
@@ -202,12 +213,12 @@ class DQNAgent(Agent):
                 on_episode_end)
 
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, self._policy_graph)
+            self.env_creator, policy_cls)
 
         if self.config["evaluation_interval"]:
             self.evaluation_ev = self.make_local_evaluator(
                 self.env_creator,
-                self._policy_graph,
+                policy_cls,
                 extra_config={
                     "batch_mode": "complete_episodes",
                     "batch_steps": 1,
@@ -216,7 +227,7 @@ class DQNAgent(Agent):
 
         def create_remote_evaluators():
             return self.make_remote_evaluators(self.env_creator,
-                                               self._policy_graph,
+                                               policy_cls,
                                                self.config["num_workers"])
 
         if self.config["optimizer_class"] != "AsyncReplayOptimizer":
