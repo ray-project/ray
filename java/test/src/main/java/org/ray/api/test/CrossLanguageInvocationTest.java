@@ -30,7 +30,6 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
         .getResourceAsStream("/" + PYTHON_MODULE + ".py");
     File pythonFile = new File(
         tempDir.getAbsolutePath() + File.separator + PYTHON_MODULE + ".py");
-    System.out.println(pythonFile.getAbsolutePath());
     try {
       FileUtils.copyInputStreamToFile(in, pythonFile);
     } catch (IOException e) {
