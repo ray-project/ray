@@ -712,7 +712,7 @@ def test_connect_with_disconnected_node(shutdown_only):
 def test_redis_lru_with_set(shutdown_only):
     ray.init(object_store_memory=10**8)
 
-    x = np.zeros(8*10**7, dtype=np.uint8)
+    x = np.zeros(8 * 10**7, dtype=np.uint8)
     x_id = ray.put(x)
 
     # Remove the object from the object table to simulate Redis LRU eviction.
