@@ -5,7 +5,6 @@ from __future__ import print_function
 import json
 import logging
 import os
-import os.path as osp
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
@@ -16,6 +15,8 @@ from ray.tune.result import EXPR_PROGRESS_FILE, \
     EXPR_PARARM_FILE, EXPR_RESULT_FILE
 
 logger = logging.getLogger(__name__)
+
+import pdb
 
 
 def get_best_trial(trial_list, metric):
@@ -57,9 +58,9 @@ def _parse_configs(cfg_path):
 
 def _resolve(directory, result_filename):
     try:
-        result_path = osp.join(directory, result_filename)
+        result_path = os.path.join(directory, result_filename)
         res_dict = _parse_results(result_path)
-        cfgp = osp.join(directory, EXPR_PARARM_FILE)
+        cfgp = os.path.join(directory, EXPR_PARARM_FILE)
         cfg_dict = _parse_configs(cfgp)
         cfg_dict.update(res_dict)
         return cfg_dict
@@ -146,8 +147,12 @@ def clean_trial(trial_dir):
     result_path = get_result_path(trial_dir=trial_dir)
     result_backup_path = get_result_backup_path(result_path=result_path)
 
-    print(result_backup_path)
-    dataframe = pd.read_csv(result_backup_path)
+    #print(result_backup_path)
+    try:
+        dataframe = pd.read_csv(result_backup_path)
+    except pd.errors.EmptyDataError:
+        print('empty CSV')
+        return
 
     cleaned_dataframe = clean_dataframe(dataframe)
 
