@@ -16,7 +16,9 @@ _printer = pprint.PrettyPrinter(indent=2, width=60)
 
 
 def log_once(key):
-    """Returns True if this is the first call for a given key.
+    """Returns True if this is the "first" call for a given key.
+
+    Various logging settings can adjust the definition of "first".
 
     Example:
         >>> if log_once("some_key"):
@@ -34,7 +36,7 @@ def log_once(key):
     elif _periodic_log and time.time() - _last_logged > 60.0:
         _logged.clear()
         _last_logged = time.time()
-        return True
+        return False
     else:
         return False
 
