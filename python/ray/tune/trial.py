@@ -528,8 +528,8 @@ class Trial(object):
                 self.results_since_checkpoint_sum += result[self.checkpoint_score_attr]
                 self.results_since_checkpoint_cnt += 1
         except KeyError as e:
-            raise KeyError("Warning: result dict has no key: {}. "
-                           "Keep_best_checkpoint flag will not work.".format(self.checkpoint_score_attr))
+            logger.warning("Result dict has no key: {}. keep_best"
+                           "_checkpoint flag will not work".format(self.checkpoint_score_attr))
 
     def compare_checkpoints(self, attr_mean):
         """Compares two checkpoints based on the attribute attr_mean param.
