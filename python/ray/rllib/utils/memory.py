@@ -37,6 +37,9 @@ def concat_aligned(items):
         # we assume the input is aligned. In any case, it doesn't help
         # performance to force align it since that incurs a needless copy.
         return items[0]
+    elif isinstance(items[0], list):
+        # unknown dtype, probably better to avoid aligning
+        return np.concatenate(items)
 
     dtype = items[0].dtype
     if dtype in [np.float32, np.float64]:
