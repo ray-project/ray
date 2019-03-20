@@ -495,6 +495,8 @@ class PolicyEvaluator(EvaluatorInterface):
             grad_out, info_out = (
                 self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples))
         info_out["batch_count"] = samples.count
+        if log_once("grad_out"):
+            logger.info("Compute grad info: {}".format(summarize(info_out)))
         return grad_out, info_out
 
     @override(EvaluatorInterface)
@@ -540,11 +542,12 @@ class PolicyEvaluator(EvaluatorInterface):
                         continue
                     info_out[pid], _ = (
                         self.policy_map[pid].learn_on_batch(batch))
-            return info_out
         else:
-            grad_fetch, apply_fetch = (
+            info_out, _ = (
                 self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(samples))
-            return grad_fetch
+        if log_once("learn_out"):
+            logger.info("Training output:\n\n{}\n".format(summarize(info_out)))
+        return info_out
 
     @DeveloperAPI
     def get_metrics(self):
@@ -680,6 +683,9 @@ class PolicyEvaluator(EvaluatorInterface):
                     "Tuple|DictFlatteningPreprocessor.")
             with tf.variable_scope(name):
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
+        if log_once("build_map"):
+            logger.info("Built policy map: {}".format(policy_map))
+            logger.info("Built preprocessor map: {}".format(preprocessors))
         return policy_map, preprocessors
 
     def __del__(self):
