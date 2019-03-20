@@ -491,7 +491,7 @@ int SetAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
   if (changed) {
     return Set_DoPublish(ctx, argv, /*is_add=*/true);
   }
-  return REDISMODULE_OK;
+  return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /// Remove an entry from the set stored at a key. Publishes a notification about
@@ -519,7 +519,7 @@ int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
   } else {
     RAY_LOG(ERROR) << "The entry to remove doesn't exist.";
   }
-  return REDISMODULE_OK;
+  return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /// A helper function to create and finish a GcsTableEntry, based on the

@@ -624,14 +624,17 @@ def test_redis_module_failure(ray_start_regular):
                      -1)
     run_failure_test("Index is not a number.", "RAY.TABLE_APPEND", 1, 1, 2, 1,
                      b"a")
-    run_failure_test("The entry to remove doesn't exist.", "RAY.SET_REMOVE", 1,
-                     1, 3, 1)
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1)
     # It's okay to add duplicate entries.
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1)
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1, 0)
     run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1, 1)
     run_one_command("RAY.SET_ADD", 1, 1, 3, 1)
+    # It's okey to add duplicate entries.
+    run_one_command("RAY.SET_ADD", 1, 1, 3, 1)
+    run_one_command("RAY.SET_REMOVE", 1, 1, 3, 1)
+    # It's okey to remove duplicate entries.
+    run_one_command("RAY.SET_REMOVE", 1, 1, 3, 1)
 
 
 # Note that this test will take at least 10 seconds because it must wait for
@@ -704,3 +707,16 @@ def test_connect_with_disconnected_node(shutdown_only):
     # There is no connection error to a dead node.
     info = relevant_errors(ray_constants.RAYLET_CONNECTION_ERROR)
     assert len(info) == 0
+
+
+def test_redis_lru_with_set(shutdown_only):
+    ray.init(object_store_memory=10**8)
+
+    x = np.zeros(8*10**7, dtype=np.uint8)
+    x_id = ray.put(x)
+
+    # Remove the object from the object table to simulate Redis LRU eviction.
+    assert ray.global_state.redis_clients[0].delete(b'OBJECT' + x_id.binary()) == 1
+
+    # Now evict the object from the object store.
+    ray.put(x)  # This should not crash.

@@ -690,7 +690,12 @@ void TestSetSubscribeAll(const JobID &job_id,
       for (size_t j = 0; j < managers.size(); j++) {
         auto data = std::make_shared<ObjectTableDataT>();
         data->manager = managers[j];
-        RAY_CHECK_OK(client->object_table().Remove(job_id, object_ids[i], data, nullptr));
+        for (int k = 0; k < 3; k++) {
+          // Remove the same entry several times.
+          // Expect no notification if the entry already exists.
+          RAY_CHECK_OK(
+              client->object_table().Remove(job_id, object_ids[i], data, nullptr));
+        }
       }
     }
   };
