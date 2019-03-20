@@ -279,7 +279,7 @@ def _env_runner(base_env,
             base_env.poll()
 
         if log_once("env_returns"):
-            logger.info("Unfiltered obs from env: {}".format(
+            logger.info("Raw obs from env: {}".format(
                 summarize(unfiltered_obs)))
             logger.info("Info return from env: {}".format(summarize(infos)))
 
