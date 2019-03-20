@@ -1,4 +1,3 @@
-import pytest
 import time
 
 import ray
@@ -13,15 +12,6 @@ import ray.tests.cluster_utils
 class UserSignal(signal.Signal):
     def __init__(self, value):
         self.value = value
-
-
-@pytest.fixture
-def ray_start():
-    # Start the Ray processes.
-    ray.init(num_cpus=4)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 def receive_all_signals(sources, timeout):
@@ -56,7 +46,7 @@ def two_node_cluster():
     cluster.shutdown()
 
 
-def test_task_to_driver(ray_start):
+def test_task_to_driver(ray_start_regular):
     # Send a signal from a task to the driver.
 
     @ray.remote
@@ -71,7 +61,7 @@ def test_task_to_driver(ray_start):
     assert len(result_list) == 1
 
 
-def test_send_signal_from_actor_to_driver(ray_start):
+def test_send_signal_from_actor_to_driver(ray_start_regular):
     # Send several signals from an actor, and receive them in the driver.
 
     @ray.remote
@@ -94,7 +84,7 @@ def test_send_signal_from_actor_to_driver(ray_start):
         assert signal_value + str(i) == result_list[i][1].value
 
 
-def test_send_signals_from_actor_to_driver(ray_start):
+def test_send_signals_from_actor_to_driver(ray_start_regular):
     # Send "count" signal at intervals from an actor and get
     # these signals in the driver.
 
@@ -120,7 +110,7 @@ def test_send_signals_from_actor_to_driver(ray_start):
     assert True
 
 
-def test_task_crash(ray_start):
+def test_task_crash(ray_start_regular):
     # Get an error when ray.get() is called on the return of a failed task.
 
     @ray.remote
@@ -138,7 +128,7 @@ def test_task_crash(ray_start):
         assert type(result_list[0][1]) == signal.ErrorSignal
 
 
-def test_task_crash_without_get(ray_start):
+def test_task_crash_without_get(ray_start_regular):
     # Get an error when task failed.
 
     @ray.remote
@@ -151,7 +141,7 @@ def test_task_crash_without_get(ray_start):
     assert type(result_list[0][1]) == signal.ErrorSignal
 
 
-def test_actor_crash(ray_start):
+def test_actor_crash(ray_start_regular):
     # Get an error when ray.get() is called on a return parameter
     # of a method that failed.
 
@@ -174,7 +164,7 @@ def test_actor_crash(ray_start):
         assert type(result_list[0][1]) == signal.ErrorSignal
 
 
-def test_actor_crash_init(ray_start):
+def test_actor_crash_init(ray_start_regular):
     # Get an error when an actor's __init__ failed.
 
     @ray.remote
@@ -192,7 +182,7 @@ def test_actor_crash_init(ray_start):
     assert type(result_list[0][1]) == signal.ErrorSignal
 
 
-def test_actor_crash_init2(ray_start):
+def test_actor_crash_init2(ray_start_regular):
     # Get errors when (1) __init__ fails, and (2) subsequently when
     # ray.get() is called on the return parameter of another method
     # of the actor.
@@ -216,7 +206,7 @@ def test_actor_crash_init2(ray_start):
         assert type(result_list[0][1]) == signal.ErrorSignal
 
 
-def test_actor_crash_init3(ray_start):
+def test_actor_crash_init3(ray_start_regular):
     # Get errors when (1) __init__ fails, and (2) subsequently when
     # another method of the actor is invoked.
 
@@ -237,7 +227,7 @@ def test_actor_crash_init3(ray_start):
     assert type(result_list[0][1]) == signal.ErrorSignal
 
 
-def test_send_signals_from_actor_to_actor(ray_start):
+def test_send_signals_from_actor_to_actor(ray_start_regular):
     # Send "count" signal at intervals of 100ms from two actors and get
     # these signals in another actor.
 
@@ -284,7 +274,7 @@ def test_send_signals_from_actor_to_actor(ray_start):
     assert received_count == 2 * count
 
 
-def test_forget(ray_start):
+def test_forget(ray_start_regular):
     # Send "count" signals on behalf of an actor, then ignore all these
     # signals, and then send anther "count" signals on behalf of the same
     # actor. Then show that the driver only gets the last "count" signals.
@@ -336,7 +326,7 @@ def test_signal_on_node_failure(two_node_cluster):
     assert type(result_list[0][1]) == signal.ActorDiedSignal
 
 
-def test_send_signal_from_two_tasks_to_driver(ray_start):
+def test_send_signal_from_two_tasks_to_driver(ray_start_regular):
     # Define a remote function that sends a user-defined signal.
     @ray.remote
     def send_signal(value):
@@ -354,7 +344,7 @@ def test_send_signal_from_two_tasks_to_driver(ray_start):
     assert len(result_list) == 1
 
 
-def test_receiving_on_two_returns(ray_start):
+def test_receiving_on_two_returns(ray_start_regular):
     @ray.remote(num_return_vals=2)
     def send_signal(value):
         signal.send(UserSignal(value))
@@ -370,7 +360,7 @@ def test_receiving_on_two_returns(ray_start):
             or (x == results[1][0] and y == results[0][0]))
 
 
-def test_serial_tasks_reading_same_signal(ray_start):
+def test_serial_tasks_reading_same_signal(ray_start_regular):
     @ray.remote
     def send_signal(value):
         signal.send(UserSignal(value))

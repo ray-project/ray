@@ -445,13 +445,3 @@ class Trainable(object):
             A dict that maps ExportFormats to successfully exported models.
         """
         return {}
-
-
-def wrap_function(train_func):
-    from ray.tune.function_runner import FunctionRunner
-
-    class WrappedFunc(FunctionRunner):
-        def _trainable_func(self):
-            return train_func
-
-    return WrappedFunc

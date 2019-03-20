@@ -12,7 +12,6 @@ from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
-from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
 
@@ -141,21 +140,6 @@ class DQNAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = DQNPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
-
-    @classmethod
-    @override(Agent)
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        Agent._validate_config(cf)
-        if cf["optimizer_class"] == "AsyncReplayOptimizer":
-            extra = cf["optimizer"]["num_replay_buffer_shards"]
-        else:
-            extra = 0
-        return Resources(
-            cpu=cf["num_cpus_for_driver"],
-            gpu=cf["num_gpus"],
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"] + extra,
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     @override(Agent)
     def _init(self):

@@ -605,9 +605,10 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
 
 void NodeManager::CleanUpTasksForDeadDriver(const DriverID &driver_id) {
   auto tasks_to_remove = local_queues_.GetTaskIdsForDriver(driver_id);
-  local_queues_.RemoveTasks(tasks_to_remove);
-
   task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
+  // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
+  // call it last.
+  local_queues_.RemoveTasks(tasks_to_remove);
 }
 
 void NodeManager::ProcessNewClient(LocalClientConnection &client) {
