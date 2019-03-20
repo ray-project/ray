@@ -150,7 +150,7 @@ def receive(sources, timeout=None):
         # The list of results for source s is stored in answer[1]
         for r in answer[1]:
             for s in task_source_list:
-                if r[1][1].decode('ascii') == ACTOR_DIED_STR:
+                if r[1][1].decode("ascii") == ACTOR_DIED_STR:
                     results.append((s, ActorDiedSignal()))
                 else:
                     # Now it gets tricky: r[0] is the redis internal sequence id
