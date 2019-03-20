@@ -496,7 +496,7 @@ ray.init(redis_address="{}")
 @ray.remote
 def g(x):
     return
-g.remote(ray.ObjectID(ray.utils.hex_to_binary({})))
+g.remote(ray.ObjectID(ray.utils.hex_to_binary("{}")))
 time.sleep(1)
 print("success")
 """.format(redis_address, nonexistent_id_hex)
