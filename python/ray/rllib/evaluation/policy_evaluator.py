@@ -28,6 +28,8 @@ from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.compression import pack
+from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
+    summarize
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
@@ -208,6 +210,9 @@ class PolicyEvaluator(EvaluatorInterface):
 
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)
+
+        if worker_index > 1:
+            disable_log_once_globally()  # only need 1 evaluator to log
 
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
@@ -390,6 +395,10 @@ class PolicyEvaluator(EvaluatorInterface):
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
 
+        if log_once("sample_start"):
+            logger.info("Generating sample batch of size {}".format(
+                self.sample_batch_size))
+
         batches = [self.input_reader.next()]
         steps_so_far = batches[0].count
 
@@ -422,6 +431,10 @@ class PolicyEvaluator(EvaluatorInterface):
             for sub_batch in batch.split_by_episode():
                 for estimator in self.reward_estimators:
                     estimator.process(sub_batch)
+
+        if log_once("sample_end"):
+            logger.info("Completed sample batch:\n\n{}\n".format(
+                summarize(batch)))
 
         if self.compress_observations:
             if isinstance(batch, MultiAgentBatch):
@@ -457,6 +470,9 @@ class PolicyEvaluator(EvaluatorInterface):
 
     @override(EvaluatorInterface)
     def compute_gradients(self, samples):
+        if log_once("compute_gradients"):
+            logger.info("Compute gradients on:\n\n{}\n".format(
+                summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             grad_out, info_out = {}, {}
             if self.tf_sess is not None:
@@ -483,6 +499,8 @@ class PolicyEvaluator(EvaluatorInterface):
 
     @override(EvaluatorInterface)
     def apply_gradients(self, grads):
+        if log_once("apply_gradients"):
+            logger.info("Apply gradients:\n\n{}\n".format(summarize(grads)))
         if isinstance(grads, dict):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "apply_gradients")
@@ -502,6 +520,9 @@ class PolicyEvaluator(EvaluatorInterface):
 
     @override(EvaluatorInterface)
     def learn_on_batch(self, samples):
+        if log_once("learn_on_batch"):
+            logger.info("Training on batch:\n\n{}\n".format(
+                summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
             if self.tf_sess is not None:

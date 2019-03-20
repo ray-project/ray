@@ -3,10 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import logging
 import numpy as np
 
 from ray.rllib.evaluation.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.debug import log_once, summarize
+
+logger = logging.getLogger(__name__)
 
 
 def to_float_array(v):
@@ -145,10 +149,15 @@ class MultiAgentSampleBatchBuilder(object):
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
 
+        if log_once("after_post"):
+            logger.info("Postprocessed trajectory fragment:\n\n{}\n".format(
+                summarize(post_batches)))
+
         # Append into policy batches and reset
         for agent_id, post_batch in sorted(post_batches.items()):
             self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
                 post_batch)
+
         self.agent_builders.clear()
         self.agent_to_policy.clear()
 

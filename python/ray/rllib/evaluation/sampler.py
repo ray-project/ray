@@ -18,10 +18,10 @@ from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
-_large_batch_warned = False
 
 RolloutMetrics = namedtuple(
     "RolloutMetrics",
@@ -273,10 +273,18 @@ def _env_runner(base_env,
 
     active_episodes = defaultdict(new_episode)
 
+    if log_once("sampler_init"):
+        logger.info("Initializing sampler")
+
     while True:
         # Get observations from all ready agents
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
+
+        if log_once("env_returns"):
+            logger.info("Unfiltered obs from env: {}".format(
+                summarize(unfiltered_obs)))
+            logger.info("Info return from env: {}".format(summarize(infos)))
 
         # Process observations and prepare for policy evaluation
         active_envs, to_eval, outputs = _process_observations(
@@ -325,10 +333,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
             episode.batch_builder.count += 1
             episode._add_agent_rewards(rewards[env_id])
 
-        global _large_batch_warned
-        if (not _large_batch_warned and
-                episode.batch_builder.total() > max(1000, unroll_length * 10)):
-            _large_batch_warned = True
+        if (episode.batch_builder.total() > max(1000, unroll_length * 10)
+                and log_once("large_batch_warning")):
             logger.warning(
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
@@ -362,7 +368,13 @@ def _process_observations(base_env, policies, batch_builder_pool,
             policy_id = episode.policy_for(agent_id)
             prep_obs = _get_or_raise(preprocessors,
                                      policy_id).transform(raw_obs)
+            if log_once("prep_obs"):
+                logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
+
             filtered_obs = _get_or_raise(obs_filters, policy_id)(prep_obs)
+            if log_once("filtered_obs"):
+                logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
+
             agent_done = bool(all_done or dones[env_id].get(agent_id))
             if not agent_done:
                 to_eval[policy_id].append(
@@ -466,6 +478,11 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         pending_fetches = {}
     else:
         builder = None
+
+    if log_once("compute_actions_input"):
+        logger.info("Compute actions input:\n\n{}\n".format(
+            summarize(to_eval)))
+
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
         policy = _get_or_raise(policies, policy_id)
@@ -488,6 +505,10 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
     if builder:
         for k, v in pending_fetches.items():
             eval_results[k] = builder.get(v)
+
+    if log_once("compute_actions_result"):
+        logger.info("Compute actions result:\n\n{}\n".format(
+            summarize(eval_results)))
 
     return eval_results
 
