@@ -7,13 +7,6 @@ import pytest
 import ray
 
 
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
 def test_modin_import_with_ray_init(shutdown_only):
     ray.init(num_cpus=1)
     import modin.pandas as pd
