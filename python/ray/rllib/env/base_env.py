@@ -107,10 +107,7 @@ class BaseEnv(object):
             else:
                 if remote_envs:
                     env = RemoteVectorEnv(
-                        make_env, num_envs, multiagent=False, sync=True)
-                elif async_remote_envs:
-                    env = RemoteVectorEnv(
-                        make_env, num_envs, multiagent=False, sync=False)
+                        make_env, num_envs, multiagent=True, remote_worker_env_timeout_ms=remote_worker_env_timeout_ms)
                 else:
                     env = VectorEnv.wrap(
                         make_env=make_env,
