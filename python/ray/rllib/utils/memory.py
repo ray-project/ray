@@ -37,12 +37,8 @@ def concat_aligned(items):
         # we assume the input is aligned. In any case, it doesn't help
         # performance to force align it since that incurs a needless copy.
         return items[0]
-    elif isinstance(items[0], list):
-        # unknown dtype, probably better to avoid aligning
-        return np.concatenate(items)
-
-    dtype = items[0].dtype
-    if dtype in [np.float32, np.float64]:
+    elif (isinstance(items[0], np.ndarray)
+          and items[0].dtype in [np.float32, np.float64]):
         flat = aligned_array(sum(s.size for s in items), dtype)
         batch_dim = sum(s.shape[0] for s in items)
         new_shape = (batch_dim, ) + items[0].shape[1:]
@@ -50,5 +46,5 @@ def concat_aligned(items):
         assert output.ctypes.data % 64 == 0, output.ctypes.data
         np.concatenate(items, out=output)
         return output
-
-    return np.concatenate(items)
+    else:
+        return np.concatenate(items)
