@@ -70,15 +70,6 @@ class SkOptSearch(SuggestionAlgorithm):
         >>> from skopt import Optimizer
         >>> optimizer = Optimizer([(0,20),(-100,100)])
         >>> current_best_params = [[10, 0], [15, -20]]
-        >>> config = {
-        >>>     "my_exp": {
-        >>>         "run": "exp",
-        >>>         "num_samples": 10,
-        >>>         "stop": {
-        >>>             "training_iteration": 100
-        >>>         },
-        >>>     }
-        >>> }
         >>> algo = SkOptSearch(optimizer,
         >>>     ["width", "height"],
         >>>     max_concurrent=4,

@@ -35,59 +35,7 @@ def _raise_deprecation_note(deprecated, replacement, soft=False):
 class Experiment(object):
     """Tracks experiment specifications.
 
-    Parameters:
-        name (str): Name of experiment.
-        run (function|class|str): The algorithm or model to train.
-            This may refer to the name of a built-on algorithm
-            (e.g. RLLib's DQN or PPO), a user-defined trainable
-            function or class, or the string identifier of a
-            trainable function or class registered in the tune registry.
-        stop (dict): The stopping criteria. The keys may be any field in
-            the return result of 'train()', whichever is reached first.
-            Defaults to empty dict.
-        config (dict): Algorithm-specific configuration for Tune variant
-            generation (e.g. env, hyperparams). Defaults to empty dict.
-            Custom search algorithms may ignore this.
-        resources_per_trial (dict): Machine resources to allocate per trial,
-            e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
-            assigned unless you specify them here. Defaults to 1 CPU and 0
-            GPUs in ``Trainable.default_resource_request()``.
-        num_samples (int): Number of times to sample from the
-            hyperparameter space. Defaults to 1. If `grid_search` is
-            provided as an argument, the grid will be repeated
-            `num_samples` of times.
-        local_dir (str): Local dir to save training results to.
-            Defaults to ``~/ray_results``.
-        upload_dir (str): Optional URI to sync training results
-            to (e.g. ``s3://bucket``).
-        trial_name_creator (func): Optional function for generating
-            the trial string representation.
-        loggers (list): List of logger creators to be used with
-            each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
-            See `ray/tune/logger.py`.
-        sync_function (func|str): Function for syncing the local_dir to
-            upload_dir. If string, then it must be a string template for
-            syncer to run. If not provided, the sync command defaults
-            to standard S3 or gsutil sync comamnds.
-        checkpoint_freq (int): How many training iterations between
-            checkpoints. A value of 0 (default) disables checkpointing.
-        checkpoint_at_end (bool): Whether to checkpoint at the end of the
-            experiment regardless of the checkpoint_freq. Default is False.
-        export_formats (list): List of formats that exported at the end of
-            the experiment. Default is None.
-        max_failures (int): Try to recover a trial from its last
-            checkpoint at least this many times. Only applies if
-            checkpointing is enabled. Setting to -1 will lead to infinite
-            recovery retries. Defaults to 3.
-        restore (str): Path to checkpoint. Only makes sense to set if
-            running 1 trial. Defaults to None.
-        repeat: Deprecated and will be removed in future versions of
-            Ray. Use `num_samples` instead.
-        trial_resources: Deprecated and will be removed in future versions of
-            Ray. Use `resources_per_trial` instead.
-        custom_loggers: Deprecated and will be removed in future versions of
-            Ray. Use `loggers` instead.
-
+    Implicitly registers the Trainable if needed.
 
     Examples:
         >>> experiment_spec = Experiment(
@@ -107,7 +55,6 @@ class Experiment(object):
         >>>     upload_dir="s3://your_bucket/path",
         >>>     checkpoint_freq=10,
         >>>     max_failures=2)
-
     """
 
     def __init__(self,
@@ -121,7 +68,6 @@ class Experiment(object):
                  upload_dir=None,
                  trial_name_creator=None,
                  loggers=None,
-                 custom_loggers=None,
                  sync_function=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
@@ -129,7 +75,8 @@ class Experiment(object):
                  max_failures=3,
                  restore=None,
                  repeat=None,
-                 trial_resources=None):
+                 trial_resources=None,
+                 custom_loggers=None):
         if sync_function:
             assert upload_dir, "Need `upload_dir` if sync_function given."
 
@@ -137,13 +84,13 @@ class Experiment(object):
             _raise_deprecation_note("repeat", "num_samples", soft=False)
         if trial_resources:
             _raise_deprecation_note(
-                "trial_resources", "resources_per_trial", soft=True)
-            resources_per_trial = trial_resources
+                "trial_resources", "resources_per_trial", soft=False)
         if custom_loggers:
             _raise_deprecation_note("custom_loggers", "loggers", soft=False)
 
+        run_identifier = Experiment._register_if_needed(run)
         spec = {
-            "run": Experiment._register_if_needed(run),
+            "run": run_identifier,
             "stop": stop or {},
             "config": config or {},
             "resources_per_trial": resources_per_trial,
@@ -160,7 +107,7 @@ class Experiment(object):
             "restore": restore
         }
 
-        self.name = name
+        self.name = name or run_identifier
         self.spec = spec
 
     @classmethod
