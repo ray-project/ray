@@ -8,6 +8,7 @@ cc_library(
         "cpp/src/arrow/status.cc",
         "cpp/src/arrow/util/io-util.cc",
         "cpp/src/arrow/util/logging.cc",
+        "cpp/src/arrow/util/memory.cc",
         "cpp/src/arrow/util/thread-pool.cc",
     ],
     hdrs = [
@@ -42,6 +43,7 @@ cc_library(
         "cpp/src/plasma/io.cc",
         "cpp/src/plasma/malloc.cc",
         "cpp/src/plasma/plasma.cc",
+        "cpp/src/plasma/plasma_allocator.cc",
         "cpp/src/plasma/protocol.cc",
     ],
     hdrs = [
@@ -49,10 +51,12 @@ cc_library(
         "cpp/src/plasma/common.h",
         "cpp/src/plasma/common_generated.h",
         "cpp/src/plasma/compat.h",
+        "cpp/src/plasma/external_store.h",
         "cpp/src/plasma/fling.h",
         "cpp/src/plasma/io.h",
         "cpp/src/plasma/malloc.h",
         "cpp/src/plasma/plasma.h",
+        "cpp/src/plasma/plasma_allocator.h",
         "cpp/src/plasma/plasma_generated.h",
         "cpp/src/plasma/protocol.h",
     ],
@@ -147,6 +151,7 @@ cc_binary(
         [
             "cpp/src/plasma/store.cc",
             "cpp/src/plasma/thirdparty/ae/ae.c",
+            "cpp/src/plasma/external_store.cc",
         ],
         exclude = [
             "cpp/src/plasma/dlmalloc.cc",
