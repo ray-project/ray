@@ -477,7 +477,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         builder = None
 
     if log_once("compute_actions_input"):
-        logger.info("Compute actions input:\n\n{}\n".format(
+        logger.info("First compute_actions() input:\n\n{}\n".format(
             summarize(to_eval)))
 
     for policy_id, eval_data in to_eval.items():
@@ -504,7 +504,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
             eval_results[k] = builder.get(v)
 
     if log_once("compute_actions_result"):
-        logger.info("Compute actions result:\n\n{}\n".format(
+        logger.info("First compute_actions() result:\n\n{}\n".format(
             summarize(eval_results)))
 
     return eval_results
