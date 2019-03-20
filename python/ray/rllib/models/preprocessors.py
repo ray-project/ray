@@ -144,7 +144,8 @@ class NoPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def write(self, observation, array, offset):
-        array[offset:offset + self._size] = observation.ravel()
+        array[offset:offset + self._size] = np.array(
+            observation, copy=False).ravel()
 
 
 class TupleFlatteningPreprocessor(Preprocessor):
