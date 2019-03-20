@@ -75,12 +75,6 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
         CDriverID from_binary(const c_string &binary)
 
 
-    cdef cppclass CJobID "ray::JobID"(CUniqueID):
-
-        @staticmethod
-        CJobID from_binary(const c_string &binary)
-
-
     cdef cppclass CTaskID "ray::TaskID"(CUniqueID):
 
         @staticmethod
