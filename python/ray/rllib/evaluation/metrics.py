@@ -68,11 +68,14 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
     episode_lengths = []
     policy_rewards = collections.defaultdict(list)
     custom_metrics = collections.defaultdict(list)
+    perf_stats = collections.defaultdict(list)
     for episode in episodes:
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
         for k, v in episode.custom_metrics.items():
             custom_metrics[k].append(v)
+        for k, v in episode.perf_stats.items():
+            perf_stats[k].append(v)
         for (_, policy_id), reward in episode.agent_rewards.items():
             if policy_id != DEFAULT_POLICY_ID:
                 policy_rewards[policy_id].append(reward)
@@ -99,6 +102,9 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
             custom_metrics[k + "_max"] = float("nan")
         del custom_metrics[k]
 
+    for k, v_list in perf_stats.copy().items():
+        perf_stats[k] = np.mean(v_list)
+
     estimators = collections.defaultdict(lambda: collections.defaultdict(list))
     for e in estimates:
         acc = estimators[e.estimator_name]
@@ -117,6 +123,7 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
         episodes_this_iter=len(new_episodes),
         policy_reward_mean=dict(policy_rewards),
         custom_metrics=dict(custom_metrics),
+        sampler_perf=dict(perf_stats),
         off_policy_estimator=dict(estimators),
         num_metric_batches_dropped=num_dropped)
 
