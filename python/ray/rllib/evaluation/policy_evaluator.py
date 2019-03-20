@@ -123,7 +123,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  input_evaluation=frozenset([]),
                  output_creator=lambda ioctx: NoopOutput(),
                  remote_worker_envs=False,
-                 async_remote_worker_envs=False):
+                 async_remote_worker_envs=False,
+                 soft_horizon=False):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -204,6 +205,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 are very CPU intensive (e.g., for StarCraft).
             async_remote_worker_envs (bool): Similar to remote_worker_envs,
                 but runs the envs asynchronously in the background.
+            soft_horizon (bool): Calculate rewards but don't reset the
+                environment when the horizon is hit.
         """
 
         if log_level:
@@ -357,7 +360,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
-                blackhole_outputs="simulation" in input_evaluation)
+                blackhole_outputs="simulation" in input_evaluation,
+                soft_horizon=soft_horizon)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -372,7 +376,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
-                clip_actions=clip_actions)
+                clip_actions=clip_actions,
+                soft_horizon=soft_horizon)
 
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader

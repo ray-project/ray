@@ -59,7 +59,8 @@ class SyncSampler(SamplerInput):
                  horizon=None,
                  pack=False,
                  tf_sess=None,
-                 clip_actions=True):
+                 clip_actions=True,
+                 soft_horizon=False):
         self.base_env = BaseEnv.to_base_env(env)
         self.unroll_length = unroll_length
         self.horizon = horizon
@@ -72,7 +73,7 @@ class SyncSampler(SamplerInput):
             self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
-            pack, callbacks, tf_sess)
+            pack, callbacks, tf_sess, soft_horizon)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -116,7 +117,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  pack=False,
                  tf_sess=None,
                  clip_actions=True,
-                 blackhole_outputs=False):
+                 blackhole_outputs=False,
+                 soft_horizon=False):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
@@ -138,6 +140,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.callbacks = callbacks
         self.clip_actions = clip_actions
         self.blackhole_outputs = blackhole_outputs
+        self.soft_horizon = soft_horizon
         self.shutdown = False
 
     def run(self):
@@ -159,7 +162,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
-            self.clip_actions, self.pack, self.callbacks, self.tf_sess)
+            self.clip_actions, self.pack, self.callbacks, self.tf_sess,
+            self.soft_horizon)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -200,19 +204,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return extra
 
 
-def _env_runner(base_env,
-                extra_batch_callback,
-                policies,
-                policy_mapping_fn,
-                unroll_length,
-                horizon,
-                preprocessors,
-                obs_filters,
-                clip_rewards,
-                clip_actions,
-                pack,
-                callbacks,
-                tf_sess=None):
+def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
+                unroll_length, horizon, preprocessors, obs_filters,
+                clip_rewards, clip_actions, pack, callbacks, tf_sess,
+                soft_horizon):
     """This implements the common experience collection logic.
 
     Args:
@@ -236,6 +231,8 @@ def _env_runner(base_env,
         callbacks (dict): User callbacks to run on episode events.
         tf_sess (Session|None): Optional tensorflow session to use for batching
             TF policy evaluations.
+        soft_horizon (bool): Calculate rewards but don't reset the
+            environment when the horizon is hit.
 
     Yields:
         rollout (SampleBatch): Object containing state, action, reward,
@@ -282,7 +279,8 @@ def _env_runner(base_env,
         active_envs, to_eval, outputs = _process_observations(
             base_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
-            preprocessors, obs_filters, unroll_length, pack, callbacks)
+            preprocessors, obs_filters, unroll_length, pack, callbacks,
+            soft_horizon)
         for o in outputs:
             yield o
 
@@ -303,7 +301,8 @@ def _env_runner(base_env,
 def _process_observations(base_env, policies, batch_builder_pool,
                           active_episodes, unfiltered_obs, rewards, dones,
                           infos, off_policy_actions, horizon, preprocessors,
-                          obs_filters, unroll_length, pack, callbacks):
+                          obs_filters, unroll_length, pack, callbacks,
+                          soft_horizon):
     """Record new data from the environment and prepare for policy evaluation.
 
     Returns:
@@ -342,6 +341,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
 
         # Check episode termination conditions
         if dones[env_id]["__all__"] or episode.length >= horizon:
+            hit_horizon = (episode.length >= horizon
+                           and not dones[env_id]["__all__"])
             all_done = True
             atari_metrics = _fetch_atari_metrics(base_env)
             if atari_metrics is not None:
@@ -354,6 +355,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
                                    dict(episode.agent_rewards),
                                    episode.custom_metrics))
         else:
+            hit_horizon = False
             all_done = False
             active_envs.add(env_id)
 
@@ -391,7 +393,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     rewards=rewards[env_id][agent_id],
                     prev_actions=episode.prev_action_for(agent_id),
                     prev_rewards=episode.prev_reward_for(agent_id),
-                    dones=agent_done,
+                    dones=(False
+                           if (hit_horizon and soft_horizon) else agent_done),
                     infos=infos[env_id].get(agent_id, {}),
                     new_obs=filtered_obs,
                     **episode.last_pi_info_for(agent_id))
@@ -421,8 +424,12 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     "policy": policies,
                     "episode": episode
                 })
-            del active_episodes[env_id]
-            resetted_obs = base_env.try_reset(env_id)
+            if hit_horizon and soft_horizon:
+                episode.soft_reset()
+                resetted_obs = agent_obs
+            else:
+                del active_episodes[env_id]
+                resetted_obs = base_env.try_reset(env_id)
             if resetted_obs is None:
                 # Reset not supported, drop this env from the ready list
                 if horizon != float("inf"):
