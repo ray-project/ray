@@ -160,6 +160,9 @@ def clean_trial(trial_dir):
 
 
 def fix_ray_results(experiment_dir):
+    if not os.path.exist(experiment_dir):
+        raise ValueError("could not find experiment directory {}".format(experiment_dir))
+
     trial_dirs = [
         os.path.join(experiment_dir, trial_dir)
         for trial_dir in next(os.walk(experiment_dir))[1]
