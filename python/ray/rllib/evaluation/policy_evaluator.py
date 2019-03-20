@@ -310,6 +310,8 @@ class PolicyEvaluator(EvaluatorInterface):
                                   policy.observation_space.shape)
             for (policy_id, policy) in self.policy_map.items()
         }
+        if self.worker_index == 0:
+            logger.info("Built filter map: {}".format(self.filters))
 
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = BaseEnv.to_base_env(
@@ -685,7 +687,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     "Tuple|DictFlatteningPreprocessor.")
             with tf.variable_scope(name):
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
-        if log_once("build_map") and self.worker_index == 0:
+        if self.worker_index == 0:
             logger.info("Built policy map: {}".format(policy_map))
             logger.info("Built preprocessor map: {}".format(preprocessors))
         return policy_map, preprocessors

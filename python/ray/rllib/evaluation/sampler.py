@@ -273,9 +273,6 @@ def _env_runner(base_env,
 
     active_episodes = defaultdict(new_episode)
 
-    if log_once("sampler_init"):
-        logger.info("Initializing sampler")
-
     while True:
         # Get observations from all ready agents
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
