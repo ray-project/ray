@@ -116,7 +116,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
     else:
         env = gym.make(env_name)
         multiagent = False
-        use_lstm = {'default': False}
+        use_lstm = {DEFAULT_POLICY_ID: False}
 
     if out is not None:
         rollouts = []
