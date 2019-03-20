@@ -20,7 +20,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   protected Map<String, String> getRayStartEnv() {
     // Delete and re-create the temp dir.
     File tempDir = new File(
-        System.getProperty("java.io.tmpdir") + "ray_cross_language_test");
+        System.getProperty("java.io.tmpdir") + File.separator + "ray_cross_language_test");
     FileUtils.deleteQuietly(tempDir);
     tempDir.mkdirs();
     tempDir.deleteOnExit();
