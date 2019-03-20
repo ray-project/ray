@@ -527,8 +527,9 @@ class PolicyEvaluator(EvaluatorInterface):
     @override(EvaluatorInterface)
     def learn_on_batch(self, samples):
         if log_once("learn_on_batch"):
-            logger.info("Training on batch:\n\n{}\n".format(
-                summarize(samples)))
+            logger.info(
+                "Training on concatenated sample batches:\n\n{}\n".format(
+                    summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
             if self.tf_sess is not None:

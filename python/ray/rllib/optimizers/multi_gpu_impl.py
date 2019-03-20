@@ -136,12 +136,13 @@ class LocalSyncParallelOptimizer(object):
         """
 
         if log_once("load_data"):
-            logger.info("Training on batch:\n\n{}\n".format(
-                summarize({
-                    "placeholders": self.loss_inputs,
-                    "inputs": inputs,
-                    "state_inputs": state_inputs
-                })))
+            logger.info(
+                "Training on concatenated sample batches:\n\n{}\n".format(
+                    summarize({
+                        "placeholders": self.loss_inputs,
+                        "inputs": inputs,
+                        "state_inputs": state_inputs
+                    })))
 
         feed_dict = {}
         assert len(self.loss_inputs) == len(inputs + state_inputs), \
