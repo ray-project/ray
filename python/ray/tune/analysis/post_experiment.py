@@ -149,7 +149,7 @@ def clean_trial(trial_dir):
 
     try:
         dataframe = pd.read_csv(result_backup_path)
-    except pd.errors.EmptyDataError: # trial has an empty CSV file 
+    except pd.errors.EmptyDataError: # trial has an empty CSV file
         return
 
     cleaned_dataframe = clean_dataframe(dataframe)
@@ -158,7 +158,7 @@ def clean_trial(trial_dir):
 
 
 def fix_ray_results(experiment_dir):
-    if not os.path.exist(experiment_dir):
+    if not os.path.exists(experiment_dir):
         raise ValueError("could not find experiment directory {}".format(experiment_dir))
 
     trial_dirs = [
