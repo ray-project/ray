@@ -7,7 +7,7 @@ import json
 import os
 
 import ray.tests.cluster_utils
-
+from ray.tests.conftest import two_node_cluster
 
 class UserSignal(signal.Signal):
     def __init__(self, value):
@@ -25,25 +25,6 @@ def receive_all_signals(sources, timeout):
             return results
         else:
             results.extend(r)
-
-
-@pytest.fixture()
-def two_node_cluster():
-    internal_config = json.dumps({
-        "initial_reconstruction_timeout_milliseconds": 200,
-        "num_heartbeats_timeout": 10,
-    })
-    cluster = ray.tests.cluster_utils.Cluster(
-        head_node_args={"_internal_config": internal_config})
-    for _ in range(2):
-        remote_node = cluster.add_node(
-            num_cpus=1, _internal_config=internal_config)
-    ray.init(redis_address=cluster.redis_address)
-    yield cluster, remote_node
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
 
 
 def test_task_to_driver(ray_start_regular):
