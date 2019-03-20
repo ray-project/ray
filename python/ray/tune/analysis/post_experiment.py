@@ -147,11 +147,9 @@ def clean_trial(trial_dir):
     result_path = get_result_path(trial_dir=trial_dir)
     result_backup_path = get_result_backup_path(result_path=result_path)
 
-    #print(result_backup_path)
     try:
         dataframe = pd.read_csv(result_backup_path)
-    except pd.errors.EmptyDataError:
-        print('empty CSV')
+    except pd.errors.EmptyDataError: # trial has an empty CSV file 
         return
 
     cleaned_dataframe = clean_dataframe(dataframe)
