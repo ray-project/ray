@@ -33,7 +33,7 @@ def create_cluster(num_nodes):
 
 
 @pytest.fixture()
-def ray_start_cluster():
+def ray_start_cluster_with_resource():
     num_nodes = 5
     cluster = create_cluster(num_nodes)
     yield cluster, num_nodes
@@ -43,20 +43,10 @@ def ray_start_cluster():
     cluster.shutdown()
 
 
-@pytest.fixture()
-def ray_start_empty_cluster():
-    cluster = Cluster()
-    yield cluster
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
-
-
 # This test is here to make sure that when we broadcast an object to a bunch of
 # machines, we don't have too many excess object transfers.
-def test_object_broadcast(ray_start_cluster):
-    cluster, num_nodes = ray_start_cluster
+def test_object_broadcast(ray_start_cluster_with_resource):
+    cluster, num_nodes = ray_start_cluster_with_resource
 
     @ray.remote
     def f(x):
@@ -137,8 +127,8 @@ def test_object_broadcast(ray_start_cluster):
 # to the actor's object manager. However, in the past we did not deduplicate
 # the pushes and so the same object could get shipped to the same object
 # manager many times. This test checks that that isn't happening.
-def test_actor_broadcast(ray_start_cluster):
-    cluster, num_nodes = ray_start_cluster
+def test_actor_broadcast(ray_start_cluster_with_resource):
+    cluster, num_nodes = ray_start_cluster_with_resource
 
     @ray.remote
     class Actor(object):
@@ -212,8 +202,8 @@ def test_actor_broadcast(ray_start_cluster):
 
 # The purpose of this test is to make sure that an object that was already been
 # transferred to a node can be transferred again.
-def test_object_transfer_retry(ray_start_empty_cluster):
-    cluster = ray_start_empty_cluster
+def test_object_transfer_retry(ray_start_cluster):
+    cluster = ray_start_cluster
 
     repeated_push_delay = 4
 
@@ -300,8 +290,8 @@ def test_object_transfer_retry(ray_start_empty_cluster):
 # The purpose of this test is to make sure we can transfer many objects. In the
 # past, this has caused failures in which object managers create too many open
 # files and run out of resources.
-def test_many_small_transfers(ray_start_cluster):
-    cluster, num_nodes = ray_start_cluster
+def test_many_small_transfers(ray_start_cluster_with_resource):
+    cluster, num_nodes = ray_start_cluster_with_resource
 
     @ray.remote
     def f(*args):
