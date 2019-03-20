@@ -505,15 +505,18 @@ void NodeManager::PublishActorStateTransition(
   // If we were successful to append a record to the GCS table that the actor
   // has died, signal this to anyone receiving signals from this actor.
   auto success_callback = [](gcs::AsyncGcsClient *client, const ActorID &id,
-                          const ActorTableDataT &data) {
+                             const ActorTableDataT &data) {
     auto redis_context = client->primary_context();
     if (data.state == ActorState::DEAD || data.state == ActorState::RECONSTRUCTING) {
-      std::vector<std::string> args = {"XADD", id.hex(), "*", "signal", "ACTOR_DIED"};
+      std::vector<std::string> args = {"XADD", id.hex(), "*", "signal", "ACTOR_DIED_SIGNAL"};
       RAY_CHECK_OK(redis_context->RunArgvAsync(args));
     }
   };
-  RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(
-      JobID::nil(), actor_id, actor_notification, success_callback, failure_callback, log_length));
+  RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(JobID::nil(),
+                                                   actor_id, actor_notification,
+                                                   success_callback,
+                                                   failure_callback,
+                                                   log_length));
 }
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,

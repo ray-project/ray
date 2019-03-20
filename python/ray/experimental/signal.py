@@ -9,7 +9,10 @@ import ray.cloudpickle as cloudpickle
 
 # This string should be identical to the name of the signal sent upon
 # detecting that an actor died.
-ActorDiedStr = "ACTOR_DIED"
+# This constant is also used in NodeManager::PublishActorStateTransition()
+# in node_manager.cc
+ACTOR_DIED_STR = "ACTOR_DIED_SIGNAL"
+
 
 class Signal(object):
     """Base class for Ray signals."""
@@ -22,11 +25,13 @@ class ErrorSignal(Signal):
     def __init__(self, error):
         self.error = error
 
+
 class ActorDiedSignal(Signal):
     """Signal raised if an exception happens in a task or actor method."""
 
     def __init__(self):
         pass
+
 
 def _get_task_id(source):
     """Return the task id associated to the generic source of the signal.
@@ -47,6 +52,7 @@ def _get_task_id(source):
             return source
         else:
             return ray._raylet.compute_task_id(source)
+
 
 def send(signal):
     """Send signal.
@@ -144,14 +150,15 @@ def receive(sources, timeout=None):
         # The list of results for source s is stored in answer[1]
         for r in answer[1]:
             for s in task_source_list:
-                if r[1][1].decode('ascii') == ActorDiedStr:
+                if r[1][1].decode('ascii') == ACTOR_DIED_STR:
                     results.append((s, ActorDiedSignal()))
                 else:
                     # Now it gets tricky: r[0] is the redis internal sequence id
                     signal_counters[ray.utils.hex_to_binary(task_id)] = r[0]
                     # r[1] contains a list with elements (key, value), in our case
                     # we only have one key "signal" and the value is the signal.
-                    signal = cloudpickle.loads(ray.utils.hex_to_binary(r[1][1]))
+                    signal = cloudpickle.loads(
+                        ray.utils.hex_to_binary(r[1][1]))
                     results.append((s, signal))
 
     return results

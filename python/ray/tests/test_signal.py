@@ -36,13 +36,15 @@ def receive_all_signals(sources, timeout):
         else:
             results.extend(r)
 
+
 @pytest.fixture()
 def two_node_cluster():
     internal_config = json.dumps({
         "initial_reconstruction_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     })
-    cluster = ray.tests.cluster_utils.Cluster()
+    cluster = ray.tests.cluster_utils.Cluster(
+        head_node_args={"_internal_config": internal_config})
     for _ in range(2):
         remote_node = cluster.add_node(
             num_cpus=1, _internal_config=internal_config)
@@ -52,6 +54,7 @@ def two_node_cluster():
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+
 
 def test_task_to_driver(ray_start):
     # Send a signal from a task to the driver.
