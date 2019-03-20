@@ -37,7 +37,7 @@ git_repository(
 new_git_repository(
     name = "plasma",
     build_file = "@//bazel:BUILD.plasma",
-    commit = "774f6013b66e81a6d1607766db7902c7e6658fbf",
+    commit = "b79164a55b442d3fd25a83995d746f4df9fab9cf",
     remote = "https://github.com/pcmoritz/arrow",
 )
 
