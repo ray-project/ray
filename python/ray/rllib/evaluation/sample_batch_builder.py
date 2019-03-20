@@ -150,8 +150,9 @@ class MultiAgentSampleBatchBuilder(object):
                 pre_batch, other_batches, episode)
 
         if log_once("after_post"):
-            logger.info("Postprocessed trajectory fragment:\n\n{}\n".format(
-                summarize(post_batches)))
+            logger.info(
+                "Trajectory fragment after postprocess_trajectory():\n\n{}\n".
+                format(summarize(post_batches)))
 
         # Append into policy batches and reset
         for agent_id, post_batch in sorted(post_batches.items()):
