@@ -6,6 +6,29 @@ exports_files([
     "checkstyle-suppressions.xml",
 ])
 
+java_binary(
+    name = "bazel_deps",
+    main_class = "com.github.johnynek.bazel_deps.ParseProject",
+    runtime_deps = ["@bazel_deps//jar"],
+)
+
+java_import(
+    name = "all_modules",
+    jars = [
+        "liborg_ray_ray_api.jar",
+        "liborg_ray_ray_api-src.jar",
+        "liborg_ray_ray_runtime.jar",
+        "liborg_ray_ray_runtime-src.jar",
+        "liborg_ray_ray_tutorial.jar",
+        "liborg_ray_ray_tutorial-src.jar",
+    ],
+    deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        ":org_ray_ray_tutorial",
+    ],
+)
+
 define_java_module(
     name = "api",
     deps = [

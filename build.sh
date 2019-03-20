@@ -123,7 +123,7 @@ else
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
 
   if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-    java/generate_bazel_deps.sh
+    bazel run //java:bazel_deps -- generate -r $ROOT_DIR -s java/third_party/workspace.bzl -d java/dependencies.yaml
     bazel build //java:all --verbose_failures
   fi
 
