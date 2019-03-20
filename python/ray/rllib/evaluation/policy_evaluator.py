@@ -436,7 +436,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     estimator.process(sub_batch)
 
         if log_once("sample_end"):
-            logger.info("Completed sample batch:\n\n{}\n".format(
+            logger.info("First sample batch:\n\n{}\n".format(
                 summarize(batch)))
 
         if self.compress_observations:
