@@ -2840,3 +2840,17 @@ def test_shutdown_disconnect_global_state():
     with pytest.raises(Exception) as e:
         ray.global_state.object_table()
     assert str(e.value).endswith("ray.init has been called.")
+
+
+def test_redis_lru_with_set(shutdown_only):
+    ray.init(object_store_memory=10**8)
+
+    x = np.zeros(8 * 10**7, dtype=np.uint8)
+    x_id = ray.put(x)
+
+    # Remove the object from the object table to simulate Redis LRU eviction.
+    assert ray.global_state.redis_clients[0].delete(b"OBJECT" +
+                                                    x_id.binary()) == 1
+
+    # Now evict the object from the object store.
+    ray.put(x)  # This should not crash.
