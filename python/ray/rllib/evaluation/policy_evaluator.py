@@ -218,6 +218,7 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_config = policy_config or {}
         self.policy_config = policy_config
         self.callbacks = callbacks or {}
+        self.worker_index = worker_index
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
@@ -496,7 +497,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples))
         info_out["batch_count"] = samples.count
         if log_once("grad_out"):
-            logger.info("Compute grad info: {}".format(summarize(info_out)))
+            logger.info("Compute grad info:\n\n{}\n".format(
+                summarize(info_out)))
         return grad_out, info_out
 
     @override(EvaluatorInterface)
@@ -683,7 +685,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     "Tuple|DictFlatteningPreprocessor.")
             with tf.variable_scope(name):
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
-        if log_once("build_map"):
+        if log_once("build_map") and self.worker_index == 0:
             logger.info("Built policy map: {}".format(policy_map))
             logger.info("Built preprocessor map: {}".format(preprocessors))
         return policy_map, preprocessors
