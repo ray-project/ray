@@ -15,7 +15,7 @@ import ray
 class NewsServer(object):
 
     def __init__(self):
-        self.conn = sqlite3.connect('newsreader.db')
+        self.conn = sqlite3.connect("newsreader.db")
         c = self.conn.cursor()
         c.execute("""CREATE TABLE IF NOT EXISTS news
                      (title text, link text,
@@ -63,7 +63,7 @@ app.config.from_object(__name__)
 CORS(app)
 
 
-@app.route('/api', methods=['POST'])
+@app.route("/api", methods=["POST"])
 def dispatcher():
     req = request.get_json()
     method_name = req["method_name"]
