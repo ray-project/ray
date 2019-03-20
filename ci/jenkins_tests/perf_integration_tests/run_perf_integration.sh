@@ -5,10 +5,10 @@ set -ex
 
 python -m pip install pytest-benchmark
 
-python -m pytest --benchmark-autosave python/ray/tests/test_perf_integration.py
+python -m pytest python/ray/tests/test_perf_integration.py
 
 pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev1-cp27-cp27mu-manylinux1_x86_64.whl
-python -m pytest --benchmark-autosave --benchmark-compare python/ray/tests/test_perf_integration.py
+python -m pytest --benchmark-compare python/ray/tests/test_perf_integration.py
 
 # This is how Modin stores the values in an S3 bucket
 #sha_tag=`git rev-parse --verify --short HEAD`
