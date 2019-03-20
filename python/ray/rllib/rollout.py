@@ -9,10 +9,10 @@ import json
 import os
 import pickle
 
-import numpy as np
 import gym
 import ray
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.evaluation.sampler import clip_actions
 from ray.tune.util import merge_dicts
 
 EXAMPLE_USAGE = """
@@ -177,31 +177,6 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
 
     if out is not None:
         pickle.dump(rollouts, open(out, "wb"))
-
-
-def clip_actions(actions, space):
-    """Called to clip actions to the specified range of this policy.
-
-    Arguments:
-        actions: Single action.
-        space: Action space the actions should be present in.
-
-    Returns:
-        Clipped batch of actions.
-    """
-
-    if isinstance(space, gym.spaces.Box):
-        return np.clip(actions, space.low, space.high)
-    elif isinstance(space, gym.spaces.Tuple):
-        if type(actions) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                actions, space))
-        out = []
-        for a, s in zip(actions, space.spaces):
-            out.append(clip_actions(a, s))
-        return out
-    else:
-        return actions
 
 
 if __name__ == "__main__":

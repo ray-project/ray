@@ -300,6 +300,31 @@ def _env_runner(base_env,
         base_env.send_actions(actions_to_send)
 
 
+def clip_actions(actions, space):
+    """Called to clip actions to the specified range of this policy.
+
+    Arguments:
+        actions: Single action.
+        space: Action space the actions should be present in.
+
+    Returns:
+        Clipped batch of actions.
+    """
+
+    if isinstance(space, gym.spaces.Box):
+        return np.clip(actions, space.low, space.high)
+    elif isinstance(space, gym.spaces.Tuple):
+        if type(actions) not in (tuple, list):
+            raise ValueError("Expected tuple space for actions {}: {}".format(
+                actions, space))
+        out = []
+        for a, s in zip(actions, space.spaces):
+            out.append(clip_actions(a, s))
+        return out
+    else:
+        return actions
+
+
 def _process_observations(base_env, policies, batch_builder_pool,
                           active_episodes, unfiltered_obs, rewards, dones,
                           infos, off_policy_actions, horizon, preprocessors,
@@ -526,7 +551,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
             if clip_actions:
-                actions_to_send[env_id][agent_id] = _clip_actions(
+                actions_to_send[env_id][agent_id] = clip_actions(
                     action, policy.action_space)
             else:
                 actions_to_send[env_id][agent_id] = action
@@ -561,31 +586,6 @@ def _fetch_atari_metrics(base_env):
         for eps_rew, eps_len in monitor.next_episode_results():
             atari_out.append(RolloutMetrics(eps_len, eps_rew, {}, {}))
     return atari_out
-
-
-def _clip_actions(actions, space):
-    """Called to clip actions to the specified range of this policy.
-
-    Arguments:
-        actions: Single action.
-        space: Action space the actions should be present in.
-
-    Returns:
-        Clipped batch of actions.
-    """
-
-    if isinstance(space, gym.spaces.Box):
-        return np.clip(actions, space.low, space.high)
-    elif isinstance(space, gym.spaces.Tuple):
-        if type(actions) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                actions, space))
-        out = []
-        for a, s in zip(actions, space.spaces):
-            out.append(_clip_actions(a, s))
-        return out
-    else:
-        return actions
 
 
 def _unbatch_tuple_actions(action_batch):
