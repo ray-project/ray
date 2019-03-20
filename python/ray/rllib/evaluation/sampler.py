@@ -422,32 +422,36 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     "episode": episode
                 })
             del active_episodes[env_id]
-            resetted_obs = base_env.try_reset(env_id)
-            if resetted_obs is None:
-                # Reset not supported, drop this env from the ready list
-                if horizon != float("inf"):
-                    raise ValueError(
-                        "Setting episode horizon requires reset() support "
-                        "from the environment.")
+
+            if hasattr(base_env, 'send_reset'):
+                base_env.send_reset()
             else:
-                # Creates a new episode
-                episode = active_episodes[env_id]
-                for agent_id, raw_obs in resetted_obs.items():
-                    policy_id = episode.policy_for(agent_id)
-                    policy = _get_or_raise(policies, policy_id)
-                    prep_obs = _get_or_raise(preprocessors,
-                                             policy_id).transform(raw_obs)
-                    filtered_obs = _get_or_raise(obs_filters,
-                                                 policy_id)(prep_obs)
-                    episode._set_last_observation(agent_id, filtered_obs)
-                    to_eval[policy_id].append(
-                        PolicyEvalData(
-                            env_id, agent_id, filtered_obs,
-                            episode.last_info_for(agent_id) or {},
-                            episode.rnn_state_for(agent_id),
-                            np.zeros_like(
-                                _flatten_action(policy.action_space.sample())),
-                            0.0))
+                resetted_obs = base_env.try_reset(env_id)
+                if resetted_obs is None:
+                    # Reset not supported, drop this env from the ready list
+                    if horizon != float("inf"):
+                        raise ValueError(
+                            "Setting episode horizon requires reset() support "
+                            "from the environment.")
+                else:
+                    # Creates a new episode
+                    episode = active_episodes[env_id]
+                    for agent_id, raw_obs in resetted_obs.items():
+                        policy_id = episode.policy_for(agent_id)
+                        policy = _get_or_raise(policies, policy_id)
+                        prep_obs = _get_or_raise(preprocessors,
+                                                policy_id).transform(raw_obs)
+                        filtered_obs = _get_or_raise(obs_filters,
+                                                    policy_id)(prep_obs)
+                        episode._set_last_observation(agent_id, filtered_obs)
+                        to_eval[policy_id].append(
+                            PolicyEvalData(
+                                env_id, agent_id, filtered_obs,
+                                episode.last_info_for(agent_id) or {},
+                                episode.rnn_state_for(agent_id),
+                                np.zeros_like(
+                                    _flatten_action(policy.action_space.sample())),
+                                0.0))
 
     return active_envs, to_eval, outputs
 

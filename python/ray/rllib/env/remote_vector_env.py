@@ -75,6 +75,10 @@ class RemoteVectorEnv(BaseEnv):
         obs, _, _, _ = ray.get(self.actors[env_id].reset.remote())
         return obs
 
+    def send_reset(self, env_id):
+        actor = self.actors[env_id]
+        obj_id = actor.reset.remote()
+        self.pending[obj_id] = actor
 
 @ray.remote(num_cpus=0)
 class _RemoteMultiAgentEnv(object):
