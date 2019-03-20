@@ -424,7 +424,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
             del active_episodes[env_id]
 
             if hasattr(base_env, 'send_reset'):
-                base_env.send_reset()
+                base_env.send_reset(env_id)
             else:
                 resetted_obs = base_env.try_reset(env_id)
                 if resetted_obs is None:

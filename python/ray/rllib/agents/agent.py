@@ -141,9 +141,8 @@ COMMON_CONFIG = {
     # remote processes instead of in the same worker. This adds overheads, but
     # can make sense if your envs are very CPU intensive (e.g., for StarCraft).
     "remote_worker_envs": False,
-    # Similar to remote_worker_envs, but runs the envs asynchronously in the
-    # background for greater efficiency. Conflicts with remote_worker_envs.
-    "async_remote_worker_envs": False,
+    # Timeout that remote workers are waiting when polling environments
+    "remote_worker_env_timeout_ms": 0,
 
     # === Offline Datasets ===
     # __sphinx_doc_input_begin__
@@ -700,7 +699,7 @@ class Agent(Trainable):
             input_evaluation=input_evaluation,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
-            async_remote_worker_envs=config["async_remote_worker_envs"])
+            remote_worker_env_timeout_ms=config["remote_worker_env_timeout_ms"])
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):

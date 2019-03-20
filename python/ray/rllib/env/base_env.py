@@ -78,26 +78,20 @@ class BaseEnv(object):
                     make_env=None,
                     num_envs=1,
                     remote_envs=False,
-                    async_remote_envs=False):
+                    remote_worker_env_timeout_ms=0):
         """Wraps any env type as needed to expose the async interface."""
 
         from ray.rllib.env.remote_vector_env import RemoteVectorEnv
-        if (remote_envs or async_remote_envs) and num_envs == 1:
+        if remote_envs and num_envs == 1:
             raise ValueError(
                 "Remote envs only make sense to use if num_envs > 1 "
                 "(i.e. vectorization is enabled).")
-        if remote_envs and async_remote_envs:
-            raise ValueError("You can only specify one of remote_envs or "
-                             "async_remote_envs.")
 
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
                 if remote_envs:
                     env = RemoteVectorEnv(
-                        make_env, num_envs, multiagent=True, sync=True)
-                elif async_remote_envs:
-                    env = RemoteVectorEnv(
-                        make_env, num_envs, multiagent=True, sync=False)
+                        make_env, num_envs, multiagent=True, remote_worker_env_timeout_ms=remote_worker_env_timeout_ms)
                 else:
                     env = _MultiAgentEnvToBaseEnv(
                         make_env=make_env,
