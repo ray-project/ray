@@ -24,10 +24,10 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 logger = logging.getLogger(__name__)
 _large_batch_warned = False
 
-RolloutMetrics = namedtuple(
-    "RolloutMetrics",
-    ["episode_length", "episode_reward", "agent_rewards", "custom_metrics",
-     "perf_stats"])
+RolloutMetrics = namedtuple("RolloutMetrics", [
+    "episode_length", "episode_reward", "agent_rewards", "custom_metrics",
+    "perf_stats"
+])
 
 PolicyEvalData = namedtuple("PolicyEvalData", [
     "env_id", "agent_id", "obs", "info", "rnn_state", "prev_action",
@@ -37,6 +37,7 @@ PolicyEvalData = namedtuple("PolicyEvalData", [
 
 class PerfStats(object):
     """Sampler perf stats that will be included in rollout metrics."""
+
     def __init__(self):
         self.iters = 0
         self.env_wait_time = 0.0
@@ -106,9 +107,8 @@ class SyncSampler(SamplerInput):
         completed = []
         while True:
             try:
-                completed.append(
-                    self.metrics_queue.get_nowait()._replace(
-                        perf_stats=self.perf_stats.get()))
+                completed.append(self.metrics_queue.get_nowait()._replace(
+                    perf_stats=self.perf_stats.get()))
             except queue.Empty:
                 break
         return completed
@@ -208,9 +208,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
         completed = []
         while True:
             try:
-                completed.append(
-                    self.metrics_queue.get_nowait()._replace(
-                        perf_stats=self.perf_stats.get()))
+                completed.append(self.metrics_queue.get_nowait()._replace(
+                    perf_stats=self.perf_stats.get()))
             except queue.Empty:
                 break
         return completed
@@ -225,19 +224,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return extra
 
 
-def _env_runner(base_env,
-                extra_batch_callback,
-                policies,
-                policy_mapping_fn,
-                unroll_length,
-                horizon,
-                preprocessors,
-                obs_filters,
-                clip_rewards,
-                clip_actions,
-                pack,
-                callbacks,
-                tf_sess,
+def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
+                unroll_length, horizon, preprocessors, obs_filters,
+                clip_rewards, clip_actions, pack, callbacks, tf_sess,
                 perf_stats):
     """This implements the common experience collection logic.
 
