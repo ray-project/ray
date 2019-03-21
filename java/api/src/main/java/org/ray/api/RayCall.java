@@ -2,7 +2,6 @@
 
 package org.ray.api;
 
-import org.ray.api.function.RayFunc;
 import org.ray.api.function.RayFunc0;
 import org.ray.api.function.RayFunc1;
 import org.ray.api.function.RayFunc2;
@@ -11,7 +10,6 @@ import org.ray.api.function.RayFunc4;
 import org.ray.api.function.RayFunc5;
 import org.ray.api.function.RayFunc6;
 import org.ray.api.options.ActorCreationOptions;
-import org.ray.api.options.BaseTaskOptions;
 import org.ray.api.options.CallOptions;
 
 /**
@@ -2311,5 +2309,144 @@ class RayCall {
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5, ActorCreationOptions options) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
     return Ray.internal().createActor(f, args, options);
+  }
+  // ===========================
+  // Cross-language methods.
+  // ===========================
+  public static RayObject callPy(String moduleName, String functionName) {
+    Object[] args = new Object[]{};
+    return Ray.internal().callPy(moduleName, functionName, args, null);
+  }
+  public static RayObject callPy(String moduleName, String functionName, CallOptions options) {
+    Object[] args = new Object[]{};
+    return Ray.internal().callPy(moduleName, functionName, args, options);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0) {
+    Object[] args = new Object[]{obj0};
+    return Ray.internal().callPy(moduleName, functionName, args, null);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, CallOptions options) {
+    Object[] args = new Object[]{obj0};
+    return Ray.internal().callPy(moduleName, functionName, args, options);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, Object obj1) {
+    Object[] args = new Object[]{obj0, obj1};
+    return Ray.internal().callPy(moduleName, functionName, args, null);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, Object obj1, CallOptions options) {
+    Object[] args = new Object[]{obj0, obj1};
+    return Ray.internal().callPy(moduleName, functionName, args, options);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, Object obj1, Object obj2) {
+    Object[] args = new Object[]{obj0, obj1, obj2};
+    return Ray.internal().callPy(moduleName, functionName, args, null);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, Object obj1, Object obj2, CallOptions options) {
+    Object[] args = new Object[]{obj0, obj1, obj2};
+    return Ray.internal().callPy(moduleName, functionName, args, options);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, Object obj1, Object obj2, Object obj3) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3};
+    return Ray.internal().callPy(moduleName, functionName, args, null);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, Object obj1, Object obj2, Object obj3, CallOptions options) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3};
+    return Ray.internal().callPy(moduleName, functionName, args, options);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4};
+    return Ray.internal().callPy(moduleName, functionName, args, null);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, CallOptions options) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4};
+    return Ray.internal().callPy(moduleName, functionName, args, options);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, Object obj5) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4, obj5};
+    return Ray.internal().callPy(moduleName, functionName, args, null);
+  }
+  public static RayObject callPy(String moduleName, String functionName, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, Object obj5, CallOptions options) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4, obj5};
+    return Ray.internal().callPy(moduleName, functionName, args, options);
+  }
+  public static RayObject callPy(RayPyActor pyActor, String functionName) {
+    Object[] args = new Object[]{};
+    return Ray.internal().callPy(pyActor, functionName, args);
+  }
+  public static RayObject callPy(RayPyActor pyActor, String functionName, Object obj0) {
+    Object[] args = new Object[]{obj0};
+    return Ray.internal().callPy(pyActor, functionName, args);
+  }
+  public static RayObject callPy(RayPyActor pyActor, String functionName, Object obj0, Object obj1) {
+    Object[] args = new Object[]{obj0, obj1};
+    return Ray.internal().callPy(pyActor, functionName, args);
+  }
+  public static RayObject callPy(RayPyActor pyActor, String functionName, Object obj0, Object obj1, Object obj2) {
+    Object[] args = new Object[]{obj0, obj1, obj2};
+    return Ray.internal().callPy(pyActor, functionName, args);
+  }
+  public static RayObject callPy(RayPyActor pyActor, String functionName, Object obj0, Object obj1, Object obj2, Object obj3) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3};
+    return Ray.internal().callPy(pyActor, functionName, args);
+  }
+  public static RayObject callPy(RayPyActor pyActor, String functionName, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4};
+    return Ray.internal().callPy(pyActor, functionName, args);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className) {
+    Object[] args = new Object[]{};
+    return Ray.internal().createPyActor(moduleName, className, args, null);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, ActorCreationOptions options) {
+    Object[] args = new Object[]{};
+    return Ray.internal().createPyActor(moduleName, className, args, options);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0) {
+    Object[] args = new Object[]{obj0};
+    return Ray.internal().createPyActor(moduleName, className, args, null);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, ActorCreationOptions options) {
+    Object[] args = new Object[]{obj0};
+    return Ray.internal().createPyActor(moduleName, className, args, options);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, Object obj1) {
+    Object[] args = new Object[]{obj0, obj1};
+    return Ray.internal().createPyActor(moduleName, className, args, null);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, Object obj1, ActorCreationOptions options) {
+    Object[] args = new Object[]{obj0, obj1};
+    return Ray.internal().createPyActor(moduleName, className, args, options);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, Object obj1, Object obj2) {
+    Object[] args = new Object[]{obj0, obj1, obj2};
+    return Ray.internal().createPyActor(moduleName, className, args, null);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, Object obj1, Object obj2, ActorCreationOptions options) {
+    Object[] args = new Object[]{obj0, obj1, obj2};
+    return Ray.internal().createPyActor(moduleName, className, args, options);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, Object obj1, Object obj2, Object obj3) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3};
+    return Ray.internal().createPyActor(moduleName, className, args, null);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, Object obj1, Object obj2, Object obj3, ActorCreationOptions options) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3};
+    return Ray.internal().createPyActor(moduleName, className, args, options);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4};
+    return Ray.internal().createPyActor(moduleName, className, args, null);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, ActorCreationOptions options) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4};
+    return Ray.internal().createPyActor(moduleName, className, args, options);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, Object obj5) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4, obj5};
+    return Ray.internal().createPyActor(moduleName, className, args, null);
+  }
+  public static RayPyActor createPyActor(String moduleName, String className, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, Object obj5, ActorCreationOptions options) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4, obj5};
+    return Ray.internal().createPyActor(moduleName, className, args, options);
   }
 }

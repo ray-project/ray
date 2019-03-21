@@ -111,3 +111,6 @@ PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
+
+# A constant used as object metadata to indicate the object is raw binary.
+RAW_BUFFER_METADATA = b"RAW"
