@@ -36,6 +36,10 @@ def get_best_result(trial_list, metric):
     return {metric: get_best_trial(trial_list, metric).last_result[metric]}
 
 
+def get_best_trainable(trial_list):
+    pass
+
+
 def _parse_results(res_path):
     res_dict = {}
     try:
