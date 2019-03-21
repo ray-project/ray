@@ -9,7 +9,6 @@ from ray.rllib.utils.annotations import override, PublicAPI
 
 ASYNC_RESET_RETURN = "async_reset_return"
 
-
 @PublicAPI
 class BaseEnv(object):
     """The lowest-level env interface used by RLlib for sampling.

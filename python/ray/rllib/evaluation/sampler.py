@@ -438,9 +438,9 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     policy_id = episode.policy_for(agent_id)
                     policy = _get_or_raise(policies, policy_id)
                     prep_obs = _get_or_raise(preprocessors,
-                                            policy_id).transform(raw_obs)
+                                             policy_id).transform(raw_obs)
                     filtered_obs = _get_or_raise(obs_filters,
-                                                policy_id)(prep_obs)
+                                                 policy_id)(prep_obs)
                     episode._set_last_observation(agent_id, filtered_obs)
                     to_eval[policy_id].append(
                         PolicyEvalData(
