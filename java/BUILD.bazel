@@ -102,6 +102,7 @@ define_java_module(
         "@org_testng_testng//jar",
         "@commons_collections_commons_collections//jar",
         "@com_google_guava_guava//jar",
+        "@commons_io_commons_io//jar",
     ],
 )
 
