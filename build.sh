@@ -124,7 +124,7 @@ else
 
   if [ "$RAY_BUILD_JAVA" == "YES" ]; then
     bazel run //java:bazel_deps -- generate -r $ROOT_DIR -s java/third_party/workspace.bzl -d java/dependencies.yaml
-    bazel build //java:all --verbose_failures --action_env=PATH
+    bazel build //java:all --verbose_failures --action_env PATH=$PATH
   fi
 
   if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
