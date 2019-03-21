@@ -45,9 +45,6 @@ define_java_module(
 
 define_java_module(
     name = "runtime",
-    additional_srcs = [
-        ":generate_java_gcs_fbs",
-    ],
     additional_resources = [
         ":java_native_deps",
     ],
@@ -61,6 +58,7 @@ define_java_module(
         "@commons_io_commons_io//jar",
     ],
     deps = [
+        ":copy_java_native_deps",
         ":org_ray_ray_api",
         "@plasma//:org_apache_arrow_arrow_plasma",
         "@org_slf4j_slf4j_api//jar",
@@ -161,14 +159,19 @@ genrule(
     name = "generate_java_gcs_fbs",
     srcs = [":java_gcs_fbs"],
     outs = [
-        "runtime/src/main/java/org/ray/runtime/generated/" + file for file in flatbuffers_generated_files
+        "generate_java_gcs_fbs.out"
     ],
     cmd = """
+        WORK_DIR=$$(pwd)
+        TARGET_DIR=$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
+        rm -rf $$TARGET_DIR
+        mkdir -p $$TARGET_DIR
         for f in $(locations //java:java_gcs_fbs); do
             chmod +w $$f
-            cp -f $$f $(@D)/runtime/src/main/java/org/ray/runtime/generated
+            cp $$f $$TARGET_DIR
         done
-        python $$(pwd)/java/modify_generated_java_flatbuffers_files.py $(@D)/..
+        python $$WORK_DIR/java/modify_generated_java_flatbuffers_files.py $$WORK_DIR
+        echo $$(date) > $@
     """,
     local = 1,
 )
