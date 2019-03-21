@@ -39,7 +39,7 @@ class PolicyOptimizer(object):
     """
 
     @DeveloperAPI
-    def __init__(self, local_evaluator, remote_evaluators, config):
+    def __init__(self, local_evaluator, remote_evaluators=None, config=None):
         """Create an optimizer instance.
 
         Args:
@@ -53,6 +53,7 @@ class PolicyOptimizer(object):
         self.remote_evaluators = remote_evaluators or []
         self.episode_history = []
         self.config = config or {}
+        self._init(**self.config)
 
         # Counters that should be updated by sub-classes
         self.num_steps_trained = 0
@@ -60,6 +61,12 @@ class PolicyOptimizer(object):
 
         logger.debug("Created policy optimizer with {}: {}".format(
             config, self))
+
+    @DeveloperAPI
+    def _init(self):
+        """Subclasses should prefer overriding this instead of __init__."""
+
+        raise NotImplementedError
 
     @DeveloperAPI
     def step(self):

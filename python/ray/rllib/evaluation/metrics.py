@@ -8,7 +8,6 @@ import collections
 
 import ray
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.evaluation.sampler import RolloutMetrics
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.utils.annotations import DeveloperAPI
 
@@ -147,6 +146,8 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
 
 def _partition(episodes):
     """Divides metrics data into true rollouts vs off-policy estimates."""
+
+    from ray.rllib.evaluation.sampler import RolloutMetrics
 
     rollouts, estimates = [], []
     for e in episodes:
