@@ -2849,8 +2849,14 @@ def test_redis_lru_with_set(shutdown_only):
     x_id = ray.put(x)
 
     # Remove the object from the object table to simulate Redis LRU eviction.
-    assert ray.global_state.redis_clients[0].delete(b"OBJECT" +
-                                                    x_id.binary()) == 1
+    removed = False
+    start_time = time.time()
+    while time.time() < start_time + 10:
+        if ray.global_state.redis_clients[0].delete(b"OBJECT" +
+                                                    x_id.binary()) == 1:
+            removed = True
+            break
+    assert removed
 
     # Now evict the object from the object store.
     ray.put(x)  # This should not crash.
