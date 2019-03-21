@@ -223,5 +223,3 @@ deploy:
     on:
       repo: ray-project/ray
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
-
-cat hs_err_*
