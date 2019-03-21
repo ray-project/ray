@@ -49,6 +49,11 @@ class TuneClient(object):
         """Returns a list of all trials' information."""
         response = requests.get(urljoin(self._path, "trials"))
         return self._deserialize(response)
+    
+    def stop_all_trials(self):
+        """Requests to stop all trials and returns trial information."""
+        response = requests.put(urljoin(self._path, "trials"))
+        return self._deserialize(response)
 
     def get_trial(self, trial_id):
         """Returns trial information by trial_id."""
@@ -63,7 +68,7 @@ class TuneClient(object):
         return self._deserialize(response)
 
     def stop_trial(self, trial_id):
-        """Requests to stop trial by trial_id."""
+        """Requests to stop trial by trial_id and returns trial information."""
         response = requests.put(
             urljoin(self._path, "trials/{}".format(trial_id)))
         return self._deserialize(response)
