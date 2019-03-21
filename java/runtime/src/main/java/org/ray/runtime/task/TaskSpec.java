@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
+import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 
 /**
@@ -57,9 +58,9 @@ public class TaskSpec {
   public final TaskLanguage language;
 
   // Descriptor of the remote function.
-  // Note, if task language is Java, the type is FunctionDescriptor. If the task language
+  // Note, if task language is Java, the type is JavaFunctionDescriptor. If the task language
   // is Python, the type is PyFunctionDescriptor.
-  private final Object functionDescriptor;
+  private final FunctionDescriptor functionDescriptor;
 
   private List<UniqueId> executionDependencies;
 
@@ -86,7 +87,7 @@ public class TaskSpec {
       UniqueId[] returnIds,
       Map<String, Double> resources,
       TaskLanguage language,
-      Object functionDescriptor) {
+      FunctionDescriptor functionDescriptor) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
@@ -102,8 +103,8 @@ public class TaskSpec {
     this.resources = resources;
     this.language = language;
     if (language == TaskLanguage.JAVA) {
-      Preconditions.checkArgument(functionDescriptor instanceof FunctionDescriptor,
-          "Expect FunctionDescriptor type, but got {}.", functionDescriptor.getClass());
+      Preconditions.checkArgument(functionDescriptor instanceof JavaFunctionDescriptor,
+          "Expect JavaFunctionDescriptor type, but got {}.", functionDescriptor.getClass());
     } else if (language == TaskLanguage.PYTHON) {
       Preconditions.checkArgument(functionDescriptor instanceof PyFunctionDescriptor,
           "Expect PyFunctionDescriptor type, but got {}.", functionDescriptor.getClass());
@@ -114,9 +115,9 @@ public class TaskSpec {
     this.executionDependencies = new ArrayList<>();
   }
 
-  public FunctionDescriptor getFunctionDescriptor() {
+  public JavaFunctionDescriptor getJavaFunctionDescriptor() {
     Preconditions.checkState(language == TaskLanguage.JAVA);
-    return (FunctionDescriptor) functionDescriptor;
+    return (JavaFunctionDescriptor) functionDescriptor;
   }
 
   public PyFunctionDescriptor getPyFunctionDescriptor() {

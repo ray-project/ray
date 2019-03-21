@@ -22,6 +22,7 @@ import org.ray.api.options.BaseTaskOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.config.RayConfig;
+import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
@@ -331,6 +332,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       RayActorImpl<?> actor, Object[] args,
       boolean isActorCreationTask, BaseTaskOptions taskOptions) {
     Preconditions.checkArgument((func == null) != (pyFunctionDescriptor == null));
+
     UniqueId taskId = rayletClient.generateTaskId(workerContext.getCurrentDriverId(),
         workerContext.getCurrentTaskId(), workerContext.nextTaskIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
@@ -359,7 +361,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
 
     TaskLanguage language;
-    Object functionDescriptor;
+    FunctionDescriptor functionDescriptor;
     if (func != null) {
       language = TaskLanguage.JAVA;
       functionDescriptor = functionManager.getFunction(workerContext.getCurrentDriverId(), func)

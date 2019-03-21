@@ -3,7 +3,7 @@ package org.ray.runtime.functionmanager;
 /**
  * Represents metadata of a Python function.
  */
-public class PyFunctionDescriptor {
+public class PyFunctionDescriptor implements FunctionDescriptor {
 
   public String moduleName;
 

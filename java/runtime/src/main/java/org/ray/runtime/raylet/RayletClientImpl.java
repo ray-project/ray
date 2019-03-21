@@ -12,7 +12,7 @@ import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.functionmanager.FunctionDescriptor;
+import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.generated.Arg;
 import org.ray.runtime.generated.Language;
 import org.ray.runtime.generated.ResourcePair;
@@ -186,7 +186,7 @@ public class RayletClientImpl implements RayletClient {
     // Deserialize function descriptor
     Preconditions.checkArgument(info.language() == Language.JAVA);
     Preconditions.checkArgument(info.functionDescriptorLength() == 3);
-    FunctionDescriptor functionDescriptor = new FunctionDescriptor(
+    JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
@@ -259,9 +259,9 @@ public class RayletClientImpl implements RayletClient {
       // This is a Java task.
       language = Language.JAVA;
       int[] functionDescriptorOffsets = new int[]{
-          fbb.createString(task.getFunctionDescriptor().className),
-          fbb.createString(task.getFunctionDescriptor().name),
-          fbb.createString(task.getFunctionDescriptor().typeDescriptor)
+          fbb.createString(task.getJavaFunctionDescriptor().className),
+          fbb.createString(task.getJavaFunctionDescriptor().name),
+          fbb.createString(task.getJavaFunctionDescriptor().typeDescriptor)
       };
       functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
     } else {
