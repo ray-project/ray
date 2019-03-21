@@ -17,4 +17,4 @@ class Counter(object):
 
     def increase(self, delta):
         self.value += int(delta)
-        return six.ensure_binary(str(self.value))
+        return str(self.value).encode("utf-8") if six.PY3 else str(self.value)
