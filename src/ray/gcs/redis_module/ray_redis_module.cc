@@ -967,4 +967,4 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   return REDISMODULE_OK;
 }
 
-} /// extern "C"
+}  /// extern "C"
