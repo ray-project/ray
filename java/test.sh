@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Cause the script to exit if a single command fails.
+set -e
 # Show explicitly which commands are currently running.
 set -x
 
@@ -9,9 +11,16 @@ pushd $ROOT_DIR/../java
 echo "Compiling Java code."
 mvn clean install -Dmaven.test.skip
 
-ENABLE_MULTI_LANGUAGE_TESTS=1 mvn test -Dtest="CrossLanguageInvocationTest#*" -pl test
-tail -n 100 /tmp/ray/*
+echo "Checking code format."
+mvn checkstyle:check
+
+echo "Running tests under cluster mode."
+ENABLE_MULTI_LANGUAGE_TESTS=1 mvn test
+
+echo "Running tests under single-process mode."
+mvn test -Dray.run-mode=SINGLE_PROCESS
 
 set +x
+set +e
 
 popd
