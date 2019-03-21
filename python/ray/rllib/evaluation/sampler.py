@@ -422,7 +422,6 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     "episode": episode
                 })
             del active_episodes[env_id]
-
             resetted_obs = base_env.try_reset(env_id)
             if resetted_obs is None:
                 # Reset not supported, drop this env from the ready list
