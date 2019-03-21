@@ -377,10 +377,17 @@ class Agent(Trainable):
 
     @override(Trainable)
     def _stop(self):
+        # Call stop on all evaluators to release resources
+        if hasattr(self, "local_evaluator"):
+            self.local_evaluator.stop()
+        if hasattr(self, "remote_evaluators"):
+            ray.get([ev.stop.remote() for ev in self.remote_evaluators])
+
         # workaround for https://github.com/ray-project/ray/issues/1516
         if hasattr(self, "remote_evaluators"):
             for ev in self.remote_evaluators:
                 ev.__ray_terminate__.remote()
+
         if hasattr(self, "optimizer"):
             self.optimizer.stop()
 

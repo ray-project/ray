@@ -176,6 +176,11 @@ class BaseEnv(object):
         """
         return []
 
+    @PublicAPI
+    def stop(self):
+        """Releases all resources used."""
+        pass
+
 
 # Fixed agent identifier when there is only the single agent in the env
 _DUMMY_AGENT_ID = "single_agent"

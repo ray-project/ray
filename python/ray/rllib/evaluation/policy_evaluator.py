@@ -640,6 +640,10 @@ class PolicyEvaluator(EvaluatorInterface):
         self.policy_map[policy_id].export_checkpoint(export_dir,
                                                      filename_prefix)
 
+    @DeveloperAPI
+    def stop(self):
+        self.async_env.stop()
+
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
         preprocessors = {}

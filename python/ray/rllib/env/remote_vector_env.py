@@ -79,6 +79,11 @@ class RemoteVectorEnv(BaseEnv):
         self.pending[obj_id] = actor
         return ASYNC_RESET_RETURN
 
+    def stop(self):
+        if self.actors is not None:
+            for actor in self.actors:
+                actor.__ray_terminate__.remote()
+
 @ray.remote(num_cpus=0)
 class _RemoteMultiAgentEnv(object):
     """Wrapper class for making a multi-agent env a remote actor."""
