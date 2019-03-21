@@ -8,7 +8,7 @@ java_repositories()
 git_repository(
     name = "com_github_checkstyle_java",
     commit = "85f37871ca03b9d3fee63c69c8107f167e24e77b",
-    remote = "https://github.com/alegithub111/checkstyle_java.git",
+    remote = "https://github.com/ruifangChen/checkstyle_java",
 )
 
 git_repository(
