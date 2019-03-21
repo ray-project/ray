@@ -5,7 +5,7 @@ from __future__ import print_function
 import logging
 
 import ray
-from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID
+from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
 
 logger = logging.getLogger(__name__)
 
@@ -20,19 +20,24 @@ class RemoteVectorEnv(BaseEnv):
 
     def __init__(self, make_env, num_envs, multiagent, remote_worker_env_timeout_ms):
         self.make_local_env = make_env
-        self.timeout = remote_worker_env_timeout_ms / 1000
+        self.num_envs = num_envs
+        self.multiagent = multiagent
+        self.poll_timeout = remote_worker_env_timeout_ms / 1000
 
-        def make_remote_env(i):
-            logger.info("Launching env {} in remote actor".format(i))
-            if multiagent:
-                return _RemoteMultiAgentEnv.remote(self.make_local_env, i)
-            else:
-                return _RemoteSingleAgentEnv.remote(self.make_local_env, i)
-
-        self.actors = [make_remote_env(i) for i in range(num_envs)]
+        self.actors = None  # lazy init
         self.pending = None  # lazy init
 
     def poll(self):
+        if self.actors is None:
+            def make_remote_env(i):
+                logger.info("Launching env {} in remote actor".format(i))
+                if self.multiagent:
+                    return _RemoteMultiAgentEnv.remote(self.make_local_env, i)
+                else:
+                    return _RemoteSingleAgentEnv.remote(self.make_local_env, i)
+
+            self.actors = [make_remote_env(i) for i in range(self.num_envs)]
+
         if self.pending is None:
             self.pending = {a.reset.remote(): a for a in self.actors}
 
@@ -45,7 +50,7 @@ class RemoteVectorEnv(BaseEnv):
             ready, _ = ray.wait(
                 list(self.pending),
                 num_returns=len(self.pending),
-                timeout=self.timeout)
+                timeout=self.poll_timeout)
 
         # Get and return observations for each of the ready envs
         env_ids = set()
@@ -69,13 +74,10 @@ class RemoteVectorEnv(BaseEnv):
             self.pending[obj_id] = actor
 
     def try_reset(self, env_id):
-        obs, _, _, _ = ray.get(self.actors[env_id].reset.remote())
-        return obs
-
-    def send_reset(self, env_id):
         actor = self.actors[env_id]
         obj_id = actor.reset.remote()
         self.pending[obj_id] = actor
+        return ASYNC_RESET_RETURN
 
 @ray.remote(num_cpus=0)
 class _RemoteMultiAgentEnv(object):

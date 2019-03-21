@@ -13,7 +13,7 @@ from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.offline import InputReader
@@ -423,37 +423,33 @@ def _process_observations(base_env, policies, batch_builder_pool,
                 })
             del active_episodes[env_id]
 
-            if hasattr(base_env, 'send_reset'):
-                # If the env implements send reset, that means it can handle actions asynchronously
-                # That means we can send reset now and poll its result sometime in the future
-                base_env.send_reset(env_id)
-            else:
-                resetted_obs = base_env.try_reset(env_id)
-                if resetted_obs is None:
-                    # Reset not supported, drop this env from the ready list
-                    if horizon != float("inf"):
-                        raise ValueError(
-                            "Setting episode horizon requires reset() support "
-                            "from the environment.")
-                else:
-                    # Creates a new episode
-                    episode = active_episodes[env_id]
-                    for agent_id, raw_obs in resetted_obs.items():
-                        policy_id = episode.policy_for(agent_id)
-                        policy = _get_or_raise(policies, policy_id)
-                        prep_obs = _get_or_raise(preprocessors,
-                                                policy_id).transform(raw_obs)
-                        filtered_obs = _get_or_raise(obs_filters,
-                                                    policy_id)(prep_obs)
-                        episode._set_last_observation(agent_id, filtered_obs)
-                        to_eval[policy_id].append(
-                            PolicyEvalData(
-                                env_id, agent_id, filtered_obs,
-                                episode.last_info_for(agent_id) or {},
-                                episode.rnn_state_for(agent_id),
-                                np.zeros_like(
-                                    _flatten_action(policy.action_space.sample())),
-                                0.0))
+            resetted_obs = base_env.try_reset(env_id)
+            if resetted_obs is None:
+                # Reset not supported, drop this env from the ready list
+                if horizon != float("inf"):
+                    raise ValueError(
+                        "Setting episode horizon requires reset() support "
+                        "from the environment.")
+            elif resetted_obs != ASYNC_RESET_RETURN:
+                # Creates a new episode if this is not async return
+                # If reset is async, we will get its result in some future poll
+                episode = active_episodes[env_id]
+                for agent_id, raw_obs in resetted_obs.items():
+                    policy_id = episode.policy_for(agent_id)
+                    policy = _get_or_raise(policies, policy_id)
+                    prep_obs = _get_or_raise(preprocessors,
+                                            policy_id).transform(raw_obs)
+                    filtered_obs = _get_or_raise(obs_filters,
+                                                policy_id)(prep_obs)
+                    episode._set_last_observation(agent_id, filtered_obs)
+                    to_eval[policy_id].append(
+                        PolicyEvalData(
+                            env_id, agent_id, filtered_obs,
+                            episode.last_info_for(agent_id) or {},
+                            episode.rnn_state_for(agent_id),
+                            np.zeros_like(
+                                _flatten_action(policy.action_space.sample())),
+                            0.0))
 
     return active_envs, to_eval, outputs
 

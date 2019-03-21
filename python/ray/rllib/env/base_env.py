@@ -7,6 +7,8 @@ from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import override, PublicAPI
 
+ASYNC_RESET_RETURN = "async_reset_return"
+
 
 @PublicAPI
 class BaseEnv(object):

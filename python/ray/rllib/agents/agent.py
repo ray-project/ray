@@ -502,8 +502,7 @@ class Agent(Trainable):
                         "tf_session_args": self.
                         config["local_evaluator_tf_session_args"]
                     }),
-                extra_config or {}),
-            0)
+                extra_config or {}))
 
     @DeveloperAPI
     def make_remote_evaluators(self, env_creator, policy_graph, count):
@@ -516,11 +515,10 @@ class Agent(Trainable):
         }
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
-        num_envs = self.config["num_envs_per_worker"]
 
         return [
             self._make_evaluator(cls, env_creator, policy_graph, i + 1,
-                                 self.config, num_envs) for i in range(count)
+                                 self.config) for i in range(count)
         ]
 
     @DeveloperAPI
@@ -630,7 +628,7 @@ class Agent(Trainable):
             self.optimizer, PolicyOptimizer)
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
-                        config, num_envs):
+                        config):
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
@@ -685,7 +683,7 @@ class Agent(Trainable):
             preprocessor_pref=config["preprocessor_pref"],
             sample_async=config["sample_async"],
             compress_observations=config["compress_observations"],
-            num_envs=num_envs,
+            num_envs=self.config["num_envs_per_worker"],
             observation_filter=config["observation_filter"],
             clip_rewards=config["clip_rewards"],
             clip_actions=config["clip_actions"],
