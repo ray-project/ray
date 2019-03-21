@@ -67,7 +67,9 @@ class TrialRunner(object):
                  search_alg,
                  scheduler=None,
                  launch_web_server=False,
-                 metadata_checkpoint_dir=None,
+                 local_checkpoint_dir=None,
+                 remote_checkpoint_dir=None,
+                 resume=None,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
                  queue_trials=False,
@@ -116,7 +118,30 @@ class TrialRunner(object):
 
         self._trials = []
         self._stop_queue = []
-        self._metadata_checkpoint_dir = metadata_checkpoint_dir
+        self._local_checkpoint_dir = local_checkpoint_dir
+        self._remote_checkpoint_dir = remote_checkpoint_dir
+        self._syncer = Syncer(local_checkpoint_dir, remote_checkpoint_dir)
+
+        self._resumed = False
+        if resume == "prompt":
+            if self.checkpoint_exists(self._local_checkpoint_dir):
+                resume = input("Found local checkpoint directory. Resume?")
+            elif self.checkpoint_exists(self._remote_checkpoint_dir):
+                resume = input("Found remote checkpoint directory. Resume?")
+            else:
+                resume = False
+
+        if resume:
+            try:
+                self._resume()
+                logger.info("Resuming trial.")
+                self._resumed = True
+            except Exception as e:
+                logger.exception(
+                    "Runner restore failed. Restarting experiment.")
+
+        else:
+            logger.info("Starting a new experiment.")
 
         self._start_time = time.time()
         self._session_str = datetime.fromtimestamp(
@@ -129,6 +154,12 @@ class TrialRunner(object):
         return any(
             (fname.startswith("experiment_state") and fname.endswith(".json"))
             for fname in os.listdir(directory))
+
+    def add_experiment(self, experiment):
+        if not self._resumed:
+            self._search_alg.add_configurations([experiment])
+        else:
+            logger.info("TrialRunner resumed, ignoring new add_experiment.")
 
     def checkpoint(self):
         """Saves execution state to `self._metadata_checkpoint_dir`.
@@ -158,47 +189,36 @@ class TrialRunner(object):
                          TrialRunner.CKPT_FILE_TMPL.format(self._session_str)))
         return metadata_checkpoint_dir
 
-    @classmethod
-    def restore(cls,
-                metadata_checkpoint_dir,
-                search_alg=None,
-                scheduler=None,
-                trial_executor=None):
-        """Restores all checkpointed trials from previous run.
+    def _resume(self):
+        """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
-
-        Args:
-            metadata_checkpoint_dir (str): Path to metadata checkpoints.
-            search_alg (SearchAlgorithm): Search Algorithm. Defaults to
-                BasicVariantGenerator.
-            scheduler (TrialScheduler): Scheduler for executing
-                the experiment.
-            trial_executor (TrialExecutor): Manage the execution of trials.
-
-        Returns:
-            runner (TrialRunner): A TrialRunner to resume experiments from.
         """
 
-        newest_ckpt_path = _find_newest_ckpt(metadata_checkpoint_dir)
+        assert self._local_checkpoint_dir or self._remote_checkpoint_dir
+
+        if not self.checkpoint_exists(self._local_checkpoint_dir):
+            if self._remote_checkpoint_dir is None:
+                raise ValueError(self._remote_checkpoint_dir)
+            self._syncer.sync_down()
+            if not self.checkpoint_exists(self._local_checkpoint_dir):
+                raise ValueError(self._local_checkpoint_dir)
+
+        checkpoint_dir = self._local_checkpoint_dir
+
+        newest_ckpt_path = _find_newest_ckpt(checkpoint_dir)
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f)
 
         logger.warning("".join([
             "Attempting to resume experiment from {}. ".format(
-                metadata_checkpoint_dir), "This feature is experimental, "
+                checkpoint_dir), "This feature is experimental, "
             "and may not work with all search algorithms. ",
             "This will ignore any new changes to the specification."
         ]))
 
-        from ray.tune.suggest import BasicVariantGenerator
-        runner = TrialRunner(
-            search_alg or BasicVariantGenerator(),
-            scheduler=scheduler,
-            trial_executor=trial_executor)
-
-        runner.__setstate__(runner_state["runner_data"])
+        self.__setstate__(runner_state["runner_data"])
 
         trials = []
         for trial_cp in runner_state["checkpoints"]:
@@ -207,8 +227,7 @@ class TrialRunner(object):
             trials += [new_trial]
         for trial in sorted(
                 trials, key=lambda t: t.last_update_time, reverse=True):
-            runner.add_trial(trial)
-        return runner
+            self.add_trial(trial)
 
     def is_finished(self):
         """Returns whether all trials have finished running."""

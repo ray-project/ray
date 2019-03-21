@@ -97,38 +97,19 @@ class _LogSyncer(object):
     """
 
     def __init__(self, local_dir, remote_dir=None, sync_function=None):
-        self.local_dir = local_dir
-        self.remote_dir = remote_dir
-        self.logfile = tempfile.NamedTemporaryFile(
-            prefix="log_sync", dir=self.local_dir, suffix=".log", delete=False)
+        super(_LogSyncer, self).__init__(local_dir, remote_dir)
 
         # Resolve sync_function into template or function
-        self.sync_func = None
-        self.sync_cmd_tmpl = None
-        if isinstance(sync_function, types.FunctionType) or isinstance(
-                sync_function, tune_function):
-            self.sync_func = sync_function
-        elif isinstance(sync_function, str):
-            self.sync_cmd_tmpl = sync_function
-        self.last_sync_time = 0
-        self.sync_process = None
         self.local_ip = ray.services.get_node_ip_address()
         self.worker_ip = None
         logger.debug("Created LogSyncer for {} -> {}".format(
             local_dir, remote_dir))
 
-    def close(self):
-        self.logfile.close()
-
     def set_worker_ip(self, worker_ip):
         """Set the worker ip to sync logs from."""
         self.worker_ip = worker_ip
 
-    def sync_if_needed(self):
-        if time.time() - self.last_sync_time > 300:
-            self.sync_now()
-
-    def sync_to_worker_if_possible(self):
+    def sync_up(self):
         """Syncs the local logdir on driver to worker if possible.
 
         Requires ray cluster to be started with the autoscaler. Also requires
@@ -158,13 +139,15 @@ class _LogSyncer(object):
             final_cmd, shell=True, stdout=self.logfile)
         sync_process.wait()
 
-    def sync_now(self, force=False):
-        self.last_sync_time = time.time()
+    def sync_down(self, force=False):
         if not self.worker_ip:
             logger.debug("Worker ip unknown, skipping log sync for {}".format(
                 self.local_dir))
             return
 
+        super(_LogSyncer, self).sync_down(force=force)
+
+    def get_remote_sync_cmd(self):
         if self.worker_ip == self.local_ip:
             worker_to_local_sync_cmd = None  # don't need to rsync
         else:
@@ -188,60 +171,4 @@ class _LogSyncer(object):
                 """-o StrictHostKeyChecking=no" {} {}""").format(
                     quote(ssh_key), quote(source), quote(target)))
 
-        if self.remote_dir:
-            if self.sync_func:
-                local_to_remote_sync_cmd = None
-                try:
-                    self.sync_func(self.local_dir, self.remote_dir)
-                except Exception:
-                    logger.exception("Sync function failed.")
-            else:
-                local_to_remote_sync_cmd = self.get_remote_sync_cmd()
-        else:
-            local_to_remote_sync_cmd = None
-
-        if self.sync_process:
-            self.sync_process.poll()
-            if self.sync_process.returncode is None:
-                if force:
-                    self.sync_process.kill()
-                else:
-                    logger.warning("Last sync is still in progress, skipping.")
-                    return
-
-        if worker_to_local_sync_cmd or local_to_remote_sync_cmd:
-            final_cmd = ""
-            if worker_to_local_sync_cmd:
-                final_cmd += worker_to_local_sync_cmd
-            if local_to_remote_sync_cmd:
-                if final_cmd:
-                    final_cmd += " && "
-                final_cmd += local_to_remote_sync_cmd
-            logger.debug("Running log sync: {}".format(final_cmd))
-            self.sync_process = subprocess.Popen(
-                final_cmd, shell=True, stdout=self.logfile)
-
-    def wait(self):
-        if self.sync_process:
-            self.sync_process.wait()
-
-    def get_remote_sync_cmd(self):
-        if self.sync_cmd_tmpl:
-            local_to_remote_sync_cmd = (self.sync_cmd_tmpl.format(
-                local_dir=quote(self.local_dir),
-                remote_dir=quote(self.remote_dir)))
-        elif self.remote_dir.startswith(S3_PREFIX):
-            local_to_remote_sync_cmd = (
-                "aws s3 sync {local_dir} {remote_dir}".format(
-                    local_dir=quote(self.local_dir),
-                    remote_dir=quote(self.remote_dir)))
-        elif self.remote_dir.startswith(GCS_PREFIX):
-            local_to_remote_sync_cmd = (
-                "gsutil rsync -r {local_dir} {remote_dir}".format(
-                    local_dir=quote(self.local_dir),
-                    remote_dir=quote(self.remote_dir)))
-        else:
-            logger.warning("Remote sync unsupported, skipping.")
-            local_to_remote_sync_cmd = None
-
-        return local_to_remote_sync_cmd
+        return worker_to_local_sync_cmd

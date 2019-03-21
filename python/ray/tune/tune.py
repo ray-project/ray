@@ -35,13 +35,13 @@ def _make_scheduler(args):
             args.scheduler, _SCHEDULERS.keys()))
 
 
-def _find_checkpoint_dir(exp):
+def _find_checkpoint_dir(base_path, experiment_name):
     # TODO(rliaw): Make sure the checkpoint_dir is resolved earlier.
     # Right now it is resolved somewhere far down the trial generation process
-    return os.path.join(exp.spec["local_dir"], exp.name)
+    return os.path.join(base_path, experiment_name)
 
 
-def _prompt_restore(checkpoint_dir, resume):
+def _should_resume(checkpoint_dir, resume):
     restore = False
     if TrialRunner.checkpoint_exists(checkpoint_dir):
         if resume == "prompt":
@@ -59,10 +59,17 @@ def _prompt_restore(checkpoint_dir, resume):
         else:
             logger.info("Tip: to resume incomplete experiments, "
                         "pass resume='prompt' or resume=True to run()")
-    else:
-        logger.info(
-            "Did not find checkpoint file in {}.".format(checkpoint_dir))
+
     return restore
+
+
+def _get_resume_path(local_checkpoint_dir, remote_checkpoint_dir):
+    if TrialRunner.checkpoint_exists(local_checkpoint_dir):
+        return local_checkpoint_dir
+    elif remote_checkpoint_dir:
+        return remote_checkpoint_dir
+    else:
+        raise ValueError
 
 
 def run(run_or_experiment,
@@ -189,43 +196,32 @@ def run(run_or_experiment,
     """
     experiment = run_or_experiment
     if not isinstance(run_or_experiment, Experiment):
+        run_identifier = Experiment._register_if_needed(run_or_experiment)
         experiment = Experiment(
-            name, run_or_experiment, stop, config, resources_per_trial,
+            name, run_identifier, stop, config, resources_per_trial,
             num_samples, local_dir, upload_dir, trial_name_creator, loggers,
             sync_function, checkpoint_freq, checkpoint_at_end, export_formats,
             max_failures, restore)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 
-    checkpoint_dir = _find_checkpoint_dir(experiment)
-    should_restore = _prompt_restore(checkpoint_dir, resume)
+    local_checkpoint_dir = _find_checkpoint_dir(local_dir, experiment.name)
+    remote_checkpoint_dir = _find_checkpoint_dir(upload_dir, experiment.name)
 
-    runner = None
-    if should_restore:
-        try:
-            runner = TrialRunner.restore(checkpoint_dir, search_alg, scheduler,
-                                         trial_executor)
-        except Exception:
-            logger.exception("Runner restore failed. Restarting experiment.")
-    else:
-        logger.info("Starting a new experiment.")
+    runner = TrialRunner(
+        search_alg=search_alg or BasicVariantGenerator(),
+        scheduler=scheduler or FIFOScheduler(),
+        local_checkpoint_dir=local_checkpoint_dir,
+        remote_checkpoint_dir=remote_checkpoint_dir,
+        resume=resume,
+        launch_web_server=with_server,
+        server_port=server_port,
+        verbose=bool(verbose > 1),
+        queue_trials=queue_trials,
+        reuse_actors=reuse_actors,
+        trial_executor=trial_executor)
 
-    if not runner:
-        scheduler = scheduler or FIFOScheduler()
-        search_alg = search_alg or BasicVariantGenerator()
-
-        search_alg.add_configurations([experiment])
-
-        runner = TrialRunner(
-            search_alg,
-            scheduler=scheduler,
-            metadata_checkpoint_dir=checkpoint_dir,
-            launch_web_server=with_server,
-            server_port=server_port,
-            verbose=bool(verbose > 1),
-            queue_trials=queue_trials,
-            reuse_actors=reuse_actors,
-            trial_executor=trial_executor)
+    runner.add_experiment(experiment)
 
     if verbose:
         print(runner.debug_string(max_debug=99999))
