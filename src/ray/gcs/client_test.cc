@@ -692,7 +692,7 @@ void TestSetSubscribeAll(const JobID &job_id,
         data->manager = managers[j];
         for (int k = 0; k < 3; k++) {
           // Remove the same entry several times.
-          // Expect no notification if the entry already exists.
+          // Expect no notification if the entry doesn't exist.
           RAY_CHECK_OK(
               client->object_table().Remove(job_id, object_ids[i], data, nullptr));
         }
