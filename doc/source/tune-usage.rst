@@ -451,6 +451,7 @@ And stopping a trial (``PUT /trials/:id``):
 
 .. code-block:: bash
 
+    curl -X PUT http://<address>:<port>/trials
     curl -X PUT http://<address>:<port>/trials/<trial_id>
 
 
