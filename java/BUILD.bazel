@@ -21,11 +21,14 @@ java_import(
         "liborg_ray_ray_runtime-src.jar",
         "liborg_ray_ray_tutorial.jar",
         "liborg_ray_ray_tutorial-src.jar",
+        "all_tests_deploy.jar",
+        "all_tests_deploy-src.jar",
     ],
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
         ":org_ray_ray_tutorial",
+        ":all_tests",
     ],
 )
 
@@ -102,7 +105,7 @@ define_java_module(
     ],
 )
 
-java_test(
+java_binary(
     name = "all_tests",
     main_class = "org.testng.TestNG",
     data = ["testng.xml"],

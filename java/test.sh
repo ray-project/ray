@@ -12,7 +12,8 @@ echo "Linting Java code with checkstyle."
 bazel test //java:all --test_tag_filters="checkstyle"
 
 echo "Running tests under cluster mode."
-ENABLE_MULTI_LANGUAGE_TESTS=1 bazel test //java:all_tests --test_output="errors" || cluster_exit_code=$?
+# bazel test //java:all_tests --action_env=ENABLE_MULTI_LANGUAGE_TESTS=1 --test_output="errors" || cluster_exit_code=$?
+ENABLE_MULTI_LANGUAGE_TESTS=1 java -jar $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/testng.xml|| cluster_exit_code=$?
 
 # exit_code == 2 means there are some tests skiped.
 if [ $cluster_exit_code -ne 2 ] && [ $cluster_exit_code -ne 0 ] ; then
@@ -20,7 +21,8 @@ if [ $cluster_exit_code -ne 2 ] && [ $cluster_exit_code -ne 0 ] ; then
 fi
 
 echo "Running tests under single-process mode."
-bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --test_output="errors" || single_exit_code=$?
+# bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --test_output="errors" || single_exit_code=$?
+java -jar -Dray.run-mode="SINGLE_PROCESS" $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/testng.xml || single_exit_code=$?
 
 # exit_code == 2 means there are some tests skiped.
 if [ $single_exit_code -ne 2 ] && [ $single_exit_code -ne 0 ] ; then
