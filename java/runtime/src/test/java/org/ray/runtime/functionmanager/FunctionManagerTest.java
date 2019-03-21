@@ -119,11 +119,13 @@ public class FunctionManagerTest {
 
   @Test
   public void testGetFunctionFromLocalResource() throws Exception {
-    final String resourcePath = "/tmp/ray/java_test/resource";
     UniqueId driverId = UniqueId.randomId();
+    final String resourcePath = FileUtils.getTempDirectoryPath() + "/ray_test_resources";
     final String driverResourcePath = resourcePath + "/" + driverId.toString();
     File driverResourceDir = new File(driverResourcePath);
+    FileUtils.deleteQuietly(driverResourceDir);
     driverResourceDir.mkdirs();
+    driverResourceDir.deleteOnExit();
 
     String demoJavaFile = "";
     demoJavaFile += "public class DemoApp {\n";
@@ -132,35 +134,23 @@ public class FunctionManagerTest {
     demoJavaFile += "  }\n";
     demoJavaFile += "}";
 
-    try {
-      // Write the demo java file to the driver resource path.
-      String javaFilePath = driverResourcePath + "/DemoApp.java";
-      Files.write(Paths.get(javaFilePath), demoJavaFile.getBytes());
+    // Write the demo java file to the driver resource path.
+    String javaFilePath = driverResourcePath + "/DemoApp.java";
+    Files.write(Paths.get(javaFilePath), demoJavaFile.getBytes());
 
-      // Compile the java file.
-      JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-      int result = compiler.run(null, null, null, "-d", driverResourcePath, javaFilePath);
-      if (result != 0) {
-        throw new RuntimeException("Couldn't compile Demo.java.");
-      }
-      // Package the class file into a jar file.
-      String[] packJarCommand = new String[]{
-          "jar",
-          "-cvf",
-          driverResourcePath + "/DemoApp.jar",
-          "DemoApp.class"
-      };
-      new ProcessBuilder(packJarCommand).directory(driverResourceDir).start().waitFor();
-
-      // Test loading the function.
-      JavaFunctionDescriptor descriptor = new JavaFunctionDescriptor(
-          "DemoApp", "hello", "()Ljava/lang/String;");
-      final FunctionManager functionManager = new FunctionManager(resourcePath);
-      RayFunction func = functionManager.getFunction(driverId, descriptor);
-      Assert.assertEquals(func.getFunctionDescriptor(), descriptor);
-    } finally {
-      FileUtils.deleteDirectory(driverResourceDir);
+    // Compile the java file.
+    JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+    int result = compiler.run(null, null, null, "-d", driverResourcePath, javaFilePath);
+    if (result != 0) {
+      throw new RuntimeException("Couldn't compile Demo.java.");
     }
+
+    // Test loading the function.
+    JavaFunctionDescriptor descriptor = new JavaFunctionDescriptor(
+        "DemoApp", "hello", "()Ljava/lang/String;");
+    final FunctionManager functionManager = new FunctionManager(resourcePath);
+    RayFunction func = functionManager.getFunction(driverId, descriptor);
+    Assert.assertEquals(func.getFunctionDescriptor(), descriptor);
   }
 
 }
