@@ -32,3 +32,8 @@ if [ $single_exit_code -ne 2 ] && [ $single_exit_code -ne 0 ] ; then
 fi
 
 popd
+
+pushd $ROOT_DIR
+echo "Testing maven install."
+mvn clean install -Dmaven.test.skip
+popd
