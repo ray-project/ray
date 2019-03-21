@@ -121,7 +121,7 @@ void TestTableLookup(const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsCli
 #define TEST_MACRO(FIXTURE, TEST) \
   TEST_F(FIXTURE, TEST) {         \
     test = this;                  \
-    TEST(driver_id_, client_);       \
+    TEST(driver_id_, client_);    \
   }
 
 TEST_MACRO(TestGcsWithAsio, TestTableLookup);

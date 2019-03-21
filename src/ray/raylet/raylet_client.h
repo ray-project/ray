@@ -1,4 +1,4 @@
-DriverID#ifndef RAYLET_CLIENT_H
+#ifndef RAYLET_CLIENT_H
 #define RAYLET_CLIENT_H
 
 #include <unistd.h>
