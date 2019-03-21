@@ -53,6 +53,7 @@ cc_library(
     linkopts = ["-pthread"],
     copts = COPTS,
     deps = [
+        ":ray_util",
         "@com_google_googletest//:gtest",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",

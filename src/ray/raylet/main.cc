@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc >= 14 && argc <= 16);
+  RAY_CHECK(argc >= 14 && argc <= 17);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
@@ -38,11 +38,11 @@ int main(int argc, char *argv[]) {
   const std::string java_worker_command = std::string(argv[13]);
   const std::string redis_password = (argc >= 15 ? std::string(argv[14]) : "");
   const std::string temp_dir = (argc >= 16 ? std::string(argv[15]) : "/tmp/ray");
-//  const std::string stat_address = (
-//      argc >= 17 ? std::string(argv[16]) : "127.0.0.1:8888");
+  const std::string stat_address
+      = (argc >= 17 ? std::string(argv[16]) : "127.0.0.1:8888");
 
   // Initialize stats.
-  ray::stats::Init("127.0.0.1:8888");
+  ray::stats::Init(stat_address);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;

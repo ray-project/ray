@@ -9,6 +9,7 @@
 #include "opencensus/tags/tag_key.h"
 #include "opencensus/stats/stats.h"
 
+#include "ray/util/logging.h"
 #include "ray/stats/metric.h"
 
 namespace ray {
@@ -30,6 +31,7 @@ namespace stats {
 
     // Also enable stdout exporter by default.
     opencensus::exporters::stats::StdoutExporter::Register();
+    RAY_LOG(INFO) << "Succeeded to initialize stats: exporter address is " << address;
   }
 
 } // namespace stats
