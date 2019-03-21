@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
+# If this key is present in the grad info, then we assume the rest of the keys
+# are policy ids and values are individual stats for policies.
+IS_MULTIAGENT_KEY = "__multiagent__"
 
 
 @DeveloperAPI
@@ -28,7 +31,7 @@ def get_learner_stats(grad_info):
         {"vf_loss": ..., "policy_loss": ...}
     """
 
-    if "__multiagent__" in grad_info:
+    if grad_info.get(IS_MULTIAGENT_KEY):
         stats = {}
         for k, v in grad_info.items():
             if k != "__multiagent__":
