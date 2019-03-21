@@ -159,10 +159,13 @@ class NodeUpdater(object):
             try:
                 logger.debug("NodeUpdater: "
                              "{}: Waiting for SSH...".format(self.node_id))
-                self.ssh_cmd(
-                    "uptime",
-                    connect_timeout=5,
-                    redirect=open("/dev/null", "w"))
+
+                with open("/dev/null", "w") as redirect:
+                    self.ssh_cmd(
+                        "uptime",
+                        connect_timeout=5,
+                        redirect=redirect)
+
                 return True
 
             except Exception as e:
@@ -206,12 +209,13 @@ class NodeUpdater(object):
             m = "{}: Synced {} to {}".format(self.node_id, local_path,
                                              remote_path)
             with LogTimer("NodeUpdater {}".format(m)):
-                self.ssh_cmd(
-                    "mkdir -p {}".format(os.path.dirname(remote_path)),
-                    redirect=open("/dev/null", "w"),
-                )
-                self.rsync_up(
-                    local_path, remote_path, redirect=open("/dev/null", "w"))
+                with open("/dev/null", "w") as redirect:
+                    self.ssh_cmd(
+                        "mkdir -p {}".format(os.path.dirname(remote_path)),
+                        redirect=redirect,
+                    )
+                    self.rsync_up(
+                        local_path, remote_path, redirect=redirect)
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
@@ -219,13 +223,15 @@ class NodeUpdater(object):
 
         m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            for cmd in self.initialization_commands:
-                self.ssh_cmd(cmd)
+            with open("/dev/null", "w") as redirect:
+                for cmd in self.initialization_commands:
+                    self.ssh_cmd(cmd, redirect=redirect)
 
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            for cmd in self.setup_commands:
-                self.ssh_cmd(cmd)
+            with open("/dev/null", "w") as redirect:
+                for cmd in self.setup_commands:
+                    self.ssh_cmd(cmd, redirect=redirect)
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
