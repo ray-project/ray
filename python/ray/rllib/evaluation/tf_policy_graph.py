@@ -420,8 +420,8 @@ class TFPolicyGraph(PolicyGraph):
             raise ValueError(
                 "Grad fetches should contain 'stats': {...} entry")
         if self._stats_fetches:
-            fetches[LEARNER_STATS_KEY] = dict(
-                self._stats_fetches, **fetches[LEARNER_STATS_KEY])
+            fetches[LEARNER_STATS_KEY] = dict(self._stats_fetches,
+                                              **fetches[LEARNER_STATS_KEY])
         return fetches
 
     def _get_loss_inputs_dict(self, batch):

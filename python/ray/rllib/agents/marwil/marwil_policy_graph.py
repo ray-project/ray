@@ -142,9 +142,7 @@ class MARWILPolicyGraph(TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
-        return {
-            LEARNER_STATS_KEY: self.stats_fetches
-        }
+        return {LEARNER_STATS_KEY: self.stats_fetches}
 
     @override(PolicyGraph)
     def postprocess_trajectory(self,
