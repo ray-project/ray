@@ -120,7 +120,7 @@ else
   # the commit listed in the command.
   $PYTHON_EXECUTABLE -m pip install \
       --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
-      --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/23b662e216df10c30fe1dc1460e52648fbb34aa8/index.html
+      --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/abb2bcd40a6c4900d76bdbf29ef386c915a48755/index.html
   bazel build //:ray_pkg -c opt --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
   # Copy files and keep them writeable. This is a workaround, as Bazel
   # marks all generated files non-writeable. If we would just copy them
