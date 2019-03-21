@@ -1,5 +1,5 @@
-#ifndef RAY_METRIC_H_
-#define RAY_METRIC_H_
+#ifndef RAY_STATS_METRIC_H_
+#define RAY_STATS_METRIC_H_
 
 #include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
 #include "prometheus/exposer.h"
@@ -12,7 +12,6 @@ namespace stats {
 
 /// Include tag_defs.h to define tag items
 #include "tag_defs.h"
-
 
 /// The helper function for registering a view.
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
@@ -41,7 +40,7 @@ class Metric final {
     return *this;
   }
 
-  /// Last value
+  /// Create a gauge type metric and return it.
   static Metric MakeGauge(const std::string &name,
                           const std::string &description,
                           const std::string &unit,
@@ -58,7 +57,7 @@ class Metric final {
     return metric;
   }
 
-  /// Histogram
+  /// Create a histogram type metric and return it.
   static Metric MakeHistogram(const std::string &name,
                               const std::string &description,
                               const std::string &unit,
@@ -76,7 +75,7 @@ class Metric final {
     return metric;
   }
 
-  /// Count
+  /// Create a count type metric and return it.
   static Metric MakeCount(const std::string &name,
                           const std::string &description,
                           const std::string &unit,
@@ -92,7 +91,7 @@ class Metric final {
     return metric;
   }
 
-    /// Sum
+    /// Create a sum type metric and return it.
     static Metric MakeSum(const std::string &name,
                             const std::string &description,
                             const std::string &unit,
@@ -108,15 +107,21 @@ class Metric final {
       return metric;
     }
 
+  /// Get the name of this metric.
   std::string GetName() const {
     return measure_.GetDescriptor().name();
   }
 
+  /// Record the value for this metric.
   void Record(double value) {
     Record(value, {});
   }
 
-  void Record(double value, const std::vector<std::pair<opencensus::tags::TagKey::TagKey, std::string>>& tags) {
+  /// Record the value for this metric.
+  ///
+  /// \param value The value that we record.
+  /// \param tags The tag values that we want to record for this metric record.
+  void Record(double value, const std::vector<std::pair<opencensus::tags::TagKey, std::string>>& tags) {
     std::vector<std::pair<opencensus::tags::TagKey, std::string>> combined_tags(tags);
     combined_tags.insert(std::end(combined_tags), std::begin(GlobalTags), std::end(GlobalTags));
 
@@ -136,6 +141,6 @@ class Metric final {
 
 }  // namespace stats
 
-}  // namespaace ray
+}  // namespace ray
 
-#endif
+#endif // RAY_STATS_METRIC_H_

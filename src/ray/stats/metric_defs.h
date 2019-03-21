@@ -1,8 +1,16 @@
-#ifndef RAY_METRIC_DEFS_H_
-#define RAY_METRIC_DEFS_H_
+#ifndef RAY_STATS_METRIC_DEFS_H_
+#define RAY_STATS_METRIC_DEFS_H_
 
-/// Use `RAY_METRIC(name, description, unit)` to define a metric
-/// which parameters are `metric_name`, `description` and `unit`.
+/// The definitions of metrics that you can use every where.
+///
+/// There are 4 types fo metric:
+///   Histogram: Histogram distribution of metric points.
+///   Gauge: Keeps the last recorded value, drops everything before.
+///   Count: The count of the number of metric points.
+///   Sum: A sum up of the mtric points.
+///
+/// You can follow these examples to define your metrics.
+
 
 static Metric TaskElapse = Metric::MakeHistogram("task_elapse",
                                                  "the task elapse in raylet",
@@ -26,4 +34,4 @@ static Metric WorkerCount = Metric::MakeGauge("worker_count",
                                             "pcs",
                                             {CustomKey});
 
-#endif // RAY_METRIC_DEFS_H_
+#endif // RAY_STATS_METRIC_DEFS_H_

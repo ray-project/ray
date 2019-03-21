@@ -1,5 +1,8 @@
-#ifndef _RAY_TAG_DEFS_H_
-#define _RAY_TAG_DEFS_H_
+#ifndef RAY_STATS_TAG_DEFS_H_
+#define RAY_STATS_TAG_DEFS_H_
+
+/// The definitions of tag keys that you can use every where.
+/// You can follow these examples to define and register your tag keys.
 
 static opencensus::tags::TagKey JobNameKey = opencensus::tags::TagKey::Register("JobName");
 
@@ -9,10 +12,11 @@ static opencensus::tags::TagKey NodeAddressKey = opencensus::tags::TagKey::Regis
 
 static opencensus::tags::TagKey VersionKey = opencensus::tags::TagKey::Register("VersionKey");
 
-/// Global tags definition.
+
+/// The definitions of global tag.
 static std::vector<std::pair<opencensus::tags::TagKey, std::string>> GlobalTags = {
     {JobNameKey, "raylet"},
-    {VersionKey, "0.6.4"}
+    {VersionKey, "0.6.5"}
 };
 
-#endif // _RAY_TAG_DEFS_H_
+#endif // RAY_STATS_TAG_DEFS_H_
