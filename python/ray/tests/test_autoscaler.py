@@ -64,6 +64,14 @@ class MockProvider(NodeProvider):
             if n.matches(tag_filters) and n.state != "terminated"
         ]
 
+    def non_terminated_node_ips(self, tag_filters):
+        if self.throw:
+            raise Exception("oops")
+        return [
+            n.internal_ip for n in self.mock_nodes.values()
+            if n.matches(tag_filters) and n.state != "terminated"
+        ]
+
     def is_running(self, node_id):
         return self.mock_nodes[node_id].state == "running"
 
@@ -337,6 +345,57 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(10)
         autoscaler.update()
+
+    def testAggressiveAutoscaling(self):
+        config = SMALL_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 20
+        config["initial_workers"] = 10
+        config["idle_timeout_minutes"] = 0
+        config["aggressive_autoscaling"] = True
+        config_path = self.write_config(config)
+
+        self.provider = MockProvider()
+        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "head"}, 1)
+        head_ip = self.provider.non_terminated_node_ips(tag_filters={TAG_RAY_NODE_TYPE: "head"})[0]
+
+        lm = LoadMetrics()
+        lm.local_ip = head_ip
+
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_launch_batch=5,
+            max_concurrent_launches=5,
+            max_failures=0,
+            update_interval_s=0)
+
+        self.waitForNodes(1)
+        autoscaler.update()
+        self.waitForNodes(6)  # expected due to batch sizes and concurrency
+        autoscaler.update()
+        self.waitForNodes(11)
+
+        # Connect the head and workers to end the bringup phase
+        addrs = self.provider.non_terminated_node_ips(tag_filters={TAG_RAY_NODE_TYPE: "worker"})
+        addrs += head_ip
+        for addr in addrs:
+            lm.update(addr, {"CPU": 2}, {"CPU": 0})
+            lm.update(addr, {"CPU": 2}, {"CPU": 2})
+        assert autoscaler.bringup
+        autoscaler.update()
+
+        assert not autoscaler.bringup
+        autoscaler.update()
+        self.waitForNodes(1)
+
+        # All of the nodes are down. Simulate some load on the head node
+        lm.update(head_ip, {"CPU": 2}, {"CPU": 0})
+
+        autoscaler.update()
+        self.waitForNodes(6)  # expected due to batch sizes and concurrency
+        autoscaler.update()
+        self.waitForNodes(11)
 
     def testDelayedLaunch(self):
         config_path = self.write_config(SMALL_CLUSTER)
