@@ -142,6 +142,9 @@ COMMON_CONFIG = {
     # can make sense if your envs are very CPU intensive (e.g., for StarCraft).
     "remote_worker_envs": False,
     # Timeout that remote workers are waiting when polling environments
+    # 0 (continue when at least one env is ready) is a reasonable default,
+    # but optimal value could be obtained by measuring your environment
+    # step / reset and model inference perf.
     "remote_worker_env_timeout_ms": 0,
 
     # === Offline Datasets ===
