@@ -40,20 +40,20 @@ public class FunctionManagerTest {
   private static RayFunc0<Object> fooFunc;
   private static RayFunc1<Bar, Object> barFunc;
   private static RayFunc0<Bar> barConstructor;
-  private static FunctionDescriptor fooDescriptor;
-  private static FunctionDescriptor barDescriptor;
-  private static FunctionDescriptor barConstructorDescriptor;
+  private static JavaFunctionDescriptor fooDescriptor;
+  private static JavaFunctionDescriptor barDescriptor;
+  private static JavaFunctionDescriptor barConstructorDescriptor;
 
   @BeforeClass
   public static void beforeClass() {
     fooFunc = FunctionManagerTest::foo;
     barConstructor = Bar::new;
     barFunc = Bar::bar;
-    fooDescriptor = new FunctionDescriptor(FunctionManagerTest.class.getName(), "foo",
+    fooDescriptor = new JavaFunctionDescriptor(FunctionManagerTest.class.getName(), "foo",
         "()Ljava/lang/Object;");
-    barDescriptor = new FunctionDescriptor(Bar.class.getName(), "bar",
+    barDescriptor = new JavaFunctionDescriptor(Bar.class.getName(), "bar",
         "()Ljava/lang/Object;");
-    barConstructorDescriptor = new FunctionDescriptor(Bar.class.getName(),
+    barConstructorDescriptor = new JavaFunctionDescriptor(Bar.class.getName(),
         FunctionManager.CONSTRUCTOR_NAME,
         "()V");
   }
@@ -132,7 +132,7 @@ public class FunctionManagerTest {
     Files.copy(Paths.get(srcJarPath), Paths.get(destJarPath), StandardCopyOption.REPLACE_EXISTING);
 
     final FunctionManager functionManager = new FunctionManager(resourcePath);
-    FunctionDescriptor sayHelloDescriptor = new FunctionDescriptor("org.ray.exercise.Exercise02",
+    JavaFunctionDescriptor sayHelloDescriptor = new JavaFunctionDescriptor("org.ray.exercise.Exercise02",
         "sayHello", "()Ljava/lang/String;");
     RayFunction func = functionManager.getFunction(driverId, sayHelloDescriptor);
     Assert.assertEquals(func.getFunctionDescriptor(), sayHelloDescriptor);

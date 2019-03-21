@@ -30,10 +30,10 @@ public class FunctionManager {
   static final String CONSTRUCTOR_NAME = "<init>";
 
   /**
-   * Cache from a RayFunc object to its corresponding FunctionDescriptor. Because
+   * Cache from a RayFunc object to its corresponding JavaFunctionDescriptor. Because
    * `LambdaUtils.getSerializedLambda` is expensive.
    */
-  private static final ThreadLocal<WeakHashMap<Class<? extends RayFunc>, FunctionDescriptor>>
+  private static final ThreadLocal<WeakHashMap<Class<? extends RayFunc>, JavaFunctionDescriptor>>
       RAY_FUNC_CACHE = ThreadLocal.withInitial(WeakHashMap::new);
 
   /**
@@ -64,13 +64,13 @@ public class FunctionManager {
    * @return A RayFunction object.
    */
   public RayFunction getFunction(UniqueId driverId, RayFunc func) {
-    FunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
+    JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
     if (functionDescriptor == null) {
       SerializedLambda serializedLambda = LambdaUtils.getSerializedLambda(func);
       final String className = serializedLambda.getImplClass().replace('/', '.');
       final String methodName = serializedLambda.getImplMethodName();
       final String typeDescriptor = serializedLambda.getImplMethodSignature();
-      functionDescriptor = new FunctionDescriptor(className, methodName, typeDescriptor);
+      functionDescriptor = new JavaFunctionDescriptor(className, methodName, typeDescriptor);
       RAY_FUNC_CACHE.get().put(func.getClass(),functionDescriptor);
     }
     return getFunction(driverId, functionDescriptor);
@@ -83,7 +83,7 @@ public class FunctionManager {
    * @param functionDescriptor The function descriptor.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(UniqueId driverId, FunctionDescriptor functionDescriptor) {
+  public RayFunction getFunction(UniqueId driverId, JavaFunctionDescriptor functionDescriptor) {
     DriverFunctionTable driverFunctionTable = driverFunctionTables.get(driverId);
     if (driverFunctionTable == null) {
       String resourcePath = driverResourcePath + "/" + driverId.toString() + "/";
@@ -122,7 +122,7 @@ public class FunctionManager {
       this.functions = new HashMap<>();
     }
 
-    RayFunction getFunction(FunctionDescriptor descriptor) {
+    RayFunction getFunction(JavaFunctionDescriptor descriptor) {
       Map<Pair<String, String>, RayFunction> classFunctions = functions.get(descriptor.className);
       if (classFunctions == null) {
         classFunctions = loadFunctionsForClass(descriptor.className);
@@ -150,7 +150,7 @@ public class FunctionManager {
               e instanceof Method ? Type.getType((Method) e) : Type.getType((Constructor) e);
           final String typeDescriptor = type.getDescriptor();
           RayFunction rayFunction = new RayFunction(e, classLoader,
-              new FunctionDescriptor(className, methodName, typeDescriptor));
+              new JavaFunctionDescriptor(className, methodName, typeDescriptor));
           map.put(ImmutablePair.of(methodName, typeDescriptor), rayFunction);
         }
       } catch (Exception e) {
