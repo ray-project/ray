@@ -1,12 +1,14 @@
 package org.ray.runtime.task;
 
+import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
-import org.ray.runtime.util.ResourceUtil;
+import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
+import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 
 /**
  * Represents necessary information of a task for scheduling and executing.
@@ -52,9 +54,13 @@ public class TaskSpec {
   // The task's resource demands.
   public final Map<String, Double> resources;
 
-  // Function descriptor is a list of strings that can uniquely identify a function.
-  // It will be sent to worker and used to load the target callable function.
-  public final FunctionDescriptor functionDescriptor;
+  // Language of this task.
+  public final TaskLanguage language;
+
+  // Descriptor of the remote function.
+  // Note, if task language is Java, the type is JavaFunctionDescriptor. If the task language
+  // is Python, the type is PyFunctionDescriptor.
+  private final FunctionDescriptor functionDescriptor;
 
   private List<UniqueId> executionDependencies;
 
@@ -66,10 +72,22 @@ public class TaskSpec {
     return !actorCreationId.isNil();
   }
 
-  public TaskSpec(UniqueId driverId, UniqueId taskId, UniqueId parentTaskId, int parentCounter,
-      UniqueId actorCreationId, int maxActorReconstructions, UniqueId actorId,
-      UniqueId actorHandleId, int actorCounter, UniqueId[] newActorHandles, FunctionArg[] args,
-      UniqueId[] returnIds, Map<String, Double> resources, FunctionDescriptor functionDescriptor) {
+  public TaskSpec(
+      UniqueId driverId,
+      UniqueId taskId,
+      UniqueId parentTaskId,
+      int parentCounter,
+      UniqueId actorCreationId,
+      int maxActorReconstructions,
+      UniqueId actorId,
+      UniqueId actorHandleId,
+      int actorCounter,
+      UniqueId[] newActorHandles,
+      FunctionArg[] args,
+      UniqueId[] returnIds,
+      Map<String, Double> resources,
+      TaskLanguage language,
+      FunctionDescriptor functionDescriptor) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
@@ -83,8 +101,28 @@ public class TaskSpec {
     this.args = args;
     this.returnIds = returnIds;
     this.resources = resources;
+    this.language = language;
+    if (language == TaskLanguage.JAVA) {
+      Preconditions.checkArgument(functionDescriptor instanceof JavaFunctionDescriptor,
+          "Expect JavaFunctionDescriptor type, but got {}.", functionDescriptor.getClass());
+    } else if (language == TaskLanguage.PYTHON) {
+      Preconditions.checkArgument(functionDescriptor instanceof PyFunctionDescriptor,
+          "Expect PyFunctionDescriptor type, but got {}.", functionDescriptor.getClass());
+    } else {
+      Preconditions.checkArgument(false, "Unknown task language: {}.", language);
+    }
     this.functionDescriptor = functionDescriptor;
     this.executionDependencies = new ArrayList<>();
+  }
+
+  public JavaFunctionDescriptor getJavaFunctionDescriptor() {
+    Preconditions.checkState(language == TaskLanguage.JAVA);
+    return (JavaFunctionDescriptor) functionDescriptor;
+  }
+
+  public PyFunctionDescriptor getPyFunctionDescriptor() {
+    Preconditions.checkState(language == TaskLanguage.PYTHON);
+    return (PyFunctionDescriptor) functionDescriptor;
   }
 
   public List<UniqueId> getExecutionDependencies() {
@@ -99,13 +137,17 @@ public class TaskSpec {
         ", parentTaskId=" + parentTaskId +
         ", parentCounter=" + parentCounter +
         ", actorCreationId=" + actorCreationId +
+        ", maxActorReconstructions=" + maxActorReconstructions +
         ", actorId=" + actorId +
         ", actorHandleId=" + actorHandleId +
         ", actorCounter=" + actorCounter +
+        ", newActorHandles=" + Arrays.toString(newActorHandles) +
         ", args=" + Arrays.toString(args) +
         ", returnIds=" + Arrays.toString(returnIds) +
-        ", resources=" + ResourceUtil.getResourcesStringFromMap(resources) +
+        ", resources=" + resources +
+        ", language=" + language +
         ", functionDescriptor=" + functionDescriptor +
+        ", executionDependencies=" + executionDependencies +
         '}';
   }
 }

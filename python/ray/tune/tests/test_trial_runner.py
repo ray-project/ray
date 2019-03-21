@@ -20,8 +20,9 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
-                             EPISODES_TOTAL, TRAINING_ITERATION,
-                             TIMESTEPS_THIS_ITER)
+                             HOSTNAME, NODE_IP, PID, EPISODES_TOTAL,
+                             TRAINING_ITERATION, TIMESTEPS_THIS_ITER,
+                             TIME_THIS_ITER_S, TIME_TOTAL_S)
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
@@ -109,15 +110,28 @@ class TrainableFunctionApiTest(unittest.TestCase):
             raise_on_failed_trial=False,
             scheduler=MockScheduler())
 
-        # Only compare these result fields. Metadata handling
-        # may be different across APIs.
-        COMPARE_FIELDS = {field for res in results for field in res}
+        # Ignore these fields
+        NO_COMPARE_FIELDS = {
+            HOSTNAME,
+            NODE_IP,
+            PID,
+            TIME_THIS_ITER_S,
+            TIME_TOTAL_S,
+            DONE,  # This is ignored because FunctionAPI has different handling
+            "timestamp",
+            "time_since_restore",
+            "experiment_id",
+            "date",
+        }
 
         self.assertEqual(len(class_output), len(results))
         self.assertEqual(len(function_output), len(results))
 
         def as_comparable_result(result):
-            return {k: v for k, v in result.items() if k in COMPARE_FIELDS}
+            return {
+                k: v
+                for k, v in result.items() if k not in NO_COMPARE_FIELDS
+            }
 
         function_comparable = [
             as_comparable_result(result) for result in function_output
@@ -132,6 +146,11 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(
             as_comparable_result(scheduler_notif[0]),
             as_comparable_result(scheduler_notif[1]))
+
+        # Make sure the last result is the same.
+        self.assertEqual(
+            as_comparable_result(trials[0].last_result),
+            as_comparable_result(trials[1].last_result))
 
         return function_output, trials
 
@@ -582,11 +601,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # check if the correct number of results were reported.
         self.assertEqual(len(logs1), len(results1))
-
-        # We should not double-log
-        trial = [t for t in trials if "function" in str(t)][0]
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result[DONE], False)
 
         def check_no_missing(reported_result, result):
             common_results = [reported_result[k] == result[k] for k in result]
