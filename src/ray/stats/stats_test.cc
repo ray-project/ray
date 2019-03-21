@@ -26,15 +26,9 @@ public:
 TEST_F(StatsTest, F) {
 
   for (size_t i = 0; i < 100; ++i) {
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  
-//    stats::TaskElapse().Record(i * 10,
-//        {{stats::NodeAddressKey, "localhost"}, {stats::CustomKey, "BBBBB"}});
-//
-//    stats::TaskCount().Record(1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     stats::CurrentWorker().Record(i * 1000, {{stats::CustomKey, "DDDDD"}});
-
     stats::RedisLatency().Record(i % 10, {{stats::CustomKey, "AAAAA"}});
   }
 
