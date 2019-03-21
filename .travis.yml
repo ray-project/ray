@@ -28,7 +28,15 @@ matrix:
         - RAY_USE_CMAKE=1
         - RAY_INSTALL_JAVA=1
       install:
+        - echo $TRAVIS_EVENT_TYPE
+        - echo $TRAVIS_COMMIT_RANGE
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - echo $RAY_CI_TUNE_AFFECTED
+        - echo $RAY_CI_RLLIB_AFFECTED
+        - echo $RAY_CI_JAVA_AFFECTED
+        - echo $RAY_CI_PYTHON_AFFECTED
+        - echo $RAY_CI_LINUX_WHEELS_AFFECTED
+        - echo $RAY_CI_MACOS_WHEELS_AFFECTED
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
 
         - ./ci/travis/install-dependencies.sh
@@ -81,7 +89,15 @@ matrix:
       dist: trusty
       env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
+        - echo $TRAVIS_EVENT_TYPE
+        - echo $TRAVIS_COMMIT_RANGE
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - echo $RAY_CI_TUNE_AFFECTED
+        - echo $RAY_CI_RLLIB_AFFECTED
+        - echo $RAY_CI_JAVA_AFFECTED
+        - echo $RAY_CI_PYTHON_AFFECTED
+        - echo $RAY_CI_LINUX_WHEELS_AFFECTED
+        - echo $RAY_CI_MACOS_WHEELS_AFFECTED
         - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
 
         - sudo apt-get update -qq
@@ -117,7 +133,15 @@ matrix:
       dist: trusty
       env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
       install:
+        - echo $TRAVIS_EVENT_TYPE
+        - echo $TRAVIS_COMMIT_RANGE
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - echo $RAY_CI_TUNE_AFFECTED
+        - echo $RAY_CI_RLLIB_AFFECTED
+        - echo $RAY_CI_JAVA_AFFECTED
+        - echo $RAY_CI_PYTHON_AFFECTED
+        - echo $RAY_CI_LINUX_WHEELS_AFFECTED
+        - echo $RAY_CI_MACOS_WHEELS_AFFECTED
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
 
@@ -133,7 +157,15 @@ matrix:
       osx_image: xcode7
       env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
       install:
+        - echo $TRAVIS_EVENT_TYPE
+        - echo $TRAVIS_COMMIT_RANGE
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - echo $RAY_CI_TUNE_AFFECTED
+        - echo $RAY_CI_RLLIB_AFFECTED
+        - echo $RAY_CI_JAVA_AFFECTED
+        - echo $RAY_CI_PYTHON_AFFECTED
+        - echo $RAY_CI_LINUX_WHEELS_AFFECTED
+        - echo $RAY_CI_MACOS_WHEELS_AFFECTED
         - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
 
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
@@ -155,7 +187,15 @@ matrix:
 
 
 install:
+  - echo $TRAVIS_EVENT_TYPE
+  - echo $TRAVIS_COMMIT_RANGE
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+  - echo $RAY_CI_TUNE_AFFECTED
+  - echo $RAY_CI_RLLIB_AFFECTED
+  - echo $RAY_CI_JAVA_AFFECTED
+  - echo $RAY_CI_PYTHON_AFFECTED
+  - echo $RAY_CI_LINUX_WHEELS_AFFECTED
+  - echo $RAY_CI_MACOS_WHEELS_AFFECTED
   - if [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
 
   - ./ci/suppress_output ./ci/travis/install-bazel.sh
