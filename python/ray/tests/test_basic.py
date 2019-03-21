@@ -2842,9 +2842,9 @@ def test_shutdown_disconnect_global_state():
     assert str(e.value).endswith("ray.init has been called.")
 
 
-def test_redis_lru_with_set(shutdown_only):
-    ray.init(object_store_memory=10**8)
-
+@pytest.mark.parametrize(
+    "ray_start_object_store_memory", [10**8], indirect=True)
+def test_redis_lru_with_set(ray_start_object_store_memory):
     x = np.zeros(8 * 10**7, dtype=np.uint8)
     x_id = ray.put(x)
 
