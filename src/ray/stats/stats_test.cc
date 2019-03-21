@@ -33,7 +33,7 @@ TEST_F(StatsTest, F) {
 //
 //    stats::TaskCount().Record(1);
 
-    stats::WorkerCount().Record(i * 1000, {{stats::CustomKey, "DDDDD"}});
+    stats::CurrentWorker().Record(i * 1000, {{stats::CustomKey, "DDDDD"}});
 
     stats::RedisLatency().Record(i % 10, {{stats::CustomKey, "AAAAA"}});
   }

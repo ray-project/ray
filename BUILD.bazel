@@ -361,6 +361,7 @@ cc_library(
         ":node_manager_fbs",
         ":ray_common",
         ":ray_util",
+        ":stats_lib",
         "@boost//:asio",
     ],
 )

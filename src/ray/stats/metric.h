@@ -13,10 +13,10 @@ namespace stats {
 /// Include tag_defs.h to define tag items
 #include "tag_defs.h"
 
+
 /// The helper function for registering a view.
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                            const std::vector<opencensus::tags::TagKey>& keys) {
-  std::cout << ">>>>>>>>>> call RegisterAsView: " << view_descriptor.name() << std::endl;
   // Register global keys.
   for (const auto &tag : GlobalTags) {
     view_descriptor = view_descriptor.add_column(tag.first);
@@ -30,6 +30,7 @@ static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   opencensus::stats::View view(view_descriptor);
   view_descriptor.RegisterForExport();
 }
+
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
 class Metric {
@@ -62,17 +63,14 @@ public:
     /// \param tags The tag values that we want to record for this metric record.
     void Record(double value, const std::vector<std::pair<opencensus::tags::TagKey, std::string>>& tags) {
       if (measure_ == nullptr) {
-        // first register measure.
         measure_.reset(new opencensus::stats::Measure<double>(
             opencensus::stats::Measure<double>::Register(name_, description_, unit_)));
-        // then we should register view.
         RegisterView();
       }
 
       // do record
       std::vector<std::pair<opencensus::tags::TagKey, std::string>> combined_tags(tags);
       combined_tags.insert(std::end(combined_tags), std::begin(GlobalTags), std::end(GlobalTags));
-
       opencensus::stats::Record({{*measure_, value}}, combined_tags);
     }
 
@@ -92,9 +90,9 @@ protected:
 class Gauge : public Metric {
 public:
     Gauge(const std::string &name,
-           const std::string &description,
-           const std::string &unit,
-           const std::vector<opencensus::tags::TagKey> &tag_keys = {})
+          const std::string &description,
+          const std::string &unit,
+          const std::vector<opencensus::tags::TagKey> &tag_keys = {})
        : Metric(name, description, unit, tag_keys) {}
 
 private:
@@ -107,8 +105,8 @@ private:
 
     RegisterAsView(view_descriptor, tag_keys_);
   }
+};  // class Gauge
 
-};
 
 class Histogram : public Metric {
 
@@ -134,16 +132,49 @@ private:
 
 private:
     std::vector<double> boundaries_;
+};  // class histogram
+
+
+class Count : public Metric {
+public:
+    Count(const std::string &name,
+          const std::string &description,
+          const std::string &unit,
+          const std::vector<opencensus::tags::TagKey> &tag_keys = {})
+      :  Metric(name, description, unit, tag_keys) {}
+
+private:
+    void RegisterView() override {
+      opencensus::stats::ViewDescriptor view_descriptor =
+          opencensus::stats::ViewDescriptor().set_name(name_)
+              .set_description(description_)
+              .set_measure(name_)
+              .set_aggregation(opencensus::stats::Aggregation::Count());
+
+      RegisterAsView(view_descriptor, tag_keys_);
+    }
 };
 
 
-//class Count : public Metric {
-//
-//};
-//
-//class Sum : public Metric {
-//
-//};
+class Sum : public Metric {
+public:
+    Sum(const std::string &name,
+          const std::string &description,
+          const std::string &unit,
+          const std::vector<opencensus::tags::TagKey> &tag_keys = {})
+        :  Metric(name, description, unit, tag_keys) {}
+
+private:
+    void RegisterView() override {
+      opencensus::stats::ViewDescriptor view_descriptor =
+          opencensus::stats::ViewDescriptor().set_name(name_)
+              .set_description(description_)
+              .set_measure(name_)
+              .set_aggregation(opencensus::stats::Aggregation::Count());
+
+      RegisterAsView(view_descriptor, tag_keys_);
+    }
+};
 
 }  // namespace stats
 

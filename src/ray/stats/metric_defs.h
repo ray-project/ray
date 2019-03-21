@@ -12,25 +12,21 @@
 /// You can follow these examples to define your metrics.
 
 
-//static Metric TaskElapse = Metric::MakeHistogram("task_elapse",
-//                                                 "the task elapse in raylet",
-//                                                 "ms",
-//                                                 {0, 25, 50, 75, 100},
-//                                                 {NodeAddressKey, CustomKey});
-//
-//static Metric RedisLatency = Metric::MakeHistogram("redis_latency",
-//                                                   "the latency of redis",
-//                                                   "ms",
-//                                                   {0, 200, 400, 600, 800, 1000},
-//                                                   {NodeAddressKey, CustomKey});
-//
-//
-//static Metric TaskCount = Metric::MakeCount("task_count",
-//                                            "the task count that the raylet received",
-//                                            "pcs");
+static Gauge CurrentWorker("current_worker",
+                           "This metric is used for report states of workers. "
+                           "Through this, we can see the worker's state on dashboard.",
+                           "1 pcs",
+                           {NodeAddressKey, LanguageKey, WorkerPidKey});
 
-static Gauge WorkerCount("worker_count", "the worker count", "pcs", {CustomKey});
+static Count TaskCountReceived("task_count_received",
+                               "The count that the raylet received.",
+                               "pcs",
+                               {NodeAddressKey});
 
-static Histogram RedisLatency("redis_latency", "the latency of redis", "ms", {0, 200, 400, 600, 800, 1000}, {NodeAddressKey, CustomKey});
+static Histogram RedisLatency("redis_latency",
+                              "The latency of a Redis operation.",
+                              "ms",
+                              {5, 10, 20, 30, 50},
+                              {NodeAddressKey, CustomKey});
 
 #endif // RAY_STATS_METRIC_DEFS_H_

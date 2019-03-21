@@ -10,8 +10,11 @@ static opencensus::tags::TagKey CustomKey =  opencensus::tags::TagKey::Register(
 
 static opencensus::tags::TagKey NodeAddressKey = opencensus::tags::TagKey::Register("NodeAddress");
 
-static opencensus::tags::TagKey VersionKey = opencensus::tags::TagKey::Register("VersionKey");
+static opencensus::tags::TagKey VersionKey = opencensus::tags::TagKey::Register("Version");
 
+static opencensus::tags::TagKey LanguageKey = opencensus::tags::TagKey::Register("Language");
+
+static opencensus::tags::TagKey WorkerPidKey = opencensus::tags::TagKey::Register("WorkerPid");
 
 /// The definitions of global tag.
 static std::vector<std::pair<opencensus::tags::TagKey, std::string>> GlobalTags = {

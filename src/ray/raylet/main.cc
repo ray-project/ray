@@ -38,11 +38,11 @@ int main(int argc, char *argv[]) {
   const std::string java_worker_command = std::string(argv[13]);
   const std::string redis_password = (argc >= 15 ? std::string(argv[14]) : "");
   const std::string temp_dir = (argc >= 16 ? std::string(argv[15]) : "/tmp/ray");
-  const std::string stat_address = (
-      argc >= 17 ? std::string(argv[16]) : "127.0.0.1:8888");
+//  const std::string stat_address = (
+//      argc >= 17 ? std::string(argv[16]) : "127.0.0.1:8888");
 
   // Initialize stats.
-  ray::stats::Init(stat_address);
+  ray::stats::Init("127.0.0.1:8888");
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
