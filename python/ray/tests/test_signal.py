@@ -3,11 +3,6 @@ import time
 import ray
 import ray.experimental.signal as signal
 
-import json
-import os
-
-import ray.tests.cluster_utils
-from ray.tests.conftest import two_node_cluster
 
 class UserSignal(signal.Signal):
     def __init__(self, value):

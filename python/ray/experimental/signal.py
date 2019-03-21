@@ -153,10 +153,12 @@ def receive(sources, timeout=None):
                 if r[1][1].decode("ascii") == ACTOR_DIED_STR:
                     results.append((s, ActorDiedSignal()))
                 else:
-                    # Now it gets tricky: r[0] is the redis internal sequence id
+                    # Now it gets tricky: r[0] is the redis internal sequence
+                    # id
                     signal_counters[ray.utils.hex_to_binary(task_id)] = r[0]
-                    # r[1] contains a list with elements (key, value), in our case
-                    # we only have one key "signal" and the value is the signal.
+                    # r[1] contains a list with elements (key, value), in our
+                    # case we only have one key "signal" and the value is the
+                    # signal.
                     signal = cloudpickle.loads(
                         ray.utils.hex_to_binary(r[1][1]))
                     results.append((s, signal))
