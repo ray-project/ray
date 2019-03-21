@@ -49,7 +49,7 @@ class TuneClient(object):
         """Returns a list of all trials' information."""
         response = requests.get(urljoin(self._path, "trials"))
         return self._deserialize(response)
-    
+
     def stop_all_trials(self):
         """Requests to stop all trials and returns trial information."""
         response = requests.put(urljoin(self._path, "trials"))
