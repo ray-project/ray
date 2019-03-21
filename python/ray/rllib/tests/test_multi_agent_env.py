@@ -346,7 +346,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
             batch_steps=50,
             num_envs=4,
-            remote_worker_envs=True)
+            remote_worker_envs=True,
+            remote_worker_env_timeout_ms=99999999)
         batch = ev.sample()
         self.assertEqual(batch.count, 200)
 
@@ -362,8 +363,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
             batch_steps=50,
             num_envs=4,
-            remote_worker_envs=True,
-            remote_worker_env_timeout_ms=0)
+            remote_worker_envs=True)
         batch = ev.sample()
         self.assertEqual(batch.count, 200)
 

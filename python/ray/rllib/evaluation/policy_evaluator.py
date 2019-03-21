@@ -201,8 +201,12 @@ class PolicyEvaluator(EvaluatorInterface):
             remote_worker_envs (bool): If using num_envs > 1, whether to create
                 those new envs in remote processes instead of in the current
                 process. This adds overheads, but can make sense if your envs
-                are very CPU intensive (e.g., for StarCraft).
-            remote_worker_env_timeout_ms (float): Timeout that remote workers are waiting when polling environments.
+                can take much time to step / reset (e.g., for StarCraft)
+            remote_worker_env_timeout_ms (float): Timeout that remote workers
+                are waiting when polling environments. 0 (continue when at
+                least one env is ready) is a reasonable default, but optimal
+                value could be obtained by measuring your environment
+                step / reset and model inference perf.
         """
 
         if log_level:
