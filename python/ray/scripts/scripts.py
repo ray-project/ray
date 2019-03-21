@@ -293,7 +293,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
-            include_webui=include_webui,
             autoscaling_config=autoscaling_config,
             include_java=False,
         )
