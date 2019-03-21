@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 @PublicAPI
 class Preprocessor(object):
     """Defines an abstract observation preprocessor function.
-
     Attributes:
         shape (obj): Shape of the preprocessed output.
     """
@@ -30,6 +29,7 @@ class Preprocessor(object):
         self._obs_space = obs_space
         self._options = options or {}
         self.shape = self._init_shape(obs_space, options)
+        self._size = int(np.product(self.shape))
 
     @PublicAPI
     def _init_shape(self, obs_space, options):
@@ -41,10 +41,14 @@ class Preprocessor(object):
         """Returns the preprocessed observation."""
         raise NotImplementedError
 
+    def write(self, observation, array, offset):
+        """Alternative to transform for more efficient flattening."""
+        array[offset:offset + self._size] = self.transform(observation)
+
     @property
     @PublicAPI
     def size(self):
-        return int(np.product(self.shape))
+        return self._size
 
     @property
     @PublicAPI
@@ -60,7 +64,6 @@ class Preprocessor(object):
 
 class GenericPixelPreprocessor(Preprocessor):
     """Generic image preprocessor.
-
     Note: for Atari games, use config {"preprocessor_pref": "deepmind"}
     instead for deepmind-style Atari preprocessing.
     """
@@ -123,6 +126,10 @@ class OneHotPreprocessor(Preprocessor):
         arr[observation] = 1
         return arr
 
+    @override(Preprocessor)
+    def write(self, observation, array, offset):
+        array[offset + observation] = 1
+
 
 class NoPreprocessor(Preprocessor):
     @override(Preprocessor)
@@ -133,10 +140,14 @@ class NoPreprocessor(Preprocessor):
     def transform(self, observation):
         return observation
 
+    @override(Preprocessor)
+    def write(self, observation, array, offset):
+        array[offset:offset + self._size] = np.array(
+            observation, copy=False).ravel()
+
 
 class TupleFlatteningPreprocessor(Preprocessor):
     """Preprocesses each tuple element, then flattens it all into a vector.
-
     RLlib models will unpack the flattened output before _build_layers_v2().
     """
 
@@ -155,16 +166,20 @@ class TupleFlatteningPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
+        array = np.zeros(self.shape)
+        self.write(observation, array, 0)
+        return array
+
+    @override(Preprocessor)
+    def write(self, observation, array, offset):
         assert len(observation) == len(self.preprocessors), observation
-        return np.concatenate([
-            np.reshape(p.transform(o), [p.size])
-            for (o, p) in zip(observation, self.preprocessors)
-        ])
+        for o, p in zip(observation, self.preprocessors):
+            p.write(o, array, offset)
+            offset += p.size
 
 
 class DictFlatteningPreprocessor(Preprocessor):
     """Preprocesses each dict value, then flattens it all into a vector.
-
     RLlib models will unpack the flattened output before _build_layers_v2().
     """
 
@@ -182,14 +197,19 @@ class DictFlatteningPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
+        array = np.zeros(self.shape)
+        self.write(observation, array, 0)
+        return array
+
+    @override(Preprocessor)
+    def write(self, observation, array, offset):
         if not isinstance(observation, OrderedDict):
             observation = OrderedDict(sorted(list(observation.items())))
         assert len(observation) == len(self.preprocessors), \
             (len(observation), len(self.preprocessors))
-        return np.concatenate([
-            np.reshape(p.transform(o), [p.size])
-            for (o, p) in zip(observation.values(), self.preprocessors)
-        ])
+        for o, p in zip(observation.values(), self.preprocessors):
+            p.write(o, array, offset)
+            offset += p.size
 
 
 @PublicAPI
@@ -217,7 +237,6 @@ def get_preprocessor(space):
 
 def legacy_patch_shapes(space):
     """Assigns shapes to spaces that don't have shapes.
-
     This is only needed for older gym versions that don't set shapes properly
     for Tuple and Discrete spaces.
     """
