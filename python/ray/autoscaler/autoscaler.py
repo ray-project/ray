@@ -531,11 +531,8 @@ class StandardAutoscaler(object):
             # If we want any workers, we want at least initial_workers
             ideal_num_workers = max(ideal_num_workers, initial_workers)
 
-        upper = min(self.config["max_workers"], ideal_num_workers)
-        lower = self.config["min_workers"]
-        tgt = max(lower, upper)
-
-        return tgt
+        return min(self.config["max_workers"],
+                   max(self.config["min_workers"], ideal_num_workers))
 
     def launch_config_ok(self, node_id):
         launch_conf = self.provider.node_tags(node_id).get(
