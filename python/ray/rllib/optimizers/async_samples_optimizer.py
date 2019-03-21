@@ -15,6 +15,7 @@ import threading
 from six.moves import queue
 
 import ray
+from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.actors import TaskPool
@@ -285,7 +286,7 @@ class LearnerThread(threading.Thread):
         with self.grad_timer:
             fetches = self.local_evaluator.learn_on_batch(batch)
             self.weights_updated = True
-            self.stats = fetches.get("stats", {})
+            self.stats = get_learner_stats(fetches)
 
         self.outqueue.put(batch.count)
         self.learner_queue_size.push(self.inqueue.qsize())
@@ -374,7 +375,7 @@ class TFMultiGPULearner(LearnerThread):
         with self.grad_timer:
             fetches = opt.optimize(self.sess, 0)
             self.weights_updated = True
-            self.stats = fetches.get("stats", {})
+            self.stats = get_learner_stats(fetches)
 
         self.outqueue.put(self.train_batch_size)
         self.learner_queue_size.push(self.inqueue.qsize())

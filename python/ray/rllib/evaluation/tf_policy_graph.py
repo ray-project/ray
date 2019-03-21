@@ -10,6 +10,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -416,8 +417,8 @@ class TFPolicyGraph(PolicyGraph):
     def _get_grad_and_stats_fetches(self):
         fetches = self.extra_compute_grad_fetches()
         if self._stats_fetches:
-            fetches["stats"] = dict(self._stats_fetches,
-                                    **fetches.get("stats", {}))
+            fetches[LEARNER_STATS_KEY] = dict(
+                self._stats_fetches, **fetches.get(LEARNER_STATS_KEY, {}))
         return fetches
 
     def _get_loss_inputs_dict(self, batch):

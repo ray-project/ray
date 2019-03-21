@@ -14,6 +14,30 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
+# By convention, metrics from optimizing the loss can be reported in the
+# `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
+LEARNER_STATS_KEY = "learner_stats"
+
+
+@DeveloperAPI
+def get_learner_stats(grad_info):
+    """Return optimization stats reported from the policy graph.
+
+    Example:
+        >>> grad_info = evaluator.learn_on_batch(samples)
+        >>> print(get_stats(grad_info))
+        {"vf_loss": ..., "policy_loss": ...}
+    """
+
+    if "__multiagent__" in grad_info:
+        stats = {}
+        for k, v in grad_info.items():
+            if k != "__multiagent__":
+                stats[k] = v.get(LEARNER_STATS_KEY, {})
+        return stats
+
+    return grad_info.get(LEARNER_STATS_KEY, {})
+
 
 @DeveloperAPI
 def collect_metrics(local_evaluator, remote_evaluators=[],

@@ -8,6 +8,7 @@ import tensorflow as tf
 import gym
 
 import ray
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -110,7 +111,7 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             max_seq_len=self.config["model"]["max_seq_len"])
 
         self.stats_fetches = {
-            "stats": {
+            LEARNER_STATS_KEY: {
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "policy_entropy": self.loss.entropy,
