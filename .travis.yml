@@ -27,6 +27,7 @@ matrix:
         - PYTHON=3.5 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:
+        - which mvn
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
         - ./ci/suppress_output ./ci/travis/install-bazel.sh
