@@ -10,6 +10,7 @@ set(HIREDIS_SRCS
   ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/net.c
   ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/read.c
   ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/sds.c
+  ${CMAKE_CURRENT_LIST_DIR}/thirdparty/ae/ae.c
 )
 
 set(UTIL_SRCS

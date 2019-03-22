@@ -14,18 +14,18 @@
 #  - PLASMA_STATIC_LIB
 #  - PLASMA_SHARED_LIB
 
-set(arrow_URL https://github.com/ray-project/arrow.git)
+set(arrow_URL https://github.com/suquark/arrow.git)
 # This commit is based on https://github.com/apache/arrow/pull/3526. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
 # It has been patched to fix an upstream symbol clash with TensorFlow,
 # the patch is available at
-# https://github.com/ray-project/arrow/commit/68299c5f48289c4f39a948cbd0426b9199a9df1e
+# https://github.com/ray-project/arrow/commit/bd34b8e2cee97ba22b3c26b58d817ba4dadef0e4
 # See the discussion in https://github.com/apache/arrow/pull/3177
 # WARNING: If the arrow version is updated, you need to also update the
 # SETUPTOOLS_SCM_PRETEND_VERSION version string in the ThirdpartyToolchain.cmake
 # file
-set(arrow_TAG 68299c5f48289c4f39a948cbd0426b9199a9df1e)
+set(arrow_TAG bd34b8e2cee97ba22b3c26b58d817ba4dadef0e4)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
