@@ -191,16 +191,6 @@ cc_test(
 )
 
 cc_test(
-    name = "open_census_test",
-    srcs = ["src/ray/raylet/open_census_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
     deps = [
