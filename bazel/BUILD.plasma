@@ -148,7 +148,7 @@ cc_library(
         "cpp/src/plasma/eviction_policy.cc",
         "cpp/src/plasma/external_store.cc",
         "cpp/src/plasma/plasma_allocator.cc",
-        "cpp/src/plasma/thirdparty/ae/ae.c
+        "cpp/src/plasma/thirdparty/ae/ae.c",
     ],
     hdrs = [
         "cpp/src/plasma/events.h",
