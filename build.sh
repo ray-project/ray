@@ -100,8 +100,12 @@ $PYTHON_EXECUTABLE -m pip install \
     --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/ca1fa51f0901f5a4298f0e4faea00f24e5dd7bb7/index.html
 export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
 
+# Generate bazel dependencies for Java.
+# NOTE(hchen): this needs to be called no matter Java will be built or not,
+# before running any bazel command. Because otherwise the WORKSPACE file is invalid.
+$ROOT_DIR/java/generate_bazel_deps.sh
+
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-  bazel run //java:bazel_deps -- generate -r $ROOT_DIR -s java/third_party/workspace.bzl -d java/dependencies.yaml
   bazel build //java:all --verbose_failures
 fi
 

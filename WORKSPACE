@@ -1,9 +1,6 @@
 workspace(name = "com_github_ray_project_ray")
 
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
-load("//java:repo.bzl", "java_repositories")
-
-java_repositories()
 
 git_repository(
     name = "com_github_checkstyle_java",
@@ -93,3 +90,6 @@ http_archive(
 load("@com_github_jupp0r_prometheus_cpp//:repositories.bzl", "prometheus_cpp_repositories")
 
 prometheus_cpp_repositories()
+
+load("//java/third_party:workspace.bzl", "maven_dependencies")
+maven_dependencies()
