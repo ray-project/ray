@@ -476,7 +476,7 @@ class PolicyEvaluator(EvaluatorInterface):
                         continue
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].compute_gradients(batch))
-            grad_out[IS_MULTIAGENT_KEY] = True
+            info_out[IS_MULTIAGENT_KEY] = True
         else:
             grad_out, info_out = (
                 self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples))
