@@ -504,7 +504,9 @@ def test_actor_class_methods(ray_start_regular):
 
 def test_resource_assignment(shutdown_only):
     """Test to make sure that we assign resource to actors at instantiation."""
-    ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
+    # This test will create 16 actors. Declaring this many CPUs initially will
+    # speed up the test because the workers will be started ahead of time.
+    ray.init(num_cpus=16, num_gpus=1, resources={"Custom": 1})
 
     class Actor(object):
         def __init__(self):
