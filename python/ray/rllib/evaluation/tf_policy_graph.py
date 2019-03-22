@@ -129,9 +129,10 @@ class TFPolicyGraph(PolicyGraph):
             self._stats_fetches = {}
 
         self._optimizer = self.optimizer()
-        self._grads_and_vars = [(g, v)
-                                for (g, v) in self.gradients(self._optimizer)
-                                if g is not None]
+        self._grads_and_vars = [
+            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
+            if g is not None
+        ]
         self._grads = [g for (g, v) in self._grads_and_vars]
         self._variables = ray.experimental.tf_utils.TensorFlowVariables(
             self._loss, self._sess)
@@ -146,10 +147,8 @@ class TFPolicyGraph(PolicyGraph):
             logger.debug("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
         with tf.control_dependencies(self._update_ops):
-            # specify global_step for TD3 which needs to count the num updates
-            self._apply_op = self._optimizer.apply_gradients(
-                self._grads_and_vars,
-                global_step=tf.train.get_or_create_global_step())
+            self._apply_op = self.build_apply_op(self._optimizer,
+                                                 self._grads_and_vars)
 
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(
@@ -282,9 +281,18 @@ class TFPolicyGraph(PolicyGraph):
         return tf.train.AdamOptimizer()
 
     @DeveloperAPI
-    def gradients(self, optimizer):
+    def gradients(self, optimizer, loss):
         """Override for custom gradient computation."""
-        return optimizer.compute_gradients(self._loss)
+        return optimizer.compute_gradients(loss)
+
+    @DeveloperAPI
+    def build_apply_op(self, optimizer, grads_and_vars):
+        """Override for custom gradient apply computation."""
+
+        # specify global_step for TD3 which needs to count the num updates
+        return optimizer.apply_gradients(
+            self._grads_and_vars,
+            global_step=tf.train.get_or_create_global_step())
 
     @DeveloperAPI
     def _get_is_training_placeholder(self):

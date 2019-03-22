@@ -102,7 +102,9 @@ COMMON_CONFIG = {
     # === Execution ===
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
-    # Default sample batch size
+    # Default sample batch size (unroll length). Batches of this size are
+    # collected from workers until train_batch_size is met. When using
+    # multiple envs per worker, this is multiplied by num_envs_per_worker.
     "sample_batch_size": 200,
     # Training batch size, if applicable. Should be >= sample_batch_size.
     # Samples batches will be concatenated together to this size for training.
@@ -140,6 +142,8 @@ COMMON_CONFIG = {
     "compress_observations": False,
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
+    # Smooth metrics over this many episodes.
+    "metrics_smoothing_episodes": 100,
     # If using num_envs_per_worker > 1, whether to create those new envs in
     # remote processes instead of in the same worker. This adds overheads, but
     # can make sense if your envs are very CPU intensive (e.g., for StarCraft).
@@ -149,7 +153,6 @@ COMMON_CONFIG = {
     "async_remote_worker_envs": False,
 
     # === Offline Datasets ===
-    # __sphinx_doc_input_begin__
     # Specify how to generate experiences:
     #  - "sampler": generate experiences via online simulation (default)
     #  - a local directory or file glob expression (e.g., "/tmp/*.json")
@@ -175,8 +178,6 @@ COMMON_CONFIG = {
     # of this number of batches. Use this if the input data is not in random
     # enough order. Input is delayed until the shuffle buffer is filled.
     "shuffle_buffer_size": 0,
-    # __sphinx_doc_input_end__
-    # __sphinx_doc_output_begin__
     # Specify where experiences should be saved:
     #  - None: don't save any experiences
     #  - "logdir" to save to the agent log dir
@@ -187,7 +188,6 @@ COMMON_CONFIG = {
     "output_compress_columns": ["obs", "new_obs"],
     # Max output file size before rolling over to a new file.
     "output_max_file_size": 64 * 1024 * 1024,
-    # __sphinx_doc_output_end__
 
     # === Multiagent ===
     "multiagent": {
@@ -561,6 +561,17 @@ class Agent(Trainable):
         """
         self.local_evaluator.export_policy_checkpoint(
             export_dir, filename_prefix, policy_id)
+
+    @DeveloperAPI
+    def collect_metrics(self, selected_evaluators=None):
+        """Collects metrics from the remote evaluators of this agent.
+
+        This is the same data as returned by a call to train().
+        """
+        return self.optimizer.collect_metrics(
+            self.config["collect_metrics_timeout"],
+            min_history=self.config["metrics_smoothing_episodes"],
+            selected_evaluators=selected_evaluators)
 
     @classmethod
     def resource_help(cls, config):

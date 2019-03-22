@@ -13,6 +13,7 @@ import gym
 import ray
 from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.evaluation.sampler import clip_action
 from ray.tune.util import merge_dicts
 
 EXAMPLE_USAGE = """
@@ -154,7 +155,11 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
                 else:
                     action = agent.compute_action(state)
 
-            next_state, reward, done, _ = env.step(action)
+            if agent.config["clip_actions"]:
+                clipped_action = clip_action(action, env.action_space)
+                next_state, reward, done, _ = env.step(clipped_action)
+            else:
+                next_state, reward, done, _ = env.step(action)
 
             if multiagent:
                 done = done["__all__"]

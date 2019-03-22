@@ -51,9 +51,9 @@ class CustomLossModel(Model):
         input_ops = reader.tf_input_ops()
 
         # define a secondary loss by building a graph copy with weight sharing
+        obs = tf.cast(input_ops["obs"], tf.float32)
         logits, _ = self._build_layers_v2({
-            "obs": restore_original_dimensions(input_ops["obs"],
-                                               self.obs_space)
+            "obs": restore_original_dimensions(obs, self.obs_space)
         }, self.num_outputs, self.options)
 
         # You can also add self-supervised losses easily by referencing tensors

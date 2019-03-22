@@ -272,7 +272,8 @@ class LocalSyncParallelOptimizer(object):
                     current_slice.set_shape(ph.shape)
                     device_input_slices.append(current_slice)
                 graph_obj = self.build_graph(device_input_slices)
-                device_grads = graph_obj.gradients(self.optimizer)
+                device_grads = graph_obj.gradients(self.optimizer,
+                                                   graph_obj._loss)
             return Tower(
                 tf.group(
                     *[batch.initializer for batch in device_input_batches]),
