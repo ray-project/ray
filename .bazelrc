@@ -1,2 +1,6 @@
 # build config
 build --compilation_mode=opt
+build --action_env=PATH
+build --action_env=PYTHON_BIN_PATH
+test --action_env=PATH
+test --action_env=PYTHON_BIN_PATH
