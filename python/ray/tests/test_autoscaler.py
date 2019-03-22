@@ -357,7 +357,9 @@ class AutoscalingTest(unittest.TestCase):
 
         self.provider = MockProvider()
         self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "head"}, 1)
-        head_ip = self.provider.non_terminated_node_ips(tag_filters={TAG_RAY_NODE_TYPE: "head"})[0]
+        head_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_TYPE: "head"},
+        )[0]
 
         lm = LoadMetrics()
         lm.local_ip = head_ip
@@ -377,7 +379,9 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(11)
 
         # Connect the head and workers to end the bringup phase
-        addrs = self.provider.non_terminated_node_ips(tag_filters={TAG_RAY_NODE_TYPE: "worker"})
+        addrs = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_TYPE: "worker"},
+        )
         addrs += head_ip
         for addr in addrs:
             lm.update(addr, {"CPU": 2}, {"CPU": 0})
