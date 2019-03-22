@@ -32,15 +32,6 @@ class NevergradSearch(SuggestionAlgorithm):
     Example:
         >>> from nevergrad.optimization import optimizerlib
         >>> optimizer = optimizerlib.OnePlusOne(dimension=1, budget=100)
-        >>> config = {
-        >>>     "my_exp": {
-        >>>         "run": "exp",
-        >>>         "num_samples": 10,
-        >>>         "stop": {
-        >>>             "training_iteration": 100
-        >>>         },
-        >>>     }
-        >>> }
         >>> algo = NevergradSearch(
         >>>     optimizer, max_concurrent=4, reward_attr="neg_mean_loss")
     """

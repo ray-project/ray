@@ -63,8 +63,7 @@ class MARWILAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         fetches = self.optimizer.step()
-        res = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
+        res = self.collect_metrics()
         res.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
             info=dict(fetches, **res.get("info", {})))

@@ -35,7 +35,7 @@ class VTraceLoss(object):
                  bootstrap_value,
                  valid_mask,
                  vf_loss_coeff=0.5,
-                 entropy_coeff=-0.01,
+                 entropy_coeff=0.01,
                  clip_rho_threshold=1.0,
                  clip_pg_rho_threshold=1.0):
         """Policy gradient loss with vtrace importance weighting.
@@ -94,7 +94,7 @@ class VTraceLoss(object):
             tf.boolean_mask(actions_entropy, valid_mask))
 
         # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
+        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
 
@@ -327,8 +327,8 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                              self.config["epsilon"])
 
     @override(TFPolicyGraph)
-    def gradients(self, optimizer):
-        grads = tf.gradients(self._loss, self.var_list)
+    def gradients(self, optimizer, loss):
+        grads = tf.gradients(loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads

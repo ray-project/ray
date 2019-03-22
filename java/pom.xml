@@ -217,14 +217,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-checkstyle-plugin</artifactId>
-          <version>2.17</version>
-          <dependencies>
-            <dependency>
-              <groupId>com.puppycrawl.tools</groupId>
-              <artifactId>checkstyle</artifactId>
-              <version>6.19</version>
-            </dependency>
-          </dependencies>
+          <version>3.0.0</version>
           <executions>
             <execution>
               <id>validate</id>
@@ -239,13 +232,10 @@
             <suppressionsLocation>checkstyle-suppressions.xml</suppressionsLocation>
             <encoding>UTF-8</encoding>
             <consoleOutput>true</consoleOutput>
-            <failsOnError>false</failsOnError>
+            <failsOnError>true</failsOnError>
             <failOnViolation>true</failOnViolation>
             <violationSeverity>warning</violationSeverity>
-            <format>xml</format>
-            <format>html</format>
-            <outputFile>${project.build.directory}/checkstyle-errors.xml
-            </outputFile>
+            <outputFile>${project.build.directory}/checkstyle-errors.xml</outputFile>
             <linkXRef>false</linkXRef>
           </configuration>
         </plugin>

@@ -124,8 +124,7 @@ class PPOAgent(Agent):
 
             # multi-agent
             self.local_evaluator.foreach_trainable_policy(update)
-        res = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
+        res = self.collect_metrics()
         res.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
             info=dict(fetches, **res.get("info", {})))
@@ -150,6 +149,8 @@ class PPOAgent(Agent):
         return res
 
     def _validate_config(self):
+        if self.config["entropy_coeff"] < 0:
+            raise DeprecationWarning("entropy_coeff must be >= 0")
         if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
             raise ValueError(
                 "Minibatch size {} must be <= train batch size {}.".format(

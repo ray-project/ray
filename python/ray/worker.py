@@ -25,6 +25,7 @@ import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.experimental.signal as ray_signal
+import ray.experimental.no_return
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -164,6 +165,7 @@ class Worker(object):
         # Index of the current session. This number will
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
+        self._current_task = None
 
     @property
     def task_context(self):
@@ -285,12 +287,22 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                self.plasma_client.put(
-                    value,
-                    object_id=pyarrow.plasma.ObjectID(object_id.binary()),
-                    memcopy_threads=self.memcopy_threads,
-                    serialization_context=self.get_serialization_context(
-                        self.task_driver_id))
+                if isinstance(value, bytes):
+                    # If the object is a byte array, skip serializing it and
+                    # use a special metadata to indicate it's raw binary. So
+                    # that this object can also be read by Java.
+                    self.plasma_client.put_raw_buffer(
+                        value,
+                        object_id=pyarrow.plasma.ObjectID(object_id.binary()),
+                        metadata=ray_constants.RAW_BUFFER_METADATA,
+                        memcopy_threads=self.memcopy_threads)
+                else:
+                    self.plasma_client.put(
+                        value,
+                        object_id=pyarrow.plasma.ObjectID(object_id.binary()),
+                        memcopy_threads=self.memcopy_threads,
+                        serialization_context=self.get_serialization_context(
+                            self.task_driver_id))
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
@@ -435,7 +447,10 @@ class Worker(object):
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
                                        serialization_context):
         if metadata:
-            # If metadata is not empty, return an exception object based on
+            # Check if the object should be returned as raw bytes.
+            if metadata == ray_constants.RAW_BUFFER_METADATA:
+                return data.to_pybytes()
+            # Otherwise, return an exception object based on
             # the error type.
             error_type = int(metadata)
             if error_type == ErrorType.WORKER_DIED:
@@ -790,8 +805,15 @@ class Worker(object):
             if isinstance(outputs[i], ray.actor.ActorHandle):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
-
-            self.put_object(object_ids[i], outputs[i])
+            if outputs[i] is ray.experimental.no_return.NoReturn:
+                if not self.plasma_client.contains(
+                        pyarrow.plasma.ObjectID(object_ids[i].binary())):
+                    raise RuntimeError(
+                        "Attempting to return 'ray.experimental.NoReturn' "
+                        "from a remote function, but the corresponding "
+                        "ObjectID does not exist in the local object store.")
+            else:
+                self.put_object(object_ids[i], outputs[i])
 
     def _process_task(self, task, function_execution_info):
         """Execute a task assigned to this worker.
@@ -847,6 +869,7 @@ class Worker(object):
 
         # Execute the task.
         try:
+            self._current_task = task
             with profiling.profile("task:execute"):
                 if (task.actor_id().is_nil()
                         and task.actor_creation_id().is_nil()):
@@ -867,6 +890,8 @@ class Worker(object):
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e, traceback_str)
             return
+        finally:
+            self._current_task = None
 
         # Store the outputs in the local object store.
         try:
@@ -1566,6 +1591,9 @@ def shutdown(exiting_interpreter=False):
 
     disconnect()
 
+    # Disconnect global state from GCS.
+    global_state.disconnect()
+
     # Shut down the Ray processes.
     global _global_node
     if _global_node is not None:
@@ -2054,7 +2082,7 @@ def connect(info,
 
 
 def disconnect():
-    """Disconnect this worker from the scheduler and object store."""
+    """Disconnect this worker from the raylet and object store."""
     # Reset the list of cached remote functions and actors so that if more
     # remote functions or actors are defined and then connect is called again,
     # the remote functions will be exported. This is mostly relevant for the

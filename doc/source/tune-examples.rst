@@ -14,7 +14,7 @@ General Examples
 - `async_hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__:
    Example of using a Trainable class with AsyncHyperBandScheduler.
 - `hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__:
-   Example of using a Trainable class with HyperBandScheduler. Also uses the Experiment class API for specifying the experiment configuration.
+   Example of using a Trainable class with HyperBandScheduler.
 - `hyperopt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__:
    Optimizes a basic function using the function-based API and the HyperOptSearch (SearchAlgorithm wrapper for HyperOpt TPE).
    Also uses the AsyncHyperBandScheduler.

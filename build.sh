@@ -120,15 +120,16 @@ else
   # the commit listed in the command.
   $PYTHON_EXECUTABLE -m pip install \
       --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
-      --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/abb2bcd40a6c4900d76bdbf29ef386c915a48755/index.html
-  bazel build //:ray_pkg -c opt --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
-  # Copy files and keep them writeable. This is a workaround, as Bazel
-  # marks all generated files non-writeable. If we would just copy them
-  # over without adding write permission, the copy would fail the next time.
-  # TODO(pcm): It would be great to have a solution here that does not
-  # require us to copy the files.
-  find $ROOT_DIR/bazel-genfiles/ray_pkg/ -exec chmod +w {} \;
-  cp -r $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
+      --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/ca1fa51f0901f5a4298f0e4faea00f24e5dd7bb7/index.html
+
+  if [ "$RAY_BUILD_JAVA" == "YES" ]; then
+    bazel run //java:bazel_deps -- generate -r $ROOT_DIR -s java/third_party/workspace.bzl -d java/dependencies.yaml
+    bazel build //java:all --verbose_failures --action_env=PATH
+  fi
+
+  if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
+    bazel build //:ray_pkg --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
+  fi
 fi
 
 popd
