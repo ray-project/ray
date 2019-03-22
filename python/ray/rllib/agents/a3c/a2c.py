@@ -25,6 +25,6 @@ class A2CAgent(A3CAgent):
 
     @override(A3CAgent)
     def _make_optimizer(self):
-        return SyncSamplesOptimizer(self.local_evaluator,
-                                    self.remote_evaluators,
-                                    self.config["optimizer"])
+        return SyncSamplesOptimizer(
+            self.local_evaluator, self.remote_evaluators,
+            {"train_batch_size": self.config["train_batch_size"]})

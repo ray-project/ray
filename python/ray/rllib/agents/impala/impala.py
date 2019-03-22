@@ -121,8 +121,7 @@ class ImpalaAgent(Agent):
         while (time.time() - start < self.config["min_iter_time_s"]
                or self.optimizer.num_steps_sampled == prev_steps):
             self.optimizer.step()
-        result = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
+        result = self.collect_metrics()
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result

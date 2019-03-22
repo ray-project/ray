@@ -432,7 +432,7 @@ class Node(object):
 
         self.start_plasma_store()
         self.start_raylet()
-        if PY3 and self._ray_params.include_webui:
+        if PY3:
             self.start_reporter()
 
         if self._ray_params.include_log_monitor:

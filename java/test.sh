@@ -7,20 +7,33 @@ set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-pushd $ROOT_DIR/../java
-echo "Compiling Java code."
-mvn clean install -Dmaven.test.skip
-
-echo "Checking code format."
-mvn checkstyle:check
+pushd $ROOT_DIR/..
+echo "Linting Java code with checkstyle."
+bazel test //java:all --test_tag_filters="checkstyle" --action_env=PATH
 
 echo "Running tests under cluster mode."
-ENABLE_MULTI_LANGUAGE_TESTS=1 mvn test
+# TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
+# TestNG will exit with code 2. And bazel treats it as test failure.
+# bazel test //java:all_tests --action_env=ENABLE_MULTI_LANGUAGE_TESTS=1 --test_output="errors" || cluster_exit_code=$?
+ENABLE_MULTI_LANGUAGE_TESTS=1 java -jar $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/testng.xml|| cluster_exit_code=$?
+
+# exit_code == 2 means there are some tests skiped.
+if [ $cluster_exit_code -ne 2 ] && [ $cluster_exit_code -ne 0 ] ; then
+    exit $cluster_exit_code
+fi
 
 echo "Running tests under single-process mode."
-mvn test -Dray.run-mode=SINGLE_PROCESS
+# bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --test_output="errors" || single_exit_code=$?
+java -jar -Dray.run-mode="SINGLE_PROCESS" $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar $ROOT_DIR/testng.xml || single_exit_code=$?
 
-set +x
-set +e
+# exit_code == 2 means there are some tests skiped.
+if [ $single_exit_code -ne 2 ] && [ $single_exit_code -ne 0 ] ; then
+    exit $single_exit_code
+fi
 
+popd
+
+pushd $ROOT_DIR
+echo "Testing maven install."
+mvn clean install -Dmaven.test.skip
 popd

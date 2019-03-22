@@ -157,8 +157,8 @@ You can configure experience input for an agent using the following options:
 
 .. literalinclude:: ../../python/ray/rllib/agents/agent.py
    :language: python
-   :start-after: __sphinx_doc_input_begin__
-   :end-before: __sphinx_doc_input_end__
+   :start-after: === Offline Datasets ===
+   :end-before: Specify where experiences should be saved
 
 The interface for a custom input reader is as follows:
 
@@ -172,8 +172,8 @@ You can configure experience output for an agent using the following options:
 
 .. literalinclude:: ../../python/ray/rllib/agents/agent.py
    :language: python
-   :start-after: __sphinx_doc_output_begin__
-   :end-before: __sphinx_doc_output_end__
+   :start-after: shuffle_buffer_size
+   :end-before: === Multiagent ===
 
 The interface for a custom output writer is as follows:
 
