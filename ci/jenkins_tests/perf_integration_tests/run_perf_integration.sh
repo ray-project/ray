@@ -9,7 +9,7 @@ pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.de
 python -m pytest python/ray/tests/test_perf_integration.py
 
 (cd python && python -m pip install -e .)
-python -m pytest --benchmark-compare-fail=MIN:5% python/ray/tests/test_perf_integration.py
+python -m pytest --benchmark-compare-fail=min:5% python/ray/tests/test_perf_integration.py
 
 # This is how Modin stores the values in an S3 bucket
 #sha_tag=`git rev-parse --verify --short HEAD`
