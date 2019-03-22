@@ -312,11 +312,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             "that your firewall is configured properly. If you wish to "
             "terminate the processes that have been started, run\n\n"
             "    ray stop".format(
-                redis_address, " --redis-password "
-                if redis_password else "", redis_password if redis_password
-                else "", redis_address, "\", redis_password=\""
-                if redis_password else "", redis_password
-                if redis_password else ""))
+                redis_address, " --redis-password " if redis_password else "",
+                redis_password if redis_password else "", redis_address,
+                "\", redis_password=\"" if redis_password else "",
+                redis_password if redis_password else ""))
     else:
         # Start Ray on a non-head node.
         if redis_port is not None:
@@ -406,8 +405,8 @@ def stop():
             str(server["pid"]) for server in list_running_servers()
             if "/tmp/ray" in server["notebook_dir"]
         ]
-        subprocess.call(
-            ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
+        subprocess.call(["kill -9 {} 2> /dev/null".format(" ".join(pids))],
+                        shell=True)
     except ImportError:
         pass
     except Exception:

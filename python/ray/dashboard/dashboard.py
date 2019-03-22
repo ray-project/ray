@@ -256,9 +256,8 @@ class NodeStats(threading.Thread):
     def get_node_stats(self) -> Dict:
         with self._node_stats_lock:
             self.purge_outdated_stats()
-            node_stats = sorted(
-                (v for v in self._node_stats.values()),
-                key=itemgetter("boot_time"))
+            node_stats = sorted((v for v in self._node_stats.values()),
+                                key=itemgetter("boot_time"))
             return {
                 "totals": self.calculate_totals(),
                 "tasks": self.calculate_tasks(),
