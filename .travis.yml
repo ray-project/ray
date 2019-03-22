@@ -25,18 +25,16 @@ matrix:
       env:
         - JDK='Oracle JDK 8'
         - PYTHON=3.5 PYTHONWARNINGS=ignore
-        - RAY_USE_CMAKE=1
         - RAY_INSTALL_JAVA=1
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
-
-        - ./ci/travis/install-dependencies.sh
+        - ./ci/suppress_output ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/travis/install-ray.sh
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
-
         - ./java/test.sh
 
     - os: linux
@@ -167,7 +165,7 @@ install:
   - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
   # Raylet tests.
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
-  - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc ... -c opt
+  - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc //:all
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
