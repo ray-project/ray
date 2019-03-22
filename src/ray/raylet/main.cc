@@ -61,6 +61,7 @@ int main(int argc, char *argv[]) {
   }
 
   RayConfig::instance().initialize(raylet_config);
+  RayConfig::instance().set_node_address(node_ip_address);
 
   // Parse the resource list.
   std::istringstream resource_string(static_resource_list);

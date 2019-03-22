@@ -7,7 +7,7 @@
 
 #include "ray/status.h"
 #include "ray/util/logging.h"
-
+#include "ray/ray_config.h"
 #include "ray/stats/stats.h"
 
 namespace {
@@ -134,7 +134,7 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
         std::make_pair(pid, num_workers_per_process_));
 
     stats::CurrentWorker().Record(pid, {
-      {stats::NodeAddressKey, "Localhost"},
+      {stats::NodeAddressKey, RayConfig::instance().node_address()},
       {stats::LanguageKey, EnumNameLanguage(language)},
       {stats::WorkerPidKey, std::to_string(pid)}
     });
@@ -243,7 +243,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
 
   stats::CurrentWorker().Record(0, {
-      {stats::NodeAddressKey, "Localhost"},
+      {stats::NodeAddressKey, RayConfig::instance().node_address()},
       {stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
       {stats::WorkerPidKey, std::to_string(worker->Pid())}
   });

@@ -156,3 +156,7 @@ cdef class Config:
     @staticmethod
     def maximum_gcs_deletion_batch_size():
         return RayConfig.instance().maximum_gcs_deletion_batch_size()
+
+    @staticmethod
+    def node_address():
+        return RayConfig.instance().node_address()
