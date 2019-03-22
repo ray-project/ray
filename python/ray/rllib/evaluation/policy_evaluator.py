@@ -14,7 +14,6 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
-from ray.rllib.evaluation.metrics import IS_MULTIAGENT_KEY
 from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
     DEFAULT_POLICY_ID
@@ -476,7 +475,6 @@ class PolicyEvaluator(EvaluatorInterface):
                         continue
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].compute_gradients(batch))
-            info_out[IS_MULTIAGENT_KEY] = True
         else:
             grad_out, info_out = (
                 self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples))
