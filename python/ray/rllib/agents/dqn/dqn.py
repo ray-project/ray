@@ -41,7 +41,8 @@ DEFAULT_CONFIG = with_common_config({
     "dueling": True,
     # Whether to use double dqn
     "double_q": True,
-    # Hidden layer sizes of the state and action value networks
+    # Postprocess model outputs with these hidden layers to compute the
+    # state and action values. See also the model config in catalog.py.
     "hiddens": [256],
     # N-step Q learning
     "n_step": 1,
@@ -69,7 +70,7 @@ DEFAULT_CONFIG = with_common_config({
     "exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
-    # Use softmax for sampling actions.
+    # Use softmax for sampling actions. Required for off policy estimation.
     "soft_q": False,
     # Softmax temperature. Q values are divided by this value prior to softmax.
     # Softmax approaches argmax as the temperature drops to zero.
@@ -260,13 +261,11 @@ class DQNAgent(Agent):
 
         if self.config["per_worker_exploration"]:
             # Only collect metrics from the third of workers with lowest eps
-            result = self.optimizer.collect_metrics(
-                timeout_seconds=self.config["collect_metrics_timeout"],
+            result = self.collect_metrics(
                 selected_evaluators=self.remote_evaluators[
                     -len(self.remote_evaluators) // 3:])
         else:
-            result = self.optimizer.collect_metrics(
-                timeout_seconds=self.config["collect_metrics_timeout"])
+            result = self.collect_metrics()
 
         result.update(
             timesteps_this_iter=self.global_timestep - start_timestep,
