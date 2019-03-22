@@ -427,8 +427,8 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                              self.config["momentum"],
                                              self.config["epsilon"])
 
-    def gradients(self, optimizer):
-        grads = tf.gradients(self.loss.total_loss, self.var_list)
+    def gradients(self, optimizer, loss):
+        grads = tf.gradients(loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
