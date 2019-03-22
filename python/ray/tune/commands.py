@@ -97,22 +97,6 @@ def print_format_output(dataframe):
     return table, dropped_cols, empty_cols
 
 
-def _get_experiment_state(experiment_path, exit_on_fail=False):
-    experiment_path = os.path.expanduser(experiment_path)
-    experiment_state_paths = glob.glob(
-        os.path.join(experiment_path, "experiment_state*.json"))
-    if not experiment_state_paths:
-        if exit_on_fail:
-            print("No experiment state found!")
-            sys.exit(0)
-        else:
-            return
-    experiment_filename = max(list(experiment_state_paths))
-
-    with open(experiment_filename) as f:
-        experiment_state = json.load(f)
-    return experiment_state
-
 
 def list_trials(experiment_path,
                 sort=None,
@@ -128,12 +112,12 @@ def list_trials(experiment_path,
         result_keys (list): Keys of last result that are displayed.
     """
     _check_tabulate()
-    experiment_state = _get_experiment_state(
-        experiment_path, exit_on_fail=True)
 
-    checkpoint_dicts = experiment_state["checkpoints"]
-    checkpoint_dicts = [flatten_dict(g) for g in checkpoint_dicts]
-    checkpoints_df = pd.DataFrame(checkpoint_dicts)
+    try:
+        checkpoints_df = ExperimentAnalysis(experiment_path).dataframe()
+    except TuneError:
+        print("No experiment state found!")
+        sys.exit(0)
 
     result_keys = ["last_result:{}".format(k) for k in result_keys]
     col_keys = [
@@ -180,19 +164,19 @@ def list_experiments(project_path,
     experiment_data_collection = []
 
     for experiment_dir in experiment_folders:
-        experiment_state = _get_experiment_state(
-            os.path.join(base, experiment_dir))
-        if not experiment_state:
+        analysis_obj, checkpoints_df = None, None
+        try:
+            analysis_obj = ExperimentAnalysis(experiment_dir)
+            checkpoints_df = analysis_obj.dataframe()
+        except TuneError:
             logger.debug("No experiment state found in %s", experiment_dir)
             continue
 
-        checkpoints = pd.DataFrame(experiment_state["checkpoints"])
-        runner_data = experiment_state["runner_data"]
-
         # Format time-based values.
+        stats = analysis_obj.stats()
         time_values = {
-            "start_time": runner_data.get("_start_time"),
-            "last_updated": experiment_state.get("timestamp"),
+            "start_time": stats.get("_start_time"),
+            "last_updated": stats.get("timestamp"),
         }
 
         formatted_time_values = {
@@ -203,11 +187,11 @@ def list_experiments(project_path,
 
         experiment_data = {
             "name": experiment_dir,
-            "total_trials": checkpoints.shape[0],
-            "running_trials": (checkpoints["status"] == Trial.RUNNING).sum(),
+            "total_trials": checkpoints_df.shape[0],
+            "running_trials": (checkpoints_df["status"] == Trial.RUNNING).sum(),
             "terminated_trials": (
-                checkpoints["status"] == Trial.TERMINATED).sum(),
-            "error_trials": (checkpoints["status"] == Trial.ERROR).sum(),
+                checkpoints_df["status"] == Trial.TERMINATED).sum(),
+            "error_trials": (checkpoints_df["status"] == Trial.ERROR).sum(),
         }
         experiment_data.update(formatted_time_values)
         experiment_data_collection.append(experiment_data)
