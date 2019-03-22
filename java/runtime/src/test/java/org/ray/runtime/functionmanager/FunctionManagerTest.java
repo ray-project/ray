@@ -117,8 +117,7 @@ public class FunctionManagerTest {
         ImmutablePair.of(barConstructorDescriptor.name, barConstructorDescriptor.typeDescriptor)));
   }
 
-  // TODO(hchen): Figure out why this test crashes in Travis.
-  @Test(enabled = false)
+  @Test
   public void testGetFunctionFromLocalResource() throws Exception {
     UniqueId driverId = UniqueId.randomId();
     final String resourcePath = FileUtils.getTempDirectoryPath() + "/ray_test_resources";
