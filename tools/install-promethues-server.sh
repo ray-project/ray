@@ -10,14 +10,18 @@ pushd $TOOLS_DIR
 # Download Prometheus server.
 if [[ "$OSTYPE" == "linux"* ]]; then
     echo "Downloading Prometheus server for linux system."
-    wget https://github.com/prometheus/prometheus/releases/download/v2.8.0/prometheus-2.8.0.linux-amd64.tar.gz
+    PACKAGE_NAME=prometheus-2.8.0.linux-amd64
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     echo "Downloading Prometheus server for MacOS system."
-    wget https://github.com/prometheus/prometheus/releases/download/v2.8.0/prometheus-2.8.0.darwin-amd64.tar.gz
+    PACKAGE_NAME=prometheus-2.8.0.darwin-amd64
 else
     echo "Downloading abort: un-support system."
+    exit -1
 fi
 
-tar xvfz prometheus-*.tar.gz
+
+URL=https://github.com/prometheus/prometheus/releases/download/v2.8.0/$PACKAGE_NAME.tar.gz
+wget $URL
+tar xvfz $PACKAGE_NAME.tar.gz
 
 popd
