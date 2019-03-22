@@ -32,7 +32,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/suppress_output ./ci/travis/install-ray.sh
+        - ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
         - ./java/test.sh
