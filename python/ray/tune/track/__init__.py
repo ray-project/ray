@@ -1,7 +1,6 @@
 import pickle
 
 from .trial import Trial
-from .log import debug
 
 
 _trial = None
@@ -68,5 +67,5 @@ def trial_dir():
     return _trial.trial_dir()
 
 
-__all__ = ["Trial", "trial", "debug", "metric",
+__all__ = ["Trial", "trial", "metric",
            "save", "load", "trial_dir"]
