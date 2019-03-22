@@ -1,9 +1,14 @@
 package org.ray.runtime.functionmanager;
 
+import com.google.common.base.Strings;
+import java.io.File;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -15,7 +20,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.objectweb.asm.Type;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.util.JarLoader;
 import org.ray.runtime.util.LambdaUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,8 +53,8 @@ public class FunctionManager {
   /**
    * Construct a FunctionManager with the specified driver resource path.
    *
-   * @param driverResourcePath The specified driver resource that
-   *     can store the driver's resources.
+   * @param driverResourcePath The specified driver resource that can store the driver's
+   *     resources.
    */
   public FunctionManager(String driverResourcePath) {
     this.driverResourcePath = driverResourcePath;
@@ -71,7 +75,7 @@ public class FunctionManager {
       final String methodName = serializedLambda.getImplMethodName();
       final String typeDescriptor = serializedLambda.getImplMethodSignature();
       functionDescriptor = new JavaFunctionDescriptor(className, methodName, typeDescriptor);
-      RAY_FUNC_CACHE.get().put(func.getClass(),functionDescriptor);
+      RAY_FUNC_CACHE.get().put(func.getClass(), functionDescriptor);
     }
     return getFunction(driverId, functionDescriptor);
   }
@@ -86,15 +90,18 @@ public class FunctionManager {
   public RayFunction getFunction(UniqueId driverId, JavaFunctionDescriptor functionDescriptor) {
     DriverFunctionTable driverFunctionTable = driverFunctionTables.get(driverId);
     if (driverFunctionTable == null) {
-      String resourcePath = driverResourcePath + "/" + driverId.toString() + "/";
       ClassLoader classLoader;
-
-      if (driverResourcePath != null && !driverResourcePath.isEmpty()) {
-        classLoader = JarLoader.loadJars(resourcePath, false);
-        LOGGER.info("Succeeded to load driver({}) resource. Resource path is {}",
-            driverId, resourcePath);
-      } else {
+      if (Strings.isNullOrEmpty(driverResourcePath)) {
         classLoader = getClass().getClassLoader();
+      } else {
+        File resourceDir = new File(driverResourcePath + "/" + driverId.toString() + "/");
+        try {
+          classLoader = new URLClassLoader(new URL[]{resourceDir.toURI().toURL()});
+        } catch (MalformedURLException e) {
+          throw new RuntimeException(e);
+        }
+        LOGGER.debug("Resource loaded for driver {} from path {}.", driverId,
+            resourceDir.getAbsolutePath());
       }
 
       driverFunctionTable = new DriverFunctionTable(classLoader);
