@@ -9,9 +9,7 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 pushd $ROOT_DIR/..
 echo "Linting Java code with checkstyle."
-# NOTE(hchen): the following `--trim_test_configuration` option is used to prevent
-# bazel from discarding caches, see https://github.com/bazelbuild/bazel/issues/6737.
-bazel test //java:all --test_tag_filters="checkstyle" --trim_test_configuration
+bazel test //java:all --test_tag_filters="checkstyle"
 
 echo "Running tests under cluster mode."
 # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
