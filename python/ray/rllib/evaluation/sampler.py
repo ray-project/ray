@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gym
 from collections import defaultdict, namedtuple
 import logging
 import numpy as np
@@ -19,6 +18,7 @@ from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.evaluation.policy_graph import clip_action
 
 logger = logging.getLogger(__name__)
 _large_batch_warned = False
@@ -198,31 +198,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
             except queue.Empty:
                 break
         return extra
-
-
-def clip_action(action, space):
-    """Called to clip actions to the specified range of this policy.
-
-    Arguments:
-        action: Single action.
-        space: Action space the actions should be present in.
-
-    Returns:
-        Clipped batch of actions.
-    """
-
-    if isinstance(space, gym.spaces.Box):
-        return np.clip(action, space.low, space.high)
-    elif isinstance(space, gym.spaces.Tuple):
-        if type(action) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                action, space))
-        out = []
-        for a, s in zip(action, space.spaces):
-            out.append(clip_action(a, s))
-        return out
-    else:
-        return action
 
 
 def _env_runner(base_env,
