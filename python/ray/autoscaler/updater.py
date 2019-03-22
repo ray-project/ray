@@ -235,10 +235,8 @@ class NodeUpdater(object):
         self.set_ssh_ip_if_required()
         self.get_caller(check_error)(
             [
-                "rsync", "-e",
-                " ".join(["ssh"] +
-                         get_default_ssh_options(self.ssh_private_key, 120,
-                                                 self.ssh_control_path)),
+                "rsync", "-e", " ".join(["ssh"] + get_default_ssh_options(
+                    self.ssh_private_key, 120, self.ssh_control_path)),
                 "--delete", "-avz", source, "{}@{}:{}".format(
                     self.ssh_user, self.ssh_ip, target)
             ],
@@ -249,12 +247,9 @@ class NodeUpdater(object):
         self.set_ssh_ip_if_required()
         self.get_caller(check_error)(
             [
-                "rsync", "-e",
-                " ".join(["ssh"] +
-                         get_default_ssh_options(self.ssh_private_key, 120,
-                                                 self.ssh_control_path)),
-                "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
-                                          source), target
+                "rsync", "-e", " ".join(["ssh"] + get_default_ssh_options(
+                    self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
+                "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
             ],
             stdout=redirect or sys.stdout,
             stderr=redirect or sys.stderr)
@@ -290,9 +285,8 @@ class NodeUpdater(object):
             ]
 
         self.get_caller(expect_error)(
-            ssh + ssh_opt + get_default_ssh_options(self.ssh_private_key,
-                                                    connect_timeout,
-                                                    self.ssh_control_path) +
+            ssh + ssh_opt + get_default_ssh_options(
+                self.ssh_private_key, connect_timeout, self.ssh_control_path) +
             ["{}@{}".format(self.ssh_user, self.ssh_ip), cmd],
             stdout=redirect or sys.stdout,
             stderr=redirect or sys.stderr)
