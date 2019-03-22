@@ -7,6 +7,7 @@ import shutil
 import time
 import pytest
 import ray
+from ray.tests.cluster_utils import Cluster
 
 
 def test_conn_cluster():
@@ -54,6 +55,15 @@ def test_raylet_socket_name():
         os.remove("/tmp/i_am_a_temp_socket")
     except Exception:
         pass
+    cluster = Cluster(True)
+    cluster.add_node(raylet_socket_name="/tmp/i_am_a_temp_socket_2")
+    assert os.path.exists(
+        "/tmp/i_am_a_temp_socket_2"), "Specified socket path not found."
+    cluster.shutdown()
+    try:
+        os.remove("/tmp/i_am_a_temp_socket_2")
+    except Exception:
+        pass
 
 
 def test_temp_plasma_store_socket():
@@ -63,6 +73,15 @@ def test_temp_plasma_store_socket():
     ray.shutdown()
     try:
         os.remove("/tmp/i_am_a_temp_socket")
+    except Exception:
+        pass
+    cluster = Cluster(True)
+    cluster.add_node(plasma_store_socket_name="/tmp/i_am_a_temp_socket_2")
+    assert os.path.exists(
+        "/tmp/i_am_a_temp_socket_2"), "Specified socket path not found."
+    cluster.shutdown()
+    try:
+        os.remove("/tmp/i_am_a_temp_socket_2")
     except Exception:
         pass
 
