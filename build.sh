@@ -101,6 +101,8 @@ fi
 
 pushd "$BUILD_DIR"
 
+RAY_USE_CMAKE=1
+
 if [ ! -z "$RAY_USE_CMAKE" ] ; then
   # avoid the command failed and exits
   # and cmake will check some directories to determine whether some targets built
