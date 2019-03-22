@@ -686,7 +686,7 @@ class Agent(Trainable):
         # Fill in the default policy graph if 'None' is specified in multiagent
         if self.config["multiagent"]["policy_graphs"]:
             tmp = self.config["multiagent"]["policy_graphs"]
-            _validate_multiagent_config(tmp)
+            _validate_multiagent_config(tmp, allow_none_graph=True)
             for k, v in tmp.items():
                 if v[0] is None:
                     tmp[k] = (policy_graph, v[1], v[2], v[3])

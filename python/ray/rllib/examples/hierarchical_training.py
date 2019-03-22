@@ -213,8 +213,7 @@ if __name__ == "__main__":
                     "entropy_coeff": 0.01,
                     "multiagent": {
                         "policy_graphs": {
-                            "high_level_policy": (None,
-                                                  maze.observation_space,
+                            "high_level_policy": (None, maze.observation_space,
                                                   Discrete(4), {
                                                       "gamma": 0.9
                                                   }),

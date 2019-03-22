@@ -684,16 +684,18 @@ def _validate_and_canonicalize(policy_graph, env):
         }
 
 
-def _validate_multiagent_config(policy_graph):
+def _validate_multiagent_config(policy_graph, allow_none_graph=False):
     for k, v in policy_graph.items():
         if not isinstance(k, str):
-            raise ValueError(
-                "policy_graph keys must be strs, got {}".format(type(k)))
+            raise ValueError("policy_graph keys must be strs, got {}".format(
+                type(k)))
         if not isinstance(v, tuple) or len(v) != 4:
             raise ValueError(
                 "policy_graph values must be tuples of "
                 "(cls, obs_space, action_space, config), got {}".format(v))
-        if v[0] is not None and not issubclass(v[0], PolicyGraph):
+        if allow_none_graph and v[0] is None:
+            pass
+        elif not issubclass(v[0], PolicyGraph):
             raise ValueError(
                 "policy_graph tuple value 0 must be a rllib.PolicyGraph "
                 "class or None, got {}".format(v[0]))
