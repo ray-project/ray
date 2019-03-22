@@ -668,30 +668,7 @@ class PolicyEvaluator(EvaluatorInterface):
 
 def _validate_and_canonicalize(policy_graph, env):
     if isinstance(policy_graph, dict):
-        for k, v in policy_graph.items():
-            if not isinstance(k, str):
-                raise ValueError(
-                    "policy_graph keys must be strs, got {}".format(type(k)))
-            if not isinstance(v, tuple) or len(v) != 4:
-                raise ValueError(
-                    "policy_graph values must be tuples of "
-                    "(cls, obs_space, action_space, config), got {}".format(v))
-            if not issubclass(v[0], PolicyGraph):
-                raise ValueError(
-                    "policy_graph tuple value 0 must be a rllib.PolicyGraph "
-                    "class, got {}".format(v[0]))
-            if not isinstance(v[1], gym.Space):
-                raise ValueError(
-                    "policy_graph tuple value 1 (observation_space) must be a "
-                    "gym.Space, got {}".format(type(v[1])))
-            if not isinstance(v[2], gym.Space):
-                raise ValueError(
-                    "policy_graph tuple value 2 (action_space) must be a "
-                    "gym.Space, got {}".format(type(v[2])))
-            if not isinstance(v[3], dict):
-                raise ValueError(
-                    "policy_graph tuple value 3 (config) must be a dict, "
-                    "got {}".format(type(v[3])))
+        _validate_multiagent_config(policy_graph)
         return policy_graph
     elif not issubclass(policy_graph, PolicyGraph):
         raise ValueError("policy_graph must be a rllib.PolicyGraph class")
@@ -705,6 +682,33 @@ def _validate_and_canonicalize(policy_graph, env):
             DEFAULT_POLICY_ID: (policy_graph, env.observation_space,
                                 env.action_space, {})
         }
+
+
+def _validate_multiagent_config(policy_graph):
+    for k, v in policy_graph.items():
+        if not isinstance(k, str):
+            raise ValueError(
+                "policy_graph keys must be strs, got {}".format(type(k)))
+        if not isinstance(v, tuple) or len(v) != 4:
+            raise ValueError(
+                "policy_graph values must be tuples of "
+                "(cls, obs_space, action_space, config), got {}".format(v))
+        if v[0] is not None and not issubclass(v[0], PolicyGraph):
+            raise ValueError(
+                "policy_graph tuple value 0 must be a rllib.PolicyGraph "
+                "class or None, got {}".format(v[0]))
+        if not isinstance(v[1], gym.Space):
+            raise ValueError(
+                "policy_graph tuple value 1 (observation_space) must be a "
+                "gym.Space, got {}".format(type(v[1])))
+        if not isinstance(v[2], gym.Space):
+            raise ValueError(
+                "policy_graph tuple value 2 (action_space) must be a "
+                "gym.Space, got {}".format(type(v[2])))
+        if not isinstance(v[3], dict):
+            raise ValueError(
+                "policy_graph tuple value 3 (config) must be a dict, "
+                "got {}".format(type(v[3])))
 
 
 def _validate_env(env):
