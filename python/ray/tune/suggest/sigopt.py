@@ -5,15 +5,12 @@ from __future__ import print_function
 import copy
 import os
 
+try:
+    import sigopt as sgo
+except Exception:
+    sgo = None
+
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
-
-sgo = None
-
-
-def _import_sigopt():
-    global sgo
-    import sigopt
-    sgo = sigopt
 
 
 class SigOptSearch(SuggestionAlgorithm):
@@ -71,7 +68,6 @@ class SigOptSearch(SuggestionAlgorithm):
                  max_concurrent=1,
                  reward_attr="episode_reward_mean",
                  **kwargs):
-        _import_sigopt()
         assert sgo is not None, "SigOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         assert "SIGOPT_KEY" in os.environ, \

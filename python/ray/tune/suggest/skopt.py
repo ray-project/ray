@@ -2,15 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+try:
+    import skopt as sko
+except Exception:
+    sko = None
+
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
-
-sko = None
-
-
-def _import_skopt():
-    global sko
-    import skopt
-    sko = skopt
 
 
 class SkOptSearch(SuggestionAlgorithm):
@@ -51,7 +48,6 @@ class SkOptSearch(SuggestionAlgorithm):
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
                  **kwargs):
-        _import_skopt()
         assert sko is not None, """skopt must be installed!
             You can install Skopt with the command:
             `pip install scikit-optimize`."""
