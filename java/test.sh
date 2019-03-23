@@ -9,7 +9,9 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 pushd $ROOT_DIR/..
 echo "Linting Java code with checkstyle."
-bazel test //java:all --test_tag_filters="checkstyle" --action_env=PATH
+# NOTE(hchen): The `test_tag_filters` option causes bazel to ignore caches.
+# Thus, we add the `build_tests_only` option to avoid re-building everything.
+bazel test //java:all --test_tag_filters="checkstyle" --build_tests_only
 
 echo "Running tests under cluster mode."
 # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
