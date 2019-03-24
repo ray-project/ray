@@ -76,15 +76,6 @@ PYTHON_MODE = 3
 
 ERROR_KEY_PREFIX = b"Error:"
 
-# Default resource requirements for actors when no resource requirements are
-# specified.
-DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
-DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
-# Default resource requirements for actors when some resource requirements are
-# specified.
-DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
-DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
-
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -2480,23 +2471,8 @@ def make_decorator(num_return_vals=None,
                 raise Exception("The keyword 'max_calls' is not allowed for "
                                 "actors.")
 
-            # Set the actor default resources.
-            if num_cpus is None and num_gpus is None and resources is None:
-                # In the default case, actors acquire no resources for
-                # their lifetime, and actor methods will require 1 CPU.
-                cpus_to_use = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE
-                actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE
-            else:
-                # If any resources are specified, then all resources are
-                # acquired for the actor's lifetime and no resources are
-                # associated with methods.
-                cpus_to_use = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
-                               if num_cpus is None else num_cpus)
-                actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE
-
-            return worker.make_actor(function_or_class, cpus_to_use, num_gpus,
-                                     resources, actor_method_cpus,
-                                     max_reconstructions)
+            return worker.make_actor(function_or_class, num_cpus, num_gpus,
+                                     resources, max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
