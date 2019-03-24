@@ -807,7 +807,7 @@ def test_defining_remote_functions(shutdown_only):
 
 
 def test_submit_api(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
+    ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
 
     @ray.remote
     def f(n):
