@@ -53,8 +53,8 @@ def test_raylet_socket_name():
     ray.shutdown()
     try:
         os.remove("/tmp/i_am_a_temp_socket")
-    except Exception:
-        pass
+    except FileNotFoundError:
+        pass  # It could have been removed by Ray.
     cluster = Cluster(True)
     cluster.add_node(raylet_socket_name="/tmp/i_am_a_temp_socket_2")
     assert os.path.exists(
@@ -62,8 +62,8 @@ def test_raylet_socket_name():
     cluster.shutdown()
     try:
         os.remove("/tmp/i_am_a_temp_socket_2")
-    except Exception:
-        pass
+    except FileNotFoundError:
+        pass  # It could have been removed by Ray.
 
 
 def test_temp_plasma_store_socket():
@@ -73,8 +73,8 @@ def test_temp_plasma_store_socket():
     ray.shutdown()
     try:
         os.remove("/tmp/i_am_a_temp_socket")
-    except Exception:
-        pass
+    except FileNotFoundError:
+        pass  # It could have been removed by Ray.
     cluster = Cluster(True)
     cluster.add_node(plasma_store_socket_name="/tmp/i_am_a_temp_socket_2")
     assert os.path.exists(
@@ -82,8 +82,8 @@ def test_temp_plasma_store_socket():
     cluster.shutdown()
     try:
         os.remove("/tmp/i_am_a_temp_socket_2")
-    except Exception:
-        pass
+    except FileNotFoundError:
+        pass  # It could have been removed by Ray.
 
 
 def test_raylet_tempfiles():
