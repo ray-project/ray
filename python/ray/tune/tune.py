@@ -103,9 +103,10 @@ def run(run_or_experiment,
             If Experiment, then Tune will execute training based on
             Experiment.spec.
         name (str): Name of experiment.
-        stop (dict): The stopping criteria. The keys may be any field in
+        stop (dict | fn): The stopping criteria. The keys may be any field in
             the return result of 'train()', whichever is reached first.
-            Defaults to empty dict.
+            Defaults to empty dict. If function, then the function is expected
+            to have a signature: func(result: dict) -> bool.
         config (dict): Algorithm-specific configuration for Tune variant
             generation (e.g. env, hyperparams). Defaults to empty dict.
             Custom search algorithms may ignore this.

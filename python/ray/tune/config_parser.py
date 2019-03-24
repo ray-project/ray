@@ -40,9 +40,8 @@ def make_parser(parser_creator=None, **kwargs):
         "tune registry.")
     parser.add_argument(
         "--stop",
-        default="{}",
-        type=json.loads,
-        help="The stopping criteria, specified in JSON. The keys may be any "
+        default=None,
+        help="The stopping criteria. If JSON, the keys may be any "
         "field returned by 'train()' e.g. "
         "'{\"time_total_s\": 600, \"training_iteration\": 100000}' to stop "
         "after 600 seconds or 100k iterations, whichever is reached first.")

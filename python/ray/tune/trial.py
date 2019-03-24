@@ -275,7 +275,10 @@ class Trial(object):
         self.resources = (
             resources
             or self._get_trainable_cls().default_resource_request(self.config))
-        self.stopping_criterion = stopping_criterion or {}
+        if isinstance(stopping_criterion, dict):
+            self.stopping_criterion = StoppingCriteria(stopping_criterion)
+        elif callable(stopping_criterion):
+            self.stopping_criterion = stopping_criterion
         self.upload_dir = upload_dir
         self.loggers = loggers
         self.sync_function = sync_function
@@ -397,15 +400,7 @@ class Trial(object):
         if result.get(DONE):
             return True
 
-        for criteria, stop_value in self.stopping_criterion.items():
-            if criteria not in result:
-                raise TuneError(
-                    "Stopping criteria {} not provided in result {}.".format(
-                        criteria, result))
-            if result[criteria] >= stop_value:
-                return True
-
-        return False
+        return self.stopping_criterion(result)
 
     def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""

@@ -108,7 +108,7 @@ def run(args, parser):
                 "resources_per_trial": (
                     args.resources_per_trial and
                     resources_to_json(args.resources_per_trial)),
-                "stop": args.stop,
+                "stop": args.stop and json.loads(args.stop),
                 "config": dict(args.config, env=args.env),
                 "restore": args.restore,
                 "num_samples": args.num_samples,
