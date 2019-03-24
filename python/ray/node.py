@@ -472,6 +472,7 @@ class Node(object):
         self.start_redis()
         self.start_monitor()
         self.start_raylet_monitor()
+        # The dashboard is Python3.x only.
         if PY3 and self._ray_params.include_webui:
             self.start_dashboard()
 
@@ -741,105 +742,6 @@ class Node(object):
 class LocalNode(object):
     """Imitate the node that manages the processes in local mode."""
 
-    @property
-    def node_ip_address(self):
-        """Get the cluster Redis address."""
-        logger.warning("Local node does not have an IP address.")
-        return None
-
-    @property
-    def redis_address(self):
-        """Get the cluster Redis address."""
-        logger.warning("Local node does not have a Redis address.")
-        return None
-
-    @property
-    def redis_password(self):
-        """Get the cluster Redis password"""
-        logger.warning("Local node does not have a Redis password.")
-        return None
-
-    @property
-    def plasma_store_socket_name(self):
-        """Get the node's plasma store socket name."""
-        logger.warning("Local node does not have socket names.")
-        return None
-
-    @property
-    def webui_url(self):
-        """Get the cluster's web UI url."""
-        logger.warning("Local node does not have a Web UI URL.")
-        return None
-
-    @property
-    def raylet_socket_name(self):
-        """Get the node's raylet socket name."""
-        logger.warning("Local node does not have socket names.")
-        return None
-
-    @property
-    def address_info(self):
-        """Get a dictionary of addresses."""
-        return {}
-
-    def get_temp_dir_path(self):
-        """Get the path of the temporary directory."""
-        logger.warning("Local node does not have a temp directory path.")
-        return None
-
-    def get_logs_dir_path(self):
-        """Get the path of the log files directory."""
-        logger.warning("Local node does not have a logging directory path.")
-        return None
-
-    def get_sockets_dir_path(self):
-        """Get the path of the sockets directory."""
-        logger.warning("Local node does not have a socket directory path.")
-        return None
-
     def kill_all_processes(self, *args, **kwargs):
         """Kill all of the processes."""
-        pass
-
-    def live_processes(self):
-        """Return a list of the live processes.
-
-        Returns:
-            A list of the live processes.
-        """
-        logger.warning("Local node does not have processes.")
-        return []
-
-    def dead_processes(self):
-        """Return a list of the dead processes.
-
-        Note that this ignores processes that have been explicitly killed,
-        e.g., via a command like node.kill_raylet().
-
-        Returns:
-            A list of the dead processes ignoring the ones that have been
-                explicitly killed.
-        """
-        logger.warning("Local node does not have processes.")
-        return []
-
-    def any_processes_alive(self):
-        """Return true if any processes are still alive.
-
-        Returns:
-            True if any process is still alive.
-        """
-        logger.warning("Local node does not have processes.")
-        return True
-
-    def remaining_processes_alive(self):
-        """Return true if all remaining processes are still alive.
-
-        Note that this ignores processes that have been explicitly killed,
-        e.g., via a command like node.kill_raylet().
-
-        Returns:
-            True if any process that wasn't explicitly killed is still alive.
-        """
-        logger.warning("Local node does not have processes.")
-        return True
+        pass  # Keep this function empty because it will be used in worker.py
