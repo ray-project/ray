@@ -924,7 +924,7 @@ def start_dashboard(redis_address,
         import aiohttp  # noqa: F401
         import psutil  # noqa: F401
     except ImportError:
-        logger.warning(
+        raise ImportError(
             "Failed to start the dashboard. The dashboard requires Python 3 "
             "as well as 'pip install aiohttp psutil'.")
         return None, None
