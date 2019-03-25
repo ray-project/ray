@@ -745,3 +745,8 @@ class LocalNode(object):
     def kill_all_processes(self, *args, **kwargs):
         """Kill all of the processes."""
         pass  # Keep this function empty because it will be used in worker.py
+
+    @property
+    def address_info(self):
+        """Get a dictionary of addresses."""
+        return {}  # Return a null dict.
