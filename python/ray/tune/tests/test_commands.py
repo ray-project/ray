@@ -41,6 +41,14 @@ def test_ls(start_ray, capsys, tmpdir):
     lines = captured.split("\n")
     assert sum("TERMINATED" in line for line in lines) == num_samples
 
+    commands.list_trials(
+        experiment_path,
+        info_keys=("status", ),
+        filter_op="status == TERMINATED")
+    captured = capsys.readouterr().out.strip()
+    lines = captured.split("\n")
+    assert sum("TERMINATED" in line for line in lines) == num_samples
+
 
 def test_lsx(start_ray, capsys, tmpdir):
     """This test captures output of list_experiments."""
@@ -63,4 +71,13 @@ def test_lsx(start_ray, capsys, tmpdir):
     commands.list_experiments(project_path, info_keys=("total_trials", ))
     captured = capsys.readouterr().out.strip()
     lines = captured.split("\n")
-    assert sum("1" in line for line in lines) >= 3
+    assert sum("1" in line for line in lines) >= num_experiments
+
+    commands.list_experiments(
+        project_path,
+        info_keys=("total_trials", ),
+        filter_op="total_trials == 1")
+    captured = capsys.readouterr().out.strip()
+    lines = captured.split("\n")
+    assert sum("1" in line for line in lines) >= num_experiments
+    assert len(lines) == 3 + num_experiments + 1
