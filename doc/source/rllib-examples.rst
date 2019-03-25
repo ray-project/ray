@@ -26,8 +26,8 @@ Training Workflows
 Custom Envs and Models
 ----------------------
 
-- `Registering a custom env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
-   Example of defining and registering a gym env for use with RLlib.
+- `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
+   Example of defining and registering a gym env and model for use with RLlib.
 - `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__:
    Example of defining and registering a custom model with a supervised loss.
 - `Subprocess environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_env_with_subprocess.py>`__:
