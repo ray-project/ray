@@ -21,7 +21,7 @@ import org.testng.annotations.Test;
 
 public class MultiThreadingTest extends BaseTest {
 
-  private static final int LOOP_COUNTER = 1000;
+  private static final int LOOP_COUNTER = 100;
   private static final int NUM_THREADS = 20;
 
   @RayRemote
@@ -47,13 +47,19 @@ public class MultiThreadingTest extends BaseTest {
       Assert.assertEquals(arg, (int) obj.get());
     }, LOOP_COUNTER);
 
-    // Test calling actors.
-    RayActor<Echo> echoActor = Ray.createActor(Echo::new);
+    // Test calling multi actors
+    RayActor<Echo> echoActor1 = Ray.createActor(Echo::new);
+    RayActor<Echo> echoActor2 = Ray.createActor(Echo::new);
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
-      RayObject<Integer> obj = Ray.call(Echo::echo, echoActor, arg);
+      RayObject<Integer> obj = Ray.call(Echo::echo, echoActor1, arg);
       Assert.assertEquals(arg, (int) obj.get());
-    }, LOOP_COUNTER);
+    }, LOOP_COUNTER / 2);
+    runTestCaseInMultipleThreads(() -> {
+      int arg = random.nextInt();
+      RayObject<Integer> obj = Ray.call(Echo::echo, echoActor2, arg);
+      Assert.assertEquals(arg, (int) obj.get());
+    }, LOOP_COUNTER / 2);
 
     // Test put and get.
     runTestCaseInMultipleThreads(() -> {
@@ -74,8 +80,6 @@ public class MultiThreadingTest extends BaseTest {
 
   @Test
   public void testInDriver() {
-    // TODO(hchen): Fix this test under single-process mode.
-    TestUtils.skipTestUnderSingleProcess();
     testMultiThreading();
   }
 
