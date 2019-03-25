@@ -47,19 +47,29 @@ public class MultiThreadingTest extends BaseTest {
       Assert.assertEquals(arg, (int) obj.get());
     }, LOOP_COUNTER);
 
-    // Test calling multi actors
-    RayActor<Echo> echoActor1 = Ray.createActor(Echo::new);
-    RayActor<Echo> echoActor2 = Ray.createActor(Echo::new);
+    // Test calling actors.
+    RayActor<Echo> echoActor = Ray.createActor(Echo::new);
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
+      RayObject<Integer> obj = Ray.call(Echo::echo, echoActor, arg);
+      Assert.assertEquals(arg, (int) obj.get());
+    }, LOOP_COUNTER);
+
+    // Test creating multi actors
+    runTestCaseInMultipleThreads(() -> {
+      int arg = random.nextInt();
+      RayActor<Echo> echoActor1 = Ray.createActor(Echo::new);
+      try {
+        // Sleep a while so that another actor can be created before task is executed.
+        // To make sure test scenario about different actor tasks executed on different
+        // workers is covered.
+        Thread.sleep(10);
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
       RayObject<Integer> obj = Ray.call(Echo::echo, echoActor1, arg);
       Assert.assertEquals(arg, (int) obj.get());
-    }, LOOP_COUNTER / 2);
-    runTestCaseInMultipleThreads(() -> {
-      int arg = random.nextInt();
-      RayObject<Integer> obj = Ray.call(Echo::echo, echoActor2, arg);
-      Assert.assertEquals(arg, (int) obj.get());
-    }, LOOP_COUNTER / 2);
+    }, 1);
 
     // Test put and get.
     runTestCaseInMultipleThreads(() -> {
