@@ -139,8 +139,8 @@ class GlobalState(object):
             redis_address: The Redis address to connect.
             redis_password: The password of the redis server.
         """
-        self.redis_client = services.create_redis_client(redis_address,
-                                                         redis_password)
+        self.redis_client = services.create_redis_client(
+            redis_address, redis_password)
         start_time = time.time()
 
         num_redis_shards = None
