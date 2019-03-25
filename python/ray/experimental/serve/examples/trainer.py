@@ -1,10 +1,8 @@
 import ray
 from ray.experimental.serve import DeadlineAwareRouter
-from ray.experimental.serve.examples.adder import VectorizedAdder
 from ray.experimental.serve.frontend import HTTPFrontendActor
 from ray.experimental.serve.router import start_router
 from ray.experimental.serve import RayServeMixin, batched_input
-import time
 import requests
 
 
