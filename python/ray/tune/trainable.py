@@ -17,9 +17,10 @@ import uuid
 
 import ray
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
-    TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION)
+from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
+                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
+                             EPISODES_THIS_ITER, EPISODES_TOTAL,
+                             TRAINING_ITERATION, RESULT_DUPLICATE)
 from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,10 @@ class Trainable(object):
         start = time.time()
         result = self._train()
         assert isinstance(result, dict), "_train() needs to return a dict."
+
+        # We do not modify internal state nor update this result if duplicate.
+        if RESULT_DUPLICATE in result:
+            return result
 
         result = result.copy()
 
