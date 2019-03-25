@@ -35,7 +35,6 @@ import logging
 import ray
 from ray.tune import run_experiments, function
 from ray.rllib.env import MultiAgentEnv
-from ray.rllib.agents.ppo import PPOAgent
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
