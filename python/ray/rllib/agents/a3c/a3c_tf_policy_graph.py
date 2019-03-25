@@ -26,7 +26,7 @@ class A3CLoss(object):
                  v_target,
                  vf,
                  vf_loss_coeff=0.5,
-                 entropy_coeff=-0.01):
+                 entropy_coeff=0.01):
         log_prob = action_dist.logp(actions)
 
         # The "policy gradients" loss
@@ -35,7 +35,7 @@ class A3CLoss(object):
         delta = vf - v_target
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
         self.entropy = tf.reduce_sum(action_dist.entropy())
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
+        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
 
@@ -146,8 +146,8 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                   self.config["lambda"])
 
     @override(TFPolicyGraph)
-    def gradients(self, optimizer):
-        grads = tf.gradients(self._loss, self.var_list)
+    def gradients(self, optimizer, loss):
+        grads = tf.gradients(loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads

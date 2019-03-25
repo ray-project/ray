@@ -37,11 +37,11 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_num_episodes": 10,
 
     # === Model ===
-    # Hidden layer sizes of the policy network
+    # Postprocess the policy network model output with these hidden layers
     "actor_hiddens": [64, 64],
     # Hidden layers activation of the policy network
     "actor_hidden_activation": "relu",
-    # Hidden layer sizes of the critic network
+    # Postprocess the critic network model output with these hidden layers
     "critic_hiddens": [64, 64],
     # Hidden layers activation of the critic network
     "critic_hidden_activation": "relu",

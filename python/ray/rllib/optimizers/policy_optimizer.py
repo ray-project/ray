@@ -143,6 +143,12 @@ class PolicyOptimizer(object):
         return res
 
     @DeveloperAPI
+    def reset(self, remote_evaluators):
+        """Called to change the set of remote evaluators being used."""
+
+        self.remote_evaluators = remote_evaluators
+
+    @DeveloperAPI
     def foreach_evaluator(self, func):
         """Apply the given function to each evaluator instance."""
 

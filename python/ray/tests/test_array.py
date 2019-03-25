@@ -17,19 +17,12 @@ if sys.version_info >= (3, 0):
 
 
 @pytest.fixture
-def ray_start_regular():
-    for module in [
-            ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg
-    ]:
-        reload(module)
-    # Start the Ray processes.
-    ray.init(num_cpus=2)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+def reload_modules():
+    modules = [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]
+    [reload(module) for module in modules]
 
 
-def test_remote_array_methods(ray_start_regular):
+def test_remote_array_methods(ray_start_2_cpus, reload_modules):
     # test eye
     object_id = ra.eye.remote(3)
     val = ray.get(object_id)
@@ -56,7 +49,7 @@ def test_remote_array_methods(ray_start_regular):
     assert_almost_equal(np.dot(q_val, r_val), a_val)
 
 
-def test_distributed_array_assemble(ray_start_regular):
+def test_distributed_array_assemble(ray_start_2_cpus, reload_modules):
     a = ra.ones.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
     b = ra.zeros.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
     x = da.DistArray([2 * da.BLOCK_SIZE, da.BLOCK_SIZE], np.array([[a], [b]]))
@@ -68,25 +61,7 @@ def test_distributed_array_assemble(ray_start_regular):
         ]))
 
 
-@pytest.fixture
-def ray_start_two_nodes():
-    for module in [
-            ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg
-    ]:
-        reload(module)
-    # Start the Ray processes.
-    cluster = ray.tests.cluster_utils.Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=10)
-    ray.init(redis_address=cluster.redis_address)
-    yield None
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
-
-
-def test_distributed_array_methods(ray_start_two_nodes):
+def test_distributed_array_methods(ray_start_cluster_2_nodes, reload_modules):
     x = da.zeros.remote([9, 25, 51], "float")
     assert_equal(ray.get(da.assemble.remote(x)), np.zeros([9, 25, 51]))
 

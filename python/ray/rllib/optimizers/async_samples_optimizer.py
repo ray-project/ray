@@ -153,6 +153,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.learner.stopped = True
 
     @override(PolicyOptimizer)
+    def reset(self, remote_evaluators):
+        self.remote_evaluators = remote_evaluators
+        self.sample_tasks.reset_evaluators(remote_evaluators)
+
+    @override(PolicyOptimizer)
     def stats(self):
         def timer_to_ms(timer):
             return round(1000 * timer.mean, 3)
@@ -363,15 +368,16 @@ class TFMultiGPULearner(LearnerThread):
         assert self.loader_thread.is_alive()
         with self.load_wait_timer:
             opt, released = self.minibatch_buffer.get()
-            if released:
-                self.idle_optimizers.put(opt)
 
         with self.grad_timer:
             fetches = opt.optimize(self.sess, 0)
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
-        self.outqueue.put(self.train_batch_size)
+        if released:
+            self.idle_optimizers.put(opt)
+
+        self.outqueue.put(opt.num_tuples_loaded)
         self.learner_queue_size.push(self.inqueue.qsize())
 
 

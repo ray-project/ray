@@ -7,7 +7,7 @@ You can utilize these search algorithms as follows:
 
 .. code-block:: python
 
-    run_experiments(experiments, search_alg=SearchAlgorithm(...))
+    tune.run(my_function, search_alg=SearchAlgorithm(...))
 
 Currently, Tune offers the following search algorithms (and library integrations):
 
@@ -22,7 +22,7 @@ Currently, Tune offers the following search algorithms (and library integrations
 Variant Generation (Grid Search/Random Search)
 ----------------------------------------------
 
-By default, Tune uses the `default search space and variant generation process <tune-usage.html#tune-search-space-default>`__ to create and queue trials. This supports random search and grid search as specified by the ``config`` parameter of the Experiment.
+By default, Tune uses the `default search space and variant generation process <tune-usage.html#tune-search-space-default>`__ to create and queue trials. This supports random search and grid search as specified by the ``config`` parameter of ``tune.run``.
 
 .. autoclass:: ray.tune.suggest.BasicVariantGenerator
     :show-inheritance:
@@ -46,7 +46,7 @@ This algorithm requires `setting a search space and defining a utility function 
 
 .. code-block:: python
 
-    run_experiments(experiment_config, search_alg=BayesOptSearch(bayesopt_space, utility_kwargs=utility_params, ... ))
+    tune.run(... , search_alg=BayesOptSearch(bayesopt_space, utility_kwargs=utility_params, ... ))
 
 An example of this can be found in `bayesopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bayesopt_example.py>`__.
 
@@ -69,7 +69,7 @@ This algorithm requires using the `HyperOpt search space specification <https://
 
 .. code-block:: python
 
-    run_experiments(experiment_config, search_alg=HyperOptSearch(hyperopt_space, ... ))
+    tune.run(... , search_alg=HyperOptSearch(hyperopt_space, ... ))
 
 An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
 
@@ -98,7 +98,7 @@ This algorithm requires using the `SigOpt experiment and space specification <ht
 
 .. code-block:: python
 
-    run_experiments(experiment_config, search_alg=SigOptSearch(sigopt_space, ... ))
+    tune.run(... , search_alg=SigOptSearch(sigopt_space, ... ))
 
 An example of this can be found in `sigopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/sigopt_example.py>`__.
 
@@ -123,7 +123,7 @@ This algorithm requires using an optimizer provided by ``nevergrad``, of which t
 
 .. code-block:: python
 
-    run_experiments(experiment_config, search_alg=NevergradSearch(optimizer, parameter_names, ... ))
+    tune.run(... , search_alg=NevergradSearch(optimizer, parameter_names, ... ))
 
 An example of this can be found in `nevergrad_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py>`__.
 
@@ -147,7 +147,7 @@ This algorithm requires using the `Scikit-Optimize ask and tell interface <https
 .. code-block:: python
 
     optimizer = Optimizer(dimension, ...)
-    run_experiments(experiment_config, search_alg=SkOptSearch(optimizer, parameter_names, ... ))
+    tune.run(... , search_alg=SkOptSearch(optimizer, parameter_names, ... ))
 
 An example of this can be found in `skopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/skopt_example.py>`__.
 

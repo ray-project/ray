@@ -12,12 +12,13 @@ import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.functionmanager.FunctionDescriptor;
+import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.generated.Arg;
 import org.ray.runtime.generated.Language;
 import org.ray.runtime.generated.ResourcePair;
 import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.task.FunctionArg;
+import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.UniqueIdUtil;
 import org.slf4j.Logger;
@@ -183,13 +184,14 @@ public class RayletClientImpl implements RayletClient {
       resources.put(info.requiredResources(i).key(), info.requiredResources(i).value());
     }
     // Deserialize function descriptor
+    Preconditions.checkArgument(info.language() == Language.JAVA);
     Preconditions.checkArgument(info.functionDescriptorLength() == 3);
-    FunctionDescriptor functionDescriptor = new FunctionDescriptor(
+    JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
         maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
-        args, returnIds, resources, functionDescriptor);
+        args, returnIds, resources, TaskLanguage.JAVA, functionDescriptor);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -250,12 +252,29 @@ public class RayletClientImpl implements RayletClient {
     int requiredPlacementResourcesOffset =
         fbb.createVectorOfTables(requiredPlacementResourcesOffsets);
 
-    int[] functionDescriptorOffsets = new int[]{
-        fbb.createString(task.functionDescriptor.className),
-        fbb.createString(task.functionDescriptor.name),
-        fbb.createString(task.functionDescriptor.typeDescriptor)
-    };
-    int functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+    int language;
+    int functionDescriptorOffset;
+
+    if (task.language == TaskLanguage.JAVA) {
+      // This is a Java task.
+      language = Language.JAVA;
+      int[] functionDescriptorOffsets = new int[]{
+          fbb.createString(task.getJavaFunctionDescriptor().className),
+          fbb.createString(task.getJavaFunctionDescriptor().name),
+          fbb.createString(task.getJavaFunctionDescriptor().typeDescriptor)
+      };
+      functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+    } else {
+      // This is a Python task.
+      language = Language.PYTHON;
+      int[] functionDescriptorOffsets = new int[]{
+          fbb.createString(task.getPyFunctionDescriptor().moduleName),
+          fbb.createString(task.getPyFunctionDescriptor().className),
+          fbb.createString(task.getPyFunctionDescriptor().functionName),
+          fbb.createString("")
+      };
+      functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+    }
 
     int root = TaskInfo.createTaskInfo(
         fbb,
@@ -274,7 +293,7 @@ public class RayletClientImpl implements RayletClient {
         returnsOffset,
         requiredResourcesOffset,
         requiredPlacementResourcesOffset,
-        Language.JAVA,
+        language,
         functionDescriptorOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
