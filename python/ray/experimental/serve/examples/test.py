@@ -3,14 +3,19 @@ import socket
 ray.init()
 import pickle
 import docker
+from contextlib import closing
 
-# TODO(Rehan) Container Argument (already partially implemented, test)
-# TODO(Rehan) Randomly generate port, check if unbound.
-# TODO(Rehan) Move to Ray Fork.
 @ray.remote
 class Predictor(object):
+    """Actor that adds deploys specified container.
+
+    result = "Recieved " + input_batch.
+    """
     def __init__(self, container):
-        self.port = 8887
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            s.bind(('', 0))
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.port = s.getsockname()[1]
         self.sock = None
         self.cl = docker.from_env()
         self.cl.containers.run(container, detach=True, environment={"port": self.port})
@@ -27,7 +32,7 @@ class Predictor(object):
         self.c.send(a)
         return pickle.loads(self.c.recv(int(self.c.recv(2))))
 
-a = Predictor.remote()
+a = Predictor.remote("ray/example")
 c1 = a.predict.remote([1, 2, 3])
 c2 = a.predict.remote([2, 3, 4])
 print(c1)

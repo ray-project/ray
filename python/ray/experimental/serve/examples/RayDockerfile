@@ -1,0 +1,9 @@
+# Dockerfile for containerization example
+FROM python:3.6-slim-stretch
+ENV port 8888
+RUN apt update 
+WORKDIR /
+COPY model.py /model.py
+
+CMD python /model.py host.docker.internal ${port}
+# vim: set filetype=dockerfile:
