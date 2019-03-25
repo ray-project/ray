@@ -123,7 +123,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  input_evaluation=frozenset([]),
                  output_creator=lambda ioctx: NoopOutput(),
                  remote_worker_envs=False,
-                 remote_worker_env_timeout_ms=0):
+                 remote_worker_env_batch_wait_ms=0):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -202,7 +202,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 those new envs in remote processes instead of in the current
                 process. This adds overheads, but can make sense if your envs
                 can take much time to step / reset (e.g., for StarCraft)
-            remote_worker_env_timeout_ms (float): Timeout that remote workers
+            remote_worker_env_batch_wait_ms (float): Timeout that remote workers
                 are waiting when polling environments. 0 (continue when at
                 least one env is ready) is a reasonable default, but optimal
                 value could be obtained by measuring your environment
@@ -314,7 +314,7 @@ class PolicyEvaluator(EvaluatorInterface):
             make_env=make_env,
             num_envs=num_envs,
             remote_envs=remote_worker_envs,
-            remote_worker_env_timeout_ms=remote_worker_env_timeout_ms)
+            remote_worker_env_batch_wait_ms=remote_worker_env_batch_wait_ms)
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":

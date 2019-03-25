@@ -18,11 +18,11 @@ class RemoteVectorEnv(BaseEnv):
     are supported, and envs can be stepped synchronously or async.
     """
 
-    def __init__(self, make_env, num_envs, multiagent, remote_worker_env_timeout_ms):
+    def __init__(self, make_env, num_envs, multiagent, remote_worker_env_batch_wait_ms):
         self.make_local_env = make_env
         self.num_envs = num_envs
         self.multiagent = multiagent
-        self.poll_timeout = remote_worker_env_timeout_ms / 1000
+        self.poll_timeout = remote_worker_env_batch_wait_ms / 1000
 
         self.actors = None  # lazy init
         self.pending = None  # lazy init

@@ -146,7 +146,7 @@ COMMON_CONFIG = {
     # 0 (continue when at least one env is ready) is a reasonable default,
     # but optimal value could be obtained by measuring your environment
     # step / reset and model inference perf.
-    "remote_worker_env_timeout_ms": 0,
+    "remote_worker_env_batch_wait_ms": 0,
 
     # === Offline Datasets ===
     # __sphinx_doc_input_begin__
@@ -381,7 +381,8 @@ class Agent(Trainable):
         if hasattr(self, "local_evaluator"):
             self.local_evaluator.stop()
         if hasattr(self, "remote_evaluators"):
-            ray.get([ev.stop.remote() for ev in self.remote_evaluators])
+            for ev in self.remote_evaluators:
+                ev.stop.remote()
 
         # workaround for https://github.com/ray-project/ray/issues/1516
         if hasattr(self, "remote_evaluators"):
@@ -710,7 +711,7 @@ class Agent(Trainable):
             input_evaluation=input_evaluation,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
-            remote_worker_env_timeout_ms=config["remote_worker_env_timeout_ms"])
+            remote_worker_env_batch_wait_ms=config["remote_worker_env_batch_wait_ms"])
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):
