@@ -90,6 +90,9 @@ class DeadlineAwareRouter:
         ray.experimental.get_actor(self.name).set_replica.remote(
             actor_name, num_replicas)
 
+    def get_actor(self, actor_name):
+        return self.managed_actors[actor_name]
+
     def set_replica(self, actor_name, new_replica_count):
         """Scale a managed actor according to new_replica_count."""
         assert actor_name in self.managed_actors, (
