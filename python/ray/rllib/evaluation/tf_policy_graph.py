@@ -14,6 +14,7 @@ from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
@@ -468,6 +469,15 @@ class TFPolicyGraph(PolicyGraph):
         for k, v in zip(state_keys, initial_states):
             feed_dict[self._loss_input_dict[k]] = v
         feed_dict[self._seq_lens] = seq_lens
+
+        if log_once("rnn_feed_dict"):
+            logger.info("Padded input for RNN:\n\n{}\n".format(
+                summarize({
+                    "features": feature_sequences,
+                    "initial_states": initial_states,
+                    "seq_lens": seq_lens,
+                    "max_seq_len": max_seq_len,
+                })))
         return feed_dict
 
 
