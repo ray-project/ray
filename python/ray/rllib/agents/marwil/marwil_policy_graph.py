@@ -15,8 +15,8 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.agents.dqn.dqn_policy_graph import _scope_vars
 from ray.rllib.utils.explained_variance import explained_variance
 
-P_SCOPE = "p_func"
-V_SCOPE = "v_func"
+POLICY_SCOPE = "p_func"
+VALUE_SCOPE = "v_func"
 
 
 class ValueLoss(object):
@@ -55,7 +55,6 @@ class ReweightedImitationLoss(object):
 
 
 class MARWILPostprocessing(object):
-
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
@@ -91,7 +90,7 @@ class MARWILPolicyGraph(MARWILPostprocessing, TFPolicyGraph):
         prev_rewards_ph = tf.placeholder(
             tf.float32, [None], name="prev_reward")
 
-        with tf.variable_scope(P_SCOPE) as scope:
+        with tf.variable_scope(POLICY_SCOPE) as scope:
             self.model = ModelCatalog.get_model({
                 "obs": self.obs_t,
                 "prev_actions": prev_actions_ph,
@@ -111,7 +110,7 @@ class MARWILPolicyGraph(MARWILPostprocessing, TFPolicyGraph):
         self.cum_rew_t = tf.placeholder(tf.float32, [None], name="reward")
 
         # v network evaluation
-        with tf.variable_scope(V_SCOPE) as scope:
+        with tf.variable_scope(VALUE_SCOPE) as scope:
             state_values = self.model.value_function()
             self.v_func_vars = _scope_vars(scope.name)
         self.v_loss = self._build_value_loss(state_values, self.cum_rew_t)

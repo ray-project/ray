@@ -18,11 +18,11 @@ from ray.rllib.utils.explained_variance import explained_variance
 
 logger = logging.getLogger(__name__)
 
+# Frozen logits of the policy that computed the action
+BEHAVIOUR_LOGITS = "behaviour_logits"
+
 
 class PPOLoss(object):
-    # Frozen logits of the policy that computed the action
-    BEHAVIOUR_LOGITS = "behaviour_logits"
-
     def __init__(self,
                  action_space,
                  value_targets,
@@ -187,7 +187,7 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
             (Postprocessing.VALUE_TARGETS, value_targets_ph),
             (Postprocessing.ADVANTAGES, adv_ph),
             (SampleBatch.ACTIONS, act_ph),
-            (PPOLoss.BEHAVIOUR_LOGITS, logits_ph),
+            (BEHAVIOUR_LOGITS, logits_ph),
             (SampleBatch.VF_PREDS, vf_preds_ph),
             (SampleBatch.PREV_ACTIONS, prev_actions_ph),
             (SampleBatch.PREV_REWARDS, prev_rewards_ph),
@@ -335,7 +335,7 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
         return dict(
             TFPolicyGraph.extra_compute_action_fetches(self), **{
                 SampleBatch.VF_PREDS: self.value_function,
-                PPOLoss.BEHAVIOUR_LOGITS: self.logits
+                BEHAVIOUR_LOGITS: self.logits
             })
 
     @override(TFPolicyGraph)

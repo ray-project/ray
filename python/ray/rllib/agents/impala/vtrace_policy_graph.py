@@ -21,11 +21,11 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 
+# Frozen logits of the policy that computed the action
+BEHAVIOUR_LOGITS = "behaviour_logits"
+
 
 class VTraceLoss(object):
-    # Frozen logits of the policy that computed the action
-    BEHAVIOUR_LOGITS = "behaviour_logits"
-
     def __init__(self,
                  actions,
                  actions_logp,
@@ -282,7 +282,7 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
         loss_in = [
             (SampleBatch.ACTIONS, actions),
             (SampleBatch.DONES, dones),
-            (VTraceLoss.BEHAVIOUR_LOGITS, behaviour_logits),
+            (BEHAVIOUR_LOGITS, behaviour_logits),
             (SampleBatch.REWARDS, rewards),
             (SampleBatch.CUR_OBS, observations),
             (SampleBatch.PREV_ACTIONS, prev_actions),
@@ -353,7 +353,7 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
     def extra_compute_action_fetches(self):
         return dict(
             TFPolicyGraph.extra_compute_action_fetches(self),
-            **{VTraceLoss.BEHAVIOUR_LOGITS: self.model.outputs})
+            **{BEHAVIOUR_LOGITS: self.model.outputs})
 
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
