@@ -3,7 +3,9 @@ News Reader
 
 This document shows how to implement a simple news reader using Ray. The reader
 consists of a simple Vue.js `frontend`_ and a backend consisting of a Flask
-server and a Ray actor. View the `code for this example`_.
+server and a Ray actor. It has a simple recommendation engine built in, which
+is pre-trained on upvotes from hackernews and learns online as the user stars
+articles. View the `code for this example`_.
 
 .. image:: newsreader.jpeg
 
