@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.memory import concat_aligned
 
 # Defaults policy id for single agent environments
-DEFAULT_POLICY_ID = "default"
+DEFAULT_POLICY_ID = "default_policy"
 
 
 @PublicAPI
