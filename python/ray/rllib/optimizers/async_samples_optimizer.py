@@ -52,7 +52,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               learner_queue_size=16,
               _fake_gpus=False,
               old_policy_lag=16,
-              old_policy_evaluator=None):
+              old_policy_evaluator=None,
+              use_kl_loss=False):
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
@@ -63,6 +64,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         # Added for APPO
         self.old_policy_evaluator = old_policy_evaluator
+        self.use_kl_loss = use_kl_loss
         print("New Policy,", self.local_evaluator)
         print("Remote Policies", self.remote_evaluators)
         print("Old Policy", self.old_policy_evaluator)
@@ -90,7 +92,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         else:
             self.learner = LearnerThread(self.local_evaluator,
                                          minibatch_buffer_size, num_sgd_iter,
-                                         learner_queue_size, old_policy_lag = self.old_policy_lag)
+                                         learner_queue_size, old_policy_lag = self.old_policy_lag, use_kl_loss = False)
         self.learner.start()
 
         assert len(self.remote_evaluators) > 0
@@ -273,7 +275,7 @@ class LearnerThread(threading.Thread):
     """
 
     def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_iter,
-                 learner_queue_size, old_policy_lag=None):
+                 learner_queue_size, old_policy_lag=None, use_kl_loss=False):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
         self.local_evaluator = local_evaluator
@@ -289,39 +291,47 @@ class LearnerThread(threading.Thread):
         self.weights_updated = False
         self.stats = {}
         self.stopped = False
-        self.old_policy_lag = 0
         self.standardize_fields = ["advantages"]
         #self.old_policy_evaluator = old_policy_evaluator
         self.old_policy_lag =old_policy_lag
         self.counter =0
+        self.use_kl_loss=use_kl_loss
 
     def run(self):
         while not self.stopped:
             self.step()
 
     def step(self):
-        print("I AM LEARNING ONE TIME")
         with self.queue_timer:
+            #batch = self.inqueue.get()
             batch, _ = self.minibatch_buffer.get()
-            if self.counter ==0:
+            
+            if "old_policy_behaviour_logits" not in batch:
                     self.old_policy_behaviour_logits = self.local_evaluator.policy_map['default'].compute_actions(
                             batch["obs"],prev_action_batch=batch["prev_actions"],
                             prev_reward_batch=batch["prev_rewards"])[2]['behaviour_logits']
-            self.counter = 0 if self.counter==self.old_policy_lag else self.counter+1
-            batch["old_policy_behaviour_logits"] = self.old_policy_behaviour_logits
+                    batch["old_policy_behaviour_logits"] = self.old_policy_behaviour_logits
             #for key, value in batch.items():
                 #print("Key ", key, " \nValue ", value[0])
             
             # The advantages should be importance sampled then standardized, right now we are dealing with raw advantages from multiple workers
+            '''
             for field in self.standardize_fields:
                 value = batch[field]
                 standardized = (value - value.mean()) / max(1e-4, value.std())
                 batch[field] = standardized
+            '''
 
         with self.grad_timer:
             fetches = self.local_evaluator.learn_on_batch(batch)
             self.weights_updated = True
+            if self.use_kl_loss:
+                if self.counter == self.old_policy_lag:
+                    self.local_evaluator.for_policy(
+                        lambda pi: pi.update_kl(fetches["stats"]["KL"]))
+                self.counter = 0 if self.counter==self.old_policy_lag else self.counter+1 
             self.stats = fetches.get("stats", {})
+
         '''
         if self.old_policy_counter == 100:
             self.old_policy_counter=0

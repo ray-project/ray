@@ -33,7 +33,9 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-
+from ray.rllib.models.action_dist import (Categorical, Deterministic,
+                                          DiagGaussian,
+                                          MultiActionDistribution, Dirichlet)
 import tensorflow as tf
 
 nest = tf.contrib.framework.nest
@@ -41,7 +43,7 @@ nest = tf.contrib.framework.nest
 VTraceFromLogitsReturns = collections.namedtuple('VTraceFromLogitsReturns', [
     'vs', 'pg_advantages', 'log_rhos', 'behaviour_action_log_probs',
     'target_action_log_probs'
-])
+])    
 
 VTraceReturns = collections.namedtuple('VTraceReturns', 'vs pg_advantages')
 
@@ -51,7 +53,7 @@ def log_probs_from_logits_and_actions(policy_logits, actions):
                                                    [actions])[0]
 
 
-def multi_log_probs_from_logits_and_actions(policy_logits, actions):
+def multi_log_probs_from_logits_and_actions(policy_logits, actions, is_continuous=False):
     """Computes action log-probs from policy logits and actions.
 
   In the notation used throughout documentation and comments, T refers to the
@@ -84,9 +86,16 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions):
   """
 
     log_probs = []
+    print(actions)
     for i in range(len(policy_logits)):
-        log_probs.append(-tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=policy_logits[i], labels=actions[i]))
+        if is_continuous:
+          log_prob = DiagGaussian(policy_logits[i]).logp(actions[i])
+          log_prob = tf.Print(log_prob, ["Log Probs", log_prob])
+        else:
+          log_prob = -tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=policy_logits[i], labels=actions[i])
+        log_prob = tf.Print(log_prob, ["Log Probs", log_prob])
+        log_probs.append(log_prob)
 
     return log_probs
 
@@ -133,8 +142,9 @@ def multi_from_logits(behaviour_policy_logits,
                       bootstrap_value,
                       clip_rho_threshold=1.0,
                       clip_pg_rho_threshold=1.0,
+                      is_continuous=False,
                       name='vtrace_from_logits'):
-    r"""V-trace for softmax policies.
+    """V-trace for softmax policies.
 
   Calculates V-trace actor critic targets for softmax polices as described in
 
@@ -200,19 +210,23 @@ def multi_from_logits(behaviour_policy_logits,
       target_action_log_probs: A float32 tensor of shape [T, B] containing
         target policy action probabilities (log \pi(a_t)).
   """
+    if is_continuous:
+      behaviour_policy_logits = [behaviour_policy_logits]
+      target_policy_logits = [target_policy_logits]
 
     for i in range(len(behaviour_policy_logits)):
         behaviour_policy_logits[i] = tf.convert_to_tensor(
             behaviour_policy_logits[i], dtype=tf.float32)
         target_policy_logits[i] = tf.convert_to_tensor(
             target_policy_logits[i], dtype=tf.float32)
-        actions[i] = tf.convert_to_tensor(actions[i], dtype=tf.int32)
+        actions[i] = actions[i] if is_continuous else tf.convert_to_tensor(actions[i], dtype=tf.int32)
 
         # Make sure tensor ranks are as expected.
         # The rest will be checked by from_action_log_probs.
         behaviour_policy_logits[i].shape.assert_has_rank(3)
         target_policy_logits[i].shape.assert_has_rank(3)
-        actions[i].shape.assert_has_rank(2)
+        
+        #actions[i].shape.assert_has_rank(2)
 
     with tf.name_scope(
             name,
@@ -221,9 +235,9 @@ def multi_from_logits(behaviour_policy_logits,
                 discounts, rewards, values, bootstrap_value
             ]):
         target_action_log_probs = multi_log_probs_from_logits_and_actions(
-            target_policy_logits, actions)
+            target_policy_logits, actions, is_continuous=is_continuous)
         behaviour_action_log_probs = multi_log_probs_from_logits_and_actions(
-            behaviour_policy_logits, actions)
+            behaviour_policy_logits, actions, is_continuous=is_continuous)
 
         log_rhos = get_log_rhos(target_action_log_probs,
                                 behaviour_action_log_probs)
@@ -386,14 +400,10 @@ def from_importance_weights(log_rhos,
             pg_advantages=tf.stop_gradient(pg_advantages))
 
 
-def get_log_rhos(behaviour_action_log_probs, target_action_log_probs):
+def get_log_rhos(target_action_log_probs, behaviour_action_log_probs):
     """With the selected log_probs for multi-discrete actions of behaviour
     and target policies we compute the log_rhos for calculating the vtrace."""
-    log_rhos = [
-        t - b
-        for t, b in zip(target_action_log_probs, behaviour_action_log_probs)
-    ]
-    log_rhos = [tf.convert_to_tensor(l, dtype=tf.float32) for l in log_rhos]
-    log_rhos = tf.reduce_sum(tf.stack(log_rhos), axis=0)
-
+    t = tf.stack(target_action_log_probs)
+    b = tf.stack(behaviour_action_log_probs)
+    log_rhos = tf.reduce_sum(t - b, axis=0)
     return log_rhos

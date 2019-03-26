@@ -16,7 +16,6 @@ use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
 @DeveloperAPI
 class ActionDistribution(object):
     """The policy action distribution of an agent.
-
     Args:
       inputs (Tensor): The input vector to compute samples from.
     """
@@ -44,7 +43,6 @@ class ActionDistribution(object):
     @DeveloperAPI
     def _build_sample_op(self):
         """Implement this instead of sample(), to enable op reuse.
-
         This is needed since the sample op is non-deterministic and is shared
         between sample() and sampled_action_prob().
         """
@@ -141,13 +139,13 @@ class MultiCategorical(ActionDistribution):
 
 class DiagGaussian(ActionDistribution):
     """Action distribution where each vector element is a gaussian.
-
     The first half of the input vector defines the gaussian means, and the
     second half the gaussian standard deviations.
     """
 
     def __init__(self, inputs):
-        mean, log_std = tf.split(inputs, 2, axis=1)
+        self.last_dim = inputs.shape.ndims-1
+        mean, log_std = tf.split(inputs, 2, axis=self.last_dim)
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
@@ -156,13 +154,20 @@ class DiagGaussian(ActionDistribution):
     @override(ActionDistribution)
     def logp(self, x):
         return (-0.5 * tf.reduce_sum(
-            tf.square((x - self.mean) / self.std), reduction_indices=[1]) -
-                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
-                tf.reduce_sum(self.log_std, reduction_indices=[1]))
+            tf.square((x - self.mean) / self.std), reduction_indices=[self.last_dim]) -
+                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[self.last_dim]) -
+                tf.reduce_sum(self.log_std, reduction_indices=[self.last_dim]))
 
     @override(ActionDistribution)
     def kl(self, other):
         assert isinstance(other, DiagGaussian)
+        '''
+        var = tf.square(self.std)
+        other_var = tf.square(other.std)
+        kl = 0.5*(tf.reduce_sum(tf.log(other_var) - tf.log(var), axis=1) - tf.to_float(tf.shape(self.log_std)[1])
+        + tf.reduce_sum(var/other_var, axis=1) + tf.reduce_sum(tf.square(self.mean - other.mean)/other_var, axis=1))
+        return kl
+        '''
         return tf.reduce_sum(
             other.log_std - self.log_std +
             (tf.square(self.std) + tf.square(self.mean - other.mean)) /
@@ -182,7 +187,6 @@ class DiagGaussian(ActionDistribution):
 
 class Deterministic(ActionDistribution):
     """Action distribution that returns the input values directly.
-
     This is similar to DiagGaussian with standard deviation zero.
     """
 
@@ -197,7 +201,6 @@ class Deterministic(ActionDistribution):
 
 class MultiActionDistribution(ActionDistribution):
     """Action distribution that operates for list of actions.
-
     Args:
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
@@ -263,7 +266,6 @@ TupleActions = namedtuple("TupleActions", ["batches"])
 class Dirichlet(ActionDistribution):
     """Dirichlet distribution for countinuous actions that are between
     [0,1] and sum to 1.
-
     e.g. actions that represent resource allocation."""
 
     def __init__(self, inputs):
