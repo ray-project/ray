@@ -103,6 +103,7 @@ class VTraceLoss(object):
 
 
 class VTracePostprocessing(object):
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
