@@ -77,7 +77,7 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
         global _count
         outf = os.path.join(
             timeline_dir, "timeline-{}-{}-{}.json".format(
-                debug_name, os.getpid(), _count))
+                debug_name, os.getpid(), _count % 10))
         _count += 1
         trace_file = open(outf, "w")
         logger.info("Wrote tf timeline ({} s) to {}".format(
