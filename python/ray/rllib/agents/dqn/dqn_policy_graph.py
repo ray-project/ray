@@ -19,6 +19,9 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
 
+# Importance sampling weights for prioritized replay
+PRIO_WEIGHTS = "weights"
+
 
 class QNetwork(object):
     def __init__(self,
@@ -293,9 +296,6 @@ class QLoss(object):
 
 
 class DQNPolicyGraph(TFPolicyGraph):
-    # Importance sampling weights for prioritized replay
-    WEIGHTS = "weights"
-
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Discrete):
@@ -404,7 +404,7 @@ class DQNPolicyGraph(TFPolicyGraph):
             (SampleBatch.REWARDS, self.rew_t),
             (SampleBatch.NEXT_OBS, self.obs_tp1),
             (SampleBatch.DONES, self.done_mask),
-            (DQNPolicyGraph.WEIGHTS, self.importance_weights),
+            (PRIO_WEIGHTS, self.importance_weights),
         ]
         TFPolicyGraph.__init__(
             self,
@@ -621,19 +621,18 @@ def _postprocess_dqn(policy_graph, batch):
                       batch[SampleBatch.ACTIONS], batch[SampleBatch.REWARDS],
                       batch[SampleBatch.NEXT_OBS], batch[SampleBatch.DONES])
 
-    if DQNPolicyGraph.WEIGHTS not in batch:
-        batch[DQNPolicyGraph.WEIGHTS] = np.ones_like(
-            batch[SampleBatch.REWARDS])
+    if PRIO_WEIGHTS not in batch:
+        batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
     # Prioritize on the worker side
     if batch.count > 0 and policy_graph.config["worker_side_prioritization"]:
         td_errors = policy_graph.compute_td_error(
             batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
-            batch[SampleBatch.DONES], batch[DQNPolicyGraph.WEIGHTS])
+            batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (
             np.abs(td_errors) + policy_graph.config["prioritized_replay_eps"])
-        batch.data[DQNPolicyGraph.WEIGHTS] = new_priorities
+        batch.data[PRIO_WEIGHTS] = new_priorities
 
     return batch
 

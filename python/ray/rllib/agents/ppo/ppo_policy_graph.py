@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class PPOLoss(object):
+    # Frozen logits of the policy that computed the action
     BEHAVIOUR_LOGITS = "behaviour_logits"
 
     def __init__(self,
