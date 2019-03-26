@@ -81,6 +81,7 @@ class SampleBatch(object):
     samples, each with an "obs" and "reward" attribute.
     """
 
+    # Outputs from interacting with the environment
     CUR_OBS = "obs"
     NEXT_OBS = "new_obs"
     ACTIONS = "actions"
@@ -89,8 +90,14 @@ class SampleBatch(object):
     PREV_REWARDS = "prev_rewards"
     DONES = "dones"
     INFOS = "infos"
+
+    # Uniquely identifies an episodes
     EPS_ID = "eps_id"
+
+    # Uniquely identifies an agent within an episode
     AGENT_INDEX = "agent_index"
+
+    # Value function predictions emitted by the behaviour policy
     VF_PREDS = "vf_preds"
 
     @PublicAPI
