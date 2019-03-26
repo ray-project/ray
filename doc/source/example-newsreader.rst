@@ -71,7 +71,7 @@ which outputs 2.0, so having 2 comments is a good cutoff. We can now train the
 model with
 
 .. code-block:: python
-  datapoints = training.create_vowpal_wabbit_records(records, cutoff=2.0)
+  datapoints = training.create_datapoints(records, cutoff=2.0)
   model = training.learn_model(datapoints)
 
 

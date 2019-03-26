@@ -32,7 +32,7 @@ def create_datapoints(records, cutoff):
 
 def learn_model(datapoints):
     vw = pyvw.vw()
-    for record in records:
-        example = vw.example(record)
+    for datapoint in datapoints:
+        example = vw.example(datapoint)
         vw.learn(example)
     return vw
