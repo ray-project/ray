@@ -64,6 +64,10 @@ class NewsServer(object):
             c.execute("UPDATE news SET liked = 0 WHERE link = ?", (url,))
         self.conn.commit()
 
+        if is_faved:
+            c.execute("SELECT title FROM news WHERE link = ?", (url,))
+            print("faved", c.fetchone())
+
 
 # instantiate the app
 app = Flask(__name__)
