@@ -64,10 +64,12 @@ class NewsServer(object):
             c.execute("UPDATE news SET liked = 0 WHERE link = ?", (url,))
         self.conn.commit()
 
+        c.execute("SELECT title FROM news WHERE link = ?", (url,))
+        title, = c.fetchone()
         if is_faved:
-            c.execute("SELECT title FROM news WHERE link = ?", (url,))
-            title, = c.fetchone()
             self.vw.learn("1 | " + title)
+        else:
+            self.vw.learn("-1 | " + title)
 
 
 
