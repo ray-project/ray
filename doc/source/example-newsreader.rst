@@ -7,7 +7,7 @@ server and a Ray actor. It has a simple recommendation engine built in, which
 is pre-trained on upvotes from hackernews and learns online as the user stars
 articles. View the `code for this example`_.
 
-.. image:: newsreader.jpeg
+.. image:: newsreader.jpg
 
 To run this example, you will need to install NPM and a few python dependencies.
 
@@ -76,7 +76,7 @@ To use this example you need to
 
 * In the ``ray/examples/newsreader`` directory, start the server with
   ``python server.py``.
-* Clone the client code with ``git clone https://github.com/ray-project/qreader``
+* Clone the client code with ``git clone -b learning https://github.com/ray-project/qreader``
 * Start the client with ``cd qreader;  npm install; npm run dev``
 * You can now add a channel by clicking "Add channel" and for example pasting
   ``http://news.ycombinator.com/rss`` into the field.
