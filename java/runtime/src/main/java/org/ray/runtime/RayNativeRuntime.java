@@ -3,6 +3,7 @@ package org.ray.runtime;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
@@ -30,7 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * native runtime for local box and cluster run.
+ * Native runtime for cluster mode.
  */
 public final class RayNativeRuntime extends AbstractRayRuntime {
 
@@ -46,41 +47,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private List<RedisClient> redisClients;
   private RunManager manager = null;
 
-  public RayNativeRuntime(RayConfig rayConfig) {
-    super(rayConfig);
-  }
-
-  private void resetLibraryPath() {
-    String path = System.getProperty("java.library.path");
-    if (Strings.isNullOrEmpty(path)) {
-      path = "";
-    } else {
-      path += ":";
-    }
-
-    path += String.join(":", rayConfig.libraryPath);
-
-    // This is a hack to reset library path at runtime,
-    // see https://stackoverflow.com/questions/15409223/.
-    System.setProperty("java.library.path", path);
-    //set sys_paths to null so that java.library.path will be re-evalueted next time it is needed
-    final Field sysPathsField;
+  static {
     try {
-      sysPathsField = ClassLoader.class.getDeclaredField("sys_paths");
-      sysPathsField.setAccessible(true);
-      sysPathsField.set(null, null);
-    } catch (NoSuchFieldException | IllegalAccessException e) {
-      e.printStackTrace();
-      LOGGER.error("Failed to set library path.", e);
-    }
-  }
-
-  @Override
-  public void start() throws Exception {
-    try {
-      // Reset library path at runtime.
-      resetLibraryPath();
-
+      LOGGER.debug("Loading native libraries.");
       // Load native libraries.
       String[] libraries = new String[]{"raylet_library_java", "plasma_java"};
       for (String library : libraries) {
@@ -93,10 +62,47 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         Files.copy(in, Paths.get(file.getAbsolutePath()), StandardCopyOption.REPLACE_EXISTING);
         System.load(file.getAbsolutePath());
       }
-    } catch (Exception e) {
-      LOGGER.error("Failed to load native libraries.", e);
-      throw e;
+      LOGGER.debug("Native libraries loaded.");
+    } catch (IOException e) {
+      throw new RuntimeException("Couldn't load native libraries.", e);
     }
+  }
+
+  public RayNativeRuntime(RayConfig rayConfig) {
+    super(rayConfig);
+  }
+
+  private void resetLibraryPath() {
+    if (rayConfig.libraryPath.isEmpty()) {
+      return;
+    }
+
+    String path = System.getProperty("java.library.path");
+    if (Strings.isNullOrEmpty(path)) {
+      path = "";
+    } else {
+      path += ":";
+    }
+    path += String.join(":", rayConfig.libraryPath);
+
+    // This is a hack to reset library path at runtime,
+    // see https://stackoverflow.com/questions/15409223/.
+    System.setProperty("java.library.path", path);
+    // Set sys_paths to null so that java.library.path will be re-evaluated next time it is needed.
+    final Field sysPathsField;
+    try {
+      sysPathsField = ClassLoader.class.getDeclaredField("sys_paths");
+      sysPathsField.setAccessible(true);
+      sysPathsField.set(null, null);
+    } catch (NoSuchFieldException | IllegalAccessException e) {
+      LOGGER.error("Failed to set library path.", e);
+    }
+  }
+
+  @Override
+  public void start() {
+    // Reset library path at runtime.
+    resetLibraryPath();
 
     if (rayConfig.getRedisAddress() == null) {
       manager = new RunManager(rayConfig);

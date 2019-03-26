@@ -19,10 +19,10 @@ from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
-_large_batch_warned = False
 
 RolloutMetrics = namedtuple("RolloutMetrics", [
     "episode_length", "episode_reward", "agent_rewards", "custom_metrics",
@@ -224,6 +224,31 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return extra
 
 
+def clip_action(action, space):
+    """Called to clip actions to the specified range of this policy.
+
+    Arguments:
+        action: Single action.
+        space: Action space the actions should be present in.
+
+    Returns:
+        Clipped batch of actions.
+    """
+
+    if isinstance(space, gym.spaces.Box):
+        return np.clip(action, space.low, space.high)
+    elif isinstance(space, gym.spaces.Tuple):
+        if type(action) not in (tuple, list):
+            raise ValueError("Expected tuple space for actions {}: {}".format(
+                action, space))
+        out = []
+        for a, s in zip(action, space.spaces):
+            out.append(clip_action(a, s))
+        return out
+    else:
+        return action
+
+
 def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
                 unroll_length, horizon, preprocessors, obs_filters,
                 clip_rewards, clip_actions, pack, callbacks, tf_sess,
@@ -297,6 +322,11 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
             base_env.poll()
         perf_stats.env_wait_time += time.time() - t0
 
+        if log_once("env_returns"):
+            logger.info("Raw obs from env: {}".format(
+                summarize(unfiltered_obs)))
+            logger.info("Info return from env: {}".format(summarize(infos)))
+
         # Process observations and prepare for policy evaluation
         t1 = time.time()
         active_envs, to_eval, outputs = _process_observations(
@@ -352,10 +382,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
             episode.batch_builder.count += 1
             episode._add_agent_rewards(rewards[env_id])
 
-        global _large_batch_warned
-        if (not _large_batch_warned and
-                episode.batch_builder.total() > max(1000, unroll_length * 10)):
-            _large_batch_warned = True
+        if (episode.batch_builder.total() > max(1000, unroll_length * 10)
+                and log_once("large_batch_warning")):
             logger.warning(
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
@@ -389,7 +417,13 @@ def _process_observations(base_env, policies, batch_builder_pool,
             policy_id = episode.policy_for(agent_id)
             prep_obs = _get_or_raise(preprocessors,
                                      policy_id).transform(raw_obs)
+            if log_once("prep_obs"):
+                logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
+
             filtered_obs = _get_or_raise(obs_filters, policy_id)(prep_obs)
+            if log_once("filtered_obs"):
+                logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
+
             agent_done = bool(all_done or dones[env_id].get(agent_id))
             if not agent_done:
                 to_eval[policy_id].append(
@@ -493,6 +527,11 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         pending_fetches = {}
     else:
         builder = None
+
+    if log_once("compute_actions_input"):
+        logger.info("Example compute_actions() input:\n\n{}\n".format(
+            summarize(to_eval)))
+
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
         policy = _get_or_raise(policies, policy_id)
@@ -515,6 +554,10 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
     if builder:
         for k, v in pending_fetches.items():
             eval_results[k] = builder.get(v)
+
+    if log_once("compute_actions_result"):
+        logger.info("Example compute_actions() result:\n\n{}\n".format(
+            summarize(eval_results)))
 
     return eval_results
 
@@ -553,7 +596,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
             if clip_actions:
-                actions_to_send[env_id][agent_id] = _clip_actions(
+                actions_to_send[env_id][agent_id] = clip_action(
                     action, policy.action_space)
             else:
                 actions_to_send[env_id][agent_id] = action
@@ -588,31 +631,6 @@ def _fetch_atari_metrics(base_env):
         for eps_rew, eps_len in monitor.next_episode_results():
             atari_out.append(RolloutMetrics(eps_len, eps_rew, {}, {}, {}))
     return atari_out
-
-
-def _clip_actions(actions, space):
-    """Called to clip actions to the specified range of this policy.
-
-    Arguments:
-        actions: Single action.
-        space: Action space the actions should be present in.
-
-    Returns:
-        Clipped batch of actions.
-    """
-
-    if isinstance(space, gym.spaces.Box):
-        return np.clip(actions, space.low, space.high)
-    elif isinstance(space, gym.spaces.Tuple):
-        if type(actions) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                actions, space))
-        out = []
-        for a, s in zip(actions, space.spaces):
-            out.append(_clip_actions(a, s))
-        return out
-    else:
-        return actions
 
 
 def _unbatch_tuple_actions(action_batch):
