@@ -47,7 +47,8 @@ Open a python interpreter and enter the following:
 Which will output the following:
 
 .. code-block
-   title  score
+
+  title  score
   595312                         Steve Jobs has passed away.   4339
   753452                       Show HN: This up votes itself   3536
   1545633                                 Tim Cook Speaks Up   3086
