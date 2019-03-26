@@ -100,6 +100,13 @@ class QLoss(object):
 
 
 class DQNPostprocessing(object):
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self), **{
+                "q_values": self.q_values,
+            })
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
@@ -470,13 +477,6 @@ class DQNPolicyGraph(DQNPostprocessing, TFPolicyGraph):
                 loss, var_list=self.q_func_vars)
         grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
         return grads_and_vars
-
-    @override(TFPolicyGraph)
-    def extra_compute_action_fetches(self):
-        return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self), **{
-                "q_values": self.q_values,
-            })
 
     @override(TFPolicyGraph)
     def extra_compute_action_feed_dict(self):
