@@ -35,7 +35,8 @@ class NewsServer(object):
                           "link": item.link,
                           "description": item.description,
                           "description_text": item.description,
-                          "pubDate": str(item.pub_date)})
+                          "pubDate": str(item.pub_date),
+                          "color": "#FA8072"})
             pred = self.vw.predict("| " + item.title)
             print("prediction = ", pred)
             c.execute("""INSERT INTO news (title, link, description,
