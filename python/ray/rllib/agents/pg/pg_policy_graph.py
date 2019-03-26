@@ -6,8 +6,10 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.annotations import override
 
@@ -51,11 +53,11 @@ class PGPolicyGraph(TFPolicyGraph):
         # read from postprocessed sample batches and fed into the specified
         # placeholders during loss computation.
         loss_in = [
-            ("obs", obs),
-            ("actions", actions),
-            ("prev_actions", prev_actions),
-            ("prev_rewards", prev_rewards),
-            ("advantages", advantages),  # added during postprocessing
+            (SampleBatch.CUR_OBS, obs),
+            (SampleBatch.ACTIONS, actions),
+            (SampleBatch.PREV_ACTIONS, prev_actions),
+            (SampleBatch.PREV_REWARDS, prev_rewards),
+            (Postprocessing.ADVANTAGES, advantages),
         ]
 
         # Initialize TFPolicyGraph

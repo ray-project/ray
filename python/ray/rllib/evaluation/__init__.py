@@ -8,8 +8,7 @@ from ray.rllib.evaluation.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.evaluation.sample_batch_builder import (
     SampleBatchBuilder, MultiAgentSampleBatchBuilder)
 from ray.rllib.evaluation.sampler import SyncSampler, AsyncSampler
-from ray.rllib.evaluation.postprocessing import (compute_advantages,
-                                                 compute_targets)
+from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.metrics import collect_metrics
 
 __all__ = [

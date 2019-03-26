@@ -81,6 +81,15 @@ class SampleBatch(object):
     samples, each with an "obs" and "reward" attribute.
     """
 
+    CUR_OBS = "obs"
+    NEXT_OBS = "new_obs"
+    ACTIONS = "actions"
+    REWARDS = "rewards"
+    PREV_ACTIONS = "prev_actions"
+    PREV_REWARDS = "prev_rewards"
+    DONES = "dones"
+    VF_PREDS = "vf_preds"
+
     @PublicAPI
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
