@@ -32,6 +32,7 @@ class _LocalWrapper(object):
         return self._result
 
 
+
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
@@ -466,12 +467,41 @@ class RayTrialExecutor(TrialExecutor):
         """Saves the trial's state to a checkpoint."""
         trial._checkpoint.storage = storage
         trial._checkpoint.last_result = trial.last_result
+
         if storage == Checkpoint.MEMORY:
             trial._checkpoint.value = trial.runner.save_to_object.remote()
         else:
-            with warn_if_slow("save_to_disk"):
-                trial._checkpoint.value = ray.get(trial.runner.save.remote())
+            # Keeps only highest performing checkpoints
+            if trial.keep_checkpoints_num and trial.results_since_checkpoint_cnt > 0:
+                current_attr_mean = trial.results_since_checkpoint_sum / trial.results_since_checkpoint_cnt
+                if trial.compare_checkpoints(current_attr_mean):
+                    trial.best_checkpoint_attr_value = current_attr_mean
+                    self._checkpoint_and_erase(trial)
+                trial.results_since_checkpoint_sum, trial.results_since_checkpoint_cnt = 0, 0
+            else:
+                with warn_if_slow("save_to_disk"):
+                    trial._checkpoint.value = ray.get(trial.runner.save.remote())
+
         return trial._checkpoint.value
+
+    def _checkpoint_and_erase(self, trial):
+        """Checkpoints the model and erases old checkpoints
+            if needed.
+
+        Parameters
+        ----------
+            subdir string: either "" or "best"
+            trial : trial to save
+        """
+
+        with warn_if_slow("save_to_disk"):
+            trial._checkpoint.value = ray.get(trial.runner.save.remote())
+
+        if len(trial.history) >= trial.keep_checkpoints_num:
+            ray.get(trial.runner.delete_checkpoint.remote(trial.history[-1]))
+            trial.history.pop()
+
+        trial.history.insert(0, trial._checkpoint.value)
 
     def restore(self, trial, checkpoint=None):
         """Restores training state from a given model checkpoint.
