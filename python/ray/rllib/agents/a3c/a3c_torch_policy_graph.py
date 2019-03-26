@@ -39,7 +39,22 @@ class A3CLoss(nn.Module):
         return overall_err
 
 
-class A3CTorchPolicyGraph(TorchPolicyGraph):
+class A3CPostprocessing(object):
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        completed = sample_batch[SampleBatch.DONES][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1])
+        return compute_advantages(sample_batch, last_r, self.config["gamma"],
+                                  self.config["lambda"])
+
+
+class A3CTorchPolicyGraph(A3CPostprocessing, TorchPolicyGraph):
     """A simple, non-recurrent PyTorch policy example."""
 
     def __init__(self, obs_space, action_space, config):
@@ -69,19 +84,6 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
     @override(TorchPolicyGraph)
     def optimizer(self):
         return torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch[SampleBatch.DONES][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1])
-        return compute_advantages(sample_batch, last_r, self.config["gamma"],
-                                  self.config["lambda"])
 
     def _value(self, obs):
         with self.lock:

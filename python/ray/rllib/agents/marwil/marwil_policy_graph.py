@@ -54,7 +54,28 @@ class ReweightedImitationLoss(object):
             tf.stop_gradient(exp_advs) * logprobs)
 
 
-class MARWILPolicyGraph(TFPolicyGraph):
+class MARWILPostprocessing(object):
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        completed = sample_batch["dones"][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            raise NotImplementedError(
+                "last done mask in a batch should be True. "
+                "For now, we only support reading experience batches produced "
+                "with batch_mode='complete_episodes'.",
+                len(sample_batch[SampleBatch.DONES]),
+                sample_batch[SampleBatch.DONES][-1])
+        batch = compute_advantages(
+            sample_batch, last_r, gamma=self.config["gamma"], use_gae=False)
+        return batch
+
+
+class MARWILPolicyGraph(MARWILPostprocessing, TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         self.config = config
@@ -144,25 +165,6 @@ class MARWILPolicyGraph(TFPolicyGraph):
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            raise NotImplementedError(
-                "last done mask in a batch should be True. "
-                "For now, we only support reading experience batches produced "
-                "with batch_mode='complete_episodes'.",
-                len(sample_batch[SampleBatch.DONES]),
-                sample_batch[SampleBatch.DONES][-1])
-        batch = compute_advantages(
-            sample_batch, last_r, gamma=self.config["gamma"], use_gae=False)
-        return batch
 
     @override(PolicyGraph)
     def get_initial_state(self):

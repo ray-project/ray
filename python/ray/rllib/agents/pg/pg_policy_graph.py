@@ -21,7 +21,18 @@ class PGLoss(object):
         self.loss = -tf.reduce_mean(action_dist.logp(actions) * advantages)
 
 
-class PGPolicyGraph(TFPolicyGraph):
+class PGPostprocessing(object):
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        # This adds the "advantages" column to the sample batch
+        return compute_advantages(
+            sample_batch, 0.0, self.config["gamma"], use_gae=False)
+
+
+class PGPolicyGraph(PGPostprocessing, TFPolicyGraph):
     """Simple policy gradient example of defining a policy graph."""
 
     def __init__(self, obs_space, action_space, config):
@@ -80,15 +91,6 @@ class PGPolicyGraph(TFPolicyGraph):
             seq_lens=self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
         sess.run(tf.global_variables_initializer())
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        # This adds the "advantages" column to the sample batch
-        return compute_advantages(
-            sample_batch, 0.0, self.config["gamma"], use_gae=False)
 
     @override(PolicyGraph)
     def get_initial_state(self):

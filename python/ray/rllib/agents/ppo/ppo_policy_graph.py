@@ -104,7 +104,33 @@ class PPOLoss(object):
         self.loss = loss
 
 
-class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
+class PPOPostprocessing(object):
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        completed = sample_batch["dones"][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            next_state = []
+            for i in range(len(self.model.state_in)):
+                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                                 sample_batch[SampleBatch.ACTIONS][-1],
+                                 sample_batch[SampleBatch.REWARDS][-1],
+                                 *next_state)
+        batch = compute_advantages(
+            sample_batch,
+            last_r,
+            self.config["gamma"],
+            self.config["lambda"],
+            use_gae=self.config["use_gae"])
+        return batch
+
+
+class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -285,30 +311,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.action_space,
             self.config,
             existing_inputs=existing_inputs)
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(len(self.model.state_in)):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                                 sample_batch[SampleBatch.ACTIONS][-1],
-                                 sample_batch[SampleBatch.REWARDS][-1],
-                                 *next_state)
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            self.config["gamma"],
-            self.config["lambda"],
-            use_gae=self.config["use_gae"])
-        return batch
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):

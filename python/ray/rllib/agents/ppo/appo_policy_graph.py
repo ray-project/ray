@@ -156,7 +156,36 @@ class VTraceSurrogateLoss(object):
                            self.entropy * entropy_coeff)
 
 
-class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
+class APPOPostprocessing(object):
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        if not self.config["vtrace"]:
+            completed = sample_batch["dones"][-1]
+            if completed:
+                last_r = 0.0
+            else:
+                next_state = []
+                for i in range(len(self.model.state_in)):
+                    next_state.append(
+                        [sample_batch["state_out_{}".format(i)][-1]])
+                last_r = self.value(sample_batch["new_obs"][-1], *next_state)
+            batch = compute_advantages(
+                sample_batch,
+                last_r,
+                self.config["gamma"],
+                self.config["lambda"],
+                use_gae=self.config["use_gae"])
+        else:
+            batch = sample_batch
+        del batch.data["new_obs"]  # not used, so save some bandwidth
+        return batch
+
+
+class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
+                          TFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -450,31 +479,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             feed_dict[k] = v
         vf = self.sess.run(self.value_function, feed_dict)
         return vf[0]
-
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        if not self.config["vtrace"]:
-            completed = sample_batch["dones"][-1]
-            if completed:
-                last_r = 0.0
-            else:
-                next_state = []
-                for i in range(len(self.model.state_in)):
-                    next_state.append(
-                        [sample_batch["state_out_{}".format(i)][-1]])
-                last_r = self.value(sample_batch["new_obs"][-1], *next_state)
-            batch = compute_advantages(
-                sample_batch,
-                last_r,
-                self.config["gamma"],
-                self.config["lambda"],
-                use_gae=self.config["use_gae"])
-        else:
-            batch = sample_batch
-        del batch.data["new_obs"]  # not used, so save some bandwidth
-        return batch
 
     def get_initial_state(self):
         return self.model.state_init

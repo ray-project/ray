@@ -23,6 +23,113 @@ Q_TARGET_SCOPE = "target_q_func"
 PRIO_WEIGHTS = "weights"
 
 
+class QLoss(object):
+    def __init__(self,
+                 q_t_selected,
+                 q_logits_t_selected,
+                 q_tp1_best,
+                 q_dist_tp1_best,
+                 importance_weights,
+                 rewards,
+                 done_mask,
+                 gamma=0.99,
+                 n_step=1,
+                 num_atoms=1,
+                 v_min=-10.0,
+                 v_max=10.0):
+
+        if num_atoms > 1:
+            # Distributional Q-learning which corresponds to an entropy loss
+
+            z = tf.range(num_atoms, dtype=tf.float32)
+            z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
+
+            # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
+            r_tau = tf.expand_dims(
+                rewards, -1) + gamma**n_step * tf.expand_dims(
+                    1.0 - done_mask, -1) * tf.expand_dims(z, 0)
+            r_tau = tf.clip_by_value(r_tau, v_min, v_max)
+            b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
+            lb = tf.floor(b)
+            ub = tf.ceil(b)
+            # indispensable judgement which is missed in most implementations
+            # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
+            # be discarded because (ub-b) == (b-lb) == 0
+            floor_equal_ceil = tf.to_float(tf.less(ub - lb, 0.5))
+
+            l_project = tf.one_hot(
+                tf.cast(lb, dtype=tf.int32),
+                num_atoms)  # (batch_size, num_atoms, num_atoms)
+            u_project = tf.one_hot(
+                tf.cast(ub, dtype=tf.int32),
+                num_atoms)  # (batch_size, num_atoms, num_atoms)
+            ml_delta = q_dist_tp1_best * (ub - b + floor_equal_ceil)
+            mu_delta = q_dist_tp1_best * (b - lb)
+            ml_delta = tf.reduce_sum(
+                l_project * tf.expand_dims(ml_delta, -1), axis=1)
+            mu_delta = tf.reduce_sum(
+                u_project * tf.expand_dims(mu_delta, -1), axis=1)
+            m = ml_delta + mu_delta
+
+            # Rainbow paper claims that using this cross entropy loss for
+            # priority is robust and insensitive to `prioritized_replay_alpha`
+            self.td_error = tf.nn.softmax_cross_entropy_with_logits(
+                labels=m, logits=q_logits_t_selected)
+            self.loss = tf.reduce_mean(self.td_error * importance_weights)
+            self.stats = {
+                # TODO: better Q stats for dist dqn
+                "mean_td_error": tf.reduce_mean(self.td_error),
+            }
+        else:
+            q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
+
+            # compute RHS of bellman equation
+            q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
+
+            # compute the error (potentially clipped)
+            self.td_error = (
+                q_t_selected - tf.stop_gradient(q_t_selected_target))
+            self.loss = tf.reduce_mean(
+                importance_weights * _huber_loss(self.td_error))
+            self.stats = {
+                "mean_q": tf.reduce_mean(q_t_selected),
+                "min_q": tf.reduce_min(q_t_selected),
+                "max_q": tf.reduce_max(q_t_selected),
+                "mean_td_error": tf.reduce_mean(self.td_error),
+            }
+
+
+class DQNPostprocessing(object):
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        if self.config["parameter_noise"]:
+            # adjust the sigma of parameter space noise
+            states = [list(x) for x in sample_batch.columns(["obs"])][0]
+
+            noisy_action_distribution = self.sess.run(
+                self.action_probs, feed_dict={self.cur_observations: states})
+            self.sess.run(self.remove_noise_op)
+            clean_action_distribution = self.sess.run(
+                self.action_probs, feed_dict={self.cur_observations: states})
+            distance_in_action_space = np.mean(
+                entropy(clean_action_distribution.T,
+                        noisy_action_distribution.T))
+            self.pi_distance = distance_in_action_space
+            if (distance_in_action_space <
+                    -np.log(1 - self.cur_epsilon +
+                            self.cur_epsilon / self.num_actions)):
+                self.parameter_noise_sigma_val *= 1.01
+            else:
+                self.parameter_noise_sigma_val /= 1.01
+            self.parameter_noise_sigma.load(
+                self.parameter_noise_sigma_val, session=self.sess)
+
+        return _postprocess_dqn(self, sample_batch)
+
+
 class QNetwork(object):
     def __init__(self,
                  model,
@@ -219,83 +326,7 @@ class QValuePolicy(object):
         self.action_prob = None
 
 
-class QLoss(object):
-    def __init__(self,
-                 q_t_selected,
-                 q_logits_t_selected,
-                 q_tp1_best,
-                 q_dist_tp1_best,
-                 importance_weights,
-                 rewards,
-                 done_mask,
-                 gamma=0.99,
-                 n_step=1,
-                 num_atoms=1,
-                 v_min=-10.0,
-                 v_max=10.0):
-
-        if num_atoms > 1:
-            # Distributional Q-learning which corresponds to an entropy loss
-
-            z = tf.range(num_atoms, dtype=tf.float32)
-            z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
-
-            # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
-            r_tau = tf.expand_dims(
-                rewards, -1) + gamma**n_step * tf.expand_dims(
-                    1.0 - done_mask, -1) * tf.expand_dims(z, 0)
-            r_tau = tf.clip_by_value(r_tau, v_min, v_max)
-            b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
-            lb = tf.floor(b)
-            ub = tf.ceil(b)
-            # indispensable judgement which is missed in most implementations
-            # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
-            # be discarded because (ub-b) == (b-lb) == 0
-            floor_equal_ceil = tf.to_float(tf.less(ub - lb, 0.5))
-
-            l_project = tf.one_hot(
-                tf.cast(lb, dtype=tf.int32),
-                num_atoms)  # (batch_size, num_atoms, num_atoms)
-            u_project = tf.one_hot(
-                tf.cast(ub, dtype=tf.int32),
-                num_atoms)  # (batch_size, num_atoms, num_atoms)
-            ml_delta = q_dist_tp1_best * (ub - b + floor_equal_ceil)
-            mu_delta = q_dist_tp1_best * (b - lb)
-            ml_delta = tf.reduce_sum(
-                l_project * tf.expand_dims(ml_delta, -1), axis=1)
-            mu_delta = tf.reduce_sum(
-                u_project * tf.expand_dims(mu_delta, -1), axis=1)
-            m = ml_delta + mu_delta
-
-            # Rainbow paper claims that using this cross entropy loss for
-            # priority is robust and insensitive to `prioritized_replay_alpha`
-            self.td_error = tf.nn.softmax_cross_entropy_with_logits(
-                labels=m, logits=q_logits_t_selected)
-            self.loss = tf.reduce_mean(self.td_error * importance_weights)
-            self.stats = {
-                # TODO: better Q stats for dist dqn
-                "mean_td_error": tf.reduce_mean(self.td_error),
-            }
-        else:
-            q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
-
-            # compute RHS of bellman equation
-            q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
-
-            # compute the error (potentially clipped)
-            self.td_error = (
-                q_t_selected - tf.stop_gradient(q_t_selected_target))
-            self.loss = tf.reduce_mean(
-                importance_weights * _huber_loss(self.td_error))
-            self.stats = {
-                "mean_q": tf.reduce_mean(q_t_selected),
-                "min_q": tf.reduce_min(q_t_selected),
-                "max_q": tf.reduce_max(q_t_selected),
-                "mean_td_error": tf.reduce_mean(self.td_error),
-            }
-
-
-class DQNPolicyGraph(TFPolicyGraph):
+class DQNPolicyGraph(DQNPostprocessing, TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Discrete):
@@ -460,35 +491,6 @@ class DQNPolicyGraph(TFPolicyGraph):
             "td_error": self.loss.td_error,
             "stats": self.loss.stats,
         }
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        if self.config["parameter_noise"]:
-            # adjust the sigma of parameter space noise
-            states = [list(x) for x in sample_batch.columns(["obs"])][0]
-
-            noisy_action_distribution = self.sess.run(
-                self.action_probs, feed_dict={self.cur_observations: states})
-            self.sess.run(self.remove_noise_op)
-            clean_action_distribution = self.sess.run(
-                self.action_probs, feed_dict={self.cur_observations: states})
-            distance_in_action_space = np.mean(
-                entropy(clean_action_distribution.T,
-                        noisy_action_distribution.T))
-            self.pi_distance = distance_in_action_space
-            if (distance_in_action_space <
-                    -np.log(1 - self.cur_epsilon +
-                            self.cur_epsilon / self.num_actions)):
-                self.parameter_noise_sigma_val *= 1.01
-            else:
-                self.parameter_noise_sigma_val /= 1.01
-            self.parameter_noise_sigma.load(
-                self.parameter_noise_sigma_val, session=self.sess)
-
-        return _postprocess_dqn(self, sample_batch)
 
     @override(PolicyGraph)
     def get_state(self):

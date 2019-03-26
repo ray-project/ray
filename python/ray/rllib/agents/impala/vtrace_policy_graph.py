@@ -102,7 +102,19 @@ class VTraceLoss(object):
                            self.entropy * entropy_coeff)
 
 
-class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
+class VTracePostprocessing(object):
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        # not used, so save some bandwidth
+        del sample_batch.data[SampleBatch.NEXT_OBS]
+        return sample_batch
+
+
+class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
+                        TFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -346,15 +358,6 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        # not used, so save some bandwidth
-        del sample_batch.data[SampleBatch.NEXT_OBS]
-        return sample_batch
 
     @override(PolicyGraph)
     def get_initial_state(self):

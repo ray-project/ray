@@ -29,7 +29,17 @@ class PGLoss(nn.Module):
         return pi_err
 
 
-class PGTorchPolicyGraph(TorchPolicyGraph):
+class PGPostprocessing(object):
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        return compute_advantages(
+            sample_batch, 0.0, self.config["gamma"], use_gae=False)
+
+
+class PGTorchPolicyGraph(PGPostprocessing, TorchPolicyGraph):
     def __init__(self, obs_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
@@ -57,14 +67,6 @@ class PGTorchPolicyGraph(TorchPolicyGraph):
     @override(TorchPolicyGraph)
     def optimizer(self):
         return torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        return compute_advantages(
-            sample_batch, 0.0, self.config["gamma"], use_gae=False)
 
     def _value(self, obs):
         with self.lock:
