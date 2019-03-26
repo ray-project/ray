@@ -9,6 +9,7 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 import ray
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog, Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -292,6 +293,9 @@ class QLoss(object):
 
 
 class DQNPolicyGraph(TFPolicyGraph):
+    # Importance sampling weights for prioritized replay
+    WEIGHTS = "weights"
+
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Discrete):
@@ -395,12 +399,12 @@ class DQNPolicyGraph(TFPolicyGraph):
         # initialize TFPolicyGraph
         self.sess = tf.get_default_session()
         self.loss_inputs = [
-            ("obs", self.obs_t),
-            ("actions", self.act_t),
-            ("rewards", self.rew_t),
-            ("new_obs", self.obs_tp1),
-            ("dones", self.done_mask),
-            ("weights", self.importance_weights),
+            (SampleBatch.CUR_OBS, self.obs_t),
+            (SampleBatch.ACTIONS, self.act_t),
+            (SampleBatch.REWARDS, self.rew_t),
+            (SampleBatch.NEXT_OBS, self.obs_tp1),
+            (SampleBatch.DONES, self.done_mask),
+            (DQNPolicyGraph.WEIGHTS, self.importance_weights),
         ]
         TFPolicyGraph.__init__(
             self,
@@ -613,21 +617,23 @@ def _postprocess_dqn(policy_graph, batch):
     # N-step Q adjustments
     if policy_graph.config["n_step"] > 1:
         _adjust_nstep(policy_graph.config["n_step"],
-                      policy_graph.config["gamma"], batch["obs"],
-                      batch["actions"], batch["rewards"], batch["new_obs"],
-                      batch["dones"])
+                      policy_graph.config["gamma"], batch[SampleBatch.CUR_OBS],
+                      batch[SampleBatch.ACTIONS], batch[SampleBatch.REWARDS],
+                      batch[SampleBatch.NEXT_OBS], batch[SampleBatch.DONES])
 
-    if "weights" not in batch:
-        batch["weights"] = np.ones_like(batch["rewards"])
+    if DQNPolicyGraph.WEIGHTS not in batch:
+        batch[DQNPolicyGraph.WEIGHTS] = np.ones_like(
+            batch[SampleBatch.REWARDS])
 
     # Prioritize on the worker side
     if batch.count > 0 and policy_graph.config["worker_side_prioritization"]:
         td_errors = policy_graph.compute_td_error(
-            batch["obs"], batch["actions"], batch["rewards"], batch["new_obs"],
-            batch["dones"], batch["weights"])
+            batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+            batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
+            batch[SampleBatch.DONES], batch[DQNPolicyGraph.WEIGHTS])
         new_priorities = (
             np.abs(td_errors) + policy_graph.config["prioritized_replay_eps"])
-        batch.data["weights"] = new_priorities
+        batch.data[DQNPolicyGraph.WEIGHTS] = new_priorities
 
     return batch
 
