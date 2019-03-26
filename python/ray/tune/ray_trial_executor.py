@@ -32,7 +32,6 @@ class _LocalWrapper(object):
         return self._result
 
 
-
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
@@ -467,40 +466,12 @@ class RayTrialExecutor(TrialExecutor):
         """Saves the trial's state to a checkpoint."""
         trial._checkpoint.storage = storage
         trial._checkpoint.last_result = trial.last_result
-
         if storage == Checkpoint.MEMORY:
             trial._checkpoint.value = trial.runner.save_to_object.remote()
         else:
-            # If enabled, saves best checkpoints into a best folder
-            if trial.keep_best_checkpoints_num and trial.results_since_checkpoint_cnt > 0:
-                current_attr_mean = trial.results_since_checkpoint_sum / trial.results_since_checkpoint_cnt
-                if trial.compare_checkpoints(current_attr_mean):
-                    trial.best_checkpoint_attr_value = current_attr_mean
-                    self._checkpoint_and_erase("best", trial)
-                trial.results_since_checkpoint_sum, trial.results_since_checkpoint_cnt = 0, 0
-
-            self._checkpoint_and_erase("", trial)
-
+            with warn_if_slow("save_to_disk"):
+                trial._checkpoint.value = ray.get(trial.runner.save.remote())
         return trial._checkpoint.value
-
-    def _checkpoint_and_erase(self, subdir, trial):
-        """Checkpoints the model and erases old checkpoints
-            if needed.
-
-        Parameters
-        ----------
-            subdir string: either "" or "best"
-            trial : trial to save
-        """
-
-        with warn_if_slow("save_to_disk"):
-            trial._checkpoint.value, folder_path = ray.get(trial.runner.save_checkpoint_relative.remote(subdir))
-
-        if trial.prefix[subdir]["limit"]:
-            if len(trial.prefix[subdir]["history"]) == trial.prefix[subdir]["limit"]:
-                ray.get(trial.runner.delete_checkpoint.remote(trial.prefix[subdir]["history"][-1]))
-                trial.prefix[subdir]["history"].pop()
-            trial.prefix[subdir]["history"].insert(0, folder_path)
 
     def restore(self, trial, checkpoint=None):
         """Restores training state from a given model checkpoint.
