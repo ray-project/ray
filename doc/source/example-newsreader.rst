@@ -46,7 +46,7 @@ Open a python interpreter and enter the following:
 
 Which will output the following:
 
-.. code-block
+.. code-block:: bash
 
   title  score
   595312                         Steve Jobs has passed away.   4339
@@ -63,21 +63,23 @@ Which will output the following:
 We can get the 0.7 quantile of scores by evaluating
 
 .. code-block:: python
+
   df['score'].quantile(0.7)
 
 which outputs 2.0, so having 2 comments is a good cutoff. We can now train the
 model with
 
 .. code-block:: python
+
   datapoints = training.create_datapoints(records, cutoff=2.0)
   model = training.learn_model(datapoints)
   model.save("hackernews.model")
 
-Running the backend
+
+Running the application
 -------------------
 
-
-To use this example you need to
+To run this example you need to
 
 * In the ``ray/examples/newsreader`` directory, start the server with
   ``python server.py``.
