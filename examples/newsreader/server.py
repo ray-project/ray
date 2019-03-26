@@ -31,13 +31,18 @@ class NewsServer(object):
         items = []
         c = self.conn.cursor()
         for item in feed.items:
+            pred = self.vw.predict("| " + item.title)
+            if pred > 0.0:
+                color = "#FFD700"
+            else:
+                color = "#FFFFFF"
             items.append({"title": item.title,
                           "link": item.link,
                           "description": item.description,
                           "description_text": item.description,
                           "pubDate": str(item.pub_date),
-                          "color": "#FA8072"})
-            pred = self.vw.predict("| " + item.title)
+                          "color": color})
+
             print("prediction = ", pred)
             c.execute("""INSERT INTO news (title, link, description,
                          published, feed, liked) values
