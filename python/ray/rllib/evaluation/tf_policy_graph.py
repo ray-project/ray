@@ -11,6 +11,7 @@ import numpy as np
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
@@ -432,8 +433,9 @@ class TFPolicyGraph(PolicyGraph):
         feed_dict = {}
         if self._batch_divisibility_req > 1:
             meets_divisibility_reqs = (
-                len(batch["obs"]) % self._batch_divisibility_req == 0
-                and max(batch["agent_index"]) == 0)  # not multiagent
+                len(batch[SampleBatch.CUR_OBS]) %
+                self._batch_divisibility_req == 0
+                and max(batch[SampleBatch.AGENT_INDEX]) == 0)  # not multiagent
         else:
             meets_divisibility_reqs = True
 
@@ -456,8 +458,8 @@ class TFPolicyGraph(PolicyGraph):
             "state_in_{}".format(i) for i in range(len(self._state_inputs))
         ]
         feature_sequences, initial_states, seq_lens = chop_into_sequences(
-            batch["eps_id"],
-            batch["agent_index"], [batch[k] for k in feature_keys],
+            batch[SampleBatch.EPS_ID],
+            batch[SampleBatch.AGENT_INDEX], [batch[k] for k in feature_keys],
             [batch[k] for k in state_keys],
             max_seq_len,
             dynamic_max=dynamic_max)
