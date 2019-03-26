@@ -1,5 +1,5 @@
-#ifndef RAY_STATS_TAG_DEFS_H_
-#define RAY_STATS_TAG_DEFS_H_
+#ifndef RAY_STATS_TAG_DEFS_H
+#define RAY_STATS_TAG_DEFS_H
 
 /// The definitions of tag keys that you can use every where.
 /// You can follow these examples to define and register your tag keys.
@@ -24,4 +24,4 @@ static std::vector<std::pair<opencensus::tags::TagKey, std::string>> GlobalTags 
     {VersionKey, "0.6.5"}
 };
 
-#endif // RAY_STATS_TAG_DEFS_H_
+#endif // RAY_STATS_TAG_DEFS_H

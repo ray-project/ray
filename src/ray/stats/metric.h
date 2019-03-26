@@ -1,5 +1,5 @@
-#ifndef RAY_STATS_METRIC_H_
-#define RAY_STATS_METRIC_H_
+#ifndef RAY_STATS_METRIC_H
+#define RAY_STATS_METRIC_H
 
 #include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
 #include "prometheus/exposer.h"
@@ -189,4 +189,4 @@ class Sum : public Metric {
 
 }  // namespace ray
 
-#endif // RAY_STATS_METRIC_H_
+#endif // RAY_STATS_METRIC_H

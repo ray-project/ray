@@ -1,5 +1,5 @@
-#ifndef RAY_STATS_STATS_H_
-#define RAY_STATS_STATS_H_
+#ifndef RAY_STATS_STATS_H
+#define RAY_STATS_STATS_H
 
 #include <string>
 
@@ -39,4 +39,4 @@ namespace stats {
 
 } // namespace ray
 
-#endif // RAY_STATS_STATS_H_
+#endif // RAY_STATS_STATS_H

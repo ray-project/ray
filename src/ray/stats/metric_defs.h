@@ -1,9 +1,9 @@
-#ifndef RAY_STATS_METRIC_DEFS_H_
-#define RAY_STATS_METRIC_DEFS_H_
+#ifndef RAY_STATS_METRIC_DEFS_H
+#define RAY_STATS_METRIC_DEFS_H
 
 /// The definitions of metrics that you can use every where.
 ///
-/// There are 4 types fo metric:
+/// There are 4 types of metric:
 ///   Histogram: Histogram distribution of metric points.
 ///   Gauge: Keeps the last recorded value, drops everything before.
 ///   Count: The count of the number of metric points.
@@ -29,4 +29,4 @@ static Histogram RedisLatency("redis_latency",
                               {5, 10, 20, 30, 50},
                               {NodeAddressKey, CustomKey});
 
-#endif // RAY_STATS_METRIC_DEFS_H_
+#endif // RAY_STATS_METRIC_DEFS_H

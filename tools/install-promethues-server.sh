@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+chmod +x
+
 set -x
 set -e
 
