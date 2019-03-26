@@ -274,6 +274,34 @@ def test_forget(ray_start_regular):
     assert len(result_list) == count
 
 
+def test_signal_on_node_failure(two_node_cluster):
+    """Test actor checkpointing on a remote node."""
+
+    class ActorSignal(object):
+        def __init__(self):
+            pass
+
+        def local_plasma(self):
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+    # Place the actor on the remote node.
+    cluster, remote_node = two_node_cluster
+    actor_cls = ray.remote(max_reconstructions=0)(ActorSignal)
+    actor = actor_cls.remote()
+    # Try until we put an actor on a different node.
+    while (ray.get(actor.local_plasma.remote()) !=
+           remote_node.plasma_store_socket_name):
+        actor = actor_cls.remote()
+
+    # Kill actor process.
+    cluster.remove_node(remote_node)
+
+    # Wait on signal from the actor on the failed node.
+    result_list = signal.receive([actor], timeout=10)
+    assert len(result_list) == 1
+    assert type(result_list[0][1]) == signal.ActorDiedSignal
+
+
 def test_send_signal_from_two_tasks_to_driver(ray_start_regular):
     # Define a remote function that sends a user-defined signal.
     @ray.remote

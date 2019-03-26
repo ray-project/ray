@@ -409,7 +409,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
         return tf.train.AdamOptimizer(learning_rate=self.config["lr"])
 
     @override(TFPolicyGraph)
-    def gradients(self, optimizer):
+    def gradients(self, optimizer, loss):
         if self.config["grad_norm_clipping"] is not None:
             actor_grads_and_vars = _minimize_and_clip(
                 optimizer,

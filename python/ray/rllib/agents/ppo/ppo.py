@@ -124,8 +124,7 @@ class PPOAgent(Agent):
 
             # multi-agent
             self.local_evaluator.foreach_trainable_policy(update)
-        res = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
+        res = self.collect_metrics()
         res.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
             info=res.get("info", {}))

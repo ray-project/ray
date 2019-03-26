@@ -139,8 +139,11 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
             pass
 
     actors = [
-        Actor._remote(args=[], kwargs={}, resources={str(i % num_nodes): 1})
-        for i in range(100)
+        Actor._remote(
+            args=[],
+            kwargs={},
+            num_cpus=0.01,
+            resources={str(i % num_nodes): 1}) for i in range(100)
     ]
 
     # Wait for the actors to start up.

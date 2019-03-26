@@ -63,6 +63,10 @@ def collect_episodes(local_evaluator,
     collected, _ = ray.wait(
         pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
     num_metric_batches_dropped = len(pending) - len(collected)
+    if pending and len(collected) == 0:
+        raise ValueError(
+            "Timed out waiting for metrics from workers. You can configure "
+            "this timeout with `collect_metrics_timeout`.")
 
     metric_lists = ray.get(collected)
     metric_lists.append(local_evaluator.get_metrics())

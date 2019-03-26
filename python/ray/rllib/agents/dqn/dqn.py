@@ -10,6 +10,7 @@ from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
@@ -41,7 +42,8 @@ DEFAULT_CONFIG = with_common_config({
     "dueling": True,
     # Whether to use double dqn
     "double_q": True,
-    # Hidden layer sizes of the state and action value networks
+    # Postprocess model outputs with these hidden layers to compute the
+    # state and action values. See also the model config in catalog.py.
     "hiddens": [256],
     # N-step Q learning
     "n_step": 1,
@@ -69,7 +71,7 @@ DEFAULT_CONFIG = with_common_config({
     "exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
-    # Use softmax for sampling actions.
+    # Use softmax for sampling actions. Required for off policy estimation.
     "soft_q": False,
     # Softmax temperature. Q values are divided by this value prior to softmax.
     # Softmax approaches argmax as the temperature drops to zero.
@@ -194,7 +196,7 @@ class DQNAgent(Agent):
                 policies = info["policy"]
                 episode = info["episode"]
                 episode.custom_metrics["policy_distance"] = policies[
-                    "default"].pi_distance
+                    DEFAULT_POLICY_ID].pi_distance
                 if end_callback:
                     end_callback(info)
 
@@ -260,13 +262,11 @@ class DQNAgent(Agent):
 
         if self.config["per_worker_exploration"]:
             # Only collect metrics from the third of workers with lowest eps
-            result = self.optimizer.collect_metrics(
-                timeout_seconds=self.config["collect_metrics_timeout"],
+            result = self.collect_metrics(
                 selected_evaluators=self.remote_evaluators[
                     -len(self.remote_evaluators) // 3:])
         else:
-            result = self.optimizer.collect_metrics(
-                timeout_seconds=self.config["collect_metrics_timeout"])
+            result = self.collect_metrics()
 
         result.update(
             timesteps_this_iter=self.global_timestep - start_timestep,
