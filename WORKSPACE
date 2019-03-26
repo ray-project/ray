@@ -68,16 +68,16 @@ python_configure(name = "local_config_python")
 
 http_archive(
     name = "io_opencensus_cpp",
-    strip_prefix = "opencensus-cpp-master",
-    urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/master.zip"],
+    strip_prefix = "opencensus-cpp-0.3.0",
+    urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/v0.3.0.zip"],
 )
 
 # OpenCensus depends on Abseil so we have to explicitly to pull it in.
 # This is how diamond dependencies are prevented.
-http_archive(
+git_repository(
     name = "com_google_absl",
-    strip_prefix = "abseil-cpp-master",
-    urls = ["https://github.com/abseil/abseil-cpp/archive/master.zip"]
+    commit = "e75672f6afc7e8f23ee7b532e86d1b3b9be3984e",
+    remote = "https://github.com/abseil/abseil-cpp.git",
 )
 
 # OpenCensus depends on jupp0r/prometheus-cpp
