@@ -22,6 +22,8 @@ class PGLoss(object):
 
 
 class PGPostprocessing(object):
+    """Function run to compute advantages on a trajectory fragment."""
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
