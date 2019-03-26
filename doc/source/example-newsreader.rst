@@ -58,13 +58,6 @@ model with
 Running the backend
 -------------------
 
-To run this example, you will need to install NPM and a few python dependencies.
-
-.. code-block:: bash
-
-  pip install atoma
-  pip install flask
-
 
 To use this example you need to
 
