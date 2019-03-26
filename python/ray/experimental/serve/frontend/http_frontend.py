@@ -69,4 +69,116 @@ class HTTPFrontendActor:
                 "result": result
             })
 
+        @default_app.route("/{actor}/replicas", methods=["POST"])
+        async def set_replication_factor(request):
+            data = await request.json()
+            actor_name = request.path_params["actor"]
+            num_replicas = data.pop("num_replicas")
+
+            self.router.set_replication_factor.remote(actor_name, num_replicas)
+            result = num_replicas
+
+            return JSONResponse({
+                "success": True,
+                "actor": actor_name,
+                "result": result
+            })
+
+        @default_app.route("/{actor}/replicas", methods=["GET"])
+        async def get_replication_factor(request):
+            actor_name = request.path_params["actor"]
+
+            result =  self.router.get_replication_factor.remote(actor_name)
+
+            return JSONResponse({
+                "success": True,
+                "actor": actor_name,
+                "result": result
+            })
+
+        @default_app.route("/{actor}/batch", methods=["POST"])
+        async def set_max_batch_size(request):
+            data = await request.json()
+            actor_name = request.path_params["actor"]
+            max_batch_size = data.pop("max_batch_size")
+
+            self.router.set_max_batch_size.remote(actor_name, max_batch_size)
+            result = max_batch_size
+
+            return JSONResponse({
+                "success": True,
+                "actor": actor_name,
+                "result": result
+            })
+
+        @default_app.route("/{actor}/batch", methods=["GET"])
+        async def get_max_batch_size(request):
+            actor_name = request.path_params["actor"]
+
+            result = self.router.get_max_batch_size.remote(actor_name)
+
+            return JSONResponse({
+                "success": True,
+                "actor": actor_name,
+                "result": result
+            })
+
+        @default_app.route("/{actor}/resource", methods=["POST"])
+        async def use_compute_resource(request):
+            actor_name = request.path_params["actor"]
+            result = self.router.set_actor_compute_resource.remote(actor_name, await request.json())
+
+            return JSONResponse({
+                "success": True,
+                "actor": actor_name,
+                "result": result
+            })
+
+        @default_app.route("/{actor}/resource", methods=["GET"])
+        async def get_compute_resource(request):
+            actor_name = request.path_params["actor"]
+
+            result = self.router.get_actor_compute_resource.remote(actor_name)
+
+            return JSONResponse({
+                "success": True,
+                "actor": actor_name,
+                "result": result
+            })
+
+        @default_app.route("/{actor}/resource/cpu", methods=["DELETE"])
+        async def reset_num_cpus(request):
+            actor_name = request.path_params["actor"]
+
+            result = self.router.reset_actor_compute_resource.remote(actor_name, 'num_cpus')
+
+            return JSONResponse({
+                "success": True,
+                "actor": actor_name,
+                "result": result
+            })
+
+        @default_app.route("/{actor}/resource/gpu", methods=["DELETE"])
+        async def reset_num_gpus(request):
+            actor_name = request.path_params["actor"]
+
+            result = self.router.reset_actor_compute_resource.remote(actor_name, 'num_gpus')
+
+            return JSONResponse({
+                "success": True,
+                "actor": actor_name,
+                "result": result
+            })
+
+        @default_app.route("/{actor}/resource/cpu", methods=["DELETE"])
+        async def reset_resources(request):
+            actor_name = request.path_params["actor"]
+
+            result = self.router.reset_actor_compute_resource.remote(actor_name, 'resources')
+
+            return JSONResponse({
+                "success": True,
+                "actor": actor_name,
+                "result": result
+            })
         uvicorn.run(default_app, host=self.ip, port=self.port)

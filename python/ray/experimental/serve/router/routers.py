@@ -15,6 +15,8 @@ ACTOR_NOT_REGISTERED_MSG: Callable = (
                   "'router.register_actor.remote(...)' "
                   "to register it.").format(name))
 
+RESOURCE_NOT_DEFINED_MSG = "A resource was not specified. There must be 'num_cpu', 'num_gpu' or 'resource' arguments " \
+                           "with this action."
 
 # Use @total_ordering so we can sort SingleQuery
 @total_ordering
@@ -60,7 +62,6 @@ class DeadlineAwareRouter:
         self.managed_actors: Dict[str, ray.actor.ActorClass] = {}
         self.actor_init_arguments: Dict[str, Tuple[List, Dict]] = {}
         self.max_batch_size: Dict[str, int] = {}
-
         # Router Metadata
         self.name = router_name
 
@@ -79,21 +80,37 @@ class DeadlineAwareRouter:
             init_args: List = [],
             init_kwargs: dict = {},
             num_replicas: int = 1,
-            max_batch_size: int = -1,  # Unbounded batch size
+            max_batch_size: int = -1 # Unbounded batch size
     ):
         """Register a new managed actor.
         """
         self.managed_actors[actor_name] = actor_class
         self.actor_init_arguments[actor_name] = (init_args, init_kwargs)
         self.max_batch_size[actor_name] = max_batch_size
-
-        ray.experimental.get_actor(self.name).set_replica.remote(
+        ray.experimental.get_actor(self.name).set_replication_factor.remote(
             actor_name, num_replicas)
 
-    def get_actor(self, actor_name):
-        return self.managed_actors[actor_name]
+    def change_all_actors(self, actor_name):
 
-    def set_replica(self, actor_name, new_replica_count):
+        assert actor_name in self.managed_actors, (
+            ACTOR_NOT_REGISTERED_MSG(actor_name))
+
+        current_replicas = len(self.actor_handles[actor_name])
+
+        for _ in range(current_replicas):
+            # Note actor destructor will be called after all remaining
+            # calls finish. Therefore it's safe to call del here.
+            del self.actor_handles[actor_name][-1]
+
+        # Increase the number of replicas
+        for _ in range(current_replicas):
+            args = self.actor_init_arguments[actor_name][0]
+            kwargs = self.actor_init_arguments[actor_name][1]
+            new_actor_handle = self.managed_actors[actor_name].remote(
+                *args, **kwargs)
+            self.actor_handles[actor_name].append(new_actor_handle)
+
+    def set_replication_factor(self, actor_name, new_replica_count):
         """Scale a managed actor according to new_replica_count."""
         assert actor_name in self.managed_actors, (
             ACTOR_NOT_REGISTERED_MSG(actor_name))
@@ -115,6 +132,62 @@ class DeadlineAwareRouter:
                 # Note actor destructor will be called after all remaining
                 # calls finish. Therefore it's safe to call del here.
                 del self.actor_handles[actor_name][-1]
+
+    def get_replication_factor(self, actor_name):
+
+        assert actor_name in self.managed_actors, (
+            ACTOR_NOT_REGISTERED_MSG(actor_name))
+
+        return len(self.actor_handles[actor_name])
+
+    def set_max_batch_size(self, actor_name, new_max_batch_size):
+
+        assert actor_name in self.managed_actors, (
+            ACTOR_NOT_REGISTERED_MSG(actor_name))
+
+        self.max_batch_size[actor_name] = new_max_batch_size
+
+        self.change_all_actors(actor_name)
+
+    def get_max_batch_size(self, actor_name):
+
+        assert actor_name in self.managed_actors, (
+            ACTOR_NOT_REGISTERED_MSG(actor_name))
+
+        return self.max_batch_size[actor_name]
+
+    def get_actor_compute_resource(self, actor_name):
+
+        assert actor_name in self.managed_actors, (
+            ACTOR_NOT_REGISTERED_MSG(actor_name))
+
+        result = {}
+        for key, value in self.actor_init_arguments[actor_name][1].items():
+            if key == 'num_cpus' or key == 'num_gpus' or key == 'resources':
+                result[key] = value
+
+        return result
+
+    def set_actor_compute_resource(self, actor_name, compute_kwargs):
+
+        assert actor_name in self.managed_actors, (
+            ACTOR_NOT_REGISTERED_MSG(actor_name))
+
+        assert 'num_cpus' in compute_kwargs or 'num_gpus' in compute_kwargs or 'resources' in compute_kwargs, (
+            RESOURCE_NOT_DEFINED_MSG)
+
+        for key, value in compute_kwargs.items():
+            if key == 'num_cpus' or key == 'num_gpus' or key == 'resources':
+                self.actor_init_arguments[actor_name][1][key] = value
+
+        self.change_all_actors(actor_name)
+
+    def reset_compute_resource(self, actor_name, compute_resource):
+
+        assert 'num_cpus' == compute_resource or 'num_gpus' == compute_resource or 'resources' == compute_resource, (
+            RESOURCE_NOT_DEFINED_MSG)
+
+        self.actor_init_arguments[actor_name][1].pop(compute_resource)
 
     def call(self, actor_name, data, deadline_s):
         """Enqueue a request to one of the actor managed by this router.
@@ -204,3 +277,4 @@ class DeadlineAwareRouter:
         free.
         """
         self.running_queries[batch_oid] = actor_handle
+
