@@ -64,12 +64,11 @@ public class MultiThreadingTest extends BaseTest {
       int arg = random.nextInt();
       RayActor<Echo> echoActor1 = Ray.createActor(Echo::new);
       try {
-        // Sleep a while so that another actor can be created before task is executed.
-        // To make sure test scenario about different actor tasks executed on different
-        // workers is covered.
+        // Sleep a while to test the case that another actor is created before submitting
+        // tasks to this actor.
         TimeUnit.MILLISECONDS.sleep(10);
       } catch (InterruptedException e) {
-        LOGGER.warn("Thread sleep error.", e);
+        LOGGER.warn("Got exception while sleeping.", e);
       }
       RayObject<Integer> obj = Ray.call(Echo::echo, echoActor1, arg);
       Assert.assertEquals(arg, (int) obj.get());
