@@ -11,6 +11,7 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.dqn.dqn_policy_graph import (
     _huber_loss, _minimize_and_clip, _scope_vars, _postprocess_dqn)
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -24,6 +25,9 @@ Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
 TWIN_Q_SCOPE = "twin_q_func"
 TWIN_Q_TARGET_SCOPE = "twin_target_q_func"
+
+# Importance sampling weights for prioritized replay
+PRIO_WEIGHTS = "weights"
 
 
 class PNetwork(object):
@@ -365,12 +369,12 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         self.sess = tf.get_default_session()
         self.loss_inputs = [
-            ("obs", self.obs_t),
-            ("actions", self.act_t),
-            ("rewards", self.rew_t),
-            ("new_obs", self.obs_tp1),
-            ("dones", self.done_mask),
-            ("weights", self.importance_weights),
+            (SampleBatch.CUR_OBS, self.obs_t),
+            (SampleBatch.ACTIONS, self.act_t),
+            (SampleBatch.REWARDS, self.rew_t),
+            (SampleBatch.NEXT_OBS, self.obs_tp1),
+            (SampleBatch.DONES, self.done_mask),
+            (PRIO_WEIGHTS, self.importance_weights),
         ]
         input_dict = dict(self.loss_inputs)
 
@@ -457,7 +461,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
         if self.config["parameter_noise"]:
             # adjust the sigma of parameter space noise
             states, noisy_actions = [
-                list(x) for x in sample_batch.columns(["obs", "actions"])
+                list(x) for x in sample_batch.columns(
+                    [SampleBatch.CUR_OBS, SampleBatch.ACTIONS])
             ]
             self.sess.run(self.remove_noise_op)
             clean_actions = self.sess.run(
