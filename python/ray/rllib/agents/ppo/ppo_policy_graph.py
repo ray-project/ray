@@ -6,8 +6,10 @@ import logging
 import tensorflow as tf
 
 import ray
-from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
@@ -18,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class PPOLoss(object):
+    BEHAVIOUR_LOGITS = "behaviour_logits"
+
     def __init__(self,
                  action_space,
                  value_targets,
@@ -152,14 +156,14 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.prev_rewards = prev_rewards_ph
 
         self.loss_in = [
-            ("obs", obs_ph),
-            ("value_targets", value_targets_ph),
-            ("advantages", adv_ph),
-            ("actions", act_ph),
-            ("logits", logits_ph),
-            ("vf_preds", vf_preds_ph),
-            ("prev_actions", prev_actions_ph),
-            ("prev_rewards", prev_rewards_ph),
+            (SampleBatch.CUR_OBS, obs_ph),
+            (Postprocessing.VALUE_TARGETS, value_targets_ph),
+            (Postprocessing.ADVANTAGES, adv_ph),
+            (SampleBatch.ACTIONS, act_ph),
+            (PPOLoss.BEHAVIOUR_LOGITS, logits_ph),
+            (SampleBatch.VF_PREDS, vf_preds_ph),
+            (SampleBatch.PREV_ACTIONS, prev_actions_ph),
+            (SampleBatch.PREV_REWARDS, prev_rewards_ph),
         ]
         self.model = ModelCatalog.get_model(
             {
@@ -293,9 +297,10 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             next_state = []
             for i in range(len(self.model.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch["new_obs"][-1],
-                                 sample_batch["actions"][-1],
-                                 sample_batch["rewards"][-1], *next_state)
+            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                                 sample_batch[SampleBatch.ACTIONS][-1],
+                                 sample_batch[SampleBatch.REWARDS][-1],
+                                 *next_state)
         batch = compute_advantages(
             sample_batch,
             last_r,
@@ -326,8 +331,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def extra_compute_action_fetches(self):
         return dict(
             TFPolicyGraph.extra_compute_action_fetches(self), **{
-                "vf_preds": self.value_function,
-                "logits": self.logits
+                SampleBatch.VF_PREDS: self.value_function,
+                PPOLoss.BEHAVIOUR_LOGITS: self.logits
             })
 
     @override(TFPolicyGraph)
