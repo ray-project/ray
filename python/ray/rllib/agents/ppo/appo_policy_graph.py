@@ -159,7 +159,6 @@ class VTraceSurrogateLoss(object):
 
 
 class APPOPostprocessing(object):
-
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,

@@ -55,6 +55,7 @@ class ReweightedImitationLoss(object):
 
 
 class MARWILPostprocessing(object):
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,

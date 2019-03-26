@@ -105,7 +105,6 @@ class PPOLoss(object):
 
 
 class PPOPostprocessing(object):
-
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
