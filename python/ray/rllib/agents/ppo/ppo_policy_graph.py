@@ -105,6 +105,14 @@ class PPOLoss(object):
 
 
 class PPOPostprocessing(object):
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self), **{
+                SampleBatch.VF_PREDS: self.value_function,
+                BEHAVIOUR_LOGITS: self.logits
+            })
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
@@ -329,14 +337,6 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
     @override(PolicyGraph)
     def get_initial_state(self):
         return self.model.state_init
-
-    @override(TFPolicyGraph)
-    def extra_compute_action_fetches(self):
-        return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self), **{
-                SampleBatch.VF_PREDS: self.value_function,
-                BEHAVIOUR_LOGITS: self.logits
-            })
 
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):

@@ -103,6 +103,12 @@ class VTraceLoss(object):
 
 
 class VTracePostprocessing(object):
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self),
+            **{BEHAVIOUR_LOGITS: self.model.outputs})
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
@@ -348,12 +354,6 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
-
-    @override(TFPolicyGraph)
-    def extra_compute_action_fetches(self):
-        return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self),
-            **{BEHAVIOUR_LOGITS: self.model.outputs})
 
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):

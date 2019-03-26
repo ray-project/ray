@@ -42,6 +42,12 @@ class A3CLoss(object):
 
 
 class A3CPostprocessing(object):
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self),
+            **{SampleBatch.VF_PREDS: self.vf})
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
@@ -160,12 +166,6 @@ class A3CPolicyGraph(LearningRateSchedule, A3CPostprocessing, TFPolicyGraph):
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
-
-    @override(TFPolicyGraph)
-    def extra_compute_action_fetches(self):
-        return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self),
-            **{SampleBatch.VF_PREDS: self.vf})
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {

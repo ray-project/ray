@@ -30,6 +30,10 @@ class PGLoss(nn.Module):
 
 
 class PGPostprocessing(object):
+    @override(TorchPolicyGraph)
+    def extra_action_out(self, model_out):
+        return {SampleBatch.VF_PREDS: model_out[2].numpy()}
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
@@ -59,10 +63,6 @@ class PGTorchPolicyGraph(PGPostprocessing, TorchPolicyGraph):
                 SampleBatch.CUR_OBS, SampleBatch.ACTIONS,
                 Postprocessing.ADVANTAGES
             ])
-
-    @override(TorchPolicyGraph)
-    def extra_action_out(self, model_out):
-        return {SampleBatch.VF_PREDS: model_out[2].numpy()}
 
     @override(TorchPolicyGraph)
     def optimizer(self):

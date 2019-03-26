@@ -159,6 +159,13 @@ class VTraceSurrogateLoss(object):
 
 
 class APPOPostprocessing(object):
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        out = {"behaviour_logits": self.model.outputs}
+        if not self.config["vtrace"]:
+            out["vf_preds"] = self.value_function
+        return dict(TFPolicyGraph.extra_compute_action_fetches(self), **out)
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
@@ -463,12 +470,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
-
-    def extra_compute_action_fetches(self):
-        out = {"behaviour_logits": self.model.outputs}
-        if not self.config["vtrace"]:
-            out["vf_preds"] = self.value_function
-        return dict(TFPolicyGraph.extra_compute_action_fetches(self), **out)
 
     def extra_compute_grad_fetches(self):
         return self.stats_fetches

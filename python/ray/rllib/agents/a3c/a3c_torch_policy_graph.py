@@ -40,6 +40,10 @@ class A3CLoss(nn.Module):
 
 
 class A3CPostprocessing(object):
+    @override(TorchPolicyGraph)
+    def extra_action_out(self, model_out):
+        return {SampleBatch.VF_PREDS: model_out[2].numpy()}
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
@@ -76,10 +80,6 @@ class A3CTorchPolicyGraph(A3CPostprocessing, TorchPolicyGraph):
                 SampleBatch.CUR_OBS, SampleBatch.ACTIONS,
                 Postprocessing.ADVANTAGES, Postprocessing.VALUE_TARGETS
             ])
-
-    @override(TorchPolicyGraph)
-    def extra_action_out(self, model_out):
-        return {SampleBatch.VF_PREDS: model_out[2].numpy()}
 
     @override(TorchPolicyGraph)
     def optimizer(self):
