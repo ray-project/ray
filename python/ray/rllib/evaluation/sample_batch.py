@@ -91,7 +91,7 @@ class SampleBatch(object):
     DONES = "dones"
     INFOS = "infos"
 
-    # Uniquely identifies an episodes
+    # Uniquely identifies an episode
     EPS_ID = "eps_id"
 
     # Uniquely identifies an agent within an episode
