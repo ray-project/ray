@@ -4,8 +4,9 @@ from __future__ import print_function
 
 from collections import namedtuple
 import logging
-
 import tensorflow as tf
+
+from ray.rllib.utils.debug import log_once, summarize
 
 # Variable scope in which created variables will be placed under
 TOWER_SCOPE_NAME = "tower"
@@ -133,6 +134,15 @@ class LocalSyncParallelOptimizer(object):
         Returns:
             The number of tuples loaded per device.
         """
+
+        if log_once("load_data"):
+            logger.info(
+                "Training on concatenated sample batches:\n\n{}\n".format(
+                    summarize({
+                        "placeholders": self.loss_inputs,
+                        "inputs": inputs,
+                        "state_inputs": state_inputs
+                    })))
 
         feed_dict = {}
         assert len(self.loss_inputs) == len(inputs + state_inputs), \

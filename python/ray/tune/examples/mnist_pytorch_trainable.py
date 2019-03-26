@@ -179,7 +179,6 @@ if __name__ == "__main__":
         time_attr="training_iteration", reward_attr="neg_mean_loss")
     tune.run(
         TrainMNIST,
-        verbose=0,
         scheduler=sched,
         **{
             "stop": {
