@@ -15,11 +15,15 @@ import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class MultiThreadingTest extends BaseTest {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(MultiThreadingTest.class);
 
   private static final int LOOP_COUNTER = 100;
   private static final int NUM_THREADS = 20;
@@ -63,9 +67,9 @@ public class MultiThreadingTest extends BaseTest {
         // Sleep a while so that another actor can be created before task is executed.
         // To make sure test scenario about different actor tasks executed on different
         // workers is covered.
-        Thread.sleep(10);
-      } catch (Exception e) {
-        e.printStackTrace();
+        TimeUnit.MILLISECONDS.sleep(10);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Thread sleep error.", e);
       }
       RayObject<Integer> obj = Ray.call(Echo::echo, echoActor1, arg);
       Assert.assertEquals(arg, (int) obj.get());
