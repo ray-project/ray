@@ -43,7 +43,6 @@ class NewsServer(object):
                           "pubDate": str(item.pub_date),
                           "color": color})
 
-            print("prediction = ", pred)
             c.execute("""INSERT INTO news (title, link, description,
                          published, feed, liked) values
                          (?, ?, ?, ?, ?, ?)""", (
