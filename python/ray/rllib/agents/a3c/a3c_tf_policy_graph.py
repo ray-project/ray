@@ -42,6 +42,8 @@ class A3CLoss(object):
 
 
 class A3CPostprocessing(object):
+    """Adds the VF preds and advantages fields to the trajectory."""
+
     @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
         return dict(

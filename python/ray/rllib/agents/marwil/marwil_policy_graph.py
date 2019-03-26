@@ -55,6 +55,8 @@ class ReweightedImitationLoss(object):
 
 
 class MARWILPostprocessing(object):
+    """Adds the advantages field to the trajectory."""
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,

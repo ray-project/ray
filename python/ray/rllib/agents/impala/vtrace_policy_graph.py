@@ -97,12 +97,14 @@ class VTraceLoss(object):
         self.entropy = tf.reduce_sum(
             tf.boolean_mask(actions_entropy, valid_mask))
 
-        # The summed weighted loss
+        # The summpolicy logits, VF preds, anded weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
 
 class VTracePostprocessing(object):
+    """Adds the policy logits to the trajectory."""
+
     @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
         return dict(

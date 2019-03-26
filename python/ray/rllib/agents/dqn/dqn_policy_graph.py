@@ -100,6 +100,8 @@ class QLoss(object):
 
 
 class DQNPostprocessing(object):
+    """Implements n-step learning and param noise adjustments."""
+
     @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
         return dict(

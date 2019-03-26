@@ -30,6 +30,8 @@ class PGLoss(nn.Module):
 
 
 class PGPostprocessing(object):
+    """Adds the value func output and advantages field to the trajectory."""
+
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
         return {SampleBatch.VF_PREDS: model_out[2].numpy()}

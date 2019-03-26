@@ -105,6 +105,8 @@ class PPOLoss(object):
 
 
 class PPOPostprocessing(object):
+    """Adds the policy logits, VF preds, and advantages to the trajectory."""
+
     @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
         return dict(

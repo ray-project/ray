@@ -93,6 +93,8 @@ class ActorCriticLoss(object):
 
 
 class DDPGPostprocessing(object):
+    """Implements n-step learning and param noise adjustments."""
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,

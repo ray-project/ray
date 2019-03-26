@@ -40,6 +40,8 @@ class A3CLoss(nn.Module):
 
 
 class A3CPostprocessing(object):
+    """Adds the VF preds and advantages fields to the trajectory."""
+
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
         return {SampleBatch.VF_PREDS: model_out[2].numpy()}

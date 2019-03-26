@@ -15,14 +15,14 @@ from ray.rllib.utils.annotations import override
 
 
 class PGLoss(object):
-    """Simple policy gradient loss."""
+    """The basic policy gradient loss."""
 
     def __init__(self, action_dist, actions, advantages):
         self.loss = -tf.reduce_mean(action_dist.logp(actions) * advantages)
 
 
 class PGPostprocessing(object):
-    """Function run to compute advantages on a trajectory fragment."""
+    """Adds the advantages field to the trajectory."""
 
     @override(PolicyGraph)
     def postprocess_trajectory(self,

@@ -159,6 +159,8 @@ class VTraceSurrogateLoss(object):
 
 
 class APPOPostprocessing(object):
+    """Adds the policy logits, VF preds, and advantages to the trajectory."""
+
     @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
         out = {"behaviour_logits": self.model.outputs}
