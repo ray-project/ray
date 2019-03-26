@@ -8,8 +8,10 @@ from torch import nn
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
 from ray.rllib.utils.annotations import override
 
@@ -55,11 +57,14 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
             action_space,
             self.model,
             loss,
-            loss_inputs=["obs", "actions", "advantages", "value_targets"])
+            loss_inputs=[
+                SampleBatch.CUR_OBS, SampleBatch.ACTIONS,
+                Postprocessing.ADVANTAGES, Postprocessing.VALUE_TARGETS
+            ])
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
-        return {"vf_preds": model_out[2].numpy()}
+        return {SampleBatch.VF_PREDS: model_out[2].numpy()}
 
     @override(TorchPolicyGraph)
     def optimizer(self):
@@ -70,11 +75,11 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        completed = sample_batch["dones"][-1]
+        completed = sample_batch[SampleBatch.DONES][-1]
         if completed:
             last_r = 0.0
         else:
-            last_r = self._value(sample_batch["new_obs"][-1])
+            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1])
         return compute_advantages(sample_batch, last_r, self.config["gamma"],
                                   self.config["lambda"])
 

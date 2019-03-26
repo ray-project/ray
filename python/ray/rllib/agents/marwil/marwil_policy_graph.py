@@ -6,7 +6,9 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
-from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
@@ -103,9 +105,9 @@ class MARWILPolicyGraph(TFPolicyGraph):
         # initialize TFPolicyGraph
         self.sess = tf.get_default_session()
         self.loss_inputs = [
-            ("obs", self.obs_t),
-            ("actions", self.act_t),
-            ("advantages", self.cum_rew_t),
+            (SampleBatch.CUR_OBS, self.obs_t),
+            (SampleBatch.ACTIONS, self.act_t),
+            (Postprocessing.ADVANTAGES, self.cum_rew_t),
         ]
         TFPolicyGraph.__init__(
             self,
@@ -156,7 +158,8 @@ class MARWILPolicyGraph(TFPolicyGraph):
                 "last done mask in a batch should be True. "
                 "For now, we only support reading experience batches produced "
                 "with batch_mode='complete_episodes'.",
-                len(sample_batch["dones"]), sample_batch["dones"][-1])
+                len(sample_batch[SampleBatch.DONES]),
+                sample_batch[SampleBatch.DONES][-1])
         batch = compute_advantages(
             sample_batch, last_r, gamma=self.config["gamma"], use_gae=False)
         return batch
