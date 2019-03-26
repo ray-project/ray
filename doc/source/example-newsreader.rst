@@ -5,7 +5,7 @@ This document shows how to implement a simple news reader using Ray. The reader
 consists of a simple Vue.js `frontend`_ and a backend consisting of a Flask
 server and a Ray actor. View the `code for this example`_.
 
-.. image:: picture.jpeg
+.. image:: newsreader.jpeg
 
 To run this example, you will need to install NPM and a few python dependencies.
 
@@ -15,7 +15,6 @@ To run this example, you will need to install NPM and a few python dependencies.
   pip install flask
   pip install vowpalwabbit
 
-We recommend running the example
 
 Training the model
 ------------------
