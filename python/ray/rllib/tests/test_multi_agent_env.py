@@ -532,7 +532,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             }
             obs_space = single_env.observation_space
             act_space = single_env.action_space
-            return (PGPolicyGraph, obs_space, act_space, config)
+            return (None, obs_space, act_space, config)
 
         pg = PGAgent(
             env="multi_cartpole",
