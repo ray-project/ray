@@ -9,6 +9,8 @@ import time
 import tensorflow as tf
 from tensorflow.python.client import timeline
 
+from ray.rllib.utils.debug import log_once
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,5 +84,9 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
             time.time() - start, os.path.abspath(outf)))
         trace_file.write(trace.generate_chrome_trace_format())
     else:
+        if log_once("tf_timeline"):
+            logger.info(
+                "Executing TF run without tracing. To dump TF timeline "
+                "traces disk, set the TF_TIMELINE_DIR environment variable.")
         fetches = sess.run(ops, feed_dict=feed_dict)
     return fetches
