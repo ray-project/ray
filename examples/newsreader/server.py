@@ -7,6 +7,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests
 import sqlite3
+from vowpalwabbit import pyvw
 
 import ray
 
@@ -22,6 +23,7 @@ class NewsServer(object):
                      description text, published timestamp,
                      feed url, liked bool)""")
         self.conn.commit()
+        self.vw = pyvw.vw("-i", "hackernews.model")
 
     def retrieve_feed(self, url):
         response = requests.get(url)
@@ -34,6 +36,8 @@ class NewsServer(object):
                           "description": item.description,
                           "description_text": item.description,
                           "pubDate": str(item.pub_date)})
+            pred = self.vw.predict("| " + item.title)
+            print("prediction = ", pred)
             c.execute("""INSERT INTO news (title, link, description,
                          published, feed, liked) values
                          (?, ?, ?, ?, ?, ?)""", (
