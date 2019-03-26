@@ -33,9 +33,9 @@ class NewsServer(object):
         for item in feed.items:
             pred = self.vw.predict("| " + item.title)
             if pred > 0.0:
-                color = "#FFD700"
+                color = "#FFD700" # gold-ish yellow
             else:
-                color = "#FFFFFF"
+                color = "#FFFFFF" # white
             items.append({"title": item.title,
                           "link": item.link,
                           "description": item.description,
@@ -66,7 +66,10 @@ class NewsServer(object):
 
         if is_faved:
             c.execute("SELECT title FROM news WHERE link = ?", (url,))
-            print("faved", c.fetchone())
+            title, = c.fetchone()
+            self.vw.learn("1 | " + title)
+
+
 
 
 # instantiate the app
