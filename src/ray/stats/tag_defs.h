@@ -8,7 +8,7 @@ using TagKeyType = opencensus::tags::TagKey;
 
 static TagKeyType JobNameKey = opencensus::tags::TagKey::Register("JobName");
 
-static TagKeyType CustomKey =  opencensus::tags::TagKey::Register("CustomKey");
+static TagKeyType CustomKey = opencensus::tags::TagKey::Register("CustomKey");
 
 static TagKeyType NodeAddressKey = opencensus::tags::TagKey::Register("NodeAddress");
 
@@ -20,8 +20,6 @@ static TagKeyType WorkerPidKey = opencensus::tags::TagKey::Register("WorkerPid")
 
 /// The definitions of global tag.
 static std::vector<std::pair<opencensus::tags::TagKey, std::string>> GlobalTags = {
-    {JobNameKey, "raylet"},
-    {VersionKey, "0.6.5"}
-};
+    {JobNameKey, "raylet"}, {VersionKey, "0.6.5"}};
 
-#endif // RAY_STATS_TAG_DEFS_H
+#endif  // RAY_STATS_TAG_DEFS_H

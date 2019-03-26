@@ -153,18 +153,17 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ClientRemoved(data);
-  };
+  auto node_manager_client_removed =
+      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+             const ClientTableDataT &data) { ClientRemoved(data); };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Subscribe to heartbeat batches from the monitor.
-  const auto &heartbeat_batch_added = [this](
-      gcs::AsyncGcsClient *client, const ClientID &id,
-      const HeartbeatBatchTableDataT &heartbeat_batch) {
-    HeartbeatBatchAdded(heartbeat_batch);
-  };
+  const auto &heartbeat_batch_added =
+      [this](gcs::AsyncGcsClient *client, const ClientID &id,
+             const HeartbeatBatchTableDataT &heartbeat_batch) {
+        HeartbeatBatchAdded(heartbeat_batch);
+      };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
       JobID::nil(), ClientID::nil(), heartbeat_batch_added,
       /*subscribe_callback=*/nullptr,
@@ -1320,8 +1319,8 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
   // TODO(qwang): How to get host address.
-  stats::TaskCountReceived().Record(1,
-      {{stats::NodeAddressKey, RayConfig::instance().node_address()}});
+  stats::TaskCountReceived().Record(
+      1, {{stats::NodeAddressKey, RayConfig::instance().node_address()}});
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Submitting task: task_id=" << task_id
