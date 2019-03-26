@@ -14,6 +14,7 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.lstm import chop_into_sequences
@@ -235,16 +236,17 @@ class QMixPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def learn_on_batch(self, samples):
-        obs_batch, action_mask = self._unpack_observation(samples["obs"])
-        group_rewards = self._get_group_rewards(samples["infos"])
+        obs_batch, action_mask = self._unpack_observation(
+            samples[SampleBatch.CUR_OBS])
+        group_rewards = self._get_group_rewards(samples[SampleBatch.INFOS])
 
         # These will be padded to shape [B * T, ...]
         [rew, action_mask, act, dones, obs], initial_states, seq_lens = \
             chop_into_sequences(
-                samples["eps_id"],
-                samples["agent_index"], [
-                    group_rewards, action_mask, samples["actions"],
-                    samples["dones"], obs_batch
+                samples[SampleBatch.EPS_ID],
+                samples[SampleBatch.AGENT_INDEX], [
+                    group_rewards, action_mask, samples[SampleBatch.ACTIONS],
+                    samples[SampleBatch.DONES], obs_batch
                 ],
                 [samples["state_in_{}".format(k)]
                  for k in range(len(self.get_initial_state()))],

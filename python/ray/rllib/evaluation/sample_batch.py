@@ -88,6 +88,9 @@ class SampleBatch(object):
     PREV_ACTIONS = "prev_actions"
     PREV_REWARDS = "prev_rewards"
     DONES = "dones"
+    INFOS = "infos"
+    EPS_ID = "eps_id"
+    AGENT_INDEX = "agent_index"
     VF_PREDS = "vf_preds"
 
     @PublicAPI
