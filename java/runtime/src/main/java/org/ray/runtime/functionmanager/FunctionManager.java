@@ -11,10 +11,15 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.stream.Collectors;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.DirectoryFileFilter;
+import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.objectweb.asm.Type;
@@ -95,11 +100,17 @@ public class FunctionManager {
         classLoader = getClass().getClassLoader();
       } else {
         File resourceDir = new File(driverResourcePath + "/" + driverId.toString() + "/");
-        try {
-          classLoader = new URLClassLoader(new URL[]{resourceDir.toURI().toURL()});
-        } catch (MalformedURLException e) {
-          throw new RuntimeException(e);
-        }
+        Collection<File> files = FileUtils.listFiles(resourceDir,
+            new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
+        files.add(resourceDir);
+        final List<URL> urlList = files.stream().map(file -> {
+          try {
+            return file.toURI().toURL();
+          } catch (MalformedURLException e) {
+            throw new RuntimeException(e);
+          }
+        }).collect(Collectors.toList());
+        classLoader = new URLClassLoader(urlList.toArray(new URL[urlList.size()]));
         LOGGER.debug("Resource loaded for driver {} from path {}.", driverId,
             resourceDir.getAbsolutePath());
       }
