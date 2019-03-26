@@ -25,5 +25,56 @@ To use this example you need to
   ``sqlite3 newsreader.db`` in a terminal in the ``ray/examples/newsreader``
   directory and entering ``SELECT * FROM news;``.
 
+Training the model
+------------------
+
+To train the model on the Hackernews dataset, run the following in the
+``examples/newsreader`` folder:
+
+.. code-block:: bash
+
+  wget https://archive.org/download/14566367HackerNewsCommentsAndStoriesArchivedByGreyPanthersHacker/14m_hn_comments_sorted.json.bz2
+  bunzip2 14m_hn_comments_sorted.json.bz2
+
+Open a python interpreter and enter the following:
+
+.. code-block:: python
+
+  import pandas as pd
+  import training
+
+  records = training.load_hn_submissions("14m_hn_comments_sorted.json")
+  df = pd.DataFrame(records, columns=["title", "score"])
+  df.sort_values(by="score", ascending=False)
+
+Which will output the following:
+
+.. code-block
+   title  score
+  595312                         Steve Jobs has passed away.   4339
+  753452                       Show HN: This up votes itself   3536
+  1545633                                 Tim Cook Speaks Up   3086
+  1359046                                               2048   2903
+  1079441                                                      2751
+  1191375                           Don't Fly During Ramadan   2744
+  763347                                                       2738
+  1182593                                          Hyperloop   2666
+  754294    Poll: What's Your Favorite Programming Language?   2423
+  1556451  Microsoft takes .NET open source and cross-pla...   2376
+
+We can get the 0.7 quantile of scores by evaluating
+
+.. code-block:: python
+  df['score'].quantile(0.7)
+
+which outputs 2.0, so having 2 comments is a good cutoff. We can now train the
+model with
+
+.. code-block:: python
+  datapoints = training.create_vowpal_wabbit_records(records, cutoff=2.0)
+  model = training.learn_model(datapoints)
+
+
+
 .. _`frontend`: https://github.com/saqueib/qreader
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/newsreader

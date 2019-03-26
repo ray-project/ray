@@ -10,15 +10,6 @@ from vowpalwabbit import pyvw
 
 def load_hn_submissions(path):
     records = []
-    with bz2.BZ2File(path, "r") as f:
-        for line in f.readlines():
-            body = json.loads(line)["body"]
-            if "title" in body and "score" in body:
-                records.append((body["title"], body["score"]))
-    return records
-
-def load_hn_submissions_uncompressed(path):
-    records = []
     with open(path, "r") as f:
         for line in f.readlines():
             body = json.loads(line)["body"]
@@ -27,7 +18,7 @@ def load_hn_submissions_uncompressed(path):
     return records
 
 
-def create_vowpal_wabbit_records(records, cutoff):
+def create_datapoints(records, cutoff):
     datapoints = []
     for title, score in records:
         if score >= cutoff:
@@ -39,7 +30,7 @@ def create_vowpal_wabbit_records(records, cutoff):
     return datapoints
 
 
-def learn_model(records):
+def learn_model(datapoints):
     vw = pyvw.vw()
     for record in records:
         example = vw.example(record)
