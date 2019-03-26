@@ -23,7 +23,7 @@ class NewsServer(object):
                      description text, published timestamp,
                      feed url, liked bool)""")
         self.conn.commit()
-        self.vw = pyvw.vw("-i", "hackernews.model")
+        self.vw = pyvw.vw("-i hackernews.model")
 
     def retrieve_feed(self, url):
         response = requests.get(url)
