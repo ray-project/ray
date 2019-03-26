@@ -84,7 +84,7 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Initialize TFPolicyGraph
         loss_in = [
-            (SampleBatch.OBS, self.observations),
+            (SampleBatch.CUR_OBS, self.observations),
             (SampleBatch.ACTIONS, actions),
             (SampleBatch.PREV_ACTIONS, self.prev_actions),
             (SampleBatch.PREV_REWARDS, self.prev_rewards),
