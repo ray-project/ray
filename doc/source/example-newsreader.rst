@@ -2,7 +2,7 @@ News Reader
 ===========
 
 This document walks you through implementing a simple news reader using Ray.
-The reader consists of a simple Vue.js `frontend`_ and a Ray backend.
+The reader consists of a simple Vue.js frontend and a Ray backend.
 It has a simple recommendation engine built in, which you will train on upvotes
 from hackernews and learns online as the user stars articles.
 
@@ -88,5 +88,5 @@ To use this example you need to
   directory and entering ``SELECT * FROM news;``.
 
 
-.. _`frontend`: https://github.com/saqueib/qreader
+.. _`QReader`: https://github.com/saqueib/qreader
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/newsreader
