@@ -87,4 +87,4 @@ def dispatcher():
 if __name__ == "__main__":
     ray.init(num_cpus=2)
     dispatcher.server = NewsServer.remote()
-    app.run()
+    app.run(host= '0.0.0.0')
