@@ -8,11 +8,36 @@ import collections
 
 import ray
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.evaluation.sampler import RolloutMetrics
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+# By convention, metrics from optimizing the loss can be reported in the
+# `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
+LEARNER_STATS_KEY = "learner_stats"
+
+
+@DeveloperAPI
+def get_learner_stats(grad_info):
+    """Return optimization stats reported from the policy graph.
+
+    Example:
+        >>> grad_info = evaluator.learn_on_batch(samples)
+        >>> print(get_stats(grad_info))
+        {"vf_loss": ..., "policy_loss": ...}
+    """
+
+    if LEARNER_STATS_KEY in grad_info:
+        return grad_info[LEARNER_STATS_KEY]
+
+    multiagent_stats = {}
+    for k, v in grad_info.items():
+        if type(v) is dict:
+            if LEARNER_STATS_KEY in v:
+                multiagent_stats[k] = v[LEARNER_STATS_KEY]
+
+    return multiagent_stats
 
 
 @DeveloperAPI
@@ -134,6 +159,8 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
 
 def _partition(episodes):
     """Divides metrics data into true rollouts vs off-policy estimates."""
+
+    from ray.rllib.evaluation.sampler import RolloutMetrics
 
     rollouts, estimates = [], []
     for e in episodes:

@@ -6,6 +6,7 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils.annotations import override
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -141,7 +142,7 @@ class MARWILPolicyGraph(TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
-        return self.stats_fetches
+        return {LEARNER_STATS_KEY: self.stats_fetches}
 
     @override(PolicyGraph)
     def postprocess_trajectory(self,

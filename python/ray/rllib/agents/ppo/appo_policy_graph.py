@@ -13,6 +13,7 @@ import gym
 
 import ray
 from ray.rllib.agents.impala import vtrace
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
@@ -406,7 +407,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         values_batched = make_time_major(
             values, drop_last=self.config["vtrace"])
         self.stats_fetches = {
-            "stats": dict({
+            LEARNER_STATS_KEY: dict({
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
