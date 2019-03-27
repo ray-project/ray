@@ -72,7 +72,7 @@ http_archive(
     urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/v0.3.0.zip"],
 )
 
-# OpenCensus depends on Abseil so we have to explicitly to pull it in.
+# OpenCensus depends on Abseil so we have to explicitly pull it in.
 # This is how diamond dependencies are prevented.
 git_repository(
     name = "com_google_absl",
