@@ -7,22 +7,21 @@ import com.ray.streaming.api.function.impl.ReduceFunction;
 import com.ray.streaming.api.function.impl.SinkFunction;
 import com.ray.streaming.api.stream.StreamSource;
 import com.ray.streaming.util.ConfigKey;
+import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class WordCount implements Serializable {
+public class WordCountTest implements Serializable {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(WordCount.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(WordCountTest.class);
 
   // TODO(zhenxuanpan): this test only works in single-process mode, because we put
   //   results in this in-memory map.
