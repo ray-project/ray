@@ -15,6 +15,5 @@ __all__ = [
     "EvaluatorInterface", "PolicyEvaluator", "PolicyGraph", "TFPolicyGraph",
     "TorchPolicyGraph", "SampleBatch", "MultiAgentBatch", "SampleBatchBuilder",
     "MultiAgentSampleBatchBuilder", "SyncSampler", "AsyncSampler",
-    "compute_advantages", "compute_targets", "collect_metrics",
-    "MultiAgentEpisode"
+    "compute_advantages", "collect_metrics", "MultiAgentEpisode"
 ]
