@@ -1,5 +1,6 @@
 package com.ray.streaming.schedule.impl;
 
+import com.ray.streaming.api.partition.impl.RoundRobinPartition;
 import com.ray.streaming.core.graph.ExecutionEdge;
 import com.ray.streaming.core.graph.ExecutionGraph;
 import com.ray.streaming.core.graph.ExecutionNode;
@@ -44,9 +45,15 @@ public class TaskAssignImplTest {
 
     List<ExecutionEdge> sourceExecutionEdges = sourceNode.getExecutionEdgeList();
 
+    Assert.assertEquals(sourceExecutionEdges.size(), 1);
+    ExecutionEdge source2Sink = sourceExecutionEdges.get(0);
 
+    Assert.assertEquals(source2Sink.getPartition().getClass(), RoundRobinPartition.class);
 
-
+    ExecutionNode sinkNode = executionNodeList.get(1);
+    Assert.assertEquals(sinkNode.getNodeType(), NodeType.SINK);
+    Assert.assertEquals(sinkNode.getExecutionTaskList().size(), 1);
+    Assert.assertEquals(sinkNode.getExecutionEdgeList().size(), 0);
   }
 
 }

@@ -7,7 +7,9 @@ import com.ray.streaming.schedule.IJobSchedule;
 import com.ray.streaming.schedule.impl.JobScheduleImpl;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.Ray;
 
@@ -21,6 +23,7 @@ public class StreamingContext implements Serializable {
    * The sinks of this streaming job.
    */
   private List<StreamSink> streamSinks;
+  private Map<String, Object> jobConfig;
   /**
    * The logic plan.
    */
@@ -29,6 +32,7 @@ public class StreamingContext implements Serializable {
   private StreamingContext() {
     this.idGenerator = new AtomicInteger(0);
     this.streamSinks = new ArrayList<>();
+    this.jobConfig = new HashMap();
   }
 
   public static StreamingContext buildContext() {
@@ -44,7 +48,7 @@ public class StreamingContext implements Serializable {
     this.plan = planBuilder.buildPlan();
     plan.printPlan();
 
-    IJobSchedule jobSchedule = new JobScheduleImpl();
+    IJobSchedule jobSchedule = new JobScheduleImpl(jobConfig);
     jobSchedule.schedule(plan);
   }
 
@@ -54,5 +58,9 @@ public class StreamingContext implements Serializable {
 
   public void addSink(StreamSink streamSink) {
     streamSinks.add(streamSink);
+  }
+
+  public void withConfig(Map<String, Object> jobConfig) {
+    this.jobConfig = jobConfig;
   }
 }

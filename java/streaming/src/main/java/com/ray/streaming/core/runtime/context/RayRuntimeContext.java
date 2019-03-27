@@ -38,6 +38,11 @@ public class RayRuntimeContext implements RuntimeContext {
     return batchId;
   }
 
+  @Override
+  public Long getMaxBatch() {
+    return null;
+  }
+
   public void setBatchId(Long batchId) {
     this.batchId = batchId;
   }

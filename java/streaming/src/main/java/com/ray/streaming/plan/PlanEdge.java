@@ -4,7 +4,7 @@ import com.ray.streaming.api.partition.Partition;
 import java.io.Serializable;
 
 /**
- * PlanEdge is connection and sharding rules of upstream and downstream execution nodes.
+ * PlanEdge is connection and partition rules of upstream and downstream execution nodes.
  */
 public class PlanEdge implements Serializable {
 

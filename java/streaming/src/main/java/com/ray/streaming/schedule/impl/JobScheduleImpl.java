@@ -17,6 +17,7 @@ import com.ray.streaming.schedule.IJobSchedule;
 import com.ray.streaming.schedule.ITaskAssign;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -25,12 +26,14 @@ import org.ray.api.RayObject;
 public class JobScheduleImpl implements IJobSchedule {
 
   private Plan plan;
+  private Map<String, Object> jobConfig;
   private ResourceManager resourceManager;
   private ITaskAssign taskAssign;
 
-  public JobScheduleImpl() {
+  public JobScheduleImpl(Map<String, Object> jobConfig) {
     this.resourceManager = new ResourceManager();
     this.taskAssign = new TaskAssignImpl();
+    this.jobConfig = jobConfig;
   }
 
   /**
@@ -54,7 +57,7 @@ public class JobScheduleImpl implements IJobSchedule {
           Integer taskId = executionTask.getTaskId();
           RayActor<StreamWorker> streamWorker = executionTask.getWorker();
           waits.add(Ray.call(StreamWorker::init, streamWorker,
-              new WorkerContext(taskId, executionGraph)));
+              new WorkerContext(taskId, executionGraph, jobConfig)));
         } else {
           masterTask = executionTask;
         }
@@ -65,7 +68,7 @@ public class JobScheduleImpl implements IJobSchedule {
     Integer masterId = masterTask.getTaskId();
     RayActor<StreamWorker> masterWorker = masterTask.getWorker();
     Ray.call(StreamWorker::init, masterWorker,
-        new WorkerContext(masterId, executionGraph)).get();
+        new WorkerContext(masterId, executionGraph, jobConfig)).get();
 
 
   }

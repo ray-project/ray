@@ -12,4 +12,7 @@ public interface RuntimeContext {
   int getParallelism();
 
   Long getBatchId();
+
+  Long getMaxBatch();
+
 }

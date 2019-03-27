@@ -4,7 +4,6 @@ import com.ray.streaming.api.function.Function;
 
 /**
  * Interface of the partitioning strategy.
- *
  * @param <T> Type of the input data.
  */
 @FunctionalInterface

@@ -30,6 +30,7 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
   private static final Logger LOGGER = LoggerFactory.getLogger(MasterProcessor.class);
 
   private Thread batchControllerThread;
+  private long maxBatch;
 
   public MasterProcessor(MasterOperator masterOperator) {
     super(masterOperator);
@@ -38,11 +39,13 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
   public void open(List<Collector> collectors, RuntimeContext runtimeContext,
       ExecutionGraph executionGraph) {
     super.open(collectors, runtimeContext);
+    this.maxBatch = 1;
     startBatchController(executionGraph);
+
   }
 
   private void startBatchController(ExecutionGraph executionGraph) {
-    BatchController batchController = new BatchController(collectors);
+    BatchController batchController = new BatchController(maxBatch, collectors);
     List<Integer> sinkTasks = new ArrayList<>();
     for (ExecutionNode executionNode : executionGraph.getExecutionNodeList()) {
       if (executionNode.getNodeType() == NodeType.SINK) {
@@ -74,10 +77,13 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
     private List<Collector> collectors;
     private Map<Integer, Integer> sinkBatchMap;
     private Integer frequency;
+    private long maxBatch;
 
-    public BatchController(List<Collector> collectors) {
-      this.batchId = new AtomicInteger(1);
+    public BatchController(long maxBatch, List<Collector> collectors) {
+      this.batchId = new AtomicInteger(0);
+      this.maxBatch = maxBatch;
       this.collectors = collectors;
+      // TODO(zhenxuanpan): use config to set
       this.frequency = 1000;
     }
 
@@ -90,7 +96,7 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
 
     @Override
     public void run() {
-      while (true) {
+      while (batchId.get() < maxBatch) {
         try {
           Record record = new Record<>(new BatchInfo(batchId.getAndIncrement()));
           for (Collector collector : collectors) {
