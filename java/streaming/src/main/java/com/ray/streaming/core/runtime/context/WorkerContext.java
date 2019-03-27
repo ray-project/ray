@@ -5,7 +5,7 @@ import java.io.Serializable;
 import java.util.Map;
 
 /**
- * Encapsulate the context information of a worker init.
+ * Encapsulate the context information for worker initialization.
  */
 public class WorkerContext implements Serializable {
 

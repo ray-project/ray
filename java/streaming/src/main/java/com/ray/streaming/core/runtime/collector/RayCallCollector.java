@@ -38,19 +38,19 @@ public class RayCallCollector implements Collector<Record> {
         .mapToInt(Integer::valueOf).toArray();
 
     this.partition = executionEdge.getPartition();
-    LOGGER.info("taskId:{} add Ray Collector Stream:{} partition:{}", taskId, stream,
-        this.partition);
+    LOGGER.debug("RayCallCollector constructed, taskId:{}, add stream:{}, partition:{}.",
+        taskId, stream, this.partition);
   }
 
   @Override
   public void collect(Record record) {
     int[] taskIds = this.partition.partition(record, targetTaskIds);
-    LOGGER.info("taskId:{} collector stream:{} record:{} to remote taskIds:{} ", taskId, stream,
-        record, taskIds);
+    LOGGER.debug("Sending data from task {} to remote tasks {}, collector stream:{}, record:{}",
+        taskId, taskIds, stream, record);
     Message message = new Message(taskId, record.getBatchId(), stream, record);
     for (int targetTaskId : taskIds) {
       RayActor<StreamWorker> streamWorker = this.taskId2Worker.get(targetTaskId);
-      //use ray call to send message to downstream actor
+      // Use ray call to send message to downstream actor.
       Ray.call(StreamWorker::process, streamWorker, message);
     }
   }

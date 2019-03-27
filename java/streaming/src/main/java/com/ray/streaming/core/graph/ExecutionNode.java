@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * ExecutionNode is a execution node in a physical execution plan.
+ * A node in the physical execution graph.
  */
 public class ExecutionNode implements Serializable {
 

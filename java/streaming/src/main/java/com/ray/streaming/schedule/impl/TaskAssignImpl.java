@@ -21,10 +21,11 @@ import org.ray.api.RayActor;
 public class TaskAssignImpl implements ITaskAssign {
 
   /**
-   * assign optimize logical plan to execution graph.
-   * @param plan logical plan
-   * @param workers ray actor
-   * @return ExecutionGraph is Physical Execution Graph
+   * Assign an optimized logical plan to execution graph.
+   *
+   * @param plan The logical plan.
+   * @param workers The worker actors.
+   * @return The physical execution graph.
    */
   @Override
   public ExecutionGraph assign(Plan plan, List<RayActor<StreamWorker>> workers) {

@@ -9,8 +9,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Logical Execution Plan.
- * PlanVertex: execution unit of dataFlow.
- * PlanEdge: connection and sharding rules of upstream and downstream execution nodes.
  */
 public class Plan implements Serializable {
 
@@ -45,6 +43,10 @@ public class Plan implements Serializable {
   }
 
   public void printPlan() {
+    if (!LOGGER.isInfoEnabled()) {
+      return;
+    }
+    LOGGER.info("Printing logic plan:");
     for (PlanVertex planVertex : planVertexList) {
       LOGGER.info(planVertex.toString());
     }

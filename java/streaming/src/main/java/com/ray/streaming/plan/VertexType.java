@@ -1,7 +1,7 @@
 package com.ray.streaming.plan;
 
 /**
- * different roles for nodes
+ * Different roles for a node.
  */
 public enum VertexType {
   MASTER,

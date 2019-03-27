@@ -5,7 +5,8 @@ import com.ray.streaming.message.Record;
 import java.util.List;
 
 /**
- * CollectionCollector is contains multiple collectors.
+ * Combination of multiple collectors.
+ *
  * @param <T> The type of output data.
  */
 public class CollectionCollector<T> implements Collector<T> {

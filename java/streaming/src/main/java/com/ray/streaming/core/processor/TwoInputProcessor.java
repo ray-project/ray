@@ -5,15 +5,11 @@ import com.ray.streaming.operator.TwoInputOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Encapsulate the TwoInputProcessor for TwoInputOperator.
- * @param <T> The type of one input data.
- */
 public class TwoInputProcessor<T, O> extends StreamProcessor<Record, TwoInputOperator<T, O>> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TwoInputProcessor.class);
 
-  // TODO(zhenxuanpan): need add leftStream and rightStream set
+  // TODO(zhenxuanpan): Set leftStream and rightStream.
   private String leftStream;
   private String rigthStream;
 

@@ -8,11 +8,13 @@ import java.util.List;
 import org.ray.api.RayActor;
 
 /**
- * Interface of the task assign.
- * Assign Logical Plan to Physical Execution Graph.
+ * Interface of the task assigning strategy.
  */
 public interface ITaskAssign extends Serializable {
 
+  /**
+   * Assign logical plan to physical execution graph.
+   */
   ExecutionGraph assign(Plan plan, List<RayActor<StreamWorker>> workers);
 
 }

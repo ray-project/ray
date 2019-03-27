@@ -37,8 +37,7 @@ public class JobScheduleImpl implements IJobSchedule {
   }
 
   /**
-   * schedule physical plan to execution graph.
-   * and call streaming worker to init and run.
+   * Schedule physical plan to execution graph, and call streaming worker to init and run.
    */
   @Override
   public void schedule(Plan plan) {
@@ -69,8 +68,6 @@ public class JobScheduleImpl implements IJobSchedule {
     RayActor<StreamWorker> masterWorker = masterTask.getWorker();
     Ray.call(StreamWorker::init, masterWorker,
         new WorkerContext(masterId, executionGraph, jobConfig)).get();
-
-
   }
 
   private void addJobMaster(Plan plan) {

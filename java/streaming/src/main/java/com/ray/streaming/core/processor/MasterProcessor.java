@@ -20,8 +20,7 @@ import org.slf4j.LoggerFactory;
 
 
 /**
- * JobMaster Processor is responsible for overall control logic.
- *
+ * MasterProcessor is responsible for overall control logic.
  */
 public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> {
 
@@ -79,7 +78,7 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
       this.batchId = new AtomicInteger(0);
       this.maxBatch = maxBatch;
       this.collectors = collectors;
-      // TODO(zhenxuanpan): use config to set
+      // TODO(zhenxuanpan): Use config to set.
       this.frequency = 1000;
     }
 

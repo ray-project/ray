@@ -23,11 +23,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A Stream Worker, it is a ray actor.
+ * The stream worker, it is a ray actor.
  */
 @RayRemote
 public class StreamWorker implements Serializable {
-
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamWorker.class);
 
@@ -48,7 +47,7 @@ public class StreamWorker implements Serializable {
 
     this.nodeType = executionNode.getNodeType();
     this.streamProcessor = executionNode.getStreamProcessor();
-    LOGGER.info("StreamWorker init, taskId:{} Operator:{}", taskId, streamProcessor);
+    LOGGER.debug("Initializing StreamWorker, taskId: {}, operator: {}.", taskId, streamProcessor);
 
     List<ExecutionEdge> executionEdges = executionNode.getExecutionEdgeList();
 
@@ -68,7 +67,7 @@ public class StreamWorker implements Serializable {
   }
 
   public Boolean process(Message message) {
-    LOGGER.info("StreamWorker process, taskId:{} message:{}", taskId, message);
+    LOGGER.debug("Processing message, taskId: {}, message: {}.", taskId, message);
     if (nodeType == NodeType.SOURCE) {
       Record record = message.getRecord(0);
       BatchInfo batchInfo = (BatchInfo) record.getValue();

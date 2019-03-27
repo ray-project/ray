@@ -6,9 +6,10 @@ import com.ray.streaming.operator.Operator;
 import java.util.List;
 
 /**
- * Streaming Processor is a process unit for a operator
+ * StreamingProcessor is a process unit for a operator.
+ *
  * @param <T> The type of process data.
- * @param <P> The specific operator class.
+ * @param <P> Type of the specific operator class.
  */
 public abstract class StreamProcessor<T, P extends Operator> implements Processor<T> {
 

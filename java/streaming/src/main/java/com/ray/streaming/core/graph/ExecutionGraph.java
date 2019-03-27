@@ -8,7 +8,7 @@ import java.util.Map;
 import org.ray.api.RayActor;
 
 /**
- * ExecutionGraph is physical execution plan.
+ * Physical execution graph.
  */
 public class ExecutionGraph implements Serializable {
 
@@ -34,7 +34,7 @@ public class ExecutionGraph implements Serializable {
         }
       }
     }
-    throw new RuntimeException("task " + taskId + " not exist!");
+    throw new RuntimeException("Task " + taskId + " does not exist!");
   }
 
   public ExecutionNode getExecutionNodeByNodeId(int nodeId) {
@@ -43,7 +43,7 @@ public class ExecutionGraph implements Serializable {
         return executionNode;
       }
     }
-    throw new RuntimeException("nodeId " + nodeId + " not exist!");
+    throw new RuntimeException("Node " + nodeId + " does not exist!");
   }
 
   public ExecutionNode getExecutionNodeByTaskId(int taskId) {
@@ -54,7 +54,7 @@ public class ExecutionGraph implements Serializable {
         }
       }
     }
-    throw new RuntimeException("taskId " + taskId + " node not exist!");
+    throw new RuntimeException("Task " + taskId + " does not exist!");
   }
 
   public Map<Integer, RayActor<StreamWorker>> getTaskId2WorkerByNodeId(int nodeId) {
@@ -67,7 +67,7 @@ public class ExecutionGraph implements Serializable {
         return taskId2Worker;
       }
     }
-    throw new RuntimeException("nodeId " + nodeId + " not exist!");
+    throw new RuntimeException("Node " + nodeId + " does not exist!");
   }
 
 }

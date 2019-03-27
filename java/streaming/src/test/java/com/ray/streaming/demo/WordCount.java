@@ -1,14 +1,15 @@
 package com.ray.streaming.demo;
 
+import com.google.common.collect.ImmutableMap;
 import com.ray.streaming.api.context.StreamingContext;
 import com.ray.streaming.api.function.impl.FlatMapFunction;
-import com.ray.streaming.api.function.impl.KeyFunction;
 import com.ray.streaming.api.function.impl.ReduceFunction;
 import com.ray.streaming.api.function.impl.SinkFunction;
 import com.ray.streaming.api.stream.StreamSource;
 import com.ray.streaming.util.ConfigKey;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,11 +20,13 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class WordCount implements Serializable{
+public class WordCount implements Serializable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WordCount.class);
 
-  static Map<String, Integer> wordcount = new HashMap<>();
+  // TODO(zhenxuanpan): this test only works in single-process mode, because we put
+  //   results in this in-memory map.
+  static Map<String, Integer> wordCount = new ConcurrentHashMap<>();
 
   @Test
   public void testWordCount() {
@@ -31,66 +34,43 @@ public class WordCount implements Serializable{
     Map<String, Object> config = new HashMap<>();
     config.put(ConfigKey.STREAMING_MAX_BATCH_COUNT, 1);
     streamingContext.withConfig(config);
-    List<String> value = new ArrayList<>();
-    value.add("hello world eagle eagle eagle");
-    StreamSource<String> streamSource = StreamSource.buildSource(streamingContext, value);
+    List<String> text = new ArrayList<>();
+    text.add("hello world eagle eagle eagle");
+    StreamSource<String> streamSource = StreamSource.buildSource(streamingContext, text);
     streamSource
-        .flatMap((FlatMapFunction<String, KeyWord>) (value1, collector) -> {
-            String[] records = value1.split(" ");
-            for (String record : records) {
-              collector.collect(new KeyWord(record, 1));
-            }
+        .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
+          String[] records = value.split(" ");
+          for (String record : records) {
+            collector.collect(new WordAndCount(record, 1));
+          }
         })
-        .keyBy((KeyFunction<KeyWord, String>) value12 -> value12.getKey())
-        .reduce((ReduceFunction<KeyWord>) (oldValue, newValue) ->
-            new KeyWord(oldValue.getKey(), oldValue.getCount() + newValue.getCount()))
-        .sink((SinkFunction<KeyWord>) result -> wordcount.put(result.getKey(), result.getCount()));
+        .keyBy(pair -> pair.word)
+        .reduce((ReduceFunction<WordAndCount>) (oldValue, newValue) ->
+            new WordAndCount(oldValue.word, oldValue.count + newValue.count))
+        .sink((SinkFunction<WordAndCount>) result -> wordCount.put(result.word, result.count));
 
     streamingContext.execute();
 
-    try {
-      Thread.sleep(1000);
-    } catch (InterruptedException e) {
-      e.printStackTrace();
+    // Sleep until the count for every word is computed.
+    while (wordCount.size() < 3) {
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Got an exception while sleeping.", e);
+      }
     }
-
-    Assert.assertEquals(wordcount.size(), 3);
-    Assert.assertEquals(Math.toIntExact(wordcount.get("eagle")), 3);
-    Assert.assertEquals(Math.toIntExact(wordcount.get("hello")), 1);
-    Assert.assertEquals(Math.toIntExact(wordcount.get("world")), 1);
-
-
+    Assert.assertEquals(wordCount, ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
   }
 
-    static class KeyWord implements Serializable {
-      private String key;
-      private Integer count;
+  private static class WordAndCount implements Serializable {
 
-      public KeyWord(String key, Integer count) {
-        this.key = key;
-        this.count = count;
-      }
+    public final String word;
+    public final Integer count;
 
-      public String getKey() {
-            return key;
-        }
-
-      public void setKey(String key) {
-            this.key = key;
-        }
-
-      public Integer getCount() {
-            return count;
-        }
-
-      public void setCount(Integer count) {
-            this.count = count;
-        }
-
-      @Override
-      public String toString() {
-            return "key:" + key + ",value:" + count;
-        }
+    public WordAndCount(String key, Integer count) {
+      this.word = key;
+      this.count = count;
     }
+  }
 
 }
