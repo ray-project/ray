@@ -235,7 +235,6 @@
             <failsOnError>true</failsOnError>
             <failOnViolation>true</failOnViolation>
             <violationSeverity>warning</violationSeverity>
-            <format>xml</format>
             <outputFile>${project.build.directory}/checkstyle-errors.xml</outputFile>
             <linkXRef>false</linkXRef>
           </configuration>
