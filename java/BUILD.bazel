@@ -21,6 +21,8 @@ java_import(
         "liborg_ray_ray_runtime-src.jar",
         "liborg_ray_ray_tutorial.jar",
         "liborg_ray_ray_tutorial-src.jar",
+        "liborg_ray_ray_streaming.jar",
+        "liborg_ray_ray_streaming-src.jar",
         "all_tests_deploy.jar",
         "all_tests_deploy-src.jar",
     ],
@@ -28,6 +30,7 @@ java_import(
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
         ":org_ray_ray_tutorial",
+        ":org_ray_ray_streaming",
         ":all_tests",
     ],
 )
@@ -106,6 +109,27 @@ define_java_module(
     ],
 )
 
+define_java_module(
+    name = "streaming",
+    deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@com_google_guava_guava//jar",
+        "@org_slf4j_slf4j_api//jar",
+        "@org_slf4j_slf4j_log4j12//jar",
+    ],
+    define_test_lib = True,
+    test_deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        ":org_ray_ray_streaming",
+        "@com_google_guava_guava//jar",
+        "@org_slf4j_slf4j_api//jar",
+        "@org_slf4j_slf4j_log4j12//jar",
+        "@org_testng_testng//jar",
+    ],
+)
+
 java_binary(
     name = "all_tests",
     main_class = "org.testng.TestNG",
@@ -114,6 +138,7 @@ java_binary(
     runtime_deps = [
         ":org_ray_ray_test",
         ":org_ray_ray_runtime_test",
+        ":org_ray_ray_streaming_test",
     ],
 )
 
