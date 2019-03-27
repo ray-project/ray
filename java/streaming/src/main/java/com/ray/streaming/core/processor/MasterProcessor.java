@@ -57,7 +57,6 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
     batchControllerThread.start();
   }
 
-
   @Override
   public void process(BatchInfo executionGraph) {
 

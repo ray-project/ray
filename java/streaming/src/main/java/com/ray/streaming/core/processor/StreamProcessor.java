@@ -29,5 +29,4 @@ public abstract class StreamProcessor<T, P extends Operator> implements Processo
     }
   }
 
-
 }
