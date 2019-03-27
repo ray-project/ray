@@ -9,6 +9,7 @@ import ray
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer, \
     PrioritizedReplayBuffer
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
+from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.annotations import override
@@ -128,8 +129,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
         with self.grad_timer:
             info_dict = self.local_evaluator.learn_on_batch(samples)
             for policy_id, info in info_dict.items():
-                if "stats" in info:
-                    self.learner_stats[policy_id] = info["stats"]
+                self.learner_stats[policy_id] = get_learner_stats(info)
                 replay_buffer = self.replay_buffers[policy_id]
                 if isinstance(replay_buffer, PrioritizedReplayBuffer):
                     td_error = info["td_error"]
