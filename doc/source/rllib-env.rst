@@ -166,9 +166,10 @@ If all the agents will be using the same algorithm class to train, then you can 
     trainer = pg.PGAgent(env="my_multiagent_env", config={
         "multiagent": {
             "policy_graphs": {
-                "car1": (PGPolicyGraph, car_obs_space, car_act_space, {"gamma": 0.85}),
-                "car2": (PGPolicyGraph, car_obs_space, car_act_space, {"gamma": 0.99}),
-                "traffic_light": (PGPolicyGraph, tl_obs_space, tl_act_space, {}),
+                # the first tuple value is None -> uses default policy graph
+                "car1": (None, car_obs_space, car_act_space, {"gamma": 0.85}),
+                "car2": (None, car_obs_space, car_act_space, {"gamma": 0.99}),
+                "traffic_light": (None, tl_obs_space, tl_act_space, {}),
             },
             "policy_mapping_fn":
                 lambda agent_id:
@@ -232,9 +233,9 @@ This can be implemented as a multi-agent environment with three types of agents.
 
     "multiagent": {
         "policy_graphs": {
-            "top_level": (some_policy_graph, ...),
-            "mid_level": (some_policy_graph, ...),
-            "low_level": (some_policy_graph, ...),
+            "top_level": (custom_policy_graph or None, ...),
+            "mid_level": (custom_policy_graph or None, ...),
+            "low_level": (custom_policy_graph or None, ...),
         },
         "policy_mapping_fn":
             lambda agent_id:
@@ -247,17 +248,6 @@ This can be implemented as a multi-agent environment with three types of agents.
 In this setup, the appropriate rewards for training lower-level agents must be provided by the multi-agent env implementation. The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level agents to lower-level agents as part of the lower-level agent observation.
 
 See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__.
-
-
-Grouping Agents
-~~~~~~~~~~~~~~~
-
-It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
-
-.. literalinclude:: ../../python/ray/rllib/env/multi_agent_env.py
-   :language: python
-   :start-after: __grouping_doc_begin__
-   :end-before: __grouping_doc_end__
 
 Variable-Sharing Between Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -295,6 +285,18 @@ Implementing a centralized critic that takes as input the observations and actio
         return sample_batch
 
 2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy graph, the same as with any other value function. For an example of defining loss inputs, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
+
+Grouping Agents
+~~~~~~~~~~~~~~~
+
+It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
+
+.. literalinclude:: ../../python/ray/rllib/env/multi_agent_env.py
+   :language: python
+   :start-after: __grouping_doc_begin__
+   :end-before: __grouping_doc_end__
+
+For environments with multiple groups, or mixtures of agent groups and individual agents, you can use grouping in conjunction with the policy mapping API described in prior sections.
 
 Interfacing with External Agents
 --------------------------------

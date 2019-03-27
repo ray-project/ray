@@ -151,7 +151,7 @@ def cli(logging_level, logging_format):
     "--include-webui",
     is_flag=True,
     default=False,
-    help="provide this argument if the UI should not be started")
+    help="provide this argument if the UI should be started")
 @click.option(
     "--block",
     is_flag=True,

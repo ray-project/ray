@@ -10,7 +10,7 @@ from six.moves import queue
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TIME_THIS_ITER_S
+from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
 
 logger = logging.getLogger(__name__)
 
@@ -249,8 +249,8 @@ def wrap_function(train_func):
             output = train_func(config, reporter)
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
-            # with the keyword "__duplicate__" -- see tune/trial_runner.py,
-            reporter(done=True, __duplicate__=True)
+            # with the keyword RESULT_DUPLICATE -- see tune/trial_runner.py.
+            reporter(**{RESULT_DUPLICATE: True})
             return output
 
     return WrappedFunc

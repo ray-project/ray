@@ -6,21 +6,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pytest
-
 import ray
-
-
-@pytest.fixture
-def ray_start():
-    # Start ray instance
-    ray.init(num_cpus=1)
-
-    # Run test using this fixture
-    yield None
-
-    # Shutdown ray instance
-    ray.shutdown()
 
 
 @ray.remote
@@ -30,7 +16,7 @@ def factorial(n):
     return n * ray.get(factorial.remote(n - 1))
 
 
-def test_recursion(ray_start):
+def test_recursion(ray_start_regular):
     assert ray.get(factorial.remote(0)) == 1
     assert ray.get(factorial.remote(1)) == 1
     assert ray.get(factorial.remote(2)) == 2
