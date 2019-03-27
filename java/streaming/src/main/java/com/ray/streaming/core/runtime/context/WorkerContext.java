@@ -16,7 +16,7 @@ public class WorkerContext implements Serializable {
   public WorkerContext(int taskId, ExecutionGraph executionGraph, Map<String, Object> jobConfig) {
     this.taskId = taskId;
     this.executionGraph = executionGraph;
-    this.config = config;
+    this.config = jobConfig;
   }
 
   public int getTaskId() {

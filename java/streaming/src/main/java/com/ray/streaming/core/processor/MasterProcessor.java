@@ -39,7 +39,7 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
   public void open(List<Collector> collectors, RuntimeContext runtimeContext,
       ExecutionGraph executionGraph) {
     super.open(collectors, runtimeContext);
-    this.maxBatch = 1;
+    this.maxBatch = runtimeContext.getMaxBatch();
     startBatchController(executionGraph);
 
   }

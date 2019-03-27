@@ -1,7 +1,6 @@
 package com.ray.streaming.api.function.impl;
 
 import com.ray.streaming.api.function.Function;
-import java.io.Serializable;
 
 /**
  * Interface of join functions.
@@ -14,4 +13,5 @@ import java.io.Serializable;
 public interface JoinFunction<T, O, R> extends Function {
 
   R join(T left, O right);
+
 }

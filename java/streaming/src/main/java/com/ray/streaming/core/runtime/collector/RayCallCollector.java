@@ -38,7 +38,8 @@ public class RayCallCollector implements Collector<Record> {
         .mapToInt(Integer::valueOf).toArray();
 
     this.partition = executionEdge.getPartition();
-    LOGGER.info("taskId:{} add Ray Collector Stream:{} partition:{}", taskId, stream, this.partition);
+    LOGGER.info("taskId:{} add Ray Collector Stream:{} partition:{}", taskId, stream,
+        this.partition);
   }
 
   @Override

@@ -11,7 +11,7 @@ import org.ray.api.RayActor;
  * Interface of the task assign.
  * Assign Logical Plan to Physical Execution Graph.
  */
-public interface ITaskAssign extends Serializable{
+public interface ITaskAssign extends Serializable {
 
   ExecutionGraph assign(Plan plan, List<RayActor<StreamWorker>> workers);
 

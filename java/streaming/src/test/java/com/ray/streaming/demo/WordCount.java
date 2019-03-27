@@ -1,11 +1,13 @@
 package com.ray.streaming.demo;
 
+import com.google.common.collect.Maps;
 import com.ray.streaming.api.context.StreamingContext;
 import com.ray.streaming.api.function.impl.FlatMapFunction;
 import com.ray.streaming.api.function.impl.KeyFunction;
 import com.ray.streaming.api.function.impl.ReduceFunction;
 import com.ray.streaming.api.function.impl.SinkFunction;
 import com.ray.streaming.api.stream.StreamSource;
+import com.ray.streaming.util.ConfigKey;
 import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -27,6 +29,9 @@ public class WordCount implements Serializable{
   @Test
   public void testWordCount() {
     StreamingContext streamingContext = StreamingContext.buildContext();
+    Map<String, Object> config = new HashMap<>();
+    config.put(ConfigKey.STREAMING_MAX_BATCH_COUNT, 1);
+    streamingContext.withConfig(config);
     List<String> value = new ArrayList<>();
     value.add("hello world eagle eagle eagle");
     StreamSource<String> streamSource = StreamSource.buildSource(streamingContext, value);

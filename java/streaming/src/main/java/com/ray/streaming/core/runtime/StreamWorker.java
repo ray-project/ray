@@ -57,7 +57,7 @@ public class StreamWorker implements Serializable {
       collectors.add(new RayCallCollector(taskId, executionEdge, executionGraph));
     }
 
-    RuntimeContext runtimeContext = new RayRuntimeContext(executionTask,
+    RuntimeContext runtimeContext = new RayRuntimeContext(executionTask, workerContext.getConfig(),
         executionNode.getParallelism());
     if (this.nodeType == NodeType.MASTER) {
       ((MasterProcessor) streamProcessor).open(collectors, runtimeContext, executionGraph);
