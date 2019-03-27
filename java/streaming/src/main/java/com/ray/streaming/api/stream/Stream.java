@@ -36,7 +36,6 @@ public abstract class Stream<T> implements Serializable {
     this.partition = new RoundRobinPartition<>();
   }
 
-
   public Stream<T> getInputStream() {
     return inputStream;
   }
