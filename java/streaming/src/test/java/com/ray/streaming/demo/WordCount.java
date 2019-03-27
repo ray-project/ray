@@ -1,6 +1,5 @@
 package com.ray.streaming.demo;
 
-import com.google.common.collect.Maps;
 import com.ray.streaming.api.context.StreamingContext;
 import com.ray.streaming.api.function.impl.FlatMapFunction;
 import com.ray.streaming.api.function.impl.KeyFunction;

@@ -11,10 +11,8 @@ import com.ray.streaming.message.Record;
 import com.ray.streaming.operator.impl.MasterOperator;
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -54,7 +52,6 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
         sinkTasks.addAll(nodeTasks);
       }
     }
-    batchController.initController(sinkTasks);
 
     batchControllerThread = new Thread(batchController, "controller-thread");
     batchControllerThread.start();
@@ -86,13 +83,6 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
       this.frequency = 1000;
     }
 
-    public void initController(List<Integer> sinkTaskIds) {
-      sinkBatchMap = new ConcurrentHashMap<>();
-      for (Integer sinkTaskId : sinkTaskIds) {
-        sinkBatchMap.put(sinkTaskId, 0);
-      }
-    }
-
     @Override
     public void run() {
       while (batchId.get() < maxBatch) {
@@ -108,13 +98,6 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
       }
     }
 
-    public int currentSinkBatch() {
-      return Collections.min(sinkBatchMap.values());
-    }
-
-    public void batchFinish(int taskId, int batchId) {
-      this.sinkBatchMap.put(taskId, batchId);
-    }
 
   }
 }
