@@ -1,6 +1,7 @@
 #ifndef RAY_STATS_STATS_H
 #define RAY_STATS_STATS_H
 
+#include <exception>
 #include <string>
 
 #include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
@@ -26,8 +27,14 @@ static void Init(const std::string &address) {
   // here is to make sure they are single-instances.
   static auto exporter =
       std::make_shared<opencensus::exporters::stats::PrometheusExporter>();
-  static prometheus::Exposer exposer(address);
-  exposer.RegisterCollectable(exporter);
+
+  try {
+    static prometheus::Exposer exposer(address);
+    exposer.RegisterCollectable(exporter);
+  } catch (std::exception &e) {
+    RAY_LOG(WARNING) << "Failed to create Prometheus exposer. It doesn't "
+                     << "affect anything except stats. Caused by: " << e.what();
+  }
 
   // Also enable stdout exporter by default.
   opencensus::exporters::stats::StdoutExporter::Register();
