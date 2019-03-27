@@ -17,7 +17,8 @@ from ray.exceptions import RayError
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator, \
+    _validate_multiagent_config
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
@@ -40,7 +41,10 @@ COMMON_CONFIG = {
     # === Debugging ===
     # Whether to write episode stats and videos to the agent log dir
     "monitor": False,
-    # Set the ray.rllib.* log level for the agent process and its evaluators
+    # Set the ray.rllib.* log level for the agent process and its evaluators.
+    # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
+    # periodically print out summaries of relevant internal dataflow (this is
+    # also printed out once at startup at the INFO level).
     "log_level": "INFO",
     # Callbacks that will be run during various phases of training. These all
     # take a single "info" dict as an argument. For episode callbacks, custom
@@ -406,7 +410,7 @@ class Agent(Trainable):
                        prev_action=None,
                        prev_reward=None,
                        info=None,
-                       policy_id="default"):
+                       policy_id=DEFAULT_POLICY_ID):
         """Computes an action for the specified policy.
 
         Note that you can also access the policy object through
@@ -433,10 +437,18 @@ class Agent(Trainable):
             preprocessed, update=False)
         if state:
             return self.get_policy(policy_id).compute_single_action(
-                filtered_obs, state, prev_action, prev_reward, info,
+                filtered_obs,
+                state,
+                prev_action,
+                prev_reward,
+                info,
                 clip_actions=self.config["clip_actions"])
         return self.get_policy(policy_id).compute_single_action(
-            filtered_obs, state, prev_action, prev_reward, info,
+            filtered_obs,
+            state,
+            prev_action,
+            prev_reward,
+            info,
             clip_actions=self.config["clip_actions"])[0]
 
     @property
@@ -655,12 +667,12 @@ class Agent(Trainable):
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
             input_creator = (lambda ioctx: ShuffledInput(
-                MixedInput(config["input"], ioctx),
-                config["shuffle_buffer_size"]))
+                MixedInput(config["input"], ioctx), config[
+                    "shuffle_buffer_size"]))
         else:
             input_creator = (lambda ioctx: ShuffledInput(
-                JsonReader(config["input"], ioctx),
-                config["shuffle_buffer_size"]))
+                JsonReader(config["input"], ioctx), config[
+                    "shuffle_buffer_size"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
@@ -684,9 +696,18 @@ class Agent(Trainable):
         else:
             input_evaluation = config["input_evaluation"]
 
+        # Fill in the default policy graph if 'None' is specified in multiagent
+        if self.config["multiagent"]["policy_graphs"]:
+            tmp = self.config["multiagent"]["policy_graphs"]
+            _validate_multiagent_config(tmp, allow_none_graph=True)
+            for k, v in tmp.items():
+                if v[0] is None:
+                    tmp[k] = (policy_graph, v[1], v[2], v[3])
+            policy_graph = tmp
+
         return cls(
             env_creator,
-            self.config["multiagent"]["policy_graphs"] or policy_graph,
+            policy_graph,
             policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
             policies_to_train=self.config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator
