@@ -5,7 +5,6 @@ RUN apt-get update \
     && apt-get install -y \
         git \
         wget \
-        cmake \
         pkg-config \
         build-essential \
         autoconf \

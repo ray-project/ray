@@ -142,15 +142,6 @@ matrix:
 
         - ./ci/travis/test-wheels.sh
 
-    # Test GCS integration
-    - os: linux
-      dist: trusty
-      env:
-        - PYTHON=3.5
-        - RAY_USE_NEW_GCS=on
-        - PYTHONWARNINGS=ignore
-        - RAY_USE_CMAKE=1
-
 
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
