@@ -57,7 +57,7 @@ def test_ls(start_ray, tmpdir):
         commands.list_trials(experiment_path, info_keys=("status", ))
     lines = output.captured
     assert sum("TERMINATED" in line for line in lines) == num_samples
-    
+
     with Capturing() as output:
         commands.list_trials(
             experiment_path,
@@ -88,7 +88,7 @@ def test_lsx(start_ray, tmpdir):
         commands.list_experiments(project_path, info_keys=("total_trials", ))
     lines = output.captured
     assert sum("1" in line for line in lines) >= num_experiments
-    
+
     with Capturing() as output:
         commands.list_experiments(
             project_path,
