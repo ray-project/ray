@@ -91,4 +91,5 @@ http_archive(
 )
 
 load("@com_github_jupp0r_prometheus_cpp//:repositories.bzl", "prometheus_cpp_repositories")
+
 prometheus_cpp_repositories()

@@ -47,25 +47,24 @@ cc_library(
             "src/ray/stats/*.h",
         ],
     ),
-    includes = [
-            "src",
-        ],
-    linkopts = ["-pthread"],
     copts = COPTS,
+    includes = [
+        "src",
+    ],
+    linkopts = ["-pthread"],
     deps = [
         ":ray_util",
-        "@com_google_googletest//:gtest",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
         "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
     ],
 )
-
 
 cc_library(
     name = "raylet_lib",
@@ -82,8 +81,8 @@ cc_library(
     hdrs = glob([
         "src/ray/raylet/*.h",
     ]),
-    linkopts = ["-pthread"],
     copts = COPTS,
+    linkopts = ["-pthread"],
     deps = [
         ":gcs",
         ":gcs_fbs",
@@ -93,15 +92,15 @@ cc_library(
         ":ray_util",
         ":stats_lib",
         "@boost//:asio",
-        "@com_google_googletest//:gtest",
-        "@plasma//:plasma_client",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
+        "@plasma//:plasma_client",
     ],
 )
 
@@ -196,7 +195,7 @@ cc_test(
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",
-    ]
+    ],
 )
 
 cc_library(
