@@ -104,16 +104,16 @@ class BaseEnv(object):
                         make_env=make_env,
                         existing_envs=[env],
                         num_envs=num_envs)
-            elif isinstance(env, ExternalEnv):
-                if num_envs != 1:
-                    raise ValueError(
-                        "ExternalEnv does not currently support num_envs > 1.")
-                env = _ExternalEnvToBaseEnv(env)
             elif isinstance(env, ExternalMultiAgentEnv):
                 if num_envs != 1:
                     raise ValueError(
                         "ExternalMultiAgentEnv not currently support num_envs > 1.")
                 env = _ExternalEnvToBaseEnv(env, multiagent=True)
+            elif isinstance(env, ExternalEnv):
+                if num_envs != 1:
+                    raise ValueError(
+                        "ExternalEnv does not currently support num_envs > 1.")
+                env = _ExternalEnvToBaseEnv(env)
             elif isinstance(env, VectorEnv):
                 env = _VectorEnvToBaseEnv(env)
             else:
