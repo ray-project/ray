@@ -1,9 +1,9 @@
 package org.ray.streaming.api.stream;
 
+import java.util.Collection;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.internal.CollectionSourceFunction;
 import org.ray.streaming.operator.impl.SourceOperator;
-import java.util.Collection;
 
 /**
  * Represents a source of the DataStream.

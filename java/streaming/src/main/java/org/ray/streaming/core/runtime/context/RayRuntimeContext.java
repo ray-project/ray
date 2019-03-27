@@ -2,8 +2,8 @@ package org.ray.streaming.core.runtime.context;
 
 import static org.ray.streaming.util.ConfigKey.STREAMING_MAX_BATCH_COUNT;
 
-import org.ray.streaming.core.graph.ExecutionTask;
 import java.util.Map;
+import org.ray.streaming.core.graph.ExecutionTask;
 
 /**
  * Use Ray to implement RuntimeContext.

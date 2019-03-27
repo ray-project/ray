@@ -1,10 +1,10 @@
 package org.ray.streaming.cluster;
 
-import org.ray.streaming.core.runtime.StreamWorker;
 import java.util.ArrayList;
 import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
+import org.ray.streaming.core.runtime.StreamWorker;
 
 public class ResourceManager {
 

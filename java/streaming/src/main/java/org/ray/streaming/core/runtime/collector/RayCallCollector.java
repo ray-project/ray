@@ -1,5 +1,9 @@
 package org.ray.streaming.core.runtime.collector;
 
+import java.util.Arrays;
+import java.util.Map;
+import org.ray.api.Ray;
+import org.ray.api.RayActor;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.core.graph.ExecutionEdge;
@@ -7,10 +11,6 @@ import org.ray.streaming.core.graph.ExecutionGraph;
 import org.ray.streaming.core.runtime.StreamWorker;
 import org.ray.streaming.message.Message;
 import org.ray.streaming.message.Record;
-import java.util.Arrays;
-import java.util.Map;
-import org.ray.api.Ray;
-import org.ray.api.RayActor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

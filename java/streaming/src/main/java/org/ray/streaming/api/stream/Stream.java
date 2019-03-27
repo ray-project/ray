@@ -1,10 +1,10 @@
 package org.ray.streaming.api.stream;
 
+import java.io.Serializable;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.operator.StreamOperator;
-import java.io.Serializable;
 
 /**
  * Abstract base class of all stream types.

@@ -1,8 +1,8 @@
 package org.ray.streaming.core.runtime.collector;
 
+import java.util.List;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.message.Record;
-import java.util.List;
 
 /**
  * Combination of multiple collectors.

@@ -1,5 +1,11 @@
 package org.ray.streaming.core.processor;
 
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.core.command.BatchInfo;
 import org.ray.streaming.core.graph.ExecutionGraph;
@@ -9,12 +15,6 @@ import org.ray.streaming.core.graph.ExecutionTask;
 import org.ray.streaming.core.runtime.context.RuntimeContext;
 import org.ray.streaming.message.Record;
 import org.ray.streaming.operator.impl.MasterOperator;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

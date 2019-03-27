@@ -1,11 +1,11 @@
 package org.ray.streaming.schedule;
 
-import org.ray.streaming.core.graph.ExecutionGraph;
-import org.ray.streaming.core.runtime.StreamWorker;
-import org.ray.streaming.plan.Plan;
 import java.io.Serializable;
 import java.util.List;
 import org.ray.api.RayActor;
+import org.ray.streaming.core.graph.ExecutionGraph;
+import org.ray.streaming.core.runtime.StreamWorker;
+import org.ray.streaming.plan.Plan;
 
 /**
  * Interface of the task assigning strategy.

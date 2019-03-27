@@ -1,5 +1,9 @@
 package org.ray.streaming.core.runtime;
 
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+import org.ray.api.annotation.RayRemote;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.core.command.BatchInfo;
 import org.ray.streaming.core.graph.ExecutionEdge;
@@ -15,10 +19,6 @@ import org.ray.streaming.core.runtime.context.RuntimeContext;
 import org.ray.streaming.core.runtime.context.WorkerContext;
 import org.ray.streaming.message.Message;
 import org.ray.streaming.message.Record;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
-import org.ray.api.annotation.RayRemote;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

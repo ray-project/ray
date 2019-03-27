@@ -1,10 +1,5 @@
 package org.ray.streaming.api.context;
 
-import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanBuilder;
-import org.ray.streaming.schedule.IJobSchedule;
-import org.ray.streaming.schedule.impl.JobScheduleImpl;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,6 +7,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.Ray;
+import org.ray.streaming.api.stream.StreamSink;
+import org.ray.streaming.plan.Plan;
+import org.ray.streaming.plan.PlanBuilder;
+import org.ray.streaming.schedule.IJobSchedule;
+import org.ray.streaming.schedule.impl.JobScheduleImpl;
 
 /**
  * Encapsulate the context information of a streaming Job.

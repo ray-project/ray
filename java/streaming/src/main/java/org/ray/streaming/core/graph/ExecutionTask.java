@@ -1,8 +1,8 @@
 package org.ray.streaming.core.graph;
 
-import org.ray.streaming.core.runtime.StreamWorker;
 import java.io.Serializable;
 import org.ray.api.RayActor;
+import org.ray.streaming.core.runtime.StreamWorker;
 
 /**
  * ExecutionTask is minimal execution unit.

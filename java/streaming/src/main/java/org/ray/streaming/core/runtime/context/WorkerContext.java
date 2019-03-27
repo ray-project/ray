@@ -1,8 +1,8 @@
 package org.ray.streaming.core.runtime.context;
 
-import org.ray.streaming.core.graph.ExecutionGraph;
 import java.io.Serializable;
 import java.util.Map;
+import org.ray.streaming.core.graph.ExecutionGraph;
 
 /**
  * Encapsulate the context information for worker initialization.

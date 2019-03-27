@@ -1,5 +1,11 @@
 package org.ray.streaming.schedule.impl;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.ray.api.Ray;
+import org.ray.api.RayActor;
+import org.ray.api.RayObject;
 import org.ray.streaming.api.partition.impl.BroadcastPartition;
 import org.ray.streaming.cluster.ResourceManager;
 import org.ray.streaming.core.graph.ExecutionGraph;
@@ -15,12 +21,6 @@ import org.ray.streaming.plan.PlanVertex;
 import org.ray.streaming.plan.VertexType;
 import org.ray.streaming.schedule.IJobSchedule;
 import org.ray.streaming.schedule.ITaskAssign;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import org.ray.api.Ray;
-import org.ray.api.RayActor;
-import org.ray.api.RayObject;
 
 
 public class JobScheduleImpl implements IJobSchedule {

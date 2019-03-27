@@ -1,8 +1,8 @@
 package org.ray.streaming.api.stream;
 
-import org.ray.streaming.operator.StreamOperator;
 import java.util.ArrayList;
 import java.util.List;
+import org.ray.streaming.operator.StreamOperator;
 
 /**
  * Represents a union DataStream.

@@ -1,5 +1,8 @@
 package org.ray.streaming.operator.impl;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.core.runtime.context.RuntimeContext;
@@ -7,9 +10,6 @@ import org.ray.streaming.message.KeyRecord;
 import org.ray.streaming.message.Record;
 import org.ray.streaming.operator.OneInputOperator;
 import org.ray.streaming.operator.StreamOperator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 public class ReduceOperator<K, T> extends StreamOperator<ReduceFunction<T>> implements
     OneInputOperator<T> {

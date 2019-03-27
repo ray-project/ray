@@ -1,7 +1,7 @@
 package org.ray.streaming.api.function.internal;
 
-import org.ray.streaming.api.function.impl.SourceFunction;
 import java.util.Collection;
+import org.ray.streaming.api.function.impl.SourceFunction;
 
 /**
  * The SourceFunction that fetch data from a Java Collection object.

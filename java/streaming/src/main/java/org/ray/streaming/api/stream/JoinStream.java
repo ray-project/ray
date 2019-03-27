@@ -1,10 +1,10 @@
 package org.ray.streaming.api.stream;
 
+import java.io.Serializable;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.JoinFunction;
 import org.ray.streaming.api.function.impl.KeyFunction;
 import org.ray.streaming.operator.StreamOperator;
-import java.io.Serializable;
 
 /**
  * Represents a DataStream of two joined DataStream.

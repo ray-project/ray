@@ -1,5 +1,6 @@
 package org.ray.streaming.operator.impl;
 
+import java.util.List;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.function.impl.SourceFunction;
 import org.ray.streaming.api.function.impl.SourceFunction.SourceContext;
@@ -7,7 +8,6 @@ import org.ray.streaming.core.runtime.context.RuntimeContext;
 import org.ray.streaming.message.Record;
 import org.ray.streaming.operator.OperatorType;
 import org.ray.streaming.operator.StreamOperator;
-import java.util.List;
 
 public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
 

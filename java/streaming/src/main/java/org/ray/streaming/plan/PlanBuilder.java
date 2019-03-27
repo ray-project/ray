@@ -1,12 +1,12 @@
 package org.ray.streaming.plan;
 
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.operator.StreamOperator;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class PlanBuilder {
 

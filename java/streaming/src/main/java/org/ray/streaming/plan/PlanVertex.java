@@ -1,7 +1,7 @@
 package org.ray.streaming.plan;
 
-import org.ray.streaming.operator.StreamOperator;
 import java.io.Serializable;
+import org.ray.streaming.operator.StreamOperator;
 
 /**
  * PlanVertex is a cell node where logic is executed.

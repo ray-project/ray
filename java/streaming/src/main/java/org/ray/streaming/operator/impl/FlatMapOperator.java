@@ -1,5 +1,6 @@
 package org.ray.streaming.operator.impl;
 
+import java.util.List;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.core.runtime.collector.CollectionCollector;
@@ -7,7 +8,6 @@ import org.ray.streaming.core.runtime.context.RuntimeContext;
 import org.ray.streaming.message.Record;
 import org.ray.streaming.operator.OneInputOperator;
 import org.ray.streaming.operator.StreamOperator;
-import java.util.List;
 
 public class FlatMapOperator<T, R> extends StreamOperator<FlatMapFunction<T, R>> implements
     OneInputOperator<T> {

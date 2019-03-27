@@ -1,10 +1,10 @@
 package org.ray.streaming.core.graph;
 
-import org.ray.streaming.core.processor.StreamProcessor;
-import org.ray.streaming.plan.VertexType;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import org.ray.streaming.core.processor.StreamProcessor;
+import org.ray.streaming.plan.VertexType;
 
 /**
  * A node in the physical execution graph.

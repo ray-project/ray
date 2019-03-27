@@ -1,11 +1,11 @@
 package org.ray.streaming.operator;
 
+import java.util.List;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.function.Function;
 import org.ray.streaming.core.runtime.context.RuntimeContext;
 import org.ray.streaming.message.KeyRecord;
 import org.ray.streaming.message.Record;
-import java.util.List;
 
 public abstract class StreamOperator<F extends Function> implements Operator {
 

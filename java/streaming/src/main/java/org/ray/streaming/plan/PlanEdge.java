@@ -1,7 +1,7 @@
 package org.ray.streaming.plan;
 
-import org.ray.streaming.api.partition.Partition;
 import java.io.Serializable;
+import org.ray.streaming.api.partition.Partition;
 
 /**
  * PlanEdge is connection and partition rules of upstream and downstream execution nodes.
@@ -17,7 +17,6 @@ public class PlanEdge implements Serializable {
     this.targetVertexId = targetVertexId;
     this.partition = partition;
   }
-
 
   public int getSrcVertexId() {
     return srcVertexId;

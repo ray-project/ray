@@ -1,5 +1,11 @@
 package org.ray.streaming.schedule.impl;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.ray.api.RayActor;
 import org.ray.streaming.core.graph.ExecutionEdge;
 import org.ray.streaming.core.graph.ExecutionGraph;
 import org.ray.streaming.core.graph.ExecutionNode;
@@ -11,12 +17,6 @@ import org.ray.streaming.plan.Plan;
 import org.ray.streaming.plan.PlanEdge;
 import org.ray.streaming.plan.PlanVertex;
 import org.ray.streaming.schedule.ITaskAssign;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import org.ray.api.RayActor;
 
 public class TaskAssignImpl implements ITaskAssign {
 

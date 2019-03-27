@@ -1,9 +1,9 @@
 package org.ray.streaming.core.processor;
 
+import java.util.List;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.core.runtime.context.RuntimeContext;
 import org.ray.streaming.operator.Operator;
-import java.util.List;
 
 /**
  * StreamingProcessor is a process unit for a operator.
