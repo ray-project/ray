@@ -127,6 +127,7 @@ define_java_module(
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
         ":org_ray_ray_streaming",
+        "@com_beust_jcommander//jar",
         "@com_google_guava_guava//jar",
         "@org_slf4j_slf4j_api//jar",
         "@org_slf4j_slf4j_log4j12//jar",
