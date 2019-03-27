@@ -64,7 +64,7 @@ We can get the 0.7 quantile of scores by evaluating
 
 .. code-block:: python
 
-  df['score'].quantile(0.7)
+  df["score"].quantile(0.7)
 
 which outputs 2.0, so having 2 comments is a good cutoff. We can now train the
 model with
