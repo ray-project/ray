@@ -121,14 +121,15 @@ else
   $PYTHON_EXECUTABLE -m pip install \
       --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
       --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
+  export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
 
   if [ "$RAY_BUILD_JAVA" == "YES" ]; then
     bazel run //java:bazel_deps -- generate -r $ROOT_DIR -s java/third_party/workspace.bzl -d java/dependencies.yaml
-    bazel build //java:all --verbose_failures --action_env=PATH
+    bazel build //java:all --verbose_failures
   fi
 
   if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-    bazel build //:ray_pkg --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
+    bazel build //:ray_pkg --verbose_failures
   fi
 fi
 

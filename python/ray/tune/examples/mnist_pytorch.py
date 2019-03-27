@@ -171,7 +171,6 @@ if __name__ == "__main__":
     tune.run(
         "TRAIN_FN",
         name="exp",
-        verbose=0,
         scheduler=sched,
         **{
             "stop": {
