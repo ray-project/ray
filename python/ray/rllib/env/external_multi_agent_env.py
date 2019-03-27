@@ -7,10 +7,11 @@ import threading
 import uuid
 
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.env.external_env import ExternalEnv
 
 
 @PublicAPI
-class ExternalMultiAgentEnv(threading.Thread):
+class ExternalMultiAgentEnv(ExternalEnv):
     """An environment that interfaces with external agents.
 
     Unlike simulator envs, control is inverted. The environment queries the
@@ -71,11 +72,11 @@ class ExternalMultiAgentEnv(threading.Thread):
 
         Your loop should continuously:
             1. Call self.start_episode(episode_id)
-            2. Call self.get_action(episode_id, obs)
+            2. Call self.get_action(episode_id, obs_dict)
                     -or-
-                    self.log_action(episode_id, obs, action)
-            3. Call self.log_returns(episode_id, reward)
-            4. Call self.end_episode(episode_id, obs)
+                    self.log_action(episode_id, obs_dict, action_dict)
+            3. Call self.log_returns(episode_id, reward_dict)
+            4. Call self.end_episode(episode_id, obs_dict)
             5. Wait if nothing to do.
 
         Multiple episodes may be started at the same time.
@@ -115,6 +116,8 @@ class ExternalMultiAgentEnv(threading.Thread):
     @PublicAPI
     def get_action(self, episode_id, observation_dict):
         """Record an observation and get the on-policy action.
+        observation_dict is expected to contain the observation
+        of all agents acting in this episode step.
 
         Arguments:
             episode_id (str): Episode id returned from start_episode().
@@ -124,7 +127,6 @@ class ExternalMultiAgentEnv(threading.Thread):
             action (dict): Action from the env action space.
         """
 
-        # FIXME handle different agents here
         episode = self._get(episode_id)
         return episode.wait_for_action(observation_dict)
 
@@ -138,7 +140,6 @@ class ExternalMultiAgentEnv(threading.Thread):
             action_dict (dict): Action for the observation.
         """
 
-        # FIXME handle different agents here
         episode = self._get(episode_id)
         episode.log_action(observation_dict, action_dict)
 
@@ -197,8 +198,6 @@ class ExternalMultiAgentEnv(threading.Thread):
 class _ExternalEnvEpisode(object):
     """
     Tracked state for each active episode.
-    FIXME fix this class:
-    - multiagent dict variables
     """
 
     def reset_cur_done_dict(self, done=False):
