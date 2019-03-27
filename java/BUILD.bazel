@@ -4,6 +4,7 @@ exports_files([
     "testng.xml",
     "checkstyle.xml",
     "checkstyle-suppressions.xml",
+    "streaming/testng.xml",
 ])
 
 java_binary(
@@ -25,6 +26,8 @@ java_import(
         "liborg_ray_ray_streaming-src.jar",
         "all_tests_deploy.jar",
         "all_tests_deploy-src.jar",
+        "streaming_tests_deploy.jar",
+        "streaming_tests_deploy-src.jar",
     ],
     deps = [
         ":org_ray_ray_api",
@@ -32,6 +35,7 @@ java_import(
         ":org_ray_ray_tutorial",
         ":org_ray_ray_streaming",
         ":all_tests",
+        ":streaming_tests",
     ],
 )
 
@@ -138,6 +142,15 @@ java_binary(
     runtime_deps = [
         ":org_ray_ray_test",
         ":org_ray_ray_runtime_test",
+    ],
+)
+
+java_binary(
+    name = "streaming_tests",
+    main_class = "org.testng.TestNG",
+    data = ["streaming/testng.xml"],
+    args = ["java/streaming/testng.xml"],
+    runtime_deps = [
         ":org_ray_ray_streaming_test",
     ],
 )
