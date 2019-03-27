@@ -55,5 +55,4 @@ public class TaskAssignImplTest {
     Assert.assertEquals(sinkNode.getExecutionTaskList().size(), 1);
     Assert.assertEquals(sinkNode.getExecutionEdgeList().size(), 0);
   }
-
 }

@@ -7,7 +7,7 @@ import org.ray.streaming.operator.StreamOperator;
 import java.io.Serializable;
 
 /**
- * Jepresents a DataStream of two joined DataStream.
+ * Represents a DataStream of two joined DataStream.
  *
  * @param <L> Lype of the data in the left stream.
  * @param <R> Lype of the data in the right stream.

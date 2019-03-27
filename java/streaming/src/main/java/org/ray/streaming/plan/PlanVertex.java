@@ -39,7 +39,11 @@ public class PlanVertex implements Serializable {
 
   @Override
   public String toString() {
-    return "vertexId:" + vertexId + ",op:" + streamOperator.getClass().getSimpleName().toString()
-        + ",parallelism:" + parallelism;
+    return "PlanVertex{" +
+        "vertexId=" + vertexId +
+        ", parallelism=" + parallelism +
+        ", vertexType=" + vertexType +
+        ", streamOperator=" + streamOperator +
+        '}';
   }
 }

@@ -7,7 +7,7 @@ import org.ray.api.RayActor;
 /**
  * ExecutionTask is minimal execution unit.
  *
- * A ExecutionNode has n ExecutionTasks if parallelism is n.
+ * An ExecutionNode has n ExecutionTasks if parallelism is n.
  */
 public class ExecutionTask implements Serializable {
 
