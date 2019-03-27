@@ -342,12 +342,7 @@ def from_importance_weights(log_rhos,
         deltas = clipped_rhos * (
             rewards + discounts * values_t_plus_1 - values)
 
-        # All sequences are reversed, computation starts from the back.
-        sequences = (
-            tf.reverse(discounts, axis=[0]),
-            tf.reverse(cs, axis=[0]),
-            tf.reverse(deltas, axis=[0]),
-        )
+        sequences = (discounts, cs, deltas)
 
         # V-trace vs are calculated through a scan from the back to the
         # beginning of the given trajectory.
@@ -362,6 +357,7 @@ def from_importance_weights(log_rhos,
             initializer=initial_values,
             parallel_iterations=1,
             back_prop=False,
+            reverse=True,
             name='scan')
         # Reverse the results back to original order.
         vs_minus_v_xs = tf.reverse(vs_minus_v_xs, [0], name='vs_minus_v_xs')
