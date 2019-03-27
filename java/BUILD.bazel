@@ -74,9 +74,7 @@ define_java_module(
         "@redis_clients_jedis//jar",
         "@commons_io_commons_io//jar",
         "@com_google_guava_guava//jar",
-        "@net_lingala_zip4j_zip4j//jar",
         "@org_slf4j_slf4j_log4j12//jar",
-        "@org_ini4j_ini4j//jar",
         "@org_ow2_asm_asm//jar",
     ],
 )
@@ -99,7 +97,6 @@ define_java_module(
         "@org_slf4j_slf4j_api//jar",
         "@plasma//:org_apache_arrow_arrow_plasma",
         "@org_testng_testng//jar",
-        "@commons_collections_commons_collections//jar",
         "@com_google_guava_guava//jar",
         "@commons_io_commons_io//jar",
     ],
