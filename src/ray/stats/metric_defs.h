@@ -1,7 +1,7 @@
 #ifndef RAY_STATS_METRIC_DEFS_H
 #define RAY_STATS_METRIC_DEFS_H
 
-/// The definitions of metrics that you can use every where.
+/// The definitions of metrics that you can use everywhere.
 ///
 /// There are 4 types of metric:
 ///   Histogram: Histogram distribution of metric points.
