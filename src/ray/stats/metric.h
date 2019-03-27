@@ -63,7 +63,7 @@ class Metric {
       RegisterView();
     }
 
-    // do record
+    // Do record.
     TagsType combined_tags(tags);
     combined_tags.insert(std::end(combined_tags), std::begin(GlobalTags),
                          std::end(GlobalTags));
