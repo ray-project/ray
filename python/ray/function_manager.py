@@ -423,21 +423,22 @@ class FunctionActorManager(object):
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
-                # If an exception was thrown when the remote function was imported,
-                # we record the traceback and notify the scheduler of the failure.
+                # If an exception was thrown when the remote function was
+                # imported, we record the traceback and notify the scheduler
+                # of the failure.
                 traceback_str = format_error_message(traceback.format_exc())
                 # Log the error message.
                 push_error_to_driver(
                     self._worker,
                     ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                    "Failed to unpickle the remote function '{}' with function ID "
-                    "{}. Traceback:\n{}".format(
+                    "Failed to unpickle the remote function '{}' with "
+                    "function ID {}. Traceback:\n{}".format(
                         function_name, function_id.hex(), traceback_str),
                     driver_id=driver_id)
             else:
                 # The below line is necessary. Because in the driver process,
-                # if the function is defined in the file where the python script
-                # was started from, its module is `__main__`.
+                # if the function is defined in the file where the python
+                # script was started from, its module is `__main__`.
                 # However in the worker process, the `__main__` module is a
                 # different module, which is `default_worker.py`
                 function.__module__ = module
