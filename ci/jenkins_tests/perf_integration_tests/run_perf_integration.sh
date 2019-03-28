@@ -5,8 +5,8 @@ set -ex
 
 python -m pip install pytest-benchmark
 
-pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev1-cp27-cp27mu-manylinux1_x86_64.whl
-python -m pytest python/ray/tests/test_perf_integration.py
+pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp27-cp27mu-manylinux1_x86_64.whl
+python -m pytest --benchmark-autosave python/ray/tests/test_perf_integration.py
 
 (cd python && python -m pip install -e .)
 python -m pytest --benchmark-compare-fail=min:5% python/ray/tests/test_perf_integration.py
