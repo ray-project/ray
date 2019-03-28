@@ -12,7 +12,7 @@ python -m pip install pytest-benchmark
 pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp27-cp27mu-manylinux1_x86_64.whl
 python -m pytest --benchmark-autosave $ROOT_DIR/../../../python/ray/tests/perf_integration_tests/test_perf_integration.py
 
-pushd python
+pushd $ROOT_DIR/../../../python
 python -m pip install -e .
 popd
 
