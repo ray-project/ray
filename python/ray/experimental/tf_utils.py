@@ -3,12 +3,17 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import deque, OrderedDict
+import logging
 import numpy as np
+import pickle
 
+import ray
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 
+
+logger = logging.getLogger(__name__)
 
 def unflatten(vector, shapes):
     i = 0
@@ -198,3 +203,275 @@ class TensorFlowVariables(object):
                 for (name, value) in new_weights.items()
                 if name in self.placeholders
             })
+
+
+def tf_differentiable(method):
+    #TODO(vsatish): Can we automatically determine that a method is differentiable at runtime based on inputs?
+
+#    def diff_method(self, identifier, forward, persistent_tape, dys,
+#                     arg_types, kwarg_types, *args, **kwargs):
+    def diff_method(self, identifier, forward, persistent_tape, dys,
+                    arg_types, *args):
+
+        if not tf.executing_eagerly():
+            #TODO(vsatish): Can we automatically enable this? (Tricky b/c it must be done at start of program.)
+            raise RuntimeError("Tensorflow Eager execution must "
+                               "be enabled for experimental differentiable ray " 
+                               "functionality.")
+
+        if forward_pass:
+            # execute the forward pass
+
+            # revert the arguments back to their original types
+            assert len(arg_types) == len(args), ("Argument types: {} do not directly map " 
+                                                 "to arguments: {}.".format(arg_types, arguments))
+
+#            assert isinstance(kwarg_types, dict), ("Keyword argument types must be defined with a dict.")
+#            assert len(kwarg_types) == len(kwargs), ("Keyword argument types: {} do not directly map " 
+#                                                     "to keyword arguments: {}.".format(kwarg_types, kwargs))
+
+            tf_constants = [] # these must be explicitly watched under the scope of tf.GradientTape
+            tensors = [] 
+
+            processed_args = []
+            for arg_type, arg in zip(arg_types, args):
+                if arg_type == "tf_var":
+                    processed_args.append(tf.Variable(arg))
+                    tensors.append(processed_args[-1])
+                elif arg_type == "tf_const":
+                    processed_args.append(tf.constant(arg))
+                    tf_constants.append(processed_args[-1])
+                    tensors.append(processed_args[-1])
+                elif arg_type == "native":
+                    processed_args.append(arg)
+                else:
+                    raise ValueError("Invalid argument type: {}".format(arg_type))
+
+            """
+            processed_kwargs = {}
+            for kw, arg in kwargs.iteritems():
+                arg_type = kwarg_types[kw]
+                #TODO (vsatish): Does it even make sense to have keyword tensors?
+                # We definitely shouldn't allow them to be differentiable, right?
+                if arg_type == "tf_var":
+                    processed_kwargs[kw] = tf.Variable(arg)
+#                    tensors.append(processed_kwargs[kw])
+                elif arg_type == "tf_const":
+                    processed_kwargs[kw] = tf.constant(arg)
+                    tf_constants.append(processed_kwargs[kw])
+#                    tensors.append(processed_kwargs[kw])
+                elif arg_type == "native":
+                    processed_kwargs[kw] = arg
+                else:
+                    raise ValueError("Invalid keyword argument type: {}".format(arg_type))
+            """
+
+            # execute raw method with tf.GradientTape
+            with tf.GradientTape(persistent=persistent_tape) as tape:
+                # watch all of the constants 
+                for constant in constants:
+                    tape.watch(constant)
+
+#                result = method(self, *processed_args, **processed_kwargs)
+                result = method(self, *processed_args)
+
+            # cache the tf state for backward pass
+            if not hasattr(self, "__ray_tf_info__"):
+                self.__ray_tf_info__ = {}
+            self.__ray_tf_info__[identifier] = (tape, tensors, result)
+
+            return [r.numpy() for r in result] if isinstance(result, tuple) else result.numpy()
+        else:
+            # execute the backward pass
+            tape, tensors, result = self.__ray_tf_info__[identifier]
+            grads = tape.gradient(result, tensors, output_gradients=dys)
+            if not persistent_tape:
+                # we can no longer use the tape
+                del self.__ray_tf_info__[identifier]
+            grads = [grad.numpy() for grad in grads]
+            return grads[0] if len(grads) == 1 else grads
+
+    diff_method.__ray_tf_differentiable__ = True
+    
+    return diff_method
+
+
+def _info_to_tensor(obj):
+    tensor = tf.constant(
+        np.array([c for c in pickle.dumps(obj)]).astype(np.float64))
+    return tensor
+
+
+def _tensor_to_info(tensor):
+    array = tensor.numpy()
+    assert array.ndim == 1
+    size = array.size
+    b = bytearray(size)
+    for i in range(size):
+        b[i] = int(array[i])
+    return pickle.loads(bytes(b))
+
+
+class TFObjectID(ray.ObjectID):
+    def __init__(self, object_id, graph_tensor, identifier,
+                 actor_method, num_tensor_inputs, persistent_tape=False):
+        # graph_tensor is a dummy tensor used to link the TF graph
+
+        ray.ObjectID.__init__(self, object_id.binary())
+        self._persistent_tape = persistent_tape
+        self._identifier = identifier
+        self._actor_method = actor_method
+        self._num_tensor_inputs = num_tensor_inputs
+
+        self.graph_tensor
+
+    """
+    def backward(self, dys):
+        forward = False
+        grad_ids = self._actor_method._internal_remote(
+            args=[self._identifier, forward, 
+                  self._persistent_tape, dys, None, None],
+            kwargs={},
+            num_return_vals=self._num_tensor_inputs)
+        return _info_to_tensor([grad_ids] if isinstance(grad_ids, ray.ObjectID) else grad_ids)
+    """
+
+
+def _submit_tf(actor_method, args, kwargs, num_return_vals):
+    # parse the arguments and convert them to serializable types if required
+#    object_ids = []
+#    tf_object_ids = []
+    tensors = [] # these will be used solely for the TF graph and may contain dummy tensors
+#    is_tensor_tf_object_id = [] # was an input tensor a TFObjectID or a TF Tensor
+
+    arg_types = []
+    processed_args = []
+    for arg in args:
+        if isinstance(arg, TFObjectID):
+#            tf_object_ids.append(arg)        
+#            object_ids.append(arg)
+            tensors.append(arg.graph_tensor) # this is a dummy tensor used to link the TF computation graph
+            arg_types.append("tf_const")
+#            is_tensor_tf_object_id.append(True)
+            processed_args.append(arg)
+        elif isinstance(arg, [tf.Variable, tf.constant, tf.Tensor]):
+            if isinstance(arg, tf.Variable):
+                arg_type = "tf_var"
+            elif isinstance(arg, [tf.constant, tf.Tensor]): #TODO(vsatish): Confirm that treating
+                arg_type = "tf_const"                       # tf.Tensor as tf.constant won't break 
+                                                            # any functionality
+#            is_tensor_tf_object_id.append(False)
+            arg_types.append(arg_type)
+            tensors.append(arg)
+            processed_args.append(arg.numpy())
+        elif isinstance(arg, ray.ObjectID):
+#            object_ids.append(arg)
+            arg_types.append("native")
+            processed_args.append(arg)
+        else:
+            arg_types.append("native")
+            processed_args.append(arg)
+
+    kwarg_types = {}
+    processed_kwargs = {}
+    for kw, arg in kwargs.iteritems():
+        if isinstance(arg, TFObjectID):
+#            tf_object_ids.append(arg)        
+#            object_ids.append(arg)
+            tensors.append(arg.graph_tensor) # this is a dummy tensor used to link the TF computation graph
+            kwarg_types[kw] = "tf_const"
+#            is_tensor_tf_object_id.append(True)
+            processed_kwargs[kw] = arg
+        elif isinstance(arg, [tf.Variable, tf.constant, tf.Tensor]):
+            if isinstance(arg, tf.Variable):
+                arg_type = "tf_var"
+            elif isinstance(arg, [tf.constant, tf.Tensor]): #TODO(vsatish): Confirm that treating
+                arg_type = "tf_const"                       # tf.Tensor as tf.constant won't break 
+                                                            # any functionality
+#            is_tensor_tf_object_id.append(False)
+            kwarg_types[kw] = arg_type
+            tensors.append(arg)
+            processed_kwargs[kw] = arg.numpy()
+        elif isinstance(arg, ray.ObjectID):
+#            object_ids.append(arg)
+            kwarg_types[kw] = "native"
+            processed_kwargs[kw] = arg
+        else:
+            kwarg_types[kw] = "native"
+            processed_kwargs[kw] = arg
+
+#    assert len(tensors) == len(is_tensor_tf_object_id)
+#    assert len(tf_object_ids) == sum(is_tensor_tf_object_id)
+
+    result_tf_obj_ids = []
+   
+    @tf.custom_gradient
+    def submit_op(*tensors):
+        #NOTE: the tensors passed in here are merely to link the TF computation graph, but are never actually used
+
+        # submit the remote op
+        identifier = np.random.bytes(20)
+        forward = True
+        persistent_tape = False #TODO:(vsatish) when would we want this to be True?
+        dy = None
+        result_obj_ids = actor_method._internal_remote([identifier, forward, 
+                                                        persistent_tape, dy, 
+                                                        arg_types, kwarg_types, 
+                                                        *processed_args], 
+                                                        processed_kwargs, 
+                                                        num_return_vals)
+        
+        for obj_id in result_obj_ids:
+            graph_tensor = tf.constant(1.0) # this is a dummy tensor used to link the TF computation graph
+            result_tf_obj_ids.append(TFObjectID(obj_id, graph_tensor, 
+                                                identifier, actor_method, 
+                                                len(tensors), 
+                                                persistent_tape=persistent_tape))
+
+        def grad(*dys):
+#            dy_object_ids = [_tensor_to_info(dy) for dy in dys]
+
+#            assert len(dy_object_ids) == len(result_tf_object_ids), ("Must have one-to-one mapping between "
+#                                                                     "downstream gradients and fn outputs.")
+#            assert all([isinstance(object_id, ray.ObjectID) for object_id in object_ids]), ("All downstream gradients "
+#                                                                                            "must be ray ObjectIDs")
+
+            # compute gradients
+            forward = False
+            grad_ids = self._actor_method._internal_remote(
+                args=[identifier, forward, 
+                      persistent_tape, dys, None, None],
+                kwargs={},
+                num_return_vals=len(tensors)) #TODO:(vsatish) confirm that this is correct
+            
+            return ray.get(grad_ids) # DESTROYS PARALLELISM!!!
+
+        results = [tf_obj_id.graph_tensor for tf_obj_id in result_tf_obj_ids] # this is a dummy tensor used to link the TF computation graph
+        return results, grad
+    
+    results = submit_op(*tensors)
+    for tf_obj_id, graph_tensor in zip(result_tf_obj_ids, results): 
+        tf_obj_id.graph_tensor = graph_tensor #TODO:(vsatish) is this necessary?
+        
+    return result_tf_obj_ids
+
+def _post_process_get(tf_object_ids, results):
+    if not tf.executing_eagerly():
+        #TODO(vsatish): Can we automatically enable this? (Tricky b/c it must be done at start of program.)
+        raise RuntimeError("Tensorflow Eager execution must "
+                           "be enabled for experimental differentiable ray " 
+                           "functionality.")
+
+    tensors = [tf_obj_id.graph_tensor for tf_obj_id in tf_object_ids] # these are dummy tensors used to link the TF computation graph
+
+    @tf.custom_gradient
+    def get_op(*tensors):
+        results = [tf.constant(result) for result in results]
+        
+        def grad(*dys):
+            return dys
+
+        return results, grad
+
+    return get_op(tensors)
+   

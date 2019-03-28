@@ -169,7 +169,6 @@ class ActorMethod(object):
 
         return invocation(args, kwargs)
 
-
 class ActorClass(object):
     """An actor class.
 
@@ -235,6 +234,7 @@ class ActorClass(object):
         self._method_decorators = {}
         self._method_signatures = {}
         self._actor_method_num_return_vals = {}
+        self._is_tf_differentiable = {}
         for method_name, method in self._actor_methods:
             # Print a warning message if the method signature is not
             # supported. We don't raise an exception because if the actor
@@ -250,6 +250,8 @@ class ActorClass(object):
             else:
                 self._actor_method_num_return_vals[method_name] = (
                     ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
+            self._is_tf_differentiable[method_name] = hasattr(
+                method, "__ray_tf_differentiable__")
 
             if hasattr(method, "__ray_invocation_decorator__"):
                 self._method_decorators[method_name] = (
@@ -429,6 +431,7 @@ class ActorHandle(object):
         _ray_method_signatures: The signatures of the actor methods.
         _ray_method_num_return_vals: The default number of return values for
             each method.
+        _ray_is_tf_differentiable: Whether or not each actor method is differentiable. TODO: @Vishal refactor this
         _ray_class_name: The name of the actor class.
         _ray_actor_forks: The number of times this handle has been forked.
         _ray_actor_creation_dummy_object_id: The dummy object ID from the actor
@@ -455,6 +458,7 @@ class ActorHandle(object):
                  method_decorators,
                  method_signatures,
                  method_num_return_vals,
+                 is_tf_differentiable,
                  actor_creation_dummy_object_id,
                  actor_method_cpus,
                  actor_driver_id,
@@ -477,6 +481,7 @@ class ActorHandle(object):
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
         self._ray_method_num_return_vals = method_num_return_vals
+        self._ray_is_tf_differentiable = is_tf_differentiable
         self._ray_class_name = class_name
         self._ray_actor_forks = 0
         self._ray_actor_creation_dummy_object_id = (
@@ -653,6 +658,7 @@ class ActorHandle(object):
             "method_decorators": self._ray_method_decorators,
             "method_signatures": self._ray_method_signatures,
             "method_num_return_vals": self._ray_method_num_return_vals,
+            "is_tf_differentiable": self._ray_is_tf_differentiable,
             # Actors in local mode don't have dummy objects.
             "actor_creation_dummy_object_id": self.
             _ray_actor_creation_dummy_object_id,
@@ -716,6 +722,7 @@ class ActorHandle(object):
             state["method_decorators"],
             state["method_signatures"],
             state["method_num_return_vals"],
+            state["is_tf_differentiable"],
             state["actor_creation_dummy_object_id"],
             state["actor_method_cpus"],
             # This is the driver ID of the driver that owns the actor, not
