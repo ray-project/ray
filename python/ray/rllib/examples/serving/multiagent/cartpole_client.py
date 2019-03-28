@@ -15,8 +15,8 @@ import random
 import numpy as np
 from time import sleep
 
-from ray.rllib.utils.multiagent.policy_client import PolicyClient
-from ray.rllib.test.test_multi_agent_env import MultiCartpole
+from ray.rllib.utils.policy_client import PolicyClient
+from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 
 from constants import *
 

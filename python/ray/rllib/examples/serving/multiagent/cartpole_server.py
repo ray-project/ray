@@ -23,7 +23,7 @@ from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.agents.dqn import DQNAgent
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.utils.multiagent.policy_server import PolicyServer
+from ray.rllib.utils.policy_server import PolicyServer
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
