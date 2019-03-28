@@ -22,6 +22,6 @@ RUN apt-get update \
     && /opt/conda/bin/pip install \
         flatbuffers \
         cython==0.29.0 \
-        numpy==0.15.4
+        numpy==1.15.4
 
 ENV PATH "/opt/conda/bin:$PATH"
