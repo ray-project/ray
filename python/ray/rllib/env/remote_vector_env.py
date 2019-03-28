@@ -18,7 +18,8 @@ class RemoteVectorEnv(BaseEnv):
     are supported, and envs can be stepped synchronously or async.
     """
 
-    def __init__(self, make_env, num_envs, multiagent, remote_worker_env_batch_wait_ms):
+    def __init__(self, make_env, num_envs, multiagent,
+                 remote_worker_env_batch_wait_ms):
         self.make_local_env = make_env
         self.num_envs = num_envs
         self.multiagent = multiagent
@@ -29,6 +30,7 @@ class RemoteVectorEnv(BaseEnv):
 
     def poll(self):
         if self.actors is None:
+
             def make_remote_env(i):
                 logger.info("Launching env {} in remote actor".format(i))
                 if self.multiagent:
@@ -83,6 +85,7 @@ class RemoteVectorEnv(BaseEnv):
         if self.actors is not None:
             for actor in self.actors:
                 actor.__ray_terminate__.remote()
+
 
 @ray.remote(num_cpus=0)
 class _RemoteMultiAgentEnv(object):

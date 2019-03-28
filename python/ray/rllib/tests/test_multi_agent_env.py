@@ -282,8 +282,16 @@ class TestMultiAgentEnv(unittest.TestCase):
 
         # Reset processing
         self.assertRaises(
-            ValueError,
-            lambda: env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}}))
+            ValueError, lambda: env.send_actions({
+                0: {
+                    0: 0,
+                    1: 0
+                },
+                1: {
+                    0: 0,
+                    1: 0
+                }
+            }))
         self.assertEqual(env.try_reset(0), {0: 0, 1: 0})
         self.assertEqual(env.try_reset(1), {0: 0, 1: 0})
         env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
@@ -394,9 +402,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
             batch_mode="complete_episodes",
             batch_steps=1)
-        self.assertRaisesRegexp(ValueError,
-                                ".*don't have a last observation.*",
-                                lambda: ev.sample())
+        self.assertRaisesRegexp(
+            ValueError,
+            ".*don't have a last observation.*", lambda: ev.sample())
 
     def testMultiAgentSampleRoundRobin(self):
         act_space = gym.spaces.Discrete(2)
@@ -557,8 +565,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertTrue(
             pg.compute_action([0, 0, 0, 0], policy_id="policy_2") in [0, 1])
         self.assertRaises(
-            KeyError,
-            lambda: pg.compute_action([0, 0, 0, 0], policy_id="policy_3"))
+            KeyError, lambda: pg.compute_action([0, 0, 0, 0],
+                                                policy_id="policy_3"))
 
     def _testWithOptimizer(self, optimizer_cls):
         n = 3
@@ -600,15 +608,14 @@ class TestMultiAgentEnv(unittest.TestCase):
             remote_evs = []
         optimizer = optimizer_cls(ev, remote_evs, {})
         for i in range(200):
-            ev.foreach_policy(
-                lambda p, _: p.set_epsilon(max(0.02, 1 - i * .02))
-                if isinstance(p, DQNPolicyGraph) else None)
+            ev.foreach_policy(lambda p, _: p.set_epsilon(
+                max(0.02, 1 - i * .02))
+                              if isinstance(p, DQNPolicyGraph) else None)
             optimizer.step()
             result = collect_metrics(ev, remote_evs)
             if i % 20 == 0:
-                ev.foreach_policy(
-                    lambda p, _: p.update_target()
-                    if isinstance(p, DQNPolicyGraph) else None)
+                ev.foreach_policy(lambda p, _: p.update_target() if isinstance(
+                    p, DQNPolicyGraph) else None)
                 print("Iter {}, rew {}".format(i,
                                                result["policy_reward_mean"]))
                 print("Total reward", result["episode_reward_mean"])

@@ -668,12 +668,12 @@ class Agent(Trainable):
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
             input_creator = (lambda ioctx: ShuffledInput(
-                MixedInput(config["input"], ioctx),
-                config["shuffle_buffer_size"]))
+                MixedInput(config["input"], ioctx), config[
+                    "shuffle_buffer_size"]))
         else:
             input_creator = (lambda ioctx: ShuffledInput(
-                JsonReader(config["input"], ioctx),
-                config["shuffle_buffer_size"]))
+                JsonReader(config["input"], ioctx), config[
+                    "shuffle_buffer_size"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
@@ -735,7 +735,8 @@ class Agent(Trainable):
             input_evaluation=input_evaluation,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
-            remote_worker_env_batch_wait_ms=config["remote_worker_env_batch_wait_ms"])
+            remote_worker_env_batch_wait_ms=config[
+                "remote_worker_env_batch_wait_ms"])
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):
