@@ -109,7 +109,6 @@ matrix:
         - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_multi_node_2.py
         - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_node_manager.py
 
-
     # Build Linux wheels.
     - os: linux
       dist: trusty
@@ -141,7 +140,6 @@ matrix:
         - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
 
         - ./ci/travis/test-wheels.sh
-
 
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
