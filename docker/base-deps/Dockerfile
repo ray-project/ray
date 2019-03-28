@@ -6,14 +6,9 @@ RUN apt-get update \
         git \
         wget \
         cmake \
-        pkg-config \
         build-essential \
-        autoconf \
         curl \
-        libtool \
-        unzip \
-        flex \
-        bison \
+        unzip
     && apt-get clean \
     && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && wget \
