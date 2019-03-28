@@ -11,6 +11,7 @@ import ray
 import numpy as np
 import tensorflow as tf
 from ray.rllib.agents.impala import vtrace
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
@@ -320,7 +321,7 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
         self.sess.run(tf.global_variables_initializer())
 
         self.stats_fetches = {
-            "stats": dict({
+            LEARNER_STATS_KEY: dict({
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,

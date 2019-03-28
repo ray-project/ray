@@ -10,6 +10,7 @@ import tensorflow.contrib.layers as layers
 
 import ray
 from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog, Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -491,7 +492,7 @@ class DQNPolicyGraph(DQNPostprocessing, TFPolicyGraph):
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.loss.td_error,
-            "stats": self.loss.stats,
+            LEARNER_STATS_KEY: self.loss.stats,
         }
 
     @override(PolicyGraph)

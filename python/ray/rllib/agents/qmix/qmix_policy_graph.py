@@ -13,6 +13,7 @@ from torch.distributions import Categorical
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models.action_dist import TupleActions
@@ -297,7 +298,7 @@ class QMixPolicyGraph(PolicyGraph):
             mask_elems,
             "target_mean": (targets * mask).sum().item() / mask_elems,
         }
-        return {"stats": stats}, {}
+        return {LEARNER_STATS_KEY: stats}, {}
 
     @override(PolicyGraph)
     def get_initial_state(self):

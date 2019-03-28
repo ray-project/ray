@@ -10,6 +10,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models.lstm import chop_into_sequences
@@ -264,7 +265,7 @@ class TFPolicyGraph(PolicyGraph):
     @DeveloperAPI
     def extra_compute_grad_fetches(self):
         """Extra values to fetch and return from compute_gradients()."""
-        return {}  # e.g, td error
+        return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
 
     @DeveloperAPI
     def extra_apply_grad_feed_dict(self):
@@ -425,9 +426,12 @@ class TFPolicyGraph(PolicyGraph):
 
     def _get_grad_and_stats_fetches(self):
         fetches = self.extra_compute_grad_fetches()
+        if LEARNER_STATS_KEY not in fetches:
+            raise ValueError(
+                "Grad fetches should contain 'stats': {...} entry")
         if self._stats_fetches:
-            fetches["stats"] = dict(self._stats_fetches,
-                                    **fetches.get("stats", {}))
+            fetches[LEARNER_STATS_KEY] = dict(self._stats_fetches,
+                                              **fetches[LEARNER_STATS_KEY])
         return fetches
 
     def _get_loss_inputs_dict(self, batch):

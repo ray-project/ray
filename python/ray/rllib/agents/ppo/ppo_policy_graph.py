@@ -8,6 +8,7 @@ import tensorflow as tf
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
@@ -342,7 +343,7 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
-        return self.stats_fetches
+        return {LEARNER_STATS_KEY: self.stats_fetches}
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:
