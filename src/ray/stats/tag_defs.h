@@ -6,20 +6,20 @@
 
 using TagKeyType = opencensus::tags::TagKey;
 
-static TagKeyType JobNameKey = opencensus::tags::TagKey::Register("JobName");
+static const TagKeyType JobNameKey = TagKeyType::Register("JobName");
 
-static TagKeyType CustomKey = opencensus::tags::TagKey::Register("CustomKey");
+static const TagKeyType CustomKey = TagKeyType::Register("CustomKey");
 
-static TagKeyType NodeAddressKey = opencensus::tags::TagKey::Register("NodeAddress");
+static const TagKeyType NodeAddressKey = TagKeyType::Register("NodeAddress");
 
-static TagKeyType VersionKey = opencensus::tags::TagKey::Register("Version");
+static const TagKeyType VersionKey = TagKeyType::Register("Version");
 
-static TagKeyType LanguageKey = opencensus::tags::TagKey::Register("Language");
+static const TagKeyType LanguageKey = TagKeyType::Register("Language");
 
-static TagKeyType WorkerPidKey = opencensus::tags::TagKey::Register("WorkerPid");
+static const TagKeyType WorkerPidKey = TagKeyType::Register("WorkerPid");
 
 /// The definitions of global tag.
-static std::vector<std::pair<opencensus::tags::TagKey, std::string>> GlobalTags = {
+static const std::vector<std::pair<TagKeyType, std::string>> GlobalTags = {
     {JobNameKey, "raylet"}, {VersionKey, "0.6.5"}};
 
 #endif  // RAY_STATS_TAG_DEFS_H
