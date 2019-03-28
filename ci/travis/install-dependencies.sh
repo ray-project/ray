@@ -36,15 +36,6 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   pip install -q scipy tensorflow cython==0.29.0 gym opencv-python-headless pyyaml pandas==0.23.4 requests \
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx tabulate psutil
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
-  # check that brew is installed
-  which -s brew
-  if [[ $? != 0 ]]; then
-    echo "Could not find brew, please install brew (see http://brew.sh/)."
-    exit 1
-  else
-    echo "Updating brew."
-    brew update > /dev/null
-  fi
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda2-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
@@ -52,15 +43,6 @@ elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   pip install -q cython==0.29.0 tensorflow gym opencv-python-headless pyyaml pandas==0.23.4 requests \
     feather-format lxml openpyxl xlrd py-spy setproctitle faulthandler pytest-timeout mock flaky networkx tabulate psutil
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
-  # check that brew is installed
-  which -s brew
-  if [[ $? != 0 ]]; then
-    echo "Could not find brew, please install brew (see http://brew.sh/)."
-    exit 1
-  else
-    echo "Updating brew."
-    brew update > /dev/null
-  fi
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
@@ -80,18 +62,6 @@ elif [[ "$LINUX_WHEELS" == "1" ]]; then
   sudo apt-get install docker
   sudo usermod -a -G docker travis
 elif [[ "$MAC_WHEELS" == "1" ]]; then
-  which -s brew
-  if [[ $? != 0 ]]; then
-    echo "Could not find brew, please install brew (see http://brew.sh/)."
-    exit 1
-  else
-    echo "Updating brew."
-    brew update > /dev/null
-  fi
-  brew install pkg-config automake autoconf libtool openssl bison > /dev/null
-  # We use true to avoid exiting with an error code because the brew install can
-  # fail if a package is already installed.
-  true
 else
   echo "Unrecognized environment."
   exit 1

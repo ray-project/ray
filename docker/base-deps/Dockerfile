@@ -8,7 +8,7 @@ RUN apt-get update \
         cmake \
         build-essential \
         curl \
-        unzip
+        unzip \
     && apt-get clean \
     && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && wget \
