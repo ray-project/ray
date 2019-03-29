@@ -6,16 +6,18 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils.annotations import override
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.agents.dqn.dqn_policy_graph import _scope_vars
 from ray.rllib.utils.explained_variance import explained_variance
 
-P_SCOPE = "p_func"
-V_SCOPE = "v_func"
+POLICY_SCOPE = "p_func"
+VALUE_SCOPE = "v_func"
 
 
 class ValueLoss(object):
@@ -53,7 +55,30 @@ class ReweightedImitationLoss(object):
             tf.stop_gradient(exp_advs) * logprobs)
 
 
-class MARWILPolicyGraph(TFPolicyGraph):
+class MARWILPostprocessing(object):
+    """Adds the advantages field to the trajectory."""
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        completed = sample_batch["dones"][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            raise NotImplementedError(
+                "last done mask in a batch should be True. "
+                "For now, we only support reading experience batches produced "
+                "with batch_mode='complete_episodes'.",
+                len(sample_batch[SampleBatch.DONES]),
+                sample_batch[SampleBatch.DONES][-1])
+        batch = compute_advantages(
+            sample_batch, last_r, gamma=self.config["gamma"], use_gae=False)
+        return batch
+
+
+class MARWILPolicyGraph(MARWILPostprocessing, TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         self.config = config
@@ -68,7 +93,7 @@ class MARWILPolicyGraph(TFPolicyGraph):
         prev_rewards_ph = tf.placeholder(
             tf.float32, [None], name="prev_reward")
 
-        with tf.variable_scope(P_SCOPE) as scope:
+        with tf.variable_scope(POLICY_SCOPE) as scope:
             self.model = ModelCatalog.get_model({
                 "obs": self.obs_t,
                 "prev_actions": prev_actions_ph,
@@ -88,7 +113,7 @@ class MARWILPolicyGraph(TFPolicyGraph):
         self.cum_rew_t = tf.placeholder(tf.float32, [None], name="reward")
 
         # v network evaluation
-        with tf.variable_scope(V_SCOPE) as scope:
+        with tf.variable_scope(VALUE_SCOPE) as scope:
             state_values = self.model.value_function()
             self.v_func_vars = _scope_vars(scope.name)
         self.v_loss = self._build_value_loss(state_values, self.cum_rew_t)
@@ -104,9 +129,9 @@ class MARWILPolicyGraph(TFPolicyGraph):
         # initialize TFPolicyGraph
         self.sess = tf.get_default_session()
         self.loss_inputs = [
-            ("obs", self.obs_t),
-            ("actions", self.act_t),
-            ("advantages", self.cum_rew_t),
+            (SampleBatch.CUR_OBS, self.obs_t),
+            (SampleBatch.ACTIONS, self.act_t),
+            (Postprocessing.ADVANTAGES, self.cum_rew_t),
         ]
         TFPolicyGraph.__init__(
             self,
@@ -143,24 +168,6 @@ class MARWILPolicyGraph(TFPolicyGraph):
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return {LEARNER_STATS_KEY: self.stats_fetches}
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            raise NotImplementedError(
-                "last done mask in a batch should be True. "
-                "For now, we only support reading experience batches produced "
-                "with batch_mode='complete_episodes'.",
-                len(sample_batch["dones"]), sample_batch["dones"][-1])
-        batch = compute_advantages(
-            sample_batch, last_r, gamma=self.config["gamma"], use_gae=False)
-        return batch
 
     @override(PolicyGraph)
     def get_initial_state(self):

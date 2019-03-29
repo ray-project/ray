@@ -47,16 +47,16 @@ class MARWILAgent(Agent):
     _policy_graph = MARWILPolicyGraph
 
     @override(Agent)
-    def _init(self):
+    def _init(self, config, env_creator):
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, self._policy_graph)
+            env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"])
+            env_creator, self._policy_graph, config["num_workers"])
         self.optimizer = SyncBatchReplayOptimizer(
             self.local_evaluator, self.remote_evaluators, {
-                "learning_starts": self.config["learning_starts"],
-                "buffer_size": self.config["replay_buffer_size"],
-                "train_batch_size": self.config["train_batch_size"],
+                "learning_starts": config["learning_starts"],
+                "buffer_size": config["replay_buffer_size"],
+                "train_batch_size": config["train_batch_size"],
             })
 
     @override(Agent)
