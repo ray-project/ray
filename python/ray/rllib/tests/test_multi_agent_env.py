@@ -355,7 +355,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             batch_steps=50,
             num_envs=4,
             remote_worker_envs=True,
-            remote_worker_env_batch_wait_ms=99999999)
+            remote_env_batch_wait_ms=99999999)
         batch = ev.sample()
         self.assertEqual(batch.count, 200)
 

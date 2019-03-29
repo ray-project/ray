@@ -80,7 +80,7 @@ class BaseEnv(object):
                     make_env=None,
                     num_envs=1,
                     remote_envs=False,
-                    remote_worker_env_batch_wait_ms=0):
+                    remote_env_batch_wait_ms=0):
         """Wraps any env type as needed to expose the async interface."""
 
         from ray.rllib.env.remote_vector_env import RemoteVectorEnv
@@ -96,8 +96,7 @@ class BaseEnv(object):
                         make_env,
                         num_envs,
                         multiagent=True,
-                        remote_worker_env_batch_wait_ms=
-                        remote_worker_env_batch_wait_ms)
+                        remote_env_batch_wait_ms=remote_env_batch_wait_ms)
                 else:
                     env = _MultiAgentEnvToBaseEnv(
                         make_env=make_env,
@@ -116,8 +115,7 @@ class BaseEnv(object):
                         make_env,
                         num_envs,
                         multiagent=False,
-                        remote_worker_env_batch_wait_ms=
-                        remote_worker_env_batch_wait_ms)
+                        remote_env_batch_wait_ms=remote_env_batch_wait_ms)
                 else:
                     env = VectorEnv.wrap(
                         make_env=make_env,

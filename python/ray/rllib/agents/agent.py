@@ -154,7 +154,7 @@ COMMON_CONFIG = {
     # 0 (continue when at least one env is ready) is a reasonable default,
     # but optimal value could be obtained by measuring your environment
     # step / reset and model inference perf.
-    "remote_worker_env_batch_wait_ms": 0,
+    "remote_env_batch_wait_ms": 0,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -735,8 +735,8 @@ class Agent(Trainable):
             input_evaluation=input_evaluation,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
-            remote_worker_env_batch_wait_ms=config[
-                "remote_worker_env_batch_wait_ms"])
+            remote_env_batch_wait_ms=config[
+                "remote_env_batch_wait_ms"])
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):

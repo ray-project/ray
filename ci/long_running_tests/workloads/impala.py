@@ -43,7 +43,7 @@ run_experiments({
             "num_gpus": 0,
             "num_envs_per_worker": 5,
             "remote_worker_envs": True,
-            "remote_worker_env_batch_wait_ms": 99999999,
+            "remote_env_batch_wait_ms": 99999999,
             "sample_batch_size": 50,
             "train_batch_size": 100,
         },
