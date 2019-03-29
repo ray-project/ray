@@ -147,11 +147,14 @@ COMMON_CONFIG = {
     "metrics_smoothing_episodes": 100,
     # If using num_envs_per_worker > 1, whether to create those new envs in
     # remote processes instead of in the same worker. This adds overheads, but
-    # can make sense if your envs are very CPU intensive (e.g., for StarCraft).
+    # can make sense if your envs can take much time to step / reset
+    # (e.g., for StarCraft)
     "remote_worker_envs": False,
-    # Similar to remote_worker_envs, but runs the envs asynchronously in the
-    # background for greater efficiency. Conflicts with remote_worker_envs.
-    "async_remote_worker_envs": False,
+    # Timeout that remote workers are waiting when polling environments.
+    # 0 (continue when at least one env is ready) is a reasonable default,
+    # but optimal value could be obtained by measuring your environment
+    # step / reset and model inference perf.
+    "remote_env_batch_wait_ms": 0,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -378,10 +381,18 @@ class Agent(Trainable):
 
     @override(Trainable)
     def _stop(self):
+        # Call stop on all evaluators to release resources
+        if hasattr(self, "local_evaluator"):
+            self.local_evaluator.stop()
+        if hasattr(self, "remote_evaluators"):
+            for ev in self.remote_evaluators:
+                ev.stop.remote()
+
         # workaround for https://github.com/ray-project/ray/issues/1516
         if hasattr(self, "remote_evaluators"):
             for ev in self.remote_evaluators:
                 ev.__ray_terminate__.remote()
+
         if hasattr(self, "optimizer"):
             self.optimizer.stop()
 
@@ -657,12 +668,12 @@ class Agent(Trainable):
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
             input_creator = (lambda ioctx: ShuffledInput(
-                MixedInput(config["input"], ioctx),
-                config["shuffle_buffer_size"]))
+                MixedInput(config["input"], ioctx), config[
+                    "shuffle_buffer_size"]))
         else:
             input_creator = (lambda ioctx: ShuffledInput(
-                JsonReader(config["input"], ioctx),
-                config["shuffle_buffer_size"]))
+                JsonReader(config["input"], ioctx), config[
+                    "shuffle_buffer_size"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
@@ -724,7 +735,7 @@ class Agent(Trainable):
             input_evaluation=input_evaluation,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
-            async_remote_worker_envs=config["async_remote_worker_envs"])
+            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"])
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):
