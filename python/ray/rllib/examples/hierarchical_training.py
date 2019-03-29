@@ -187,7 +187,7 @@ if __name__ == "__main__":
     if args.flat:
         tune.run(
             "PPO",
-            "config": {
+            config={
                 "env": WindyMazeEnv,
                 "num_workers": 0,
             },
