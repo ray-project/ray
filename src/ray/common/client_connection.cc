@@ -44,7 +44,8 @@ ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&sock
     : socket_(std::move(socket)),
       async_write_max_messages_(1),
       async_write_queue_(),
-      async_write_in_flight_(false) {}
+      async_write_in_flight_(false),
+      async_write_broken_pipe_(false) {}
 
 template <class T>
 ServerConnection<T>::~ServerConnection() {
@@ -167,27 +168,46 @@ void ServerConnection<T>::DoAsyncWrites() {
       break;
     }
   }
+
+  // Helper function to call all handlers with the input status.
+  auto call_handlers = [this](const ray::Status &status, int num_messages) {
+    for (int i = 0; i < num_messages; i++) {
+      auto write_buffer = std::move(async_write_queue_.front());
+      write_buffer->handler(status);
+      async_write_queue_.pop_front();
+    }
+    // We finished writing, so mark that we're no longer doing an async write.
+    async_write_in_flight_ = false;
+    // If there is more to write, try to write the rest.
+    if (!async_write_queue_.empty()) {
+      DoAsyncWrites();
+    }
+  };
+
+  if (async_write_broken_pipe_) {
+    // The connection is not healthy and the heartbeat is not timeout yet.
+    call_handlers(ray::Status::IOError("Broken pipe"), num_messages);
+    return;
+  }
   auto this_ptr = this->shared_from_this();
   boost::asio::async_write(
       ServerConnection<T>::socket_, message_buffers,
-      [this, this_ptr, num_messages](const boost::system::error_code &error,
-                                     size_t bytes_transferred) {
-        ray::Status status = ray::Status::OK();
-        if (error.value() != boost::system::errc::errc_t::success) {
-          status = boost_to_ray_status(error);
+      [this, this_ptr, num_messages, call_handlers](
+          const boost::system::error_code &error, size_t bytes_transferred) {
+        ray::Status status = boost_to_ray_status(error);
+        if (error.value() == boost::system::errc::errc_t::broken_pipe) {
+          RAY_LOG(ERROR) << "Broken Pipe happened during calling "
+                         << "ServerConnection<T>::DoAsyncWrites.";
+          // From now on, calling DoAsyncWrites will directly call the handler
+          // with this broken-pipe status.
+          async_write_broken_pipe_ = true;
+        } else if (!status.ok()) {
+          RAY_LOG(ERROR) << "Error encountered during calling "
+                         << "ServerConnection<T>::DoAsyncWrites, message: "
+                         << status.message()
+                         << ", error code: " << static_cast<int>(error.value());
         }
-        // Call the handlers for the written messages.
-        for (int i = 0; i < num_messages; i++) {
-          auto write_buffer = std::move(async_write_queue_.front());
-          write_buffer->handler(status);
-          async_write_queue_.pop_front();
-        }
-        // We finished writing, so mark that we're no longer doing an async write.
-        async_write_in_flight_ = false;
-        // If there is more to write, try to write the rest.
-        if (!async_write_queue_.empty()) {
-          DoAsyncWrites();
-        }
+        call_handlers(status, num_messages);
       });
 }
 
