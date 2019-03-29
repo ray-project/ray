@@ -185,15 +185,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
     if args.flat:
-        run_experiments({
-            "maze_single": {
-                "run": "PPO",
+        tune.run(
+            "PPO",
+            "config": {
                 "env": WindyMazeEnv,
-                "config": {
-                    "num_workers": 0,
-                },
+                "num_workers": 0,
             },
-        })
+        )
     else:
         maze = WindyMazeEnv(None)
 
