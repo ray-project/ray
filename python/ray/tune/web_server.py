@@ -40,7 +40,7 @@ class TuneClient(object):
         port_forward (int): Port number of running TuneServer
     """
 
-    def __init__(self, tune_address, port_forward):
+    def __init__(self, tune_address="localhost", port_forward=4321):
         self._tune_address = tune_address
         self._port_forward = port_forward
         self._path = "http://{}:{}".format(tune_address, port_forward)
