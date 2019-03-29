@@ -519,8 +519,6 @@ def test_resource_assignment(shutdown_only):
             return ray.get_resource_ids()
 
     decorator_resource_args = [{}, {
-        "num_cpus": 0.1
-    }, {
         "num_gpus": 0.1
     }, {
         "resources": {
@@ -528,8 +526,6 @@ def test_resource_assignment(shutdown_only):
         }
     }]
     instantiation_resource_args = [{}, {
-        "num_cpus": 0.2
-    }, {
         "num_gpus": 0.2
     }, {
         "resources": {
