@@ -169,6 +169,8 @@ install:
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
+  - python -m pytest -v -s --durations=10 --timeout=300 python/ray/tests/test_object_manager.py::test_actor_broadcast
+  - python -m pytest -v -s --durations=10 --timeout=300 python/ray/tests/test_component_failures.py::test_plasma_store_failed
   # The following is needed so cloudpickle can find some of the
   # class definitions: The main module of tests that are run
   # with pytest have the same name as the test file -- and this
