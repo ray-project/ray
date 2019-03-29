@@ -448,9 +448,19 @@ class Agent(Trainable):
             preprocessed, update=False)
         if state:
             return self.get_policy(policy_id).compute_single_action(
-                filtered_obs, state, prev_action, prev_reward, info)
+                filtered_obs,
+                state,
+                prev_action,
+                prev_reward,
+                info,
+                clip_actions=self.config["clip_actions"])
         return self.get_policy(policy_id).compute_single_action(
-            filtered_obs, state, prev_action, prev_reward, info)[0]
+            filtered_obs,
+            state,
+            prev_action,
+            prev_reward,
+            info,
+            clip_actions=self.config["clip_actions"])[0]
 
     @property
     def iteration(self):
