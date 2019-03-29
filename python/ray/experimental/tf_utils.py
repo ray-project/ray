@@ -77,7 +77,7 @@ class TensorFlowVariables(object):
                     queue.append(control)
                     explored_inputs.add(control)
             if ("Variable" in tf_obj.node_def.op
-                or "VarHandle" in tf_obj.node_def.op):
+                    or "VarHandle" in tf_obj.node_def.op):
                 variable_names.append(tf_obj.node_def.name)
         self.variables = OrderedDict()
         variable_list = [
