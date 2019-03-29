@@ -286,7 +286,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     and not ray.get_gpu_ids()):
                 logger.info("Creating policy evaluation worker {}".format(
                     worker_index) +
-                    " on CPU (please ignore any CUDA init errors)")
+                            " on CPU (please ignore any CUDA init errors)")
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
