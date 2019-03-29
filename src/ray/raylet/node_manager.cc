@@ -1319,8 +1319,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
-  stats::TaskCountReceived().Record(
-      1, {{stats::NodeAddressKey, RayConfig::instance().node_address()}});
+  stats::TaskCountReceived().Record(1);
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Submitting task: task_id=" << task_id

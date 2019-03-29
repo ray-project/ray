@@ -3,6 +3,7 @@
 
 #include <exception>
 #include <string>
+#include <unordered_map>
 
 #include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
 #include "opencensus/exporters/stats/stdout/stdout_exporter.h"
@@ -21,7 +22,7 @@ namespace stats {
 #include "metric_defs.h"
 
 /// Initialize stats.
-static void Init(const std::string &address) {
+static void Init(const std::string &address, const TagsType &global_tags) {
   // Enable the Prometheus exporter.
   // Note that the reason for we using local static variables
   // here is to make sure they are single-instances.
@@ -39,6 +40,12 @@ static void Init(const std::string &address) {
   } catch (std::exception &e) {
     RAY_LOG(WARNING) << "Failed to create the Prometheus exposer It doesn't "
                      << "affect anything except stats. Caused by: " << e.what();
+    return;
+  }
+
+  std::unique_ptr<TagsType> &global_tags_ptr = GetGlobalTagsPtr();
+  if (nullptr == global_tags_ptr) {
+    global_tags_ptr.reset(new TagsType(std::move(global_tags)));
   }
 
 }

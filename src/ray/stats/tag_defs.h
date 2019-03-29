@@ -5,6 +5,7 @@
 /// You can follow these examples to define and register your tag keys.
 
 using TagKeyType = opencensus::tags::TagKey;
+using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;
 
 static const TagKeyType JobNameKey = TagKeyType::Register("JobName");
 
@@ -18,8 +19,5 @@ static const TagKeyType LanguageKey = TagKeyType::Register("Language");
 
 static const TagKeyType WorkerPidKey = TagKeyType::Register("WorkerPid");
 
-/// The definitions of global tag.
-static const std::vector<std::pair<TagKeyType, std::string>> GlobalTags = {
-    {JobNameKey, "raylet"}, {VersionKey, "0.6.5"}};
 
 #endif  // RAY_STATS_TAG_DEFS_H

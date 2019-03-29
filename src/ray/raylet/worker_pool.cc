@@ -132,12 +132,9 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
     state.starting_worker_processes.emplace(
         std::make_pair(pid, num_workers_per_process_));
-
     stats::CurrentWorker().Record(
-        pid, {{stats::NodeAddressKey, RayConfig::instance().node_address()},
-              {stats::LanguageKey, EnumNameLanguage(language)},
+        pid, {{stats::LanguageKey, EnumNameLanguage(language)},
               {stats::WorkerPidKey, std::to_string(pid)}});
-
     return;
   }
 }
@@ -242,8 +239,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
 
   stats::CurrentWorker().Record(
-      0, {{stats::NodeAddressKey, RayConfig::instance().node_address()},
-          {stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
+      0, {{stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
 
   return RemoveWorker(state.idle, worker);
