@@ -423,8 +423,7 @@ class DQNPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     @override(TFPolicyGraph)
     def optimizer(self):
         return tf.train.AdamOptimizer(
-            learning_rate=self.cur_lr,
-            epsilon=self.config["adam_epsilon"])
+            learning_rate=self.cur_lr, epsilon=self.config["adam_epsilon"])
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):
