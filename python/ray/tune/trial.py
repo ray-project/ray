@@ -291,17 +291,16 @@ class Trial(object):
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
+
         self.keep_checkpoints_num = keep_checkpoints_num
-        self.history = []
-        self.checkpoint_score_attr = checkpoint_score_attr
-        self._cmp_greater = True
-        self.best_checkpoint_attr_value = -float("inf")
+        self._cmp_greater = checkpoint_score_attr.startswith("min-")
+        self.best_checkpoint_attr_value = -float("inf") \
+            if self._cmp_greater else float("inf")
+        self.checkpoint_score_attr = checkpoint_score_attr[4:] \
+            if self._cmp_greater else checkpoint_score_attr
         self.results_since_checkpoint_sum = 0
         self.results_since_checkpoint_cnt = 0
-        if checkpoint_score_attr and checkpoint_score_attr.startswith("min-"):
-            self._cmp_greater = False
-            self.checkpoint_score_attr = checkpoint_score_attr[4:]
-            self.best_checkpoint_attr_value = float("inf")
+
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
         self.export_formats = export_formats
