@@ -10,9 +10,12 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
@@ -262,7 +265,7 @@ class TFPolicyGraph(PolicyGraph):
     @DeveloperAPI
     def extra_compute_grad_fetches(self):
         """Extra values to fetch and return from compute_gradients()."""
-        return {}  # e.g, td error
+        return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
 
     @DeveloperAPI
     def extra_apply_grad_feed_dict(self):
@@ -423,17 +426,21 @@ class TFPolicyGraph(PolicyGraph):
 
     def _get_grad_and_stats_fetches(self):
         fetches = self.extra_compute_grad_fetches()
+        if LEARNER_STATS_KEY not in fetches:
+            raise ValueError(
+                "Grad fetches should contain 'stats': {...} entry")
         if self._stats_fetches:
-            fetches["stats"] = dict(self._stats_fetches,
-                                    **fetches.get("stats", {}))
+            fetches[LEARNER_STATS_KEY] = dict(self._stats_fetches,
+                                              **fetches[LEARNER_STATS_KEY])
         return fetches
 
     def _get_loss_inputs_dict(self, batch):
         feed_dict = {}
         if self._batch_divisibility_req > 1:
             meets_divisibility_reqs = (
-                len(batch["obs"]) % self._batch_divisibility_req == 0
-                and max(batch["agent_index"]) == 0)  # not multiagent
+                len(batch[SampleBatch.CUR_OBS]) %
+                self._batch_divisibility_req == 0
+                and max(batch[SampleBatch.AGENT_INDEX]) == 0)  # not multiagent
         else:
             meets_divisibility_reqs = True
 
@@ -456,8 +463,8 @@ class TFPolicyGraph(PolicyGraph):
             "state_in_{}".format(i) for i in range(len(self._state_inputs))
         ]
         feature_sequences, initial_states, seq_lens = chop_into_sequences(
-            batch["eps_id"],
-            batch["agent_index"], [batch[k] for k in feature_keys],
+            batch[SampleBatch.EPS_ID],
+            batch[SampleBatch.AGENT_INDEX], [batch[k] for k in feature_keys],
             [batch[k] for k in state_keys],
             max_seq_len,
             dynamic_max=dynamic_max)
@@ -466,6 +473,15 @@ class TFPolicyGraph(PolicyGraph):
         for k, v in zip(state_keys, initial_states):
             feed_dict[self._loss_input_dict[k]] = v
         feed_dict[self._seq_lens] = seq_lens
+
+        if log_once("rnn_feed_dict"):
+            logger.info("Padded input for RNN:\n\n{}\n".format(
+                summarize({
+                    "features": feature_sequences,
+                    "initial_states": initial_states,
+                    "seq_lens": seq_lens,
+                    "max_seq_len": max_seq_len,
+                })))
         return feed_dict
 
 

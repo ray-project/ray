@@ -46,21 +46,21 @@ class A3CAgent(Agent):
     _policy_graph = A3CPolicyGraph
 
     @override(Agent)
-    def _init(self):
-        if self.config["use_pytorch"]:
+    def _init(self, config, env_creator):
+        if config["use_pytorch"]:
             from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
                 A3CTorchPolicyGraph
             policy_cls = A3CTorchPolicyGraph
         else:
             policy_cls = self._policy_graph
 
-        if self.config["entropy_coeff"] < 0:
+        if config["entropy_coeff"] < 0:
             raise DeprecationWarning("entropy_coeff must be >= 0")
 
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)
+            env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"])
+            env_creator, policy_cls, config["num_workers"])
         self.optimizer = self._make_optimizer()
 
     @override(Agent)

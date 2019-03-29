@@ -7,6 +7,8 @@ from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import override, PublicAPI
 
+ASYNC_RESET_RETURN = "async_reset_return"
+
 
 @PublicAPI
 class BaseEnv(object):
@@ -78,26 +80,23 @@ class BaseEnv(object):
                     make_env=None,
                     num_envs=1,
                     remote_envs=False,
-                    async_remote_envs=False):
+                    remote_env_batch_wait_ms=0):
         """Wraps any env type as needed to expose the async interface."""
 
         from ray.rllib.env.remote_vector_env import RemoteVectorEnv
-        if (remote_envs or async_remote_envs) and num_envs == 1:
+        if remote_envs and num_envs == 1:
             raise ValueError(
                 "Remote envs only make sense to use if num_envs > 1 "
                 "(i.e. vectorization is enabled).")
-        if remote_envs and async_remote_envs:
-            raise ValueError("You can only specify one of remote_envs or "
-                             "async_remote_envs.")
 
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
                 if remote_envs:
                     env = RemoteVectorEnv(
-                        make_env, num_envs, multiagent=True, sync=True)
-                elif async_remote_envs:
-                    env = RemoteVectorEnv(
-                        make_env, num_envs, multiagent=True, sync=False)
+                        make_env,
+                        num_envs,
+                        multiagent=True,
+                        remote_env_batch_wait_ms=remote_env_batch_wait_ms)
                 else:
                     env = _MultiAgentEnvToBaseEnv(
                         make_env=make_env,
@@ -113,10 +112,10 @@ class BaseEnv(object):
             else:
                 if remote_envs:
                     env = RemoteVectorEnv(
-                        make_env, num_envs, multiagent=False, sync=True)
-                elif async_remote_envs:
-                    env = RemoteVectorEnv(
-                        make_env, num_envs, multiagent=False, sync=False)
+                        make_env,
+                        num_envs,
+                        multiagent=False,
+                        remote_env_batch_wait_ms=remote_env_batch_wait_ms)
                 else:
                     env = VectorEnv.wrap(
                         make_env=make_env,
@@ -184,9 +183,14 @@ class BaseEnv(object):
         """
         return []
 
+    @PublicAPI
+    def stop(self):
+        """Releases all resources used."""
+        pass
+
 
 # Fixed agent identifier when there is only the single agent in the env
-_DUMMY_AGENT_ID = "single_agent"
+_DUMMY_AGENT_ID = "agent0"
 
 
 def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):

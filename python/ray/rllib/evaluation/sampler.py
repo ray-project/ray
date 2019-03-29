@@ -2,35 +2,54 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gym
 from collections import defaultdict, namedtuple
 import logging
 import numpy as np
 import six.moves.queue as queue
 import threading
+import time
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.evaluation.policy_graph import clip_action
 
 logger = logging.getLogger(__name__)
-_large_batch_warned = False
 
-RolloutMetrics = namedtuple(
-    "RolloutMetrics",
-    ["episode_length", "episode_reward", "agent_rewards", "custom_metrics"])
+RolloutMetrics = namedtuple("RolloutMetrics", [
+    "episode_length", "episode_reward", "agent_rewards", "custom_metrics",
+    "perf_stats"
+])
 
 PolicyEvalData = namedtuple("PolicyEvalData", [
     "env_id", "agent_id", "obs", "info", "rnn_state", "prev_action",
     "prev_reward"
 ])
+
+
+class PerfStats(object):
+    """Sampler perf stats that will be included in rollout metrics."""
+
+    def __init__(self):
+        self.iters = 0
+        self.env_wait_time = 0.0
+        self.processing_time = 0.0
+        self.inference_time = 0.0
+
+    def get(self):
+        return {
+            "mean_env_wait_ms": self.env_wait_time * 1000 / self.iters,
+            "mean_processing_ms": self.processing_time * 1000 / self.iters,
+            "mean_inference_ms": self.inference_time * 1000 / self.iters
+        }
 
 
 class SamplerInput(InputReader):
@@ -68,11 +87,12 @@ class SyncSampler(SamplerInput):
         self.preprocessors = preprocessors
         self.obs_filters = obs_filters
         self.extra_batches = queue.Queue()
+        self.perf_stats = PerfStats()
         self.rollout_provider = _env_runner(
             self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
-            pack, callbacks, tf_sess)
+            pack, callbacks, tf_sess, self.perf_stats)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -87,7 +107,8 @@ class SyncSampler(SamplerInput):
         completed = []
         while True:
             try:
-                completed.append(self.metrics_queue.get_nowait())
+                completed.append(self.metrics_queue.get_nowait()._replace(
+                    perf_stats=self.perf_stats.get()))
             except queue.Empty:
                 break
         return completed
@@ -138,6 +159,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.callbacks = callbacks
         self.clip_actions = clip_actions
         self.blackhole_outputs = blackhole_outputs
+        self.perf_stats = PerfStats()
         self.shutdown = False
 
     def run(self):
@@ -159,7 +181,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
-            self.clip_actions, self.pack, self.callbacks, self.tf_sess)
+            self.clip_actions, self.pack, self.callbacks, self.tf_sess,
+            self.perf_stats)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -185,7 +208,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
         completed = []
         while True:
             try:
-                completed.append(self.metrics_queue.get_nowait())
+                completed.append(self.metrics_queue.get_nowait()._replace(
+                    perf_stats=self.perf_stats.get()))
             except queue.Empty:
                 break
         return completed
@@ -200,44 +224,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return extra
 
 
-def clip_action(action, space):
-    """Called to clip actions to the specified range of this policy.
-
-    Arguments:
-        action: Single action.
-        space: Action space the actions should be present in.
-
-    Returns:
-        Clipped batch of actions.
-    """
-
-    if isinstance(space, gym.spaces.Box):
-        return np.clip(action, space.low, space.high)
-    elif isinstance(space, gym.spaces.Tuple):
-        if type(action) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                action, space))
-        out = []
-        for a, s in zip(action, space.spaces):
-            out.append(clip_action(a, s))
-        return out
-    else:
-        return action
-
-
-def _env_runner(base_env,
-                extra_batch_callback,
-                policies,
-                policy_mapping_fn,
-                unroll_length,
-                horizon,
-                preprocessors,
-                obs_filters,
-                clip_rewards,
-                clip_actions,
-                pack,
-                callbacks,
-                tf_sess=None):
+def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
+                unroll_length, horizon, preprocessors, obs_filters,
+                clip_rewards, clip_actions, pack, callbacks, tf_sess,
+                perf_stats):
     """This implements the common experience collection logic.
 
     Args:
@@ -261,6 +251,7 @@ def _env_runner(base_env,
         callbacks (dict): User callbacks to run on episode events.
         tf_sess (Session|None): Optional tensorflow session to use for batching
             TF policy evaluations.
+        perf_stats (PerfStats): Record perf stats into this object.
 
     Yields:
         rollout (SampleBatch): Object containing state, action, reward,
@@ -299,30 +290,46 @@ def _env_runner(base_env,
     active_episodes = defaultdict(new_episode)
 
     while True:
+        perf_stats.iters += 1
+        t0 = time.time()
         # Get observations from all ready agents
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
+        perf_stats.env_wait_time += time.time() - t0
+
+        if log_once("env_returns"):
+            logger.info("Raw obs from env: {}".format(
+                summarize(unfiltered_obs)))
+            logger.info("Info return from env: {}".format(summarize(infos)))
 
         # Process observations and prepare for policy evaluation
+        t1 = time.time()
         active_envs, to_eval, outputs = _process_observations(
             base_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
             preprocessors, obs_filters, unroll_length, pack, callbacks)
+        perf_stats.processing_time += time.time() - t1
         for o in outputs:
             yield o
 
         # Do batched policy eval
+        t2 = time.time()
         eval_results = _do_policy_eval(tf_sess, to_eval, policies,
                                        active_episodes)
+        perf_stats.inference_time += time.time() - t2
 
         # Process results and update episode state
+        t3 = time.time()
         actions_to_send = _process_policy_eval_results(
             to_eval, eval_results, active_episodes, active_envs,
             off_policy_actions, policies, clip_actions)
+        perf_stats.processing_time += time.time() - t3
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
+        t4 = time.time()
         base_env.send_actions(actions_to_send)
+        perf_stats.env_wait_time += time.time() - t4
 
 
 def _process_observations(base_env, policies, batch_builder_pool,
@@ -350,10 +357,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
             episode.batch_builder.count += 1
             episode._add_agent_rewards(rewards[env_id])
 
-        global _large_batch_warned
-        if (not _large_batch_warned and
-                episode.batch_builder.total() > max(1000, unroll_length * 10)):
-            _large_batch_warned = True
+        if (episode.batch_builder.total() > max(1000, unroll_length * 10)
+                and log_once("large_batch_warning")):
             logger.warning(
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
@@ -377,7 +382,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
                 outputs.append(
                     RolloutMetrics(episode.length, episode.total_reward,
                                    dict(episode.agent_rewards),
-                                   episode.custom_metrics))
+                                   episode.custom_metrics, {}))
         else:
             all_done = False
             active_envs.add(env_id)
@@ -387,7 +392,13 @@ def _process_observations(base_env, policies, batch_builder_pool,
             policy_id = episode.policy_for(agent_id)
             prep_obs = _get_or_raise(preprocessors,
                                      policy_id).transform(raw_obs)
+            if log_once("prep_obs"):
+                logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
+
             filtered_obs = _get_or_raise(obs_filters, policy_id)(prep_obs)
+            if log_once("filtered_obs"):
+                logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
+
             agent_done = bool(all_done or dones[env_id].get(agent_id))
             if not agent_done:
                 to_eval[policy_id].append(
@@ -454,8 +465,9 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     raise ValueError(
                         "Setting episode horizon requires reset() support "
                         "from the environment.")
-            else:
-                # Creates a new episode
+            elif resetted_obs != ASYNC_RESET_RETURN:
+                # Creates a new episode if this is not async return
+                # If reset is async, we will get its result in some future poll
                 episode = active_episodes[env_id]
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id = episode.policy_for(agent_id)
@@ -491,6 +503,11 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         pending_fetches = {}
     else:
         builder = None
+
+    if log_once("compute_actions_input"):
+        logger.info("Inputs to compute_actions():\n\n{}\n".format(
+            summarize(to_eval)))
+
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
         policy = _get_or_raise(policies, policy_id)
@@ -513,6 +530,10 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
     if builder:
         for k, v in pending_fetches.items():
             eval_results[k] = builder.get(v)
+
+    if log_once("compute_actions_result"):
+        logger.info("Outputs of compute_actions():\n\n{}\n".format(
+            summarize(eval_results)))
 
     return eval_results
 
@@ -584,7 +605,7 @@ def _fetch_atari_metrics(base_env):
         if not monitor:
             return None
         for eps_rew, eps_len in monitor.next_episode_results():
-            atari_out.append(RolloutMetrics(eps_len, eps_rew, {}, {}))
+            atari_out.append(RolloutMetrics(eps_len, eps_rew, {}, {}, {}))
     return atari_out
 
 

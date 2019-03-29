@@ -11,7 +11,9 @@ import ray
 import numpy as np
 import tensorflow as tf
 from ray.rllib.agents.impala import vtrace
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.action_dist import MultiCategorical
@@ -19,6 +21,9 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
+
+# Frozen logits of the policy that computed the action
+BEHAVIOUR_LOGITS = "behaviour_logits"
 
 
 class VTraceLoss(object):
@@ -98,7 +103,27 @@ class VTraceLoss(object):
                            self.entropy * entropy_coeff)
 
 
-class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
+class VTracePostprocessing(object):
+    """Adds the policy logits to the trajectory."""
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self),
+            **{BEHAVIOUR_LOGITS: self.model.outputs})
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        # not used, so save some bandwidth
+        del sample_batch.data[SampleBatch.NEXT_OBS]
+        return sample_batch
+
+
+class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
+                        TFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -264,13 +289,13 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Initialize TFPolicyGraph
         loss_in = [
-            ("actions", actions),
-            ("dones", dones),
-            ("behaviour_logits", behaviour_logits),
-            ("rewards", rewards),
-            ("obs", observations),
-            ("prev_actions", prev_actions),
-            ("prev_rewards", prev_rewards),
+            (SampleBatch.ACTIONS, actions),
+            (SampleBatch.DONES, dones),
+            (BEHAVIOUR_LOGITS, behaviour_logits),
+            (SampleBatch.REWARDS, rewards),
+            (SampleBatch.CUR_OBS, observations),
+            (SampleBatch.PREV_ACTIONS, prev_actions),
+            (SampleBatch.PREV_REWARDS, prev_rewards),
         ]
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
@@ -296,7 +321,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.sess.run(tf.global_variables_initializer())
 
         self.stats_fetches = {
-            "stats": dict({
+            LEARNER_STATS_KEY: dict({
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
@@ -334,22 +359,8 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         return clipped_grads
 
     @override(TFPolicyGraph)
-    def extra_compute_action_fetches(self):
-        return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self),
-            **{"behaviour_logits": self.model.outputs})
-
-    @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        del sample_batch.data["new_obs"]  # not used, so save some bandwidth
-        return sample_batch
 
     @override(PolicyGraph)
     def get_initial_state(self):

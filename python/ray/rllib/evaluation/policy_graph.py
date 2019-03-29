@@ -2,6 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+import gym
+
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
@@ -81,6 +84,7 @@ class PolicyGraph(object):
                               prev_reward=None,
                               info=None,
                               episode=None,
+                              clip_actions=False,
                               **kwargs):
         """Unbatched version of compute_actions.
 
@@ -93,6 +97,7 @@ class PolicyGraph(object):
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
+            clip_actions (bool): should the action be clipped
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -119,6 +124,8 @@ class PolicyGraph(object):
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
             episodes=episodes)
+        if clip_actions:
+            action = clip_action(action, self.action_space)
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
@@ -263,3 +270,28 @@ class PolicyGraph(object):
             export_dir (str): Local writable directory.
         """
         raise NotImplementedError
+
+
+def clip_action(action, space):
+    """Called to clip actions to the specified range of this policy.
+
+    Arguments:
+        action: Single action.
+        space: Action space the actions should be present in.
+
+    Returns:
+        Clipped batch of actions.
+    """
+
+    if isinstance(space, gym.spaces.Box):
+        return np.clip(action, space.low, space.high)
+    elif isinstance(space, gym.spaces.Tuple):
+        if type(action) not in (tuple, list):
+            raise ValueError("Expected tuple space for actions {}: {}".format(
+                action, space))
+        out = []
+        for a, s in zip(action, space.spaces):
+            out.append(clip_action(a, s))
+        return out
+    else:
+        return action

@@ -63,7 +63,7 @@ class PolicyOptimizer(object):
             config, self))
 
     @DeveloperAPI
-    def _init(self):
+    def _init(self, **config):
         """Subclasses should prefer overriding this instead of __init__."""
 
         raise NotImplementedError
