@@ -33,7 +33,8 @@ from gym.spaces import Box, Discrete, Tuple
 import logging
 
 import ray
-from ray.tune import run_experiments, function
+from ray import tune
+from ray.tune import function
 from ray.rllib.env import MultiAgentEnv
 
 parser = argparse.ArgumentParser()
@@ -202,30 +203,28 @@ if __name__ == "__main__":
             else:
                 return "high_level_policy"
 
-        run_experiments({
-            "maze_hier": {
-                "run": "PPO",
+        tune.run(
+            "PPO",
+            config={
                 "env": HierarchicalWindyMazeEnv,
-                "config": {
-                    "num_workers": 0,
-                    "log_level": "INFO",
-                    "entropy_coeff": 0.01,
-                    "multiagent": {
-                        "policy_graphs": {
-                            "high_level_policy": (None, maze.observation_space,
-                                                  Discrete(4), {
-                                                      "gamma": 0.9
-                                                  }),
-                            "low_level_policy": (None,
-                                                 Tuple([
-                                                     maze.observation_space,
-                                                     Discrete(4)
-                                                 ]), maze.action_space, {
-                                                     "gamma": 0.0
-                                                 }),
-                        },
-                        "policy_mapping_fn": function(policy_mapping_fn),
+                "num_workers": 0,
+                "log_level": "INFO",
+                "entropy_coeff": 0.01,
+                "multiagent": {
+                    "policy_graphs": {
+                        "high_level_policy": (None, maze.observation_space,
+                                              Discrete(4), {
+                                                  "gamma": 0.9
+                                              }),
+                        "low_level_policy": (None,
+                                             Tuple([
+                                                 maze.observation_space,
+                                                 Discrete(4)
+                                             ]), maze.action_space, {
+                                                 "gamma": 0.0
+                                             }),
                     },
+                    "policy_mapping_fn": function(policy_mapping_fn),
                 },
             },
-        })
+        )
