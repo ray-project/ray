@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
 
 
 /**
- * Logical Execution Plan.
+ * The logical execution plan.
  */
 public class Plan implements Serializable {
 

@@ -97,6 +97,5 @@ public class MasterProcessor extends StreamProcessor<BatchInfo, MasterOperator> 
       }
     }
 
-
   }
 }

@@ -42,7 +42,6 @@ public abstract class StreamOperator<F extends Function> implements Operator {
     for (Collector collector : this.collectorList) {
       collector.collect(keyRecord);
     }
-
   }
 
 }

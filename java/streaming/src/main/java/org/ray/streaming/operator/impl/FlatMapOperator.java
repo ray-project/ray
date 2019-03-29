@@ -27,6 +27,5 @@ public class FlatMapOperator<T, R> extends StreamOperator<FlatMapFunction<T, R>>
   @Override
   public void processElement(Record<T> record) throws Exception {
     this.function.flatMap(record.getValue(), (Collector<R>) collectionCollector);
-
   }
 }
