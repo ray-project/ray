@@ -98,7 +98,7 @@ class VTraceLoss(object):
         self.entropy = tf.reduce_sum(
             tf.boolean_mask(actions_entropy, valid_mask))
 
-        # The summpolicy logits, VF preds, anded weighted loss
+        # The summed weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
