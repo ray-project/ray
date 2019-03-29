@@ -431,9 +431,9 @@ class DQNPolicyGraph(DQNPostprocessing, TFPolicyGraph):
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
         update_target_expr = []
-        for var, var_target in zip(
-                sorted(self.q_func_vars, key=lambda v: v.name),
-                sorted(self.target_q_func_vars, key=lambda v: v.name)):
+        assert len(self.q_func_vars) == len(self.target_q_func_vars), \
+            (self.q_func_vars, self.target_q_func_vars)
+        for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
