@@ -88,6 +88,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
         return episode.wait_for_action(observation_dict)
 
     @PublicAPI
+    @override(ExternalEnv)
     def log_action(self, episode_id, observation_dict, action_dict):
         """Record an observation and (off-policy) action taken.
 
