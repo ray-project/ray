@@ -18,15 +18,12 @@ namespace stats {
 /// Include tag_defs.h to define tag items
 #include "tag_defs.h"
 
-
 /// The helper function for global tags.
 std::unique_ptr<TagsType> &GetGlobalTagsPtr();
-
 
 /// The helper function for registering a view.
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                            const std::vector<opencensus::tags::TagKey> &keys);
-
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
 class Metric {
@@ -67,7 +64,6 @@ class Metric {
 
 };  // class Metric
 
-
 class Gauge : public Metric {
  public:
   Gauge(const std::string &name, const std::string &description, const std::string &unit,
@@ -78,7 +74,6 @@ class Gauge : public Metric {
   void RegisterView() override;
 
 };  // class Gauge
-
 
 class Histogram : public Metric {
  public:
@@ -95,7 +90,6 @@ class Histogram : public Metric {
 
 };  // class Histogram
 
-
 class Count : public Metric {
  public:
   Count(const std::string &name, const std::string &description, const std::string &unit,
@@ -106,7 +100,6 @@ class Count : public Metric {
   void RegisterView() override;
 
 };  // class Count
-
 
 class Sum : public Metric {
  public:

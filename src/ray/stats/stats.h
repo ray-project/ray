@@ -47,7 +47,6 @@ static void Init(const std::string &address, const TagsType &global_tags) {
   if (nullptr == global_tags_ptr) {
     global_tags_ptr.reset(new TagsType(std::move(global_tags)));
   }
-
 }
 
 }  // namespace stats

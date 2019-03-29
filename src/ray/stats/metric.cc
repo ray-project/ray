@@ -4,7 +4,6 @@ namespace ray {
 
 namespace stats {
 
-
 std::unique_ptr<TagsType> &GetGlobalTagsPtr() {
   static std::unique_ptr<TagsType> global_tags_ptr(nullptr);
   return global_tags_ptr;
@@ -31,7 +30,7 @@ static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
 void Metric::Record(double value, const TagsType &tags) {
   if (measure_ == nullptr) {
     measure_.reset(new opencensus::stats::Measure<double>(
-      opencensus::stats::Measure<double>::Register(name_, description_, unit_)));
+        opencensus::stats::Measure<double>::Register(name_, description_, unit_)));
     RegisterView();
   }
 
@@ -44,48 +43,47 @@ void Metric::Record(double value, const TagsType &tags) {
 }
 
 void Gauge::RegisterView() {
-opencensus::stats::ViewDescriptor view_descriptor =
-  opencensus::stats::ViewDescriptor()
-    .set_name(name_)
-    .set_description(description_)
-    .set_measure(name_)
-    .set_aggregation(opencensus::stats::Aggregation::LastValue());
-
-RegisterAsView(view_descriptor, tag_keys_);
+  opencensus::stats::ViewDescriptor view_descriptor =
+      opencensus::stats::ViewDescriptor()
+          .set_name(name_)
+          .set_description(description_)
+          .set_measure(name_)
+          .set_aggregation(opencensus::stats::Aggregation::LastValue());
+  RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Histogram::RegisterView() {
-static opencensus::stats::ViewDescriptor view_descriptor =
-  opencensus::stats::ViewDescriptor()
-    .set_name(name_)
-    .set_description(description_)
-    .set_measure(name_)
-    .set_aggregation(opencensus::stats::Aggregation::Distribution(
-      opencensus::stats::BucketBoundaries::Explicit(boundaries_)));
+  opencensus::stats::ViewDescriptor view_descriptor =
+      opencensus::stats::ViewDescriptor()
+          .set_name(name_)
+          .set_description(description_)
+          .set_measure(name_)
+          .set_aggregation(opencensus::stats::Aggregation::Distribution(
+            opencensus::stats::BucketBoundaries::Explicit(boundaries_)));
 
-RegisterAsView(view_descriptor, tag_keys_);
+  RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Count::RegisterView() {
-opencensus::stats::ViewDescriptor view_descriptor =
-  opencensus::stats::ViewDescriptor()
-    .set_name(name_)
-    .set_description(description_)
-    .set_measure(name_)
-    .set_aggregation(opencensus::stats::Aggregation::Count());
+  opencensus::stats::ViewDescriptor view_descriptor =
+      opencensus::stats::ViewDescriptor()
+          .set_name(name_)
+          .set_description(description_)
+          .set_measure(name_)
+          .set_aggregation(opencensus::stats::Aggregation::Count());
 
-RegisterAsView(view_descriptor, tag_keys_);
+  RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Sum::RegisterView() {
-opencensus::stats::ViewDescriptor view_descriptor =
-  opencensus::stats::ViewDescriptor()
-    .set_name(name_)
-    .set_description(description_)
-    .set_measure(name_)
-    .set_aggregation(opencensus::stats::Aggregation::Count());
+  opencensus::stats::ViewDescriptor view_descriptor =
+      opencensus::stats::ViewDescriptor()
+          .set_name(name_)
+          .set_description(description_)
+          .set_measure(name_)
+          .set_aggregation(opencensus::stats::Aggregation::Count());
 
-RegisterAsView(view_descriptor, tag_keys_);
+  RegisterAsView(view_descriptor, tag_keys_);
 }
 
 }  // namespace stats

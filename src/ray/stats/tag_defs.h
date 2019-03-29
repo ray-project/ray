@@ -19,5 +19,4 @@ static const TagKeyType LanguageKey = TagKeyType::Register("Language");
 
 static const TagKeyType WorkerPidKey = TagKeyType::Register("WorkerPid");
 
-
 #endif  // RAY_STATS_TAG_DEFS_H

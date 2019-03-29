@@ -132,9 +132,8 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
     state.starting_worker_processes.emplace(
         std::make_pair(pid, num_workers_per_process_));
-    stats::CurrentWorker().Record(
-        pid, {{stats::LanguageKey, EnumNameLanguage(language)},
-              {stats::WorkerPidKey, std::to_string(pid)}});
+    stats::CurrentWorker().Record(pid, {{stats::LanguageKey, EnumNameLanguage(language)},
+                                        {stats::WorkerPidKey, std::to_string(pid)}});
     return;
   }
 }
