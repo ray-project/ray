@@ -28,17 +28,19 @@ static void Init(const std::string &address) {
   static auto exporter =
       std::make_shared<opencensus::exporters::stats::PrometheusExporter>();
 
+  // Enable stdout exporter by default.
+  opencensus::exporters::stats::StdoutExporter::Register();
+
+  // Enable prometheus exporter.
   try {
     static prometheus::Exposer exposer(address);
     exposer.RegisterCollectable(exporter);
+    RAY_LOG(INFO) << "Succeeded to initialize stats: exporter address is " << address;
   } catch (std::exception &e) {
-    RAY_LOG(WARNING) << "Failed to create Prometheus exposer. It doesn't "
+    RAY_LOG(WARNING) << "Failed to create the Prometheus exposer It doesn't "
                      << "affect anything except stats. Caused by: " << e.what();
   }
 
-  // Also enable stdout exporter by default.
-  opencensus::exporters::stats::StdoutExporter::Register();
-  RAY_LOG(INFO) << "Succeeded to initialize stats: exporter address is " << address;
 }
 
 }  // namespace stats
