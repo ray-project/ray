@@ -12,39 +12,13 @@ from ray.rllib.env.external_env import ExternalEnv
 
 @PublicAPI
 class ExternalMultiAgentEnv(ExternalEnv):
-    """An environment that interfaces with external agents.
-
-    Unlike simulator envs, control is inverted. The environment queries the
-    policy to obtain actions and logs observations and rewards for training.
-    This is in contrast to gym.Env, where the algorithm drives the simulation
-    through env.step() calls.
-
-    You can use ExternalEnv as the backend for policy serving (by serving HTTP
-    requests in the run loop), for ingesting offline logs data (by reading
-    offline transitions in the run loop), or other custom use cases not easily
-    expressed through gym.Env.
-
-    ExternalEnv supports both on-policy actions (through self.get_action()),
-    and off-policy actions (through self.log_action()).
-
-    This env is thread-safe, but individual episodes must be executed serially.
-
-    Attributes:
-        action_space (gym.Space): Action space.
-        observation_space (gym.Space): Observation space.
-
-    Examples:
-        >>> register_env("my_env", lambda config: YourExternalEnv(config))
-        >>> agent = DQNAgent(env="my_env")
-        >>> while True:
-              print(agent.train())
-    """
+    """This is the multi-agent version of ExternalEnv."""
 
     @PublicAPI
     def __init__(self, action_space, observation_space, max_concurrent=100):
-        """Initialize an external env.
+        """Initialize a multi-agent external env.
 
-        ExternalEnv subclasses must call this during their __init__.
+        ExternalMultiAgentEnv subclasses must call this during their __init__.
 
         Arguments:
             action_space (gym.Space): Action space of the env.
@@ -52,15 +26,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
             max_concurrent (int): Max number of active episodes to allow at
                 once. Exceeding this limit raises an error.
         """
-
-        threading.Thread.__init__(self)
-        self.daemon = True
-        self.action_space = action_space
-        self.observation_space = observation_space
-        self._episodes = {}
-        self._finished = set()
-        self._results_avail_condition = threading.Condition()
-        self._max_concurrent_episodes = max_concurrent
+        ExternalEnv.__init__(
+            self, action_space, observation_space, max_concurrent)
 
         # we require to know all agents' spaces
         if isinstance(self.action_space, dict) or isinstance(self.observation_space, dict):
@@ -68,7 +35,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
     @PublicAPI
     def run(self):
-        """Override this to implement the run loop.
+        """Override this to implement the multi-agent run loop.
 
         Your loop should continuously:
             1. Call self.start_episode(episode_id)
@@ -84,19 +51,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
         raise NotImplementedError
 
     @PublicAPI
+    @override(ExternalEnv)
     def start_episode(self, episode_id=None, training_enabled=True):
-        """Record the start of an episode.
-
-        Arguments:
-            episode_id (str): Unique string id for the episode or None for
-                it to be auto-assigned.
-            training_enabled (bool): Whether to use experiences for this
-                episode to improve the policy.
-
-        Returns:
-            episode_id (str): Unique string id for the episode.
-        """
-
         if episode_id is None:
             episode_id = uuid.uuid4().hex
 
@@ -108,12 +64,13 @@ class ExternalMultiAgentEnv(ExternalEnv):
             raise ValueError(
                 "Episode {} is already started".format(episode_id))
 
-        self._episodes[episode_id] = _ExternalEnvEpisode(
+        self._episodes[episode_id] = _ExternalMultiAgentEnvEpisode(
             episode_id, self._results_avail_condition, training_enabled)
 
         return episode_id
 
     @PublicAPI
+    @override(ExternalEnv)
     def get_action(self, episode_id, observation_dict):
         """Record an observation and get the on-policy action.
         observation_dict is expected to contain the observation
@@ -144,6 +101,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
         episode.log_action(observation_dict, action_dict)
 
     @PublicAPI
+    @override(ExternalEnv)
     def log_returns(self, episode_id, reward_dict, info_dict=None):
         """Record returns from the environment.
 
@@ -170,6 +128,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
             episode.cur_info_dict = info_dict or {}
 
     @PublicAPI
+    @override(ExternalEnv)
     def end_episode(self, episode_id, observation_dict):
         """Record the end of an episode.
 
@@ -182,20 +141,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
         self._finished.add(episode.episode_id)
         episode.done(observation_dict)
 
-    def _get(self, episode_id):
-        """Get a started episode or raise an error."""
 
-        if episode_id in self._finished:
-            raise ValueError(
-                "Episode {} has already completed.".format(episode_id))
-
-        if episode_id not in self._episodes:
-            raise ValueError("Episode {} not found.".format(episode_id))
-
-        return self._episodes[episode_id]
-
-
-class _ExternalEnvEpisode(object):
+class _ExternalMultiAgentEnvEpisode(object):
     """
     Tracked state for each active episode.
     """
