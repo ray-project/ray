@@ -98,19 +98,18 @@ class ImpalaAgent(Agent):
     _policy_graph = VTracePolicyGraph
 
     @override(Agent)
-    def _init(self):
+    def _init(self, config, env_creator):
         for k in OPTIMIZER_SHARED_CONFIGS:
-            if k not in self.config["optimizer"]:
-                self.config["optimizer"][k] = self.config[k]
+            if k not in config["optimizer"]:
+                config["optimizer"][k] = config[k]
         policy_cls = self._get_policy_graph()
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)
+            env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"])
-        self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
-                                               self.remote_evaluators,
-                                               self.config["optimizer"])
-        if self.config["entropy_coeff"] < 0:
+            env_creator, policy_cls, config["num_workers"])
+        self.optimizer = AsyncSamplesOptimizer(
+            self.local_evaluator, self.remote_evaluators, config["optimizer"])
+        if config["entropy_coeff"] < 0:
             raise DeprecationWarning("entropy_coeff must be >= 0")
 
     @override(Agent)

@@ -71,30 +71,29 @@ class PPOAgent(Agent):
     _policy_graph = PPOPolicyGraph
 
     @override(Agent)
-    def _init(self):
+    def _init(self, config, env_creator):
         self._validate_config()
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, self._policy_graph)
+            env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"])
-        if self.config["simple_optimizer"]:
+            env_creator, self._policy_graph, config["num_workers"])
+        if config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
-                    "num_sgd_iter": self.config["num_sgd_iter"],
-                    "train_batch_size": self.config["train_batch_size"],
+                    "num_sgd_iter": config["num_sgd_iter"],
+                    "train_batch_size": config["train_batch_size"],
                 })
         else:
             self.optimizer = LocalMultiGPUOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
-                    "sgd_batch_size": self.config["sgd_minibatch_size"],
-                    "num_sgd_iter": self.config["num_sgd_iter"],
-                    "num_gpus": self.config["num_gpus"],
-                    "sample_batch_size": self.config["sample_batch_size"],
-                    "num_envs_per_worker": self.config["num_envs_per_worker"],
-                    "train_batch_size": self.config["train_batch_size"],
+                    "sgd_batch_size": config["sgd_minibatch_size"],
+                    "num_sgd_iter": config["num_sgd_iter"],
+                    "num_gpus": config["num_gpus"],
+                    "sample_batch_size": config["sample_batch_size"],
+                    "num_envs_per_worker": config["num_envs_per_worker"],
+                    "train_batch_size": config["train_batch_size"],
                     "standardize_fields": ["advantages"],
-                    "straggler_mitigation": (
-                        self.config["straggler_mitigation"]),
+                    "straggler_mitigation": config["straggler_mitigation"],
                 })
 
     @override(Agent)

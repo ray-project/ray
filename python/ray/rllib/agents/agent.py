@@ -374,7 +374,7 @@ class Agent(Trainable):
 
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
         with tf.Graph().as_default():
-            self._init()
+            self._init(self.config, self.env_creator)
 
     @override(Trainable)
     def _stop(self):
@@ -398,7 +398,7 @@ class Agent(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _init(self):
+    def _init(self, config, env_creator):
         """Subclasses should override this for custom initialization."""
 
         raise NotImplementedError
