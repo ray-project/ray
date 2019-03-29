@@ -6,13 +6,10 @@ import copy
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
-byo = None
-
-
-def _import_bayesopt():
-    global byo
-    import bayes_opt
-    byo = bayes_opt
+try:
+    import bayesopt as byo
+except Exception:
+    byo = None
 
 
 class BayesOptSearch(SuggestionAlgorithm):
@@ -50,7 +47,6 @@ class BayesOptSearch(SuggestionAlgorithm):
                  random_state=1,
                  verbose=0,
                  **kwargs):
-        _import_bayesopt()
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
             " the command: `pip install bayesian-optimization`.")
