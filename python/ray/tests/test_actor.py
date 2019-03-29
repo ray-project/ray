@@ -502,7 +502,7 @@ def test_actor_class_methods(ray_start_regular):
     assert ray.get(a.g.remote(2)) == 4
 
 
-#TODO(William): This cases should be fixed on linux.
+#TODO(William): This case should be fixed on linux.
 @pytest.mark.skip("Should be fixed.")
 def test_resource_assignment(shutdown_only):
     """Test to make sure that we assign resource to actors at instantiation."""
