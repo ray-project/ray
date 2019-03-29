@@ -16,6 +16,7 @@ import numpy as np
 from six.moves import queue
 
 import ray
+from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -132,6 +133,11 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         for r in self.replay_actors:
             r.__ray_terminate__.remote()
         self.learner.stopped = True
+
+    @override(PolicyOptimizer)
+    def reset(self, remote_evaluators):
+        self.remote_evaluators = remote_evaluators
+        self.sample_tasks.reset_evaluators(remote_evaluators)
 
     @override(PolicyOptimizer)
     def stats(self):
@@ -311,6 +317,8 @@ class ReplayActor(object):
         return stat
 
 
+# note: we set num_cpus=0 to avoid failing to create replay actors when
+# resources are fragmented. This isn't ideal.
 @ray.remote(num_cpus=0)
 class BatchReplayActor(object):
     """The batch replay version of the replay actor.
@@ -396,8 +404,7 @@ class LearnerThread(threading.Thread):
                     prio_dict[pid] = (
                         replay.policy_batches[pid].data.get("batch_indexes"),
                         info.get("td_error"))
-                    if "stats" in info:
-                        self.stats[pid] = info["stats"]
+                    self.stats[pid] = get_learner_stats(info)
             self.outqueue.put((ra, prio_dict, replay.count))
         self.learner_queue_size.push(self.inqueue.qsize())
         self.weights_updated = True

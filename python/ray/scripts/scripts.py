@@ -3,10 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import click
+from datetime import datetime
 import json
 import logging
 import os
 import subprocess
+import sys
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -149,7 +151,7 @@ def cli(logging_level, logging_format):
     "--include-webui",
     is_flag=True,
     default=False,
-    help="provide this argument if the UI should not be started")
+    help="provide this argument if the UI should be started")
 @click.option(
     "--block",
     is_flag=True,
@@ -685,7 +687,7 @@ export IFS="
 # Call sudo to prompt for password before anything has been printed.
 sudo true
 workers=$(
-    ps aux | grep ' ray_' | grep -v grep
+    ps aux | grep -E ' ray_|default_worker.py' | grep -v grep
 )
 for worker in $workers; do
     echo "Stack dump for $worker";
@@ -695,6 +697,52 @@ for worker in $workers; do
 done
     """
     subprocess.call(COMMAND, shell=True)
+
+
+@cli.command()
+@click.option(
+    "--redis-address",
+    required=False,
+    type=str,
+    help="Override the redis address to connect to.")
+def timeline(redis_address):
+    if not redis_address:
+        import psutil
+        pids = psutil.pids()
+        redis_addresses = set()
+        for pid in pids:
+            try:
+                proc = psutil.Process(pid)
+                for arglist in proc.cmdline():
+                    for arg in arglist.split(" "):
+                        if arg.startswith("--redis-address="):
+                            addr = arg.split("=")[1]
+                            redis_addresses.add(addr)
+            except psutil.AccessDenied:
+                pass
+            except psutil.NoSuchProcess:
+                pass
+        if len(redis_addresses) > 1:
+            logger.info(
+                "Found multiple active Ray instances: {}. ".format(
+                    redis_addresses) +
+                "Please specify the one to connect to with --redis-address.")
+            sys.exit(1)
+        elif not redis_addresses:
+            logger.info(
+                "Could not find any running Ray instance. "
+                "Please specify the one to connect to with --redis-address.")
+            sys.exit(1)
+        redis_address = redis_addresses.pop()
+    logger.info("Connecting to Ray instance at {}.".format(redis_address))
+    ray.init(redis_address=redis_address)
+    time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = "/tmp/ray-timeline-{}.json".format(time)
+    ray.global_state.chrome_tracing_dump(filename=filename)
+    size = os.path.getsize(filename)
+    logger.info("Trace file written to {} ({} bytes).".format(filename, size))
+    logger.info(
+        "You can open this with chrome://tracing in the Chrome browser.")
 
 
 cli.add_command(start)
@@ -711,6 +759,7 @@ cli.add_command(kill_random_node)
 cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(get_worker_ips)
 cli.add_command(stack)
+cli.add_command(timeline)
 
 
 def main():

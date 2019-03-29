@@ -120,10 +120,17 @@ else
   # the commit listed in the command.
   $PYTHON_EXECUTABLE -m pip install \
       --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
-      --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
-  bazel build //:ray_pkg -c opt
-  # Copy files and skip existing files
-  cp -r -n $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
+      --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/ca1fa51f0901f5a4298f0e4faea00f24e5dd7bb7/index.html
+  export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
+
+  if [ "$RAY_BUILD_JAVA" == "YES" ]; then
+    bazel run //java:bazel_deps -- generate -r $ROOT_DIR -s java/third_party/workspace.bzl -d java/dependencies.yaml
+    bazel build //java:all --verbose_failures
+  fi
+
+  if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
+    bazel build //:ray_pkg --verbose_failures
+  fi
 fi
 
 popd

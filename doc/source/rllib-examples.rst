@@ -26,11 +26,11 @@ Training Workflows
 Custom Envs and Models
 ----------------------
 
-- `Registering a custom env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
-   Example of defining and registering a gym env for use with RLlib.
+- `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
+   Example of defining and registering a gym env and model for use with RLlib.
 - `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__:
    Example of defining and registering a custom model with a supervised loss.
-- `Subprocess environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_env_with_subprocess.py>`__:
+- `Subprocess environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_env_with_subprocess.py>`__:
    Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
 - `Batch normalization <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__:
    Example of adding batch norm layers to a custom model.
@@ -65,5 +65,7 @@ Community Examples
    Example of training robotic control policies in SageMaker with RLlib.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
+- `NeuroCuts <https://github.com/xinjin/neurocuts-code>`__:
+   Example of building packet classification trees using RLlib / multi-agent in a bandit-like setting.
 - `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.

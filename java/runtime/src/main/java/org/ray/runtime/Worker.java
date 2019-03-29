@@ -63,6 +63,10 @@ public class Worker {
     this.runtime = runtime;
   }
 
+  public UniqueId getCurrentActorId() {
+    return currentActorId;
+  }
+
   public void loop() {
     while (true) {
       LOGGER.info("Fetching new task in thread {}.", Thread.currentThread().getName());
@@ -75,17 +79,21 @@ public class Worker {
    * Execute a task.
    */
   public void execute(TaskSpec spec) {
-    LOGGER.info("Executing task {}", spec.taskId);
     LOGGER.debug("Executing task {}", spec);
     UniqueId returnId = spec.returnIds[0];
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
       // Get method
       RayFunction rayFunction = runtime.getFunctionManager()
-          .getFunction(spec.driverId, spec.functionDescriptor);
+          .getFunction(spec.driverId, spec.getJavaFunctionDescriptor());
       // Set context
       runtime.getWorkerContext().setCurrentTask(spec, rayFunction.classLoader);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
+
+      if (spec.isActorCreationTask()) {
+        currentActorId = returnId;
+      }
+
       // Get local actor object and arguments.
       Object actor = null;
       if (spec.isActorTask()) {
@@ -94,6 +102,7 @@ public class Worker {
           throw actorCreationException;
         }
         actor = currentActor;
+
       }
       Object[] args = ArgumentsBuilder.unwrap(spec, rayFunction.classLoader);
       // Execute the task.
@@ -112,16 +121,14 @@ public class Worker {
       } else {
         maybeLoadCheckpoint(result, returnId);
         currentActor = result;
-        currentActorId = returnId;
       }
-      LOGGER.info("Finished executing task {}", spec.taskId);
+      LOGGER.debug("Finished executing task {}", spec.taskId);
     } catch (Exception e) {
       LOGGER.error("Error executing task " + spec, e);
       if (!spec.isActorCreationTask()) {
         runtime.put(returnId, new RayTaskException("Error executing task " + spec, e));
       } else {
         actorCreationException = e;
-        currentActorId = returnId;
       }
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);

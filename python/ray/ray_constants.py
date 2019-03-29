@@ -25,6 +25,17 @@ DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
 
+# Default resource requirements for actors when no resource requirements are
+# specified.
+DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
+DEFAULT_ACTOR_CREATION_CPU_SIMPLE = 0
+# Default resource requirements for actors when some resource requirements are
+# specified in .
+DEFAULT_ACTOR_METHOD_CPU_SPECIFIED = 0
+DEFAULT_ACTOR_CREATION_CPU_SPECIFIED = 1
+# Default number of return values for each actor method.
+DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
+
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
 PICKLE_OBJECT_WARNING_SIZE = 10**7
@@ -56,6 +67,7 @@ MONITOR_DIED_ERROR = "monitor_died"
 LOG_MONITOR_DIED_ERROR = "log_monitor_died"
 REPORTER_DIED_ERROR = "reporter_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
+RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
@@ -110,3 +122,6 @@ PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
+
+# A constant used as object metadata to indicate the object is raw binary.
+RAW_BUFFER_METADATA = b"RAW"

@@ -23,7 +23,7 @@ from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 
 import ray
-from ray.tune import grid_search, run_experiments, sample_from
+from ray.tune import grid_search, run, sample_from
 from ray.tune import Trainable
 from ray.tune.schedulers import PopulationBasedTraining
 
@@ -180,7 +180,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     train_spec = {
-        "run": Cifar10Model,
         "resources_per_trial": {
             "cpu": 1,
             "gpu": 1
@@ -213,4 +212,4 @@ if __name__ == "__main__":
             "dropout": lambda _: np.random.uniform(0, 1),
         })
 
-    run_experiments({"pbt_cifar10": train_spec}, scheduler=pbt)
+    run(Cifar10Model, name="pbt_cifar10", scheduler=pbt, **train_spec)

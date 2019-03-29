@@ -135,6 +135,7 @@ build
 
 # Pytest Cache
 **/.pytest_cache
+.benchmarks
 
 # Vscode
 .vscode/
@@ -147,6 +148,7 @@ java/**/lib
 java/**/.settings
 java/**/.classpath
 java/**/.project
+java/runtime/native_dependencies/
 
 # python virtual env
 venv

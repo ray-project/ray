@@ -1,13 +1,19 @@
 package org.ray.runtime.runner;
 
 import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -42,10 +48,13 @@ public class RunManager {
 
   private static final int KILL_PROCESS_WAIT_TIMEOUT_SECONDS = 1;
 
+  private final Map<String, File> tempFiles;
+
   public RunManager(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     processes = new ArrayList<>();
     random = new Random();
+    tempFiles = new HashMap<>();
   }
 
   public void cleanup() {
@@ -61,7 +70,7 @@ public class RunManager {
         p.waitFor(KILL_PROCESS_WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         LOGGER.warn("Got InterruptedException while waiting for process {}" +
-            " to be terminated.",  processes.get(i));
+            " to be terminated.", processes.get(i));
       }
 
       if (p.isAlive()) {
@@ -77,7 +86,30 @@ public class RunManager {
   }
 
   /**
+   * Copy a file from resources to a temp dir, and return the file object.
+   */
+  private File getTempFile(String fileName) {
+    File file = tempFiles.get(fileName);
+    if (file == null) {
+      try {
+        file = File.createTempFile(fileName, "");
+        file.deleteOnExit();
+        try (InputStream in = RunManager.class.getResourceAsStream(fileName)) {
+          Preconditions.checkNotNull(in, "{} doesn't exist.", fileName);
+          Files.copy(in, Paths.get(file.getCanonicalPath()), StandardCopyOption.REPLACE_EXISTING);
+        }
+        file.setExecutable(true);
+      } catch (IOException e) {
+        throw new RuntimeException("Couldn't get temp file " + fileName, e);
+      }
+      tempFiles.put(fileName, file);
+    }
+    return file;
+  }
+
+  /**
    * Start a process.
+   *
    * @param command The command to start the process with.
    * @param env Environment variables.
    * @param name Process name.
@@ -126,6 +158,7 @@ public class RunManager {
 
   /**
    * Start all Ray processes on this node.
+   *
    * @param isHead Whether this node is the head node. If true, redis server will be started.
    */
   public void startRayProcesses(boolean isHead) {
@@ -171,7 +204,8 @@ public class RunManager {
 
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
     List<String> command = Lists.newArrayList(
-        rayConfig.redisServerExecutablePath,
+        // The redis-server executable file.
+        getTempFile("/redis-server").getAbsolutePath(),
         "--protected-mode",
         "no",
         "--port",
@@ -179,7 +213,8 @@ public class RunManager {
         "--loglevel",
         "warning",
         "--loadmodule",
-        rayConfig.redisModulePath
+        // The redis module file.
+        getTempFile("/libray_redis_module.so").getAbsolutePath()
     );
 
     if (!StringUtil.isNullOrEmpty(password)) {
@@ -216,7 +251,8 @@ public class RunManager {
 
     // See `src/ray/raylet/main.cc` for the meaning of each parameter.
     List<String> command = ImmutableList.of(
-        rayConfig.rayletExecutablePath,
+        // The raylet executable file.
+        getTempFile("/raylet").getAbsolutePath(),
         rayConfig.rayletSocketName,
         rayConfig.objectStoreSocketName,
         "0",  // The object manager port.
@@ -268,6 +304,10 @@ public class RunManager {
       cmd.add("-Dray.logging.file.path=" + logFile);
     }
 
+    // socket names
+    cmd.add("-Dray.raylet.socket-name=" + rayConfig.rayletSocketName);
+    cmd.add("-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName);
+
     // Config overwrite
     cmd.add("-Dray.redis.address=" + rayConfig.getRedisAddress());
 
@@ -287,7 +327,8 @@ public class RunManager {
 
   private void startObjectStore() {
     List<String> command = ImmutableList.of(
-        rayConfig.plasmaStoreExecutablePath,
+        // The plasma store executable file.
+        getTempFile("/plasma_store_server").getAbsolutePath(),
         "-s",
         rayConfig.objectStoreSocketName,
         "-m",

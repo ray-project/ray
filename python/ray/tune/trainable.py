@@ -17,9 +17,10 @@ import uuid
 
 import ray
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
-    TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION)
+from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
+                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
+                             EPISODES_THIS_ITER, EPISODES_TOTAL,
+                             TRAINING_ITERATION, RESULT_DUPLICATE)
 from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,10 @@ class Trainable(object):
         result = self._train()
         assert isinstance(result, dict), "_train() needs to return a dict."
 
+        # We do not modify internal state nor update this result if duplicate.
+        if RESULT_DUPLICATE in result:
+            return result
+
         result = result.copy()
 
         self._iteration += 1
@@ -245,14 +250,15 @@ class Trainable(object):
             raise ValueError(
                 "`_save` must return a dict or string type: {}".format(
                     str(type(checkpoint))))
-        pickle.dump({
-            "experiment_id": self._experiment_id,
-            "iteration": self._iteration,
-            "timesteps_total": self._timesteps_total,
-            "time_total": self._time_total,
-            "episodes_total": self._episodes_total,
-            "saved_as_dict": saved_as_dict
-        }, open(checkpoint_path + ".tune_metadata", "wb"))
+        with open(checkpoint_path + ".tune_metadata", "wb") as f:
+            pickle.dump({
+                "experiment_id": self._experiment_id,
+                "iteration": self._iteration,
+                "timesteps_total": self._timesteps_total,
+                "time_total": self._time_total,
+                "episodes_total": self._episodes_total,
+                "saved_as_dict": saved_as_dict
+            }, f)
         return checkpoint_path
 
     def save_to_object(self):
@@ -271,7 +277,8 @@ class Trainable(object):
         for path in os.listdir(base_dir):
             path = os.path.join(base_dir, path)
             if path.startswith(checkpoint_prefix):
-                data[os.path.basename(path)] = open(path, "rb").read()
+                with open(path, "rb") as f:
+                    data[os.path.basename(path)] = f.read()
 
         out = io.BytesIO()
         data_dict = pickle.dumps({
@@ -294,7 +301,8 @@ class Trainable(object):
         This method restores additional metadata saved with the checkpoint.
         """
 
-        metadata = pickle.load(open(checkpoint_path + ".tune_metadata", "rb"))
+        with open(checkpoint_path + ".tune_metadata", "rb") as f:
+            metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
         self._timesteps_total = metadata["timesteps_total"]
@@ -307,6 +315,9 @@ class Trainable(object):
             self._restore(checkpoint_dict)
         else:
             self._restore(checkpoint_path)
+        self._time_since_restore = 0.0
+        self._timesteps_since_restore = 0
+        self._iterations_since_restore = 0
         self._restored = True
 
     def restore_from_object(self, obj):
@@ -347,12 +358,16 @@ class Trainable(object):
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
 
+        This method is optional, but can be implemented to speed up algorithms
+        such as PBT, and to allow performance optimizations such as running
+        experiments with reuse_actors=True.
+
         Args:
             new_config (dir): Updated hyperparameter configuration
                 for the trainable.
 
         Returns:
-            True if configuration reset successfully else False.
+            True if reset was successful else False.
         """
         return False
 
@@ -435,13 +450,3 @@ class Trainable(object):
             A dict that maps ExportFormats to successfully exported models.
         """
         return {}
-
-
-def wrap_function(train_func):
-    from ray.tune.function_runner import FunctionRunner
-
-    class WrappedFunc(FunctionRunner):
-        def _trainable_func(self):
-            return train_func
-
-    return WrappedFunc

@@ -33,7 +33,7 @@ import tempfile
 import time
 
 import ray
-from ray.tune import grid_search, run_experiments
+from ray.tune import grid_search, run
 
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -219,7 +219,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     mnist_spec = {
-        'run': train,
         'num_samples': 10,
         'stop': {
             'mean_accuracy': 0.99,
@@ -237,12 +236,11 @@ if __name__ == "__main__":
     ray.init()
 
     from ray.tune.schedulers import AsyncHyperBandScheduler
-    run_experiments(
-        {
-            'tune_mnist_test': mnist_spec
-        },
+    run(train,
+        name='tune_mnist_test',
         scheduler=AsyncHyperBandScheduler(
             time_attr="timesteps_total",
             reward_attr="mean_accuracy",
             max_t=600,
-        ))
+        ),
+        **mnist_spec)

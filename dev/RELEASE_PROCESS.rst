@@ -7,8 +7,8 @@ This document describes the process for creating new releases.
    be done by following the `documentation for building wheels`_.
 
 2. **Testing:** Before a release is created, significant testing should be done.
-   Run the script `test/stress_tests/run_stress_tests.sh`_ and
-   `test/stress_tests/run_application_stress_tests.sh`_ and make sure it
+   Run the script `ci/stress_tests/run_stress_tests.sh`_ and
+   `ci/stress_tests/run_application_stress_tests.sh`_ and make sure it
    passes. *And make sure it is testing the right version of Ray!* This will use
    the autoscaler to start a bunch of machines and run some tests. Any new
    stress tests should be added to this script so that they will be run
@@ -82,8 +82,8 @@ This document describes the process for creating new releases.
    both MacOS and Linux as well as Python 2 and Python 3.
 
 .. _`documentation for building wheels`: https://github.com/ray-project/ray/blob/master/python/README-building-wheels.md
-.. _`test/stress_tests/run_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/test/stress_tests/run_stress_tests.sh
-.. _`test/stress_tests/run_application_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/test/stress_tests/run_application_stress_tests.sh
-.. _`this example`: https://github.com/ray-project/ray/pull/3420
+.. _`ci/stress_tests/run_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/ci/stress_tests/run_stress_tests.sh
+.. _`ci/stress_tests/run_application_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/ci/stress_tests/run_application_stress_tests.sh
+.. _`this example`: https://github.com/ray-project/ray/pull/4226
 .. _`these wheels here`: https://ray.readthedocs.io/en/latest/installation.html
 .. _`GitHub website`: https://github.com/ray-project/ray/releases

@@ -84,7 +84,6 @@ class Node(object):
             self._plasma_store_socket_name = None
             self._raylet_socket_name = None
             self._webui_url = None
-            self._dashboard_url = None
         else:
             self._plasma_store_socket_name = (
                 ray_params.plasma_store_socket_name)
@@ -306,7 +305,7 @@ class Node(object):
     def start_dashboard(self):
         """Start the dashboard."""
         stdout_file, stderr_file = self.new_log_files("dashboard", True)
-        self._dashboard_url, process_info = ray.services.start_dashboard(
+        self._webui_url, process_info = ray.services.start_dashboard(
             self.redis_address,
             self._temp_dir,
             stdout_file=stdout_file,
@@ -317,22 +316,8 @@ class Node(object):
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info
             ]
-
-    def start_ui(self):
-        """Start the web UI."""
-        stdout_file, stderr_file = self.new_log_files("webui")
-        notebook_name = self._make_inc_temp(
-            suffix=".ipynb", prefix="ray_ui", directory_name=self._temp_dir)
-        self._webui_url, process_info = ray.services.start_ui(
-            self._redis_address,
-            notebook_name,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file)
-        assert ray_constants.PROCESS_TYPE_WEB_UI not in self.all_processes
-        if process_info is not None:
-            self.all_processes[ray_constants.PROCESS_TYPE_WEB_UI] = [
-                process_info
-            ]
+            redis_client = self.create_redis_client()
+            redis_client.hmset("webui", {"url": self._webui_url})
 
     def start_plasma_store(self):
         """Start the plasma store."""
@@ -447,7 +432,7 @@ class Node(object):
 
         self.start_plasma_store()
         self.start_raylet()
-        if PY3 and self._ray_params.include_webui:
+        if PY3:
             self.start_reporter()
 
         if self._ray_params.include_log_monitor:
