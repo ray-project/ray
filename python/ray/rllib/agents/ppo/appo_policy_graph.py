@@ -13,9 +13,12 @@ import gym
 
 import ray
 from ray.rllib.agents.impala import vtrace
+from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.models.action_dist import MultiCategorical
@@ -48,7 +51,7 @@ class PPOSurrogateLoss(object):
                  advantages,
                  value_targets,
                  vf_loss_coeff=0.5,
-                 entropy_coeff=-0.01,
+                 entropy_coeff=0.01,
                  clip_param=0.3):
 
         logp_ratio = tf.exp(actions_logp - prev_actions_logp)
@@ -71,7 +74,7 @@ class PPOSurrogateLoss(object):
             tf.boolean_mask(actions_entropy, valid_mask))
 
         # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
+        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
 
@@ -91,7 +94,7 @@ class VTraceSurrogateLoss(object):
                  bootstrap_value,
                  valid_mask,
                  vf_loss_coeff=0.5,
-                 entropy_coeff=-0.01,
+                 entropy_coeff=0.01,
                  clip_rho_threshold=1.0,
                  clip_pg_rho_threshold=1.0,
                  clip_param=0.3):
@@ -152,11 +155,49 @@ class VTraceSurrogateLoss(object):
             tf.boolean_mask(actions_entropy, valid_mask))
 
         # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
+        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
 
-class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
+class APPOPostprocessing(object):
+    """Adds the policy logits, VF preds, and advantages to the trajectory."""
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        out = {"behaviour_logits": self.model.outputs}
+        if not self.config["vtrace"]:
+            out["vf_preds"] = self.value_function
+        return dict(TFPolicyGraph.extra_compute_action_fetches(self), **out)
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        if not self.config["vtrace"]:
+            completed = sample_batch["dones"][-1]
+            if completed:
+                last_r = 0.0
+            else:
+                next_state = []
+                for i in range(len(self.model.state_in)):
+                    next_state.append(
+                        [sample_batch["state_out_{}".format(i)][-1]])
+                last_r = self.value(sample_batch["new_obs"][-1], *next_state)
+            batch = compute_advantages(
+                sample_batch,
+                last_r,
+                self.config["gamma"],
+                self.config["lambda"],
+                use_gae=self.config["use_gae"])
+        else:
+            batch = sample_batch
+        del batch.data["new_obs"]  # not used, so save some bandwidth
+        return batch
+
+
+class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
+                          TFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -406,7 +447,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         values_batched = make_time_major(
             values, drop_last=self.config["vtrace"])
         self.stats_fetches = {
-            "stats": dict({
+            LEARNER_STATS_KEY: dict({
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
@@ -427,17 +468,11 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                              self.config["momentum"],
                                              self.config["epsilon"])
 
-    def gradients(self, optimizer):
-        grads = tf.gradients(self.loss.total_loss, self.var_list)
+    def gradients(self, optimizer, loss):
+        grads = tf.gradients(loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
-
-    def extra_compute_action_fetches(self):
-        out = {"behaviour_logits": self.model.outputs}
-        if not self.config["vtrace"]:
-            out["vf_preds"] = self.value_function
-        return dict(TFPolicyGraph.extra_compute_action_fetches(self), **out)
 
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
@@ -450,31 +485,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             feed_dict[k] = v
         vf = self.sess.run(self.value_function, feed_dict)
         return vf[0]
-
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        if not self.config["vtrace"]:
-            completed = sample_batch["dones"][-1]
-            if completed:
-                last_r = 0.0
-            else:
-                next_state = []
-                for i in range(len(self.model.state_in)):
-                    next_state.append(
-                        [sample_batch["state_out_{}".format(i)][-1]])
-                last_r = self.value(sample_batch["new_obs"][-1], *next_state)
-            batch = compute_advantages(
-                sample_batch,
-                last_r,
-                self.config["gamma"],
-                self.config["lambda"],
-                use_gae=self.config["use_gae"])
-        else:
-            batch = sample_batch
-        del batch.data["new_obs"]  # not used, so save some bandwidth
-        return batch
 
     def get_initial_state(self):
         return self.model.state_init

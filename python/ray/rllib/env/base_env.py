@@ -186,7 +186,7 @@ class BaseEnv(object):
 
 
 # Fixed agent identifier when there is only the single agent in the env
-_DUMMY_AGENT_ID = "single_agent"
+_DUMMY_AGENT_ID = "agent0"
 
 
 def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):

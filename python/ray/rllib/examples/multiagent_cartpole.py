@@ -21,7 +21,6 @@ import tensorflow.contrib.slim as slim
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune import run_experiments
@@ -90,7 +89,7 @@ if __name__ == "__main__":
             },
             "gamma": random.choice([0.95, 0.99]),
         }
-        return (PPOPolicyGraph, obs_space, act_space, config)
+        return (None, obs_space, act_space, config)
 
     # Setup PPO with an ensemble of `num_policies` different policy graphs
     policy_graphs = {

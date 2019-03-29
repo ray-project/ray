@@ -6,20 +6,35 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.annotations import override
 
 
 class PGLoss(object):
-    """Simple policy gradient loss."""
+    """The basic policy gradient loss."""
 
     def __init__(self, action_dist, actions, advantages):
         self.loss = -tf.reduce_mean(action_dist.logp(actions) * advantages)
 
 
-class PGPolicyGraph(TFPolicyGraph):
+class PGPostprocessing(object):
+    """Adds the advantages field to the trajectory."""
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        # This adds the "advantages" column to the sample batch
+        return compute_advantages(
+            sample_batch, 0.0, self.config["gamma"], use_gae=False)
+
+
+class PGPolicyGraph(PGPostprocessing, TFPolicyGraph):
     """Simple policy gradient example of defining a policy graph."""
 
     def __init__(self, obs_space, action_space, config):
@@ -51,11 +66,11 @@ class PGPolicyGraph(TFPolicyGraph):
         # read from postprocessed sample batches and fed into the specified
         # placeholders during loss computation.
         loss_in = [
-            ("obs", obs),
-            ("actions", actions),
-            ("prev_actions", prev_actions),
-            ("prev_rewards", prev_rewards),
-            ("advantages", advantages),  # added during postprocessing
+            (SampleBatch.CUR_OBS, obs),
+            (SampleBatch.ACTIONS, actions),
+            (SampleBatch.PREV_ACTIONS, prev_actions),
+            (SampleBatch.PREV_REWARDS, prev_rewards),
+            (Postprocessing.ADVANTAGES, advantages),
         ]
 
         # Initialize TFPolicyGraph
@@ -78,15 +93,6 @@ class PGPolicyGraph(TFPolicyGraph):
             seq_lens=self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
         sess.run(tf.global_variables_initializer())
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        # This adds the "advantages" column to the sample batch
-        return compute_advantages(
-            sample_batch, 0.0, self.config["gamma"], use_gae=False)
 
     @override(PolicyGraph)
     def get_initial_state(self):
