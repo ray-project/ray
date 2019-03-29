@@ -93,7 +93,7 @@ class PPOAgent(Agent):
                     "num_envs_per_worker": config["num_envs_per_worker"],
                     "train_batch_size": config["train_batch_size"],
                     "standardize_fields": ["advantages"],
-                    "straggler_mitigation": (config["straggler_mitigation"]),
+                    "straggler_mitigation": config["straggler_mitigation"],
                 })
 
     @override(Agent)
