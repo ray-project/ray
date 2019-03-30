@@ -12,7 +12,7 @@ namespace ray {
 
 class StatsTest : public ::testing::Test {
  public:
-  void SetUp() { ray::stats::Init("127.0.0.1:8888"); }
+  void SetUp() { ray::stats::Init("127.0.0.1:8888", {}); }
 
   void Shutdown() {}
 };
