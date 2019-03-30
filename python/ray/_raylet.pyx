@@ -231,28 +231,23 @@ cdef class RayletClient:
     def disconnect(self):
         check_status(self.client.get().Disconnect())
 
-    def submit_task(self, Task task_spec):
-        check_status(self.client.get().SubmitTask(
-            task_spec.execution_dependencies.get()[0],
-            task_spec.task_spec.get()[0]))
-
-    def submit_task_worker(self,
-                           function_descriptor_list,
-                           args,
-                           DriverID driver_id,
-                           TaskID current_task_id,
-                           int task_index,
-                           ActorID actor_id=ActorID.nil(),
-                           ActorHandleID actor_handle_id=ActorHandleID.nil(),
-                           int actor_counter=0,
-                           ActorID actor_creation_id=ActorID.nil(),
-                           ObjectID actor_creation_dummy_object_id=ObjectID.nil(),
-                           int max_actor_reconstructions=0,
-                           execution_dependencies=None,
-                           new_actor_handles=None,
-                           num_return_vals=None,
-                           resources=None,
-                           placement_resources=None):
+    def submit_task(self,
+                    function_descriptor_list,
+                    args,
+                    DriverID driver_id,
+                    TaskID current_task_id,
+                    int task_index,
+                    ActorID actor_id=ActorID.nil(),
+                    ActorHandleID actor_handle_id=ActorHandleID.nil(),
+                    int actor_counter=0,
+                    ActorID actor_creation_id=ActorID.nil(),
+                    ObjectID actor_creation_dummy_object_id=ObjectID.nil(),
+                    int max_actor_reconstructions=0,
+                    execution_dependencies=None,
+                    new_actor_handles=None,
+                    num_return_vals=None,
+                    resources=None,
+                    placement_resources=None):
         cdef Task task
         if execution_dependencies is None:
             execution_dependencies = []
@@ -303,7 +298,9 @@ cdef class RayletClient:
             resources,
             placement_resources)
 
-        self.submit_task(task)
+        check_status(self.client.get().SubmitTask(
+            task.execution_dependencies.get()[0],
+            task.task_spec.get()[0]))
 
         object_ids = task.returns()
         if len(object_ids) == 1:
