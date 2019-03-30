@@ -593,6 +593,21 @@ class Worker(object):
                 num_return_vals=num_return_vals,
                 resources=resources)
 
+    def submit_actor_task(self,
+                          function_descriptor,
+                          args,
+                          **kwargs):
+        with profiling.profile("submit_task"):
+            self.task_context.task_index += 1
+            print("kwargs", kwargs)
+            return self.raylet_client.submit_task(
+                function_descriptor.get_function_descriptor_list(),
+                args,
+                kwargs.get("driver_id", DriverID.nil()),
+                self.current_task_id,
+                self.task_context.task_index,
+                **kwargs)
+
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
         """Run arbitrary code on all of the workers.

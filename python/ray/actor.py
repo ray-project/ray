@@ -325,7 +325,7 @@ class ActorClass(object):
             function_descriptor = FunctionDescriptor(
                 self._modified_class.__module__, function_name,
                 self._modified_class.__name__)
-            [actor_cursor] = worker.submit_task(
+            actor_cursor = worker.submit_actor_task(
                 function_descriptor,
                 creation_args,
                 actor_creation_id=actor_id,
@@ -481,7 +481,7 @@ class ActorHandle(object):
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
         with self._ray_actor_lock:
-            object_ids = worker.submit_task(
+            object_ids = worker.submit_actor_task(
                 function_descriptor,
                 args,
                 actor_id=self._ray_actor_id,
