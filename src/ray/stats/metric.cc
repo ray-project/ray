@@ -59,7 +59,7 @@ void Histogram::RegisterView() {
           .set_description(description_)
           .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::Distribution(
-            opencensus::stats::BucketBoundaries::Explicit(boundaries_)));
+              opencensus::stats::BucketBoundaries::Explicit(boundaries_)));
 
   RegisterAsView(view_descriptor, tag_keys_);
 }
