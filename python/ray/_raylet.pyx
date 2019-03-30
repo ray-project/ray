@@ -249,10 +249,6 @@ cdef class RayletClient:
                     resources=None,
                     placement_resources=None):
         cdef Task task
-        if execution_dependencies is None:
-            execution_dependencies = []
-        if new_actor_handles is None:
-            new_actor_handles = []
 
         args_for_local_scheduler = []
         for arg in args:
@@ -264,9 +260,14 @@ cdef class RayletClient:
                 # XXX
                 args_for_local_scheduler.append(None)
 
+        if execution_dependencies is None:
+            execution_dependencies = []
+
+        if new_actor_handles is None:
+            new_actor_handles = []
+
         if resources is None:
             raise ValueError("The resources dictionary is required.")
-
         for value in resources.values():
             assert (isinstance(value, int) or isinstance(value, float))
             if value < 0:

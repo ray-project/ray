@@ -603,7 +603,7 @@ class Worker(object):
                 driver_id = kwargs["driver_id"]
                 del kwargs["driver_id"]
             else:
-                driver_id = DriverID.nil()
+                driver_id = self.task_driver_id
             return self.raylet_client.submit_task(
                 function_descriptor.get_function_descriptor_list(),
                 args,
