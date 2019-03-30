@@ -545,7 +545,7 @@ class Worker(object):
         return final_results
 
     def submit_task(self,
-                    function_descriptor,
+                    function_descriptor_list,
                     args,
                     num_return_vals=None,
                     resources=None):
@@ -586,7 +586,7 @@ class Worker(object):
         # with profiling.profile("submit_task"):
         self.task_context.task_index += 1
         return self.raylet_client.submit_task_worker(
-                function_descriptor, args,
+                function_descriptor_list, args,
                 self.task_driver_id,
                 self.current_task_id,
                 self.task_context.task_index,

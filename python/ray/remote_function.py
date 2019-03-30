@@ -42,6 +42,8 @@ class RemoteFunction(object):
                  num_return_vals, max_calls):
         self._function = function
         self._function_descriptor = FunctionDescriptor.from_function(function)
+        self._function_descriptor_list = (
+            self._function_descriptor.get_function_descriptor_list())
         self._function_name = (
             self._function.__module__ + '.' + self._function.__name__)
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -127,7 +129,7 @@ class RemoteFunction(object):
         #     result = self._function(*copy.deepcopy(args))
         #     return result
         object_ids = worker.submit_task(
-            self._function_descriptor,
+            self._function_descriptor_list,
             args,
             num_return_vals=num_return_vals,
             resources=resources)

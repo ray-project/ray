@@ -237,7 +237,7 @@ cdef class RayletClient:
             task_spec.task_spec.get()[0]))
 
     def submit_task_worker(self,
-                           function_descriptor,
+                           function_descriptor_list,
                            args,
                            DriverID driver_id,
                            TaskID current_task_id,
@@ -284,9 +284,6 @@ cdef class RayletClient:
 
         if placement_resources is None:
             placement_resources = {}
-
-        function_descriptor_list = (
-            function_descriptor.get_function_descriptor_list())
 
         task = Task(
             driver_id,
