@@ -186,7 +186,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack, self.callbacks, self.tf_sess,
             self.perf_stats, self.soft_horizon)
->>>>>>> fce006238018f0a0095c452f84f828f6fc91297d
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
