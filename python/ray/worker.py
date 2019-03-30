@@ -544,10 +544,7 @@ class Worker(object):
         assert len(final_results) == len(object_ids)
         return final_results
 
-    def submit_task(self,
-                    function_descriptor_list,
-                    args,
-                    **kwargs):
+    def submit_task(self, function_descriptor_list, args, **kwargs):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with
@@ -587,12 +584,8 @@ class Worker(object):
         self.task_context.task_index += 1
         kwargs["driver_id"] = kwargs.get("driver_id", self.task_driver_id)
         return self.raylet_client.submit_task(
-                function_descriptor_list,
-                args,
-                self.current_task_id,
-                self.task_context.task_index,
-                put,
-                **kwargs)
+            function_descriptor_list, args, self.current_task_id,
+            self.task_context.task_index, put, **kwargs)
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
