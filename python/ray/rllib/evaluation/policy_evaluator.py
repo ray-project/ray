@@ -27,6 +27,8 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
+    summarize, enable_periodic_logging
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
@@ -122,7 +124,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  input_evaluation=frozenset([]),
                  output_creator=lambda ioctx: NoopOutput(),
                  remote_worker_envs=False,
-                 async_remote_worker_envs=False,
+                 remote_env_batch_wait_ms=0,
                  _fake_sampler=False):
         """Initialize a policy evaluator.
 
@@ -201,19 +203,27 @@ class PolicyEvaluator(EvaluatorInterface):
             remote_worker_envs (bool): If using num_envs > 1, whether to create
                 those new envs in remote processes instead of in the current
                 process. This adds overheads, but can make sense if your envs
-                are very CPU intensive (e.g., for StarCraft).
-            async_remote_worker_envs (bool): Similar to remote_worker_envs,
-                but runs the envs asynchronously in the background.
+            remote_env_batch_wait_ms (float): Timeout that remote workers
+                are waiting when polling environments. 0 (continue when at
+                least one env is ready) is a reasonable default, but optimal
+                value could be obtained by measuring your environment
+                step / reset and model inference perf.
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
 
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)
 
+        if worker_index > 1:
+            disable_log_once_globally()  # only need 1 evaluator to log
+        elif log_level == "DEBUG":
+            enable_periodic_logging()
+
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
         self.policy_config = policy_config
         self.callbacks = callbacks or {}
+        self.worker_index = worker_index
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
@@ -307,6 +317,8 @@ class PolicyEvaluator(EvaluatorInterface):
                                   policy.observation_space.shape)
             for (policy_id, policy) in self.policy_map.items()
         }
+        if self.worker_index == 0:
+            logger.info("Built filter map: {}".format(self.filters))
 
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = BaseEnv.to_base_env(
@@ -314,7 +326,7 @@ class PolicyEvaluator(EvaluatorInterface):
             make_env=make_env,
             num_envs=num_envs,
             remote_envs=remote_worker_envs,
-            async_remote_envs=async_remote_worker_envs)
+            remote_env_batch_wait_ms=remote_env_batch_wait_ms)
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
@@ -396,6 +408,10 @@ class PolicyEvaluator(EvaluatorInterface):
         if self._fake_sampler and self.last_batch is not None:
             return self.last_batch
 
+        if log_once("sample_start"):
+            logger.info("Generating sample batch of size {}".format(
+                self.sample_batch_size))
+
         batches = [self.input_reader.next()]
         steps_so_far = batches[0].count
 
@@ -429,6 +445,10 @@ class PolicyEvaluator(EvaluatorInterface):
                 for estimator in self.reward_estimators:
                     estimator.process(sub_batch)
 
+        if log_once("sample_end"):
+            logger.info("Completed sample batch:\n\n{}\n".format(
+                summarize(batch)))
+
         if self.compress_observations == "bulk":
             batch.compress(bulk=True)
         elif self.compress_observations:
@@ -461,6 +481,9 @@ class PolicyEvaluator(EvaluatorInterface):
 
     @override(EvaluatorInterface)
     def compute_gradients(self, samples):
+        if log_once("compute_gradients"):
+            logger.info("Compute gradients on:\n\n{}\n".format(
+                summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             grad_out, info_out = {}, {}
             if self.tf_sess is not None:
@@ -483,10 +506,15 @@ class PolicyEvaluator(EvaluatorInterface):
             grad_out, info_out = (
                 self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples))
         info_out["batch_count"] = samples.count
+        if log_once("grad_out"):
+            logger.info("Compute grad info:\n\n{}\n".format(
+                summarize(info_out)))
         return grad_out, info_out
 
     @override(EvaluatorInterface)
     def apply_gradients(self, grads):
+        if log_once("apply_gradients"):
+            logger.info("Apply gradients:\n\n{}\n".format(summarize(grads)))
         if isinstance(grads, dict):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "apply_gradients")
@@ -506,6 +534,10 @@ class PolicyEvaluator(EvaluatorInterface):
 
     @override(EvaluatorInterface)
     def learn_on_batch(self, samples):
+        if log_once("learn_on_batch"):
+            logger.info(
+                "Training on concatenated sample batches:\n\n{}\n".format(
+                    summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
             if self.tf_sess is not None:
@@ -523,11 +555,12 @@ class PolicyEvaluator(EvaluatorInterface):
                         continue
                     info_out[pid], _ = (
                         self.policy_map[pid].learn_on_batch(batch))
-            return info_out
         else:
-            grad_fetch, apply_fetch = (
+            info_out, _ = (
                 self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(samples))
-            return grad_fetch
+        if log_once("learn_out"):
+            logger.info("Training output:\n\n{}\n".format(summarize(info_out)))
+        return info_out
 
     @DeveloperAPI
     def get_metrics(self):
@@ -641,6 +674,10 @@ class PolicyEvaluator(EvaluatorInterface):
         self.policy_map[policy_id].export_checkpoint(export_dir,
                                                      filename_prefix)
 
+    @DeveloperAPI
+    def stop(self):
+        self.async_env.stop()
+
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
         preprocessors = {}
@@ -663,6 +700,9 @@ class PolicyEvaluator(EvaluatorInterface):
                     "Tuple|DictFlatteningPreprocessor.")
             with tf.variable_scope(name):
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
+        if self.worker_index == 0:
+            logger.info("Built policy map: {}".format(policy_map))
+            logger.info("Built preprocessor map: {}".format(preprocessors))
         return policy_map, preprocessors
 
     def __del__(self):
@@ -672,30 +712,7 @@ class PolicyEvaluator(EvaluatorInterface):
 
 def _validate_and_canonicalize(policy_graph, env):
     if isinstance(policy_graph, dict):
-        for k, v in policy_graph.items():
-            if not isinstance(k, str):
-                raise ValueError(
-                    "policy_graph keys must be strs, got {}".format(type(k)))
-            if not isinstance(v, tuple) or len(v) != 4:
-                raise ValueError(
-                    "policy_graph values must be tuples of "
-                    "(cls, obs_space, action_space, config), got {}".format(v))
-            if not issubclass(v[0], PolicyGraph):
-                raise ValueError(
-                    "policy_graph tuple value 0 must be a rllib.PolicyGraph "
-                    "class, got {}".format(v[0]))
-            if not isinstance(v[1], gym.Space):
-                raise ValueError(
-                    "policy_graph tuple value 1 (observation_space) must be a "
-                    "gym.Space, got {}".format(type(v[1])))
-            if not isinstance(v[2], gym.Space):
-                raise ValueError(
-                    "policy_graph tuple value 2 (action_space) must be a "
-                    "gym.Space, got {}".format(type(v[2])))
-            if not isinstance(v[3], dict):
-                raise ValueError(
-                    "policy_graph tuple value 3 (config) must be a dict, "
-                    "got {}".format(type(v[3])))
+        _validate_multiagent_config(policy_graph)
         return policy_graph
     elif not issubclass(policy_graph, PolicyGraph):
         raise ValueError("policy_graph must be a rllib.PolicyGraph class")
@@ -709,6 +726,35 @@ def _validate_and_canonicalize(policy_graph, env):
             DEFAULT_POLICY_ID: (policy_graph, env.observation_space,
                                 env.action_space, {})
         }
+
+
+def _validate_multiagent_config(policy_graph, allow_none_graph=False):
+    for k, v in policy_graph.items():
+        if not isinstance(k, str):
+            raise ValueError("policy_graph keys must be strs, got {}".format(
+                type(k)))
+        if not isinstance(v, tuple) or len(v) != 4:
+            raise ValueError(
+                "policy_graph values must be tuples of "
+                "(cls, obs_space, action_space, config), got {}".format(v))
+        if allow_none_graph and v[0] is None:
+            pass
+        elif not issubclass(v[0], PolicyGraph):
+            raise ValueError(
+                "policy_graph tuple value 0 must be a rllib.PolicyGraph "
+                "class or None, got {}".format(v[0]))
+        if not isinstance(v[1], gym.Space):
+            raise ValueError(
+                "policy_graph tuple value 1 (observation_space) must be a "
+                "gym.Space, got {}".format(type(v[1])))
+        if not isinstance(v[2], gym.Space):
+            raise ValueError(
+                "policy_graph tuple value 2 (action_space) must be a "
+                "gym.Space, got {}".format(type(v[2])))
+        if not isinstance(v[3], dict):
+            raise ValueError(
+                "policy_graph tuple value 3 (config) must be a dict, "
+                "got {}".format(type(v[3])))
 
 
 def _validate_env(env):

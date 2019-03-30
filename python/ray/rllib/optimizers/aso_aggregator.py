@@ -43,6 +43,10 @@ class Aggregator(object):
         """Returns runtime statistics for debugging."""
         raise NotImplementedError
 
+    def reset(self, remote_evaluators):
+        """Called to change the set of remote evaluators being used."""
+        raise NotImplementedError
+
 
 class AggregationWorkerBase(object):
     """Aggregators should extend from this class."""
@@ -124,6 +128,10 @@ class AggregationWorkerBase(object):
             "num_weight_syncs": self.num_weight_syncs,
             "num_steps_replayed": self.num_replayed,
         }
+
+    @override(Aggregator)
+    def reset(self, remote_evaluators):
+        self.sample_tasks.reset_evaluators(remote_evaluators)
 
     def _augment_with_replay(self, sample_futures):
         def can_replay():

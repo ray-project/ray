@@ -25,6 +25,7 @@ import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.experimental.signal as ray_signal
+import ray.experimental.no_return
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -74,15 +75,6 @@ LOCAL_MODE = 2
 PYTHON_MODE = 3
 
 ERROR_KEY_PREFIX = b"Error:"
-
-# Default resource requirements for actors when no resource requirements are
-# specified.
-DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
-DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
-# Default resource requirements for actors when some resource requirements are
-# specified.
-DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
-DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -164,6 +156,7 @@ class Worker(object):
         # Index of the current session. This number will
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
+        self._current_task = None
 
     @property
     def task_context(self):
@@ -285,12 +278,22 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                self.plasma_client.put(
-                    value,
-                    object_id=pyarrow.plasma.ObjectID(object_id.binary()),
-                    memcopy_threads=self.memcopy_threads,
-                    serialization_context=self.get_serialization_context(
-                        self.task_driver_id))
+                if isinstance(value, bytes):
+                    # If the object is a byte array, skip serializing it and
+                    # use a special metadata to indicate it's raw binary. So
+                    # that this object can also be read by Java.
+                    self.plasma_client.put_raw_buffer(
+                        value,
+                        object_id=pyarrow.plasma.ObjectID(object_id.binary()),
+                        metadata=ray_constants.RAW_BUFFER_METADATA,
+                        memcopy_threads=self.memcopy_threads)
+                else:
+                    self.plasma_client.put(
+                        value,
+                        object_id=pyarrow.plasma.ObjectID(object_id.binary()),
+                        memcopy_threads=self.memcopy_threads,
+                        serialization_context=self.get_serialization_context(
+                            self.task_driver_id))
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
@@ -435,7 +438,10 @@ class Worker(object):
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
                                        serialization_context):
         if metadata:
-            # If metadata is not empty, return an exception object based on
+            # Check if the object should be returned as raw bytes.
+            if metadata == ray_constants.RAW_BUFFER_METADATA:
+                return data.to_pybytes()
+            # Otherwise, return an exception object based on
             # the error type.
             error_type = int(metadata)
             if error_type == ErrorType.WORKER_DIED:
@@ -790,8 +796,15 @@ class Worker(object):
             if isinstance(outputs[i], ray.actor.ActorHandle):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
-
-            self.put_object(object_ids[i], outputs[i])
+            if outputs[i] is ray.experimental.no_return.NoReturn:
+                if not self.plasma_client.contains(
+                        pyarrow.plasma.ObjectID(object_ids[i].binary())):
+                    raise RuntimeError(
+                        "Attempting to return 'ray.experimental.NoReturn' "
+                        "from a remote function, but the corresponding "
+                        "ObjectID does not exist in the local object store.")
+            else:
+                self.put_object(object_ids[i], outputs[i])
 
     def _process_task(self, task, function_execution_info):
         """Execute a task assigned to this worker.
@@ -847,6 +860,7 @@ class Worker(object):
 
         # Execute the task.
         try:
+            self._current_task = task
             with profiling.profile("task:execute"):
                 if (task.actor_id().is_nil()
                         and task.actor_creation_id().is_nil()):
@@ -867,6 +881,8 @@ class Worker(object):
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e, traceback_str)
             return
+        finally:
+            self._current_task = None
 
         # Store the outputs in the local object store.
         try:
@@ -2455,23 +2471,8 @@ def make_decorator(num_return_vals=None,
                 raise Exception("The keyword 'max_calls' is not allowed for "
                                 "actors.")
 
-            # Set the actor default resources.
-            if num_cpus is None and num_gpus is None and resources is None:
-                # In the default case, actors acquire no resources for
-                # their lifetime, and actor methods will require 1 CPU.
-                cpus_to_use = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE
-                actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE
-            else:
-                # If any resources are specified, then all resources are
-                # acquired for the actor's lifetime and no resources are
-                # associated with methods.
-                cpus_to_use = (DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
-                               if num_cpus is None else num_cpus)
-                actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE
-
-            return worker.make_actor(function_or_class, cpus_to_use, num_gpus,
-                                     resources, actor_method_cpus,
-                                     max_reconstructions)
+            return worker.make_actor(function_or_class, num_cpus, num_gpus,
+                                     resources, max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")

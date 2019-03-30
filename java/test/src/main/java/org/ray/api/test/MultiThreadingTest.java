@@ -15,13 +15,17 @@ import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class MultiThreadingTest extends BaseTest {
 
-  private static final int LOOP_COUNTER = 1000;
+  private static final Logger LOGGER = LoggerFactory.getLogger(MultiThreadingTest.class);
+
+  private static final int LOOP_COUNTER = 100;
   private static final int NUM_THREADS = 20;
 
   @RayRemote
@@ -55,6 +59,21 @@ public class MultiThreadingTest extends BaseTest {
       Assert.assertEquals(arg, (int) obj.get());
     }, LOOP_COUNTER);
 
+    // Test creating multi actors
+    runTestCaseInMultipleThreads(() -> {
+      int arg = random.nextInt();
+      RayActor<Echo> echoActor1 = Ray.createActor(Echo::new);
+      try {
+        // Sleep a while to test the case that another actor is created before submitting
+        // tasks to this actor.
+        TimeUnit.MILLISECONDS.sleep(10);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Got exception while sleeping.", e);
+      }
+      RayObject<Integer> obj = Ray.call(Echo::echo, echoActor1, arg);
+      Assert.assertEquals(arg, (int) obj.get());
+    }, 1);
+
     // Test put and get.
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
@@ -74,8 +93,6 @@ public class MultiThreadingTest extends BaseTest {
 
   @Test
   public void testInDriver() {
-    // TODO(hchen): Fix this test under single-process mode.
-    TestUtils.skipTestUnderSingleProcess();
     testMultiThreading();
   }
 

@@ -145,7 +145,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     @override(PolicyOptimizer)
     def reset(self, remote_evaluators):
         self.remote_evaluators = remote_evaluators
-        self.sample_tasks.reset_evaluators(remote_evaluators)
+        self.aggregator.reset(remote_evaluators)
 
     @override(PolicyOptimizer)
     def stats(self):

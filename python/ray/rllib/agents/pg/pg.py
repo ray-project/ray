@@ -34,20 +34,20 @@ class PGAgent(Agent):
     _policy_graph = PGPolicyGraph
 
     @override(Agent)
-    def _init(self):
-        if self.config["use_pytorch"]:
+    def _init(self, config, env_creator):
+        if config["use_pytorch"]:
             from ray.rllib.agents.pg.torch_pg_policy_graph import \
                 PGTorchPolicyGraph
             policy_cls = PGTorchPolicyGraph
         else:
             policy_cls = self._policy_graph
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)
+            env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"])
+            env_creator, policy_cls, config["num_workers"])
         optimizer_config = dict(
-            self.config["optimizer"],
-            **{"train_batch_size": self.config["train_batch_size"]})
+            config["optimizer"],
+            **{"train_batch_size": config["train_batch_size"]})
         self.optimizer = SyncSamplesOptimizer(
             self.local_evaluator, self.remote_evaluators, optimizer_config)
 
@@ -55,8 +55,7 @@ class PGAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()
-        result = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
+        result = self.collect_metrics()
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result

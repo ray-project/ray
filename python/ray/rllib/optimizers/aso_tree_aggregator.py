@@ -110,6 +110,10 @@ class TreeAggregator(Aggregator):
             "num_batches_processed": self.num_batches_processed,
         }
 
+    @override(Aggregator)
+    def reset(self, remote_evaluators):
+        raise NotImplementedError("changing number of remote evaluators")
+
     @staticmethod
     def precreate_aggregators(n):
         return create_colocated(AggregationWorker, [], n)

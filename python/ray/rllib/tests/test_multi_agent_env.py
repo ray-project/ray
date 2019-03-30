@@ -282,8 +282,16 @@ class TestMultiAgentEnv(unittest.TestCase):
 
         # Reset processing
         self.assertRaises(
-            ValueError,
-            lambda: env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}}))
+            ValueError, lambda: env.send_actions({
+                0: {
+                    0: 0,
+                    1: 0
+                },
+                1: {
+                    0: 0,
+                    1: 0
+                }
+            }))
         self.assertEqual(env.try_reset(0), {0: 0, 1: 0})
         self.assertEqual(env.try_reset(1), {0: 0, 1: 0})
         env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
@@ -346,7 +354,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
             batch_steps=50,
             num_envs=4,
-            remote_worker_envs=True)
+            remote_worker_envs=True,
+            remote_env_batch_wait_ms=99999999)
         batch = ev.sample()
         self.assertEqual(batch.count, 200)
 
@@ -362,7 +371,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
             batch_steps=50,
             num_envs=4,
-            async_remote_worker_envs=True)
+            remote_worker_envs=True)
         batch = ev.sample()
         self.assertEqual(batch.count, 200)
 
@@ -531,7 +540,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             }
             obs_space = single_env.observation_space
             act_space = single_env.action_space
-            return (PGPolicyGraph, obs_space, act_space, config)
+            return (None, obs_space, act_space, config)
 
         pg = PGAgent(
             env="multi_cartpole",
@@ -599,15 +608,14 @@ class TestMultiAgentEnv(unittest.TestCase):
             remote_evs = []
         optimizer = optimizer_cls(ev, remote_evs, {})
         for i in range(200):
-            ev.foreach_policy(
-                lambda p, _: p.set_epsilon(max(0.02, 1 - i * .02))
-                if isinstance(p, DQNPolicyGraph) else None)
+            ev.foreach_policy(lambda p, _: p.set_epsilon(
+                max(0.02, 1 - i * .02))
+                              if isinstance(p, DQNPolicyGraph) else None)
             optimizer.step()
             result = collect_metrics(ev, remote_evs)
             if i % 20 == 0:
-                ev.foreach_policy(
-                    lambda p, _: p.update_target()
-                    if isinstance(p, DQNPolicyGraph) else None)
+                ev.foreach_policy(lambda p, _: p.update_target() if isinstance(
+                    p, DQNPolicyGraph) else None)
                 print("Iter {}, rew {}".format(i,
                                                result["policy_reward_mean"]))
                 print("Total reward", result["episode_reward_mean"])

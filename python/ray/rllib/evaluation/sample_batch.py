@@ -11,7 +11,7 @@ from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
 
 # Defaults policy id for single agent environments
-DEFAULT_POLICY_ID = "default"
+DEFAULT_POLICY_ID = "default_policy"
 
 
 @PublicAPI
@@ -92,6 +92,25 @@ class SampleBatch(object):
     For example, {"obs": [1, 2, 3], "reward": [0, -1, 1]} is a batch of three
     samples, each with an "obs" and "reward" attribute.
     """
+
+    # Outputs from interacting with the environment
+    CUR_OBS = "obs"
+    NEXT_OBS = "new_obs"
+    ACTIONS = "actions"
+    REWARDS = "rewards"
+    PREV_ACTIONS = "prev_actions"
+    PREV_REWARDS = "prev_rewards"
+    DONES = "dones"
+    INFOS = "infos"
+
+    # Uniquely identifies an episode
+    EPS_ID = "eps_id"
+
+    # Uniquely identifies an agent within an episode
+    AGENT_INDEX = "agent_index"
+
+    # Value function predictions emitted by the behaviour policy
+    VF_PREDS = "vf_preds"
 
     @PublicAPI
     def __init__(self, *args, **kwargs):
