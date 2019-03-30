@@ -10,7 +10,7 @@ from ray.rllib.evaluation.sample_batch import SampleBatch, MultiAgentBatch
 
 _logged = set()
 _disabled = False
-_periodic_log = True
+_periodic_log = False
 _last_logged = 0.0
 _printer = pprint.PrettyPrinter(indent=2, width=60)
 

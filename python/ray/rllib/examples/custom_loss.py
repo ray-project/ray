@@ -18,7 +18,7 @@ import os
 import tensorflow as tf
 
 import ray
-from ray.tune import run_experiments
+from ray import tune
 from ray.rllib.models import (Categorical, FullyConnectedNetwork, Model,
                               ModelCatalog)
 from ray.rllib.models.model import restore_original_dimensions
@@ -82,21 +82,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model("custom_loss", CustomLossModel)
-    run_experiments({
-        "custom_loss": {
-            "run": "PG",
+    tune.run(
+        "PG",
+        stop={
+            "training_iteration": args.iters,
+        },
+        config={
             "env": "CartPole-v0",
-            "stop": {
-                "training_iteration": args.iters,
-            },
-            "config": {
-                "num_workers": 0,
-                "model": {
-                    "custom_model": "custom_loss",
-                    "custom_options": {
-                        "input_files": args.input_files,
-                    },
+            "num_workers": 0,
+            "model": {
+                "custom_model": "custom_loss",
+                "custom_options": {
+                    "input_files": args.input_files,
                 },
             },
         },
-    })
+    )
