@@ -310,10 +310,10 @@ class Trial(object):
 
         self._nonjson_fields = [
             "_checkpoint",
-            "config",
+            # "config",
             "loggers",
             "sync_function",
-            "last_result",
+            # "last_result",
             "results",
             "best_result",
             "param_config",
