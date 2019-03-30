@@ -583,9 +583,9 @@ class Worker(object):
         Returns:
             The return object IDs for this task.
         """
-        with profiling.profile("submit_task"):
-            self.task_context.task_index += 1
-            return self.raylet_client.submit_task_worker(
+        # with profiling.profile("submit_task"):
+        self.task_context.task_index += 1
+        return self.raylet_client.submit_task_worker(
                 function_descriptor, args,
                 self.task_driver_id,
                 self.current_task_id,

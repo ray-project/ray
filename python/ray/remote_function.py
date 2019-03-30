@@ -98,7 +98,7 @@ class RemoteFunction(object):
                 resources=None):
         """An experimental alternate way to submit remote functions."""
         worker = ray.worker.get_global_worker()
-        worker.check_connected()
+        # worker.check_connected()
 
         if self._last_export_session < worker._session_index:
             # If this function was exported in a previous session, we need to
@@ -108,28 +108,30 @@ class RemoteFunction(object):
 
         kwargs = {} if kwargs is None else kwargs
         args = [] if args is None else args
-        args = ray.signature.extend_args(self._function_signature, args,
-                                         kwargs)
+        # args = ray.signature.extend_args(self._function_signature, args,
+        #                                  kwargs)
+        args = []
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
-        resources = ray.utils.resources_from_resource_arguments(
-            self._num_cpus, self._num_gpus, self._resources, num_cpus,
-            num_gpus, resources)
-        if worker.mode == ray.worker.LOCAL_MODE:
+        # resources = ray.utils.resources_from_resource_arguments(
+        #     self._num_cpus, self._num_gpus, self._resources, num_cpus,
+        #     num_gpus, resources)
+        resources = {}
+        # if worker.mode == ray.worker.LOCAL_MODE:
             # In LOCAL_MODE, remote calls simply execute the function.
             # We copy the arguments to prevent the function call from
             # mutating them and to match the usual behavior of
             # immutable remote objects.
-            result = self._function(*copy.deepcopy(args))
-            return result
+        #     result = self._function(*copy.deepcopy(args))
+        #     return result
         object_ids = worker.submit_task(
             self._function_descriptor,
             args,
             num_return_vals=num_return_vals,
             resources=resources)
-        if len(object_ids) == 1:
-            return object_ids[0]
-        elif len(object_ids) > 1:
-            return object_ids
+        # if len(object_ids) == 1:
+        #     return object_ids[0]
+        # elif len(object_ids) > 1:
+        #     return object_ids
