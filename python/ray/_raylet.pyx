@@ -236,6 +236,7 @@ cdef class RayletClient:
                     args,
                     TaskID current_task_id,
                     int task_index,
+                    put_function,
                     ActorID actor_id=ActorID.nil(),
                     ActorHandleID actor_handle_id=ActorHandleID.nil(),
                     int actor_counter=0,
@@ -257,8 +258,7 @@ cdef class RayletClient:
             elif check_simple_value(arg):
                 args_for_local_scheduler.append(arg)
             else:
-                # XXX
-                args_for_local_scheduler.append(None)
+                args_for_local_scheduler.append(put_function(arg))
 
         if execution_dependencies is None:
             execution_dependencies = []

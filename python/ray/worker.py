@@ -590,6 +590,7 @@ class Worker(object):
                 args,
                 self.current_task_id,
                 self.task_context.task_index,
+                put,
                 **kwargs)
 
     def run_function_on_all_workers(self, function,
