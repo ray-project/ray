@@ -69,7 +69,7 @@ class MultiAgentBatch(object):
     @DeveloperAPI
     def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
         for batch in self.policy_batches.values():
-            batch.compress(columns, bulk=bulk)
+            batch.compress(bulk=bulk, columns=columns)
 
     @DeveloperAPI
     def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
