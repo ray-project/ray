@@ -148,9 +148,12 @@ class TFPolicyGraph(PolicyGraph):
         if self._update_ops:
             logger.debug("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
-        with tf.control_dependencies(self._update_ops):
-            self._apply_op = self.build_apply_op(self._optimizer,
-                                                 self._grads_and_vars)
+        if self._grads_and_vars:
+            with tf.control_dependencies(self._update_ops):
+                self._apply_op = self.build_apply_op(self._optimizer,
+                                                     self._grads_and_vars)
+        else:
+            self._apply_op = tf.no_op()
 
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(
