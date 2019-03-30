@@ -108,7 +108,6 @@ class RemoteFunction(object):
             self._last_export_session = worker._session_index
             worker.function_actor_manager.export(self)
 
-        kwargs = {} if kwargs is None else kwargs
         args = [] if args is None else args
         if kwargs:
             args = ray.signature.extend_args(self._function_signature, args,
