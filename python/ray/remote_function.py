@@ -128,12 +128,8 @@ class RemoteFunction(object):
             # immutable remote objects.
         #     result = self._function(*copy.deepcopy(args))
         #     return result
-        object_ids = worker.submit_task(
+        return worker.submit_task(
             self._function_descriptor_list,
             args,
             num_return_vals=num_return_vals,
             resources=resources)
-        # if len(object_ids) == 1:
-        #     return object_ids[0]
-        # elif len(object_ids) > 1:
-        #     return object_ids

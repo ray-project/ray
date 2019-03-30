@@ -305,7 +305,11 @@ cdef class RayletClient:
 
         self.submit_task(task)
 
-        return task.returns()
+        object_ids = task.returns()
+        if len(object_ids) == 1:
+           return object_ids[0]
+        elif len(object_ids) > 1:
+           return object_ids
 
     def get_task(self):
         cdef:
