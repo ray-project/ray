@@ -33,7 +33,7 @@ class MinibatchBuffer(object):
         Returns:
            buf: Data item saved from inqueue.
            released: True if the item is now removed from the ring buffer.
-       """
+        """
         if self.ttl[self.idx] <= 0:
             self.buffers[self.idx] = self.inqueue.get(timeout=60.0)
             self.ttl[self.idx] = self.cur_max_ttl

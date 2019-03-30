@@ -195,7 +195,6 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
     def testMultiTierAggregation(self):
         local, remotes = self._make_evs()
-        local, remotes = self._make_evs()
         aggregators = TreeAggregator.precreate_aggregators(1)
         optimizer = AsyncSamplesOptimizer(local, remotes, {
             "num_aggregation_workers": 1,

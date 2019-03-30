@@ -19,6 +19,9 @@ class Aggregator(object):
     For example, you may want to use a tree of actors to collect samples. The
     use of multiple actors can be necessary to offload expensive work such
     as concatenating and decompressing sample batches.
+
+    Attributes:
+        local_evaluator: local PolicyEvaluator copy
     """
 
     def iter_train_batches(self):
@@ -59,6 +62,14 @@ class AggregationWorkerBase(object):
         self.sample_batch_size = sample_batch_size
         self.train_batch_size = train_batch_size
 
+        if replay_proportion:
+            if replay_buffer_num_slots * sample_batch_size <= train_batch_size:
+                raise ValueError(
+                    "Replay buffer size is too small to produce train, "
+                    "please increase replay_buffer_num_slots.",
+                    replay_buffer_num_slots, sample_batch_size,
+                    train_batch_size)
+
         # Kick off async background sampling
         self.sample_tasks = TaskPool()
         for ev in self.remote_evaluators:
@@ -67,14 +78,6 @@ class AggregationWorkerBase(object):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         self.batch_buffer = []
-
-        if replay_proportion:
-            if replay_buffer_num_slots * sample_batch_size <= train_batch_size:
-                raise ValueError(
-                    "Replay buffer size is too small to produce train, "
-                    "please increase replay_buffer_num_slots.",
-                    replay_buffer_num_slots, sample_batch_size,
-                    train_batch_size)
 
         self.replay_proportion = replay_proportion
         self.replay_buffer_num_slots = replay_buffer_num_slots
