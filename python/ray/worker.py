@@ -599,11 +599,15 @@ class Worker(object):
                           **kwargs):
         with profiling.profile("submit_task"):
             self.task_context.task_index += 1
-            print("kwargs", kwargs)
+            if "driver_id" in kwargs:
+                driver_id = kwargs["driver_id"]
+                del kwargs["driver_id"]
+            else:
+                driver_id = DriverID.nil()
             return self.raylet_client.submit_task(
                 function_descriptor.get_function_descriptor_list(),
                 args,
-                kwargs.get("driver_id", DriverID.nil()),
+                driver_id,
                 self.current_task_id,
                 self.task_context.task_index,
                 **kwargs)
