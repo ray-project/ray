@@ -555,7 +555,7 @@ class Worker(object):
         outputs of the function from the scheduler and immediately return them.
 
         Args:
-            function_descriptor: The function descriptor to execute.
+            function_descriptor_list: The function descriptor list to execute.
             args: The arguments to pass into the function. Arguments can be
                 object IDs or they can be values. If they are values, they must
                 be serializable objects.
@@ -582,6 +582,7 @@ class Worker(object):
         Returns:
             The return object IDs for this task.
         """
+        # XXX put this back:
         # with profiling.profile("submit_task"):
         self.task_context.task_index += 1
         kwargs["driver_id"] = kwargs.get("driver_id", self.task_driver_id)
