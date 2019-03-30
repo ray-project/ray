@@ -10,6 +10,7 @@ from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
@@ -41,7 +42,8 @@ DEFAULT_CONFIG = with_common_config({
     "dueling": True,
     # Whether to use double dqn
     "double_q": True,
-    # Hidden layer sizes of the state and action value networks
+    # Postprocess model outputs with these hidden layers to compute the
+    # state and action values. See also the model config in catalog.py.
     "hiddens": [256],
     # N-step Q learning
     "n_step": 1,
@@ -69,7 +71,7 @@ DEFAULT_CONFIG = with_common_config({
     "exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
-    # Use softmax for sampling actions.
+    # Use softmax for sampling actions. Required for off policy estimation.
     "soft_q": False,
     # Softmax temperature. Q values are divided by this value prior to softmax.
     # Softmax approaches argmax as the temperature drops to zero.
@@ -142,18 +144,18 @@ class DQNAgent(Agent):
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
 
     @override(Agent)
-    def _init(self):
+    def _init(self, config, env_creator):
         self._validate_config()
 
         # Update effective batch size to include n-step
-        adjusted_batch_size = max(self.config["sample_batch_size"],
-                                  self.config.get("n_step", 1))
-        self.config["sample_batch_size"] = adjusted_batch_size
+        adjusted_batch_size = max(config["sample_batch_size"],
+                                  config.get("n_step", 1))
+        config["sample_batch_size"] = adjusted_batch_size
 
         self.exploration0 = self._make_exploration_schedule(-1)
         self.explorations = [
             self._make_exploration_schedule(i)
-            for i in range(self.config["num_workers"])
+            for i in range(config["num_workers"])
         ]
 
         for k in self._optimizer_shared_configs:
@@ -163,12 +165,12 @@ class DQNAgent(Agent):
             ]:
                 # only Rainbow needs annealing prioritized_replay_beta
                 continue
-            if k not in self.config["optimizer"]:
-                self.config["optimizer"][k] = self.config[k]
+            if k not in config["optimizer"]:
+                config["optimizer"][k] = config[k]
 
-        if self.config.get("parameter_noise", False):
-            if self.config["callbacks"]["on_episode_start"]:
-                start_callback = self.config["callbacks"]["on_episode_start"]
+        if config.get("parameter_noise", False):
+            if config["callbacks"]["on_episode_start"]:
+                start_callback = config["callbacks"]["on_episode_start"]
             else:
                 start_callback = None
 
@@ -181,10 +183,10 @@ class DQNAgent(Agent):
                 if start_callback:
                     start_callback(info)
 
-            self.config["callbacks"]["on_episode_start"] = tune.function(
+            config["callbacks"]["on_episode_start"] = tune.function(
                 on_episode_start)
-            if self.config["callbacks"]["on_episode_end"]:
-                end_callback = self.config["callbacks"]["on_episode_end"]
+            if config["callbacks"]["on_episode_end"]:
+                end_callback = config["callbacks"]["on_episode_end"]
             else:
                 end_callback = None
 
@@ -194,19 +196,19 @@ class DQNAgent(Agent):
                 policies = info["policy"]
                 episode = info["episode"]
                 episode.custom_metrics["policy_distance"] = policies[
-                    "default"].pi_distance
+                    DEFAULT_POLICY_ID].pi_distance
                 if end_callback:
                     end_callback(info)
 
-            self.config["callbacks"]["on_episode_end"] = tune.function(
+            config["callbacks"]["on_episode_end"] = tune.function(
                 on_episode_end)
 
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, self._policy_graph)
+            env_creator, self._policy_graph)
 
-        if self.config["evaluation_interval"]:
+        if config["evaluation_interval"]:
             self.evaluation_ev = self.make_local_evaluator(
-                self.env_creator,
+                env_creator,
                 self._policy_graph,
                 extra_config={
                     "batch_mode": "complete_episodes",
@@ -215,19 +217,17 @@ class DQNAgent(Agent):
             self.evaluation_metrics = self._evaluate()
 
         def create_remote_evaluators():
-            return self.make_remote_evaluators(self.env_creator,
-                                               self._policy_graph,
-                                               self.config["num_workers"])
+            return self.make_remote_evaluators(env_creator, self._policy_graph,
+                                               config["num_workers"])
 
-        if self.config["optimizer_class"] != "AsyncReplayOptimizer":
+        if config["optimizer_class"] != "AsyncReplayOptimizer":
             self.remote_evaluators = create_remote_evaluators()
         else:
             # Hack to workaround https://github.com/ray-project/ray/issues/2541
             self.remote_evaluators = None
 
-        self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
-            self.local_evaluator, self.remote_evaluators,
-            self.config["optimizer"])
+        self.optimizer = getattr(optimizers, config["optimizer_class"])(
+            self.local_evaluator, self.remote_evaluators, config["optimizer"])
         # Create the remote evaluators *after* the replay actors
         if self.remote_evaluators is None:
             self.remote_evaluators = create_remote_evaluators()
@@ -260,13 +260,11 @@ class DQNAgent(Agent):
 
         if self.config["per_worker_exploration"]:
             # Only collect metrics from the third of workers with lowest eps
-            result = self.optimizer.collect_metrics(
-                timeout_seconds=self.config["collect_metrics_timeout"],
+            result = self.collect_metrics(
                 selected_evaluators=self.remote_evaluators[
                     -len(self.remote_evaluators) // 3:])
         else:
-            result = self.optimizer.collect_metrics(
-                timeout_seconds=self.config["collect_metrics_timeout"])
+            result = self.collect_metrics()
 
         result.update(
             timesteps_this_iter=self.global_timestep - start_timestep,

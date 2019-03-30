@@ -1,4 +1,15 @@
+workspace(name = "com_github_ray_project_ray")
+
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
+load("//java:repo.bzl", "java_repositories")
+
+java_repositories()
+
+git_repository(
+    name = "com_github_checkstyle_java",
+    commit = "85f37871ca03b9d3fee63c69c8107f167e24e77b",
+    remote = "https://github.com/ruifangChen/checkstyle_java",
+)
 
 git_repository(
     name = "com_github_nelhage_rules_boost",
@@ -38,8 +49,8 @@ new_git_repository(
 new_git_repository(
     name = "plasma",
     build_file = "@//bazel:BUILD.plasma",
-    commit = "6a27c660ea700febf6fd73b2e851ab96e9315134",
-    remote = "https://github.com/ray-project/arrow",
+    commit = "d00497b38be84fd77c40cbf77f3422f2a81c44f9",
+    remote = "https://github.com/apache/arrow",
 )
 
 new_git_repository(

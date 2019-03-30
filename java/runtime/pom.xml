@@ -54,16 +54,8 @@
       <artifactId>guava</artifactId>
     </dependency>
     <dependency>
-      <groupId>net.lingala.zip4j</groupId>
-      <artifactId>zip4j</artifactId>
-    </dependency>
-    <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-log4j12</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.ini4j</groupId>
-      <artifactId>ini4j</artifactId>
     </dependency>
     <dependency>
       <groupId>org.ow2.asm</groupId>

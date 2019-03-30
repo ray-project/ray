@@ -20,10 +20,17 @@ def cli():
     "-o",
     default=None,
     type=str,
-    help="Output information to a pickle file.")
-def list_trials(experiment_path, sort, output):
+    help="Select file to output information to.")
+@click.option(
+    "--filter",
+    "filter_op",
+    nargs=1,
+    default=None,
+    type=str,
+    help="Select filter in the format '<column> <operator> <value>'.")
+def list_trials(experiment_path, sort, output, filter_op):
     """Lists trials in the directory subtree starting at the given path."""
-    commands.list_trials(experiment_path, sort, output)
+    commands.list_trials(experiment_path, sort, output, filter_op)
 
 
 @cli.command()
@@ -35,10 +42,17 @@ def list_trials(experiment_path, sort, output):
     "-o",
     default=None,
     type=str,
-    help="Select filename to output information to.")
-def list_experiments(project_path, sort, output):
+    help="Select file to output information to.")
+@click.option(
+    "--filter",
+    "filter_op",
+    nargs=1,
+    default=None,
+    type=str,
+    help="Select filter in the format '<column> <operator> <value>'.")
+def list_experiments(project_path, sort, output, filter_op):
     """Lists experiments in the directory subtree."""
-    commands.list_experiments(project_path, sort, output)
+    commands.list_experiments(project_path, sort, output, filter_op)
 
 
 @cli.command()

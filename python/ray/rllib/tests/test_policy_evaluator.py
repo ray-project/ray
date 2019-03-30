@@ -16,6 +16,7 @@ from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.env.vector_env import VectorEnv
 from ray.tune.registry import register_env
 
@@ -367,7 +368,7 @@ class TestPolicyEvaluator(unittest.TestCase):
         time.sleep(2)
         ev.sample()
         filters = ev.get_filters(flush_after=True)
-        obs_f = filters["default"]
+        obs_f = filters[DEFAULT_POLICY_ID]
         self.assertNotEqual(obs_f.rs.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
 
@@ -381,8 +382,8 @@ class TestPolicyEvaluator(unittest.TestCase):
         filters = ev.get_filters(flush_after=False)
         time.sleep(2)
         filters2 = ev.get_filters(flush_after=False)
-        obs_f = filters["default"]
-        obs_f2 = filters2["default"]
+        obs_f = filters[DEFAULT_POLICY_ID]
+        obs_f2 = filters2[DEFAULT_POLICY_ID]
         self.assertGreaterEqual(obs_f2.rs.n, obs_f.rs.n)
         self.assertGreaterEqual(obs_f2.buffer.n, obs_f.buffer.n)
 
@@ -396,15 +397,15 @@ class TestPolicyEvaluator(unittest.TestCase):
 
         # Current State
         filters = ev.get_filters(flush_after=False)
-        obs_f = filters["default"]
+        obs_f = filters[DEFAULT_POLICY_ID]
 
         self.assertLessEqual(obs_f.buffer.n, 20)
 
         new_obsf = obs_f.copy()
         new_obsf.rs._n = 100
-        ev.sync_filters({"default": new_obsf})
+        ev.sync_filters({DEFAULT_POLICY_ID: new_obsf})
         filters = ev.get_filters(flush_after=False)
-        obs_f = filters["default"]
+        obs_f = filters[DEFAULT_POLICY_ID]
         self.assertGreaterEqual(obs_f.rs.n, 100)
         self.assertLessEqual(obs_f.buffer.n, 20)
 
@@ -412,7 +413,7 @@ class TestPolicyEvaluator(unittest.TestCase):
         time.sleep(2)
         ev.sample()
         filters = ev.get_filters(flush_after=True)
-        obs_f = filters["default"]
+        obs_f = filters[DEFAULT_POLICY_ID]
         self.assertNotEqual(obs_f.rs.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         return obs_f

@@ -11,8 +11,8 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+from ray import tune
 from ray.rllib.agents.ppo import PPOAgent
-from ray.tune import run_experiments
 
 
 def my_train_fn(config, reporter):
@@ -40,15 +40,13 @@ def my_train_fn(config, reporter):
 
 if __name__ == "__main__":
     ray.init()
-    run_experiments({
-        "demo": {
-            "run": my_train_fn,
-            "resources_per_trial": {
-                "cpu": 1,
-            },
-            "config": {
-                "lr": 0.01,
-                "num_workers": 0,
-            },
+    tune.run(
+        my_train_fn,
+        resources_per_trial={
+            "cpu": 1,
         },
-    })
+        config={
+            "lr": 0.01,
+            "num_workers": 0,
+        },
+    )
