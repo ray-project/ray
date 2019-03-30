@@ -236,6 +236,80 @@ cdef class RayletClient:
             task_spec.execution_dependencies.get()[0],
             task_spec.task_spec.get()[0]))
 
+    def submit_task_worker(self,
+                           function_descriptor,
+                           args,
+                           DriverID driver_id,
+                           TaskID current_task_id,
+                           int task_index,
+                           ActorID actor_id=ActorID.nil(),
+                           ActorHandleID actor_handle_id=ActorHandleID.nil(),
+                           int actor_counter=0,
+                           ActorID actor_creation_id=ActorID.nil(),
+                           ObjectID actor_creation_dummy_object_id=ObjectID.nil(),
+                           int max_actor_reconstructions=0,
+                           execution_dependencies=None,
+                           new_actor_handles=None,
+                           num_return_vals=None,
+                           resources=None,
+                           placement_resources=None):
+        cdef Task task
+        if execution_dependencies is None:
+            execution_dependencies = []
+        if new_actor_handles is None:
+            new_actor_handles = []
+
+        args_for_local_scheduler = []
+        for arg in args:
+            if isinstance(arg, ObjectID):
+                args_for_local_scheduler.append(arg)
+            elif check_simple_value(arg):
+                args_for_local_scheduler.append(arg)
+            else:
+                # XXX
+                args_for_local_scheduler.append(None)
+
+        if resources is None:
+            raise ValueError("The resources dictionary is required.")
+
+        for value in resources.values():
+            assert (isinstance(value, int) or isinstance(value, float))
+            if value < 0:
+                raise ValueError(
+                    "Resource quantities must be nonnegative.")
+            if (value >= 1 and isinstance(value, float)
+                    and not value.is_integer()):
+              raise ValueError(
+                  "Resource quantities must all be whole numbers.")
+
+        if placement_resources is None:
+            placement_resources = {}
+
+        function_descriptor_list = (
+            function_descriptor.get_function_descriptor_list())
+
+        task = Task(
+            driver_id,
+            function_descriptor_list,
+            args_for_local_scheduler,
+            num_return_vals,
+            current_task_id,
+            task_index,
+            actor_creation_id,
+            actor_creation_dummy_object_id,
+            max_actor_reconstructions,
+            actor_id,
+            actor_handle_id,
+            actor_counter,
+            new_actor_handles,
+            execution_dependencies,
+            resources,
+            placement_resources)
+
+        self.submit_task(task)
+
+        return task.returns()
+
     def get_task(self):
         cdef:
             unique_ptr[CTaskSpecification] task_spec
