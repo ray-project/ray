@@ -234,7 +234,6 @@ cdef class RayletClient:
     def submit_task(self,
                     function_descriptor_list,
                     args,
-                    DriverID driver_id,
                     TaskID current_task_id,
                     int task_index,
                     ActorID actor_id=ActorID.nil(),
@@ -247,7 +246,8 @@ cdef class RayletClient:
                     new_actor_handles=None,
                     num_return_vals=None,
                     resources=None,
-                    placement_resources=None):
+                    placement_resources=None,
+                    DriverID driver_id=DriverID.nil()):
         cdef Task task
 
         args_for_local_scheduler = []

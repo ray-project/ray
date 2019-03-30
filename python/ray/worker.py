@@ -547,8 +547,7 @@ class Worker(object):
     def submit_task(self,
                     function_descriptor_list,
                     args,
-                    num_return_vals=None,
-                    resources=None):
+                    **kwargs):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with
@@ -585,29 +584,10 @@ class Worker(object):
         """
         # with profiling.profile("submit_task"):
         self.task_context.task_index += 1
+        kwargs["driver_id"] = kwargs.get("driver_id", self.task_driver_id)
         return self.raylet_client.submit_task(
-                function_descriptor_list, args,
-                self.task_driver_id,
-                self.current_task_id,
-                self.task_context.task_index,
-                num_return_vals=num_return_vals,
-                resources=resources)
-
-    def submit_actor_task(self,
-                          function_descriptor,
-                          args,
-                          **kwargs):
-        with profiling.profile("submit_task"):
-            self.task_context.task_index += 1
-            if "driver_id" in kwargs:
-                driver_id = kwargs["driver_id"]
-                del kwargs["driver_id"]
-            else:
-                driver_id = self.task_driver_id
-            return self.raylet_client.submit_task(
-                function_descriptor.get_function_descriptor_list(),
+                function_descriptor_list,
                 args,
-                driver_id,
                 self.current_task_id,
                 self.task_context.task_index,
                 **kwargs)

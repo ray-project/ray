@@ -325,8 +325,8 @@ class ActorClass(object):
             function_descriptor = FunctionDescriptor(
                 self._modified_class.__module__, function_name,
                 self._modified_class.__name__)
-            actor_cursor = worker.submit_actor_task(
-                function_descriptor,
+            actor_cursor = worker.submit_task(
+                function_descriptor.get_function_descriptor_list(),
                 creation_args,
                 actor_creation_id=actor_id,
                 max_actor_reconstructions=self._max_reconstructions,
@@ -481,8 +481,8 @@ class ActorHandle(object):
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
         with self._ray_actor_lock:
-            object_ids = worker.submit_actor_task(
-                function_descriptor,
+            object_ids = worker.submit_task(
+                function_descriptor.get_function_descriptor_list(),
                 args,
                 actor_id=self._ray_actor_id,
                 actor_handle_id=self._ray_actor_handle_id,
