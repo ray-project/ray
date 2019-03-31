@@ -6,7 +6,8 @@ import six
 import collections
 import numpy as np
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
 
 # Defaults policy id for single agent environments
@@ -64,6 +65,16 @@ class MultiAgentBatch(object):
         for batch in self.policy_batches.values():
             ct += batch.count
         return ct
+
+    @DeveloperAPI
+    def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
+        for batch in self.policy_batches.values():
+            batch.compress(bulk=bulk, columns=columns)
+
+    @DeveloperAPI
+    def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
+        for batch in self.policy_batches.values():
+            batch.decompress_if_needed(columns)
 
     def __str__(self):
         return "MultiAgentBatch({}, count={})".format(
@@ -245,6 +256,27 @@ class SampleBatch(object):
     @PublicAPI
     def __setitem__(self, key, item):
         self.data[key] = item
+
+    @DeveloperAPI
+    def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
+        for key in columns:
+            if key in self.data:
+                if bulk:
+                    self.data[key] = pack(self.data[key])
+                else:
+                    self.data[key] = np.array(
+                        [pack(o) for o in self.data[key]])
+
+    @DeveloperAPI
+    def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
+        for key in columns:
+            if key in self.data:
+                arr = self.data[key]
+                if is_compressed(arr):
+                    self.data[key] = unpack(arr)
+                elif len(arr) > 0 and is_compressed(arr[0]):
+                    self.data[key] = np.array(
+                        [unpack(o) for o in self.data[key]])
 
     def __str__(self):
         return "SampleBatch({})".format(str(self.data))

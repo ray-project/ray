@@ -27,7 +27,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.compression import pack
 from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
     summarize, enable_periodic_logging
 from ray.rllib.utils.filter import get_filter
@@ -125,7 +124,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  input_evaluation=frozenset([]),
                  output_creator=lambda ioctx: NoopOutput(),
                  remote_worker_envs=False,
-                 remote_env_batch_wait_ms=0):
+                 remote_env_batch_wait_ms=0,
+                 _fake_sampler=False):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -203,12 +203,12 @@ class PolicyEvaluator(EvaluatorInterface):
             remote_worker_envs (bool): If using num_envs > 1, whether to create
                 those new envs in remote processes instead of in the current
                 process. This adds overheads, but can make sense if your envs
-                can take much time to step / reset (e.g., for StarCraft)
             remote_env_batch_wait_ms (float): Timeout that remote workers
                 are waiting when polling environments. 0 (continue when at
                 least one env is ready) is a reasonable default, but optimal
                 value could be obtained by measuring your environment
                 step / reset and model inference perf.
+            _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
 
         if log_level:
@@ -237,6 +237,8 @@ class PolicyEvaluator(EvaluatorInterface):
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
+        self.last_batch = None
+        self._fake_sampler = _fake_sampler
 
         self.env = _validate_env(env_creator(env_context))
         if isinstance(self.env, MultiAgentEnv) or \
@@ -403,6 +405,9 @@ class PolicyEvaluator(EvaluatorInterface):
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
 
+        if self._fake_sampler and self.last_batch is not None:
+            return self.last_batch
+
         if log_once("sample_start"):
             logger.info("Generating sample batch of size {}".format(
                 self.sample_batch_size))
@@ -444,15 +449,13 @@ class PolicyEvaluator(EvaluatorInterface):
             logger.info("Completed sample batch:\n\n{}\n".format(
                 summarize(batch)))
 
-        if self.compress_observations:
-            if isinstance(batch, MultiAgentBatch):
-                for data in batch.policy_batches.values():
-                    data["obs"] = [pack(o) for o in data["obs"]]
-                    data["new_obs"] = [pack(o) for o in data["new_obs"]]
-            else:
-                batch["obs"] = [pack(o) for o in batch["obs"]]
-                batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
+        if self.compress_observations == "bulk":
+            batch.compress(bulk=True)
+        elif self.compress_observations:
+            batch.compress()
 
+        if self._fake_sampler:
+            self.last_batch = batch
         return batch
 
     @DeveloperAPI
