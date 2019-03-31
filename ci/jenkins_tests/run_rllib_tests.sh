@@ -222,7 +222,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --config '{"num_gpus": 0, "num_workers": 2, "num_aggregation_workers": 2, "min_iter_time_s": 1}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/python/ray/rllib/tests/run_silent.sh train.py \
+    /ray/ci/suppress_output /ray/python/ray/rllib/train.py \
     --env CartPole-v0 \
     --run IMPALA \
     --stop '{"training_iteration": 1}' \
