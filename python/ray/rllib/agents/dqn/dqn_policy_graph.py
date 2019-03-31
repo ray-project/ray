@@ -466,8 +466,8 @@ class DQNPolicyGraph(LearningRateSchedule, DQNPostprocessing, TFPolicyGraph):
         self.sess.run(tf.global_variables_initializer())
         
         self.stats_fetches = dict({
-                "cur_lr": tf.cast(self.cur_lr, tf.float64),
-            }, **self.loss.stats)
+            "cur_lr": tf.cast(self.cur_lr, tf.float64),
+        }, **self.loss.stats)
 
     @override(TFPolicyGraph)
     def optimizer(self):
