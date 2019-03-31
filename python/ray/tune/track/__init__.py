@@ -1,6 +1,6 @@
 import pickle
 
-from .trial import Trial
+from ray.tune.track.session import TrackSession
 
 
 _trial = None
@@ -14,7 +14,7 @@ def init(log_dir=None,
          init_logging=True):
     """
     Initializes the global trial context for this process.
-    This creates a Trial object and the corresponding hooks for logging.
+    This creates a TrackSession object and the corresponding hooks for logging.
     """
     global _trial  # pylint: disable=global-statement
     if _trial:
@@ -22,7 +22,7 @@ def init(log_dir=None,
         # where that initial trial was created, and that creation line
         # info is helpful to keep around anyway.
         raise ValueError("A trial already exists in the current context")
-    local_trial = Trial(
+    local_trial = TrackSession(
         log_dir=log_dir,
         upload_dir=upload_dir,
         sync_period=sync_period,
@@ -46,18 +46,18 @@ def shutdown():
 
 
 def save(obj, obj_name, iteration=None, save_fn=pickle.dump, **kwargs):
-    """ Applies Trial.save to the trial in the current context """
+    """ Applies TrackSession.save to the trial in the current context """
     return _trial.save(obj=obj, obj_name=obj_name, iteration=iteration,
                        save_fn=save_fn, **kwargs)
 
 
 def metric(*, iteration=None, **kwargs):
-    """Applies Trial.metric to the trial in the current context."""
+    """Applies TrackSession.metric to the trial in the current context."""
     return _trial.metric(iteration=iteration, **kwargs)
 
 
 def load(obj_name, iteration=None, load_fn=pickle.load, **kwargs):
-    """Applies Trial.load to the trial in the current context."""
+    """Applies TrackSession.load to the trial in the current context."""
     return _trial.load(obj_name=obj_name, iteration=iteration,
                        load_fn=load_fn, **kwargs)
 
@@ -67,5 +67,5 @@ def trial_dir():
     return _trial.trial_dir()
 
 
-__all__ = ["Trial", "trial", "metric",
+__all__ = ["TrackSession", "trial", "metric",
            "save", "load", "trial_dir"]

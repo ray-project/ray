@@ -34,6 +34,7 @@ def git_hash():
     git_hash = git_hash.strip()
     return git_hash
 
+
 def git_pretty():
     """returns a pretty summary of the commit or unkown if not in git repo"""
     if git_repo() is None:
@@ -43,6 +44,7 @@ def git_pretty():
     pretty = pretty.decode("utf-8")
     pretty = pretty.strip()
     return pretty
+
 
 def invocation():
     """reconstructs the invocation for this python program"""
