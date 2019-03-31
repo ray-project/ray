@@ -136,6 +136,7 @@ def list_trials(experiment_path,
     checkpoint_dicts = experiment_state["checkpoints"]
     checkpoint_dicts = [flatten_dict(g) for g in checkpoint_dicts]
     checkpoints_df = pd.DataFrame(checkpoint_dicts)
+
     result_keys = ["last_result:{}".format(k) for k in result_keys]
     col_keys = [
         k for k in list(info_keys) + result_keys if k in checkpoints_df
