@@ -84,7 +84,7 @@ DEFAULT_CONFIG = with_common_config({
     "epsilon": 0.1,
     # balancing the three losses
     "vf_loss_coeff": 0.5,
-    "entropy_coeff": -0.01,
+    "entropy_coeff": 0.01,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -98,28 +98,29 @@ class ImpalaAgent(Agent):
     _policy_graph = VTracePolicyGraph
 
     @override(Agent)
-    def _init(self):
+    def _init(self, config, env_creator):
         for k in OPTIMIZER_SHARED_CONFIGS:
-            if k not in self.config["optimizer"]:
-                self.config["optimizer"][k] = self.config[k]
+            if k not in config["optimizer"]:
+                config["optimizer"][k] = config[k]
         policy_cls = self._get_policy_graph()
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)
+            env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"])
-        self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
-                                               self.remote_evaluators,
-                                               self.config["optimizer"])
+            env_creator, policy_cls, config["num_workers"])
+        self.optimizer = AsyncSamplesOptimizer(
+            self.local_evaluator, self.remote_evaluators, config["optimizer"])
+        if config["entropy_coeff"] < 0:
+            raise DeprecationWarning("entropy_coeff must be >= 0")
 
     @override(Agent)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()
         self.optimizer.step()
-        while time.time() - start < self.config["min_iter_time_s"]:
+        while (time.time() - start < self.config["min_iter_time_s"]
+               or self.optimizer.num_steps_sampled == prev_steps):
             self.optimizer.step()
-        result = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
+        result = self.collect_metrics()
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result

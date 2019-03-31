@@ -8,8 +8,10 @@ from torch import nn
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
 from ray.rllib.utils.annotations import override
 
@@ -27,7 +29,23 @@ class PGLoss(nn.Module):
         return pi_err
 
 
-class PGTorchPolicyGraph(TorchPolicyGraph):
+class PGPostprocessing(object):
+    """Adds the value func output and advantages field to the trajectory."""
+
+    @override(TorchPolicyGraph)
+    def extra_action_out(self, model_out):
+        return {SampleBatch.VF_PREDS: model_out[2].numpy()}
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        return compute_advantages(
+            sample_batch, 0.0, self.config["gamma"], use_gae=False)
+
+
+class PGTorchPolicyGraph(PGPostprocessing, TorchPolicyGraph):
     def __init__(self, obs_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
@@ -43,23 +61,14 @@ class PGTorchPolicyGraph(TorchPolicyGraph):
             action_space,
             self.model,
             loss,
-            loss_inputs=["obs", "actions", "advantages"])
-
-    @override(TorchPolicyGraph)
-    def extra_action_out(self, model_out):
-        return {"vf_preds": model_out[2].numpy()}
+            loss_inputs=[
+                SampleBatch.CUR_OBS, SampleBatch.ACTIONS,
+                Postprocessing.ADVANTAGES
+            ])
 
     @override(TorchPolicyGraph)
     def optimizer(self):
         return torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        return compute_advantages(
-            sample_batch, 0.0, self.config["gamma"], use_gae=False)
 
     def _value(self, obs):
         with self.lock:

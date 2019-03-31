@@ -7,9 +7,10 @@ import collections
 import numpy as np
 
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.memory import concat_aligned
 
 # Defaults policy id for single agent environments
-DEFAULT_POLICY_ID = "default"
+DEFAULT_POLICY_ID = "default_policy"
 
 
 @PublicAPI
@@ -81,6 +82,25 @@ class SampleBatch(object):
     samples, each with an "obs" and "reward" attribute.
     """
 
+    # Outputs from interacting with the environment
+    CUR_OBS = "obs"
+    NEXT_OBS = "new_obs"
+    ACTIONS = "actions"
+    REWARDS = "rewards"
+    PREV_ACTIONS = "prev_actions"
+    PREV_REWARDS = "prev_rewards"
+    DONES = "dones"
+    INFOS = "infos"
+
+    # Uniquely identifies an episode
+    EPS_ID = "eps_id"
+
+    # Uniquely identifies an agent within an episode
+    AGENT_INDEX = "agent_index"
+
+    # Value function predictions emitted by the behaviour policy
+    VF_PREDS = "vf_preds"
+
     @PublicAPI
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
@@ -104,7 +124,7 @@ class SampleBatch(object):
         out = {}
         samples = [s for s in samples if s.count > 0]
         for k in samples[0].keys():
-            out[k] = np.concatenate([s[k] for s in samples])
+            out[k] = concat_aligned([s[k] for s in samples])
         return SampleBatch(out)
 
     @PublicAPI
@@ -121,7 +141,7 @@ class SampleBatch(object):
         assert self.keys() == other.keys(), "must have same columns"
         out = {}
         for k in self.keys():
-            out[k] = np.concatenate([self[k], other[k]])
+            out[k] = concat_aligned([self[k], other[k]])
         return SampleBatch(out)
 
     @PublicAPI

@@ -11,10 +11,11 @@ PYTHONS=("cp27-cp27mu"
          "cp36-cp36m"
          "cp37-cp37m")
 
-# On python 3.7, a newer version of numpy seems to be necessary.
-NUMPY_VERSIONS=("1.10.4"
-                "1.10.4"
-                "1.10.4"
+# The minimum supported numpy version is 1.14, see
+# https://issues.apache.org/jira/browse/ARROW-3141
+NUMPY_VERSIONS=("1.14.5"
+                "1.14.5"
+                "1.14.5"
                 "1.14.5")
 
 sudo apt-get install unzip

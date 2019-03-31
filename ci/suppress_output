@@ -2,7 +2,6 @@
 # Run a command, suppressing output unless it hangs or crashes.
 
 TMPFILE=`mktemp`
-COMMAND="$@"
 PID=$$
 
 # Print output to avoid travis killing us
@@ -20,7 +19,7 @@ watchdog() {
 watchdog & 2>/dev/null
 WATCHDOG_PID=$!
 
-time $COMMAND >$TMPFILE 2>&1
+time "$@" >$TMPFILE 2>&1
 
 CODE=$?
 if [ $CODE != 0 ]; then

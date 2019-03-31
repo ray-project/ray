@@ -316,8 +316,8 @@ class Node(object):
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info
             ]
-        redis_client = self.create_redis_client()
-        redis_client.hmset("webui", {"url": self._webui_url})
+            redis_client = self.create_redis_client()
+            redis_client.hmset("webui", {"url": self._webui_url})
 
     def start_plasma_store(self):
         """Start the plasma store."""
@@ -432,7 +432,7 @@ class Node(object):
 
         self.start_plasma_store()
         self.start_raylet()
-        if PY3 and self._ray_params.include_webui:
+        if PY3:
             self.start_reporter()
 
         if self._ray_params.include_log_monitor:

@@ -10,26 +10,32 @@ import org.ray.api.RayActor;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.Sha1Digestor;
 
-public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
+public class RayActorImpl<T> implements RayActor<T>, Externalizable {
 
   public static final RayActorImpl NIL = new RayActorImpl();
 
-  private UniqueId id;
-  private UniqueId handleId;
+  /**
+   * Id of this actor.
+   */
+  protected UniqueId id;
+  /**
+   * Handle id of this actor.
+   */
+  protected UniqueId handleId;
   /**
    * The number of tasks that have been invoked on this actor.
    */
-  private int taskCounter;
+  protected int taskCounter;
   /**
    * The unique id of the last return of the last task.
    * It's used as a dependency for the next task.
    */
-  private UniqueId taskCursor;
+  protected UniqueId taskCursor;
   /**
    * The number of times that this actor handle has been forked.
    * It's used to make sure ids of actor handles are unique.
    */
-  private int numForks;
+  protected int numForks;
 
   /**
    * The new actor handles that were created from this handle
@@ -37,7 +43,7 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
    * used to garbage-collect dummy objects that are no longer
    * necessary in the backend.
    */
-  private List<UniqueId> newActorHandles;
+  protected List<UniqueId> newActorHandles;
 
   public RayActorImpl() {
     this(UniqueId.NIL, UniqueId.NIL);

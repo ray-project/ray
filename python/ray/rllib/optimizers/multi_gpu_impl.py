@@ -4,8 +4,9 @@ from __future__ import print_function
 
 from collections import namedtuple
 import logging
-
 import tensorflow as tf
+
+from ray.rllib.utils.debug import log_once, summarize
 
 # Variable scope in which created variables will be placed under
 TOWER_SCOPE_NAME = "tower"
@@ -134,6 +135,15 @@ class LocalSyncParallelOptimizer(object):
             The number of tuples loaded per device.
         """
 
+        if log_once("load_data"):
+            logger.info(
+                "Training on concatenated sample batches:\n\n{}\n".format(
+                    summarize({
+                        "placeholders": self.loss_inputs,
+                        "inputs": inputs,
+                        "state_inputs": state_inputs
+                    })))
+
         feed_dict = {}
         assert len(self.loss_inputs) == len(inputs + state_inputs), \
             (self.loss_inputs, inputs, state_inputs)
@@ -188,7 +198,8 @@ class LocalSyncParallelOptimizer(object):
 
         sess.run([t.init_op for t in self._towers], feed_dict=feed_dict)
 
-        tuples_per_device = truncated_len / len(self.devices)
+        self.num_tuples_loaded = truncated_len
+        tuples_per_device = truncated_len // len(self.devices)
         assert tuples_per_device > 0, "No data loaded?"
         assert tuples_per_device % self._loaded_per_device_batch_size == 0
         return tuples_per_device
@@ -262,7 +273,8 @@ class LocalSyncParallelOptimizer(object):
                     current_slice.set_shape(ph.shape)
                     device_input_slices.append(current_slice)
                 graph_obj = self.build_graph(device_input_slices)
-                device_grads = graph_obj.gradients(self.optimizer)
+                device_grads = graph_obj.gradients(self.optimizer,
+                                                   graph_obj._loss)
             return Tower(
                 tf.group(
                     *[batch.initializer for batch in device_input_batches]),

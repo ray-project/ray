@@ -18,9 +18,10 @@ import uuid
 
 import ray
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
-    TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION)
+from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
+                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
+                             EPISODES_THIS_ITER, EPISODES_TOTAL,
+                             TRAINING_ITERATION, RESULT_DUPLICATE)
 from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,10 @@ class Trainable(object):
         start = time.time()
         result = self._train()
         assert isinstance(result, dict), "_train() needs to return a dict."
+
+        # We do not modify internal state nor update this result if duplicate.
+        if RESULT_DUPLICATE in result:
+            return result
 
         result = result.copy()
 
@@ -446,26 +451,3 @@ class Trainable(object):
             A dict that maps ExportFormats to successfully exported models.
         """
         return {}
-
-
-def wrap_function(train_func):
-    from ray.tune.function_runner import FunctionRunner
-
-
-    function_args = inspect.getargspec(train_func).args
-    use_track = ("reporter" not in  function_args and len(function_args) == 1)
-
-    class WrappedFunc(FunctionRunner):
-        def _trainable_func(self):
-            return train_func
-
-    class WrappedTrackFunc(FunctionRunner):
-        def _trainable_func(self, config, reporter):
-            import track
-            track.init(tune_reporter=reporter, log_dir=os.getcwd())
-            output = train_func(config)
-            reporter(done=True)
-            track.shutdown()
-            return output
-
-    return WrappedTrackFunc if use_track else WrappedFunc

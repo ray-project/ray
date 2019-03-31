@@ -63,7 +63,7 @@ class PolicyOptimizer(object):
             config, self))
 
     @DeveloperAPI
-    def _init(self):
+    def _init(self, **config):
         """Subclasses should prefer overriding this instead of __init__."""
 
         raise NotImplementedError
@@ -141,6 +141,12 @@ class PolicyOptimizer(object):
         res = summarize_episodes(episodes, orig_episodes, num_dropped)
         res.update(info=self.stats())
         return res
+
+    @DeveloperAPI
+    def reset(self, remote_evaluators):
+        """Called to change the set of remote evaluators being used."""
+
+        self.remote_evaluators = remote_evaluators
 
     @DeveloperAPI
     def foreach_evaluator(self, func):
