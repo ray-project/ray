@@ -16,8 +16,10 @@ from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
 from ray.tune.trial import Trial, Checkpoint
+from ray.tune.suggest import function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.util import warn_if_slow, binary_to_hex, hex_to_binary
+from ray.tune.util import warn_if_slow
+from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.web_server import TuneServer
 
 MAX_DEBUG_TRIALS = 20
@@ -47,12 +49,13 @@ class _TuneFunctionEncoder(json.JSONEncoder):
                 "_type": "function",
                 "value": binary_to_hex(cloudpickle.dumps(obj))
             }
-        return super(RoundTripEncoder, self).default(obj)
+        return super(_TuneFunctionEncoder, self).default(obj)
 
 
 class _TuneFunctionDecoder(json.JSONDecoder):
     def __init__(self, *args, **kwargs):
-        json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)
+        json.JSONDecoder.__init__(
+            self, object_hook=self.object_hook, *args, **kwargs)
 
     def object_hook(self, obj):
         if obj.get("_type") == "function":
