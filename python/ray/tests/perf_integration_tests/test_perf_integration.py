@@ -27,6 +27,9 @@ def test_task_submission(benchmark, num_tasks):
     ray.init(num_cpus=num_cpus, object_store_memory=10**7)
     # warm up the plasma store
     for _ in range(2):
-        [ray.put(np.random.randint(0, 100, size=10 ** i)) for i in range(6, 0, -1)]
+        [
+            ray.put(np.random.randint(0, 100, size=10**i))
+            for i in range(6, 0, -1)
+        ]
     benchmark(benchmark_task_submission, num_tasks)
     ray.shutdown()
