@@ -186,7 +186,10 @@ class BaseEnv(object):
     @PublicAPI
     def stop(self):
         """Releases all resources used."""
-        pass
+
+        for env in self.get_unwrapped():
+            if hasattr(env, "close"):
+                env.close()
 
 
 # Fixed agent identifier when there is only the single agent in the env
