@@ -745,7 +745,8 @@ class Agent(Trainable):
             input_evaluation=input_evaluation,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
-            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"])
+            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
+            _fake_sampler=config.get("_fake_sampler", False))
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):
