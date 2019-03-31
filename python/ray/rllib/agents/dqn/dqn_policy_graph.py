@@ -464,6 +464,10 @@ class DQNPolicyGraph(LearningRateSchedule, DQNPostprocessing, TFPolicyGraph):
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
+        
+        self.stats_fetches = dict({
+                "cur_lr": tf.cast(self.cur_lr, tf.float64),
+            }, **self.loss.stats)
 
     @override(TFPolicyGraph)
     def optimizer(self):
@@ -495,9 +499,7 @@ class DQNPolicyGraph(LearningRateSchedule, DQNPostprocessing, TFPolicyGraph):
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.loss.td_error,
-            LEARNER_STATS_KEY: dict({
-                "cur_lr": tf.cast(self.cur_lr, tf.float64),
-            }, **self.loss.stats),
+            LEARNER_STATS_KEY: self.stats_fetches,
         }
 
     @override(PolicyGraph)
