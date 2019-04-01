@@ -22,10 +22,8 @@ namespace stats {
 #include "metric_defs.h"
 
 /// Initialize stats.
-static void Init(const std::string &address,
-                 const TagsType &global_tags,
+static void Init(const std::string &address, const TagsType &global_tags,
                  bool disable_stats = false) {
-
   IsStatsDisabled() = disable_stats;
   if (disable_stats) {
     RAY_LOG(INFO) << "Succeeded to disable stats.";
