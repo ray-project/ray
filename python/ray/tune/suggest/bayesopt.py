@@ -3,13 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import bayes_opt as byo
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
-
-try:
-    import bayesopt as byo
-except Exception:
-    byo = None
 
 
 class BayesOptSearch(SuggestionAlgorithm):

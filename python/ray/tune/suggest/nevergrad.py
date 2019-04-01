@@ -2,10 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-try:
-    import nevergrad as ng
-except Exception:
-    ng = None
+import nevergrad as ng
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 

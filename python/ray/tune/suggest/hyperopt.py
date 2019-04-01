@@ -5,14 +5,10 @@ from __future__ import print_function
 import numpy as np
 import copy
 import logging
+import hyperopt as hpo
 
 from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
-
-try:
-    import hyperopt as hpo
-except Exception:
-    hpo = None
 
 hyperopt_logger = logging.getLogger("hyperopt")
 hyperopt_logger.setLevel(logging.WARNING)
