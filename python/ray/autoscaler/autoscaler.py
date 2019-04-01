@@ -92,11 +92,11 @@ CLUSTER_CONFIG_SCHEMA = {
     "docker": (
         {
             "head_image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
-            "head_container_name": (str, OPTIONAL),  # e.g., ray_docker
             "head_run_options": (list, OPTIONAL),
             "worker_image": (str, OPTIONAL),
-            "worker_container_name": (str, OPTIONAL),
             "worker_run_options": (list, OPTIONAL),
+            "container_name": (str, OPTIONAL),  # e.g., ray_docker
+
         },
         OPTIONAL),
 
