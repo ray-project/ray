@@ -21,6 +21,9 @@ namespace stats {
 /// The helper function for global tags.
 std::unique_ptr<TagsType> &GetGlobalTagsPtr();
 
+/// The helper function for `disable_stats` option.
+bool &IsStatsDisabled();
+
 /// The helper function for registering a view.
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                            const std::vector<opencensus::tags::TagKey> &keys);

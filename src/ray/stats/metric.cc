@@ -9,6 +9,11 @@ std::unique_ptr<TagsType> &GetGlobalTagsPtr() {
   return global_tags_ptr;
 }
 
+bool &IsStatsDisabled() {
+  static bool is_stats_disabled = false;
+  return is_stats_disabled;
+}
+
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                            const std::vector<opencensus::tags::TagKey> &keys) {
   // Register global keys.
@@ -28,6 +33,10 @@ static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
 }
 
 void Metric::Record(double value, const TagsType &tags) {
+  if (IsStatsDisabled()) {
+    return;
+  }
+
   if (measure_ == nullptr) {
     measure_.reset(new opencensus::stats::Measure<double>(
         opencensus::stats::Measure<double>::Register(name_, description_, unit_)));
