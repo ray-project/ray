@@ -76,7 +76,7 @@ http_archive(
 # This is how diamond dependencies are prevented.
 git_repository(
     name = "com_google_absl",
-    commit = "e75672f6afc7e8f23ee7b532e86d1b3b9be3984e",
+    commit = "88a152ae747c3c42dc9167d46c590929b048d436",
     remote = "https://github.com/abseil/abseil-cpp.git",
 )
 
