@@ -179,20 +179,15 @@ if __name__ == "__main__":
         },
     }
 
-    tune.run_experiments({
-        "test": {
-            "env": "cartpole_stateless",
-            "run": args.run,
-            "stop": {
-                "episode_reward_mean": args.stop
-            },
-            "config": dict(
-                configs[args.run], **{
-                    "model": {
-                        "use_lstm": True,
-                        "lstm_use_prev_action_reward": args.
-                        use_prev_action_reward,
-                    },
-                }),
-        }
-    })
+    tune.run(
+        args.run,
+        stop={"episode_reward_mean": args.stop},
+        config=dict(
+            configs[args.run], **{
+                "env": "cartpole_stateless",
+                "model": {
+                    "use_lstm": True,
+                    "lstm_use_prev_action_reward": args.use_prev_action_reward,
+                },
+            }),
+    )

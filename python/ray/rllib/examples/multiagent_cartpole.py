@@ -23,7 +23,6 @@ import ray
 from ray import tune
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole
-from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -98,21 +97,17 @@ if __name__ == "__main__":
     }
     policy_ids = list(policy_graphs.keys())
 
-    run_experiments({
-        "test": {
-            "run": "PPO",
+    tune.run(
+        "PPO",
+        stop={"training_iteration": args.num_iters},
+        config={
             "env": "multi_cartpole",
-            "stop": {
-                "training_iteration": args.num_iters
+            "log_level": "DEBUG",
+            "num_sgd_iter": 10,
+            "multiagent": {
+                "policy_graphs": policy_graphs,
+                "policy_mapping_fn": tune.function(
+                    lambda agent_id: random.choice(policy_ids)),
             },
-            "config": {
-                "log_level": "DEBUG",
-                "num_sgd_iter": 10,
-                "multiagent": {
-                    "policy_graphs": policy_graphs,
-                    "policy_mapping_fn": tune.function(
-                        lambda agent_id: random.choice(policy_ids)),
-                },
-            },
-        }
-    })
+        },
+    )
