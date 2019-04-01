@@ -185,7 +185,8 @@ void ServerConnection<T>::DoAsyncWrites() {
   };
 
   if (async_write_broken_pipe_) {
-    // The connection is not healthy and the heartbeat is not timeout yet.
+    // Call the handlers directly. Because writing messages to a connection
+    // with broken-pipe status will result in the callbacks never being called.
     call_handlers(ray::Status::IOError("Broken pipe"), num_messages);
     return;
   }
