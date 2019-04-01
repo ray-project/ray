@@ -67,16 +67,25 @@ class NevergradSearch(SuggestionAlgorithm):
         if hasattr(optimizer, "instrumentation"):  # added in v0.2.0
             if optimizer.instrumentation.kwargs:
                 if optimizer.instrumentation.args:
-                    raise ValueError("Instrumented optimizers should use kwargs only")
+                    raise ValueError(
+                        "Instrumented optimizers should use kwargs only")
                 if parameter_names is not None:
-                    raise ValueError("Instrumented optimizers should provide None as parameter_names")
+                    raise ValueError(
+                        "Instrumented optimizers should provide None as parameter_names"
+                    )
             else:
                 if parameter_names is None:
-                    raise ValueError("Non-instrumented optimizers should have a list of parameter_names")
+                    raise ValueError(
+                        "Non-instrumented optimizers should have a list of parameter_names"
+                    )
                 if len(optimizer.instrumentation.args) != 1:
-                    raise ValueError("Instrumented optimizers should use kwargs only")
-        if parameter_names is not None and optimizer.dimension != len(parameter_names):
-            raise ValueError("len(parameters_names) must match optimizer dimension for non-instrumented optimizers")
+                    raise ValueError(
+                        "Instrumented optimizers should use kwargs only")
+        if parameter_names is not None and optimizer.dimension != len(
+                parameter_names):
+            raise ValueError(
+                "len(parameters_names) must match optimizer dimension for non-instrumented optimizers"
+            )
 
     def _suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:

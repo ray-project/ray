@@ -51,7 +51,8 @@ if __name__ == "__main__":
     # parameter_names = None  # names are provided by the instrumentation
     optimizer = optimizerlib.OnePlusOne(instrumentation)
     algo = NevergradSearch(
-        optimizer, parameter_names,
+        optimizer,
+        parameter_names,
         max_concurrent=4,
         reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
