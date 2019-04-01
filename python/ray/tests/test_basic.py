@@ -763,7 +763,8 @@ def test_defining_remote_functions(shutdown_only):
 
     # Test that we can close over plain old data.
     data = [
-        np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60, {
+        np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60,
+        {
             "a": np.zeros(3)
         }
     ]
@@ -1934,15 +1935,15 @@ def test_multiple_raylets(ray_start_cluster):
     store_names = []
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"]["GPU"] == 0
+        if client["Resources"].get("GPU", 0) == 0
     ]
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"]["GPU"] == 5
+        if client["Resources"].get("GPU", 0) == 5
     ]
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"]["GPU"] == 1
+        if client["Resources"].get("GPU", 0) == 1
     ]
     assert len(store_names) == 3
 
