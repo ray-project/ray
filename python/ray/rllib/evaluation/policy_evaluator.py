@@ -307,7 +307,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 raise ValueError(
                     "Have multiple policy graphs {}, but the env ".format(
                         self.policy_map) +
-                    "{} is not a subclass of MultiAgentEnv?".format(self.env))
+                    "{} is not a subclass of BaseEnv, MultiAgentEnv or ExternalMultiAgentEnv?".format(self.env))
 
         self.filters = {
             policy_id: get_filter(observation_filter,

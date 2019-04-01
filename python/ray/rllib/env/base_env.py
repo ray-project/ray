@@ -107,7 +107,7 @@ class BaseEnv(object):
             elif isinstance(env, ExternalMultiAgentEnv):
                 if num_envs != 1:
                     raise ValueError(
-                        "ExternalMultiAgentEnv not currently support num_envs > 1.")
+                        "ExternalMultiAgentEnv does not currently support num_envs > 1.")
                 env = _ExternalEnvToBaseEnv(env, multiagent=True)
             elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
@@ -234,8 +234,8 @@ class _ExternalEnvToBaseEnv(BaseEnv):
             for env_id, actions in action_dict.items():
                 self.external_env._episodes[env_id].action_queue.put(actions)
         else:
-            for eid, action in action_dict.items():
-                self.external_env._episodes[eid].action_queue.put(
+            for env_id, action in action_dict.items():
+                self.external_env._episodes[env_id].action_queue.put(
                     action[_DUMMY_AGENT_ID])
 
     def _poll(self):

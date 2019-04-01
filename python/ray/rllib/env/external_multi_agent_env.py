@@ -31,7 +31,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
         # we require to know all agents' spaces
         if isinstance(self.action_space, dict) or isinstance(self.observation_space, dict):
-            assert(self.action_space.keys() == self.observation_space.keys())
+            if not (self.action_space.keys() == self.observation_space.keys()):
+                raise ValueError("Agent ids disagree for action space and obs space dict: {} {}".format(self.action_space.keys(), self.observation_space.keys()))
 
     @PublicAPI
     def run(self):
