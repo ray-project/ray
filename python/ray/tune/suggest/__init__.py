@@ -13,17 +13,27 @@ __all__ = [
     "sample_from",
 ]
 
+
 def BayesOptSearch(*args, **kwargs):
-    raise DeprecationWarning("This class has been moved. Please import via `from ray.tune.suggest.bayesopt import BayesOptSearch`")
+    raise DeprecationWarning("""This class has been moved. Please import via
+        `from ray.tune.suggest.bayesopt import BayesOptSearch`""")
+
 
 def HyperOptSearch(*args, **kwargs):
-    raise DeprecationWarning("This class has been moved. Please import via `from ray.tune.suggest.hyperopt import HyperOptSearch`")
+    raise DeprecationWarning("""This class has been moved. Please import via
+        `from ray.tune.suggest.hyperopt import HyperOptSearch`""")
+
 
 def NevergradSearch(*args, **kwargs):
-    raise DeprecationWarning("This class has been moved. Please import via `from ray.tune.suggest.nevergrad import NevergradSearch`")
+    raise DeprecationWarning("""This class has been moved. Please import via
+        `from ray.tune.suggest.nevergrad import NevergradSearch`""")
+
 
 def SkOptSearch(*args, **kwargs):
-    raise DeprecationWarning("This class has been moved. Please import via `from ray.tune.suggest.skopt import SkOptSearch`")
+    raise DeprecationWarning("""This class has been moved. Please import via
+        `from ray.tune.suggest.skopt import SkOptSearch`""")
+
 
 def SigOptSearch(*args, **kwargs):
-    raise DeprecationWarning("This class has been moved. Please import via `from ray.tune.suggest.sigopt import SigOptSearch`")
+    raise DeprecationWarning("""This class has been moved. Please import via
+        `from ray.tune.suggest.sigopt import SigOptSearch`""")
