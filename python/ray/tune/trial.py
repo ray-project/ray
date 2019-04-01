@@ -310,9 +310,7 @@ class Trial(object):
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
-
         self.custom_trial_name = None
-
 
         # AutoML fields
         self.results = None
