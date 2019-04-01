@@ -493,7 +493,6 @@ class RayTrialExecutor(TrialExecutor):
             if needed.
         Parameters
         ----------
-            subdir string: either "" or "best"
             trial : trial to save
         """
 
