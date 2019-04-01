@@ -2056,6 +2056,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
   /// TODO(rkn): Should we check that the node manager is remote and not local?
   /// TODO(rkn): Should we check if the remote node manager is known to be dead?
   // Attempt to forward the task.
+  local_queues_.QueueTasks({task}, TaskState::SWAP);
   ForwardTask(task, node_manager_id, [this, task, node_manager_id](ray::Status error) {
     const TaskID task_id = task.GetTaskSpecification().TaskId();
 
@@ -2080,12 +2081,13 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
           RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
       retry_timer->expires_from_now(retry_duration);
       retry_timer->async_wait(
-          [this, task, task_id, retry_timer](const boost::system::error_code &error) {
+          [this, task_id, retry_timer](const boost::system::error_code &error) {
             // Timer killing will receive the boost::asio::error::operation_aborted,
             // we only handle the timeout event.
             RAY_CHECK(!error);
             RAY_LOG(INFO) << "Resubmitting task " << task_id
                           << " because ForwardTask failed.";
+            const auto task = local_queues_.RemoveTask(task_id);
             SubmitTask(task, Lineage());
           });
       // Remove the task from the lineage cache. The task will get added back
@@ -2094,6 +2096,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
     } else {
       // The task is not for an actor and may therefore be placed on another
       // node immediately. Send it to the scheduling policy to be placed again.
+      const auto task = local_queues_.RemoveTask(task_id);
       local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
       ScheduleTasks(cluster_resource_map_);
     }
@@ -2143,8 +2146,10 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   server_conn->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
       fbb.GetBufferPointer(),
-      [this, on_error, task_id, node_id, spec](ray::Status status) {
+      [this, on_error, task_id, node_id](ray::Status status) {
         if (status.ok()) {
+          const auto task = local_queues_.RemoveTask(task_id);
+          const auto &spec = task.GetTaskSpecification();
           // If we were able to forward the task, remove the forwarded task from the
           // lineage cache since the receiving node is now responsible for writing
           // the task to the GCS.

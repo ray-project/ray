@@ -266,7 +266,7 @@ Task SchedulingQueue::RemoveTask(const TaskID &task_id, TaskState *removed_task_
   }
 
   // Make sure we got the removed task.
-  RAY_CHECK(removed_tasks.size() == 1);
+  RAY_CHECK(removed_tasks.size() == 1) << task_id;
   const auto &task = removed_tasks.front();
   RAY_CHECK(task.GetTaskSpecification().TaskId() == task_id);
   return task;
@@ -360,8 +360,16 @@ std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForDriver(
 std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForActor(
     const ActorID &actor_id) const {
   std::unordered_set<TaskID> task_ids;
+  int swap = static_cast<int>(TaskState::SWAP);
+  int i = 0;
   for (const auto &task_queue : task_queues_) {
-    GetActorTasksFromQueue(*task_queue, actor_id, task_ids);
+    // This is a hack to make sure that we don't remove tasks from the SWAP
+    // queue, since these are always guaranteed to be removed and eventually
+    // resubmitted if necessary by the node manager.
+    if (i != swap) {
+      GetActorTasksFromQueue(*task_queue, actor_id, task_ids);
+    }
+    i++;
   }
   return task_ids;
 }
