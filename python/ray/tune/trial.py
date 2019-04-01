@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
 from collections import namedtuple
 import ray.cloudpickle as cloudpickle
 import copy
@@ -292,14 +291,13 @@ class Trial(object):
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
 
+        self.history = []
         self.keep_checkpoints_num = keep_checkpoints_num
-        self._cmp_greater = checkpoint_score_attr.startswith("min-")
+        self._cmp_greater = not checkpoint_score_attr.startswith("min-")
         self.best_checkpoint_attr_value = -float("inf") \
             if self._cmp_greater else float("inf")
-        self.checkpoint_score_attr = checkpoint_score_attr[4:] \
-            if self._cmp_greater else checkpoint_score_attr
-        self.results_since_checkpoint_sum = 0
-        self.results_since_checkpoint_cnt = 0
+        self.checkpoint_score_attr = checkpoint_score_attr \
+            if self._cmp_greater else checkpoint_score_attr[4:]
 
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
@@ -511,13 +509,6 @@ class Trial(object):
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
 
-        try:
-            if self.checkpoint_score_attr and not math.isnan(result[self.checkpoint_score_attr]):
-                self.results_since_checkpoint_sum += result[self.checkpoint_score_attr]
-                self.results_since_checkpoint_cnt += 1
-        except KeyError as e:
-            logger.warning("Result dict has no key: {}. keep_"
-                           "_checkpoints_num flag will not work".format(self.checkpoint_score_attr))
 
     def compare_checkpoints(self, attr_mean):
         """Compares two checkpoints based on the attribute attr_mean param.

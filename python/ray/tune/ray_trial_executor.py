@@ -4,6 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import math
 import os
 import random
 import time
@@ -469,13 +470,18 @@ class RayTrialExecutor(TrialExecutor):
         if storage == Checkpoint.MEMORY:
             trial._checkpoint.value = trial.runner.save_to_object.remote()
         else:
-            # Keeps only highest performing checkpoints
-            if trial.keep_checkpoints_num and trial.results_since_checkpoint_cnt > 0:
-                current_attr_mean = trial.results_since_checkpoint_sum / trial.results_since_checkpoint_cnt
-                if trial.compare_checkpoints(current_attr_mean):
-                    trial.best_checkpoint_attr_value = current_attr_mean
-                    self._checkpoint_and_erase(trial)
-                trial.results_since_checkpoint_sum, trial.results_since_checkpoint_cnt = 0, 0
+            # Keeps only highest performing checkpoints if enabled
+            if trial.keep_checkpoints_num:
+                try:
+                    last_attr_val = trial.last_result[trial.checkpoint_score_attr]
+                    if trial.compare_checkpoints(last_attr_val) and \
+                        not math.isnan(last_attr_val):
+                            trial.best_checkpoint_attr_value = last_attr_val
+                            self._checkpoint_and_erase(trial)
+                except KeyError as e:
+                    logger.warning("Result dict has no key: {}. keep_"
+                                   "_checkpoints_num flag will not work"
+                                   .format(trial.checkpoint_score_attr))
             else:
                 with warn_if_slow("save_to_disk"):
                     trial._checkpoint.value = ray.get(trial.runner.save.remote())
