@@ -38,6 +38,8 @@ REQUIRED, OPTIONAL = True, False
 
 # For (a, b), if a is a dictionary object, then
 # no extra fields can be introduced.
+
+
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
     "cluster_name": (str, REQUIRED),
@@ -89,9 +91,12 @@ CLUSTER_CONFIG_SCHEMA = {
     # will be executed in the container.
     "docker": (
         {
-            "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
-            "container_name": (str, OPTIONAL),  # e.g., ray_docker
-            "run_options": (list, OPTIONAL),
+            "head_image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
+            "head_container_name": (str, OPTIONAL),  # e.g., ray_docker
+            "head_run_options": (list, OPTIONAL),
+            "worker_image": (str, OPTIONAL),
+            "worker_container_name": (str, OPTIONAL),
+            "worker_run_options": (list, OPTIONAL),
         },
         OPTIONAL),
 
@@ -128,8 +133,6 @@ CLUSTER_CONFIG_SCHEMA = {
     # controlled by the ray --no-restart flag and cannot be set by the user.
     "no_restart": (None, OPTIONAL),
 }
-
-
 class LoadMetrics(object):
     """Container for cluster load metrics.
 

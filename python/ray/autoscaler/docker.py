@@ -15,36 +15,59 @@ logger = logging.getLogger(__name__)
 def dockerize_if_needed(config):
     if "docker" not in config:
         return config
-    docker_image = config["docker"].get("image")
-    cname = config["docker"].get("container_name")
-    run_options = config["docker"].get("run_options", [])
+
+    head_docker_image = config["docker"].get("head_image")
+    head_cname = config["docker"].get("head_container_name")
+    head_run_options = config["docker"].get("head_run_options", [])
+
+    worker_docker_image = config["docker"].get(
+        "worker_image", head_docker_image)
+    worker_cname = config["docker"].get("worker_container_name", head_cname)
+    worker_run_options = config["docker"].get(
+        "worker_run_options", head_run_options)
+
     ssh_user = config["auth"]["ssh_user"]
-    if not docker_image:
-        if cname:
+    if not head_docker_image or not worker_docker_image:
+        if head_cname:
             logger.warning(
                 "dockerize_if_needed: "
                 "Container name given but no Docker image - continuing...")
         return config
     else:
-        assert cname, "Must provide container name!"
+        assert head_cname, "Must provide head container name!"
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
 
-    config["setup_commands"] = (
-        docker_start_cmds(ssh_user, docker_image, docker_mounts, cname,
-                          run_options) + with_docker_exec(
-                              config["setup_commands"], container_name=cname))
+    head_setup_commands = with_docker_exec(
+        config["setup_commands"], container_name=head_cname)
+    head_docker_start = docker_start_cmds(
+        ssh_user,
+        head_docker_image,
+        docker_mounts,
+        head_cname,
+        head_run_options)
 
-    config["head_setup_commands"] = with_docker_exec(
-        config["head_setup_commands"], container_name=cname)
+    worker_setup_commands = with_docker_exec(
+        config["setup_commands"], container_name=worker_cname)
+    worker_docker_start = docker_start_cmds(
+        ssh_user,
+        worker_docker_image,
+        docker_mounts,
+        worker_cname,
+        worker_run_options)
+
+    config["head_setup_commands"] = head_docker_start + head_setup_commands \
+        + with_docker_exec(config["head_setup_commands"],
+                           container_name=head_cname)
     config["head_start_ray_commands"] = (
-        docker_autoscaler_setup(cname) + with_docker_exec(
-            config["head_start_ray_commands"], container_name=cname))
+        docker_autoscaler_setup(head_cname) + with_docker_exec(
+            config["head_start_ray_commands"], container_name=head_cname))
 
-    config["worker_setup_commands"] = with_docker_exec(
-        config["worker_setup_commands"], container_name=cname)
+    config["worker_setup_commands"] = worker_docker_start + \
+        worker_setup_commands + with_docker_exec(
+        config["worker_setup_commands"], container_name=worker_cname)
     config["worker_start_ray_commands"] = with_docker_exec(
         config["worker_start_ray_commands"],
-        container_name=cname,
+        container_name=worker_setup_commands,
         env_vars=["RAY_HEAD_IP"])
 
     return config
