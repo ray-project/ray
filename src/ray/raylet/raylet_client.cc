@@ -386,3 +386,13 @@ ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
 
   return conn_->WriteMessage(MessageType::NotifyActorResumedFromCheckpoint, &fbb);
 }
+
+ray::Status RayletClient::CreateResource(const std::string &resource_name,
+                                         const double capacity,
+                                         const ray::ClientID &client_Id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateCreateResourceRequest(
+      fbb, fbb.CreateString(resource_name), capacity, to_flatbuf(fbb, client_Id));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::CreateResourceRequest, &fbb);
+}

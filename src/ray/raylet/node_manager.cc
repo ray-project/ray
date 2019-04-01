@@ -185,6 +185,22 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
+  // Register a callback on the client table for resource create/update requests
+  auto node_manager_resource_createupdated = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ResourceCreateUpdated(data);
+  };
+  gcs_client_->client_table().RegisterResourceCreateUpdatedCallback(
+      node_manager_resource_createupdated);
+
+  // Register a callback on the client table for resource delete requests
+  auto node_manager_resource_deleted = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ResourceDeleted(data);
+  };
+  gcs_client_->client_table().RegisterResourceDeletedCallback(
+      node_manager_resource_deleted);
+
   // Subscribe to heartbeat batches from the monitor.
   const auto &heartbeat_batch_added = [this](
       gcs::AsyncGcsClient *client, const ClientID &id,
@@ -461,6 +477,92 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   object_directory_->HandleClientRemoved(client_id);
 }
 
+void NodeManager::ResourceCreateUpdated(const ClientTableDataT &client_data) {
+  const ClientID client_id = ClientID::from_binary(client_data.client_id);
+  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+
+  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from client id "
+                 << client_id << ". Updating resource map.";
+  ResourceSet new_res_set(client_data.resources_total_label,
+                          client_data.resources_total_capacity);
+
+  const ResourceSet &old_res_set = cluster_resource_map_[client_id].GetTotalResources();
+  ResourceSet difference_set = old_res_set.FindUpdatedResources(new_res_set);
+  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] The difference in the resource map is "
+                 << difference_set.ToString();
+
+  SchedulingResources &cluster_schedres = cluster_resource_map_[client_id];
+
+  // Update local_available_resources_ and SchedulingResources
+  for (const auto &resource_pair : difference_set.GetResourceMap()) {
+    const std::string &resource_label = resource_pair.first;
+    const double &new_resource_capacity = resource_pair.second;
+
+    cluster_schedres.UpdateResource(resource_label, new_resource_capacity);
+    if (client_id == local_client_id) {
+      local_available_resources_.AddOrUpdateResource(resource_label,
+                                                     new_resource_capacity);
+    }
+  }
+  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
+
+  if (client_id == local_client_id) {
+    // The resource update is on the local node, check if we can reschedule tasks.
+    TryLocalInfeasibleTaskScheduling();
+  }
+  return;
+}
+
+void NodeManager::ResourceDeleted(const ClientTableDataT &client_data) {
+  const ClientID client_id = ClientID::from_binary(client_data.client_id);
+  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+
+  ResourceSet new_res_set(client_data.resources_total_label,
+                          client_data.resources_total_capacity);
+  RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from client id " << client_id
+                 << " with new resources: " << new_res_set.ToString()
+                 << ". Updating resource map.";
+
+  const ResourceSet &old_res_set = cluster_resource_map_[client_id].GetTotalResources();
+  ResourceSet deleted_set = old_res_set.FindDeletedResources(new_res_set);
+  RAY_LOG(DEBUG) << "[ResourceDeleted] The difference in the resource map is "
+                 << deleted_set.ToString();
+
+  SchedulingResources &cluster_schedres = cluster_resource_map_[client_id];
+
+  // Update local_available_resources_ and SchedulingResources
+  for (const auto &resource_pair : deleted_set.GetResourceMap()) {
+    const std::string &resource_label = resource_pair.first;
+
+    cluster_schedres.DeleteResource(resource_label);
+    if (client_id == local_client_id) {
+      local_available_resources_.DeleteResource(resource_label);
+    }
+  }
+  RAY_LOG(DEBUG) << "[ResourceDeleted] Updated cluster_resource_map.";
+  return;
+}
+
+void NodeManager::TryLocalInfeasibleTaskScheduling() {
+  RAY_LOG(DEBUG) << "[LocalResourceUpdateRescheduler] The resource update is on the "
+                    "local node, check if we can reschedule tasks";
+  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+  SchedulingResources &new_local_resources = cluster_resource_map_[local_client_id];
+
+  // SpillOver locally to figure out which infeasible tasks can be placed now
+  std::vector<TaskID> decision = scheduling_policy_.SpillOver(new_local_resources);
+
+  std::unordered_set<TaskID> local_task_ids(decision.begin(), decision.end());
+
+  // Transition locally placed tasks to waiting or ready for dispatch.
+  if (local_task_ids.size() > 0) {
+    std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
+    for (const auto &t : tasks) {
+      EnqueuePlaceableTask(t);
+    }
+  }
+}
+
 void NodeManager::HeartbeatAdded(const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
   // Locate the client id in remote client table and update available resources based on
@@ -718,6 +820,9 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::SubmitTask: {
     ProcessSubmitTaskMessage(message_data);
   } break;
+  case protocol::MessageType::CreateResourceRequest: {
+    ProcessCreateResourceRequest(client, message_data);
+  } break;
   case protocol::MessageType::FetchOrReconstruct: {
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
@@ -931,12 +1036,14 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Return the resources that were being used by this worker.
     auto const &task_resources = worker->GetTaskResourceIds();
-    local_available_resources_.Release(task_resources);
+    local_available_resources_.ReleaseConstrained(
+        task_resources, cluster_resource_map_[client_id].GetTotalResources());
     cluster_resource_map_[client_id].Release(task_resources.ToResourceSet());
     worker->ResetTaskResourceIds();
 
     auto const &lifetime_resources = worker->GetLifetimeResourceIds();
-    local_available_resources_.Release(lifetime_resources);
+    local_available_resources_.ReleaseConstrained(
+        lifetime_resources, cluster_resource_map_[client_id].GetTotalResources());
     cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
     worker->ResetLifetimeResourceIds();
 
@@ -1168,6 +1275,58 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
   node_manager_client.ProcessMessages();
+}
+
+void NodeManager::ProcessCreateResourceRequest(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  // Read the CreateResource message
+  auto message = flatbuffers::GetRoot<protocol::CreateResourceRequest>(message_data);
+
+  auto const &resource_name = string_from_flatbuf(*message->resource_name());
+  double const &capacity = message->capacity();
+  bool is_deletion = capacity==0;
+
+  ClientID client_id = from_flatbuf<ClientID>(*message->client_id());
+
+  // If the python arg was null, set client_id to the local client
+  if (client_id.is_nil()) {
+    client_id = gcs_client_->client_table().GetLocalClientId();
+  }
+
+  if (is_deletion && cluster_resource_map_[client_id].GetTotalResources().GetResourceMap().count(
+          resource_name) == 0) {
+    // Resource does not exist in the cluster resource map, thus nothing to delete.
+    // Return..
+    RAY_LOG(INFO) << "[ProcessDeleteResourceRequest] Trying to delete resource " << resource_name
+                  << ", but it does not exist. Doing nothing..";
+    return;
+  }
+
+  // Add the new resource to a skeleton ClientTableDataT object
+  ClientTableDataT data;
+  gcs_client_->client_table().GetClient(client_id, data);
+  // Replace the resource vectors with the resource deltas from the message.
+  // RES_CREATEUPDATE and RES_DELETE entries in the ClientTable track changes (deltas) in
+  // the resources
+  data.resources_total_label = std::vector<std::string>{resource_name};
+  data.resources_total_capacity = std::vector<double>{capacity};
+  // Set the correct flag for entry_type
+  if (is_deletion){
+    data.entry_type = EntryType::RES_DELETE;
+  } else{
+    data.entry_type = EntryType::RES_CREATEUPDATE;
+  }
+
+  // Submit to the client table. This calls the ResourceCreateUpdated callback, which
+  // updates cluster_resource_map_.
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  if (not worker) {
+    worker = worker_pool_.GetRegisteredDriver(client);
+  }
+  auto data_shared_ptr = std::make_shared<ClientTableDataT>(data);
+  auto client_table = gcs_client_->client_table();
+  RAY_CHECK_OK(gcs_client_->client_table().Append(
+      DriverID::nil(), client_table.client_log_key_, data_shared_ptr, nullptr));
 }
 
 void NodeManager::ScheduleTasks(
@@ -1761,7 +1920,9 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 
   // Release task's resources. The worker's lifetime resources are still held.
   auto const &task_resources = worker.GetTaskResourceIds();
-  local_available_resources_.Release(task_resources);
+  const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
+  local_available_resources_.ReleaseConstrained(
+      task_resources, cluster_resource_map_[client_id].GetTotalResources());
   cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
       task_resources.ToResourceSet());
   worker.ResetTaskResourceIds();

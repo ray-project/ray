@@ -10,6 +10,7 @@ from .gcs_flush_policy import (set_flushing_policy, GcsFlushPolicy,
                                SimpleGcsFlushPolicy)
 from .named_actors import get_actor, register_actor
 from .api import get, wait
+from .dynamic_resources import create_resource, delete_resource
 
 
 def TensorFlowVariables(*args, **kwargs):
@@ -24,5 +25,5 @@ __all__ = [
     "flush_evicted_objects_unsafe", "_flush_finished_tasks_unsafe_shard",
     "_flush_evicted_objects_unsafe_shard", "get_actor", "register_actor",
     "get", "wait", "set_flushing_policy", "GcsFlushPolicy",
-    "SimpleGcsFlushPolicy"
+    "SimpleGcsFlushPolicy", "create_resource", "delete_resource"
 ]

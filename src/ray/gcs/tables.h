@@ -677,7 +677,7 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 /// it should append an entry to the log indicating that it is dead. A client
 /// that is marked as dead should never again be marked as alive; if it needs
 /// to reconnect, it must connect with a different ClientID.
-class ClientTable : private Log<ClientID, ClientTableData> {
+class ClientTable : public Log<ClientID, ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
       AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
@@ -729,6 +729,16 @@ class ClientTable : private Log<ClientID, ClientTableData> {
   /// \param callback The callback to register.
   void RegisterClientRemovedCallback(const ClientTableCallback &callback);
 
+  /// Register a callback to call when a resource is created or updated.
+  ///
+  /// \param callback The callback to register.
+  void RegisterResourceCreateUpdatedCallback(const ClientTableCallback &callback);
+
+  /// Register a callback to call when a resource is deleted.
+  ///
+  /// \param callback The callback to register.
+  void RegisterResourceDeletedCallback(const ClientTableCallback &callback);
+
   /// Get a client's information from the cache. The cache only contains
   /// information for clients that we've heard a notification for.
   ///
@@ -772,16 +782,16 @@ class ClientTable : private Log<ClientID, ClientTableData> {
   /// \return string.
   std::string DebugString() const;
 
+  /// The key at which the log of client information is stored. This key must
+  /// be kept the same across all instances of the ClientTable, so that all
+  /// clients append and read from the same key.
+  ClientID client_log_key_;
+
  private:
   /// Handle a client table notification.
   void HandleNotification(AsyncGcsClient *client, const ClientTableDataT &notifications);
   /// Handle this client's successful connection to the GCS.
   void HandleConnected(AsyncGcsClient *client, const ClientTableDataT &client_data);
-
-  /// The key at which the log of client information is stored. This key must
-  /// be kept the same across all instances of the ClientTable, so that all
-  /// clients append and read from the same key.
-  ClientID client_log_key_;
   /// Whether this client has called Disconnect().
   bool disconnected_;
   /// This client's ID.
@@ -792,6 +802,10 @@ class ClientTable : private Log<ClientID, ClientTableData> {
   ClientTableCallback client_added_callback_;
   /// The callback to call when a client is removed.
   ClientTableCallback client_removed_callback_;
+  /// The callback to call when a resource is created or updated.
+  ClientTableCallback resource_createupdated_callback_;
+  /// The callback to call when a resource is deleted.
+  ClientTableCallback resource_deleted_callback_;
   /// A cache for information about all clients.
   std::unordered_map<ClientID, ClientTableDataT> client_cache_;
   /// The set of removed clients.
