@@ -101,7 +101,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// Whether we are in the middle of an async write.
   bool async_write_in_flight_;
 
-  /// Whether we meet broken-pipe message during writing.
+  /// Whether we've met a broken-pipe error during writing.
   bool async_write_broken_pipe_;
 
   /// Count of async messages sent total.
