@@ -1746,21 +1746,11 @@ def test_gpu_ids(shutdown_only):
     all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
     assert set(all_ids) == set(range(10))
 
-    remaining = [f5.remote() for _ in range(20)]
-    time_buffer = 0.02
-    for _ in range(10):
-        t1 = time.time()
-        ready, remaining = ray.wait(remaining, num_returns=2)
-        t2 = time.time()
-        # There are only 10 GPUs, and each task uses 2 GPUs, so there
-        # should only be 2 tasks scheduled at a given time, so if we wait
-        # for 2 tasks to finish, then it should take at least 0.1 seconds
-        # for each pair of tasks to finish.
-        assert t2 - t1 > 0.1 - time_buffer
-        list_of_ids = ray.get(ready)
-        all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
-        # Commenting out the below assert because it seems to fail a lot.
-        # assert set(all_ids) == set(range(10))
+    # There are only 10 GPUs, and each task uses 5 GPUs, so there should only
+    # be 2 tasks scheduled at a given time.
+    t1 = time.time()
+    ray.get([f5.remote() for _ in range(20)])
+    assert time.time() - t1 >= 10 * 0.1
 
     # Test that actors have CUDA_VISIBLE_DEVICES set properly.
 
