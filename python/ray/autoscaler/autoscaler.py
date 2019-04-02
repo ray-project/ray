@@ -136,6 +136,8 @@ CLUSTER_CONFIG_SCHEMA = {
     # controlled by the ray --no-restart flag and cannot be set by the user.
     "no_restart": (None, OPTIONAL),
 }
+
+
 class LoadMetrics(object):
     """Container for cluster load metrics.
 
@@ -656,7 +658,7 @@ def typename(v):
 
 def check_required(config, schema):
     # Check required schema entries
-    if type(config) is not dict:
+    if not isinstance(config, dict):
         raise ValueError("Config is not a dictionary")
 
     for k, (v, kreq) in schema.items():
@@ -674,7 +676,7 @@ def check_required(config, schema):
 
 def check_extraneous(config, schema):
     """Make sure all items of config are in schema"""
-    if type(config) is not dict:
+    if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
     for k in config:
         if k not in schema:
@@ -697,7 +699,7 @@ def check_extraneous(config, schema):
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     """Required Dicts indicate that no extra fields can be introduced."""
-    if type(config) is not dict:
+    if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
 
     check_required(config, schema)
@@ -738,7 +740,7 @@ def hash_runtime_conf(file_mounts, extra_objs):
     def add_content_hashes(path):
         def add_hash_of_file(fpath):
             with open(fpath, "rb") as f:
-                for chunk in iter(lambda: f.read(2**20), b''):
+                for chunk in iter(lambda: f.read(2 ** 20), b''):
                     hasher.update(chunk)
 
         path = os.path.expanduser(path)
