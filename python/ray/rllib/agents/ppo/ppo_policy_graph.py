@@ -6,8 +6,11 @@ import logging
 import tensorflow as tf
 
 import ray
-from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
@@ -15,6 +18,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
 
 logger = logging.getLogger(__name__)
+
+# Frozen logits of the policy that computed the action
+BEHAVIOUR_LOGITS = "behaviour_logits"
 
 
 class PPOLoss(object):
@@ -99,7 +105,43 @@ class PPOLoss(object):
         self.loss = loss
 
 
-class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
+class PPOPostprocessing(object):
+    """Adds the policy logits, VF preds, and advantages to the trajectory."""
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self), **{
+                SampleBatch.VF_PREDS: self.value_function,
+                BEHAVIOUR_LOGITS: self.logits
+            })
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        completed = sample_batch["dones"][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            next_state = []
+            for i in range(len(self.model.state_in)):
+                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                                 sample_batch[SampleBatch.ACTIONS][-1],
+                                 sample_batch[SampleBatch.REWARDS][-1],
+                                 *next_state)
+        batch = compute_advantages(
+            sample_batch,
+            last_r,
+            self.config["gamma"],
+            self.config["lambda"],
+            use_gae=self.config["use_gae"])
+        return batch
+
+
+class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -152,14 +194,14 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.prev_rewards = prev_rewards_ph
 
         self.loss_in = [
-            ("obs", obs_ph),
-            ("value_targets", value_targets_ph),
-            ("advantages", adv_ph),
-            ("actions", act_ph),
-            ("logits", logits_ph),
-            ("vf_preds", vf_preds_ph),
-            ("prev_actions", prev_actions_ph),
-            ("prev_rewards", prev_rewards_ph),
+            (SampleBatch.CUR_OBS, obs_ph),
+            (Postprocessing.VALUE_TARGETS, value_targets_ph),
+            (Postprocessing.ADVANTAGES, adv_ph),
+            (SampleBatch.ACTIONS, act_ph),
+            (BEHAVIOUR_LOGITS, logits_ph),
+            (SampleBatch.VF_PREDS, vf_preds_ph),
+            (SampleBatch.PREV_ACTIONS, prev_actions_ph),
+            (SampleBatch.PREV_REWARDS, prev_rewards_ph),
         ]
         self.model = ModelCatalog.get_model(
             {
@@ -281,29 +323,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.config,
             existing_inputs=existing_inputs)
 
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(len(self.model.state_in)):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch["new_obs"][-1],
-                                 sample_batch["actions"][-1],
-                                 sample_batch["rewards"][-1], *next_state)
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            self.config["gamma"],
-            self.config["lambda"],
-            use_gae=self.config["use_gae"])
-        return batch
-
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):
         if self.config["grad_clip"] is not None:
@@ -323,16 +342,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         return self.model.state_init
 
     @override(TFPolicyGraph)
-    def extra_compute_action_fetches(self):
-        return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self), **{
-                "vf_preds": self.value_function,
-                "logits": self.logits
-            })
-
-    @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
-        return self.stats_fetches
+        return {LEARNER_STATS_KEY: self.stats_fetches}
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:

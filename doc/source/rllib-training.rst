@@ -145,21 +145,19 @@ All RLlib agents are compatible with the `Tune API <tune-usage.html>`__. This en
 .. code-block:: python
 
     import ray
-    import ray.tune as tune
+    from ray import tune
 
     ray.init()
-    tune.run_experiments({
-        "my_experiment": {
-            "run": "PPO",
+    tune.run(
+        "PPO",
+        stop={"episode_reward_mean": 200},
+        config={
             "env": "CartPole-v0",
-            "stop": {"episode_reward_mean": 200},
-            "config": {
-                "num_gpus": 0,
-                "num_workers": 1,
-                "lr": tune.grid_search([0.01, 0.001, 0.0001]),
-            },
+            "num_gpus": 0,
+            "num_workers": 1,
+            "lr": tune.grid_search([0.01, 0.001, 0.0001]),
         },
-    })
+    )
 
 Tune will schedule the trials to run in parallel on your Ray cluster:
 
@@ -258,20 +256,18 @@ You can provide callback functions to be called at points during policy evaluati
             info["agent"].__name__, info["result"]["episodes_this_iter"]))
 
     ray.init()
-    trials = tune.run_experiments({
-        "test": {
+    trials = tune.run(
+        "PG",
+        config={
             "env": "CartPole-v0",
-            "run": "PG",
-            "config": {
-                "callbacks": {
-                    "on_episode_start": tune.function(on_episode_start),
-                    "on_episode_step": tune.function(on_episode_step),
-                    "on_episode_end": tune.function(on_episode_end),
-                    "on_train_result": tune.function(on_train_result),
-                },
+            "callbacks": {
+                "on_episode_start": tune.function(on_episode_start),
+                "on_episode_step": tune.function(on_episode_step),
+                "on_episode_end": tune.function(on_episode_end),
+                "on_train_result": tune.function(on_train_result),
             },
-        }
-    })
+        },
+    )
 
 Custom metrics can be accessed and visualized like any other training result:
 
@@ -306,20 +302,18 @@ Approach 1: Use the Agent API and update the environment between calls to ``trai
                     lambda env: env.set_phase(phase)))
 
     ray.init()
-    tune.run_experiments({
-        "curriculum": {
-            "run": train,
-            "config": {
-                "num_gpus": 0,
-                "num_workers": 2,
-            },
-            "resources_per_trial": {
-                "cpu": 1,
-                "gpu": lambda spec: spec.config.num_gpus,
-                "extra_cpu": lambda spec: spec.config.num_workers,
-            },
+    tune.run(
+        train,
+        config={
+            "num_gpus": 0,
+            "num_workers": 2,
         },
-    })
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": lambda spec: spec.config.num_gpus,
+            "extra_cpu": lambda spec: spec.config.num_workers,
+        },
+    )
 
 Approach 2: Use the callbacks API to update the environment on new training results:
 
@@ -342,17 +336,15 @@ Approach 2: Use the callbacks API to update the environment on new training resu
                 lambda env: env.set_phase(phase)))
 
     ray.init()
-    tune.run_experiments({
-        "curriculum": {
-            "run": "PPO",
+    tune.run(
+        "PPO",
+        config={
             "env": YourEnv,
-            "config": {
-                "callbacks": {
-                    "on_train_result": tune.function(on_train_result),
-                },
+            "callbacks": {
+                "on_train_result": tune.function(on_train_result),
             },
         },
-    })
+    )
 
 Debugging
 ---------

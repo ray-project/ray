@@ -19,8 +19,8 @@ class RandomAgent(Agent):
     })
 
     @override(Agent)
-    def _init(self):
-        self.env = self.env_creator(self.config["env_config"])
+    def _init(self, config, env_creator):
+        self.env = env_creator(config["env_config"])
 
     @override(Agent)
     def _train(self):
