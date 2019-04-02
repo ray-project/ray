@@ -20,7 +20,8 @@ static Count TaskCountReceived("task_count_received",
                                "The count that the raylet received.", "pcs",
                                {NodeAddressKey});
 
-static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "ms",
-                              {5, 10, 20, 30, 50}, {NodeAddressKey, CustomKey});
+static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "us",
+                              {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
+                              {NodeAddressKey, CustomKey});
 
 #endif  // RAY_STATS_METRIC_DEFS_H
