@@ -3,6 +3,8 @@ sudo: required
 language: generic
 
 matrix:
+  allow_failures:
+    - os: windows
   include:
     - os: linux
       dist: trusty
