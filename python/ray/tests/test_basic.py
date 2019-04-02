@@ -1705,10 +1705,10 @@ def test_gpu_ids(shutdown_only):
     num_gpus = 10
     ray.init(num_cpus=10, num_gpus=num_gpus)
 
-    def get_gpu_ids(num_gpus):
+    def get_gpu_ids(num_gpus_per_worker):
         time.sleep(0.1)
         gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == num_gpus
+        assert len(gpu_ids) == num_gpus_per_worker
         assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
             [str(i) for i in gpu_ids]))
         for gpu_id in gpu_ids:
@@ -1727,8 +1727,13 @@ def test_gpu_ids(shutdown_only):
         time.sleep(0.1)
         return os.getpid()
 
-    # Wait for all workers to start.
-    ray.get([f.remote() for _ in range(10)])
+    start_time = time.time()
+    while True:
+        if len(set(ray.get([f.remote() for _ in range(10)]))) == 10:
+            break
+        if time.time() > start_time + 10:
+            raise Exception("Timed out while waiting for workers to start "
+                            "up.")
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
