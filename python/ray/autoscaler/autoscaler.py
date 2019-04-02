@@ -88,11 +88,17 @@ CLUSTER_CONFIG_SCHEMA = {
     # will be executed in the container.
     "docker": (
         {
-            "head_image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
-            "head_run_options": (list, OPTIONAL),
-            "worker_image": (str, OPTIONAL),
-            "worker_run_options": (list, OPTIONAL),
+            "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
             "container_name": (str, OPTIONAL),  # e.g., ray_docker
+            "run_options": (list, OPTIONAL),  # options for head/worker docker
+
+            # image for head node, takes precedence over "image" if specified
+            "head_image": (str, OPTIONAL),
+            # head specific run options, appended to run_options
+            "head_run_options": (list, OPTIONAL),
+            "worker_image": (str, OPTIONAL),  # analogous to head_image
+            # analogous to head_run_options
+            "worker_run_options": (list, OPTIONAL),
 
         },
         OPTIONAL),
