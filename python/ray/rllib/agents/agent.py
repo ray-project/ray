@@ -70,8 +70,13 @@ COMMON_CONFIG = {
     # === Environment ===
     # Discount factor of the MDP
     "gamma": 0.99,
-    # Number of steps after which the episode is forced to terminate
+    # Number of steps after which the episode is forced to terminate. Defaults
+    # to `env.spec.max_episode_steps` (if present) for Gym envs.
     "horizon": None,
+    # Calculate rewards but don't reset the environment when the horizon is
+    # hit. This allows value estimation and RNN state to span across logical
+    # episodes denoted by horizon. This only has an effect if horizon != inf.
+    "soft_horizon": False,
     # Arguments to pass to the env creator
     "env_config": {},
     # Environment name can also be passed via config
@@ -746,6 +751,7 @@ class Agent(Trainable):
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
+            soft_horizon=config["soft_horizon"],
             _fake_sampler=config.get("_fake_sampler", False))
 
     @override(Trainable)
