@@ -26,6 +26,6 @@ RUN apt-get update \
 
 # To avoid the following error on Jenkins:
 # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-RUN pip uninstall dask
+RUN /opt/conda/bin/pip uninstall dask
 
 ENV PATH "/opt/conda/bin:$PATH"
