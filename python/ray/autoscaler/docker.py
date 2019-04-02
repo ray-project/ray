@@ -27,7 +27,7 @@ def dockerize_if_needed(config):
     worker_run_options = config["docker"].get("worker_run_options", [])
 
     ssh_user = config["auth"]["ssh_user"]
-    if not docker_image:
+    if not any([docker_image, head_docker_image, worker_docker_image]):
         if cname:
             logger.warning(
                 "dockerize_if_needed: "
