@@ -10,7 +10,7 @@ std::unique_ptr<TagsType> &GetGlobalTagsPtr() {
 }
 
 bool &IsStatsDisabled() {
-  static bool is_stats_disabled = false;
+  static bool is_stats_disabled = true;
   return is_stats_disabled;
 }
 
