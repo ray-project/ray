@@ -3,34 +3,31 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import json
 import hashlib
+import json
+import logging
 import math
 import os
-from six import string_types
-from six.moves import queue
 import subprocess
 import threading
-import logging
 import time
-
 from collections import defaultdict
 
 import numpy as np
+import ray.services as services
 import yaml
-
-from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
-    AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES,\
-    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
-from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
                                  TAG_RAY_NODE_NAME)
-
-import ray.services as services
+from ray.autoscaler.updater import NodeUpdaterThread
+from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
+    AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
+    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from six import string_types
+from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
