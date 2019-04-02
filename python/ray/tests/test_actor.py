@@ -1295,45 +1295,6 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     assert set(gpu_ids) == set(range(10))
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
-def test_actors_and_task_resource_bookkeeping(ray_start_regular):
-    @ray.remote
-    class Foo(object):
-        def __init__(self):
-            start = time.monotonic()
-            time.sleep(0.01)
-            end = time.monotonic()
-            time.sleep(0.01)
-            self.interval = (start, end)
-
-        def get_interval(self):
-            return self.interval
-
-        def sleep(self):
-            start = time.monotonic()
-            time.sleep(0.01)
-            end = time.monotonic()
-            time.sleep(0.01)
-            return start, end
-
-    # First make sure that we do not have more actor methods running at a
-    # time than we have CPUs.
-    actors = [Foo.remote() for _ in range(4)]
-    interval_ids = []
-    interval_ids += [actor.get_interval.remote() for actor in actors]
-    for _ in range(4):
-        interval_ids += [actor.sleep.remote() for actor in actors]
-
-    # Make sure that the intervals don't overlap.
-    intervals = ray.get(interval_ids)
-    intervals.sort(key=lambda x: x[0])
-    for interval1, interval2 in zip(intervals[:-1], intervals[1:]):
-        assert interval1[0] < interval1[1]
-        assert interval1[1] < interval2[0]
-        assert interval2[0] < interval2[1]
-
-
 def test_blocking_actor_task(shutdown_only):
     ray.init(num_cpus=1, num_gpus=1)
 
