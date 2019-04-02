@@ -6,7 +6,7 @@ from six.moves import queue
 import threading
 import uuid
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.env.external_env import ExternalEnv, _ExternalEnvEpisode
 
 
