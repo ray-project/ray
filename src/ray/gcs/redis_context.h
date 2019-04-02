@@ -34,8 +34,6 @@ class RedisCallbackManager {
 
   RedisCallback &get(int64_t callback_index);
 
-  int64_t &get_start_time(int64_t callback_index);
-
   /// Remove a callback.
   void remove(int64_t callback_index);
 
@@ -46,10 +44,6 @@ class RedisCallbackManager {
 
   int64_t num_callbacks_ = 0;
   std::unordered_map<int64_t, RedisCallback> callbacks_;
-
-  // This is used to map a callback_index to the start time
-  // of the invoking for this redis operator.
-  std::unordered_map<int64_t, int64_t> start_times_;
 };
 
 class RedisContext {

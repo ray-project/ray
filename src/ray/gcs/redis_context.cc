@@ -4,9 +4,6 @@
 
 #include <sstream>
 
-#include "ray/stats/stats.h"
-#include "ray/util/util.h"
-
 extern "C" {
 #include "ray/thirdparty/hiredis/adapters/ae.h"
 #include "ray/thirdparty/hiredis/async.h"
@@ -22,13 +19,6 @@ namespace {
 /// manager if necessary.
 void ProcessCallback(int64_t callback_index, const std::string &data) {
   if (callback_index >= 0) {
-    const auto start_time =
-        ray::gcs::RedisCallbackManager::instance().get_start_time(callback_index);
-    if (start_time >= 0) {
-      const auto end_time = current_sys_time_us();
-      ray::stats::RedisLatency().Record(end_time - start_time);
-    }
-
     bool delete_callback =
         ray::gcs::RedisCallbackManager::instance().get(callback_index)(data);
     // Delete the callback if necessary.
@@ -116,7 +106,6 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
 
 int64_t RedisCallbackManager::add(const RedisCallback &function) {
   callbacks_.emplace(num_callbacks_, function);
-  start_times_.emplace(num_callbacks_, -1);
   return num_callbacks_++;
 }
 
@@ -125,14 +114,8 @@ RedisCallback &RedisCallbackManager::get(int64_t callback_index) {
   return callbacks_[callback_index];
 }
 
-int64_t &RedisCallbackManager::get_start_time(int64_t callback_index) {
-  RAY_CHECK(callbacks_.find(callback_index) != callbacks_.end());
-  return start_times_[callback_index];
-}
-
 void RedisCallbackManager::remove(int64_t callback_index) {
   callbacks_.erase(callback_index);
-  start_times_.erase(callback_index);
 }
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY)                     \
@@ -236,12 +219,6 @@ Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
                               RedisCallback redisCallback, int log_length) {
   int64_t callback_index =
       redisCallback != nullptr ? RedisCallbackManager::instance().add(redisCallback) : -1;
-
-  if (callback_index >= 0) {
-    auto start_time = current_sys_time_us();
-    RedisCallbackManager::instance().get_start_time(callback_index) = start_time;
-  }
-
   if (length > 0) {
     if (log_length >= 0) {
       std::string redis_command = command + " %d %d %b %b %d";
