@@ -40,19 +40,13 @@ def dockerize_if_needed(config):
     setup_commands = with_docker_exec(
         config["setup_commands"], container_name=cname)
 
-    head_docker_start = docker_start_cmds(
-        ssh_user,
-        head_docker_image,
-        docker_mounts,
-        cname,
-        run_options + head_run_options)
+    head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
+                                          docker_mounts, cname,
+                                          run_options + head_run_options)
 
-    worker_docker_start = docker_start_cmds(
-        ssh_user,
-        worker_docker_image,
-        docker_mounts,
-        cname,
-        run_options + worker_run_options)
+    worker_docker_start = docker_start_cmds(ssh_user, worker_docker_image,
+                                            docker_mounts, cname,
+                                            run_options + worker_run_options)
 
     config["head_setup_commands"] = head_docker_start + setup_commands \
         + with_docker_exec(config["head_setup_commands"],

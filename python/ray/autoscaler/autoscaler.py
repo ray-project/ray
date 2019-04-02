@@ -36,7 +36,6 @@ REQUIRED, OPTIONAL = True, False
 # For (a, b), if a is a dictionary object, then
 # no extra fields can be introduced.
 
-
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
     "cluster_name": (str, REQUIRED),
@@ -101,7 +100,6 @@ CLUSTER_CONFIG_SCHEMA = {
             "worker_image": (str, OPTIONAL),
             # analogous to head_run_options
             "worker_run_options": (list, OPTIONAL),
-
         },
         OPTIONAL),
 
@@ -628,8 +626,9 @@ class StandardAutoscaler(object):
         self.launch_queue.put((config, count))
 
     def workers(self):
-        return self.provider.non_terminated_nodes(
-            tag_filters={TAG_RAY_NODE_TYPE: "worker"})
+        return self.provider.non_terminated_nodes(tag_filters={
+            TAG_RAY_NODE_TYPE: "worker"
+        })
 
     def log_info_string(self, nodes):
         logger.info("StandardAutoscaler: {}".format(self.info_string(nodes)))
@@ -742,7 +741,7 @@ def hash_runtime_conf(file_mounts, extra_objs):
     def add_content_hashes(path):
         def add_hash_of_file(fpath):
             with open(fpath, "rb") as f:
-                for chunk in iter(lambda: f.read(2 ** 20), b''):
+                for chunk in iter(lambda: f.read(2**20), b''):
                     hasher.update(chunk)
 
         path = os.path.expanduser(path)
