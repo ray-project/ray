@@ -21,12 +21,14 @@ matrix:
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: windows
+      language: shell  # 'language: python' is an error on Travis CI Windows
       before_install: choco install python2
       env:
         - PYTHON=2.7 PYTHONWARNINGS=ignore
         - PATH=/c/Python27:/c/Python27/Scripts:$PATH
 
     - os: windows
+      language: shell  # 'language: python' is an error on Travis CI Windows
       before_install: choco install python --version 3.5.4
       env:
         - PYTHON=3.5 PYTHONWARNINGS=ignore
