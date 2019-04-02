@@ -20,6 +20,18 @@ matrix:
       osx_image: xcode7
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
+    - os:windows
+      before_install: choco install python2
+      env:
+        - PYTHON=2.7 PYTHONWARNINGS=ignore
+        - PATH=/c/Python27:/c/Python27/Scripts:$PATH
+
+    - os:windows
+      before_install: choco install python --version 3.5.4
+      env:
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - PATH=/c/Python35:/c/Python35/Scripts:$PATH
+
     - os: linux
       dist: trusty
       env:
