@@ -61,7 +61,6 @@ elif [[ "$LINT" == "1" ]]; then
 elif [[ "$LINUX_WHEELS" == "1" ]]; then
   sudo apt-get install docker
   sudo usermod -a -G docker travis
-elif [[ "$MAC_WHEELS" == "1" ]]; then
 else
   echo "Unrecognized environment."
   exit 1
