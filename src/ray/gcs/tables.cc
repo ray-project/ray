@@ -3,7 +3,6 @@
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/client.h"
 #include "ray/ray_config.h"
-#include "ray/stats/stats.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -42,10 +41,7 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_appends_++;
-  const auto start_time = current_time_ms();
-  auto callback = [this, id, dataT, done, start_time](const std::string &data) {
-    const auto end_time = current_time_ms();
-    stats::RedisLatency().Record(end_time - start_time);
+  auto callback = [this, id, dataT, done](const std::string &data) {
     // If data is not empty, then Redis failed to append the entry.
     RAY_CHECK(data.empty()) << "TABLE_APPEND command failed: " << data;
     if (done != nullptr) {
@@ -66,10 +62,7 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
                                std::shared_ptr<DataT> &dataT, const WriteCallback &done,
                                const WriteCallback &failure, int log_length) {
   num_appends_++;
-  const auto start_time = current_time_ms();
-  auto callback = [this, id, dataT, done, failure, start_time](const std::string &data) {
-    const auto end_time = current_time_ms();
-    stats::RedisLatency().Record(end_time - start_time);
+  auto callback = [this, id, dataT, done, failure](const std::string &data) {
     if (data.empty()) {
       if (done != nullptr) {
         (done)(client_, id, *dataT);
@@ -92,10 +85,7 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
 template <typename ID, typename Data>
 Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
   num_lookups_++;
-  const auto start_time = current_time_ms();
-  auto callback = [this, id, lookup, start_time](const std::string &data) {
-    const auto end_time = current_time_ms();
-    stats::RedisLatency().Record(end_time - start_time);
+  auto callback = [this, id, lookup](const std::string &data) {
     if (lookup != nullptr) {
       std::vector<DataT> results;
       if (!data.empty()) {

@@ -31,9 +31,6 @@ class RayConfig {
     return config;
   }
 
-  // TODO(qwang): We should refine RayConfig for supporting other type items.
-  void set_node_address(const std::string &node_address) { node_address_ = node_address; }
-
 // clang-format off
 /// -----------Include ray_config_def.h to set config items.-------------------
 /// A helper macro that helps to set a value to a config item.

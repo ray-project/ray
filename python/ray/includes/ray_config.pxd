@@ -84,6 +84,4 @@ cdef extern from "ray/ray_config.h" nogil:
 
         uint32_t maximum_gcs_deletion_batch_size() const
 
-        c_string node_address() const
-
         void initialize(const unordered_map[c_string, int] &config_map)
