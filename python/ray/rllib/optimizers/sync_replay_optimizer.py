@@ -73,7 +73,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
         self.replay_buffers = collections.defaultdict(new_buffer)
 
         if buffer_size < self.replay_starts:
-            logger.warning("buffer_size={} < replay_starts={}".format(buffer_size, self.replay_starts))
+            logger.warning("buffer_size={} < replay_starts={}".format(
+                buffer_size, self.replay_starts))
 
     @override(PolicyOptimizer)
     def step(self):
