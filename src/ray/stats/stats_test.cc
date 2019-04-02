@@ -32,12 +32,10 @@ class MockExporter : public opencensus::stats::StatsExporter::Handler {
           if (descriptor.columns()[i].name() == "NodeAddress") {
             ASSERT_EQ("Localhost", row.first[i]);
           }
-
         }
         // row.second store the data of this metric.
         ASSERT_EQ(2345, row.second);
       }
-
     }
   }
 
@@ -54,7 +52,7 @@ class StatsTest : public ::testing::Test {
 };
 
 TEST_F(StatsTest, F) {
-  for (size_t i = 0; i <500; ++i) {
+  for (size_t i = 0; i < 500; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     stats::CurrentWorker().Record(2345, {{stats::NodeAddressKey, "Localhost"}});
   }

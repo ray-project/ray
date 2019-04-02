@@ -24,7 +24,7 @@ namespace stats {
 /// Initialize stats.
 static void Init(const std::string &address, const TagsType &global_tags,
                  bool disable_stats = false) {
-  IsStatsDisabled() = disable_stats;
+  StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
     return;
@@ -50,10 +50,7 @@ static void Init(const std::string &address, const TagsType &global_tags,
     return;
   }
 
-  std::unique_ptr<TagsType> &global_tags_ptr = GetGlobalTagsPtr();
-  if (nullptr == global_tags_ptr) {
-    global_tags_ptr.reset(new TagsType(std::move(global_tags)));
-  }
+  StatsConfig::instance().SetGlobalTags(global_tags);
 }
 
 }  // namespace stats

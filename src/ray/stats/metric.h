@@ -18,11 +18,30 @@ namespace stats {
 /// Include tag_defs.h to define tag items
 #include "tag_defs.h"
 
-/// The helper function for global tags.
-std::unique_ptr<TagsType> &GetGlobalTagsPtr();
 
-/// The helper function for `disable_stats` option.
-bool &IsStatsDisabled();
+class StatsConfig final {
+ public:
+  static StatsConfig &instance();
+
+  void SetGlobalTags(const TagsType &global_tags);
+
+  const TagsType &GetGlobalTags() const;
+
+  void SetIsDisableStats(bool disable_stats);
+
+  bool IsStatsDisabled() const;
+
+ private:
+  StatsConfig() = default;
+  ~StatsConfig() = default;
+  StatsConfig(const StatsConfig &) = delete;
+  StatsConfig &operator=(const StatsConfig &) = delete;
+
+ private:
+  TagsType global_tags_;
+  bool is_stats_disabled_ = true;
+};
+
 
 /// The helper function for registering a view.
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,

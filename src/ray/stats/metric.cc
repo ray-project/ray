@@ -4,23 +4,11 @@ namespace ray {
 
 namespace stats {
 
-std::unique_ptr<TagsType> &GetGlobalTagsPtr() {
-  static std::unique_ptr<TagsType> global_tags_ptr(nullptr);
-  return global_tags_ptr;
-}
-
-bool &IsStatsDisabled() {
-  static bool is_stats_disabled = true;
-  return is_stats_disabled;
-}
-
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                            const std::vector<opencensus::tags::TagKey> &keys) {
   // Register global keys.
-  if (GetGlobalTagsPtr() != nullptr) {
-    for (const auto &tag : *GetGlobalTagsPtr()) {
-      view_descriptor = view_descriptor.add_column(tag.first);
-    }
+  for (const auto &tag : ray::stats::StatsConfig::instance().GetGlobalTags()) {
+    view_descriptor = view_descriptor.add_column(tag.first);
   }
 
   // Register custom keys.
@@ -32,8 +20,29 @@ static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   view_descriptor.RegisterForExport();
 }
 
+StatsConfig &StatsConfig::instance() {
+  static StatsConfig instance;
+  return instance;
+}
+
+void StatsConfig::SetGlobalTags(const TagsType &global_tags) {
+  global_tags_ = global_tags;
+}
+
+const TagsType &StatsConfig::GetGlobalTags() const {
+  return global_tags_;
+}
+
+void StatsConfig::SetIsDisableStats(bool disable_stats) {
+  is_stats_disabled_ = disable_stats;
+}
+
+bool StatsConfig::IsStatsDisabled() const {
+  return is_stats_disabled_;
+}
+
 void Metric::Record(double value, const TagsType &tags) {
-  if (IsStatsDisabled()) {
+  if (StatsConfig::instance().IsStatsDisabled()) {
     return;
   }
 
@@ -43,11 +52,11 @@ void Metric::Record(double value, const TagsType &tags) {
     RegisterView();
   }
 
-  RAY_CHECK(nullptr != GetGlobalTagsPtr()) << "global tags is nullptr.";
   // Do record.
   TagsType combined_tags(tags);
-  combined_tags.insert(std::end(combined_tags), std::begin(*GetGlobalTagsPtr()),
-                       std::end(*GetGlobalTagsPtr()));
+  combined_tags.insert(std::end(combined_tags),
+                       std::begin(StatsConfig::instance().GetGlobalTags()),
+                       std::end(StatsConfig::instance().GetGlobalTags()));
   opencensus::stats::Record({{*measure_, value}}, combined_tags);
 }
 
