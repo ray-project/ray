@@ -45,7 +45,7 @@ static void Init(const std::string &address, const TagsType &global_tags,
     exposer.RegisterCollectable(exporter);
     RAY_LOG(INFO) << "Succeeded to initialize stats: exporter address is " << address;
   } catch (std::exception &e) {
-    RAY_LOG(WARNING) << "Failed to create the Prometheus exposer It doesn't "
+    RAY_LOG(WARNING) << "Failed to create the Prometheus exporter. This doesn't "
                      << "affect anything except stats. Caused by: " << e.what();
     return;
   }
