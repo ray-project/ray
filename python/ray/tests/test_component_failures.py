@@ -329,7 +329,7 @@ def test_raylet_failed(ray_start_cluster):
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 8,
-        "num_nodes": 4
+        "num_nodes": 2
     }], indirect=True)
 def test_plasma_store_failed(ray_start_cluster):
     cluster = ray_start_cluster
