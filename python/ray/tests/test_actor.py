@@ -1302,8 +1302,9 @@ def test_actors_and_task_resource_bookkeeping(ray_start_regular):
     class Foo(object):
         def __init__(self):
             start = time.monotonic()
-            time.sleep(0.1)
+            time.sleep(0.01)
             end = time.monotonic()
+            time.sleep(0.01)
             self.interval = (start, end)
 
         def get_interval(self):
@@ -1313,6 +1314,7 @@ def test_actors_and_task_resource_bookkeeping(ray_start_regular):
             start = time.monotonic()
             time.sleep(0.01)
             end = time.monotonic()
+            time.sleep(0.01)
             return start, end
 
     # First make sure that we do not have more actor methods running at a
@@ -1452,7 +1454,7 @@ def test_actor_init_fails(ray_start_cluster_head):
 
 def test_reconstruction_suppression(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    num_nodes = 10
+    num_nodes = 5
     worker_nodes = [cluster.add_node() for _ in range(num_nodes)]
 
     @ray.remote(max_reconstructions=1)
@@ -1469,7 +1471,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
         return ray.get(actor_handle.inc.remote())
 
     # Make sure all of the actors have started.
-    actors = [Counter.remote() for _ in range(20)]
+    actors = [Counter.remote() for _ in range(10)]
     ray.get([actor.inc.remote() for actor in actors])
 
     # Kill a node.
