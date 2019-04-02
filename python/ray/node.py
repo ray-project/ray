@@ -573,8 +573,10 @@ class Node(object):
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive)
+        # reporter is started only in PY3.
+        if PY3:
+            self._kill_process_type(
+                ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive)
 
     def kill_dashboard(self, check_alive=True):
         """Kill the dashboard.
