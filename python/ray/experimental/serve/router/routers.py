@@ -126,7 +126,7 @@ class DeadlineAwareRouter:
         result_object_id = get_new_oid()
 
         # Here, 'data_object_id' is either an ObjectID or an actual object.
-        # When it is an object ID, this is an optimization to avoid creating
+        # When it is an ObjectID, this is an optimization to avoid creating
         # an extra copy of 'data' in the object store.
         data_object_id = ray.worker.global_worker._current_task.arguments()[1]
 
