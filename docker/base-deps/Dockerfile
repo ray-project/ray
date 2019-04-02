@@ -24,4 +24,8 @@ RUN apt-get update \
         cython==0.29.0 \
         numpy==1.15.4
 
+# To avoid the following error on Jenkins:
+# AttributeError: 'numpy.ufunc' object has no attribute '__module__'
+pip uninstall dask
+
 ENV PATH "/opt/conda/bin:$PATH"
