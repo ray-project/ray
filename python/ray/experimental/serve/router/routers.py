@@ -124,8 +124,14 @@ class DeadlineAwareRouter:
             ACTOR_NOT_REGISTERED_MSG(actor_name))
 
         result_object_id = get_new_oid()
+
+        # - `data_oid` is either an ObjectID or inlined object
+        # - This is equivalent to `data_oid = data`, although it avoids
+        #   double serialization for large object.
+        data_oid = ray.worker.global_worker._current_task.arguments()[1]
+
         self.query_queues[actor_name].push(
-            SingleQuery(data, result_object_id, deadline_s))
+            SingleQuery(data_oid, result_object_id, deadline_s))
 
         return [result_object_id]
 
