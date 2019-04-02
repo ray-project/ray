@@ -7,7 +7,7 @@ import threading
 import uuid
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.env.external_env import ExternalEnv
+from ray.rllib.env.external_env import ExternalEnv, _ExternalEnvEpisode
 
 
 @PublicAPI
@@ -65,8 +65,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
             raise ValueError(
                 "Episode {} is already started".format(episode_id))
 
-        self._episodes[episode_id] = _ExternalMultiAgentEnvEpisode(
-            episode_id, self._results_avail_condition, training_enabled)
+        self._episodes[episode_id] = _ExternalEnvEpisode(
+            episode_id, self._results_avail_condition, training_enabled, multiagent=True)
 
         return episode_id
 
@@ -143,64 +143,3 @@ class ExternalMultiAgentEnv(ExternalEnv):
         self._finished.add(episode.episode_id)
         episode.done(observation_dict)
 
-
-class _ExternalMultiAgentEnvEpisode(object):
-    """
-    Tracked state for each active episode.
-    """
-
-    def reset_cur_done_dict(self, done=False):
-        self.cur_done_dict = {"__all__": done}
-
-    def __init__(self, episode_id, results_avail_condition, training_enabled):
-        self.episode_id = episode_id
-        self.results_avail_condition = results_avail_condition
-        self.training_enabled = training_enabled
-        self.data_queue = queue.Queue()
-        self.action_queue = queue.Queue()
-        self.new_observation_dict = None
-        self.new_action_dict = None
-
-        self.cur_reward_dict = {}
-
-        self.reset_cur_done_dict()
-        self.cur_info_dict = {}
-
-    def get_data(self):
-        if self.data_queue.empty():
-            return None
-        return self.data_queue.get_nowait()
-
-    def log_action(self, observation_dict, action_dict):
-        self.new_observation_dict = observation_dict
-        self.new_action_dict = action_dict
-        self._send()
-        self.action_queue.get(True, timeout=60.0)
-
-    def wait_for_action(self, observation_dict):
-        self.new_observation_dict = observation_dict
-        self._send()
-        return self.action_queue.get(True, timeout=60.0)
-
-    def done(self, observation_dict):
-        self.new_observation_dict = observation_dict
-        self.reset_cur_done_dict(True)
-        self._send()
-
-    def _send(self):
-        item = {
-            "obs": self.new_observation_dict,
-            "reward": self.cur_reward_dict,
-            "done": self.cur_done_dict,
-            "info": self.cur_info_dict,
-        }
-        if self.new_action_dict is not None:
-            item["off_policy_action"] = self.new_action_dict
-        if not self.training_enabled:
-            item["info"]["training_enabled"] = False
-        self.new_observation_dict = None
-        self.new_action_dict = None
-        self.cur_reward_dict = {}
-        with self.results_avail_condition:
-            self.data_queue.put_nowait(item)
-            self.results_avail_condition.notify()

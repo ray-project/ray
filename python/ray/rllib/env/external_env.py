@@ -184,17 +184,25 @@ class ExternalEnv(threading.Thread):
 class _ExternalEnvEpisode(object):
     """Tracked state for each active episode."""
 
-    def __init__(self, episode_id, results_avail_condition, training_enabled):
+    def __init__(self, episode_id, results_avail_condition, training_enabled, multiagent=False):
         self.episode_id = episode_id
         self.results_avail_condition = results_avail_condition
         self.training_enabled = training_enabled
+        self.multiagent = multiagent
         self.data_queue = queue.Queue()
         self.action_queue = queue.Queue()
-        self.new_observation = None
-        self.new_action = None
-        self.cur_reward = 0.0
-        self.cur_done = False
-        self.cur_info = {}
+        if multiagent:
+            self.new_observation_dict = None
+            self.new_action_dict = None
+            self.cur_reward_dict = {}
+            self.cur_done_dict = {"__all__": False}
+            self.cur_info_dict = {}
+        else:
+            self.new_observation = None
+            self.new_action = None
+            self.cur_reward = 0.0
+            self.cur_done = False
+            self.cur_info = {}
 
     def get_data(self):
         if self.data_queue.empty():
@@ -202,35 +210,60 @@ class _ExternalEnvEpisode(object):
         return self.data_queue.get_nowait()
 
     def log_action(self, observation, action):
-        self.new_observation = observation
-        self.new_action = action
+        if self.multiagent:
+            self.new_observation_dict = observation
+            self.new_action_dict = action
+        else:
+            self.new_observation = observation
+            self.new_action = action
         self._send()
         self.action_queue.get(True, timeout=60.0)
 
     def wait_for_action(self, observation):
-        self.new_observation = observation
+        if self.multiagent:
+            self.new_observation_dict = observation
+        else:
+            self.new_observation = observation
         self._send()
         return self.action_queue.get(True, timeout=60.0)
 
     def done(self, observation):
-        self.new_observation = observation
-        self.cur_done = True
+        if self.multiagent:
+            self.new_observation_dict = observation
+            self.cur_done_dict = {"__all__": True}
+        else:
+            self.new_observation = observation
+            self.cur_done = True
         self._send()
 
     def _send(self):
-        item = {
-            "obs": self.new_observation,
-            "reward": self.cur_reward,
-            "done": self.cur_done,
-            "info": self.cur_info,
-        }
-        if self.new_action is not None:
-            item["off_policy_action"] = self.new_action
+        if self.multiagent:
+            item = {
+                "obs": self.new_observation_dict,
+                "reward": self.cur_reward_dict,
+                "done": self.cur_done_dict,
+                "info": self.cur_info_dict,
+            }
+            if self.new_action_dict is not None:
+                item["off_policy_action"] = self.new_action_dict
+            self.new_observation_dict = None
+            self.new_action_dict = None
+            self.cur_reward_dict = {}
+        else:
+            item = {
+                "obs": self.new_observation,
+                "reward": self.cur_reward,
+                "done": self.cur_done,
+                "info": self.cur_info,
+            }
+            if self.new_action is not None:
+                item["off_policy_action"] = self.new_action
+            self.new_observation = None
+            self.new_action = None
+            self.cur_reward = 0.0
         if not self.training_enabled:
             item["info"]["training_enabled"] = False
-        self.new_observation = None
-        self.new_action = None
-        self.cur_reward = 0.0
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)
             self.results_avail_condition.notify()
+
