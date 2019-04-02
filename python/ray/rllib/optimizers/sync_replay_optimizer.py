@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import collections
 import numpy as np
 
@@ -16,6 +17,8 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.schedules import LinearSchedule
+
+logger = logging.getLogger(__name__)
 
 
 class SyncReplayOptimizer(PolicyOptimizer):
@@ -69,7 +72,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
 
         self.replay_buffers = collections.defaultdict(new_buffer)
 
-        assert buffer_size >= self.replay_starts
+        if buffer_size < self.replay_starts:
+            logger.warning("buffer_size={} < replay_starts={}".format(buffer_size, self.replay_starts))
 
     @override(PolicyOptimizer)
     def step(self):
