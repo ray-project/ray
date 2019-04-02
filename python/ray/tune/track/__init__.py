@@ -2,7 +2,6 @@ import pickle
 
 from ray.tune.track.session import TrackSession
 
-
 _trial = None
 
 
@@ -47,8 +46,12 @@ def shutdown():
 
 def save(obj, obj_name, iteration=None, save_fn=pickle.dump, **kwargs):
     """ Applies TrackSession.save to the trial in the current context """
-    return _trial.save(obj=obj, obj_name=obj_name, iteration=iteration,
-                       save_fn=save_fn, **kwargs)
+    return _trial.save(
+        obj=obj,
+        obj_name=obj_name,
+        iteration=iteration,
+        save_fn=save_fn,
+        **kwargs)
 
 
 def metric(*, iteration=None, **kwargs):
@@ -58,8 +61,8 @@ def metric(*, iteration=None, **kwargs):
 
 def load(obj_name, iteration=None, load_fn=pickle.load, **kwargs):
     """Applies TrackSession.load to the trial in the current context."""
-    return _trial.load(obj_name=obj_name, iteration=iteration,
-                       load_fn=load_fn, **kwargs)
+    return _trial.load(
+        obj_name=obj_name, iteration=iteration, load_fn=load_fn, **kwargs)
 
 
 def trial_dir():
@@ -67,5 +70,4 @@ def trial_dir():
     return _trial.trial_dir()
 
 
-__all__ = ["TrackSession", "trial", "metric",
-           "save", "load", "trial_dir"]
+__all__ = ["TrackSession", "trial", "metric", "save", "load", "trial_dir"]

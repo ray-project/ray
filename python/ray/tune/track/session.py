@@ -1,10 +1,9 @@
 import os
 import uuid
 from datetime import datetime
-from .autodetect import (
-    git_repo, dfl_local_dir, git_hash, invocation, git_pretty)
+from .autodetect import (git_repo, dfl_local_dir, git_hash, invocation,
+                         git_pretty)
 from .constants import METADATA_FOLDER, RESULT_SUFFIX
-
 
 from ray.tune.logger import UnifiedLogger, Logger
 
@@ -15,6 +14,16 @@ class _ReporterHook(Logger):
 
     def on_result(self, metrics):
         return self.reporter(**metrics)
+
+
+class _TrackedState():
+    def __init__(self):
+        git_repo_or_none = git_repo()
+        self.git_repo = git_repo_or_none or "unknown"
+        self.git_hash = git_hash()
+        self.git_pretty = git_pretty()
+        self.invocation = invocation()
+        self.start_time = datetime.now().isoformat()
 
 
 class TrackSession(object):
@@ -37,15 +46,15 @@ class TrackSession(object):
                        are stored. if not specified, uses autodetect.dfl_local_dir()
         upload_dir (str):
     """
+
     def __init__(self,
                  log_dir=None,
                  upload_dir=None,
                  sync_period=None,
                  trial_prefix="",
-                 param_map=None,
-                 init_logging=True):
+                 param_map=None):
         if log_dir is None:
-            log_dir = dfl_local_dir()
+            log_dir = DEFAULT_RESULTS_DIR
         # TODO should probably check if this exists and whether
         # we'll be clobbering anything in either the artifact dir
         # or the metadata dir, idk what the probability is that a
@@ -67,12 +76,6 @@ class TrackSession(object):
 
         # misc metadata to save as well
         self.param_map["trial_id"] = self.trial_id
-        git_repo_or_none = git_repo()
-        self.param_map["git_repo"] = git_repo_or_none or "unknown"
-        self.param_map["git_hash"] = git_hash()
-        self.param_map["git_pretty"] = git_pretty()
-        self.param_map["invocation"] = invocation()
-        self.param_map["start_time"] = datetime.now().isoformat()
         self.param_map["max_iteration"] = -1
         self.param_map["trial_completed"] = False
 
@@ -83,32 +86,33 @@ class TrackSession(object):
 
         self._hooks = []
         if not reporter:
-            self._hooks += [UnifiedLogger(
-                self.param_map,
-                self.data_dir,
-                self.upload_dir,
-                filename_prefix=self.trial_id + "_")]
+            self._hooks += [
+                UnifiedLogger(
+                    self.param_map,
+                    self.data_dir,
+                    self.upload_dir,
+                    filename_prefix=self.trial_id + "_")
+            ]
         else:
             self._hooks += [_ReporterHook(reporter)]
 
-    def metric(self, iteration=None, **kwargs):
+    def metric(self, iteration=None, **metrics):
         """
-        Logs all named arguments specified in **kwargs.
+        Logs all named arguments specified in **metrics.
         This will log trial metrics locally, and they will be synchronized
         with the driver periodically through ray.
 
         Arguments:
             iteration (int): current iteration of the trial.
-            **kwargs: named arguments with corresponding values to log.
+            **metrics: named arguments with corresponding values to log.
         """
-        new_args = kwargs.copy()
-        new_args.update({"iteration": iteration})
-        new_args.update({"trial_id": self.trial_id})
-        if iteration is not None:
-            self.param_map["max_iteration"] = max(
-                self.param_map["max_iteration"], iteration)
+        metrics_dict = metrics.copy()
+        metrics_dict.update({"trial_id": self.trial_id})
+        # if iteration is not None:
+        #     self.param_map["max_iteration"] = max(
+        #         self.param_map["max_iteration"], iteration)
         for hook in self._hooks:
-            hook.on_result(new_args)
+            hook.on_result(metrics_dict)
 
     def _get_fname(self, result_name, iteration=None):
         fname = os.path.join(self.artifact_dir, result_name)

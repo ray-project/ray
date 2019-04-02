@@ -9,8 +9,7 @@ def git_repo():
     try:
         with open(os.devnull, 'wb') as quiet:
             reldir = subprocess.check_output(
-                ["git", "rev-parse", "--git-dir"],
-                stdout=quiet)
+                ["git", "rev-parse", "--git-dir"], stdout=quiet)
         reldir = reldir.decode("utf-8")
         return os.path.basename(os.path.dirname(os.path.abspath(reldir)))
     except subprocess.CalledProcessError:
@@ -21,8 +20,7 @@ def git_hash():
     """Returns the current git hash or None if not in git repo"""
     if git_repo() is None:
         return None
-    git_hash = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"])
+    git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"])
     # git_hash is a byte string; we want a string.
     git_hash = git_hash.decode("utf-8")
     # git_hash also comes with an extra \n at the end, which we remove.
