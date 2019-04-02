@@ -125,13 +125,13 @@ class DeadlineAwareRouter:
 
         result_object_id = get_new_oid()
 
-        # - `data_oid` is either an ObjectID or inlined object
-        # - This is equivalent to `data_oid = data`, although it avoids
-        #   double serialization for large object.
-        data_oid = ray.worker.global_worker._current_task.arguments()[1]
+        # Here, 'data_object_id' is either an ObjectID or an actual object.
+        # When it is an object ID, this is an optimization to avoid creating
+        # an extra copy of 'data' in the object store.
+        data_object_id = ray.worker.global_worker._current_task.arguments()[1]
 
         self.query_queues[actor_name].push(
-            SingleQuery(data_oid, result_object_id, deadline_s))
+            SingleQuery(data_object_id, result_object_id, deadline_s))
 
         return [result_object_id]
 
