@@ -1590,7 +1590,7 @@ def test_resource_constraints(shutdown_only):
                     ]))) == num_workers:
             break
 
-    time_buffer = 0.3
+    time_buffer = 0.5
 
     # At most 10 copies of this can run at once.
     @ray.remote(num_cpus=1)
@@ -1705,71 +1705,21 @@ def test_gpu_ids(shutdown_only):
     num_gpus = 10
     ray.init(num_cpus=10, num_gpus=num_gpus)
 
-    @ray.remote(num_gpus=0)
-    def f0():
+    def get_gpu_ids(num_gpus):
         time.sleep(0.1)
         gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 0
+        assert len(gpu_ids) == num_gpus
         assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
             [str(i) for i in gpu_ids]))
         for gpu_id in gpu_ids:
             assert gpu_id in range(num_gpus)
         return gpu_ids
 
-    @ray.remote(num_gpus=1)
-    def f1():
-        time.sleep(0.1)
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 1
-        assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]))
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
-
-    @ray.remote(num_gpus=2)
-    def f2():
-        time.sleep(0.1)
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 2
-        assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]))
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
-
-    @ray.remote(num_gpus=3)
-    def f3():
-        time.sleep(0.1)
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 3
-        assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]))
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
-
-    @ray.remote(num_gpus=4)
-    def f4():
-        time.sleep(0.1)
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 4
-        assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]))
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
-
-    @ray.remote(num_gpus=5)
-    def f5():
-        time.sleep(0.1)
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 5
-        assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]))
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
+    f0 = ray.remote(num_gpus=0)(lambda: get_gpu_ids(0))
+    f1 = ray.remote(num_gpus=1)(lambda: get_gpu_ids(1))
+    f2 = ray.remote(num_gpus=2)(lambda: get_gpu_ids(2))
+    f4 = ray.remote(num_gpus=4)(lambda: get_gpu_ids(4))
+    f5 = ray.remote(num_gpus=5)(lambda: get_gpu_ids(5))
 
     # Wait for all workers to start up.
     @ray.remote
@@ -1777,13 +1727,8 @@ def test_gpu_ids(shutdown_only):
         time.sleep(0.1)
         return os.getpid()
 
-    start_time = time.time()
-    while True:
-        if len(set(ray.get([f.remote() for _ in range(10)]))) == 10:
-            break
-        if time.time() > start_time + 10:
-            raise Exception("Timed out while waiting for workers to start "
-                            "up.")
+    # Wait for all workers to start.
+    ray.get([f.remote() for _ in range(10)])
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
@@ -1797,6 +1742,7 @@ def test_gpu_ids(shutdown_only):
     assert set(all_ids) == set(range(10))
 
     remaining = [f5.remote() for _ in range(20)]
+    time_buffer = 0.02
     for _ in range(10):
         t1 = time.time()
         ready, remaining = ray.wait(remaining, num_returns=2)
@@ -1805,7 +1751,7 @@ def test_gpu_ids(shutdown_only):
         # should only be 2 tasks scheduled at a given time, so if we wait
         # for 2 tasks to finish, then it should take at least 0.1 seconds
         # for each pair of tasks to finish.
-        assert t2 - t1 > 0.09
+        assert t2 - t1 > 0.1 - time_buffer
         list_of_ids = ray.get(ready)
         all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
         # Commenting out the below assert because it seems to fail a lot.
