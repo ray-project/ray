@@ -230,8 +230,8 @@ class Trainable(object):
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
-            if (not checkpoint.startswith(checkpoint_dir)
-                    or checkpoint == checkpoint_dir):
+            if (not (checkpoint.startswith(checkpoint_dir)
+                    or checkpoint == checkpoint_dir)):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
@@ -273,16 +273,24 @@ class Trainable(object):
         checkpoint_prefix = self.save(tmpdir)
 
         data = {}
-        base_dir = os.path.dirname(checkpoint_prefix)
-        for path in os.listdir(base_dir):
-            path = os.path.join(base_dir, path)
-            if path.startswith(checkpoint_prefix):
+        # base_dir = os.path.dirname(checkpoint_prefix)
+        for basedir, _, file_names in os.walk(tmpdir):
+            for file_name in file_names:
+                path = os.path.join(basedir, file_name)
+
                 with open(path, "rb") as f:
-                    data[os.path.basename(path)] = f.read()
+                    data[os.path.relpath(path, tmpdir)] = f.read()
+
+
+        # for path in os.listdir(base_dir):
+        #     path = os.path.join(base_dir, path)
+        #     if path.startswith(checkpoint_prefix):
+        #         with open(path, "rb") as f:
+        #             data[os.path.basename(path)] = f.read()
 
         out = io.BytesIO()
         data_dict = pickle.dumps({
-            "checkpoint_name": os.path.basename(checkpoint_prefix),
+            "checkpoint_name": os.path.relpath(checkpoint_prefix, tmpdir),
             "data": data,
         })
         if len(data_dict) > 10e6:  # getting pretty large
@@ -312,6 +320,7 @@ class Trainable(object):
         if saved_as_dict:
             with open(checkpoint_path, "rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)
+                checkpoint_dict["__restore_dir__"] = checkpoint_path
             self._restore(checkpoint_dict)
         else:
             self._restore(checkpoint_path)
@@ -331,8 +340,13 @@ class Trainable(object):
         tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
         checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
 
-        for file_name, file_contents in data.items():
-            with open(os.path.join(tmpdir, file_name), "wb") as f:
+        for relpath_name, file_contents in data.items():
+            path = os.path.join(tmpdir, relpath_name)
+
+            # This may be a subdirectory, hence not just using tmpdir
+            if not os.path.exists(os.path.dirname(path)):
+                os.makedirs(os.path.dirname(path))
+            with open(path, "wb") as f:
                 f.write(file_contents)
 
         self.restore(checkpoint_path)
