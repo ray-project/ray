@@ -18,8 +18,9 @@ class MockExporter : public opencensus::stats::StatsExporter::Handler {
         absl::make_unique<MockExporter>());
   }
 
-  void ExportViewData(const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-      opencensus::stats::ViewData>> &data) override {
+  void ExportViewData(
+      const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                  opencensus::stats::ViewData>> &data) override {
     for (const auto &datum : data) {
       auto &descriptor = datum.first;
       auto &view_data = datum.second;
@@ -38,7 +39,6 @@ class MockExporter : public opencensus::stats::StatsExporter::Handler {
       }
     }
   }
-
 };
 
 class StatsTest : public ::testing::Test {

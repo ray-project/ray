@@ -18,7 +18,6 @@ namespace stats {
 /// Include tag_defs.h to define tag items
 #include "tag_defs.h"
 
-
 class StatsConfig final {
  public:
   static StatsConfig &instance();
@@ -41,7 +40,6 @@ class StatsConfig final {
   TagsType global_tags_;
   bool is_stats_disabled_ = true;
 };
-
 
 /// The helper function for registering a view.
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,

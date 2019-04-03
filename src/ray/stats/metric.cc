@@ -29,17 +29,13 @@ void StatsConfig::SetGlobalTags(const TagsType &global_tags) {
   global_tags_ = global_tags;
 }
 
-const TagsType &StatsConfig::GetGlobalTags() const {
-  return global_tags_;
-}
+const TagsType &StatsConfig::GetGlobalTags() const { return global_tags_; }
 
 void StatsConfig::SetIsDisableStats(bool disable_stats) {
   is_stats_disabled_ = disable_stats;
 }
 
-bool StatsConfig::IsStatsDisabled() const {
-  return is_stats_disabled_;
-}
+bool StatsConfig::IsStatsDisabled() const { return is_stats_disabled_; }
 
 void Metric::Record(double value, const TagsType &tags) {
   if (StatsConfig::instance().IsStatsDisabled()) {
