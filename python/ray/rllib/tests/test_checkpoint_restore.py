@@ -82,9 +82,13 @@ def test_ckpt_restore(use_object_store, alg_name, failures):
 
     for _ in range(10):
         if "DDPG" in alg_name:
-            obs = np.clip(np.random.uniform(size=3), env.observation_space.low, env.observation_space.high)
+            obs = np.clip(
+                np.random.uniform(size=3), env.observation_space.low,
+                env.observation_space.high)
         else:
-            obs = np.clip(np.random.uniform(size=4), env.observation_space.low, env.observation_space.high)
+            obs = np.clip(
+                np.random.uniform(size=4), env.observation_space.low,
+                env.observation_space.high)
         a1 = get_mean_action(alg1, obs)
         a2 = get_mean_action(alg2, obs)
         print("Checking computed actions", alg1, obs, a1, a2)
