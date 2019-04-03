@@ -47,7 +47,7 @@ class Trainable(object):
     (sans checkpoint functionality).
     """
 
-    def __init__(self, config=None, logger_creator=None):
+    def __init__(self, config=None, logger_creator=None, resources=None):
         """Initialize an Trainable.
 
         Sets up logging and points ``self.logdir`` to a directory in which
@@ -61,10 +61,12 @@ class Trainable(object):
                 will be saved as ``self.config``.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            resources (Resources): Initial resource allocation.
         """
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
+        self.resources = resources
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)

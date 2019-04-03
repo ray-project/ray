@@ -62,6 +62,7 @@ class RayTrialExecutor(TrialExecutor):
                 and self._cached_actor is not None):
             logger.debug("Reusing cached runner {} for {}".format(
                 self._cached_actor, trial.trial_id))
+            # TODO: This currently does not check if the resources have changed.
             existing_runner = self._cached_actor
             self._cached_actor = None
         else:
@@ -101,7 +102,7 @@ class RayTrialExecutor(TrialExecutor):
 
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
-        return cls.remote(config=trial.config, logger_creator=logger_creator)
+        return cls.remote(config=trial.config, logger_creator=logger_creator, resources=trial.resources)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
