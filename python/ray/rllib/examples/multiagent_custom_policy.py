@@ -1,4 +1,4 @@
-"""Example of running multi-agent envs with custom heuristic policies.
+"""Example of running a custom hand-coded policy alongside trainable policies.
 
 This example has two policies:
     (1) a simple PG policy
