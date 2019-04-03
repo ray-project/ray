@@ -10,10 +10,8 @@ from ray import tune
 from ray.tune.trial import Resources
 from ray.tune.logger import pretty_print
 
-from hypersched.tune import BasicPerformanceScheduler, ResourceExecutor
-from hypersched.utils import timestring
-from sgd.pytorch.pytorch_trainable import PytorchSGD, DEFAULT_CONFIG
-from sgd.pytorch.pytorch_helpers import prefetch
+from ray.experimental.torch.pytorch_trainable import PytorchSGD, DEFAULT_CONFIG
+from ray.experimental.torch.pytorch_helpers import prefetch
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -82,7 +80,7 @@ if __name__ == '__main__':
         # sched = None/
         tune.run(
             PytorchSGD,
-            name="pytorch-sgd-schedule-{}".format(timestring()),
+            name="pytorch-sgd",
             config=config,
             trial_name_creator=tune.function(name_creator),
             stop={
