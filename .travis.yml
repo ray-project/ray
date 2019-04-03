@@ -3,11 +3,9 @@ language: generic
 matrix:
   include:
     - os: linux
-      dist: trusty
       env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: linux
-      dist: trusty
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: osx
@@ -19,7 +17,6 @@ matrix:
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: linux
-      dist: trusty
       env:
         - JDK='Oracle JDK 8'
         - PYTHON=3.5 PYTHONWARNINGS=ignore
@@ -36,7 +33,6 @@ matrix:
         - ./java/test.sh
 
     - os: linux
-      dist: trusty
       env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         # In case we ever want to use a different version of clang-format:
@@ -74,7 +70,6 @@ matrix:
         - ./ci/travis/bazel-format.sh
 
     - os: linux
-      dist: trusty
       env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
@@ -109,7 +104,6 @@ matrix:
 
     # Build Linux wheels.
     - os: linux
-      dist: trusty
       env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
