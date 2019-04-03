@@ -11,6 +11,8 @@ git_repository(
     remote = "https://github.com/ruifangChen/checkstyle_java",
 )
 
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
 git_repository(
     name = "com_github_nelhage_rules_boost",
     commit = "6d6fd834281cb8f8e758dd9ad76df86304bf1869",
@@ -63,3 +65,31 @@ new_git_repository(
 load("@//bazel:python_configure.bzl", "python_configure")
 
 python_configure(name = "local_config_python")
+
+http_archive(
+    name = "io_opencensus_cpp",
+    strip_prefix = "opencensus-cpp-0.3.0",
+    urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/v0.3.0.zip"],
+)
+
+# OpenCensus depends on Abseil so we have to explicitly pull it in.
+# This is how diamond dependencies are prevented.
+git_repository(
+    name = "com_google_absl",
+    commit = "88a152ae747c3c42dc9167d46c590929b048d436",
+    remote = "https://github.com/abseil/abseil-cpp.git",
+)
+
+# OpenCensus depends on jupp0r/prometheus-cpp
+http_archive(
+    name = "com_github_jupp0r_prometheus_cpp",
+    strip_prefix = "prometheus-cpp-master",
+
+    # TODO(qwang): We should use the repository of `jupp0r` here when this PR
+    # `https://github.com/jupp0r/prometheus-cpp/pull/225` getting merged.
+    urls = ["https://github.com/jovany-wang/prometheus-cpp/archive/master.zip"],
+)
+
+load("@com_github_jupp0r_prometheus_cpp//:repositories.bzl", "prometheus_cpp_repositories")
+
+prometheus_cpp_repositories()
