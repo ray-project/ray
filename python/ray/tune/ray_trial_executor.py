@@ -372,8 +372,8 @@ class RayTrialExecutor(TrialExecutor):
                             "`resume=True` to `run`.")
 
         resources = resources.copy()
-        num_cpus = resources.pop("CPU")
-        num_gpus = resources.pop("GPU")
+        num_cpus = resources.pop("CPU", 0)
+        num_gpus = resources.pop("GPU", 0)
         custom_resources = resources
 
         self._avail_resources = Resources(

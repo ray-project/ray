@@ -380,17 +380,17 @@ class Worker(object):
             # should return an error code to the caller instead of printing a
             # message.
             logger.info(
-                "The object with ID {} already exists in the object store.".
-                format(object_id))
+                "The object with ID {} already exists in the object store."
+                .format(object_id))
         except TypeError:
             # This error can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need these extra
             # fallbacks here to start from the beginning. Hopefully the object
             # could have a `__reduce__` method.
             register_custom_serializer(type(value), use_pickle=True)
-            warning_message = (
-                "WARNING: Serializing the class {} failed, "
-                "so are are falling back to cloudpickle.".format(type(value)))
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "so are are falling back to cloudpickle."
+                               .format(type(value)))
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
@@ -643,7 +643,6 @@ class Worker(object):
 
             if resources is None:
                 raise ValueError("The resources dictionary is required.")
-
             for value in resources.values():
                 assert (isinstance(value, int) or isinstance(value, float))
                 if value < 0:
@@ -1945,10 +1944,10 @@ def connect(node,
         # are the same.
         script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
         current_directory = os.path.abspath(os.path.curdir)
-        worker.run_function_on_all_workers(lambda worker_info: sys.path.insert(
-            1, script_directory))
-        worker.run_function_on_all_workers(lambda worker_info: sys.path.insert(
-            1, current_directory))
+        worker.run_function_on_all_workers(
+            lambda worker_info: sys.path.insert(1, script_directory))
+        worker.run_function_on_all_workers(
+            lambda worker_info: sys.path.insert(1, current_directory))
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
         # run may set the Python path, which is needed to import a module used

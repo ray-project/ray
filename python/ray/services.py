@@ -606,8 +606,8 @@ def start_redis(node_ip_address,
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
     # can access it and know whether or not to redirect their output.
-    primary_redis_client.set("RedirectOutput",
-                             1 if redirect_worker_output else 0)
+    primary_redis_client.set("RedirectOutput", 1
+                             if redirect_worker_output else 0)
 
     # put the include_java bool to primary redis-server, so that other nodes
     # can access it and know whether or not to enable cross-languages.
@@ -827,8 +827,8 @@ def _start_redis_instance(executable,
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
-    cur_config = (redis_client.config_get("client-output-buffer-limit")
-                  ["client-output-buffer-limit"])
+    cur_config = (redis_client.config_get("client-output-buffer-limit")[
+        "client-output-buffer-limit"])
     cur_config_list = cur_config.split()
     assert len(cur_config_list) == 12
     cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
@@ -1049,9 +1049,8 @@ def check_and_update_resources(num_cpus, num_gpus, resources):
                 "Resource quantities must be nonnegative. Received {}.".format(
                     resources))
         if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
-            raise ValueError(
-                "Resource quantities must be at most {}. Received {}.".format(
-                    ray_constants.MAX_RESOURCE_QUANTITY, resources))
+            raise ValueError("Resource quantities must be at most {}.".format(
+                ray_constants.MAX_RESOURCE_QUANTITY))
 
     return resources
 
@@ -1125,8 +1124,7 @@ def start_raylet(redis_address,
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
-    num_cpus_static = static_resources[
-        "CPU"] if "CPU" in static_resources else 0
+    num_cpus_static = static_resources.get("CPU", 0)
     maximum_startup_concurrency = max(
         1, min(multiprocessing.cpu_count(), num_cpus_static))
 

@@ -9,12 +9,28 @@ namespace ray {
 
 namespace raylet {
 
+bool EqualsZeroEpsilon(double quantity) {
+  if ((quantity <= EPSILON) && (quantity >= -1 * EPSILON)) {
+    return true;
+  }
+  return false;
+}
+
+bool EqualsOneEpsilon(double quantity) {
+  if ((quantity <= 1 + EPSILON) && (quantity >= 1 - EPSILON)) {
+    return true;
+  }
+  return false;
+}
+
 ResourceSet::ResourceSet() {}
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map)
     : resource_capacity_(resource_map) {
   for (auto const &resource_pair : resource_capacity_) {
-    RAY_CHECK(resource_pair.second > 0);
+    RAY_CHECK(resource_pair.second > 0 + EPSILON)
+        << "Resource " << resource_pair.first << " capacity is " << resource_pair.second
+        << ". Should have been greater than zero.";
   }
 }
 
@@ -22,7 +38,9 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (uint i = 0; i < resource_labels.size(); i++) {
-    RAY_CHECK(resource_capacity[i] > 0);
+    RAY_CHECK(resource_capacity[i] > 0 + EPSILON)
+        << "Resource " << resource_labels[i] << " capacity is " << resource_capacity[i]
+        << ". Should have been greater than zero.";
     resource_capacity_[resource_labels[i]] = resource_capacity[i];
   }
 }
@@ -76,12 +94,11 @@ void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
     resource_capacity_[resource_label] -= resource_capacity;
     // TODO(romilb): Double precision subtraction may sometimes be less than zero by a
     // small epsilon - need to fix.
-    RAY_CHECK(resource_capacity_[resource_label] >=
-              0 - std::numeric_limits<double>::epsilon())
+    RAY_CHECK(resource_capacity_[resource_label] >= 0 - EPSILON)
         << "Capacity of resource " << resource_label << " after subtraction is negative ("
         << resource_capacity_[resource_label] << ")."
         << " Debug: resource_capacity_:" << ToString() << ", other: " << other.ToString();
-    if (resource_capacity_[resource_label] == 0) {
+    if (EqualsZeroEpsilon(resource_capacity_[resource_label])) {
       resource_capacity_.erase(resource_label);
     }
   }
@@ -97,11 +114,13 @@ void ResourceSet::AddResources(const ResourceSet &other) {
 }
 
 double ResourceSet::GetResource(const std::string &resource_name) const {
-  if (resource_capacity_.count(resource_name) == 0) {
+  if (EqualsZeroEpsilon(resource_capacity_.count(resource_name))) {
     return 0;
   }
   double capacity = resource_capacity_.at(resource_name);
-  RAY_CHECK(capacity > 0);
+  RAY_CHECK(capacity > 0 + EPSILON)
+      << "Resource " << resource_name << " capacity is " << capacity
+      << ". Should have been greater than zero.";
   return capacity;
 }
 
@@ -194,7 +213,7 @@ ResourceIds ResourceIds::Acquire(double resource_quantity) {
         fractional_pair.second -= resource_quantity;
 
         // Remove the fractional pair if the new capacity is 0
-        if (fractional_pair.second == 0) {
+        if (EqualsZeroEpsilon(fractional_pair.second)) {
           std::swap(fractional_pair, fractional_ids_[fractional_ids_.size() - 1]);
           fractional_ids_.pop_back();
         }
@@ -236,12 +255,13 @@ void ResourceIds::Release(const ResourceIds &resource_ids) {
       fractional_pair_it->second += fractional_pair_to_return.second;
       // TODO(romilb): Double precision addition may sometimes exceed 1 by a small epsilon
       // - need to fix this.
-      RAY_CHECK(fractional_pair_it->second <= 1 + std::numeric_limits<double>::epsilon());
+      RAY_CHECK(fractional_pair_it->second <= 1 + EPSILON)
+          << "Fractional Resource Id " << fractional_pair_it->first << " capacity is "
+          << fractional_pair_it->second << ". Should have been less than one.";
       // If this makes the ID whole, then return it to the list of whole IDs.
       // TODO(romilb): Double precision addition may sometimes exceed 1 by a small epsilon
       // - need to fix this.
-      if (fractional_pair_it->second >= 1 &&
-          fractional_pair_it->second <= 1 + std::numeric_limits<double>::epsilon()) {
+      if (EqualsOneEpsilon(fractional_pair_it->second)) {
         whole_ids_.push_back(resource_id);
         fractional_ids_.erase(fractional_pair_it);
       }
@@ -312,7 +332,9 @@ bool ResourceIdSet::Contains(const ResourceSet &resource_set) const {
   for (auto const &resource_pair : resource_set.GetResourceMap()) {
     auto const &resource_name = resource_pair.first;
     double resource_quantity = resource_pair.second;
-    RAY_CHECK(resource_quantity > 0);
+    RAY_CHECK(resource_quantity > 0 + EPSILON)
+        << "Resource " << resource_name << " capacity is " << resource_quantity
+        << ". Should have been greater than zero.";
 
     auto it = available_resources_.find(resource_name);
     if (it == available_resources_.end()) {
@@ -332,7 +354,9 @@ ResourceIdSet ResourceIdSet::Acquire(const ResourceSet &resource_set) {
   for (auto const &resource_pair : resource_set.GetResourceMap()) {
     auto const &resource_name = resource_pair.first;
     double resource_quantity = resource_pair.second;
-    RAY_CHECK(resource_quantity > 0);
+    RAY_CHECK(resource_quantity > 0 + EPSILON)
+        << "Resource " << resource_name << " capacity is " << resource_quantity
+        << ". Should have been greater than zero.";
 
     auto it = available_resources_.find(resource_name);
     RAY_CHECK(it != available_resources_.end());
