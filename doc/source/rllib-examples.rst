@@ -58,7 +58,7 @@ Multi-Agent and Hierarchical
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
 - `PPO with centralized value function <https://github.com/ray-project/ray/pull/3642/files>`__:
-   Example of customizing PPO to include a centralized value function.
+   Example of customizing PPO to include a centralized value function, including a runnable script that demonstrates cooperative CartPole.
 
 Community Examples
 ------------------
