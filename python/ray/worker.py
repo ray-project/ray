@@ -138,7 +138,13 @@ class Worker(object):
         self.memcopy_threads = 12
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
-        self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
+        if ray.utils.get_cuda_visible_devices():
+            self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
+        elif ray.utils.get_opencl_devices():
+            self.original_gpu_ids = ray.utils.get_opencl_devices()
+        else:
+            self.original_gpu_ids = None
+        
         self.profiler = None
         self.memory_monitor = memory_monitor.MemoryMonitor()
         # A dictionary that maps from driver id to SerializationContext

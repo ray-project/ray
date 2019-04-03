@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import uuid
+import pyopencl as cl
 
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
@@ -243,6 +244,23 @@ def get_cuda_visible_devices():
         return []
 
     return [int(i) for i in gpu_ids_str.split(",")]
+
+def get_opencl_devices():
+    """
+    Get the device ID's of the OpenCL encironment
+    Returns:
+        If OpenCL devices are available, this returns a list of integers with
+            the ID's of the GPU's. If it is not set, this returns None.
+    """
+    platforms = cl.get_platforms()
+    dev_ids = []
+
+    for p in platforms:
+        dev = p.get_devices(device_type=cl.device_type.GPU)
+        for d in dev:
+            dev_ids.append(d.int_ptr)
+    return None if dev_ids is None else dev_ids
+    
 
 
 def set_cuda_visible_devices(gpu_ids):
