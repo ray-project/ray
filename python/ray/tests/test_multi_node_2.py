@@ -84,6 +84,7 @@ def test_worker_plasma_store_failure(ray_start_cluster_head):
     cluster.wait_for_nodes()
     # Log monitor doesn't die for some reason
     worker.kill_log_monitor()
+    worker.kill_reporter()
     worker.kill_plasma_store()
     worker.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.wait()
     assert not worker.any_processes_alive(), worker.live_processes()
