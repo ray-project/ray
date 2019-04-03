@@ -3,7 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import bayes_opt as byo
+try:  # Python 3 only -- needed for lint test.
+    import bayes_opt as byo
+except ImportError:
+    byo = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 

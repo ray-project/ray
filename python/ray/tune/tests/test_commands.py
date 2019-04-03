@@ -40,7 +40,7 @@ def start_ray():
 
 
 def test_time(start_ray, tmpdir):
-    experiment_name = "test_ls"
+    experiment_name = "test_time"
     experiment_path = os.path.join(str(tmpdir), experiment_name)
     num_samples = 2
     tune.run_experiments({
