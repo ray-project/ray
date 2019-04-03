@@ -27,11 +27,11 @@ def dockerize_if_needed(config):
     worker_run_options = config["docker"].get("worker_run_options", [])
 
     ssh_user = config["auth"]["ssh_user"]
-    if not any([docker_image, head_docker_image, worker_docker_image]):
+    if not docker_image and not (head_docker_image and worker_docker_image):
         if cname:
             logger.warning(
                 "dockerize_if_needed: "
-                "Container name given but no Docker image - continuing...")
+                "Container name given but no Docker image(s) - continuing...")
         return config
     else:
         assert cname, "Must provide container name!"
