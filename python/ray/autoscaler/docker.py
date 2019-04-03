@@ -114,7 +114,7 @@ def docker_start_cmds(user, image, mount, cname, user_options):
     cmds.append(" ".join(docker_check + docker_run))
     docker_update = [
         " && ".join(("apt-get -y update", "apt-get -y upgrade",
-                     "apt-get install -y git wget cmake psmisc"))
+                     "apt-get install -y git wget psmisc"))
     ]
     cmds.extend(with_docker_exec(docker_update, container_name=cname))
     return cmds

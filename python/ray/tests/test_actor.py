@@ -1295,43 +1295,6 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     assert set(gpu_ids) == set(range(10))
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
-def test_actors_and_task_resource_bookkeeping(ray_start_regular):
-    @ray.remote
-    class Foo(object):
-        def __init__(self):
-            start = time.monotonic()
-            time.sleep(0.1)
-            end = time.monotonic()
-            self.interval = (start, end)
-
-        def get_interval(self):
-            return self.interval
-
-        def sleep(self):
-            start = time.monotonic()
-            time.sleep(0.01)
-            end = time.monotonic()
-            return start, end
-
-    # First make sure that we do not have more actor methods running at a
-    # time than we have CPUs.
-    actors = [Foo.remote() for _ in range(4)]
-    interval_ids = []
-    interval_ids += [actor.get_interval.remote() for actor in actors]
-    for _ in range(4):
-        interval_ids += [actor.sleep.remote() for actor in actors]
-
-    # Make sure that the intervals don't overlap.
-    intervals = ray.get(interval_ids)
-    intervals.sort(key=lambda x: x[0])
-    for interval1, interval2 in zip(intervals[:-1], intervals[1:]):
-        assert interval1[0] < interval1[1]
-        assert interval1[1] < interval2[0]
-        assert interval2[0] < interval2[1]
-
-
 def test_blocking_actor_task(shutdown_only):
     ray.init(num_cpus=1, num_gpus=1)
 
@@ -1452,7 +1415,7 @@ def test_actor_init_fails(ray_start_cluster_head):
 
 def test_reconstruction_suppression(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    num_nodes = 10
+    num_nodes = 5
     worker_nodes = [cluster.add_node() for _ in range(num_nodes)]
 
     @ray.remote(max_reconstructions=1)
@@ -1469,7 +1432,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
         return ray.get(actor_handle.inc.remote())
 
     # Make sure all of the actors have started.
-    actors = [Counter.remote() for _ in range(20)]
+    actors = [Counter.remote() for _ in range(10)]
     ray.get([actor.inc.remote() for actor in actors])
 
     # Kill a node.

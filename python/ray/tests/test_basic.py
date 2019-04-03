@@ -1590,7 +1590,7 @@ def test_resource_constraints(shutdown_only):
                     ]))) == num_workers:
             break
 
-    time_buffer = 0.3
+    time_buffer = 0.5
 
     # At most 10 copies of this can run at once.
     @ray.remote(num_cpus=1)
@@ -1674,7 +1674,7 @@ def test_multi_resource_constraints(shutdown_only):
     def g(n):
         time.sleep(n)
 
-    time_buffer = 0.3
+    time_buffer = 0.5
 
     start_time = time.time()
     ray.get([f.remote(0.5), g.remote(0.5)])
@@ -1705,71 +1705,21 @@ def test_gpu_ids(shutdown_only):
     num_gpus = 10
     ray.init(num_cpus=10, num_gpus=num_gpus)
 
-    @ray.remote(num_gpus=0)
-    def f0():
+    def get_gpu_ids(num_gpus_per_worker):
         time.sleep(0.1)
         gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 0
+        assert len(gpu_ids) == num_gpus_per_worker
         assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
             [str(i) for i in gpu_ids]))
         for gpu_id in gpu_ids:
             assert gpu_id in range(num_gpus)
         return gpu_ids
 
-    @ray.remote(num_gpus=1)
-    def f1():
-        time.sleep(0.1)
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 1
-        assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]))
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
-
-    @ray.remote(num_gpus=2)
-    def f2():
-        time.sleep(0.1)
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 2
-        assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]))
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
-
-    @ray.remote(num_gpus=3)
-    def f3():
-        time.sleep(0.1)
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 3
-        assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]))
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
-
-    @ray.remote(num_gpus=4)
-    def f4():
-        time.sleep(0.1)
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 4
-        assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]))
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
-
-    @ray.remote(num_gpus=5)
-    def f5():
-        time.sleep(0.1)
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 5
-        assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]))
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
+    f0 = ray.remote(num_gpus=0)(lambda: get_gpu_ids(0))
+    f1 = ray.remote(num_gpus=1)(lambda: get_gpu_ids(1))
+    f2 = ray.remote(num_gpus=2)(lambda: get_gpu_ids(2))
+    f4 = ray.remote(num_gpus=4)(lambda: get_gpu_ids(4))
+    f5 = ray.remote(num_gpus=5)(lambda: get_gpu_ids(5))
 
     # Wait for all workers to start up.
     @ray.remote
@@ -1796,20 +1746,11 @@ def test_gpu_ids(shutdown_only):
     all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
     assert set(all_ids) == set(range(10))
 
-    remaining = [f5.remote() for _ in range(20)]
-    for _ in range(10):
-        t1 = time.time()
-        ready, remaining = ray.wait(remaining, num_returns=2)
-        t2 = time.time()
-        # There are only 10 GPUs, and each task uses 2 GPUs, so there
-        # should only be 2 tasks scheduled at a given time, so if we wait
-        # for 2 tasks to finish, then it should take at least 0.1 seconds
-        # for each pair of tasks to finish.
-        assert t2 - t1 > 0.09
-        list_of_ids = ray.get(ready)
-        all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
-        # Commenting out the below assert because it seems to fail a lot.
-        # assert set(all_ids) == set(range(10))
+    # There are only 10 GPUs, and each task uses 5 GPUs, so there should only
+    # be 2 tasks scheduled at a given time.
+    t1 = time.time()
+    ray.get([f5.remote() for _ in range(20)])
+    assert time.time() - t1 >= 10 * 0.1
 
     # Test that actors have CUDA_VISIBLE_DEVICES set properly.
 

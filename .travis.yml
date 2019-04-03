@@ -1,5 +1,3 @@
-sudo: required
-
 language: generic
 
 matrix:
@@ -109,7 +107,6 @@ matrix:
         - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_multi_node_2.py
         - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_node_manager.py
 
-
     # Build Linux wheels.
     - os: linux
       dist: trusty
@@ -142,16 +139,6 @@ matrix:
 
         - ./ci/travis/test-wheels.sh
 
-    # Test GCS integration
-    - os: linux
-      dist: trusty
-      env:
-        - PYTHON=3.5
-        - RAY_USE_NEW_GCS=on
-        - PYTHONWARNINGS=ignore
-        - RAY_USE_CMAKE=1
-
-
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
   - if [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
@@ -163,6 +150,10 @@ install:
   - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
   - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
+  # stats test.
+  - ./ci/suppress_output bazel build //:stats_test -c opt
+  - ./bazel-bin/stats_test
+
   # Raylet tests.
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
   - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc //:all
