@@ -34,7 +34,8 @@ enum MessageType:int {
 }
 
 table PushRequestMessage {
-  // The push ID associated with this push.
+  // The push ID to allow the receiver to differentiate different push attempts
+  // from the same sender.
   push_id: string;
   // The object ID being transferred.
   object_id: string;
