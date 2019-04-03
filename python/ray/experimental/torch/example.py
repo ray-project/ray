@@ -10,8 +10,8 @@ from ray import tune
 from ray.tune.trial import Resources
 from ray.tune.logger import pretty_print
 
-from ray.experimental.torch.pytorch_trainable import PytorchSGD, DEFAULT_CONFIG
-from ray.experimental.torch.pytorch_helpers import prefetch
+from ray.experimental.torch.runner import PytorchSGD, DEFAULT_CONFIG
+from ray.experimental.torch.helpers import prefetch
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter)

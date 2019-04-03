@@ -31,8 +31,8 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 
-from ray.experimental.torch.pytorch_helpers import (
-    train, adjust_learning_rate, validate)
+from ray.experimental.torch.helpers import (train, adjust_learning_rate,
+                                            validate)
 
 DEFAULT_CONFIG = {
     # Arguments to pass to the optimizer
