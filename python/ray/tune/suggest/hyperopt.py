@@ -16,7 +16,6 @@ from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 
-
 class HyperOptSearch(SuggestionAlgorithm):
     """A wrapper around HyperOpt to provide trial suggestions.
 
