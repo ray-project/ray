@@ -160,7 +160,10 @@ class PPOPostprocessing(object):
             next_state = []
             for i in range(len(self.model.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch["new_obs"][-1], *next_state)
+            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                                 sample_batch[SampleBatch.PREV_ACTIONS][-1],
+                                 sample_batch[SampleBatch.PREV_REWARDS][-1],
+                                 *next_state)
 
         # if needed, add a centralized value function to the sample batch
         if self.config["use_centralized_vf"]:
@@ -423,12 +426,15 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
                         # TODO(ev) do we need to remove observation space
                         # FIXME(ev) prev_actions_ph and prev_rewards
                         # must be extended
-                        self.central_value_function = ModelCatalog.get_model({
-                            "obs": central_obs_ph,
-                            "prev_actions": prev_actions_ph,
-                            "prev_rewards": prev_rewards_ph,
-                            "is_training": self._get_is_training_placeholder(),
-                        }, observation_space, 1, vf_config).outputs
+                        self.central_value_function = ModelCatalog.get_model(
+                            {
+                                "obs": central_obs_ph,
+                                "prev_actions": prev_actions_ph,
+                                "prev_rewards": prev_rewards_ph,
+                                "is_training": self.
+                                _get_is_training_placeholder(),
+                            }, observation_space, action_space, 1,
+                            vf_config).outputs
                         reshaped_val = tf.reshape(self.central_value_function,
                                                   [-1])
                         self.central_value_function = reshaped_val
