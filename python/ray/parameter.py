@@ -13,9 +13,8 @@ class RayParams(object):
     Attributes:
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
-            global scheduler, a local scheduler, a plasma store, a plasma
-            manager, and some workers. It will also kill these processes when
-            Python exits.
+            raylet, a plasma store, a plasma manager, and some workers. 
+            It will also kill these processes when Python exits.
         redis_port (int): The port that the primary Redis shard should listen
             to. If None, then a random port will be chosen.
         redis_shard_ports: A list of the ports to use for the non-primary Redis

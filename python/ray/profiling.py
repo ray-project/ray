@@ -95,8 +95,8 @@ class Profiler(object):
         """Drivers run this as a thread to flush profile data in the
         background."""
         # Note(rkn): This is run on a background thread in the driver. It uses
-        # the local scheduler client. This should be ok because it doesn't read
-        # from the local scheduler client and we have the GIL here. However,
+        # the raylet client. This should be ok because it doesn't read
+        # from the raylet client and we have the GIL here. However,
         # if either of those things changes, then we could run into issues.
         while True:
             # Sleep for 1 second. This will be interrupted if
