@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import argparse
 import gym
-import random
 
 import ray
 from ray import tune
