@@ -2908,16 +2908,16 @@ def test_call_shutdown_in_remote_function(two_node_cluster):
     [actors[i].shutdown.remote() for i in range(num_cpus)]
 
     def function(num):
-        print(num)
+        pass
 
     def export_thread():
         for i in range(200):
-            ray.remote(num_gpus=0)(lambda: function(i))
+            ray.remote(num_gpus=0)(lambda: function())
             time.sleep(0.01)
 
     thread = threading.Thread(target=export_thread)
     thread.start()
 
     ray.tests.utils.wait_for_errors(ray.ray_constants.WORKER_DIED_PUSH_ERROR,
-                                    num_cpus, 100)
+                                    num_cpus)
     thread.join()
