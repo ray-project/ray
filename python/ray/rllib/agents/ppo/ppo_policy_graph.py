@@ -25,27 +25,28 @@ BEHAVIOUR_LOGITS = "behaviour_logits"
 
 
 class PPOLoss(object):
-    def __init__(self,
-                 action_space,
-                 value_targets,
-                 advantages,
-                 actions,
-                 logits,
-                 vf_preds,
-                 curr_action_dist,
-                 value_fn,
-                 cur_kl_coeff,
-                 valid_mask,
-                 entropy_coeff=0,
-                 clip_param=0.1,
-                 vf_clip_param=0.1,
-                 vf_loss_coeff=1.0,
-                 use_gae=True,
-                 use_central_vf=False,
-                 central_value_fn=None,
-                 central_vf_preds=None,
-                 central_value_targets=None,
-                 ):
+    def __init__(
+            self,
+            action_space,
+            value_targets,
+            advantages,
+            actions,
+            logits,
+            vf_preds,
+            curr_action_dist,
+            value_fn,
+            cur_kl_coeff,
+            valid_mask,
+            entropy_coeff=0,
+            clip_param=0.1,
+            vf_clip_param=0.1,
+            vf_loss_coeff=1.0,
+            use_gae=True,
+            use_central_vf=False,
+            central_value_fn=None,
+            central_vf_preds=None,
+            central_value_targets=None,
+    ):
         """Constructs the loss for Proximal Policy Objective.
 
         Arguments:
@@ -107,14 +108,14 @@ class PPOLoss(object):
             vf_loss2 = tf.square(vf_clipped - value_targets)
             vf_loss = tf.maximum(vf_loss1, vf_loss2)
             self.mean_vf_loss = reduce_mean_valid(vf_loss)
-            loss = reduce_mean_valid(
-                -surrogate_loss + cur_kl_coeff * action_kl
-                - entropy_coeff * curr_entropy)
+            loss = reduce_mean_valid(-surrogate_loss +
+                                     cur_kl_coeff * action_kl -
+                                     entropy_coeff * curr_entropy)
 
             # TODO(ev) add a centralized value function loss
             if use_central_vf:
-                central_vf_loss1 = tf.square(central_value_fn
-                                             - central_value_targets)
+                central_vf_loss1 = tf.square(central_value_fn -
+                                             central_value_targets)
                 central_vf_clipped = central_vf_preds + tf.clip_by_value(
                     central_value_fn - central_vf_preds, -vf_clip_param,
                     vf_clip_param)
@@ -165,29 +166,30 @@ class PPOPostprocessing(object):
         if self.config["use_centralized_vf"]:
             # TODO(ev) do we need to sort this?
             time_span = (sample_batch['t'][0], sample_batch['t'][-1])
-            other_agent_times = {agent_id:
-                                 (other_agent_batches[agent_id][1]["t"][0],
-                                  other_agent_batches[agent_id][1]["t"][-1])
-                                 for agent_id in other_agent_batches.keys()}
-            rel_agents = {agent_id: other_agent_time for agent_id,
-                          other_agent_time in
-                          other_agent_times.items()
-                          if self.time_overlap(time_span, other_agent_time)}
+            other_agent_times = {
+                agent_id: (other_agent_batches[agent_id][1]["t"][0],
+                           other_agent_batches[agent_id][1]["t"][-1])
+                for agent_id in other_agent_batches.keys()
+            }
+            rel_agents = {
+                agent_id: other_agent_time
+                for agent_id, other_agent_time in other_agent_times.items()
+                if self.time_overlap(time_span, other_agent_time)
+            }
             if len(rel_agents) > 0:
-                other_obs = {agent_id:
-                             other_agent_batches[agent_id][1]["obs"].copy()
-                             for agent_id in rel_agents.keys()}
-                padded_agent_obs = {agent_id:
-                                    self.overlap_and_pad_agent(
-                                        time_span,
-                                        rel_agent_time,
-                                        other_obs[agent_id])
-                                    for agent_id,
-                                    rel_agent_time in rel_agents.items()}
+                other_obs = {
+                    agent_id: other_agent_batches[agent_id][1]["obs"].copy()
+                    for agent_id in rel_agents.keys()
+                }
+                padded_agent_obs = {
+                    agent_id: self.overlap_and_pad_agent(
+                        time_span, rel_agent_time, other_obs[agent_id])
+                    for agent_id, rel_agent_time in rel_agents.items()
+                }
                 central_obs_batch = np.hstack(
                     [padded_obs for padded_obs in padded_agent_obs.values()])
-                central_obs_batch = np.hstack(
-                    (central_obs_batch, sample_batch["obs"]))
+                central_obs_batch = np.hstack((central_obs_batch,
+                                               sample_batch["obs"]))
             else:
                 central_obs_batch = sample_batch["obs"]
             max_vf_agents = self.config["max_vf_agents"]
@@ -195,9 +197,8 @@ class PPOPostprocessing(object):
             if num_agents < max_vf_agents:
                 diff = max_vf_agents - num_agents
                 zero_pad = np.zeros((central_obs_batch.shape[0],
-                                     self.observation_space.shape[0]*diff))
-                central_obs_batch = np.hstack((central_obs_batch,
-                                               zero_pad))
+                                     self.observation_space.shape[0] * diff))
+                central_obs_batch = np.hstack((central_obs_batch, zero_pad))
             elif num_agents > max_vf_agents:
                 print("Too many agents!")
             # add the central obs and central critic value
@@ -273,6 +274,7 @@ class PPOPostprocessing(object):
                 overlap_obs = overlap_obs[:-non_overlap_right]
             return overlap_obs
 
+
 class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
     def __init__(self,
                  observation_space,
@@ -312,33 +314,31 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
             obs_ph = tf.placeholder(
                 tf.float32,
                 name="obs",
-                shape=(None,) + observation_space.shape)
+                shape=(None, ) + observation_space.shape)
             if self.config["use_centralized_vf"]:
                 # TODO(ev) this assumes all observation spaces are the same
                 # import ipdb; ipdb.set_trace()
                 obs_shape = self.config["max_vf_agents"] * \
                             np.product(observation_space.shape)
                 central_obs_ph = tf.placeholder(
-                    tf.float32,
-                    name="central_obs",
-                    shape=(None, obs_shape))
+                    tf.float32, name="central_obs", shape=(None, obs_shape))
                 central_vf_preds_ph = tf.placeholder(
-                    tf.float32, name="central_vf_preds", shape=(None,))
+                    tf.float32, name="central_vf_preds", shape=(None, ))
 
                 central_value_targets_ph = tf.placeholder(
-                    tf.float32, name="central_value_targets", shape=(None,))
+                    tf.float32, name="central_value_targets", shape=(None, ))
 
                 self.central_observations = central_obs_ph
 
             adv_ph = tf.placeholder(
-                tf.float32, name="advantages", shape=(None,))
+                tf.float32, name="advantages", shape=(None, ))
             act_ph = ModelCatalog.get_action_placeholder(action_space)
             logits_ph = tf.placeholder(
                 tf.float32, name="logits", shape=(None, logit_dim))
             vf_preds_ph = tf.placeholder(
-                tf.float32, name="vf_preds", shape=(None,))
+                tf.float32, name="vf_preds", shape=(None, ))
             value_targets_ph = tf.placeholder(
-                tf.float32, name="value_targets", shape=(None,))
+                tf.float32, name="value_targets", shape=(None, ))
             prev_actions_ph = ModelCatalog.get_action_placeholder(action_space)
             prev_rewards_ph = tf.placeholder(
                 tf.float32, [None], name="prev_reward")
@@ -363,8 +363,7 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
             self.loss_in.append(("central_obs", central_obs_ph))
             self.loss_in.append(("central_value_targets",
                                  central_value_targets_ph))
-            self.loss_in.append(("central_vf_preds",
-                                 central_vf_preds_ph))
+            self.loss_in.append(("central_vf_preds", central_vf_preds_ph))
 
         self.model = ModelCatalog.get_model(
             {

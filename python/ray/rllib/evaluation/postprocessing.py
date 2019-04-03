@@ -20,7 +20,11 @@ class Postprocessing(object):
 
 
 @DeveloperAPI
-def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True,
+def compute_advantages(rollout,
+                       last_r,
+                       gamma=0.9,
+                       lambda_=1.0,
+                       use_gae=True,
                        use_centralized_vf=False):
     """Given a rollout, compute its value targets and the advantage.
 
@@ -45,21 +49,26 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True,
 
     if use_gae:
         assert SampleBatch.VF_PREDS in rollout, "Values not found!"
-        vpred_t = np.concatenate([rollout[SampleBatch.VF_PREDS], np.array([last_r])])
-        delta_t = traj[SampleBatch.REWARDS] + gamma * vpred_t[1:] - vpred_t[:-1]
+        vpred_t = np.concatenate(
+            [rollout[SampleBatch.VF_PREDS],
+             np.array([last_r])])
+        delta_t = (
+            traj[SampleBatch.REWARDS] + gamma * vpred_t[1:] - vpred_t[:-1])
         advantages = discount(delta_t, gamma * lambda_)
 
         if use_centralized_vf:
             assert "central_vf_preds" in rollout, "Central values not found!"
-            central_vpred_t = np.concatenate([rollout[SampleBatch.VF_PREDS],
-                                              np.array([last_r])])
-            central_delta_t = traj[SampleBatch.REWARDS] + gamma * central_vpred_t[1:] \
-                - central_vpred_t[:-1]
+            central_vpred_t = np.concatenate(
+                [rollout[SampleBatch.VF_PREDS],
+                 np.array([last_r])])
+            central_delta_t = (
+                traj[SampleBatch.REWARDS] + gamma * central_vpred_t[1:] -
+                central_vpred_t[:-1])
             central_advantages = discount(central_delta_t, gamma * lambda_)
             traj[Postprocessing.ADVANTAGES] = central_advantages
             traj["central_value_targets"] = (
-                    central_advantages +
-                    traj["central_vf_preds"]).copy().astype(np.float32)
+                central_advantages + traj["central_vf_preds"]).copy().astype(
+                    np.float32)
         else:
             traj[Postprocessing.ADVANTAGES] = advantages
         # This formula for the advantage comes

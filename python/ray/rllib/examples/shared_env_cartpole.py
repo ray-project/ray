@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 """Simple example of two agents working together to stabilize a cartpole.
 
 Used as a quick test of whether a centralized value function is working/helping
@@ -41,13 +40,12 @@ class SharedCartPoleEnv(CartPoleEnv, MultiAgentEnv):
         x, x_dot, theta, theta_dot = state
         costheta = math.cos(theta)
         sintheta = math.sin(theta)
-        temp = (
-                       force + self.polemass_length * theta_dot
-                       * theta_dot * sintheta) / self.total_mass
+        temp = (force + self.polemass_length * theta_dot * theta_dot * sintheta
+                ) / self.total_mass
         thetaacc = (self.gravity * sintheta - costheta * temp) / (
-                self.length * (
-                               4.0 / 3.0 - self.masspole * costheta *
-                               costheta / self.total_mass))
+            self.length *
+            (4.0 / 3.0 - self.masspole * costheta * costheta / self.total_mass)
+        )
         xacc = temp - self.polemass_length * thetaacc * \
             costheta / self.total_mass
         x = x + self.tau * x_dot
@@ -69,12 +67,11 @@ class SharedCartPoleEnv(CartPoleEnv, MultiAgentEnv):
             reward = 1.0
         else:
             if self.steps_beyond_done == 0:
-                logger.warn(
-                    "You are calling 'step()' even though this "
-                    "environment has already returned done = True. "
-                    "You should always call 'reset()' once "
-                    "you receive 'done = True' -- any further "
-                    "steps are undefined behavior.")
+                logger.warn("You are calling 'step()' even though this "
+                            "environment has already returned done = True. "
+                            "You should always call 'reset()' once "
+                            "you receive 'done = True' -- any further "
+                            "steps are undefined behavior.")
             self.steps_beyond_done += 1
             reward = 0.0
 
@@ -91,10 +88,12 @@ class SharedCartPoleEnv(CartPoleEnv, MultiAgentEnv):
         return states, rewards, dones, infos
 
     def reset(self):
-        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
+        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4, ))
         self.steps_beyond_done = None
-        return {'agent-0': np.array(self.state),
-                'agent-1': np.array(self.state)}
+        return {
+            'agent-0': np.array(self.state),
+            'agent-1': np.array(self.state)
+        }
 
 
 if __name__ == "__main__":
