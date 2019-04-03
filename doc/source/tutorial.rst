@@ -100,7 +100,7 @@ If the remote object corresponding to the object ID ``x_id`` has not been create
 yet, the command ``ray.get(x_id)`` will wait until the remote object has been
 created.
 
-A very common use case of ``ray.get`` is to get a list of object IDs. In this
+A very common use case of ``ray.get`` is to get a list of python objects. In this
 case, you can call ``ray.get(object_ids)`` where ``object_ids`` is a list of object
 IDs.
 
