@@ -5,13 +5,16 @@ from __future__ import print_function
 import numpy as np
 import copy
 import logging
-import hyperopt as hpo
+try:
+    hyperopt_logger = logging.getLogger("hyperopt")
+    hyperopt_logger.setLevel(logging.WARNING)
+    import hyperopt as hpo
+except ImportError:
+    hpo = None
 
 from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
-hyperopt_logger = logging.getLogger("hyperopt")
-hyperopt_logger.setLevel(logging.WARNING)
 
 
 class HyperOptSearch(SuggestionAlgorithm):

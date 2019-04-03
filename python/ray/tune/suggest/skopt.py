@@ -2,7 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import skopt as sko
+try:
+    import skopt as sko
+except ImportError:
+    sko = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
