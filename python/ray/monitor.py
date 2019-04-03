@@ -258,8 +258,8 @@ class Monitor(object):
         all_raylet_nodes = self.state.client_table()
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
-            client_id = (raylet_info.get("DBClientID") or 
-                         raylet_info["ClientID"])
+            client_id = (raylet_info.get("DBClientID")
+                         or raylet_info["ClientID"])
             ip_address = (raylet_info.get("AuxAddress")
                           or raylet_info["NodeManagerAddress"]).split(":")[0]
             self.raylet_id_to_ip_map[client_id] = ip_address
