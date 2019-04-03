@@ -8,6 +8,7 @@ from torch import nn
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -119,7 +120,7 @@ class A3CTorchPolicyGraph(A3CPostprocessing, TorchPolicyGraph):
                 "vf_loss": self._loss.value_err.item()
             }
 
-            return grads, {"stats": grad_info}
+            return grads, {LEARNER_STATS_KEY: grad_info}
 
     @override(TorchPolicyGraph)
     def optimizer(self):
