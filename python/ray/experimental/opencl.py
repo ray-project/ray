@@ -43,7 +43,13 @@ class OpenCL():
         return self.gpu_ids
 
     def submit_task(task):
+        """
+        process task on local GPU's
+        """
         pass
 
     def kernel():
+        """
+        Make the task into a kernel
+        """
         pass

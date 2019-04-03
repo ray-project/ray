@@ -6,4 +6,5 @@ from ray.experimental.opencl import OpenCL
 
 c = OpenCL()
 
+# test if opencl drivers are available
 c.get_gpu_ids()
