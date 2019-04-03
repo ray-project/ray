@@ -1,133 +1,137 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import java.util.HashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.config.RunMode;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class WorkerContext {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(WorkerContext.class);
 
-  /**
-   * Worker id.
-   */
   private UniqueId workerId;
 
-  /**
-   * Current task.
-   */
-  private TaskSpec currentTask;
+  private ThreadLocal<UniqueId> currentTaskId;
 
   /**
-   * Current class loader.
+   * Number of objects that have been put from current task.
    */
+  private ThreadLocal<Integer> putIndex;
+
+  /**
+   * Number of tasks that have been submitted from current task.
+   */
+  private ThreadLocal<Integer> taskIndex;
+
+  private ThreadLocal<TaskSpec> currentTask;
+
+  private UniqueId currentDriverId;
+
   private ClassLoader currentClassLoader;
-
-  /**
-   * How many puts have been done by current task.
-   */
-  private AtomicInteger currentTaskPutCount;
-
-  /**
-   * How many calls have been done by current task.
-   */
-  private AtomicInteger currentTaskCallCount;
 
   /**
    * The ID of main thread which created the worker context.
    */
   private long mainThreadId;
-  /**
-   * If the multi-threading warning message has been logged.
-   */
-  private AtomicBoolean multiThreadingWarned;
 
-  public WorkerContext(WorkerMode workerMode, UniqueId driverId) {
-    workerId = workerMode == WorkerMode.DRIVER ? driverId : UniqueId.randomId();
-    currentTaskPutCount = new AtomicInteger(0);
-    currentTaskCallCount = new AtomicInteger(0);
-    currentClassLoader = null;
-    currentTask = createDummyTask(workerMode, driverId);
+  /**
+   * The run-mode of this worker.
+   */
+  private RunMode runMode;
+
+  public WorkerContext(WorkerMode workerMode, UniqueId driverId, RunMode runMode) {
     mainThreadId = Thread.currentThread().getId();
-    multiThreadingWarned = new AtomicBoolean(false);
+    taskIndex = ThreadLocal.withInitial(() -> 0);
+    putIndex = ThreadLocal.withInitial(() -> 0);
+    currentTaskId = ThreadLocal.withInitial(UniqueId::randomId);
+    this.runMode = runMode;
+    currentTask = ThreadLocal.withInitial(() -> null);
+    currentClassLoader = null;
+    if (workerMode == WorkerMode.DRIVER) {
+      workerId = driverId;
+      currentTaskId.set(UniqueId.randomId());
+      currentDriverId = driverId;
+    } else {
+      workerId = UniqueId.randomId();
+      this.currentTaskId.set(UniqueId.NIL);
+      this.currentDriverId = UniqueId.NIL;
+    }
   }
 
   /**
-   * Get the current thread's task ID.
-   * This returns the assigned task ID if called on the main thread, else a
-   * random task ID.
+   * @return For the main thread, this method returns the ID of this worker's current running task;
+   *     for other threads, this method returns a random ID.
    */
-  public UniqueId getCurrentThreadTaskId() {
-    UniqueId taskId;
-    if (Thread.currentThread().getId() == mainThreadId) {
-      taskId = currentTask.taskId;
-    } else {
-      taskId = UniqueId.randomId();
-      if (multiThreadingWarned.compareAndSet(false, true)) {
-        LOGGER.warn("Calling Ray.get or Ray.wait in a separate thread " +
-            "may lead to deadlock if the main thread blocks on this " +
-            "thread and there are not enough resources to execute " +
-            "more tasks");
-      }
+  public UniqueId getCurrentTaskId() {
+    return currentTaskId.get();
+  }
+
+  /**
+   * Set the current task which is being executed by the current worker. Note, this method can only
+   * be called from the main thread.
+   */
+  public void setCurrentTask(TaskSpec task, ClassLoader classLoader) {
+    if (runMode == RunMode.CLUSTER) {
+      Preconditions.checkState(
+              Thread.currentThread().getId() == mainThreadId,
+              "This method should only be called from the main thread."
+      );
     }
 
-    Preconditions.checkState(!taskId.isNil());
-    return taskId;
+    Preconditions.checkNotNull(task);
+    this.currentTaskId.set(task.taskId);
+    this.currentDriverId = task.driverId;
+    taskIndex.set(0);
+    putIndex.set(0);
+    this.currentTask.set(task);
+    currentClassLoader = classLoader;
   }
 
-  public void setWorkerId(UniqueId workerId) {
-    this.workerId = workerId;
-  }
-
-  public TaskSpec getCurrentTask() {
-    return currentTask;
-  }
-
+  /**
+   * Increment the put index and return the new value.
+   */
   public int nextPutIndex() {
-    return currentTaskPutCount.incrementAndGet();
+    putIndex.set(putIndex.get() + 1);
+    return putIndex.get();
   }
 
-  public int nextCallIndex() {
-    return currentTaskCallCount.incrementAndGet();
+  /**
+   * Increment the task index and return the new value.
+   */
+  public int nextTaskIndex() {
+    taskIndex.set(taskIndex.get() + 1);
+    return taskIndex.get();
   }
 
+  /**
+   * @return The ID of the current worker.
+   */
   public UniqueId getCurrentWorkerId() {
     return workerId;
   }
 
+  /**
+   * @return If this worker is a driver, this method returns the driver ID; Otherwise, it returns
+   *     the driver ID of the current running task.
+   */
+  public UniqueId getCurrentDriverId() {
+    return currentDriverId;
+  }
+
+  /**
+   * @return The class loader which is associated with the current driver.
+   */
   public ClassLoader getCurrentClassLoader() {
     return currentClassLoader;
   }
 
-  public void setCurrentTask(TaskSpec currentTask) {
-    this.currentTask = currentTask;
-    currentTaskCallCount.set(0);
-    currentTaskPutCount.set(0);
-  }
-
-  public void setCurrentClassLoader(ClassLoader currentClassLoader) {
-    this.currentClassLoader = currentClassLoader;
-  }
-
-  private TaskSpec createDummyTask(WorkerMode workerMode, UniqueId driverId) {
-    return new TaskSpec(
-        driverId,
-        workerMode == WorkerMode.DRIVER ? UniqueId.randomId() : UniqueId.NIL,
-        UniqueId.NIL,
-        0,
-        UniqueId.NIL,
-        0,
-        UniqueId.NIL,
-        UniqueId.NIL,
-        0,
-        null,
-        null,
-        new HashMap<>(),
-        null);
+  /**
+   * Get the current task.
+   */
+  public TaskSpec getCurrentTask() {
+    return this.currentTask.get();
   }
 }

@@ -20,7 +20,7 @@ class _MockAgent(Agent):
         "num_workers": 0,
     })
 
-    def _init(self):
+    def _init(self, config, env_creator):
         self.info = None
         self.restored = False
 
@@ -45,6 +45,9 @@ class _MockAgent(Agent):
             info = pickle.load(f)
         self.info = info
         self.restored = True
+
+    def _register_if_needed(self, env_object):
+        pass
 
     def set_info(self, info):
         self.info = info

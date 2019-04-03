@@ -20,6 +20,7 @@ initial_workers: 0
 docker:
     image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
     container_name: "" # e.g. ray_docker
+    run_options: []  # Extra options to pass into "docker run"
 
 
 # The autoscaler will scale up the cluster to this target fraction of resource
@@ -61,10 +62,19 @@ head_node:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts  # Ubuntu
+          sourceImage: projects/ml-images/global/images/family/tf-1-13-gpu
 
     # Additional options can be found in in the compute docs at
     # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
+
+    # If the network interface is specified as below in both head and worker
+    # nodes, the manual network config is used.  Otherwise an existing subnet is
+    # used.  To use a shared subnet, ask the subnet owner to grant permission
+    # for 'compute.subnetworks.use' to the ray autoscaler account...
+    # networkInterfaces:
+    #   - kind: compute#networkInterface
+    #     subnetwork: path/to/subnet
+    #     aliasIpRanges: []
 
 worker_nodes:
     machineType: n1-standard-2
@@ -75,7 +85,7 @@ worker_nodes:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts  # Ubuntu
+          sourceImage: projects/ml-images/global/images/family/tf-1-13-gpu
     # Run workers on preemtible instance by default.
     # Comment this out to use on-demand.
     scheduling:
@@ -91,56 +101,35 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
+initialization_commands: []
+
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # Consider uncommenting these if you also want to run apt-get commands during setup
-    # - sudo pkill -9 apt-get || true
-    # - sudo pkill -9 dpkg || true
-    # - sudo dpkg --configure -a
+    # Note: if you're developing Ray, you probably want to create an AMI that
+    # has your Ray repo pre-cloned. Then, you can replace the pip installs
+    # below with a git checkout <your_sha> (and possibly a recompile).
+    # - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
 
-    # Install basics.
-    - sudo apt-get update
-    - >-
-      sudo apt-get install -y
-      cmake
-      pkg-config
-      build-essential
-      autoconf
-      curl
-      libtool
-      unzip
-      flex
-      bison
-      python
     # Install Anaconda.
     - >-
       wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh -O ~/anaconda3.sh
       || true
-    - bash ~/anaconda3.sh -b -p ~/anaconda3 || true
-    - rm ~/anaconda3.sh
-    - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
+      && bash ~/anaconda3.sh -b -p ~/anaconda3 || true
+      && rm ~/anaconda3.sh
+      && echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.profile
 
-    # Build Ray.
-    # Note: if you're developing Ray, you probably want to create a boot-disk
-    # that has your Ray repo pre-cloned. Then, you can replace the pip installs
-    # below with a git checkout <your_sha> (and possibly a recompile).
-    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    - >-
-      pip install
-      google-api-python-client==1.6.7
-      cython==0.29.0
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.1-cp27-cp27mu-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.1-cp35-cp35m-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.1-cp36-cp36m-manylinux1_x86_64.whl
-    - >-
-      cd ~
-      && git clone https://github.com/ray-project/ray || true
-    - >-
-      cd ~/ray/python
-      && pip install -e . --verbose
+    # Install ray
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp27-cp27mu-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp35-cp35m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp36-cp36m-manylinux1_x86_64.whl
+
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
+head_setup_commands:
+  - pip install google-api-python-client==1.7.8
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

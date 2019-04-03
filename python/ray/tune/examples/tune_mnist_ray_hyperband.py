@@ -30,8 +30,8 @@ import argparse
 import time
 
 import ray
-from ray.tune import grid_search, run_experiments, register_trainable, \
-    Trainable, sample_from
+from ray import tune
+from ray.tune import grid_search, Trainable, sample_from
 from ray.tune.schedulers import HyperBandScheduler
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -199,23 +199,22 @@ class TrainMNIST(Trainable):
         return {"mean_accuracy": train_accuracy}
 
     def _save(self, checkpoint_dir):
-        return self.saver.save(
+        prefix = self.saver.save(
             self.sess, checkpoint_dir + "/save", global_step=self.iterations)
+        return {"prefix": prefix}
 
-    def _restore(self, path):
-        return self.saver.restore(self.sess, path)
+    def _restore(self, ckpt_data):
+        prefix = ckpt_data["prefix"]
+        return self.saver.restore(self.sess, prefix)
 
 
 # !!! Example of using the ray.tune Python API !!!
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--smoke-test', action='store_true', help='Finish quickly for testing')
     args, _ = parser.parse_known_args()
-
-    register_trainable("my_class", TrainMNIST)
     mnist_spec = {
-        'run': 'my_class',
         'stop': {
             'mean_accuracy': 0.99,
             'time_total_s': 600,
@@ -229,11 +228,15 @@ if __name__ == '__main__':
     }
 
     if args.smoke_test:
-        mnist_spec['stop']['training_iteration'] = 2
+        mnist_spec['stop']['training_iteration'] = 20
         mnist_spec['num_samples'] = 2
 
     ray.init()
     hyperband = HyperBandScheduler(
         time_attr="training_iteration", reward_attr="mean_accuracy", max_t=10)
 
-    run_experiments({'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)
+    tune.run(
+        TrainMNIST,
+        name='mnist_hyperband_test',
+        scheduler=hyperband,
+        **mnist_spec)

@@ -9,7 +9,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-from torch.autograd import Variable
 
 from ray.tune import Trainable
 
@@ -30,9 +29,9 @@ parser.add_argument(
 parser.add_argument(
     '--epochs',
     type=int,
-    default=10,
+    default=1,
     metavar='N',
-    help='number of epochs to train (default: 10)')
+    help='number of epochs to train (default: 1)')
 parser.add_argument(
     '--lr',
     type=float,
@@ -127,7 +126,6 @@ class TrainMNIST(Trainable):
         for batch_idx, (data, target) in enumerate(self.train_loader):
             if self.args.cuda:
                 data, target = data.cuda(), target.cuda()
-            data, target = Variable(data), Variable(target)
             self.optimizer.zero_grad()
             output = self.model(data)
             loss = F.nll_loss(output, target)
@@ -138,18 +136,17 @@ class TrainMNIST(Trainable):
         self.model.eval()
         test_loss = 0
         correct = 0
-        for data, target in self.test_loader:
-            if self.args.cuda:
-                data, target = data.cuda(), target.cuda()
-            data, target = Variable(data, volatile=True), Variable(target)
-            output = self.model(data)
-
-            # sum up batch loss
-            test_loss += F.nll_loss(output, target, size_average=False).item()
-
-            # get the index of the max log-probability
-            pred = output.data.max(1, keepdim=True)[1]
-            correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
+        with torch.no_grad():
+            for data, target in self.test_loader:
+                if self.args.cuda:
+                    data, target = data.cuda(), target.cuda()
+                output = self.model(data)
+                # sum up batch loss
+                test_loss += F.nll_loss(output, target, reduction='sum').item()
+                # get the index of the max log-probability
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(
+                    target.data.view_as(pred)).long().cpu().sum()
 
         test_loss = test_loss / len(self.test_loader.dataset)
         accuracy = correct.item() / len(self.test_loader.dataset)
@@ -168,7 +165,7 @@ class TrainMNIST(Trainable):
         self.model.load_state_dict(checkpoint_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     datasets.MNIST('~/data', train=True, download=True)
     args = parser.parse_args()
 
@@ -180,27 +177,25 @@ if __name__ == '__main__':
     ray.init()
     sched = HyperBandScheduler(
         time_attr="training_iteration", reward_attr="neg_mean_loss")
-    tune.run_experiments(
-        {
-            "exp": {
-                "stop": {
-                    "mean_accuracy": 0.95,
-                    "training_iteration": 1 if args.smoke_test else 20,
-                },
-                "resources_per_trial": {
-                    "cpu": 3
-                },
-                "run": TrainMNIST,
-                "num_samples": 1 if args.smoke_test else 20,
-                "checkpoint_at_end": True,
-                "config": {
-                    "args": args,
-                    "lr": tune.sample_from(
-                        lambda spec: np.random.uniform(0.001, 0.1)),
-                    "momentum": tune.sample_from(
-                        lambda spec: np.random.uniform(0.1, 0.9)),
-                }
+    tune.run(
+        TrainMNIST,
+        scheduler=sched,
+        **{
+            "stop": {
+                "mean_accuracy": 0.95,
+                "training_iteration": 1 if args.smoke_test else 20,
+            },
+            "resources_per_trial": {
+                "cpu": 3,
+                "gpu": int(not args.no_cuda)
+            },
+            "num_samples": 1 if args.smoke_test else 20,
+            "checkpoint_at_end": True,
+            "config": {
+                "args": args,
+                "lr": tune.sample_from(
+                    lambda spec: np.random.uniform(0.001, 0.1)),
+                "momentum": tune.sample_from(
+                    lambda spec: np.random.uniform(0.1, 0.9)),
             }
-        },
-        verbose=0,
-        scheduler=sched)
+        })

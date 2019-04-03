@@ -6,6 +6,7 @@ import pickle
 import sys
 import traceback
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.policy_client import PolicyClient
 
 if sys.version_info[0] == 2:
@@ -17,6 +18,7 @@ elif sys.version_info[0] == 3:
     from socketserver import ThreadingMixIn
 
 
+@PublicAPI
 class PolicyServer(ThreadingMixIn, HTTPServer):
     """REST server than can be launched from a ExternalEnv.
 
@@ -50,6 +52,7 @@ class PolicyServer(ThreadingMixIn, HTTPServer):
         >>> client.log_returns(eps_id, reward)
     """
 
+    @PublicAPI
     def __init__(self, external_env, address, port):
         handler = _make_handler(external_env)
         HTTPServer.__init__(self, (address, port), handler)

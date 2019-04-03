@@ -5,12 +5,11 @@ from __future__ import print_function
 import numpy as np
 import copy
 import logging
-
 try:
     hyperopt_logger = logging.getLogger("hyperopt")
     hyperopt_logger.setLevel(logging.WARNING)
     import hyperopt as hpo
-except Exception:
+except ImportError:
     hpo = None
 
 from ray.tune.error import TuneError
@@ -33,6 +32,13 @@ class HyperOptSearch(SuggestionAlgorithm):
             to 10.
         reward_attr (str): The training result objective value attribute.
             This refers to an increasing value.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want hyperopt to run first to help the TPE algorithm
+            make better suggestions for future parameters. Needs to be
+            a list of dict of hyperopt-named variables.
+            Choice variables should be indicated by their index in the
+            list (see example)
 
     Example:
         >>> space = {
@@ -40,31 +46,38 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>>     'height': hp.uniform('height', -100, 100),
         >>>     'activation': hp.choice("activation", ["relu", "tanh"])
         >>> }
-        >>> config = {
-        >>>     "my_exp": {
-        >>>         "run": "exp",
-        >>>         "num_samples": 10 if args.smoke_test else 1000,
-        >>>         "stop": {
-        >>>             "training_iteration": 100
-        >>>         },
-        >>>     }
-        >>> }
+        >>> current_best_params = [{
+        >>>     'width': 10,
+        >>>     'height': 0,
+        >>>     'activation': 0, # The index of "relu"
+        >>> }]
         >>> algo = HyperOptSearch(
-        >>>     space, max_concurrent=4, reward_attr="neg_mean_loss")
+        >>>     space, max_concurrent=4, reward_attr="neg_mean_loss",
+        >>>     points_to_evaluate=current_best_params)
     """
 
     def __init__(self,
                  space,
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
+                 points_to_evaluate=None,
                  **kwargs):
         assert hpo is not None, "HyperOpt must be installed!"
+        from hyperopt.fmin import generate_trials_to_calculate
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent
         self._reward_attr = reward_attr
         self.algo = hpo.tpe.suggest
         self.domain = hpo.Domain(lambda spc: spc, space)
-        self._hpopt_trials = hpo.Trials()
+        if points_to_evaluate is None:
+            self._hpopt_trials = hpo.Trials()
+            self._points_to_evaluate = 0
+        else:
+            assert type(points_to_evaluate) == list
+            self._hpopt_trials = generate_trials_to_calculate(
+                points_to_evaluate)
+            self._hpopt_trials.refresh()
+            self._points_to_evaluate = len(points_to_evaluate)
         self._live_trial_mapping = {}
         self.rstate = np.random.RandomState()
 
@@ -73,15 +86,20 @@ class HyperOptSearch(SuggestionAlgorithm):
     def _suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
             return None
-        new_ids = self._hpopt_trials.new_trial_ids(1)
-        self._hpopt_trials.refresh()
 
-        # Get new suggestion from Hyperopt
-        new_trials = self.algo(new_ids, self.domain, self._hpopt_trials,
-                               self.rstate.randint(2**31 - 1))
-        self._hpopt_trials.insert_trial_docs(new_trials)
-        self._hpopt_trials.refresh()
-        new_trial = new_trials[0]
+        if self._points_to_evaluate > 0:
+            new_trial = self._hpopt_trials.trials[self._points_to_evaluate - 1]
+            self._points_to_evaluate -= 1
+        else:
+            new_ids = self._hpopt_trials.new_trial_ids(1)
+            self._hpopt_trials.refresh()
+
+            # Get new suggestion from Hyperopt
+            new_trials = self.algo(new_ids, self.domain, self._hpopt_trials,
+                                   self.rstate.randint(2**31 - 1))
+            self._hpopt_trials.insert_trial_docs(new_trials)
+            self._hpopt_trials.refresh()
+            new_trial = new_trials[0]
         self._live_trial_mapping[trial_id] = (new_trial["tid"], new_trial)
 
         # Taken from HyperOpt.base.evaluate

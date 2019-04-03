@@ -20,6 +20,8 @@ def on_episode_start(info):
 def on_episode_step(info):
     episode = info["episode"]
     pole_angle = abs(episode.last_observation_for()[2])
+    raw_angle = abs(episode.last_raw_obs_for()[2])
+    assert pole_angle == raw_angle
     episode.user_data["pole_angles"].append(pole_angle)
 
 
@@ -48,24 +50,22 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init()
-    trials = tune.run_experiments({
-        "test": {
+    trials = tune.run(
+        "PG",
+        stop={
+            "training_iteration": args.num_iters,
+        },
+        config={
             "env": "CartPole-v0",
-            "run": "PG",
-            "stop": {
-                "training_iteration": args.num_iters,
+            "callbacks": {
+                "on_episode_start": tune.function(on_episode_start),
+                "on_episode_step": tune.function(on_episode_step),
+                "on_episode_end": tune.function(on_episode_end),
+                "on_sample_end": tune.function(on_sample_end),
+                "on_train_result": tune.function(on_train_result),
             },
-            "config": {
-                "callbacks": {
-                    "on_episode_start": tune.function(on_episode_start),
-                    "on_episode_step": tune.function(on_episode_step),
-                    "on_episode_end": tune.function(on_episode_end),
-                    "on_sample_end": tune.function(on_sample_end),
-                    "on_train_result": tune.function(on_train_result),
-                },
-            },
-        }
-    })
+        },
+    )
 
     # verify custom metrics for integration tests
     custom_metrics = trials[0].last_result["custom_metrics"]

@@ -53,6 +53,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    :caption: Installation
 
    installation.rst
+   deploy-on-kubernetes.rst
    install-on-docker.rst
    installation-troubleshooting.rst
 
@@ -64,7 +65,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    api.rst
    actors.rst
    using-ray-with-gpus.rst
-   webui.rst
+   signals.rst
    async_api.rst
 
 .. toctree::
@@ -98,6 +99,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    rllib-dev.rst
    rllib-concepts.rst
    rllib-package-ref.rst
+   rllib-examples.rst
 
 .. toctree::
    :maxdepth: 1
@@ -113,6 +115,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    example-rl-pong.rst
    example-policy-gradient.rst
    example-parameter-server.rst
+   example-newsreader.rst
    example-resnet.rst
    example-a3c.rst
    example-lbfgs.rst

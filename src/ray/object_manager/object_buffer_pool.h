@@ -11,7 +11,6 @@
 #include <boost/bind.hpp>
 
 #include "plasma/client.h"
-#include "plasma/events.h"
 
 #include "ray/id.h"
 #include "ray/status.h"

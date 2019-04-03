@@ -4,9 +4,10 @@ from __future__ import print_function
 
 import os
 
-from ray.rllib.offline.input_reader import SamplerInput
+from ray.rllib.utils.annotations import PublicAPI
 
 
+@PublicAPI
 class IOContext(object):
     """Attributes to pass to input / output class constructors.
 
@@ -20,6 +21,7 @@ class IOContext(object):
         evaluator (PolicyEvaluator): policy evaluator object reference.
     """
 
+    @PublicAPI
     def __init__(self,
                  log_dir=None,
                  config=None,
@@ -30,5 +32,6 @@ class IOContext(object):
         self.worker_index = worker_index
         self.evaluator = evaluator
 
+    @PublicAPI
     def default_sampler_input(self):
-        return SamplerInput(self.evaluator.sampler)
+        return self.evaluator.sampler

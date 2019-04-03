@@ -1,6 +1,5 @@
 package org.ray.api;
 
-
 import java.util.List;
 
 /**

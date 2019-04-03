@@ -1,10 +1,10 @@
 package org.ray.api.test;
 
-import org.junit.Assert;
-import org.junit.Test;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 /**
  * Hello world.

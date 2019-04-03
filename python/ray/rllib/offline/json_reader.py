@@ -19,17 +19,19 @@ from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, SampleBatch, \
     DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import unpack_if_needed
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class JsonReader(InputReader):
     """Reader object that loads experiences from JSON file chunks.
 
     The input files will be read from in an random order."""
 
+    @PublicAPI
     def __init__(self, inputs, ioctx=None):
         """Initialize a JsonReader.
 
@@ -42,6 +44,7 @@ class JsonReader(InputReader):
 
         self.ioctx = ioctx or IOContext()
         if isinstance(inputs, six.string_types):
+            inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):
                 inputs = os.path.join(inputs, "*.json")
                 logger.warning(

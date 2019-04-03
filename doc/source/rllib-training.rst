@@ -37,7 +37,7 @@ The ``rllib train`` command (same as the ``train.py`` script in the repo) has a 
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
+(available options are ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
 
 Evaluating Trained Agents
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -110,7 +110,7 @@ Python API
 
 The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
-Here is an example of the basic usage:
+Here is an example of the basic usage (for a more complete example, see `custom_env.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__):
 
 .. code-block:: python
 
@@ -145,21 +145,19 @@ All RLlib agents are compatible with the `Tune API <tune-usage.html>`__. This en
 .. code-block:: python
 
     import ray
-    import ray.tune as tune
+    from ray import tune
 
     ray.init()
-    tune.run_experiments({
-        "my_experiment": {
-            "run": "PPO",
+    tune.run(
+        "PPO",
+        stop={"episode_reward_mean": 200},
+        config={
             "env": "CartPole-v0",
-            "stop": {"episode_reward_mean": 200},
-            "config": {
-                "num_gpus": 0,
-                "num_workers": 1,
-                "lr": tune.grid_search([0.01, 0.001, 0.0001]),
-            },
+            "num_gpus": 0,
+            "num_workers": 1,
+            "lr": tune.grid_search([0.01, 0.001, 0.0001]),
         },
-    })
+    )
 
 Tune will schedule the trials to run in parallel on your Ray cluster:
 
@@ -175,11 +173,16 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
      - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
+Custom Training Workflows
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the `basic training example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your agent once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#training-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_train_fn.py>`__.
+
 Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~
 It is common to need to access an agent's internal state, e.g., to set or get internal weights. In RLlib an agent's state is replicated across multiple *policy evaluators* (Ray actors) in the cluster. However, you can easily get and update this state between calls to ``train()`` via ``agent.optimizer.foreach_evaluator()`` or ``agent.optimizer.foreach_evaluator_with_index()``. These functions take a lambda function that is applied with the evaluator as an arg. You can also return values from these functions and those will be returned as a list.
 
-You can also access just the "master" copy of the agent state through ``agent.get_policy()`` or ``agent.local_evaluator``, but note that updates here may not be immediately reflected in remote replicas if you have configured ``num_workers > 0``. For example, to access the weights of a local TF policy, you can run ``agent.get_policy().get_weights()``. This is also equivalent to ``agent.local_evaluator.policy_map["default"].get_weights()``:
+You can also access just the "master" copy of the agent state through ``agent.get_policy()`` or ``agent.local_evaluator``, but note that updates here may not be immediately reflected in remote replicas if you have configured ``num_workers > 0``. For example, to access the weights of a local TF policy, you can run ``agent.get_policy().get_weights()``. This is also equivalent to ``agent.local_evaluator.policy_map["default_policy"].get_weights()``:
 
 .. code-block:: python
 
@@ -187,7 +190,7 @@ You can also access just the "master" copy of the agent state through ``agent.ge
     agent.get_policy().get_weights()
 
     # Same as above
-    agent.local_evaluator.policy_map["default"].get_weights()
+    agent.local_evaluator.policy_map["default_policy"].get_weights()
 
     # Get list of weights of each evaluator, including remote replicas
     agent.optimizer.foreach_evaluator(lambda ev: ev.get_policy().get_weights())
@@ -253,20 +256,18 @@ You can provide callback functions to be called at points during policy evaluati
             info["agent"].__name__, info["result"]["episodes_this_iter"]))
 
     ray.init()
-    trials = tune.run_experiments({
-        "test": {
+    trials = tune.run(
+        "PG",
+        config={
             "env": "CartPole-v0",
-            "run": "PG",
-            "config": {
-                "callbacks": {
-                    "on_episode_start": tune.function(on_episode_start),
-                    "on_episode_step": tune.function(on_episode_step),
-                    "on_episode_end": tune.function(on_episode_end),
-                    "on_train_result": tune.function(on_train_result),
-                },
+            "callbacks": {
+                "on_episode_start": tune.function(on_episode_start),
+                "on_episode_step": tune.function(on_episode_step),
+                "on_episode_end": tune.function(on_episode_end),
+                "on_train_result": tune.function(on_train_result),
             },
-        }
-    })
+        },
+    )
 
 Custom metrics can be accessed and visualized like any other training result:
 
@@ -296,23 +297,23 @@ Approach 1: Use the Agent API and update the environment between calls to ``trai
                 phase = 1
             else:
                 phase = 0
-            agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
+            agent.optimizer.foreach_evaluator(
+                lambda ev: ev.foreach_env(
+                    lambda env: env.set_phase(phase)))
 
     ray.init()
-    tune.run_experiments({
-        "curriculum": {
-            "run": train,
-            "config": {
-                "num_gpus": 0,
-                "num_workers": 2,
-            },
-            "resources_per_trial": {
-                "cpu": 1,
-                "gpu": lambda spec: spec.config.num_gpus,
-                "extra_cpu": lambda spec: spec.config.num_workers,
-            },
+    tune.run(
+        train,
+        config={
+            "num_gpus": 0,
+            "num_workers": 2,
         },
-    })
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": lambda spec: spec.config.num_gpus,
+            "extra_cpu": lambda spec: spec.config.num_workers,
+        },
+    )
 
 Approach 2: Use the callbacks API to update the environment on new training results:
 
@@ -330,20 +331,20 @@ Approach 2: Use the callbacks API to update the environment on new training resu
         else:
             phase = 0
         agent = info["agent"]
-        agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
+        agent.optimizer.foreach_evaluator(
+            lambda ev: ev.foreach_env(
+                lambda env: env.set_phase(phase)))
 
     ray.init()
-    tune.run_experiments({
-        "curriculum": {
-            "run": "PPO",
+    tune.run(
+        "PPO",
+        config={
             "env": YourEnv,
-            "config": {
-                "callbacks": {
-                    "on_train_result": tune.function(on_train_result),
-                },
+            "callbacks": {
+                "on_train_result": tune.function(on_train_result),
             },
         },
-    })
+    )
 
 Debugging
 ---------
@@ -363,6 +364,20 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
     openaigym.video.0.31401.video000000.mp4
     openaigym.video.0.31403.video000000.meta.json
     openaigym.video.0.31403.video000000.mp4
+
+Episode Traces
+~~~~~~~~~~~~~~
+
+You can use the `data output API <rllib-offline.html>`__ to save episode traces for debugging. For example, the following command will run PPO while saving episode traces to ``/tmp/debug``.
+
+.. code-block:: bash
+
+    rllib train --run=PPO --env=CartPole-v0 \
+        --config='{"output": "/tmp/debug", "output_compress_columns": []}'
+
+    # episode traces will be saved in /tmp/debug, for example
+    output-2019-02-23_12-02-03_worker-2_0.json
+    output-2019-02-23_12-02-04_worker-1_0.json
 
 Log Verbosity
 ~~~~~~~~~~~~~

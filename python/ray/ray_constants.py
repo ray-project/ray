@@ -5,8 +5,6 @@ from __future__ import print_function
 
 import os
 
-from ray.raylet import ObjectID
-
 
 def env_integer(key, default):
     if key in os.environ:
@@ -15,8 +13,6 @@ def env_integer(key, default):
 
 
 ID_SIZE = 20
-NIL_JOB_ID = ObjectID(ID_SIZE * b"\xff")
-NIL_FUNCTION_ID = NIL_JOB_ID
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
@@ -28,6 +24,17 @@ OBJECT_STORE_MINIMUM_MEMORY_BYTES = 10**7
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
+
+# Default resource requirements for actors when no resource requirements are
+# specified.
+DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
+DEFAULT_ACTOR_CREATION_CPU_SIMPLE = 0
+# Default resource requirements for actors when some resource requirements are
+# specified in .
+DEFAULT_ACTOR_METHOD_CPU_SPECIFIED = 0
+DEFAULT_ACTOR_CREATION_CPU_SPECIFIED = 1
+# Default number of return values for each actor method.
+DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
@@ -57,6 +64,10 @@ PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
 INFEASIBLE_TASK_ERROR = "infeasible_task"
 REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
+LOG_MONITOR_DIED_ERROR = "log_monitor_died"
+REPORTER_DIED_ERROR = "reporter_died"
+DASHBOARD_DIED_ERROR = "dashboard_died"
+RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
@@ -79,12 +90,15 @@ AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
 AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
                                              30)
 
+# The reporter will report its' statistics this often (milliseconds).
+REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 500)
+
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 
-# Default logger format: only contains the message.
-LOGGER_FORMAT = "%(message)s"
-LOGGER_FORMAT_HELP = "The logging format. default='%(message)s'"
+LOGGER_FORMAT = (
+    "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
+LOGGER_FORMAT_HELP = "The logging format. default='{}'".format(LOGGER_FORMAT)
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
@@ -94,3 +108,20 @@ LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
 NO_RECONSTRUCTION = 0
 # A constant indicating that an actor should be reconstructed infinite times.
 INFINITE_RECONSTRUCTION = 2**30
+
+# Constants used to define the different process types.
+PROCESS_TYPE_MONITOR = "monitor"
+PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
+PROCESS_TYPE_LOG_MONITOR = "log_monitor"
+PROCESS_TYPE_REPORTER = "reporter"
+PROCESS_TYPE_DASHBOARD = "dashboard"
+PROCESS_TYPE_WORKER = "worker"
+PROCESS_TYPE_RAYLET = "raylet"
+PROCESS_TYPE_PLASMA_STORE = "plasma_store"
+PROCESS_TYPE_REDIS_SERVER = "redis_server"
+PROCESS_TYPE_WEB_UI = "web_ui"
+
+LOG_MONITOR_MAX_OPEN_FILES = 200
+
+# A constant used as object metadata to indicate the object is raw binary.
+RAW_BUFFER_METADATA = b"RAW"

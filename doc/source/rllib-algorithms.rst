@@ -88,6 +88,24 @@ SpaceInvaders  843                              ~300
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+Asynchronous Proximal Policy Optimization (APPO)
+------------------------------------------------
+
+`[paper] <https://arxiv.org/abs/1707.06347>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/ppo/appo.py>`__
+We include an asynchronous variant of Proximal Policy Optimization (PPO) based on the IMPALA architecture. This is similar to IMPALA but using a surrogate policy loss with clipping. Compared to synchronous PPO, APPO is more efficient in wall-clock time due to its use of asynchronous sampling. Using a clipped loss also allows for multiple SGD passes, and therefore the potential for better sample efficiency compared to IMPALA. V-trace can also be enabled to correct for off-policy samples.
+
+This implementation is currently *experimental*. Consider also using `PPO <rllib-algorithms.html#proximal-policy-optimization-ppo>`__ or `IMPALA <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__.
+
+Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-appo.yaml>`__
+
+**APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../python/ray/rllib/agents/ppo/appo.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
 Gradient-based
 ~~~~~~~~~~~~~~
 
@@ -163,7 +181,7 @@ SpaceInvaders  650                       1001                           1025    
 
 Policy Gradients
 ----------------
-`[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm. This is usually outperformed by PPO.
+`[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm in both TensorFlow and PyTorch. This is usually outperformed by PPO.
 
 Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/regression_tests/cartpole-pg.yaml>`__
 
@@ -179,7 +197,7 @@ Proximal Policy Optimization (PPO)
 `[paper] <https://arxiv.org/abs/1707.06347>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/ppo/ppo.py>`__
 PPO's clipped objective supports multiple SGD passes over the same batch of experiences. RLlib's multi-GPU optimizer pins that data in GPU memory to avoid unnecessary transfers from host memory, substantially improving performance over a naive implementation. RLlib's PPO scales out using multiple workers for experience collection, and also with multiple GPUs for SGD.
 
-Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/humanoid-ppo-gae.yaml>`__, `Hopper-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/hopper-ppo.yaml>`__, `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pendulum-ppo.yaml>`__, `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-ppo.yaml>`__, `Walker2d-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/walker2d-ppo.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/atari-ppo.yaml>`__
+Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/humanoid-ppo-gae.yaml>`__, `Hopper-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/hopper-ppo.yaml>`__, `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pendulum-ppo.yaml>`__, `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-ppo.yaml>`__, `Walker2d-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/walker2d-ppo.yaml>`__, `HalfCheetah-v2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/halfcheetah-ppo.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/atari-ppo.yaml>`__
 
 
 **Atari results**: `more details <https://github.com/ray-project/rl-experiments>`__
@@ -194,7 +212,13 @@ SpaceInvaders  671             944             ~800
 =============  ==============  ==============  ==================
 
 
-**Scalability:**
+**Scalability:** `more details <https://github.com/ray-project/rl-experiments>`__
+
+=============  =========================  =============================
+MuJoCo env     RLlib PPO 16-workers @ 1h  Fan et al PPO 16-workers @ 1h
+=============  =========================  =============================
+HalfCheetah    9664                       ~7700 
+=============  =========================  =============================
 
 .. figure:: ppo.png
    :width: 500px
@@ -257,6 +281,20 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/p
 **QMIX-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/qmix/qmix.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+Advantage Re-Weighted Imitation Learning (MARWIL)
+-------------------------------------------------
+
+`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/marwil/marwil.py>`__ MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning. MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
+
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/cartpole-marwil.py>`__
+
+**MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../python/ray/rllib/agents/marwil/marwil.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

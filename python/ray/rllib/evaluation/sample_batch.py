@@ -6,166 +6,15 @@ import six
 import collections
 import numpy as np
 
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.compression import pack, unpack, is_compressed
+from ray.rllib.utils.memory import concat_aligned
+
 # Defaults policy id for single agent environments
-DEFAULT_POLICY_ID = "default"
+DEFAULT_POLICY_ID = "default_policy"
 
 
-def to_float_array(v):
-    arr = np.array(v)
-    if arr.dtype == np.float64:
-        return arr.astype(np.float32)  # save some memory
-    return arr
-
-
-class SampleBatchBuilder(object):
-    """Util to build a SampleBatch incrementally.
-
-    For efficiency, SampleBatches hold values in column form (as arrays).
-    However, it is useful to add data one row (dict) at a time.
-    """
-
-    def __init__(self):
-        self.buffers = collections.defaultdict(list)
-        self.count = 0
-
-    def add_values(self, **values):
-        """Add the given dictionary (row) of values to this batch."""
-
-        for k, v in values.items():
-            self.buffers[k].append(v)
-        self.count += 1
-
-    def add_batch(self, batch):
-        """Add the given batch of values to this batch."""
-
-        for k, column in batch.items():
-            self.buffers[k].extend(column)
-        self.count += batch.count
-
-    def build_and_reset(self):
-        """Returns a sample batch including all previously added values."""
-
-        batch = SampleBatch(
-            {k: to_float_array(v)
-             for k, v in self.buffers.items()})
-        self.buffers.clear()
-        self.count = 0
-        return batch
-
-
-class MultiAgentSampleBatchBuilder(object):
-    """Util to build SampleBatches for each policy in a multi-agent env.
-
-    Input data is per-agent, while output data is per-policy. There is an M:N
-    mapping between agents and policies. We retain one local batch builder
-    per agent. When an agent is done, then its local batch is appended into the
-    corresponding policy batch for the agent's policy.
-    """
-
-    def __init__(self, policy_map, clip_rewards):
-        """Initialize a MultiAgentSampleBatchBuilder.
-
-        Arguments:
-            policy_map (dict): Maps policy ids to policy graph instances.
-            clip_rewards (bool): Whether to clip rewards before postprocessing.
-        """
-
-        self.policy_map = policy_map
-        self.clip_rewards = clip_rewards
-        self.policy_builders = {
-            k: SampleBatchBuilder()
-            for k in policy_map.keys()
-        }
-        self.agent_builders = {}
-        self.agent_to_policy = {}
-        self.count = 0  # increment this manually
-
-    def total(self):
-        """Returns summed number of steps across all agent buffers."""
-
-        return sum(p.count for p in self.policy_builders.values())
-
-    def has_pending_data(self):
-        """Returns whether there is pending unprocessed data."""
-
-        return len(self.agent_builders) > 0
-
-    def add_values(self, agent_id, policy_id, **values):
-        """Add the given dictionary (row) of values to this batch.
-
-        Arguments:
-            agent_id (obj): Unique id for the agent we are adding values for.
-            policy_id (obj): Unique id for policy controlling the agent.
-            values (dict): Row of values to add for this agent.
-        """
-
-        if agent_id not in self.agent_builders:
-            self.agent_builders[agent_id] = SampleBatchBuilder()
-            self.agent_to_policy[agent_id] = policy_id
-        builder = self.agent_builders[agent_id]
-        builder.add_values(**values)
-
-    def postprocess_batch_so_far(self, episode):
-        """Apply policy postprocessors to any unprocessed rows.
-
-        This pushes the postprocessed per-agent batches onto the per-policy
-        builders, clearing per-agent state.
-
-        Arguments:
-            episode: current MultiAgentEpisode object or None
-        """
-
-        # Materialize the batches so far
-        pre_batches = {}
-        for agent_id, builder in self.agent_builders.items():
-            pre_batches[agent_id] = (
-                self.policy_map[self.agent_to_policy[agent_id]],
-                builder.build_and_reset())
-
-        # Apply postprocessor
-        post_batches = {}
-        if self.clip_rewards:
-            for _, (_, pre_batch) in pre_batches.items():
-                pre_batch["rewards"] = np.sign(pre_batch["rewards"])
-        for agent_id, (_, pre_batch) in pre_batches.items():
-            other_batches = pre_batches.copy()
-            del other_batches[agent_id]
-            policy = self.policy_map[self.agent_to_policy[agent_id]]
-            if any(pre_batch["dones"][:-1]) or len(set(
-                    pre_batch["eps_id"])) > 1:
-                raise ValueError(
-                    "Batches sent to postprocessing must only contain steps "
-                    "from a single trajectory.", pre_batch)
-            post_batches[agent_id] = policy.postprocess_trajectory(
-                pre_batch, other_batches, episode)
-
-        # Append into policy batches and reset
-        for agent_id, post_batch in sorted(post_batches.items()):
-            self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
-                post_batch)
-        self.agent_builders.clear()
-        self.agent_to_policy.clear()
-
-    def build_and_reset(self, episode):
-        """Returns the accumulated sample batches for each policy.
-
-        Any unprocessed rows will be first postprocessed with a policy
-        postprocessor. The internal state of this builder will be reset.
-
-        Arguments:
-            episode: current MultiAgentEpisode object or None
-        """
-
-        self.postprocess_batch_so_far(episode)
-        policy_batches = {}
-        for policy_id, builder in self.policy_builders.items():
-            if builder.count > 0:
-                policy_batches[policy_id] = builder.build_and_reset()
-        old_count = self.count
-        self.count = 0
-        return MultiAgentBatch.wrap_as_needed(policy_batches, old_count)
-
-
+@PublicAPI
 class MultiAgentBatch(object):
     """A batch of experiences from multiple policies in the environment.
 
@@ -177,17 +26,20 @@ class MultiAgentBatch(object):
             batch contains across all policies in total.
     """
 
+    @PublicAPI
     def __init__(self, policy_batches, count):
         self.policy_batches = policy_batches
         self.count = count
 
     @staticmethod
+    @PublicAPI
     def wrap_as_needed(batches, count):
         if len(batches) == 1 and DEFAULT_POLICY_ID in batches:
             return batches[DEFAULT_POLICY_ID]
         return MultiAgentBatch(batches, count)
 
     @staticmethod
+    @PublicAPI
     def concat_samples(samples):
         policy_batches = collections.defaultdict(list)
         total_count = 0
@@ -201,16 +53,28 @@ class MultiAgentBatch(object):
             out[policy_id] = SampleBatch.concat_samples(batches)
         return MultiAgentBatch(out, total_count)
 
+    @PublicAPI
     def copy(self):
         return MultiAgentBatch(
             {k: v.copy()
              for (k, v) in self.policy_batches.items()}, self.count)
 
+    @PublicAPI
     def total(self):
         ct = 0
         for batch in self.policy_batches.values():
             ct += batch.count
         return ct
+
+    @DeveloperAPI
+    def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
+        for batch in self.policy_batches.values():
+            batch.compress(bulk=bulk, columns=columns)
+
+    @DeveloperAPI
+    def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
+        for batch in self.policy_batches.values():
+            batch.decompress_if_needed(columns)
 
     def __str__(self):
         return "MultiAgentBatch({}, count={})".format(
@@ -221,6 +85,7 @@ class MultiAgentBatch(object):
             str(self.policy_batches), self.count)
 
 
+@PublicAPI
 class SampleBatch(object):
     """Wrapper around a dictionary with string keys and array-like values.
 
@@ -228,6 +93,26 @@ class SampleBatch(object):
     samples, each with an "obs" and "reward" attribute.
     """
 
+    # Outputs from interacting with the environment
+    CUR_OBS = "obs"
+    NEXT_OBS = "new_obs"
+    ACTIONS = "actions"
+    REWARDS = "rewards"
+    PREV_ACTIONS = "prev_actions"
+    PREV_REWARDS = "prev_rewards"
+    DONES = "dones"
+    INFOS = "infos"
+
+    # Uniquely identifies an episode
+    EPS_ID = "eps_id"
+
+    # Uniquely identifies an agent within an episode
+    AGENT_INDEX = "agent_index"
+
+    # Value function predictions emitted by the behaviour policy
+    VF_PREDS = "vf_preds"
+
+    @PublicAPI
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
 
@@ -243,15 +128,17 @@ class SampleBatch(object):
         self.count = lengths[0]
 
     @staticmethod
+    @PublicAPI
     def concat_samples(samples):
         if isinstance(samples[0], MultiAgentBatch):
             return MultiAgentBatch.concat_samples(samples)
         out = {}
         samples = [s for s in samples if s.count > 0]
         for k in samples[0].keys():
-            out[k] = np.concatenate([s[k] for s in samples])
+            out[k] = concat_aligned([s[k] for s in samples])
         return SampleBatch(out)
 
+    @PublicAPI
     def concat(self, other):
         """Returns a new SampleBatch with each data column concatenated.
 
@@ -265,14 +152,16 @@ class SampleBatch(object):
         assert self.keys() == other.keys(), "must have same columns"
         out = {}
         for k in self.keys():
-            out[k] = np.concatenate([self[k], other[k]])
+            out[k] = concat_aligned([self[k], other[k]])
         return SampleBatch(out)
 
+    @PublicAPI
     def copy(self):
         return SampleBatch(
             {k: np.array(v, copy=True)
              for (k, v) in self.data.items()})
 
+    @PublicAPI
     def rows(self):
         """Returns an iterator over data rows, i.e. dicts with column values.
 
@@ -291,6 +180,7 @@ class SampleBatch(object):
                 row[k] = self[k][i]
             yield row
 
+    @PublicAPI
     def columns(self, keys):
         """Returns a list of just the specified columns.
 
@@ -305,6 +195,7 @@ class SampleBatch(object):
             out.append(self[k])
         return out
 
+    @PublicAPI
     def shuffle(self):
         """Shuffles the rows of this batch in-place."""
 
@@ -312,6 +203,7 @@ class SampleBatch(object):
         for key, val in self.items():
             self[key] = val[permutation]
 
+    @PublicAPI
     def split_by_episode(self):
         """Splits this batch's data by `eps_id`.
 
@@ -335,6 +227,7 @@ class SampleBatch(object):
         assert sum(s.count for s in slices) == self.count, (slices, self.count)
         return slices
 
+    @PublicAPI
     def slice(self, start, end):
         """Returns a slice of the row data of this batch.
 
@@ -348,23 +241,48 @@ class SampleBatch(object):
 
         return SampleBatch({k: v[start:end] for k, v in self.data.items()})
 
+    @PublicAPI
+    def keys(self):
+        return self.data.keys()
+
+    @PublicAPI
+    def items(self):
+        return self.data.items()
+
+    @PublicAPI
     def __getitem__(self, key):
         return self.data[key]
 
+    @PublicAPI
     def __setitem__(self, key, item):
         self.data[key] = item
+
+    @DeveloperAPI
+    def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
+        for key in columns:
+            if key in self.data:
+                if bulk:
+                    self.data[key] = pack(self.data[key])
+                else:
+                    self.data[key] = np.array(
+                        [pack(o) for o in self.data[key]])
+
+    @DeveloperAPI
+    def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
+        for key in columns:
+            if key in self.data:
+                arr = self.data[key]
+                if is_compressed(arr):
+                    self.data[key] = unpack(arr)
+                elif len(arr) > 0 and is_compressed(arr[0]):
+                    self.data[key] = np.array(
+                        [unpack(o) for o in self.data[key]])
 
     def __str__(self):
         return "SampleBatch({})".format(str(self.data))
 
     def __repr__(self):
         return "SampleBatch({})".format(str(self.data))
-
-    def keys(self):
-        return self.data.keys()
-
-    def items(self):
-        return self.data.items()
 
     def __iter__(self):
         return self.data.__iter__()

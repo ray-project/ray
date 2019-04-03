@@ -1,0 +1,22 @@
+pong-appo:
+    env: PongNoFrameskip-v4
+    run: APPO
+    stop:
+        episode_reward_mean: 18.0
+        timesteps_total: 5000000
+    config:
+        sample_batch_size: 50
+        train_batch_size: 750
+        num_workers: 32
+        broadcast_interval: 1
+        max_sample_requests_in_flight_per_worker: 1
+        num_data_loader_buffers: 1
+        num_envs_per_worker: 5
+        minibatch_buffer_size: 4
+        num_sgd_iter: 2
+        vf_loss_coeff: 1.0
+        clip_param: 0.3
+        num_gpus: 1
+        grad_clip: 10
+        model:
+          dim: 42

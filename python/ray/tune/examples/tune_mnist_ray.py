@@ -33,7 +33,8 @@ import tempfile
 import time
 
 import ray
-from ray.tune import grid_search, run_experiments, register_trainable
+from ray import tune
+from ray.tune import grid_search, register_trainable
 
 from tensorflow.examples.tutorials.mnist import input_data
 import numpy as np
@@ -213,7 +214,7 @@ def train(config={'activation': 'relu'}, reporter=None):
 
 
 # !!! Example of using the ray.tune Python API !!!
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--smoke-test', action='store_true', help='Finish quickly for testing')
@@ -221,7 +222,6 @@ if __name__ == '__main__':
 
     register_trainable('train_mnist', train)
     mnist_spec = {
-        'run': 'train_mnist',
         'stop': {
             'mean_accuracy': 0.99,
             'time_total_s': 600,
@@ -238,4 +238,4 @@ if __name__ == '__main__':
         mnist_spec['stop']['training_iteration'] = 2
 
     ray.init()
-    run_experiments({'tune_mnist_test': mnist_spec})
+    tune.run('train_mnist', name='tune_mnist_test', **mnist_spec)

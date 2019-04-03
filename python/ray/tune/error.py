@@ -8,6 +8,6 @@ class TuneError(Exception):
     pass
 
 
-class TuneManagerError(TuneError):
-    """Error raised in operating the Tune Manager."""
+class AbortTrialExecution(TuneError):
+    """Error that indicates a trial should not be retried."""
     pass

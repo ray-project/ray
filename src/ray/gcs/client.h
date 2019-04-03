@@ -4,7 +4,6 @@
 #include <map>
 #include <string>
 
-#include "plasma/events.h"
 #include "ray/gcs/asio.h"
 #include "ray/gcs/tables.h"
 #include "ray/id.h"
@@ -41,9 +40,6 @@ class RAY_EXPORT AsyncGcsClient {
   AsyncGcsClient(const std::string &address, int port, const std::string &password);
   AsyncGcsClient(const std::string &address, int port, bool is_test_client);
 
-  /// Attach this client to a plasma event loop. Note that only
-  /// one event loop should be attached at a time.
-  Status Attach(plasma::EventLoop &event_loop);
   /// Attach this client to an asio event loop. Note that only
   /// one event loop should be attached at a time.
   Status Attach(boost::asio::io_service &io_service);
@@ -64,6 +60,8 @@ class RAY_EXPORT AsyncGcsClient {
   ErrorTable &error_table();
   DriverTable &driver_table();
   ProfileTable &profile_table();
+  ActorCheckpointTable &actor_checkpoint_table();
+  ActorCheckpointIdTable &actor_checkpoint_id_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -94,6 +92,8 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ErrorTable> error_table_;
   std::unique_ptr<ProfileTable> profile_table_;
   std::unique_ptr<ClientTable> client_table_;
+  std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
+  std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
   // The following contexts write to the data shard
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_async_clients_;

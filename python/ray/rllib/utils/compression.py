@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.utils.annotations import DeveloperAPI
+
 import logging
 import time
 import base64
@@ -21,6 +23,7 @@ except ImportError:
     LZ4_ENABLED = False
 
 
+@DeveloperAPI
 def pack(data):
     if LZ4_ENABLED:
         data = pyarrow.serialize(data).to_buffer().to_pybytes()
@@ -31,12 +34,14 @@ def pack(data):
     return data
 
 
+@DeveloperAPI
 def pack_if_needed(data):
     if isinstance(data, np.ndarray):
         data = pack(data)
     return data
 
 
+@DeveloperAPI
 def unpack(data):
     if LZ4_ENABLED:
         data = base64.b64decode(data)
@@ -45,10 +50,16 @@ def unpack(data):
     return data
 
 
+@DeveloperAPI
 def unpack_if_needed(data):
-    if isinstance(data, bytes) or isinstance(data, string_types):
+    if is_compressed(data):
         data = unpack(data)
     return data
+
+
+@DeveloperAPI
+def is_compressed(data):
+    return isinstance(data, bytes) or isinstance(data, string_types)
 
 
 # Intel(R) Core(TM) i7-4600U CPU @ 2.10GHz

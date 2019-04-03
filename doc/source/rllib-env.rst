@@ -11,7 +11,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
 =============  =======================  ==================  ===========  ==================
 A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-PPO             **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 IMPALA          **Yes** `+parametric`_  No                  **Yes**      **Yes**
 DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
@@ -21,6 +21,7 @@ APEX-DDPG       No                      **Yes**             **Yes**      No
 ES              **Yes**                 **Yes**             No           No
 ARS             **Yes**                 **Yes**             No           No
 QMIX            **Yes**                 No                  **Yes**      **Yes**
+MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 =============  =======================  ==================  ===========  ==================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
@@ -60,6 +61,12 @@ You can also register a custom env creator function with a string name. This fun
 
     register_env("my_env", env_creator)
     trainer = ppo.PPOAgent(env="my_env")
+
+For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__.
+
+.. warning::
+
+   The gym registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
 
 Configuring Environments
 ------------------------
@@ -102,14 +109,22 @@ There are two ways to scale experience collection with Gym environments:
 
 You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v0 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_worker=64``.
 
+Expensive Environments
+~~~~~~~~~~~~~~~~~~~~~~
+
+Some environments may be very resource-intensive to create. RLlib will create ``num_workers + 1`` copies of the environment since one copy is needed for the driver process. To avoid paying the extra overhead of the driver copy, which is needed to access the env's action and observation spaces, you can defer environment initialization until ``reset()`` is called.
 
 Vectorized
 ----------
 
 RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs_per_worker`` config is set, or you can define a custom environment class that subclasses `VectorEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/vector_env.py>`__ to implement ``vector_step()`` and ``vector_reset()``.
 
-Multi-Agent
------------
+Note that auto-vectorization only applies to policy inference by default. This means that policy inference will be batched, but your envs will still be stepped one at a time. If you would like your envs to be stepped in parallel, you can set ``"remote_worker_envs": True``. This will create env instances in Ray actors and step them in parallel. These remote processes introduce communication overheads, so this only helps if your env is very expensive to step / reset.
+
+When using remote envs, you can control the batching level for inference with ``remote_env_batch_wait_ms``. The default value of 0ms means envs execute asynchronously and inference is only batched opportunistically. Setting the timeout to a large value will result in fully batched inference and effectively synchronous environment stepping. The optimal value depends on your environment step / reset time, and model inference speed.
+
+Multi-Agent and Hierarchical
+----------------------------
 
 .. note::
 
@@ -153,16 +168,16 @@ If all the agents will be using the same algorithm class to train, then you can 
     trainer = pg.PGAgent(env="my_multiagent_env", config={
         "multiagent": {
             "policy_graphs": {
-                "car1": (PGPolicyGraph, car_obs_space, car_act_space, {"gamma": 0.85}),
-                "car2": (PGPolicyGraph, car_obs_space, car_act_space, {"gamma": 0.99}),
-                "traffic_light": (PGPolicyGraph, tl_obs_space, tl_act_space, {}),
+                # the first tuple value is None -> uses default policy graph
+                "car1": (None, car_obs_space, car_act_space, {"gamma": 0.85}),
+                "car2": (None, car_obs_space, car_act_space, {"gamma": 0.99}),
+                "traffic_light": (None, tl_obs_space, tl_act_space, {}),
             },
             "policy_mapping_fn":
                 lambda agent_id:
                     "traffic_light"  # Traffic lights are always controlled by this policy
                     if agent_id.startswith("traffic_light_")
                     else random.choice(["car1", "car2"])  # Randomly choose from car policies
-            },
         },
     })
 
@@ -203,15 +218,38 @@ Here is a simple `example training script <https://github.com/ray-project/ray/bl
 
 To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across multiple agents internally. It can also be auto-vectorized by setting ``num_envs_per_worker > 1``.
 
-Grouping Agents
-~~~~~~~~~~~~~~~
+Hierarchical Environments
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
+Hierarchical training can sometimes be implemented as a special case of multi-agent RL. For example, consider a three-level hierarchy of policies, where a top-level policy issues high level actions that are executed at finer timescales by a mid-level and low-level policy. The following timeline shows one step of the top-level policy, which corresponds to two mid-level actions and five low-level actions:
 
-.. literalinclude:: ../../python/ray/rllib/env/multi_agent_env.py
-   :language: python
-   :start-after: __grouping_doc_begin__
-   :end-before: __grouping_doc_end__
+.. code-block:: text
+
+   top_level ---------------------------------------------------------------> top_level --->
+   mid_level_0 -------------------------------> mid_level_0 ----------------> mid_level_1 ->
+   low_level_0 -> low_level_0 -> low_level_0 -> low_level_1 -> low_level_1 -> low_level_2 ->
+
+This can be implemented as a multi-agent environment with three types of agents. Each higher-level action creates a new lower-level agent instance with a new id (e.g., ``low_level_0``, ``low_level_1``, ``low_level_2`` in the above example). These lower-level agents pop in existence at the start of higher-level steps, and terminate when their higher-level action ends. Their experiences are aggregated by policy, so from RLlib's perspective it's just optimizing three different types of policies. The configuration might look something like this:
+
+.. code-block:: python
+
+    "multiagent": {
+        "policy_graphs": {
+            "top_level": (custom_policy_graph or None, ...),
+            "mid_level": (custom_policy_graph or None, ...),
+            "low_level": (custom_policy_graph or None, ...),
+        },
+        "policy_mapping_fn":
+            lambda agent_id:
+                "low_level" if agent_id.startswith("low_level_") else
+                "mid_level" if agent_id.startswith("mid_level_") else "top_level"
+        "policies_to_train": ["top_level"],
+    },
+
+
+In this setup, the appropriate rewards for training lower-level agents must be provided by the multi-agent env implementation. The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level agents to lower-level agents as part of the lower-level agent observation.
+
+See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__.
 
 Variable-Sharing Between Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -250,6 +288,18 @@ Implementing a centralized critic that takes as input the observations and actio
 
 2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy graph, the same as with any other value function. For an example of defining loss inputs, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
 
+Grouping Agents
+~~~~~~~~~~~~~~~
+
+It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
+
+.. literalinclude:: ../../python/ray/rllib/env/multi_agent_env.py
+   :language: python
+   :start-after: __grouping_doc_begin__
+   :end-before: __grouping_doc_end__
+
+For environments with multiple groups, or mixtures of agent groups and individual agents, you can use grouping in conjunction with the policy mapping API described in prior sections.
+
 Interfacing with External Agents
 --------------------------------
 
@@ -273,11 +323,9 @@ Note that envs can read from different partitions of the logs based on the ``wor
 
 .. seealso::
 
-    `RLlib I/O <rllib-offline.html>`__ provides higher-level interfaces for working with offline experience datasets.
+    `Offline Datasets <rllib-offline.html>`__ provide higher-level interfaces for working with offline experience datasets.
 
-Batch Asynchronous
-------------------
+Advanced Integrations
+---------------------
 
-The lowest-level "catch-all" environment supported by RLlib is `AsyncVectorEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/async_vector_env.py>`__. AsyncVectorEnv models multiple agents executing asynchronously in multiple environments. A call to ``poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents can be sent back via ``send_actions()``. This interface can be subclassed directly to support batched simulators such as `ELF <https://github.com/facebookresearch/ELF>`__.
-
-Under the hood, all other envs are converted to AsyncVectorEnv by RLlib so that there is a common internal path for policy evaluation.
+For more complex / high-performance environment integrations, you can instead extend the low-level `BaseEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/base_env.py>`__ class. This low-level API models multiple agents executing asynchronously in multiple environments. A call to ``BaseEnv:poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents are sent back via ``BaseEnv:send_actions()``. BaseEnv is used to implement all the other env types in RLlib, so it offers a superset of their functionality. For example, ``BaseEnv`` is used to implement dynamic batching of observations for inference over `multiple simulator actors <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/remote_vector_env.py>`__.

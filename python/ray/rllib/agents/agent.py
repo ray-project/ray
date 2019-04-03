@@ -13,20 +13,27 @@ import tensorflow as tf
 from types import FunctionType
 
 import ray
-from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter
+from ray.exceptions import RayError
+from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
+    ShuffledInput
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator, \
+    _validate_multiagent_config
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Resources
+from ray.tune.trial import Resources, ExportFormat
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
 logger = logging.getLogger(__name__)
+
+# Max number of times to retry a worker failure. We shouldn't try too many
+# times in a row since that would indicate a persistent cluster issue.
+MAX_WORKER_FAILURE_RETRIES = 3
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -34,7 +41,10 @@ COMMON_CONFIG = {
     # === Debugging ===
     # Whether to write episode stats and videos to the agent log dir
     "monitor": False,
-    # Set the ray.rllib.* log level for the agent process and its evaluators
+    # Set the ray.rllib.* log level for the agent process and its evaluators.
+    # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
+    # periodically print out summaries of relevant internal dataflow (this is
+    # also printed out once at startup at the INFO level).
     "log_level": "INFO",
     # Callbacks that will be run during various phases of training. These all
     # take a single "info" dict as an argument. For episode callbacks, custom
@@ -47,6 +57,8 @@ COMMON_CONFIG = {
         "on_sample_end": None,     # arg: {"samples": .., "evaluator": ...}
         "on_train_result": None,   # arg: {"agent": ..., "result": ...}
     },
+    # Whether to attempt to continue training if a worker crashes.
+    "ignore_worker_failures": False,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the
@@ -58,8 +70,13 @@ COMMON_CONFIG = {
     # === Environment ===
     # Discount factor of the MDP
     "gamma": 0.99,
-    # Number of steps after which the episode is forced to terminate
+    # Number of steps after which the episode is forced to terminate. Defaults
+    # to `env.spec.max_episode_steps` (if present) for Gym envs.
     "horizon": None,
+    # Calculate rewards but don't reset the environment when the horizon is
+    # hit. This allows value estimation and RNN state to span across logical
+    # episodes denoted by horizon. This only has an effect if horizon != inf.
+    "soft_horizon": False,
     # Arguments to pass to the env creator
     "env_config": {},
     # Environment name can also be passed via config
@@ -91,14 +108,16 @@ COMMON_CONFIG = {
     # === Execution ===
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
-    # Default sample batch size
+    # Default sample batch size (unroll length). Batches of this size are
+    # collected from workers until train_batch_size is met. When using
+    # multiple envs per worker, this is multiplied by num_envs_per_worker.
     "sample_batch_size": 200,
     # Training batch size, if applicable. Should be >= sample_batch_size.
     # Samples batches will be concatenated together to this size for training.
     "train_batch_size": 200,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "truncate_episodes",
-    # Whether to use a background thread for sampling (slightly off-policy)
+    # (Deprecated) Use a background thread for sampling (slightly off-policy)
     "sample_async": False,
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter"
     "observation_filter": "NoFilter",
@@ -129,9 +148,20 @@ COMMON_CONFIG = {
     "compress_observations": False,
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
+    # Smooth metrics over this many episodes.
+    "metrics_smoothing_episodes": 100,
+    # If using num_envs_per_worker > 1, whether to create those new envs in
+    # remote processes instead of in the same worker. This adds overheads, but
+    # can make sense if your envs can take much time to step / reset
+    # (e.g., for StarCraft). Use this cautiously; overheads are significant.
+    "remote_worker_envs": False,
+    # Timeout that remote workers are waiting when polling environments.
+    # 0 (continue when at least one env is ready) is a reasonable default,
+    # but optimal value could be obtained by measuring your environment
+    # step / reset and model inference perf.
+    "remote_env_batch_wait_ms": 0,
 
-    # === Offline Data Input / Output ===
-    # __sphinx_doc_input_begin__
+    # === Offline Datasets ===
     # Specify how to generate experiences:
     #  - "sampler": generate experiences via online simulation (default)
     #  - a local directory or file glob expression (e.g., "/tmp/*.json")
@@ -141,20 +171,22 @@ COMMON_CONFIG = {
     #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
     #  - a function that returns a rllib.offline.InputReader
     "input": "sampler",
-    # Specify how to evaluate the current policy. This only makes sense to set
-    # when the input is not already generating simulation data:
-    #  - None: don't evaluate the policy. The episode reward and other
-    #    metrics will be NaN if using offline data.
+    # Specify how to evaluate the current policy. This only has an effect when
+    # reading offline experiences. Available options:
+    #  - "wis": the weighted step-wise importance sampling estimator.
+    #  - "is": the step-wise importance sampling estimator.
     #  - "simulation": run the environment in the background, but use
     #    this data for evaluation only and not for learning.
-    "input_evaluation": None,
+    "input_evaluation": ["is", "wis"],
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
     # policy, not the *behaviour* policy, which is typically undesirable for
     # on-policy algorithms.
     "postprocess_inputs": False,
-    # __sphinx_doc_input_end__
-    # __sphinx_doc_output_begin__
+    # If positive, input batches will be shuffled via a sliding window buffer
+    # of this number of batches. Use this if the input data is not in random
+    # enough order. Input is delayed until the shuffle buffer is filled.
+    "shuffle_buffer_size": 0,
     # Specify where experiences should be saved:
     #  - None: don't save any experiences
     #  - "logdir" to save to the agent log dir
@@ -165,7 +197,6 @@ COMMON_CONFIG = {
     "output_compress_columns": ["obs", "new_obs"],
     # Max output file size before rolling over to a new file.
     "output_max_file_size": 64 * 1024 * 1024,
-    # __sphinx_doc_output_end__
 
     # === Multiagent ===
     "multiagent": {
@@ -182,14 +213,22 @@ COMMON_CONFIG = {
 # yapf: enable
 
 
+@DeveloperAPI
 def with_common_config(extra_config):
     """Returns the given config dict merged with common agent confs."""
 
-    config = copy.deepcopy(COMMON_CONFIG)
+    return with_base_config(COMMON_CONFIG, extra_config)
+
+
+def with_base_config(base_config, extra_config):
+    """Returns the given config dict merged with a base agent conf."""
+
+    config = copy.deepcopy(base_config)
     config.update(extra_config)
     return config
 
 
+@PublicAPI
 class Agent(Trainable):
     """All RLlib agents extend this base class.
 
@@ -208,6 +247,7 @@ class Agent(Trainable):
         "custom_resources_per_worker"
     ]
 
+    @PublicAPI
     def __init__(self, config=None, env=None, logger_creator=None):
         """Initialize an RLLib agent.
 
@@ -225,7 +265,7 @@ class Agent(Trainable):
         self.global_vars = {"timestep": 0}
 
         # Agents allow env ids to be passed directly to the constructor.
-        self._env_id = _register_if_needed(env or config.get("env"))
+        self._env_id = self._register_if_needed(env or config.get("env"))
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -260,16 +300,36 @@ class Agent(Trainable):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     @override(Trainable)
+    @PublicAPI
     def train(self):
         """Overrides super.train to synchronize global vars."""
 
-        if hasattr(self, "optimizer") and isinstance(self.optimizer,
-                                                     PolicyOptimizer):
+        if self._has_policy_optimizer():
             self.global_vars["timestep"] = self.optimizer.num_steps_sampled
             self.optimizer.local_evaluator.set_global_vars(self.global_vars)
             for ev in self.optimizer.remote_evaluators:
                 ev.set_global_vars.remote(self.global_vars)
             logger.debug("updated global vars: {}".format(self.global_vars))
+
+        result = None
+        for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
+            try:
+                result = Trainable.train(self)
+            except RayError as e:
+                if self.config["ignore_worker_failures"]:
+                    logger.exception(
+                        "Error in train call, attempting to recover")
+                    self._try_recover()
+                else:
+                    logger.info(
+                        "Worker crashed during call to train(). To attempt to "
+                        "continue training without the failed worker, set "
+                        "`'ignore_worker_failures': True`.")
+                    raise e
+            else:
+                break
+        if result is None:
+            raise RuntimeError("Failed to recover from worker crash")
 
         if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
                 and hasattr(self, "local_evaluator")):
@@ -280,13 +340,21 @@ class Agent(Trainable):
             logger.debug("synchronized filters: {}".format(
                 self.local_evaluator.filters))
 
-        result = Trainable.train(self)
+        if self._has_policy_optimizer():
+            result["num_healthy_workers"] = len(
+                self.optimizer.remote_evaluators)
+        return result
+
+    @override(Trainable)
+    def _log_result(self, result):
         if self.config["callbacks"].get("on_train_result"):
             self.config["callbacks"]["on_train_result"]({
                 "agent": self,
                 "result": result,
             })
-        return result
+        # log after the callback is invoked, so that the user has a chance
+        # to mutate the result
+        Trainable._log_result(self, result)
 
     @override(Trainable)
     def _setup(self, config):
@@ -306,6 +374,7 @@ class Agent(Trainable):
         merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
+        self.raw_user_config = config
         self.config = merged_config
         Agent._validate_config(self.config)
         if self.config.get("log_level"):
@@ -313,14 +382,22 @@ class Agent(Trainable):
 
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
         with tf.Graph().as_default():
-            self._init()
+            self._init(self.config, self.env_creator)
 
     @override(Trainable)
     def _stop(self):
+        # Call stop on all evaluators to release resources
+        if hasattr(self, "local_evaluator"):
+            self.local_evaluator.stop()
+        if hasattr(self, "remote_evaluators"):
+            for ev in self.remote_evaluators:
+                ev.stop.remote()
+
         # workaround for https://github.com/ray-project/ray/issues/1516
         if hasattr(self, "remote_evaluators"):
             for ev in self.remote_evaluators:
                 ev.__ray_terminate__.remote()
+
         if hasattr(self, "optimizer"):
             self.optimizer.stop()
 
@@ -336,18 +413,20 @@ class Agent(Trainable):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
-    def _init(self):
+    @DeveloperAPI
+    def _init(self, config, env_creator):
         """Subclasses should override this for custom initialization."""
 
         raise NotImplementedError
 
+    @PublicAPI
     def compute_action(self,
                        observation,
                        state=None,
                        prev_action=None,
                        prev_reward=None,
                        info=None,
-                       policy_id="default"):
+                       policy_id=DEFAULT_POLICY_ID):
         """Computes an action for the specified policy.
 
         Note that you can also access the policy object through
@@ -374,9 +453,19 @@ class Agent(Trainable):
             preprocessed, update=False)
         if state:
             return self.get_policy(policy_id).compute_single_action(
-                filtered_obs, state, prev_action, prev_reward, info)
+                filtered_obs,
+                state,
+                prev_action,
+                prev_reward,
+                info,
+                clip_actions=self.config["clip_actions"])
         return self.get_policy(policy_id).compute_single_action(
-            filtered_obs, state, prev_action, prev_reward, info)[0]
+            filtered_obs,
+            state,
+            prev_action,
+            prev_reward,
+            info,
+            clip_actions=self.config["clip_actions"])[0]
 
     @property
     def iteration(self):
@@ -396,6 +485,7 @@ class Agent(Trainable):
 
         raise NotImplementedError
 
+    @PublicAPI
     def get_policy(self, policy_id=DEFAULT_POLICY_ID):
         """Return policy graph for the specified id, or None.
 
@@ -405,6 +495,7 @@ class Agent(Trainable):
 
         return self.local_evaluator.get_policy(policy_id)
 
+    @PublicAPI
     def get_weights(self, policies=None):
         """Return a dictionary of policy ids to weights.
 
@@ -414,6 +505,7 @@ class Agent(Trainable):
         """
         return self.local_evaluator.get_weights(policies)
 
+    @PublicAPI
     def set_weights(self, weights):
         """Set policy weights by policy id.
 
@@ -422,7 +514,11 @@ class Agent(Trainable):
         """
         self.local_evaluator.set_weights(weights)
 
-    def make_local_evaluator(self, env_creator, policy_graph):
+    @DeveloperAPI
+    def make_local_evaluator(self,
+                             env_creator,
+                             policy_graph,
+                             extra_config=None):
         """Convenience method to return configured local evaluator."""
 
         return self._make_evaluator(
@@ -430,12 +526,16 @@ class Agent(Trainable):
             env_creator,
             policy_graph,
             0,
-            # important: allow local tf to use more CPUs for optimization
-            merge_dicts(self.config, {
-                "tf_session_args": self.
-                config["local_evaluator_tf_session_args"]
-            }))
+            merge_dicts(
+                # important: allow local tf to use more CPUs for optimization
+                merge_dicts(
+                    self.config, {
+                        "tf_session_args": self.
+                        config["local_evaluator_tf_session_args"]
+                    }),
+                extra_config or {}))
 
+    @DeveloperAPI
     def make_remote_evaluators(self, env_creator, policy_graph, count):
         """Convenience method to return a number of remote evaluators."""
 
@@ -446,11 +546,13 @@ class Agent(Trainable):
         }
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
+
         return [
             self._make_evaluator(cls, env_creator, policy_graph, i + 1,
                                  self.config) for i in range(count)
         ]
 
+    @DeveloperAPI
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
         """Export policy model with given policy_id to local directory.
 
@@ -466,6 +568,7 @@ class Agent(Trainable):
         """
         self.local_evaluator.export_policy_model(export_dir, policy_id)
 
+    @DeveloperAPI
     def export_policy_checkpoint(self,
                                  export_dir,
                                  filename_prefix="model",
@@ -486,11 +589,22 @@ class Agent(Trainable):
         self.local_evaluator.export_policy_checkpoint(
             export_dir, filename_prefix, policy_id)
 
+    @DeveloperAPI
+    def collect_metrics(self, selected_evaluators=None):
+        """Collects metrics from the remote evaluators of this agent.
+
+        This is the same data as returned by a call to train().
+        """
+        return self.optimizer.collect_metrics(
+            self.config["collect_metrics_timeout"],
+            min_history=self.config["metrics_smoothing_episodes"],
+            selected_evaluators=selected_evaluators)
+
     @classmethod
     def resource_help(cls, config):
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
-                "setting `num_workers` and other configs. See the "
-                "DEFAULT_CONFIG defined by each agent for more info.\n\n"
+                "setting `num_workers`, `num_gpus`, and other configs. See "
+                "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
                 "The config of this agent is: {}".format(config))
 
     @staticmethod
@@ -507,10 +621,53 @@ class Agent(Trainable):
             raise ValueError(
                 "The `use_gpu_for_workers` config is deprecated, please use "
                 "`num_gpus_per_worker=1` instead.")
-        if (config["input"] == "sampler"
-                and config["input_evaluation"] is not None):
+        if type(config["input_evaluation"]) != list:
             raise ValueError(
-                "`input_evaluation` should not be set when input=sampler")
+                "`input_evaluation` must be a list of strings, got {}".format(
+                    config["input_evaluation"]))
+
+    def _try_recover(self):
+        """Try to identify and blacklist any unhealthy workers.
+
+        This method is called after an unexpected remote error is encountered
+        from a worker. It issues check requests to all current workers and
+        blacklists any that respond with error. If no healthy workers remain,
+        an error is raised.
+        """
+
+        if not self._has_policy_optimizer():
+            raise NotImplementedError(
+                "Recovery is not supported for this algorithm")
+
+        logger.info("Health checking all workers...")
+        checks = []
+        for ev in self.optimizer.remote_evaluators:
+            _, obj_id = ev.sample_with_count.remote()
+            checks.append(obj_id)
+
+        healthy_evaluators = []
+        for i, obj_id in enumerate(checks):
+            ev = self.optimizer.remote_evaluators[i]
+            try:
+                ray.get(obj_id)
+                healthy_evaluators.append(ev)
+                logger.info("Worker {} looks healthy".format(i + 1))
+            except RayError:
+                logger.exception("Blacklisting worker {}".format(i + 1))
+                try:
+                    ev.__ray_terminate__.remote()
+                except Exception:
+                    logger.exception("Error terminating unhealthy worker")
+
+        if len(healthy_evaluators) < 1:
+            raise RuntimeError(
+                "Not enough healthy workers remain to continue.")
+
+        self.optimizer.reset(healthy_evaluators)
+
+    def _has_policy_optimizer(self):
+        return hasattr(self, "optimizer") and isinstance(
+            self.optimizer, PolicyOptimizer)
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
                         config):
@@ -525,9 +682,13 @@ class Agent(Trainable):
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
-            input_creator = (lambda ioctx: MixedInput(config["input"], ioctx))
+            input_creator = (lambda ioctx: ShuffledInput(
+                MixedInput(config["input"], ioctx), config[
+                    "shuffle_buffer_size"]))
         else:
-            input_creator = (lambda ioctx: JsonReader(config["input"], ioctx))
+            input_creator = (lambda ioctx: ShuffledInput(
+                JsonReader(config["input"], ioctx), config[
+                    "shuffle_buffer_size"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
@@ -541,14 +702,28 @@ class Agent(Trainable):
                 compress_columns=config["output_compress_columns"]))
         else:
             output_creator = (lambda ioctx: JsonWriter(
-                    config["output"],
-                    ioctx,
-                    max_file_size=config["output_max_file_size"],
-                    compress_columns=config["output_compress_columns"]))
+                config["output"],
+                ioctx,
+                max_file_size=config["output_max_file_size"],
+                compress_columns=config["output_compress_columns"]))
+
+        if config["input"] == "sampler":
+            input_evaluation = []
+        else:
+            input_evaluation = config["input_evaluation"]
+
+        # Fill in the default policy graph if 'None' is specified in multiagent
+        if self.config["multiagent"]["policy_graphs"]:
+            tmp = self.config["multiagent"]["policy_graphs"]
+            _validate_multiagent_config(tmp, allow_none_graph=True)
+            for k, v in tmp.items():
+                if v[0] is None:
+                    tmp[k] = (policy_graph, v[1], v[2], v[3])
+            policy_graph = tmp
 
         return cls(
             env_creator,
-            self.config["multiagent"]["policy_graphs"] or policy_graph,
+            policy_graph,
             policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
             policies_to_train=self.config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator
@@ -572,8 +747,26 @@ class Agent(Trainable):
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            input_evaluation_method=config["input_evaluation"],
-            output_creator=output_creator)
+            input_evaluation=input_evaluation,
+            output_creator=output_creator,
+            remote_worker_envs=config["remote_worker_envs"],
+            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
+            soft_horizon=config["soft_horizon"],
+            _fake_sampler=config.get("_fake_sampler", False))
+
+    @override(Trainable)
+    def _export_model(self, export_formats, export_dir):
+        ExportFormat.validate(export_formats)
+        exported = {}
+        if ExportFormat.CHECKPOINT in export_formats:
+            path = os.path.join(export_dir, ExportFormat.CHECKPOINT)
+            self.export_policy_checkpoint(path)
+            exported[ExportFormat.CHECKPOINT] = path
+        if ExportFormat.MODEL in export_formats:
+            path = os.path.join(export_dir, ExportFormat.MODEL)
+            self.export_policy_model(path)
+            exported[ExportFormat.MODEL] = path
+        return exported
 
     def __getstate__(self):
         state = {}
@@ -592,11 +785,14 @@ class Agent(Trainable):
         if "optimizer" in state:
             self.optimizer.restore(state["optimizer"])
 
-
-def _register_if_needed(env_object):
-    if isinstance(env_object, six.string_types):
-        return env_object
-    elif isinstance(env_object, type):
-        name = env_object.__name__
-        register_env(name, lambda config: env_object(config))
-        return name
+    def _register_if_needed(self, env_object):
+        if isinstance(env_object, six.string_types):
+            return env_object
+        elif isinstance(env_object, type):
+            name = env_object.__name__
+            register_env(name, lambda config: env_object(config))
+            return name
+        raise ValueError(
+            "{} is an invalid env specification. ".format(env_object) +
+            "You can specify a custom env as either a class "
+            "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")

@@ -1,8 +1,7 @@
 """Example of handling variable length and/or parametric action spaces.
 
 This is a toy example of the action-embedding based approach for handling large
-discrete action spaces (potentially infinite in size), similar to how
-OpenAI Five works:
+discrete action spaces (potentially infinite in size), similar to this:
 
     https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/
 
@@ -28,9 +27,9 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 import ray
+from ray import tune
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.models.misc import normc_initializer
-from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -179,18 +178,16 @@ if __name__ == "__main__":
         }
     else:
         cfg = {}  # PG, IMPALA, A2C, etc.
-    run_experiments({
-        "parametric_cartpole": {
-            "run": args.run,
-            "env": "pa_cartpole",
-            "stop": {
-                "episode_reward_mean": args.stop,
-            },
-            "config": dict({
-                "model": {
-                    "custom_model": "pa_model",
-                },
-                "num_workers": 0,
-            }, **cfg),
+    tune.run(
+        args.run,
+        stop={
+            "episode_reward_mean": args.stop,
         },
-    })
+        config=dict({
+            "env": "pa_cartpole",
+            "model": {
+                "custom_model": "pa_model",
+            },
+            "num_workers": 0,
+        }, **cfg),
+    )

@@ -4,11 +4,12 @@
 
 <suppressions>
   <suppress checks="OperatorWrap" files=".*" />
+  <suppress checks="JavadocParagraph" files=".*" />
+  <suppress checks="SummaryJavadoc" files=".*" />
   <suppress checks="MemberNameCheck" files="PathConfig.java"/>
   <suppress checks="MemberNameCheck" files="RayParameters.java"/>
   <suppress checks="AbbreviationAsWordInNameCheck" files="RayParameters.java"/>
   <suppress checks=".*" files="RayCall.java"/>
   <!-- suppress check for flatbuffer-generated files. -->
-  <!-- TODO(raulchen): move these files to a directory, so this rule can be simplier. -->
-  <suppress checks=".*" files="(Arg|ResourcePair|Language|TaskInfo|ClientTableData).java" />
+  <suppress checks=".*" files="org[\\/]ray[\\/]runtime[\\/]generated[\\/]" />
 </suppressions>

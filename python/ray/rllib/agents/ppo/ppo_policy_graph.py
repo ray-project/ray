@@ -3,16 +3,25 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import logging
 import tensorflow as tf
 
 import ray
-from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
+
+logger = logging.getLogger(__name__)
+
+# Frozen logits of the policy that computed the action
+BEHAVIOUR_LOGITS = "behaviour_logits"
 
 
 class PPOLoss(object):
@@ -127,7 +136,144 @@ class PPOLoss(object):
         self.loss = loss
 
 
-class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
+class PPOPostprocessing(object):
+    """Adds the policy logits, VF preds, and advantages to the trajectory."""
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self), **{
+                SampleBatch.VF_PREDS: self.value_function,
+                BEHAVIOUR_LOGITS: self.logits
+            })
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        completed = sample_batch["dones"][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            next_state = []
+            for i in range(len(self.model.state_in)):
+                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            last_r = self._value(sample_batch["new_obs"][-1], *next_state)
+
+        # if needed, add a centralized value function to the sample batch
+        if self.config["use_centralized_vf"]:
+            # TODO(ev) do we need to sort this?
+            time_span = (sample_batch['t'][0], sample_batch['t'][-1])
+            other_agent_times = {agent_id:
+                                 (other_agent_batches[agent_id][1]["t"][0],
+                                  other_agent_batches[agent_id][1]["t"][-1])
+                                 for agent_id in other_agent_batches.keys()}
+            rel_agents = {agent_id: other_agent_time for agent_id,
+                          other_agent_time in
+                          other_agent_times.items()
+                          if self.time_overlap(time_span, other_agent_time)}
+            if len(rel_agents) > 0:
+                other_obs = {agent_id:
+                             other_agent_batches[agent_id][1]["obs"].copy()
+                             for agent_id in rel_agents.keys()}
+                padded_agent_obs = {agent_id:
+                                    self.overlap_and_pad_agent(
+                                        time_span,
+                                        rel_agent_time,
+                                        other_obs[agent_id])
+                                    for agent_id,
+                                    rel_agent_time in rel_agents.items()}
+                central_obs_batch = np.hstack(
+                    [padded_obs for padded_obs in padded_agent_obs.values()])
+                central_obs_batch = np.hstack(
+                    (central_obs_batch, sample_batch["obs"]))
+            else:
+                central_obs_batch = sample_batch["obs"]
+            max_vf_agents = self.config["max_vf_agents"]
+            num_agents = len(rel_agents) + 1
+            if num_agents < max_vf_agents:
+                diff = max_vf_agents - num_agents
+                zero_pad = np.zeros((central_obs_batch.shape[0],
+                                     self.observation_space.shape[0]*diff))
+                central_obs_batch = np.hstack((central_obs_batch,
+                                               zero_pad))
+            elif num_agents > max_vf_agents:
+                print("Too many agents!")
+            # add the central obs and central critic value
+            sample_batch["central_obs"] = central_obs_batch
+            sample_batch["central_vf_preds"] = self.sess.run(
+                self.central_value_function,
+                feed_dict={self.central_observations: central_obs_batch})
+        batch = compute_advantages(
+            sample_batch,
+            last_r,
+            self.config["gamma"],
+            self.config["lambda"],
+            use_gae=self.config["use_gae"],
+            use_centralized_vf=self.config["use_centralized_vf"])
+        return batch
+
+    def time_overlap(self, time_span, agent_time):
+        """Check if agent_time overlaps with time_span"""
+        if agent_time[0] <= time_span[1] and agent_time[1] >= time_span[0]:
+            return True
+        else:
+            return False
+
+    def overlap_and_pad_agent(self, time_span, agent_time, obs):
+        """take the part of obs that overlaps, pad to length time_span
+        Arguments:
+            time_span (tuple): tuple of the first and last time that the agent
+                of interest is in the system
+            agent_time (tuple): tuple of the first and last time that the
+                agent whose obs we are padding is in the system
+            obs (np.ndarray): observations of the agent whose time is
+                agent_time
+        """
+        assert self.time_overlap(time_span, agent_time)
+        # FIXME(ev) some of these conditions can be combined
+        # no padding needed
+        if agent_time[0] == time_span[0] and agent_time[1] == time_span[1]:
+            return obs
+        # agent enters before time_span starts and exits before time_span end
+        if agent_time[0] < time_span[0] and agent_time[1] < time_span[1]:
+            non_overlap_time = time_span[0] - agent_time[0]
+            missing_time = time_span[1] - agent_time[1]
+            overlap_obs = obs[non_overlap_time:]
+            padding = np.zeros((missing_time, obs.shape[1]))
+            return np.concatenate((overlap_obs, padding))
+        # agent enters after time_span starts and exits after time_span ends
+        elif agent_time[0] > time_span[0] and agent_time[1] > time_span[1]:
+            non_overlap_time = agent_time[1] - time_span[1]
+            overlap_obs = obs[:-non_overlap_time]
+            missing_time = agent_time[0] - time_span[0]
+            padding = np.zeros((missing_time, obs.shape[1]))
+            return np.concatenate((padding, overlap_obs))
+        # agent time is entirely contained in time_span
+        elif agent_time[0] >= time_span[0] and agent_time[1] <= time_span[1]:
+            missing_left = agent_time[0] - time_span[0]
+            missing_right = time_span[1] - agent_time[1]
+            obs_concat = obs
+            if missing_left > 0:
+                padding = np.zeros((missing_left, obs.shape[1]))
+                obs_concat = np.concatenate((padding, obs_concat))
+            if missing_right > 0:
+                padding = np.zeros((missing_right, obs.shape[1]))
+                obs_concat = np.concatenate((obs_concat, padding))
+            return obs_concat
+        # agent time totally contains time_span
+        elif agent_time[0] <= time_span[0] and agent_time[1] >= time_span[1]:
+            non_overlap_left = time_span[0] - agent_time[0]
+            non_overlap_right = agent_time[1] - time_span[1]
+            overlap_obs = obs
+            if non_overlap_left > 0:
+                overlap_obs = overlap_obs[non_overlap_left:]
+            if non_overlap_right > 0:
+                overlap_obs = overlap_obs[:-non_overlap_right]
+            return overlap_obs
+
+class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -199,16 +345,18 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             existing_state_in = None
             existing_seq_lens = None
         self.observations = obs_ph
+        self.prev_actions = prev_actions_ph
+        self.prev_rewards = prev_rewards_ph
 
         self.loss_in = [
-            ("obs", obs_ph),
-            ("value_targets", value_targets_ph),
-            ("advantages", adv_ph),
-            ("actions", act_ph),
-            ("logits", logits_ph),
-            ("vf_preds", vf_preds_ph),
-            ("prev_actions", prev_actions_ph),
-            ("prev_rewards", prev_rewards_ph),
+            (SampleBatch.CUR_OBS, obs_ph),
+            (Postprocessing.VALUE_TARGETS, value_targets_ph),
+            (Postprocessing.ADVANTAGES, adv_ph),
+            (SampleBatch.ACTIONS, act_ph),
+            (BEHAVIOUR_LOGITS, logits_ph),
+            (SampleBatch.VF_PREDS, vf_preds_ph),
+            (SampleBatch.PREV_ACTIONS, prev_actions_ph),
+            (SampleBatch.PREV_REWARDS, prev_rewards_ph),
         ]
 
         if self.config["use_centralized_vf"]:
@@ -226,6 +374,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "is_training": self._get_is_training_placeholder(),
             },
             observation_space,
+            action_space,
             logit_dim,
             self.config["model"],
             state_in=existing_state_in,
@@ -251,7 +400,14 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 # mean parameters and standard deviation parameters and
                 # do not make the standard deviations free variables.
                 vf_config["free_log_std"] = False
-                vf_config["use_lstm"] = False
+                if vf_config["use_lstm"]:
+                    vf_config["use_lstm"] = False
+                    logger.warning(
+                        "It is not recommended to use a LSTM model with "
+                        "vf_share_layers=False (consider setting it to True). "
+                        "If you want to not share layers, you can implement "
+                        "a custom LSTM model that overrides the "
+                        "value_function() method.")
                 with tf.variable_scope("value_function"):
                     # FIXME(ev, kp) it is trying to evaluate this but can't
                     self.value_function = ModelCatalog.get_model({
@@ -259,7 +415,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                         "prev_actions": prev_actions_ph,
                         "prev_rewards": prev_rewards_ph,
                         "is_training": self._get_is_training_placeholder(),
-                    }, observation_space, 1, vf_config).outputs
+                    }, observation_space, action_space, 1, vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
 
                 # TODO(ev) should we change the scope?
@@ -340,7 +496,9 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=obs_ph,
             action_sampler=self.sampler,
-            loss=self.model.loss() + self.loss_obj.loss,
+            action_prob=curr_action_dist.sampled_action_prob(),
+            loss=self.loss_obj.loss,
+            model=self.model,
             loss_inputs=self.loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
@@ -372,90 +530,27 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.config,
             existing_inputs=existing_inputs)
 
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(len(self.model.state_in)):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch["new_obs"][-1], *next_state)
-
-        # if needed, add a centralized value function to the sample batch
-        if self.config["use_centralized_vf"]:
-            # TODO(ev) do we need to sort this?
-            time_span = (sample_batch['t'][0], sample_batch['t'][-1])
-            other_agent_times = {agent_id:
-                                 (other_agent_batches[agent_id][1]["t"][0],
-                                  other_agent_batches[agent_id][1]["t"][-1])
-                                 for agent_id in other_agent_batches.keys()}
-            rel_agents = {agent_id: other_agent_time for agent_id,
-                          other_agent_time in
-                          other_agent_times.items()
-                          if self.time_overlap(time_span, other_agent_time)}
-            if len(rel_agents) > 0:
-                other_obs = {agent_id:
-                             other_agent_batches[agent_id][1]["obs"].copy()
-                             for agent_id in rel_agents.keys()}
-                padded_agent_obs = {agent_id:
-                                    self.overlap_and_pad_agent(
-                                        time_span,
-                                        rel_agent_time,
-                                        other_obs[agent_id])
-                                    for agent_id,
-                                    rel_agent_time in rel_agents.items()}
-                central_obs_batch = np.hstack(
-                    [padded_obs for padded_obs in padded_agent_obs.values()])
-                central_obs_batch = np.hstack(
-                    (central_obs_batch, sample_batch["obs"]))
-            else:
-                central_obs_batch = sample_batch["obs"]
-            max_vf_agents = self.config["max_vf_agents"]
-            num_agents = len(rel_agents) + 1
-            if num_agents < max_vf_agents:
-                diff = max_vf_agents - num_agents
-                zero_pad = np.zeros((central_obs_batch.shape[0],
-                                     self.observation_space.shape[0]*diff))
-                central_obs_batch = np.hstack((central_obs_batch,
-                                               zero_pad))
-            elif num_agents > max_vf_agents:
-                print("Too many agents!")
-            # add the central obs and central critic value
-            sample_batch["central_obs"] = central_obs_batch
-            sample_batch["central_vf_preds"] = self.sess.run(
-                self.central_value_function,
-                feed_dict={self.central_observations: central_obs_batch})
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            self.config["gamma"],
-            self.config["lambda"],
-            use_gae=self.config["use_gae"],
-            use_centralized_vf=self.config["use_centralized_vf"])
-        return batch
-
     @override(TFPolicyGraph)
-    def gradients(self, optimizer):
-        return optimizer.compute_gradients(
-            self._loss, colocate_gradients_with_ops=True)
+    def gradients(self, optimizer, loss):
+        if self.config["grad_clip"] is not None:
+            self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                              tf.get_variable_scope().name)
+            grads = tf.gradients(loss, self.var_list)
+            self.grads, _ = tf.clip_by_global_norm(grads,
+                                                   self.config["grad_clip"])
+            clipped_grads = list(zip(self.grads, self.var_list))
+            return clipped_grads
+        else:
+            return optimizer.compute_gradients(
+                loss, colocate_gradients_with_ops=True)
 
     @override(PolicyGraph)
     def get_initial_state(self):
         return self.model.state_init
 
     @override(TFPolicyGraph)
-    def extra_compute_action_fetches(self):
-        fetch_dict = {"vf_preds": self.value_function, "logits": self.logits}
-        return fetch_dict
-
-    @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
-        return self.stats_fetches
+        return {LEARNER_STATS_KEY: self.stats_fetches}
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:
@@ -465,67 +560,13 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
         return self.kl_coeff_val
 
-    def time_overlap(self, time_span, agent_time):
-        """Check if agent_time overlaps with time_span"""
-        if agent_time[0] <= time_span[1] and agent_time[1] >= time_span[0]:
-            return True
-        else:
-            return False
-
-    def overlap_and_pad_agent(self, time_span, agent_time, obs):
-        """take the part of obs that overlaps, pad to length time_span
-        Arguments:
-            time_span (tuple): tuple of the first and last time that the agent
-                of interest is in the system
-            agent_time (tuple): tuple of the first and last time that the
-                agent whose obs we are padding is in the system
-            obs (np.ndarray): observations of the agent whose time is
-                agent_time
-        """
-        assert self.time_overlap(time_span, agent_time)
-        # FIXME(ev) some of these conditions can be combined
-        # no padding needed
-        if agent_time[0] == time_span[0] and agent_time[1] == time_span[1]:
-            return obs
-        # agent enters before time_span starts and exits before time_span end
-        if agent_time[0] < time_span[0] and agent_time[1] < time_span[1]:
-            non_overlap_time = time_span[0] - agent_time[0]
-            missing_time = time_span[1] - agent_time[1]
-            overlap_obs = obs[non_overlap_time:]
-            padding = np.zeros((missing_time, obs.shape[1]))
-            return np.concatenate((overlap_obs, padding))
-        # agent enters after time_span starts and exits after time_span ends
-        elif agent_time[0] > time_span[0] and agent_time[1] > time_span[1]:
-            non_overlap_time = agent_time[1] - time_span[1]
-            overlap_obs = obs[:-non_overlap_time]
-            missing_time = agent_time[0] - time_span[0]
-            padding = np.zeros((missing_time, obs.shape[1]))
-            return np.concatenate((padding, overlap_obs))
-        # agent time is entirely contained in time_span
-        elif agent_time[0] >= time_span[0] and agent_time[1] <= time_span[1]:
-            missing_left = agent_time[0] - time_span[0]
-            missing_right = time_span[1] - agent_time[1]
-            obs_concat = obs
-            if missing_left > 0:
-                padding = np.zeros((missing_left, obs.shape[1]))
-                obs_concat = np.concatenate((padding, obs_concat))
-            if missing_right > 0:
-                padding = np.zeros((missing_right, obs.shape[1]))
-                obs_concat = np.concatenate((obs_concat, padding))
-            return obs_concat
-        # agent time totally contains time_span
-        elif agent_time[0] <= time_span[0] and agent_time[1] >= time_span[1]:
-            non_overlap_left = time_span[0] - agent_time[0]
-            non_overlap_right = agent_time[1] - time_span[1]
-            overlap_obs = obs
-            if non_overlap_left > 0:
-                overlap_obs = overlap_obs[non_overlap_left:]
-            if non_overlap_right > 0:
-                overlap_obs = overlap_obs[:-non_overlap_right]
-            return overlap_obs
-
-    def _value(self, ob, *args):
-        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
+    def _value(self, ob, prev_action, prev_reward, *args):
+        feed_dict = {
+            self.observations: [ob],
+            self.prev_actions: [prev_action],
+            self.prev_rewards: [prev_reward],
+            self.model.seq_lens: [1]
+        }
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):

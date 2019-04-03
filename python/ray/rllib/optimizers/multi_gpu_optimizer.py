@@ -9,6 +9,7 @@ from collections import defaultdict
 import tensorflow as tf
 
 import ray
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
@@ -131,7 +132,11 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                         "This may be because you have many workers or "
                         "long episodes in 'complete_episodes' batch mode.")
             else:
-                samples = self.local_evaluator.sample()
+                samples = []
+                while sum(s.count for s in samples) < self.train_batch_size:
+                    samples.append(self.local_evaluator.sample())
+                samples = SampleBatch.concat_samples(samples)
+
             # Handle everything as if multiagent
             if isinstance(samples, SampleBatch):
                 samples = MultiAgentBatch({
@@ -174,7 +179,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         with self.grad_timer:
             for policy_id, tuples_per_device in num_loaded_tuples.items():
                 optimizer = self.optimizers[policy_id]
-                num_batches = (
+                num_batches = max(
+                    1,
                     int(tuples_per_device) // int(self.per_device_batch_size))
                 logger.debug("== sgd epochs for {} ==".format(policy_id))
                 for i in range(self.num_sgd_iter):
@@ -184,14 +190,15 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                         batch_fetches = optimizer.optimize(
                             self.sess, permutation[batch_index] *
                             self.per_device_batch_size)
-                        for k, v in batch_fetches.items():
+                        for k, v in batch_fetches[LEARNER_STATS_KEY].items():
                             iter_extra_fetches[k].append(v)
                     logger.debug("{} {}".format(i,
                                                 _averaged(iter_extra_fetches)))
                 fetches[policy_id] = _averaged(iter_extra_fetches)
 
         self.num_steps_sampled += samples.count
-        self.num_steps_trained += samples.count
+        self.num_steps_trained += tuples_per_device * len(self.devices)
+        self.learner_stats = fetches
         return fetches
 
     @override(PolicyOptimizer)
@@ -203,6 +210,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
                 "update_time_ms": round(1000 * self.update_weights_timer.mean,
                                         3),
+                "learner": self.learner_stats,
             })
 
 
