@@ -16,7 +16,7 @@ from sgd.pytorch.pytorch_trainable import PytorchSGD, DEFAULT_CONFIG
 from sgd.pytorch.pytorch_helpers import prefetch
 
 parser = argparse.ArgumentParser(
-    formatter_class=argparse.RawDescriptionHelpFormatter, description="Shard.")
+    formatter_class=argparse.RawDescriptionHelpFormatter)
 
 parser.add_argument(
     "--redis-address",
@@ -76,9 +76,6 @@ if __name__ == '__main__':
         for i in range(args.num_iters):
             print(pretty_print(sgd.train()))
     else:
-        # This is the deadline (s). The resource executor will kill all jobs
-        # after deadline.
-        deadline = 1200
 
         config["starting_lr"] = tune.grid_search([0.1, 0.01, 0.001])
         config["weight_decay"] = tune.grid_search([1e-3, 5e-4, 1e-4])
