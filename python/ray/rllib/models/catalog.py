@@ -12,9 +12,9 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
 from ray.rllib.models.extra_spaces import Simplex
-from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
-                                          Deterministic, DiagGaussian,
-                                          MultiActionDistribution, Dirichlet)
+from ray.rllib.models.action_dist import (
+    Categorical, MultiCategorical, Deterministic, DiagGaussian,
+    MultiActionDistribution, Dirichlet, TorchCategorical, TorchDiagGaussian)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -89,13 +89,14 @@ class ModelCatalog(object):
 
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(action_space, config, dist_type=None):
+    def get_action_dist(action_space, config, dist_type=None, torch=False):
         """Returns action distribution class and size for the given action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
             config (dict): Optional model config.
             dist_type (str): Optional identifier of the action distribution.
+            torch (bool):  Optional whether to return PyTorch distribution.
 
         Returns:
             dist_class (ActionDistribution): Python class of the distribution.
@@ -111,7 +112,7 @@ class ModelCatalog(object):
                     "Consider reshaping this into a single dimension, "
                     "using a Tuple action space, or the multi-agent API.")
             if dist_type is None:
-                dist = DiagGaussian
+                dist = TorchDiagGaussian if torch else DiagGaussian
                 if config.get("squash_to_range"):
                     raise ValueError(
                         "The squash_to_range option is deprecated. See the "
@@ -120,7 +121,8 @@ class ModelCatalog(object):
             elif dist_type == "deterministic":
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
-            return Categorical, action_space.n
+            dist = TorchCategorical if torch else Categorical
+            return dist, action_space.n
         elif isinstance(action_space, gym.spaces.Tuple):
             child_dist = []
             input_lens = []

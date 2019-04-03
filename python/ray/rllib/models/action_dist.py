@@ -5,6 +5,7 @@ from __future__ import print_function
 from collections import namedtuple
 import distutils.version
 import tensorflow as tf
+import torch
 import numpy as np
 
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -285,3 +286,40 @@ class Dirichlet(ActionDistribution):
     @override(ActionDistribution)
     def _build_sample_op(self):
         return self.dist.sample()
+
+
+class TorchDistributionWrapper(ActionDistribution):
+    """Wrapper class for torch.distributions."""
+
+    @override(ActionDistribution)
+    def logp(self, actions):
+        return self.dist.log_prob(actions)
+
+    @override(ActionDistribution)
+    def entropy(self):
+        return self.dist.entropy()
+
+    @override(ActionDistribution)
+    def kl(self, other):
+        return torch.distributions.kl.kl_divergence(self.dist, other)
+
+    @override(ActionDistribution)
+    def sample(self):
+        return self.dist.sample()
+
+
+class TorchCategorical(TorchDistributionWrapper):
+    """Wrapper class for PyTorch Categorical distribution."""
+
+    @override(ActionDistribution)
+    def __init__(self, inputs):
+        self.dist = torch.distributions.categorical.Categorical(logits=inputs)
+
+
+class TorchDiagGaussian(TorchDistributionWrapper):
+    """Wrapper class for PyTorch Normal distribution."""
+
+    @override(ActionDistribution)
+    def __init__(self, inputs):
+        mean, log_std = torch.split(inputs, 2, dim=1)
+        self.dist = torch.distributions.normal.Normal(mean, torch.exp(log_std))

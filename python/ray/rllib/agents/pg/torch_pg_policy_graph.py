@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 import ray
@@ -17,15 +16,18 @@ from ray.rllib.utils.annotations import override
 
 
 class PGLoss(nn.Module):
-    def __init__(self, policy_model):
+    def __init__(self, dist_class):
         nn.Module.__init__(self)
-        self.policy_model = policy_model
+        self.dist_class = dist_class
 
-    def forward(self, observations, actions, advantages):
-        logits, _, values, _ = self.policy_model({"obs": observations}, [])
-        log_probs = F.log_softmax(logits, dim=1)
-        action_log_probs = log_probs.gather(1, actions.view(-1, 1))
-        pi_err = -advantages.dot(action_log_probs.reshape(-1))
+    def forward(self, policy_model, observations, actions, advantages):
+        logits, _, values, _ = policy_model(
+            {SampleBatch.CUR_OBS: observations}, [])
+        dist = self.dist_class(logits)
+        log_probs = dist.logp(actions)
+        if len(log_probs.shape) > 1:
+            log_probs = log_probs.sum(-1)
+        pi_err = -advantages.dot(log_probs.reshape(-1)).cpu()
         return pi_err
 
 
@@ -34,7 +36,7 @@ class PGPostprocessing(object):
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
-        return {SampleBatch.VF_PREDS: model_out[2].numpy()}
+        return {SampleBatch.VF_PREDS: model_out[2].cpu().numpy()}
 
     @override(PolicyGraph)
     def postprocess_trajectory(self,
@@ -49,29 +51,30 @@ class PGTorchPolicyGraph(PGPostprocessing, TorchPolicyGraph):
     def __init__(self, obs_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
-        _, self.logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"])
-        self.model = ModelCatalog.get_torch_model(obs_space, self.logit_dim,
-                                                  self.config["model"])
-        loss = PGLoss(self.model)
+        dist_class, self.logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"], torch=True)
+        model = ModelCatalog.get_torch_model(obs_space, self.logit_dim,
+                                             self.config["model"])
+        loss = PGLoss(dist_class)
 
         TorchPolicyGraph.__init__(
             self,
             obs_space,
             action_space,
-            self.model,
+            model,
             loss,
             loss_inputs=[
                 SampleBatch.CUR_OBS, SampleBatch.ACTIONS,
                 Postprocessing.ADVANTAGES
-            ])
+            ],
+            action_distribution_cls=dist_class)
 
     @override(TorchPolicyGraph)
     def optimizer(self):
-        return torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
+        return torch.optim.Adam(self._model.parameters(), lr=self.config["lr"])
 
     def _value(self, obs):
         with self.lock:
-            obs = torch.from_numpy(obs).float().unsqueeze(0)
+            obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
             _, _, vf, _ = self.model({"obs": obs}, [])
-            return vf.detach().numpy().squeeze()
+            return vf.detach().cpu().numpy().squeeze()

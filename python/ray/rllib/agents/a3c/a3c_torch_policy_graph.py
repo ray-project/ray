@@ -17,25 +17,31 @@ from ray.rllib.utils.annotations import override
 
 
 class A3CLoss(nn.Module):
-    def __init__(self, policy_model, vf_loss_coeff=0.5, entropy_coeff=0.01):
+    def __init__(self, dist_class, vf_loss_coeff=0.5, entropy_coeff=0.01):
         nn.Module.__init__(self)
-        self.policy_model = policy_model
+        self.dist_class = dist_class
         self.vf_loss_coeff = vf_loss_coeff
         self.entropy_coeff = entropy_coeff
 
-    def forward(self, observations, actions, advantages, value_targets):
-        logits, _, values, _ = self.policy_model({"obs": observations}, [])
-        log_probs = F.log_softmax(logits, dim=1)
-        probs = F.softmax(logits, dim=1)
-        action_log_probs = log_probs.gather(1, actions.view(-1, 1))
-        entropy = -(log_probs * probs).sum(-1).sum()
-        pi_err = -advantages.dot(action_log_probs.reshape(-1))
-        value_err = F.mse_loss(values.reshape(-1), value_targets)
+    def forward(self, policy_model, observations, actions, advantages,
+                value_targets):
+        logits, _, values, _ = policy_model(
+            {SampleBatch.CUR_OBS: observations}, [])
+        logits = logits
+        values = values
+        dist = self.dist_class(logits)
+        log_probs = dist.logp(actions)
+        if len(log_probs.shape) > 1:
+            log_probs = log_probs.sum(-1)
+        self.entropy = dist.entropy().mean().cpu()
+        self.pi_err = -advantages.dot(log_probs.reshape(-1)).cpu()
+        self.value_err = F.mse_loss(values.reshape(-1), value_targets).cpu()
         overall_err = sum([
-            pi_err,
-            self.vf_loss_coeff * value_err,
-            -self.entropy_coeff * entropy,
+            self.pi_err,
+            self.vf_loss_coeff * self.value_err,
+            -self.entropy_coeff * self.entropy,
         ])
+
         return overall_err
 
 
@@ -44,7 +50,7 @@ class A3CPostprocessing(object):
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
-        return {SampleBatch.VF_PREDS: model_out[2].numpy()}
+        return {SampleBatch.VF_PREDS: model_out[2].cpu().numpy()}
 
     @override(PolicyGraph)
     def postprocess_trajectory(self,
@@ -66,29 +72,61 @@ class A3CTorchPolicyGraph(A3CPostprocessing, TorchPolicyGraph):
     def __init__(self, obs_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
-        _, self.logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"])
-        self.model = ModelCatalog.get_torch_model(obs_space, self.logit_dim,
-                                                  self.config["model"])
-        loss = A3CLoss(self.model, self.config["vf_loss_coeff"],
+        dist_class, self.logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"], torch=True)
+        model = ModelCatalog.get_torch_model(obs_space, self.logit_dim,
+                                             self.config["model"])
+        loss = A3CLoss(dist_class, self.config["vf_loss_coeff"],
                        self.config["entropy_coeff"])
         TorchPolicyGraph.__init__(
             self,
             obs_space,
             action_space,
-            self.model,
+            model,
             loss,
             loss_inputs=[
                 SampleBatch.CUR_OBS, SampleBatch.ACTIONS,
                 Postprocessing.ADVANTAGES, Postprocessing.VALUE_TARGETS
-            ])
+            ],
+            action_distribution_cls=dist_class)
+
+    @override(PolicyGraph)
+    def compute_gradients(self, postprocessed_batch):
+        with self.lock:
+            loss_in = []
+            for key in self._loss_inputs:
+                loss_in.append(
+                    torch.from_numpy(postprocessed_batch[key]).to(self.device))
+            loss_out = self._loss(self._model, *loss_in)
+            self._optimizer.zero_grad()
+            loss_out.backward()
+            total_norm = nn.utils.clip_grad_norm_(self._model.parameters(),
+                                                  self.config["grad_clip"])
+
+            # Note that return values are just references;
+            # calling zero_grad will modify the values
+            grads = []
+            for p in self._model.parameters():
+                if p.grad is not None:
+                    grads.append(p.grad.data.cpu().numpy())
+                else:
+                    grads.append(None)
+
+            grad_info = {
+                "grad_gnorm": total_norm,
+                "policy_entropy": self._loss.entropy.item(),
+                "policy_loss": self._loss.pi_err.item(),
+                "vf_loss": self._loss.value_err.item()
+            }
+
+            return grads, {"stats": grad_info}
 
     @override(TorchPolicyGraph)
     def optimizer(self):
-        return torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
+        return torch.optim.Adam(self._model.parameters(), lr=self.config["lr"])
 
     def _value(self, obs):
         with self.lock:
-            obs = torch.from_numpy(obs).float().unsqueeze(0)
-            _, _, vf, _ = self.model({"obs": obs}, [])
-            return vf.detach().numpy().squeeze()
+            obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
+            _, _, vf, _ = self._model({"obs": obs}, [])
+            return vf.detach().cpu().numpy().squeeze()

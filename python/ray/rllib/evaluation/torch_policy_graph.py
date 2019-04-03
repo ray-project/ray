@@ -2,12 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 from threading import Lock
 
 try:
     import torch
-    import torch.nn.functional as F
 except ImportError:
     pass  # soft dep
 
@@ -28,11 +29,11 @@ class TorchPolicyGraph(PolicyGraph):
     """
 
     def __init__(self, observation_space, action_space, model, loss,
-                 loss_inputs):
+                 loss_inputs, action_distribution_cls):
         """Build a policy graph from policy and loss torch modules.
 
-        Note that module inputs will be CPU tensors. The model and loss modules
-        are responsible for moving inputs to the right device.
+        Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
+        is set. Only single GPU is supported for now.
 
         Arguments:
             observation_space (gym.Space): observation space of the policy.
@@ -47,14 +48,20 @@ class TorchPolicyGraph(PolicyGraph):
             loss_inputs (list): List of SampleBatch columns that will be
                 passed to the loss module's forward() function when computing
                 the loss. For example, ["obs", "action", "advantages"].
+            action_distribution_cls (ActionDistribution): Class for action
+                distribution.
         """
         self.observation_space = observation_space
         self.action_space = action_space
         self.lock = Lock()
-        self._model = model
+        cuda_devices = os.environ['CUDA_VISIBLE_DEVICES'].split(',')
+        self.device = (torch.device('cuda')
+                       if cuda_devices else torch.device('cpu'))
+        self._model = model.to(self.device)
         self._loss = loss
         self._loss_inputs = loss_inputs
         self._optimizer = self.optimizer()
+        self._action_dist_cls = action_distribution_cls
 
     @override(PolicyGraph)
     def compute_actions(self,
@@ -67,11 +74,14 @@ class TorchPolicyGraph(PolicyGraph):
                         **kwargs):
         with self.lock:
             with torch.no_grad():
-                ob = torch.from_numpy(np.array(obs_batch)).float()
+                ob = torch.from_numpy(np.array(obs_batch)) \
+                    .float().to(self.device)
                 model_out = self._model({"obs": ob}, state_batches)
                 logits, _, vf, state = model_out
-                actions = F.softmax(logits, dim=1).multinomial(1).squeeze(0)
-                return (actions.numpy(), [h.numpy() for h in state],
+                action_dist = self._action_dist_cls(logits)
+                actions = action_dist.sample()
+                return (actions.cpu().numpy(),
+                        [h.cpu().numpy() for h in state],
                         self.extra_action_out(model_out))
 
     @override(PolicyGraph)
@@ -79,8 +89,9 @@ class TorchPolicyGraph(PolicyGraph):
         with self.lock:
             loss_in = []
             for key in self._loss_inputs:
-                loss_in.append(torch.from_numpy(postprocessed_batch[key]))
-            loss_out = self._loss(*loss_in)
+                loss_in.append(
+                    torch.from_numpy(postprocessed_batch[key]).to(self.device))
+            loss_out = self._loss(self._model, *loss_in)
             self._optimizer.zero_grad()
             loss_out.backward()
             # Note that return values are just references;
@@ -88,9 +99,10 @@ class TorchPolicyGraph(PolicyGraph):
             grads = []
             for p in self._model.parameters():
                 if p.grad is not None:
-                    grads.append(p.grad.data.numpy())
+                    grads.append(p.grad.data.cpu().numpy())
                 else:
                     grads.append(None)
+
             return grads, {}
 
     @override(PolicyGraph)
@@ -98,14 +110,14 @@ class TorchPolicyGraph(PolicyGraph):
         with self.lock:
             for g, p in zip(gradients, self._model.parameters()):
                 if g is not None:
-                    p.grad = torch.from_numpy(g)
+                    p.grad = torch.from_numpy(g).to(self.device)
             self._optimizer.step()
             return {}
 
     @override(PolicyGraph)
     def get_weights(self):
         with self.lock:
-            return self._model.state_dict()
+            return {k: v.cpu() for k, v in self._model.state_dict().items()}
 
     @override(PolicyGraph)
     def set_weights(self, weights):
