@@ -13,14 +13,16 @@ elif [[ "$unamestr" == "Darwin" ]]; then
   platform="darwin"
 elif [[ "$unamestr" == "MSYS_NT-10.0" ]]; then
   echo "Platform is Windows."
-  platform="windows"
-  ext="exe"
+  URL="https://github.com/bazelbuild/bazel/releases/download/0.21.0/bazel-0.21.0-windows-x86_64.exe"
+  wget -O bazel_install.exe $URL
+  bazel_install.exe
+  exit 0
 else
   echo "$unamestr is an unrecognized platform."
   exit 1
 fi
 
-URL="https://github.com/bazelbuild/bazel/releases/download/0.21.0/bazel-0.21.0-installer-${platform}-x86_64.${ext:-sh}"
+URL="https://github.com/bazelbuild/bazel/releases/download/0.21.0/bazel-0.21.0-installer-${platform}-x86_64.sh"
 wget -O install.sh $URL
 chmod +x install.sh
 ./install.sh --user
