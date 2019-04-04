@@ -73,6 +73,8 @@ class RayParams(object):
             Java worker.
         java_worker_options (str): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
+        enable_profiling: Whether profiling information for the timeline
+            is collected.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -111,6 +113,7 @@ class RayParams(object):
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
+                 enable_profiling=True,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -143,6 +146,7 @@ class RayParams(object):
         self.include_java = include_java
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
+        self.enable_profiling = enable_profiling
         self._internal_config = _internal_config
         self._check_usage()
 

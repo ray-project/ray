@@ -575,14 +575,15 @@ class Worker(object):
                 the exceptional case that an actor task is being dispatched to
                 an actor created by a different driver, this should be the
                 driver ID of the driver that created the actor.
-            profile: If True, profile this task submission.
 
         Returns:
             The return object IDs for this task.
         """
         self.task_context.task_index += 1
         kwargs["driver_id"] = kwargs.get("driver_id", self.task_driver_id)
-        with profiling.profile("submit_task", enable=kwargs["profile"]):
+        with profiling.profile(
+                "submit_task",
+                enable=_global_node._ray_params.enable_profiling):
             return self.raylet_client.submit_task(
                 function_descriptor_list, args, self.current_task_id,
                 self.task_context.task_index, put, **kwargs)
@@ -1206,6 +1207,7 @@ def init(redis_address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
+         enable_profiling=True,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 

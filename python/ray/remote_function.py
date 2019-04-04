@@ -111,8 +111,7 @@ class RemoteFunction(object):
 
         kwargs = {} if kwargs is None else kwargs
         args = [] if args is None else args
-        args = ray._raylet.extend_args(self._function_signature, args,
-                                       kwargs)
+        args = ray._raylet.extend_args(self._function_signature, args, kwargs)
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals

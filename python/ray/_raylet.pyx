@@ -315,8 +315,7 @@ cdef class RayletClient:
                     num_return_vals=None,
                     resources=None,
                     placement_resources=None,
-                    DriverID driver_id=DriverID.nil(),
-                    profile=True):
+                    DriverID driver_id=DriverID.nil()):
         cdef Task task
 
         args_for_raylet = []
