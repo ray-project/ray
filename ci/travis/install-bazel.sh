@@ -11,7 +11,7 @@ if [[ "$unamestr" == "Linux" ]]; then
 elif [[ "$unamestr" == "Darwin" ]]; then
   echo "Platform is macOS."
   platform="darwin"
-elif [[ "$unamestr" == "Windows" ]]; then
+elif [[ "$unamestr" == "MSYS_NT-10.0" ]]; then
   echo "Platform is Windows."
   platform="windows"
 else
