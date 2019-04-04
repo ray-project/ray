@@ -35,9 +35,13 @@ matrix:
         # - echo $PATH
         #- conda create -n myenv python
         - echo "$TRAVIS_OS_NAME $PYTHON $TRAVIS_PYTHON_VERSION"
-        - conda env create -n test-environment python=$PYTHON
+        - pip --version || true
+        - pip.exe --version || true
+        - conda --version || true
+        - conda-env --version || true
+        - conda env create -n test-environment python=$PYTHON || true
+        - conda-env create -n test-environment python=$PYTHON || true
         - python --version ; pip --version
-
 
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
