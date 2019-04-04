@@ -131,7 +131,8 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation):
         arr = np.zeros(self._obs_space.n)
-        if self._i % VALIDATION_INTERVAL == 0 and not self._obs_space.contains(observation):
+        if self._i % VALIDATION_INTERVAL == 0 and not self._obs_space.contains(
+                observation):
             raise ValueError("Observation outside expected value range",
                              self._obs_space, observation)
         arr[observation] = 1
@@ -150,7 +151,8 @@ class NoPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
-        if self._i % VALIDATION_INTERVAL == 0 and not self._obs_space.contains(observation):
+        if self._i % VALIDATION_INTERVAL == 0 and not self._obs_space.contains(
+                observation):
             raise ValueError("Observation outside expected value range",
                              self._obs_space, observation)
         self._i += 1
