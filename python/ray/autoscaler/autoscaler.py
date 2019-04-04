@@ -707,7 +707,7 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
 def fillout_defaults(config):
     defaults = get_default_config(config["provider"])
     defaults.update(config)
-    merge_setup_commands(config)
+    merge_setup_commands(defaults)
     dockerize_if_needed(defaults)
     return defaults
 
