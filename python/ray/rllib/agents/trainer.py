@@ -8,6 +8,7 @@ import logging
 import os
 import pickle
 import six
+import time
 import tempfile
 import tensorflow as tf
 from types import FunctionType
@@ -329,6 +330,9 @@ class Trainer(Trainable):
                         "continue training without the failed worker, set "
                         "`'ignore_worker_failures': True`.")
                     raise e
+            except Exception as e:
+                time.sleep(0.5)  # allow logs messages to propagate
+                raise e
             else:
                 break
         if result is None:
