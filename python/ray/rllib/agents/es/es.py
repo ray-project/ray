@@ -11,7 +11,7 @@ import numpy as np
 import time
 
 import ray
-from ray.rllib.agents import Agent, with_common_config
+from ray.rllib.agents import Trainer, with_common_config
 
 from ray.rllib.agents.es import optimizers
 from ray.rllib.agents.es import policies
@@ -163,13 +163,13 @@ class Worker(object):
             eval_lengths=eval_lengths)
 
 
-class ESTrainer(Agent):
+class ESTrainer(Trainer):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
     _agent_name = "ES"
     _default_config = DEFAULT_CONFIG
 
-    @override(Agent)
+    @override(Trainer)
     def _init(self, config, env_creator):
         policy_params = {"action_noise_std": 0.01}
 
@@ -200,7 +200,7 @@ class ESTrainer(Agent):
         self.reward_list = []
         self.tstart = time.time()
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         config = self.config
 
@@ -288,11 +288,11 @@ class ESTrainer(Agent):
 
         return result
 
-    @override(Agent)
+    @override(Trainer)
     def compute_action(self, observation):
         return self.policy.compute(observation, update=False)[0]
 
-    @override(Agent)
+    @override(Trainer)
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:

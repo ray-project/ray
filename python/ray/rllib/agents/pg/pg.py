@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 
 from ray.rllib.optimizers import SyncSamplesOptimizer
@@ -22,7 +22,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class PGTrainer(Agent):
+class PGTrainer(Trainer):
     """Simple policy gradient agent.
 
     This is an example agent to show how to implement algorithms in RLlib.
@@ -33,7 +33,7 @@ class PGTrainer(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = PGPolicyGraph
 
-    @override(Agent)
+    @override(Trainer)
     def _init(self, config, env_creator):
         if config["use_pytorch"]:
             from ray.rllib.agents.pg.torch_pg_policy_graph import \
@@ -51,7 +51,7 @@ class PGTrainer(Agent):
         self.optimizer = SyncSamplesOptimizer(
             self.local_evaluator, self.remote_evaluators, optimizer_config)
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()

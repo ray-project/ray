@@ -6,10 +6,10 @@ import os
 import pickle
 import numpy as np
 
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 
 
-class _MockTrainer(Agent):
+class _MockTrainer(Trainer):
     """Mock agent for use in tests"""
 
     _agent_name = "MockTrainer"
@@ -108,7 +108,7 @@ class _ParameterTuningTrainer(_MockTrainer):
 def _agent_import_failed(trace):
     """Returns dummy agent class for if PyTorch etc. is not installed."""
 
-    class _AgentImportFailed(Agent):
+    class _AgentImportFailed(Trainer):
         _agent_name = "AgentImportFailed"
         _default_config = with_common_config({})
 

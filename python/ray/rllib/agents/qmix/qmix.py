@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.agent import with_common_config
+from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.qmix.qmix_policy_graph import QMixPolicyGraph
 

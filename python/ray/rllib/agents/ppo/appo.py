@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.ppo.appo_policy_graph import AsyncPPOPolicyGraph
-from ray.rllib.agents.agent import with_base_config
+from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents import impala
 from ray.rllib.utils.annotations import override
 
