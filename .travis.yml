@@ -23,8 +23,7 @@ matrix:
       before_install:
         - choco install miniconda3 openssl.light
         - conda --version ; python --version ; pip --version
-        - pip install --upgrade pip || true
-        - conda create -n test-environment python=$PYTHON
+        - conda create -n test-environment python=$PYTHON --yes
         - pip install --upgrade pip
         - conda --version ; python --version ; pip --version
 
