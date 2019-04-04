@@ -5,4 +5,6 @@ from ray.rllib.agents.a3c.a2c import A2CTrainer
 A2CAgent = A2CTrainer
 A3CAgent = A3CTrainer
 
-__all__ = ["A2CAgent", "A3CAgent", "A2CTrainer", "A3CTrainer", "DEFAULT_CONFIG"]
+__all__ = [
+    "A2CAgent", "A3CAgent", "A2CTrainer", "A3CTrainer", "DEFAULT_CONFIG"
+]

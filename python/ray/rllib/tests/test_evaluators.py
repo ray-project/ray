@@ -26,7 +26,8 @@ class DQNTest(unittest.TestCase):
 
     def testEvaluationOption(self):
         ray.init()
-        agent = DQNTrainer(env="CartPole-v0", config={"evaluation_interval": 2})
+        agent = DQNTrainer(
+            env="CartPole-v0", config={"evaluation_interval": 2})
         r0 = agent.train()
         r1 = agent.train()
         r2 = agent.train()

@@ -9,4 +9,6 @@ from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG
 DQNAgent = DQNTrainer
 ApexAgent = ApexTrainer
 
-__all__ = ["DQNAgent", "ApexAgent", "ApexTrainer", "DQNTrainer", "DEFAULT_CONFIG"]
+__all__ = [
+    "DQNAgent", "ApexAgent", "ApexTrainer", "DQNTrainer", "DEFAULT_CONFIG"
+]

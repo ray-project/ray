@@ -9,4 +9,7 @@ from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG
 ApexDDPGAgent = ApexDDPGTrainer
 DDPGAgent = DDPGTrainer
 
-__all__ = ["DDPGAgent", "ApexDDPGAgent", "DDPGTrainer", "ApexDDPGTrainer", "DEFAULT_CONFIG"]
+__all__ = [
+    "DDPGAgent", "ApexDDPGAgent", "DDPGTrainer", "ApexDDPGTrainer",
+    "DEFAULT_CONFIG"
+]
