@@ -26,6 +26,8 @@ matrix:
       language: shell  # 'language: python' is an error on Travis CI Windows
       before_install:  # choco install python2
         - choco install miniconda --params="'/AddToPath:1'"
+        - python --version || true
+        - pip --version || true
       env:
         - PYTHON=2.7 PYTHONWARNINGS=ignore
         # - PATH=/c/Python27:/c/Python27/Scripts:$PATH
@@ -34,7 +36,9 @@ matrix:
       language: shell  # 'language: python' is an error on Travis CI Windows
       before_install:  # choco install python --version 3.5.4
         - choco install miniconda3 --params="'/AddToPath:1'"
-      env:
+        - python --version || true
+        - pip --version || true
+     env:
         - PYTHON=3.5 PYTHONWARNINGS=ignore
         # - PATH=/c/Python35:/c/Python35/Scripts:$PATH
 
