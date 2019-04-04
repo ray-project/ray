@@ -214,6 +214,70 @@ cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
     return out
 
 
+def extend_args(function_signature, args, kwargs):
+    """Extend the arguments that were passed into a function.
+
+    This extends the arguments that were passed into a function with the
+    default arguments provided in the function definition.
+
+    Args:
+        function_signature: The function signature of the function being
+            called.
+        args: The non-keyword arguments passed into the function.
+        kwargs: The keyword arguments passed into the function.
+
+    Returns:
+        An extended list of arguments to pass into the function.
+
+    Raises:
+        Exception: An exception may be raised if the function cannot be called
+            with these arguments.
+    """
+    arg_names = function_signature.arg_names
+    arg_defaults = function_signature.arg_defaults
+    arg_is_positionals = function_signature.arg_is_positionals
+    function_name = function_signature.function_name
+
+    for keyword_name in kwargs:
+        if keyword_name not in function_signature.keyword_names:
+            raise Exception("The name '{}' is not a valid keyword argument "
+                            "for the function '{}'.".format(
+                                keyword_name, function_name))
+
+    # Fill in the remaining arguments.
+    for i in range(len(args)):
+        skipped_name = arg_names[i]
+        if skipped_name in kwargs:
+            raise Exception("Positional and keyword value provided for the "
+                            "argument '{}' for the function '{}'".format(
+                                keyword_name, function_name))
+
+    for i in range(len(args), len(arg_names)):
+        keyword_name = arg_names[i]
+        default_value = arg_defaults[i]
+        is_positional = arg_is_positionals[i]
+        if keyword_name in kwargs:
+            args.append(kwargs[keyword_name])
+        else:
+            if default_value != funcsigs._empty:
+                args.append(default_value)
+            else:
+                # This means that there is a missing argument. Unless this is
+                # the last argument and it is a *args argument in which case it
+                # can be omitted.
+                if not is_positional:
+                    raise Exception("No value was provided for the argument "
+                                    "'{}' for the function '{}'.".format(
+                                        keyword_name, function_name))
+
+    no_positionals = len(arg_is_positionals) == 0 or not arg_is_positionals[-1]
+    too_many_arguments = len(args) > len(arg_names) and no_positionals
+    if too_many_arguments:
+        raise Exception("Too many arguments were passed to the function '{}'"
+                        .format(function_name))
+    return args
+
+
 cdef class RayletClient:
     cdef unique_ptr[CRayletClient] client
 
