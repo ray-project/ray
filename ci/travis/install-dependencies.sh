@@ -54,7 +54,6 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx tabulate psutil
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "windows" ]]; then
   echo "Legacy Python is not yet supported on Windows."
-  exit 1
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "windows" ]]; then
   pip install -q scipy tensorflow cython==0.29.0 gym opencv-python-headless pyyaml pandas==0.23.4 requests \
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx tabulate psutil
