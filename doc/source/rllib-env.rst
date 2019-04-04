@@ -26,7 +26,7 @@ MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 
-You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed directly to the agent must take a single ``env_config`` parameter in their constructor:
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed directly to the trainer must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
 
@@ -43,7 +43,7 @@ You can pass either a string name or a Python class to specify an environment. B
             return <obs>, <reward: float>, <done: bool>, <info: dict>
 
     ray.init()
-    trainer = ppo.PPOAgent(env=MyEnv, config={
+    trainer = ppo.PPOTrainer(env=MyEnv, config={
         "env_config": {},  # config to pass to env class
     })
 
@@ -60,7 +60,7 @@ You can also register a custom env creator function with a string name. This fun
         return MyEnv(...)  # return an env instance
 
     register_env("my_env", env_creator)
-    trainer = ppo.PPOAgent(env="my_env")
+    trainer = ppo.PPOTrainer(env="my_env")
 
 For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__.
 
@@ -71,7 +71,7 @@ For a full runnable code example using the custom environment API, see `custom_e
 Configuring Environments
 ------------------------
 
-In the above example, note that the ``env_creator`` function takes in an ``env_config`` object. This is a dict containing options passed in through your agent. You can also access ``env_config.worker_index`` and ``env_config.vector_index`` to get the worker id and env id within the worker (if ``num_envs_per_worker > 0``). This can be useful if you want to train over an ensemble of different environments, for example:
+In the above example, note that the ``env_creator`` function takes in an ``env_config`` object. This is a dict containing options passed in through your trainer. You can also access ``env_config.worker_index`` and ``env_config.vector_index`` to get the worker id and env id within the worker (if ``num_envs_per_worker > 0``). This can be useful if you want to train over an ensemble of different environments, for example:
 
 .. code-block:: python
 
