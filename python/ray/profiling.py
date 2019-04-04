@@ -27,10 +27,8 @@ class _NullLogSpan(object):
 NULL_LOG_SPAN = _NullLogSpan()
 
 
-def profile(event_type, extra_data=None):
+def profile(event_type, extra_data=None, enable=True):
     """Profile a span of time so that it appears in the timeline visualization.
-
-    Note that this only works in the raylet code path.
 
     This function can be used as follows (both on the driver or within a task).
 
@@ -53,12 +51,17 @@ def profile(event_type, extra_data=None):
             simply set the "cname" attribute to an appropriate color.
             Similarly, if you set the "name" attribute, then that will set the
             text displayed on the box in the timeline.
+        enable: Only write profiling data if enable is True.
 
     Returns:
         An object that can profile a span of time via a "with" statement.
     """
-    worker = ray.worker.global_worker
-    return RayLogSpanRaylet(worker.profiler, event_type, extra_data=extra_data)
+    if enable:
+        worker = ray.worker.global_worker
+        return RayLogSpanRaylet(
+            worker.profiler, event_type, extra_data=extra_data)
+    else:
+        return NULL_LOG_SPAN
 
 
 class Profiler(object):

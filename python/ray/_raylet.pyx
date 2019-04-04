@@ -239,6 +239,8 @@ def extend_args(function_signature, args, kwargs):
     arg_is_positionals = function_signature.arg_is_positionals
     function_name = function_signature.function_name
 
+    args = list(args)
+
     for keyword_name in kwargs:
         if keyword_name not in function_signature.keyword_names:
             raise Exception("The name '{}' is not a valid keyword argument "
