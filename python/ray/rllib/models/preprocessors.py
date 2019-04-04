@@ -12,7 +12,7 @@ from ray.rllib.utils.annotations import override, PublicAPI
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
-VALIDATION_INTERVAL = 1000
+VALIDATION_INTERVAL = 100
 
 logger = logging.getLogger(__name__)
 
