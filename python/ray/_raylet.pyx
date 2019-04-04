@@ -3,6 +3,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
+import funcsigs
 import numpy
 
 from libc.stdint cimport int32_t, int64_t
