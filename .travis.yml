@@ -26,7 +26,9 @@ matrix:
         - conda create -n test-environment python=$PYTHON --yes
         - . activate test-environment
         - conda --version ; python --version ; pip --version
-        - pip install --upgrade pip
+        - pip install --upgrade pip || true
+        - python -m pip install --upgrade pip || true
+        - /c/tools/miniconda3/envs/test-environment/python.exe -m pip install --upgrade pip
 
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
