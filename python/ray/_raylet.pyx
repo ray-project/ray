@@ -276,8 +276,8 @@ cdef class RayletClient:
                     "Resource quantities must be nonnegative.")
             if (value >= 1 and isinstance(value, float)
                     and not value.is_integer()):
-              raise ValueError(
-                  "Resource quantities must all be whole numbers.")
+                raise ValueError(
+                    "Resource quantities must all be whole numbers.")
 
         if placement_resources is None:
             placement_resources = {}
@@ -306,9 +306,9 @@ cdef class RayletClient:
 
         object_ids = task.returns()
         if len(object_ids) == 1:
-           return object_ids[0]
+            return object_ids[0]
         elif len(object_ids) > 1:
-           return object_ids
+            return object_ids
 
     def get_task(self):
         cdef:
