@@ -24,8 +24,6 @@ docker:
       - --runtime=nvidia
 
     # Example of running a GPU head with CPU workers
-    # container_name: "ray-docker"
-
     # head_image: "tensorflow/tensorflow:1.13.1-py3"
     # head_run_options:
     #     - --runtime=nvidia
