@@ -327,8 +327,8 @@ class ActorClass(object):
 
             function_name = "__init__"
             function_signature = self._method_signatures[function_name]
-            creation_args = signature.extend_args(function_signature, args,
-                                                  kwargs)
+            creation_args = ray._raylet.extend_args(function_signature, args,
+                                                    kwargs)
             function_descriptor = FunctionDescriptor(
                 self._modified_class.__module__, function_name,
                 self._modified_class.__name__)
@@ -480,7 +480,7 @@ class ActorHandle(object):
             args = []
         if kwargs is None:
             kwargs = {}
-        args = signature.extend_args(function_signature, args, kwargs)
+        args = ray._raylet.extend_args(function_signature, args, kwargs)
 
         # Execute functions locally if Ray is run in LOCAL_MODE
         # Copy args to prevent the function from mutating them.
