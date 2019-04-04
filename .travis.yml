@@ -18,6 +18,7 @@ matrix:
       language: shell  # 'language: python' is an error on Travis CI Windows
       env:
         - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - 
         #- PATH=/c/Python35:/c/Python35/Scripts:$PATH
       before_install:  # choco install python --version 3.5.4
         #- choco upgrade chocolatey
@@ -31,8 +32,7 @@ matrix:
         - ls -l /c/tools/miniconda3/Scripts
         - /c/tools/miniconda3/Scripts/activate.bat /c/tools/miniconda3
         # - echo $PATH
-
-        - conda create -n myenv python
+        #- conda create -n myenv python
         - python --version ; pip --version
 
 
