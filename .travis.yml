@@ -21,23 +21,10 @@ matrix:
         - PYTHON=3.5 PYTHONWARNINGS=ignore
         - PATH="/c/tools/miniconda3/:/c/tools/miniconda3/Scripts:$PATH"
       before_install:
-        #- choco upgrade chocolatey
-        # - echo $PATH
-        - ls -l /c/tools || true
-        - ls -l /c/tools/miniconda3 || true
-        - choco install miniconda3  # --params="'/AddToPath:1'"  # is useless on Travis CI
-        #- refreshenv  # is useless on Travis CI
-        #- ls -l /c/tools/miniconda3
-        #- ls -l /c/tools/miniconda3/scripts
-        #- /c/tools/miniconda3/Scripts/activate.bat /c/tools/miniconda3
-        # - echo $PATH
-        #- conda create -n myenv python
-        - echo "$TRAVIS_OS_NAME $PYTHON $TRAVIS_PYTHON_VERSION"
-        - python --version || true
-        - pip --version
+        - choco install miniconda3
+        - conda --version ; python --version ; pip --version
         - pip install --upgrade pip || true
-        - conda --version
-        - conda create -n test-environment python=$PYTHON
+        - conda create -n test-environment python=$PYTHON openssl=1.1.1
         - pip install --upgrade pip
         - conda --version ; python --version ; pip --version
 
