@@ -248,7 +248,7 @@ def extend_args(function_signature, args, kwargs):
                                 keyword_name, function_name))
 
     # Fill in the remaining arguments.
-    for i in range(len(args)):
+    for i in range(min(len(args), len(arg_names))):
         skipped_name = arg_names[i]
         if skipped_name in kwargs:
             raise Exception("Positional and keyword value provided for the "
