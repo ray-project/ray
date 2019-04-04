@@ -3,9 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 try:
-    import skopt
-except Exception:
-    skopt = None
+    import skopt as sko
+except ImportError:
+    sko = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
@@ -85,7 +85,7 @@ class SkOptSearch(SuggestionAlgorithm):
                  points_to_evaluate=None,
                  evaluated_rewards=None,
                  **kwargs):
-        assert skopt is not None, """skopt must be installed!
+        assert sko is not None, """skopt must be installed!
             You can install Skopt with the command:
             `pip install scikit-optimize`."""
         assert type(max_concurrent) is int and max_concurrent > 0
