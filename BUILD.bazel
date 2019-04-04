@@ -33,6 +33,40 @@ cc_binary(
 )
 
 cc_library(
+    name = "stats_lib",
+    srcs = glob(
+        [
+            "src/ray/stats/*.cc",
+        ],
+        exclude = [
+            "src/ray/stats/*_test.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/stats/*.h",
+        ],
+    ),
+    copts = COPTS,
+    includes = [
+        "src",
+    ],
+    linkopts = ["-pthread"],
+    deps = [
+        ":ray_util",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
+    ],
+)
+
+cc_library(
     name = "raylet_lib",
     srcs = glob(
         [
@@ -48,6 +82,7 @@ cc_library(
         "src/ray/raylet/*.h",
     ]),
     copts = COPTS,
+    linkopts = ["-pthread"],
     deps = [
         ":gcs",
         ":gcs_fbs",
@@ -55,8 +90,16 @@ cc_library(
         ":object_manager",
         ":ray_common",
         ":ray_util",
+        ":stats_lib",
         "@boost//:asio",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
         "@plasma//:plasma_client",
     ],
 )
@@ -142,6 +185,15 @@ cc_test(
     copts = COPTS,
     deps = [
         ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stats_test",
+    srcs = ["src/ray/stats/stats_test.cc"],
+    deps = [
+        ":stats_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -299,6 +351,7 @@ cc_library(
         ":node_manager_fbs",
         ":ray_common",
         ":ray_util",
+        ":stats_lib",
         "@boost//:asio",
     ],
 )
