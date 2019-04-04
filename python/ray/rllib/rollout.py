@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import collections
 import json
 import os
 import pickle
@@ -102,6 +103,13 @@ def run(args, parser):
     rollout(agent, args.env, num_steps, args.out, args.no_render)
 
 
+class DefaultMapping(collections.defaultdict):
+    """default_factory now takes as an argument the missing key."""
+    def __missing__(self, key):
+        self[key] = value = self.default_factory(key)
+        return value
+
+
 def rollout(agent, env_name, num_steps, out=None, no_render=True):
     if hasattr(agent, "local_evaluator"):
         env = agent.local_evaluator.env
@@ -109,7 +117,9 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         if multiagent:
             policy_agent_mapping = agent.config["multiagent"][
                 "policy_mapping_fn"]
-            mapping_cache = {}
+        else:
+            policy_agent_mapping = lambda _: DEFAULT_POLICY_ID
+        mapping_cache = {}  # in case policy_agent_mapping is stochastic
         policy_map = agent.local_evaluator.policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
@@ -124,37 +134,31 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
     while steps < (num_steps or steps + 1):
         if out is not None:
             rollout = []
-        state = env.reset()
+        obs = env.reset()
+        agent_states = DefaultMapping(
+            lambda agent_id: state_init[policy_agent_mapping(agent_id)])
         done = False
         reward_total = 0.0
         while not done and steps < (num_steps or steps + 1):
-            if multiagent:
-                action_dict = {}
-                for agent_id in state.keys():
-                    a_state = state[agent_id]
-                    if a_state is not None:
-                        policy_id = mapping_cache.setdefault(
-                            agent_id, policy_agent_mapping(agent_id))
-                        p_use_lstm = use_lstm[policy_id]
-                        if p_use_lstm:
-                            a_action, p_state_init, _ = agent.compute_action(
-                                a_state,
-                                state=state_init[policy_id],
-                                policy_id=policy_id)
-                            state_init[policy_id] = p_state_init
-                        else:
-                            a_action = agent.compute_action(
-                                a_state, policy_id=policy_id)
-                        action_dict[agent_id] = a_action
-                action = action_dict
-            else:
-                if use_lstm[DEFAULT_POLICY_ID]:
-                    action, state_init, _ = agent.compute_action(
-                        state, state=state_init)
-                else:
-                    action = agent.compute_action(state)
+            action_dict = {}
+            for agent_id, a_state in obs.items():
+                if a_state is not None:
+                    policy_id = mapping_cache.setdefault(
+                        agent_id, policy_agent_mapping(agent_id))
+                    p_use_lstm = use_lstm[policy_id]
+                    if p_use_lstm:
+                        a_action, p_state, _ = agent.compute_action(
+                            a_state,
+                            state=agent_states[policy_id],
+                            policy_id=policy_id)
+                        agent_states[policy_id] = p_state
+                    else:
+                        a_action = agent.compute_action(
+                            a_state, policy_id=policy_id)
+                    action_dict[agent_id] = a_action
+            action = action_dict
 
-            next_state, reward, done, _ = env.step(action)
+            next_obs, reward, done, _ = env.step(action)
 
             if multiagent:
                 done = done["__all__"]
@@ -164,9 +168,9 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
             if not no_render:
                 env.render()
             if out is not None:
-                rollout.append([state, action, next_state, reward, done])
+                rollout.append([obs, action, next_obs, reward, done])
             steps += 1
-            state = next_state
+            obs = next_obs
         if out is not None:
             rollouts.append(rollout)
         print("Episode reward", reward_total)
