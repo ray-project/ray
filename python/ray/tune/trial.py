@@ -296,6 +296,7 @@ class Trial(object):
         self._cmp_greater = not checkpoint_score_attr.startswith("min-")
         self.best_checkpoint_attr_value = -float("inf") \
             if self._cmp_greater else float("inf")
+        # Strip off "min-" from checkpoint attribute
         self.checkpoint_score_attr = checkpoint_score_attr \
             if self._cmp_greater else checkpoint_score_attr[4:]
 
