@@ -116,11 +116,9 @@ class RemoteFunction(object):
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
-        # XXX optimize this
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._resources, num_cpus,
             num_gpus, resources)
-
         if worker.mode == ray.worker.LOCAL_MODE:
             # In LOCAL_MODE, remote calls simply execute the function.
             # We copy the arguments to prevent the function call from

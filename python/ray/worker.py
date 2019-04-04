@@ -575,17 +575,22 @@ class Worker(object):
                 the exceptional case that an actor task is being dispatched to
                 an actor created by a different driver, this should be the
                 driver ID of the driver that created the actor.
+            profile: If True, profile this task submission.
 
         Returns:
             The return object IDs for this task.
         """
-        # XXX put this back:
-        # with profiling.profile("submit_task"):
         self.task_context.task_index += 1
         kwargs["driver_id"] = kwargs.get("driver_id", self.task_driver_id)
-        return self.raylet_client.submit_task(
-            function_descriptor_list, args, self.current_task_id,
-            self.task_context.task_index, put, **kwargs)
+        if profile:
+            with profiling.profile("submit_task"):
+                return self.raylet_client.submit_task(
+                    function_descriptor_list, args, self.current_task_id,
+                    self.task_context.task_index, put, **kwargs)
+        else:
+            return self.raylet_client.submit_task(
+                function_descriptor_list, args, self.current_task_id,
+                self.task_context.task_index, put, **kwargs)
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
