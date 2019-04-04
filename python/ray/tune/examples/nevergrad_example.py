@@ -46,8 +46,9 @@ if __name__ == "__main__":
     parameter_names = ["height", "width"]
     # With nevergrad v0.2.0+ the following is also possible:
     # from nevergrad import instrumentation as inst
-    # instrumentation = inst.Instrumentation(height=inst.var.Array(1).bounded(0, 200).asfloat(),
-    #                                        width=inst.var.OrderedDiscrete([0, 10, 20, 30, 40, 50]))
+    # instrumentation = inst.Instrumentation(
+    #     height=inst.var.Array(1).bounded(0, 200).asfloat(),
+    #     width=inst.var.OrderedDiscrete([0, 10, 20, 30, 40, 50]))
     # parameter_names = None  # names are provided by the instrumentation
     optimizer = optimizerlib.OnePlusOne(instrumentation)
     algo = NevergradSearch(
