@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import cloudpickle
 import collections
 from datetime import datetime
 import json
@@ -12,6 +11,7 @@ import re
 import time
 import traceback
 
+import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
