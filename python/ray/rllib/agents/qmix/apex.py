@@ -4,7 +4,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.qmix.qmix import QMixTrainer, DEFAULT_CONFIG as QMIX_CONFIG
+from ray.rllib.agents.qmix.qmix import QMixTrainer, \
+    DEFAULT_CONFIG as QMIX_CONFIG
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import merge_dicts
 

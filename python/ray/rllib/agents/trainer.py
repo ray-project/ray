@@ -231,7 +231,7 @@ def with_base_config(base_config, extra_config):
 @PublicAPI
 class Trainer(Trainable):
     """A trainer coordinates the optimization of one or more RL policies.
-    
+
     All RLlib trainers extend this base class, e.g., the A3CTrainer implements
     the A3C algorithm for single and multi-agent training.
 
