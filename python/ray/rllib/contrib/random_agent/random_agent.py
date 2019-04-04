@@ -10,19 +10,19 @@ from ray.rllib.utils.annotations import override
 
 # yapf: disable
 # __sphinx_doc_begin__
-class RandomTrainer(Trainer):
+class RandomAgent(Trainer):
     """Policy that takes random actions and never learns."""
 
-    _agent_name = "RandomTrainer"
+    _agent_name = "RandomAgent"
     _default_config = with_common_config({
         "rollouts_per_iteration": 10,
     })
 
-    @override(Agent)
+    @override(Trainer)
     def _init(self, config, env_creator):
         self.env = env_creator(config["env_config"])
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         rewards = []
         steps = 0
@@ -45,7 +45,7 @@ class RandomTrainer(Trainer):
 
 
 if __name__ == "__main__":
-    trainer = RandomTrainer(
+    trainer = RandomAgent(
         env="CartPole-v0", config={"rollouts_per_iteration": 10})
     result = trainer.train()
     assert result["episode_reward_mean"] > 10, result

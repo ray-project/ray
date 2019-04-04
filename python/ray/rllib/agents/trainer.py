@@ -55,7 +55,7 @@ COMMON_CONFIG = {
         "on_episode_step": None,   # arg: {"env": .., "episode": ...}
         "on_episode_end": None,    # arg: {"env": .., "episode": ...}
         "on_sample_end": None,     # arg: {"samples": .., "evaluator": ...}
-        "on_train_result": None,   # arg: {"agent": ..., "result": ...}
+        "on_train_result": None,   # arg: {"trainer": ..., "result": ...}
     },
     # Whether to attempt to continue training if a worker crashes.
     "ignore_worker_failures": False,
@@ -352,7 +352,7 @@ class Trainer(Trainable):
     def _log_result(self, result):
         if self.config["callbacks"].get("on_train_result"):
             self.config["callbacks"]["on_train_result"]({
-                "agent": self,
+                "trainer": self,
                 "result": result,
             })
         # log after the callback is invoked, so that the user has a chance

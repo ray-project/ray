@@ -39,7 +39,7 @@ def on_sample_end(info):
 
 def on_train_result(info):
     print("trainer.train() result: {} -> {} episodes".format(
-        info["agent"], info["result"]["episodes_this_iter"]))
+        info["trainer"], info["result"]["episodes_this_iter"]))
     # you can mutate the result dict to add new fields to return
     info["result"]["callback_ok"] = True
 

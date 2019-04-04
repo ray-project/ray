@@ -4,13 +4,13 @@ RLlib Training APIs
 Getting Started
 ---------------
 
-At a high level, RLlib provides an ``Agent`` class which
-holds a policy for environment interaction. Through the agent interface, the policy can
+At a high level, RLlib provides an ``Trainer`` class which
+holds a policy for environment interaction. Through the trainer interface, the policy can
 be trained, checkpointed, or an action computed.
 
 .. image:: rllib-api.svg
 
-You can train a simple DQN agent with the following command:
+You can train a simple DQN trainer with the following command:
 
 .. code-block:: bash
 
@@ -39,15 +39,15 @@ with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
 (available options are ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
 
-Evaluating Trained Agents
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Evaluating Trained Policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In order to save checkpoints from which to evaluate agents,
+In order to save checkpoints from which to evaluate policies,
 set ``--checkpoint-freq`` (number of training iterations between checkpoints)
 when running ``rllib train``.
 
 
-An example of evaluating a previously trained DQN agent is as follows:
+An example of evaluating a previously trained DQN policy is as follows:
 
 .. code-block:: bash
 
@@ -55,7 +55,7 @@ An example of evaluating a previously trained DQN agent is as follows:
         ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1 \
         --run DQN --env CartPole-v0 --steps 10000
 
-The ``rollout.py`` helper script reconstructs a DQN agent from the checkpoint
+The ``rollout.py`` helper script reconstructs a DQN policy from the checkpoint
 located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
 
@@ -65,7 +65,7 @@ Configuration
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
 
-Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/agent.py>`__. See the
+Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/trainer.py>`__. See the
 `algorithms documentation <rllib-algorithms.html>`__ for more information.
 
 In an example below, we train A2C by specifying 8 workers through the config flag.
@@ -77,16 +77,16 @@ In an example below, we train A2C by specifying 8 workers through the config fla
 Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
 
-You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most agents. The number of GPUs the driver should use can be set via the ``num_gpus`` option. Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``. The number of GPUs can be a fractional quantity to allocate only a fraction of a GPU. For example, with DQN you can pack five agents onto one GPU by setting ``num_gpus: 0.2``.
+You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most algorithms. The number of GPUs the driver should use can be set via the ``num_gpus`` option. Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``. The number of GPUs can be a fractional quantity to allocate only a fraction of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting ``num_gpus: 0.2``.
 
 .. image:: rllib-config.svg
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
 
-The following is a list of the common agent hyperparameters:
+The following is a list of the common algorithm hyperparameters:
 
-.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+.. literalinclude:: ../../python/ray/rllib/agents/trainer.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -122,25 +122,25 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
-    agent = ppo.PPOAgent(config=config, env="CartPole-v0")
+    trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
-    # Can optionally call agent.restore(path) to load a checkpoint.
+    # Can optionally call trainer.restore(path) to load a checkpoint.
 
     for i in range(1000):
        # Perform one iteration of training the policy with PPO
-       result = agent.train()
+       result = trainer.train()
        print(pretty_print(result))
 
        if i % 100 == 0:
-           checkpoint = agent.save()
+           checkpoint = trainer.save()
            print("checkpoint saved at", checkpoint)
 
 
 .. note::
 
-    It's recommended that you run RLlib agents with `Tune <tune.html>`__, for easy experiment management and visualization of results. Just set ``"run": AGENT_NAME, "env": ENV_NAME`` in the experiment config.
+    It's recommended that you run RLlib trainers with `Tune <tune.html>`__, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
 
-All RLlib agents are compatible with the `Tune API <tune-usage.html>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple hyperparam sweep of PPO:
+All RLlib trainers are compatible with the `Tune API <tune-usage.html>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple hyperparam sweep of PPO:
 
 .. code-block:: python
 
@@ -176,27 +176,27 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
 Custom Training Workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the `basic training example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your agent once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#training-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_train_fn.py>`__.
+In the `basic training example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#training-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_train_fn.py>`__.
 
 Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~
-It is common to need to access an agent's internal state, e.g., to set or get internal weights. In RLlib an agent's state is replicated across multiple *policy evaluators* (Ray actors) in the cluster. However, you can easily get and update this state between calls to ``train()`` via ``agent.optimizer.foreach_evaluator()`` or ``agent.optimizer.foreach_evaluator_with_index()``. These functions take a lambda function that is applied with the evaluator as an arg. You can also return values from these functions and those will be returned as a list.
+It is common to need to access a trainer's internal state, e.g., to set or get internal weights. In RLlib trainer state is replicated across multiple *policy evaluators* (Ray actors) in the cluster. However, you can easily get and update this state between calls to ``train()`` via ``trainer.optimizer.foreach_evaluator()`` or ``trainer.optimizer.foreach_evaluator_with_index()``. These functions take a lambda function that is applied with the evaluator as an arg. You can also return values from these functions and those will be returned as a list.
 
-You can also access just the "master" copy of the agent state through ``agent.get_policy()`` or ``agent.local_evaluator``, but note that updates here may not be immediately reflected in remote replicas if you have configured ``num_workers > 0``. For example, to access the weights of a local TF policy, you can run ``agent.get_policy().get_weights()``. This is also equivalent to ``agent.local_evaluator.policy_map["default_policy"].get_weights()``:
+You can also access just the "master" copy of the trainer state through ``trainer.get_policy()`` or ``trainer.local_evaluator``, but note that updates here may not be immediately reflected in remote replicas if you have configured ``num_workers > 0``. For example, to access the weights of a local TF policy, you can run ``trainer.get_policy().get_weights()``. This is also equivalent to ``trainer.local_evaluator.policy_map["default_policy"].get_weights()``:
 
 .. code-block:: python
 
     # Get weights of the default local policy
-    agent.get_policy().get_weights()
+    trainer.get_policy().get_weights()
 
     # Same as above
-    agent.local_evaluator.policy_map["default_policy"].get_weights()
+    trainer.local_evaluator.policy_map["default_policy"].get_weights()
 
     # Get list of weights of each evaluator, including remote replicas
-    agent.optimizer.foreach_evaluator(lambda ev: ev.get_policy().get_weights())
+    trainer.optimizer.foreach_evaluator(lambda ev: ev.get_policy().get_weights())
 
     # Same as above
-    agent.optimizer.foreach_evaluator_with_index(lambda ev, i: ev.get_policy().get_weights())
+    trainer.optimizer.foreach_evaluator_with_index(lambda ev, i: ev.get_policy().get_weights())
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
@@ -252,8 +252,8 @@ You can provide callback functions to be called at points during policy evaluati
         episode.custom_metrics["pole_angle"] = pole_angle
 
     def on_train_result(info):
-        print("agent.train() result: {} -> {} episodes".format(
-            info["agent"].__name__, info["result"]["episodes_this_iter"]))
+        print("trainer.train() result: {} -> {} episodes".format(
+            info["trainer"].__name__, info["result"]["episodes_this_iter"]))
 
     ray.init()
     trials = tune.run(
@@ -278,18 +278,18 @@ Example: Curriculum Learning
 
 Let's look at two ways to use the above APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__. In curriculum learning, the agent task is adjusted over time to improve the learning process. Suppose that we have an environment class with a ``set_phase()`` method that we can call to adjust the task difficulty over time:
 
-Approach 1: Use the Agent API and update the environment between calls to ``train()``. This example shows the agent being run inside a Tune function:
+Approach 1: Use the Trainer API and update the environment between calls to ``train()``. This example shows the trainer being run inside a Tune function:
 
 .. code-block:: python
 
     import ray
     from ray import tune
-    from ray.rllib.agents.ppo import PPOAgent
+    from ray.rllib.agents.ppo import PPOTrainer
 
     def train(config, reporter):
-        agent = PPOAgent(config=config, env=YourEnv)
+        trainer = PPOTrainer(config=config, env=YourEnv)
         while True:
-            result = agent.train()
+            result = trainer.train()
             reporter(**result)
             if result["episode_reward_mean"] > 200:
                 phase = 2
@@ -297,7 +297,7 @@ Approach 1: Use the Agent API and update the environment between calls to ``trai
                 phase = 1
             else:
                 phase = 0
-            agent.optimizer.foreach_evaluator(
+            trainer.optimizer.foreach_evaluator(
                 lambda ev: ev.foreach_env(
                     lambda env: env.set_phase(phase)))
 
@@ -330,8 +330,8 @@ Approach 2: Use the callbacks API to update the environment on new training resu
             phase = 1
         else:
             phase = 0
-        agent = info["agent"]
-        agent.optimizer.foreach_evaluator(
+        trainer = info["trainer"]
+        trainer.optimizer.foreach_evaluator(
             lambda ev: ev.foreach_env(
                 lambda env: env.set_phase(phase)))
 
@@ -382,7 +382,7 @@ You can use the `data output API <rllib-offline.html>`__ to save episode traces 
 Log Verbosity
 ~~~~~~~~~~~~~
 
-You can control the agent log level via the ``"log_level"`` flag. Valid values are "INFO" (default), "DEBUG", "WARN", and "ERROR". This can be used to increase or decrease the verbosity of internal logging. For example:
+You can control the trainer log level via the ``"log_level"`` flag. Valid values are "INFO" (default), "DEBUG", "WARN", and "ERROR". This can be used to increase or decrease the verbosity of internal logging. For example:
 
 .. code-block:: bash
 
