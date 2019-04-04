@@ -29,7 +29,7 @@ matrix:
         #- refreshenv  # is useless on Travis CI
         - ls -l /c/tools
         - ls -l /c/tools/miniconda3
-        - ls -l /c/tools/miniconda3/tcripts
+        - ls -l /c/tools/miniconda3/tools
         - ls -l /c/tools/miniconda3/scripts
         #- /c/tools/miniconda3/Scripts/activate.bat /c/tools/miniconda3
         # - echo $PATH
