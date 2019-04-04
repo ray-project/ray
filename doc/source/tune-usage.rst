@@ -465,7 +465,7 @@ Tune CLI (Experimental)
 
 Here are a few examples of command line calls.
 
-- ``tune list-trials``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``.
+- ``tune list-trials``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--columns`` and ``--result-columns`` flags to select specific columns to display.
 
 .. code-block:: bash
 
@@ -491,7 +491,7 @@ Here are a few examples of command line calls.
     +------------------+-----------------------+------------+
     Dropped columns: ['status', 'last_update_time']
 
-- ``tune list-experiments``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``.
+- ``tune list-experiments``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--columns`` flag to select specific columns to display.
 
 .. code-block:: bash
 
