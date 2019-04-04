@@ -9,7 +9,7 @@ from __future__ import print_function
 import ray
 from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest import BayesOptSearch
+from ray.tune.suggest.bayesopt import BayesOptSearch
 
 
 def easy_objective(config, reporter):

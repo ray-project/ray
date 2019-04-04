@@ -468,7 +468,7 @@ class NodeManager {
   WorkerPool worker_pool_;
   /// A set of queues to maintain tasks.
   SchedulingQueue local_queues_;
-  /// The scheduling policy in effect for this local scheduler.
+  /// The scheduling policy in effect for this raylet.
   SchedulingPolicy scheduling_policy_;
   /// The reconstruction policy for deciding when to re-execute a task.
   ReconstructionPolicy reconstruction_policy_;

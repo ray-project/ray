@@ -126,6 +126,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  output_creator=lambda ioctx: NoopOutput(),
                  remote_worker_envs=False,
                  remote_env_batch_wait_ms=0,
+                 soft_horizon=False,
                  _fake_sampler=False):
         """Initialize a policy evaluator.
 
@@ -209,6 +210,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 least one env is ready) is a reasonable default, but optimal
                 value could be obtained by measuring your environment
                 step / reset and model inference perf.
+            soft_horizon (bool): Calculate rewards but don't reset the
+                environment when the horizon is hit.
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
 
@@ -374,7 +377,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
-                blackhole_outputs="simulation" in input_evaluation)
+                blackhole_outputs="simulation" in input_evaluation,
+                soft_horizon=soft_horizon)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -389,7 +393,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
-                clip_actions=clip_actions)
+                clip_actions=clip_actions,
+                soft_horizon=soft_horizon)
 
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader
