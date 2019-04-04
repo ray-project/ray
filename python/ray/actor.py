@@ -123,7 +123,11 @@ class ActorMethod(object):
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
 
-    def _remote(self, args=None, kwargs=None, num_return_vals=None, profile=True):
+    def _remote(self,
+                args=None,
+                kwargs=None,
+                num_return_vals=None,
+                profile=True):
         if args is None:
             args = []
         if kwargs is None:
@@ -502,8 +506,7 @@ class ActorHandle(object):
                 resources={"CPU": self._ray_actor_method_cpus},
                 placement_resources={},
                 driver_id=self._ray_actor_driver_id,
-                profile=profile
-            )
+                profile=profile)
             # Update the actor counter and cursor to reflect the most recent
             # invocation.
             self._ray_actor_counter += 1
