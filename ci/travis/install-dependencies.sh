@@ -7,16 +7,16 @@ echo "PYTHON is $PYTHON"
 platform="unknown"
 unamestr="$(uname)"
 if [[ "$unamestr" == "Linux" ]]; then
-  echo "Platform is linux."
+  echo "Platform is Linux."
   platform="linux"
 elif [[ "$unamestr" == "Darwin" ]]; then
-  echo "Platform is macosx."
+  echo "Platform is macOS."
   platform="macosx"
 elif [[ "$unamestr" == "MSYS_NT-10.0" ]]; then
   echo "Platform is Windows."
   platform="windows"
 else
-  echo "Unrecognized platform."
+  echo "$unamestr is an unrecognized platform."
   exit 1
 fi
 
