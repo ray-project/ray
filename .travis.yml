@@ -4,31 +4,29 @@ matrix:
   allow_failures:
     - os: windows
   include:
-    #- os: windows
-    #  language: shell  # 'language: python' is an error on Travis CI Windows
-    #  env:
-    #    - PYTHON=2.7 PYTHONWARNINGS=ignore
-    #    #- PATH=/c/Python27:/c/Python27/Scripts:$PATH
-    #  before_install:  # choco install python2
-    #    - choco install miniconda --params="'/AddToPath:1'"
-    #    - conda create -n myenv python
-    #    - python --version ; pip --version
+    - os: windows
+      language: shell  # 'language: python' is an error on Travis CI Windows
+      env:
+        - PYTHON=2.7 PYTHONWARNINGS=ignore
+        - PATH="/c/tools/miniconda3/:/c/tools/miniconda3/Scripts:$PATH"
+      before_install:
+        - choco install miniconda2 openssl.light
+        - conda create -n test-environment python=$PYTHON --yes
+        - . activate test-environment
+        - conda --version ; python --version ; pip --version
+        - python -m pip install --upgrade pip
 
     - os: windows
       language: shell  # 'language: python' is an error on Travis CI Windows
-      python: "3.5"
       env:
         - PYTHON=3.5 PYTHONWARNINGS=ignore
         - PATH="/c/tools/miniconda3/:/c/tools/miniconda3/Scripts:$PATH"
       before_install:
         - choco install miniconda3 openssl.light
-        - conda --version ; python --version ; pip --version
         - conda create -n test-environment python=$PYTHON --yes
         - . activate test-environment
         - conda --version ; python --version ; pip --version
-        - pip install --upgrade pip || true
-        - python -m pip install --upgrade pip || true
-        - /c/tools/miniconda3/envs/test-environment/python.exe -m pip install --upgrade pip
+        - python -m pip install --upgrade pip
 
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
