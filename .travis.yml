@@ -20,10 +20,15 @@ matrix:
         - PYTHON=3.5 PYTHONWARNINGS=ignore
         #- PATH=/c/Python35:/c/Python35/Scripts:$PATH
       before_install:  # choco install python --version 3.5.4
-        - echo $PATH
-        - choco install miniconda3 --params="'/AddToPath:1'"
-        - echo $PATH
-        #- refreshenv
+        - choco upgrade chocolatey
+        # - echo $PATH
+        - ls -l 
+        - choco install miniconda3  # --params="'/AddToPath:1'"  # is useless on Travis CI
+        #- refreshenv  # is useless on Travis CI
+        - ls -l
+        - /c/ProgramData/Miniconda3/Scripts/activate.bat c/ProgramData/Miniconda3
+        # - echo $PATH
+
         - conda create -n myenv python
         - python --version ; pip --version
 
