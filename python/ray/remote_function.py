@@ -108,13 +108,6 @@ class RemoteFunction(object):
             self._last_export_session = worker._session_index
             worker.function_actor_manager.export(self)
 
-        kwargs = {} if kwargs is None else kwargs
-        args = [] if args is None else args
-        if kwargs != {} or len(
-                self._function_signature.arg_names) != len(args):
-            args = ray._raylet.extend_args(self._function_signature, args,
-                                           kwargs)
-
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
@@ -130,6 +123,7 @@ class RemoteFunction(object):
             return result
         return worker.submit_task(
             self._function_descriptor_list,
+            self._function_signature,
             args,
             num_return_vals=num_return_vals,
             resources=resources)

@@ -256,10 +256,6 @@ class ActorClass(object):
         Returns:
             A handle to the newly created actor.
         """
-        if args is None:
-            args = []
-        if kwargs is None:
-            kwargs = {}
 
         worker = ray.worker.get_global_worker()
         if worker.mode is None:
@@ -320,14 +316,13 @@ class ActorClass(object):
 
             function_name = "__init__"
             function_signature = self._method_signatures[function_name]
-            creation_args = ray._raylet.extend_args(function_signature, args,
-                                                    kwargs)
             function_descriptor = FunctionDescriptor(
                 self._modified_class.__module__, function_name,
                 self._modified_class.__name__)
             actor_cursor = worker.submit_task(
                 function_descriptor.get_function_descriptor_list(),
-                creation_args,
+                args,
+                kwargs,
                 actor_creation_id=actor_id,
                 max_actor_reconstructions=self._max_reconstructions,
                 num_return_vals=1,
@@ -466,11 +461,6 @@ class ActorHandle(object):
         worker.check_connected()
 
         function_signature = self._ray_method_signatures[method_name]
-        if args is None:
-            args = []
-        if kwargs is None:
-            kwargs = {}
-        args = ray._raylet.extend_args(function_signature, args, kwargs)
 
         # Execute functions locally if Ray is run in LOCAL_MODE
         # Copy args to prevent the function from mutating them.
@@ -484,6 +474,7 @@ class ActorHandle(object):
             object_ids = worker.submit_task(
                 function_descriptor.get_function_descriptor_list(),
                 args,
+                kwargs,
                 actor_id=self._ray_actor_id,
                 actor_handle_id=self._ray_actor_handle_id,
                 actor_counter=self._ray_actor_counter,

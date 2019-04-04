@@ -300,7 +300,9 @@ cdef class RayletClient:
 
     def submit_task(self,
                     function_descriptor_list,
+                    function_signature,
                     args,
+                    kwargs,
                     TaskID current_task_id,
                     int task_index,
                     put_function,
@@ -317,6 +319,13 @@ cdef class RayletClient:
                     placement_resources=None,
                     DriverID driver_id=DriverID.nil()):
         cdef Task task
+
+        kwargs = {} if kwargs is None else kwargs
+        args = [] if args is None else args
+
+        if kwargs != {} or len(function_signature.arg_names) != len(args):
+            args = ray._raylet.extend_args(function_signature, args,
+                                           kwargs)
 
         args_for_raylet = []
         for arg in args:
