@@ -5,4 +5,8 @@ from __future__ import print_function
 from ray.rllib.agents.ddpg.apex import ApexDDPGTrainer
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG
 
-__all__ = ["DDPGTrainer", "ApexDDPGTrainer", "DEFAULT_CONFIG"]
+# TODO: remove the legacy agent names
+ApexDDPGAgent = ApexDDPGTrainer
+DDPGAgent = DDPGTrainer
+
+__all__ = ["DDPGAgent", "ApexDDPGAgent", "DDPGTrainer", "ApexDDPGTrainer", "DEFAULT_CONFIG"]

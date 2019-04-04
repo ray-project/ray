@@ -4,14 +4,14 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.agent import Trainer, with_common_config
 from ray.rllib.utils.annotations import override
 
 
 # yapf: disable
 # __sphinx_doc_begin__
-class RandomTrainer(Agent):
-    """Agent that takes random actions and never learns."""
+class RandomTrainer(Trainer):
+    """Policy that takes random actions and never learns."""
 
     _agent_name = "RandomTrainer"
     _default_config = with_common_config({
@@ -45,8 +45,8 @@ class RandomTrainer(Agent):
 
 
 if __name__ == "__main__":
-    agent = RandomTrainer(
+    trainer = RandomTrainer(
         env="CartPole-v0", config={"rollouts_per_iteration": 10})
-    result = agent.train()
+    result = trainer.train()
     assert result["episode_reward_mean"] > 10, result
     print("Test: OK")

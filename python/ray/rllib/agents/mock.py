@@ -10,7 +10,7 @@ from ray.rllib.agents.trainer import Trainer, with_common_config
 
 
 class _MockTrainer(Trainer):
-    """Mock agent for use in tests"""
+    """Mock trainer for use in tests"""
 
     _agent_name = "MockTrainer"
     _default_config = with_common_config({
@@ -58,7 +58,7 @@ class _MockTrainer(Trainer):
 
 
 class _SigmoidFakeData(_MockTrainer):
-    """Agent that returns sigmoid learning curves.
+    """Trainer that returns sigmoid learning curves.
 
     This can be helpful for evaluating early stopping algorithms."""
 

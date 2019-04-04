@@ -1,4 +1,7 @@
-from ray.rllib.agents.ppo.ppo import (PPOTrainer, DEFAULT_CONFIG)
+from ray.rllib.agents.ppo.ppo import PPOTrainer, DEFAULT_CONFIG
 from ray.rllib.agents.ppo.appo import APPOTrainer
 
-__all__ = ["APPOTrainer", "PPOTrainer", "DEFAULT_CONFIG"]
+# TODO remove the legacy agent names
+PPOAgent = PPOTrainer
+
+__all__ = ["PPOAgent", "APPOTrainer", "PPOTrainer", "DEFAULT_CONFIG"]
