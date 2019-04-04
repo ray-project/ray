@@ -66,7 +66,7 @@ DEFAULT_CONFIG = with_common_config({
 class PPOTrainer(Trainer):
     """Multi-GPU optimized implementation of PPO in TensorFlow."""
 
-    _agent_name = "PPO"
+    _name = "PPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = PPOPolicyGraph
 

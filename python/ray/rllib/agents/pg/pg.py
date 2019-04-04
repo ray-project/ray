@@ -29,7 +29,7 @@ class PGTrainer(Trainer):
     In most cases, you will probably want to use the PPO agent instead.
     """
 
-    _agent_name = "PG"
+    _name = "PG"
     _default_config = DEFAULT_CONFIG
     _policy_graph = PGPolicyGraph
 

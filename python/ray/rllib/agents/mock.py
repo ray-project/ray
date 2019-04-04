@@ -12,7 +12,7 @@ from ray.rllib.agents.trainer import Trainer, with_common_config
 class _MockTrainer(Trainer):
     """Mock trainer for use in tests"""
 
-    _agent_name = "MockTrainer"
+    _name = "MockTrainer"
     _default_config = with_common_config({
         "mock_error": False,
         "persistent_error": False,
@@ -62,7 +62,7 @@ class _SigmoidFakeData(_MockTrainer):
 
     This can be helpful for evaluating early stopping algorithms."""
 
-    _agent_name = "SigmoidFakeData"
+    _name = "SigmoidFakeData"
     _default_config = with_common_config({
         "width": 100,
         "height": 100,
@@ -86,7 +86,7 @@ class _SigmoidFakeData(_MockTrainer):
 
 class _ParameterTuningTrainer(_MockTrainer):
 
-    _agent_name = "ParameterTuningTrainer"
+    _name = "ParameterTuningTrainer"
     _default_config = with_common_config({
         "reward_amt": 10,
         "dummy_param": 10,
@@ -109,7 +109,7 @@ def _agent_import_failed(trace):
     """Returns dummy agent class for if PyTorch etc. is not installed."""
 
     class _AgentImportFailed(Trainer):
-        _agent_name = "AgentImportFailed"
+        _name = "AgentImportFailed"
         _default_config = with_common_config({})
 
         def _setup(self, config):

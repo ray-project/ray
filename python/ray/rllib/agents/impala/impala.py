@@ -103,7 +103,7 @@ DEFAULT_CONFIG = with_common_config({
 class ImpalaTrainer(Trainer):
     """IMPALA implementation using DeepMind's V-trace."""
 
-    _agent_name = "IMPALA"
+    _name = "IMPALA"
     _default_config = DEFAULT_CONFIG
     _policy_graph = VTracePolicyGraph
 

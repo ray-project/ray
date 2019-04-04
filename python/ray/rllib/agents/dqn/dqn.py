@@ -140,7 +140,7 @@ DEFAULT_CONFIG = with_common_config({
 class DQNTrainer(Trainer):
     """DQN implementation in TensorFlow."""
 
-    _agent_name = "DQN"
+    _name = "DQN"
     _default_config = DEFAULT_CONFIG
     _policy_graph = DQNPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
@@ -161,7 +161,7 @@ class DQNTrainer(Trainer):
         ]
 
         for k in self._optimizer_shared_configs:
-            if self._agent_name != "DQN" and k in [
+            if self._name != "DQN" and k in [
                     "schedule_max_timesteps", "beta_annealing_fraction",
                     "final_prioritized_replay_beta"
             ]:

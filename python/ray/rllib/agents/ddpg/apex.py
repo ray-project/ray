@@ -40,7 +40,7 @@ class ApexDDPGTrainer(DDPGTrainer):
     running in a large cluster, increase the `num_workers` config var.
     """
 
-    _agent_name = "APEX_DDPG"
+    _name = "APEX_DDPG"
     _default_config = APEX_DDPG_DEFAULT_CONFIG
 
     @override(DDPGTrainer)

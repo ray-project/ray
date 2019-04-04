@@ -160,7 +160,7 @@ class Worker(object):
 class ARSTrainer(Trainer):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
-    _agent_name = "ARS"
+    _name = "ARS"
     _default_config = DEFAULT_CONFIG
 
     @override(Trainer)

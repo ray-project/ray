@@ -42,7 +42,7 @@ DEFAULT_CONFIG = with_common_config({
 class MARWILTrainer(Trainer):
     """MARWIL implementation in TensorFlow."""
 
-    _agent_name = "MARWIL"
+    _name = "MARWIL"
     _default_config = DEFAULT_CONFIG
     _policy_graph = MARWILPolicyGraph
 

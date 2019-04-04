@@ -55,7 +55,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 class APPOTrainer(impala.ImpalaTrainer):
     """PPO surrogate loss with IMPALA-architecture."""
 
-    _agent_name = "APPO"
+    _name = "APPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = AsyncPPOPolicyGraph
 

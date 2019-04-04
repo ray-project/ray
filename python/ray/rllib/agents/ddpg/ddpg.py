@@ -134,7 +134,7 @@ DEFAULT_CONFIG = with_common_config({
 
 class DDPGTrainer(DQNTrainer):
     """DDPG implementation in TensorFlow."""
-    _agent_name = "DDPG"
+    _name = "DDPG"
     _default_config = DEFAULT_CONFIG
     _policy_graph = DDPGPolicyGraph
 

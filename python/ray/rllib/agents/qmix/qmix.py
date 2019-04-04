@@ -93,7 +93,7 @@ DEFAULT_CONFIG = with_common_config({
 class QMixTrainer(DQNTrainer):
     """QMix implementation in PyTorch."""
 
-    _agent_name = "QMIX"
+    _name = "QMIX"
     _default_config = DEFAULT_CONFIG
     _policy_graph = QMixPolicyGraph
     _optimizer_shared_configs = [

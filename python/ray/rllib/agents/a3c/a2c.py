@@ -20,7 +20,7 @@ A2C_DEFAULT_CONFIG = merge_dicts(
 class A2CTrainer(A3CTrainer):
     """Synchronous variant of the A3CTrainer."""
 
-    _agent_name = "A2C"
+    _name = "A2C"
     _default_config = A2C_DEFAULT_CONFIG
 
     @override(A3CTrainer)

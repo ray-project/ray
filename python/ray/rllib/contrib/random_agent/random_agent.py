@@ -13,7 +13,7 @@ from ray.rllib.utils.annotations import override
 class RandomAgent(Trainer):
     """Policy that takes random actions and never learns."""
 
-    _agent_name = "RandomAgent"
+    _name = "RandomAgent"
     _default_config = with_common_config({
         "rollouts_per_iteration": 10,
     })

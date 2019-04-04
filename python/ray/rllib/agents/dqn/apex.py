@@ -43,7 +43,7 @@ class ApexTrainer(DQNTrainer):
     running in a large cluster, increase the `num_workers` config var.
     """
 
-    _agent_name = "APEX"
+    _name = "APEX"
     _default_config = APEX_DEFAULT_CONFIG
 
     @override(DQNTrainer)

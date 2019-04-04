@@ -42,7 +42,7 @@ class ApexQMixTrainer(QMixTrainer):
     running in a large cluster, increase the `num_workers` config var.
     """
 
-    _agent_name = "APEX_QMIX"
+    _name = "APEX_QMIX"
     _default_config = APEX_QMIX_DEFAULT_CONFIG
 
     @override(QMixTrainer)

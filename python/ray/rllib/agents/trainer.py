@@ -273,7 +273,7 @@ class Trainer(Trainable):
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(self._agent_name, self._env_id,
+            logdir_prefix = "{}_{}_{}".format(self._name, self._env_id,
                                               timestr)
 
             def default_logger_creator(config):
@@ -477,7 +477,7 @@ class Trainer(Trainable):
         return self._iteration
 
     @property
-    def _agent_name(self):
+    def _name(self):
         """Subclasses should override this to declare their name."""
 
         raise NotImplementedError

@@ -41,7 +41,7 @@ DEFAULT_CONFIG = with_common_config({
 class A3CTrainer(Trainer):
     """A3C implementations in TensorFlow and PyTorch."""
 
-    _agent_name = "A3C"
+    _name = "A3C"
     _default_config = DEFAULT_CONFIG
     _policy_graph = A3CPolicyGraph
 

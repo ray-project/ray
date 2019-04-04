@@ -166,7 +166,7 @@ class Worker(object):
 class ESTrainer(Trainer):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
-    _agent_name = "ES"
+    _name = "ES"
     _default_config = DEFAULT_CONFIG
 
     @override(Trainer)
