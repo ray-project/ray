@@ -6,33 +6,117 @@ import types
 import tempfile
 import os
 
-import boto3
-import botocore
 
-s3 = boto3.resource('s3')
+### START TODO
+S3_PREFIX = "s3://"
+GS_PREFIX = "gs://"
 
 
-class Syncer(object):
+def get_syncer(local_dir, remote_dir, *args, **kwargs):
+    if remote_dir.startswith(S3_PREFIX):
+        return CommandSyncer(local_dir, remote_dir, "aws s3 sync {source} {target}")
+    elif remote_dir.startswith(GS_PREFIX)
+        return CommandSyncer(local_dir, remote_dir, "gsutil rsync -r {source} {target}")
+    # TODO: Find out where this switch logic occurs!
+    if isinstance(sync_fn, types.FunctionType) or isinstance(
+            sync_fn, tune_function):
+        self.sync_fn = sync_fn
+    elif isinstance(sync_fn, str):
+        self.sync_cmd_tmpl = sync_fn
+    else:
+        raise ValueError(type(sync_fn))
+
+
+
+def validate_sync_function(sync_function):
+    if sync_function is None:
+        return
+    elif isinstance(sync_function, str):
+        assert "{source}" in sync_function, (
+            "Sync template missing '{source}'.")
+        assert "{target}" in sync_function, (
+            "Sync template missing '{target}'.")
+    elif not (isinstance(sync_function, types.FunctionType)
+              or isinstance(sync_function, tune_function)):
+        raise ValueError("Sync function {} must be string or function".format(
+            sync_function))
+
+
+### END TODO
+
+
+class BaseSyncer(object):
     def __init__(self, local_dir, remote_dir, sync_fn=None):
-        self._local_dir = local_dir
-        self._remote_dir = remote_dir
+        """
+        Arguments:
+            local_dir (str): Directory to sync. Uniquely identifies the syncer.
+            remote_dir (str): Remote directory to sync with.
+            sync_fn (func): Function for syncing the local_dir to
+                remote_dir.
+        """
+        self._local_dir = os.path.join(local_dir, '')
+        self._remote_dir = remote_dir or self._local_dir  # TODO(rliaw) - double check
+        self.last_sync_time = 0
+        if sync_fn:  # TODO(rliaw): Check on this
+            self.sync_fn = sync_fn
+
+    def sync(self, source, target):
+        self.last_sync_time = time.time()
+
+        if not (source and target):
+            logger.debug("Source or target is empty, skipping log sync for {}".format(
+                self.local_dir))
+            return
+
+        try:
+            self.sync_fn(source, target)
+            return True
+        except Exception:
+            logger.exception("Sync function failed.")
+
+    def sync_if_needed(self):
+        if time.time() - self.last_sync_time > 300:
+            self.sync_down()
+
+    def sync_down(self, *args, **kwargs):
+        self.sync(self.remote_path, self.local_dir, *args, **kwargs)
+
+    def sync_up(self, *args, **kwargs):
+        self.sync(self.local_dir, self.remote_path, *args, **kwargs)
+
+    def close(self):
+        pass
+
+    def wait(self):
+        pass
+
+    @property
+    def local_dir(self):
+        return self._local_dir
+
+    @property
+    def remote_path(self):
+        return self._remote_dir
+
+
+class CommandSyncer(BaseSyncer):
+    def __init__(self, local_dir, remote_dir, sync_cmd_tmpl=None):
+        """
+        Arguments:
+            local_dir (str): Directory to sync.
+            remote_dir (str): Remote directory to sync with.
+            sync_cmd_tmpl (str): A string template
+                for syncer to run and needs to include replacement fields
+                '{local_dir}' and '{remote_dir}'.
+        """
+        super(CommandSyncer, self).__init(local_dir, remote_dir)
+        self.sync_cmd_tmpl = sync_cmd_tmpl
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync", dir=self.local_dir, suffix=".log", delete=False)
 
-        self.last_sync_time = 0
         self.sync_process = None
 
-        self.sync_func = None
-        self.sync_cmd_tmpl = None
-        if isinstance(sync_fn, types.FunctionType) or isinstance(
-                sync_fn, tune_function):
-            self.sync_func = sync_fn
-        elif isinstance(sync_fn, str):
-            self.sync_cmd_tmpl = sync_fn
-        else:
-            raise ValueError(type(sync_fn))
-
-    def sync(self, source, target, force=False):
+    def sync_fn(self, source, target):
         self.last_sync_time = time.time()
         if self.sync_process:
             self.sync_process.poll()
@@ -43,37 +127,17 @@ class Syncer(object):
                     logger.warning("Last sync is still in progress, skipping.")
                     return
 
-        if self.remote_dir:
-            if self.sync_func:
-                try:
-                    self.sync_func(source, target)
-                except Exception:
-                    logger.exception("Sync function failed.")
-            else:
-                final_cmd = self.get_remote_sync_cmd()
-                logger.debug("Running log sync: {}".format(final_cmd))
-                self.sync_process = subprocess.Popen(
-                    final_cmd, shell=True, stdout=self.logfile)
-
-    def sync_down(self, *args, **kwargs):
-        self.sync(self._remote_dir, self._local_dir, *args, **kwargs)
-
-    def sync_up(self, *args, **kwargs):
-        self.sync(self._local_dir, self._remote_dir, *args, **kwargs)
-
-    def remote_path_exists(self, remote_path):
-        # self._remote_dir == "s3://<bucket>/ray_results"
-        absolute_path = os.path.join(self._remote_dir, remote_path)
-
-        try:
-            s3.Object('my-bucket', 'dootdoot.jpg').load()
-        except botocore.exceptions.ClientError as e:
-            if e.response['Error']['Code'] == "404":
-                return False
-            else:
-                raise
-
+        sync_template = self.get_remote_sync_template()
+        final_cmd = sync_template.format(
+            source=quote(source),
+            target=quote(target))
+        logger.debug("Running sync: {}".format(final_cmd))
+        self.sync_process = subprocess.Popen(
+            final_cmd, shell=True, stdout=self.logfile)
         return True
+
+    def get_remote_sync_template(self):
+        return self.sync_cmd_tmpl
 
     def close(self):
         self.logfile.close()
@@ -81,33 +145,3 @@ class Syncer(object):
     def wait(self):
         if self.sync_process:
             self.sync_process.wait()
-
-    def get_remote_sync_cmd(self):
-        if self.sync_cmd_tmpl:
-            local_to_remote_sync_cmd = (self.sync_cmd_tmpl.format(
-                local_dir=quote(self.local_dir),
-                remote_dir=quote(self.remote_dir)))
-        elif self.remote_dir.startswith(S3_PREFIX):
-            local_to_remote_sync_cmd = (
-                "aws s3 sync {local_dir} {remote_dir}".format(
-                    local_dir=quote(self.local_dir),
-                    remote_dir=quote(self.remote_dir)))
-        elif self.remote_dir.startswith(GCS_PREFIX):
-            local_to_remote_sync_cmd = (
-                "gsutil rsync -r {local_dir} {remote_dir}".format(
-                    local_dir=quote(self.local_dir),
-                    remote_dir=quote(self.remote_dir)))
-        else:
-            logger.warning("Remote sync unsupported, skipping.")
-            local_to_remote_sync_cmd = None
-
-        return local_to_remote_sync_cmd
-
-    def sync_if_needed(self):
-        if time.time() - self.last_sync_time > 300:
-            self.sync_down()
-
-
-def get_syncer(remote_dir, *args, **kwargs):
-    if "s3://" in remote_dir:
-        return S3Syncer
