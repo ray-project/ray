@@ -95,7 +95,7 @@ def run(run_or_experiment,
 
     Args:
         run_or_experiment (function|class|str|Experiment): If
-            function|class|str, this is the algorithm  or model to train.
+            function|class|str, this is the algorithm or model to train.
             This may refer to the name of a built-on algorithm
             (e.g. RLLib's DQN or PPO), a user-defined trainable
             function or class, or the string identifier of a

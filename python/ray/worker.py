@@ -538,7 +538,7 @@ class Worker(object):
                         unready_ids.pop(object_id)
 
             # If there were objects that we weren't able to get locally,
-            # let the local scheduler know that we're now unblocked.
+            # let the raylet know that we're now unblocked.
             self.raylet_client.notify_unblocked(self.current_task_id)
 
         assert len(final_results) == len(object_ids)
@@ -908,11 +908,11 @@ class Worker(object):
             self.raylet_client.disconnect()
             sys.exit(0)
 
-    def _get_next_task_from_local_scheduler(self):
-        """Get the next task from the local scheduler.
+    def _get_next_task_from_raylet(self):
+        """Get the next task from the raylet.
 
         Returns:
-            A task from the local scheduler.
+            A task from the raylet.
         """
         with profiling.profile("worker_idle"):
             task = self.raylet_client.get_task()
@@ -932,7 +932,7 @@ class Worker(object):
         signal.signal(signal.SIGTERM, exit)
 
         while True:
-            task = self._get_next_task_from_local_scheduler()
+            task = self._get_next_task_from_raylet()
             self._wait_for_and_process_task(task)
 
 
@@ -1229,12 +1229,11 @@ def init(redis_address=None,
     Args:
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
-            global scheduler, a local scheduler, a plasma store, a plasma
-            manager, and some workers. It will also kill these processes when
-            Python exits.
-        num_cpus (int): Number of cpus the user wishes all local schedulers to
+            raylet, a plasma store, a plasma manager, and some workers.
+            It will also kill these processes when Python exits.
+        num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
-        num_gpus (int): Number of gpus the user wishes all local schedulers to
+        num_gpus (int): Number of gpus the user wishes all raylets to
             be configured with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
@@ -1701,7 +1700,7 @@ def connect(info,
             worker=global_worker,
             driver_id=None,
             load_code_from_local=False):
-    """Connect this worker to the local scheduler, to Plasma, and to Redis.
+    """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
         info (dict): A dictionary with address of the Redis server and the

@@ -708,9 +708,9 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
         def __ray_terminate__(self):
             worker = ray.worker.get_global_worker()
             if worker.mode != ray.LOCAL_MODE:
-                # Disconnect the worker from the local scheduler. The point of
-                # this is so that when the worker kills itself below, the local
-                # scheduler won't push an error message to the driver.
+                # Disconnect the worker from the raylet. The point of
+                # this is so that when the worker kills itself below, the
+                # raylet won't push an error message to the driver.
                 worker.raylet_client.disconnect()
                 sys.exit(0)
                 assert False, "This process should have terminated."
@@ -719,7 +719,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
             """Save a checkpoint.
 
             This task saves the current state of the actor, the current task
-            frontier according to the local scheduler, and the checkpoint index
+            frontier according to the raylet, and the checkpoint index
             (number of tasks executed so far).
             """
             worker = ray.worker.global_worker
