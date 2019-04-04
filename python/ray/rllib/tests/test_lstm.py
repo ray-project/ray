@@ -10,7 +10,7 @@ import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 
 import ray
-from ray.rllib.agents.ppo import PPOAgent
+from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.lstm import add_time_dimension, chop_into_sequences
 from ray.rllib.models.misc import linear, normc_initializer
@@ -149,7 +149,7 @@ class RNNSequencing(unittest.TestCase):
     def testSimpleOptimizerSequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
-        ppo = PPOAgent(
+        ppo = PPOTrainer(
             env="counter",
             config={
                 "num_workers": 0,
@@ -205,7 +205,7 @@ class RNNSequencing(unittest.TestCase):
     def testMinibatchSequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
-        ppo = PPOAgent(
+        ppo = PPOTrainer(
             env="counter",
             config={
                 "num_workers": 0,

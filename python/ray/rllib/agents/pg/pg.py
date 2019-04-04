@@ -22,7 +22,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class PGAgent(Agent):
+class PGTrainer(Agent):
     """Simple policy gradient agent.
 
     This is an example agent to show how to implement algorithms in RLlib.

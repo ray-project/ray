@@ -137,7 +137,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class DQNAgent(Agent):
+class DQNTrainer(Agent):
     """DQN implementation in TensorFlow."""
 
     _agent_name = "DQN"

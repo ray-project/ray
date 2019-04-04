@@ -9,10 +9,10 @@ import numpy as np
 from ray.rllib.agents.agent import Agent, with_common_config
 
 
-class _MockAgent(Agent):
+class _MockTrainer(Agent):
     """Mock agent for use in tests"""
 
-    _agent_name = "MockAgent"
+    _agent_name = "MockTrainer"
     _default_config = with_common_config({
         "mock_error": False,
         "persistent_error": False,
@@ -57,7 +57,7 @@ class _MockAgent(Agent):
         return self.info
 
 
-class _SigmoidFakeData(_MockAgent):
+class _SigmoidFakeData(_MockTrainer):
     """Agent that returns sigmoid learning curves.
 
     This can be helpful for evaluating early stopping algorithms."""
@@ -84,9 +84,9 @@ class _SigmoidFakeData(_MockAgent):
             info={})
 
 
-class _ParameterTuningAgent(_MockAgent):
+class _ParameterTuningTrainer(_MockTrainer):
 
-    _agent_name = "ParameterTuningAgent"
+    _agent_name = "ParameterTuningTrainer"
     _default_config = with_common_config({
         "reward_amt": 10,
         "dummy_param": 10,

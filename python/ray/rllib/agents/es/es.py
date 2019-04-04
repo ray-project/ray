@@ -163,7 +163,7 @@ class Worker(object):
             eval_lengths=eval_lengths)
 
 
-class ESAgent(Agent):
+class ESTrainer(Agent):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
     _agent_name = "ES"

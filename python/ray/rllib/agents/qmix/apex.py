@@ -4,7 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.qmix.qmix import QMixAgent, DEFAULT_CONFIG as QMIX_CONFIG
+from ray.rllib.agents.qmix.qmix import QMixTrainer, DEFAULT_CONFIG as QMIX_CONFIG
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import merge_dicts
 
@@ -34,7 +34,7 @@ APEX_QMIX_DEFAULT_CONFIG = merge_dicts(
 )
 
 
-class ApexQMixAgent(QMixAgent):
+class ApexQMixTrainer(QMixTrainer):
     """QMIX variant that uses the Ape-X distributed policy optimizer.
 
     By default, this is configured for a large single node (32 cores). For
@@ -44,7 +44,7 @@ class ApexQMixAgent(QMixAgent):
     _agent_name = "APEX_QMIX"
     _default_config = APEX_QMIX_DEFAULT_CONFIG
 
-    @override(QMixAgent)
+    @override(QMixTrainer)
     def update_target_if_needed(self):
         # Ape-X updates based on num steps trained, not sampled
         if self.optimizer.num_steps_trained - self.last_target_update_ts > \

@@ -39,7 +39,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class MARWILAgent(Agent):
+class MARWILTrainer(Agent):
     """MARWIL implementation in TensorFlow."""
 
     _agent_name = "MARWIL"

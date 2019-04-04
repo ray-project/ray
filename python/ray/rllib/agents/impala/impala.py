@@ -100,7 +100,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class ImpalaAgent(Agent):
+class ImpalaTrainer(Agent):
     """IMPALA implementation using DeepMind's V-trace."""
 
     _agent_name = "IMPALA"

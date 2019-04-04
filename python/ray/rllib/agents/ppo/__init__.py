@@ -1,4 +1,4 @@
-from ray.rllib.agents.ppo.ppo import (PPOAgent, DEFAULT_CONFIG)
-from ray.rllib.agents.ppo.appo import APPOAgent
+from ray.rllib.agents.ppo.ppo import (PPOTrainer, DEFAULT_CONFIG)
+from ray.rllib.agents.ppo.appo import APPOTrainer
 
-__all__ = ["APPOAgent", "PPOAgent", "DEFAULT_CONFIG"]
+__all__ = ["APPOTrainer", "PPOTrainer", "DEFAULT_CONFIG"]

@@ -38,7 +38,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class A3CAgent(Agent):
+class A3CTrainer(Agent):
     """A3C implementations in TensorFlow and PyTorch."""
 
     _agent_name = "A3C"

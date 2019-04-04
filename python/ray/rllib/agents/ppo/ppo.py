@@ -63,7 +63,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class PPOAgent(Agent):
+class PPOTrainer(Agent):
     """Multi-GPU optimized implementation of PPO in TensorFlow."""
 
     _agent_name = "PPO"

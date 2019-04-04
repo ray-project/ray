@@ -52,13 +52,13 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 # yapf: enable
 
 
-class APPOAgent(impala.ImpalaAgent):
+class APPOTrainer(impala.ImpalaTrainer):
     """PPO surrogate loss with IMPALA-architecture."""
 
     _agent_name = "APPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = AsyncPPOPolicyGraph
 
-    @override(impala.ImpalaAgent)
+    @override(impala.ImpalaTrainer)
     def _get_policy_graph(self):
         return AsyncPPOPolicyGraph

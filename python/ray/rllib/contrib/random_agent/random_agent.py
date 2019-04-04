@@ -10,10 +10,10 @@ from ray.rllib.utils.annotations import override
 
 # yapf: disable
 # __sphinx_doc_begin__
-class RandomAgent(Agent):
+class RandomTrainer(Agent):
     """Agent that takes random actions and never learns."""
 
-    _agent_name = "RandomAgent"
+    _agent_name = "RandomTrainer"
     _default_config = with_common_config({
         "rollouts_per_iteration": 10,
     })
@@ -45,7 +45,7 @@ class RandomAgent(Agent):
 
 
 if __name__ == "__main__":
-    agent = RandomAgent(
+    agent = RandomTrainer(
         env="CartPole-v0", config={"rollouts_per_iteration": 10})
     result = agent.train()
     assert result["episode_reward_mean"] > 10, result

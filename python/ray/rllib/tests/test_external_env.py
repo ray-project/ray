@@ -9,8 +9,8 @@ import unittest
 import uuid
 
 import ray
-from ray.rllib.agents.dqn import DQNAgent
-from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.dqn import DQNTrainer
+from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.tests.test_policy_evaluator import (BadPolicyGraph,
@@ -153,7 +153,7 @@ class TestExternalEnv(unittest.TestCase):
         register_env(
             "test3", lambda _: PartOffPolicyServing(
                 gym.make("CartPole-v0"), off_pol_frac=0.2))
-        dqn = DQNAgent(env="test3", config={"exploration_fraction": 0.001})
+        dqn = DQNTrainer(env="test3", config={"exploration_fraction": 0.001})
         for i in range(100):
             result = dqn.train()
             print("Iteration {}, reward {}, timesteps {}".format(
@@ -164,7 +164,7 @@ class TestExternalEnv(unittest.TestCase):
 
     def testTrainCartpole(self):
         register_env("test", lambda _: SimpleServing(gym.make("CartPole-v0")))
-        pg = PGAgent(env="test", config={"num_workers": 0})
+        pg = PGTrainer(env="test", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
@@ -176,7 +176,7 @@ class TestExternalEnv(unittest.TestCase):
     def testTrainCartpoleMulti(self):
         register_env("test2",
                      lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
-        pg = PGAgent(env="test2", config={"num_workers": 0})
+        pg = PGTrainer(env="test2", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(

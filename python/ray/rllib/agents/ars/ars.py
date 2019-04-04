@@ -157,7 +157,7 @@ class Worker(object):
             eval_lengths=eval_lengths)
 
 
-class ARSAgent(Agent):
+class ARSTrainer(Agent):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
     _agent_name = "ARS"
