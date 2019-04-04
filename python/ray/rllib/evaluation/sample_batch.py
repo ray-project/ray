@@ -106,6 +106,9 @@ class SampleBatch(object):
     # Uniquely identifies an episode
     EPS_ID = "eps_id"
 
+    # Uniquely identifies a sample batch
+    BATCH_ID = "batch_id"
+
     # Uniquely identifies an agent within an episode
     AGENT_INDEX = "agent_index"
 

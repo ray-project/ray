@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import collections
 import logging
+import random
 import numpy as np
 
 from ray.rllib.evaluation.sample_batch import SampleBatch, MultiAgentBatch
@@ -32,6 +33,7 @@ class SampleBatchBuilder(object):
     def __init__(self):
         self.buffers = collections.defaultdict(list)
         self.count = 0
+        self.batch_id = random.randrange(2e9)
 
     @PublicAPI
     def add_values(self, **values):
@@ -56,8 +58,11 @@ class SampleBatchBuilder(object):
         batch = SampleBatch(
             {k: to_float_array(v)
              for k, v in self.buffers.items()})
+        batch.data[SampleBatch.BATCH_ID] = np.repeat(self.batch_id,
+                                                     batch.count)
         self.buffers.clear()
         self.count = 0
+        self.batch_id = random.randrange(2e9)
         return batch
 
 

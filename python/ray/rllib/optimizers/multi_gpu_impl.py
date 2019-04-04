@@ -181,6 +181,13 @@ class LocalSyncParallelOptimizer(object):
             sequences_per_minibatch = make_divisible_by(
                 len(smallest_array), len(self.devices))
 
+        if log_once("data_slicing"):
+            logger.info(
+                ("Divided {} rollout sequences, each of length {}, among "
+                 "{} devices.").format(
+                     len(smallest_array), self._loaded_max_seq_len,
+                     len(self.devices)))
+
         if sequences_per_minibatch < len(self.devices):
             raise ValueError(
                 "Must load at least 1 tuple sequence per device. Try "
