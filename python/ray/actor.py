@@ -452,7 +452,7 @@ class ActorHandle(object):
                            args=None,
                            kwargs=None,
                            num_return_vals=None,
-                           profile=profile):
+                           profile=True):
         """Method execution stub for an actor handle.
 
         This is the function that executes when
