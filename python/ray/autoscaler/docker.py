@@ -37,9 +37,6 @@ def dockerize_if_needed(config):
         assert cname, "Must provide container name!"
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
 
-    setup_commands = with_docker_exec(
-        config["setup_commands"], container_name=cname)
-
     head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
                                           docker_mounts, cname,
                                           run_options + head_run_options)
@@ -48,16 +45,15 @@ def dockerize_if_needed(config):
                                             docker_mounts, cname,
                                             run_options + worker_run_options)
 
-    config["head_setup_commands"] = head_docker_start + setup_commands \
-        + with_docker_exec(config["head_setup_commands"],
-                           container_name=cname)
+    config["head_setup_commands"] = head_docker_start + \
+        with_docker_exec(config["head_setup_commands"],
+                         container_name=cname)
     config["head_start_ray_commands"] = (
         docker_autoscaler_setup(cname) + with_docker_exec(
             config["head_start_ray_commands"], container_name=cname))
 
     config["worker_setup_commands"] = worker_docker_start + \
-        setup_commands + with_docker_exec(
-        config["worker_setup_commands"], container_name=cname)
+        with_docker_exec(config["worker_setup_commands"], container_name=cname)
     config["worker_start_ray_commands"] = with_docker_exec(
         config["worker_start_ray_commands"],
         container_name=cname,
