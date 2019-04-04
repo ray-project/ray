@@ -24,8 +24,9 @@ matrix:
         - choco install miniconda3 openssl.light
         - conda --version ; python --version ; pip --version
         - conda create -n test-environment python=$PYTHON --yes
-        - pip install --upgrade pip
+        - . activate test-environment
         - conda --version ; python --version ; pip --version
+        - pip install --upgrade pip
 
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
