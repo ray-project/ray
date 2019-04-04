@@ -109,7 +109,7 @@ class SampleBatch(object):
     # Uniquely identifies a sample batch. This is important to distinguish RNN
     # sequences from the same episode when multiple sample batches are
     # concatenated (fusing sequences across batches can be unsafe).
-    BATCH_ID = "batch_id"
+    UNROLL_ID = "unroll_id"
 
     # Uniquely identifies an agent within an episode
     AGENT_INDEX = "agent_index"

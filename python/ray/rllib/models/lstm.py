@@ -121,7 +121,7 @@ def add_time_dimension(padded_inputs, seq_lens):
 
 @DeveloperAPI
 def chop_into_sequences(episode_ids,
-                        batch_ids,
+                        unroll_ids,
                         agent_indices,
                         feature_columns,
                         state_columns,
@@ -132,7 +132,7 @@ def chop_into_sequences(episode_ids,
 
     Arguments:
         episode_ids (list): List of episode ids for each step.
-        batch_ids (list): List of identifiers for the sample batch. This is
+        unroll_ids (list): List of identifiers for the sample batch. This is
             used to make sure sequences are cut between sample batches.
         agent_indices (list): List of agent ids for each step. Note that this
             has to be combined with episode_ids for uniqueness.
@@ -154,7 +154,7 @@ def chop_into_sequences(episode_ids,
     Examples:
         >>> f_pad, s_init, seq_lens = chop_into_sequences(
                 episode_ids=[1, 1, 5, 5, 5, 5],
-                batch_ids=[4, 4, 4, 4, 4, 4],
+                unroll_ids=[4, 4, 4, 4, 4, 4],
                 agent_indices=[0, 0, 0, 0, 0, 0],
                 feature_columns=[[4, 4, 8, 8, 8, 8],
                                  [1, 1, 0, 1, 1, 0]],
@@ -174,7 +174,7 @@ def chop_into_sequences(episode_ids,
     seq_len = 0
     unique_ids = np.add(
         np.add(episode_ids, agent_indices),
-        np.array(batch_ids) << 32)
+        np.array(unroll_ids) << 32)
     for uid in unique_ids:
         if (prev_id is not None and uid != prev_id) or \
                 seq_len >= max_seq_len:
