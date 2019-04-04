@@ -323,8 +323,7 @@ cdef class RayletClient:
         kwargs = {} if kwargs is None else kwargs
         args = [] if args is None else args
 
-        if kwargs != {} or len(function_signature.arg_names) != len(args):
-            args = extend_args(function_signature, args, kwargs)
+        args = extend_args(function_signature, args, kwargs)
 
         args_for_raylet = []
         for arg in args:
