@@ -21,10 +21,10 @@ matrix:
         - PYTHON=3.5 PYTHONWARNINGS=ignore
         - PATH="/c/tools/miniconda3/:/c/tools/miniconda3/Scripts:$PATH"
       before_install:
-        - choco install miniconda3
+        - choco install miniconda3 openssl.light
         - conda --version ; python --version ; pip --version
         - pip install --upgrade pip || true
-        - conda create -n test-environment python=$PYTHON openssl=1.1.1
+        - conda create -n test-environment python=$PYTHON
         - pip install --upgrade pip
         - conda --version ; python --version ; pip --version
 
