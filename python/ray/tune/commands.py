@@ -293,6 +293,7 @@ def list_experiments(project_path,
     print_format_output(info_df)
 
     if output:
+        file_extension = os.path.splitext(output)[1].lower()
         if file_extension in (".p", ".pkl", ".pickle"):
             info_df.to_pickle(output)
         elif file_extension == ".csv":
