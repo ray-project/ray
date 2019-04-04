@@ -106,7 +106,9 @@ class SampleBatch(object):
     # Uniquely identifies an episode
     EPS_ID = "eps_id"
 
-    # Uniquely identifies a sample batch
+    # Uniquely identifies a sample batch. This is important to distinguish RNN
+    # sequences from the same episode when multiple sample batches are
+    # concatenated (fusing sequences across batches can be unsafe).
     BATCH_ID = "batch_id"
 
     # Uniquely identifies an agent within an episode
