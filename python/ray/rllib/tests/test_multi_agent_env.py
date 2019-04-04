@@ -562,12 +562,11 @@ class TestMultiAgentEnv(unittest.TestCase):
             print("Iteration {}, reward {}, timesteps {}".format(
                 i, result["episode_reward_mean"], result["timesteps_total"]))
         self.assertTrue(
-            pg.compute_action(
-                np.array([0, 0, 0, 0], dtype=np.float32), policy_id="policy_1")
+            pg.compute_action([0, 0, 0, 0], policy_id="policy_1")
             in [0, 1])
         self.assertTrue(
             pg.compute_action(
-                np.array([0, 0, 0, 0], dtype=np.float32), policy_id="policy_2")
+                [0, 0, 0, 0], policy_id="policy_2")
             in [0, 1])
         self.assertRaises(
             KeyError,

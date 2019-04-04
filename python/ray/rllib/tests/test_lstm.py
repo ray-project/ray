@@ -138,12 +138,11 @@ class DebugCounterEnv(gym.Env):
 
     def reset(self):
         self.i = 0
-        return np.array([self.i], dtype=np.float32)
+        return [self.i]
 
     def step(self, action):
         self.i += 1
-        return np.array([self.i],
-                        dtype=np.float32), self.i % 3, self.i >= 15, {}
+        return [self.i], self.i % 3, self.i >= 15, {}
 
 
 class RNNSequencing(unittest.TestCase):

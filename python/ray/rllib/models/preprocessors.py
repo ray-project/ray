@@ -50,10 +50,12 @@ class Preprocessor(object):
 
     def check_shape(self, observation):
         """Checks the shape of the given observation."""
-        if self._i % VALIDATION_INTERVAL == 0 and not self._obs_space.contains(
-                observation):
-            raise ValueError("Observation outside expected value range",
-                             self._obs_space, observation)
+        if self._i % VALIDATION_INTERVAL == 0:
+            if type(observation) is list:
+                observation = np.array(observation)
+            if not self._obs_space.contains(observation):
+                raise ValueError("Observation outside expected value range",
+                                 self._obs_space, observation)
         self._i += 1
 
     @property
