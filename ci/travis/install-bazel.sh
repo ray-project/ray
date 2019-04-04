@@ -6,13 +6,16 @@ set -e
 platform="unknown"
 unamestr="$(uname)"
 if [[ "$unamestr" == "Linux" ]]; then
-  echo "Platform is linux."
+  echo "Platform is Linux."
   platform="linux"
 elif [[ "$unamestr" == "Darwin" ]]; then
-  echo "Platform is macosx."
+  echo "Platform is macOS."
   platform="darwin"
+elif [[ "$unamestr" == "Windows" ]]; then
+  echo "Platform is Windows."
+  platform="windows"
 else
-  echo "Unrecognized platform."
+  echo "$unamestr is an unrecognized platform."
   exit 1
 fi
 
