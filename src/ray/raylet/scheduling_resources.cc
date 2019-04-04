@@ -257,12 +257,15 @@ void ResourceIds::Release(const ResourceIds &resource_ids) {
     if (fractional_pair_it == fractional_ids_.end()) {
       fractional_ids_.push_back(fractional_pair_to_return);
     } else {
+      RAY_CHECK(fractional_pair_it->second < 1);
       fractional_pair_it->second += fractional_pair_to_return.second;
-      RAY_CHECK(fractional_pair_it->second <= 1);
       // If this makes the ID whole, then return it to the list of whole IDs.
-      if (fractional_pair_it->second == 1) {
+      if (fractional_pair_it->second >= 1) {
         whole_ids_.push_back(resource_id);
-        fractional_ids_.erase(fractional_pair_it);
+        fractional_pair_it->second -= 1;
+        if (fractional_pair_it->second < 1e-6) {
+          fractional_ids_.erase(fractional_pair_it);
+        }
       }
     }
   }

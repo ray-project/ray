@@ -14,6 +14,7 @@ from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
+from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.tests.mock_evaluator import _MockEvaluator
 
 
@@ -157,9 +158,11 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
                 "train_batch_size": 10,
             })
         self._wait_for(optimizer, 1000, 1000)
-        self.assertLess(optimizer.stats()["num_steps_sampled"], 5000)
-        self.assertGreater(optimizer.stats()["num_steps_replayed"], 8000)
-        self.assertGreater(optimizer.stats()["num_steps_trained"], 8000)
+        stats = optimizer.stats()
+        self.assertLess(stats["num_steps_sampled"], 5000)
+        replay_ratio = stats["num_steps_replayed"] / stats["num_steps_sampled"]
+        self.assertGreater(replay_ratio, 0.7)
+        self.assertLess(stats["num_steps_trained"], stats["num_steps_sampled"])
 
     def testReplayAndMultiplePasses(self):
         local, remotes = self._make_evs()
@@ -173,9 +176,31 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
                 "train_batch_size": 10,
             })
         self._wait_for(optimizer, 1000, 1000)
-        self.assertLess(optimizer.stats()["num_steps_sampled"], 5000)
-        self.assertGreater(optimizer.stats()["num_steps_replayed"], 8000)
-        self.assertGreater(optimizer.stats()["num_steps_trained"], 40000)
+
+        stats = optimizer.stats()
+        print(stats)
+        self.assertLess(stats["num_steps_sampled"], 5000)
+        replay_ratio = stats["num_steps_replayed"] / stats["num_steps_sampled"]
+        train_ratio = stats["num_steps_sampled"] / stats["num_steps_trained"]
+        self.assertGreater(replay_ratio, 0.7)
+        self.assertLess(train_ratio, 0.4)
+
+    def testMultiTierAggregationBadConf(self):
+        local, remotes = self._make_evs()
+        aggregators = TreeAggregator.precreate_aggregators(4)
+        optimizer = AsyncSamplesOptimizer(local, remotes,
+                                          {"num_aggregation_workers": 4})
+        self.assertRaises(ValueError,
+                          lambda: optimizer.aggregator.init(aggregators))
+
+    def testMultiTierAggregation(self):
+        local, remotes = self._make_evs()
+        aggregators = TreeAggregator.precreate_aggregators(1)
+        optimizer = AsyncSamplesOptimizer(local, remotes, {
+            "num_aggregation_workers": 1,
+        })
+        optimizer.aggregator.init(aggregators)
+        self._wait_for(optimizer, 1000, 1000)
 
     def testRejectBadConfigs(self):
         local, remotes = self._make_evs()

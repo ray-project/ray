@@ -70,8 +70,13 @@ COMMON_CONFIG = {
     # === Environment ===
     # Discount factor of the MDP
     "gamma": 0.99,
-    # Number of steps after which the episode is forced to terminate
+    # Number of steps after which the episode is forced to terminate. Defaults
+    # to `env.spec.max_episode_steps` (if present) for Gym envs.
     "horizon": None,
+    # Calculate rewards but don't reset the environment when the horizon is
+    # hit. This allows value estimation and RNN state to span across logical
+    # episodes denoted by horizon. This only has an effect if horizon != inf.
+    "soft_horizon": False,
     # Arguments to pass to the env creator
     "env_config": {},
     # Environment name can also be passed via config
@@ -148,7 +153,7 @@ COMMON_CONFIG = {
     # If using num_envs_per_worker > 1, whether to create those new envs in
     # remote processes instead of in the same worker. This adds overheads, but
     # can make sense if your envs can take much time to step / reset
-    # (e.g., for StarCraft)
+    # (e.g., for StarCraft). Use this cautiously; overheads are significant.
     "remote_worker_envs": False,
     # Timeout that remote workers are waiting when polling environments.
     # 0 (continue when at least one env is ready) is a reasonable default,
@@ -745,7 +750,9 @@ class Agent(Trainable):
             input_evaluation=input_evaluation,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
-            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"])
+            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
+            soft_horizon=config["soft_horizon"],
+            _fake_sampler=config.get("_fake_sampler", False))
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):
