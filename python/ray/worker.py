@@ -543,7 +543,8 @@ class Worker(object):
         assert len(final_results) == len(object_ids)
         return final_results
 
-    def submit_task(self, function_descriptor_list, function_signature, func_args, func_kwargs, **kwargs):
+    def submit_task(self, function_descriptor_list, function_signature,
+                    func_args, func_kwargs, **kwargs):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with
@@ -580,11 +581,16 @@ class Worker(object):
         """
         self.task_context.task_index += 1
         kwargs["driver_id"] = kwargs.get("driver_id", self.task_driver_id)
-        with profiling.profile(
-                "submit_task",
-                enable=_global_node._ray_params.enable_profiling):
+        if _global_node._ray_params.enable_profiling:
+            with profiling.profile("submit_task"):
+                return self.raylet_client.submit_task(
+                    function_descriptor_list, function_signature, func_args,
+                    func_kwargs, self.current_task_id,
+                    self.task_context.task_index, put, **kwargs)
+        else:
             return self.raylet_client.submit_task(
-                function_descriptor_list, function_signature, func_args, func_kwargs, self.current_task_id,
+                function_descriptor_list, function_signature, func_args,
+                func_kwargs, self.current_task_id,
                 self.task_context.task_index, put, **kwargs)
 
     def run_function_on_all_workers(self, function,
