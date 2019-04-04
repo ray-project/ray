@@ -13,6 +13,7 @@ import pickle
 import gym
 import ray
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.env import MultiAgentEnv
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.tune.util import merge_dicts
 
@@ -109,12 +110,11 @@ class DefaultMapping(collections.defaultdict):
         self[key] = value = self.default_factory(key)
         return value
 
-
 def rollout(agent, env_name, num_steps, out=None, no_render=True):
     if hasattr(agent, "local_evaluator"):
         env = agent.local_evaluator.env
-        multiagent = agent.local_evaluator.multiagent
-        if multiagent:
+        multiagent = isinstance(env, MultiAgentEnv)
+        if agent.local_evaluator.multiagent:
             policy_agent_mapping = agent.config["multiagent"][
                 "policy_mapping_fn"]
         else:
@@ -123,6 +123,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         policy_map = agent.local_evaluator.policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
+        action_init = {p: m.action_space.sample() for p, m in policy_map.items()}
     else:
         env = gym.make(env_name)
         multiagent = False
@@ -135,30 +136,45 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         if out is not None:
             rollout = []
         obs = env.reset()
+        multi_obs = obs if multiagent else {0: obs}
         agent_states = DefaultMapping(
-            lambda agent_id: state_init[policy_agent_mapping(agent_id)])
+            lambda agent_id: state_init[mapping_cache[agent_id]])
+        prev_actions = DefaultMapping(
+            lambda agent_id: action_init[mapping_cache[agent_id]])
+        prev_rewards = collections.defaultdict(lambda: 0.)
         done = False
         reward_total = 0.0
         while not done and steps < (num_steps or steps + 1):
             action_dict = {}
-            for agent_id, a_state in obs.items():
-                if a_state is not None:
+            for agent_id, a_obs in multi_obs.items():
+                if a_obs is not None:
                     policy_id = mapping_cache.setdefault(
                         agent_id, policy_agent_mapping(agent_id))
                     p_use_lstm = use_lstm[policy_id]
                     if p_use_lstm:
                         a_action, p_state, _ = agent.compute_action(
-                            a_state,
-                            state=agent_states[policy_id],
+                            a_obs,
+                            state=agent_states[agent_id],
+                            prev_action=prev_actions[agent_id],
+                            prev_reward=prev_rewards[agent_id],
                             policy_id=policy_id)
                         agent_states[policy_id] = p_state
                     else:
                         a_action = agent.compute_action(
-                            a_state, policy_id=policy_id)
+                            a_obs,
+                            prev_action=prev_actions[agent_id],
+                            prev_reward=prev_rewards[agent_id],
+                            policy_id=policy_id)
                     action_dict[agent_id] = a_action
+                    prev_actions[agent_id] = a_action
             action = action_dict
 
             next_obs, reward, done, _ = env.step(action)
+            if multiagent:
+                for agent_id, r in reward.items():
+                    prev_rewards[agent_id] = r
+            else:
+                prev_rewards[0] = reward
 
             if multiagent:
                 done = done["__all__"]
