@@ -12,6 +12,7 @@ from ray.rllib.utils.annotations import override, PublicAPI
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
+VALIDATION_INTERVAL = 100
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class Preprocessor(object):
         self._options = options or {}
         self.shape = self._init_shape(obs_space, options)
         self._size = int(np.product(self.shape))
+        self._i = 0
 
     @PublicAPI
     def _init_shape(self, obs_space, options):
@@ -39,8 +41,13 @@ class Preprocessor(object):
 
     @PublicAPI
     def transform(self, observation):
-        """Returns the preprocessed observation."""
-        raise NotImplementedError
+        """Returns the preprocessed observation.
+
+        Subclasses override this method to make some specific transformation upon the observation
+        and optionally validate the consistentcy w.r.t. the obs space every VALIDATION_INTERVAL times.
+        """
+        self._i += 1
+        return observation
 
     def write(self, observation, array, offset):
         """Alternative to transform for more efficient flattening."""
@@ -101,6 +108,7 @@ class GenericPixelPreprocessor(Preprocessor):
             scaled = (scaled - 128) / 128
         else:
             scaled *= 1.0 / 255.0
+        self._i += 1
         return scaled
 
 
@@ -111,6 +119,7 @@ class AtariRamPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
+        self._i += 1
         return (observation - 128) / 128
 
 
@@ -122,10 +131,11 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation):
         arr = np.zeros(self._obs_space.n)
-        if not self._obs_space.contains(observation):
+        if self._i % VALIDATION_INTERVAL == 0 and not self._obs_space.contains(observation):
             raise ValueError("Observation outside expected value range",
                              self._obs_space, observation)
         arr[observation] = 1
+        self._i += 1
         return arr
 
     @override(Preprocessor)
@@ -140,9 +150,10 @@ class NoPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
-        if not self._obs_space.contains(observation):
+        if self._i % VALIDATION_INTERVAL == 0 and not self._obs_space.contains(observation):
             raise ValueError("Observation outside expected value range",
                              self._obs_space, observation)
+        self._i += 1
         return observation
 
     @override(Preprocessor)
@@ -174,6 +185,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
     def transform(self, observation):
         array = np.zeros(self.shape)
         self.write(observation, array, 0)
+        self._i += 1
         return array
 
     @override(Preprocessor)
@@ -206,6 +218,7 @@ class DictFlatteningPreprocessor(Preprocessor):
     def transform(self, observation):
         array = np.zeros(self.shape)
         self.write(observation, array, 0)
+        self._i += 1
         return array
 
     @override(Preprocessor)
