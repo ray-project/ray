@@ -1,8 +1,14 @@
 language: generic
 
+windows-steps: &windows-steps
+  before_install:
+    - choco install miniconda3 openssl.light
+    - conda create -n test-environment python=$PYTHON --yes
+    - . activate test-environment
+    - conda --version ; python --version ; pip --version
+    - python -m pip install --upgrade pip
+
 matrix:
-  allow_failures:
-    - os: windows
   include:
     - os: linux
       env: PYTHON=2.7 PYTHONWARNINGS=ignore
@@ -17,6 +23,20 @@ matrix:
     - os: osx
       osx_image: xcode7
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
+
+    - os: windows
+      language: shell  # 'language: python' is an error on Travis CI Windows
+      env:
+        - PYTHON=2.7 PYTHONWARNINGS=ignore
+        - PATH="/c/tools/miniconda3/:/c/tools/miniconda3/Scripts:$PATH"
+      <<: *windows-steps
+
+    - os: windows
+      language: shell  # 'language: python' is an error on Travis CI Windows
+      env:
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - PATH="/c/tools/miniconda3/:/c/tools/miniconda3/Scripts:$PATH"
+      <<: *windows-steps
 
     - os: linux
       env:
@@ -134,30 +154,6 @@ matrix:
         - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
 
         - ./ci/travis/test-wheels.sh
-
-    - os: windows
-      language: shell  # 'language: python' is an error on Travis CI Windows
-      env:
-        - PYTHON=2.7 PYTHONWARNINGS=ignore
-        - PATH="/c/tools/miniconda3/:/c/tools/miniconda3/Scripts:$PATH"
-      before_install:
-        - choco install miniconda2 openssl.light
-        - conda create -n test-environment python=$PYTHON --yes
-        - . activate test-environment
-        - conda --version ; python --version ; pip --version
-        - python -m pip install --upgrade pip
-
-    - os: windows
-      language: shell  # 'language: python' is an error on Travis CI Windows
-      env:
-        - PYTHON=3.5 PYTHONWARNINGS=ignore
-        - PATH="/c/tools/miniconda3/:/c/tools/miniconda3/Scripts:$PATH"
-      before_install:
-        - choco install miniconda3 openssl.light
-        - conda create -n test-environment python=$PYTHON --yes
-        - . activate test-environment
-        - conda --version ; python --version ; pip --version
-        - python -m pip install --upgrade pip
 
 
 install:
