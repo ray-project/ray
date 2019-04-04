@@ -474,9 +474,8 @@ class Trial(object):
 
     def _status_string(self):
         return "{}{}".format(
-            self.status, ", {} failures: {}".format(self.num_failures,
-                                                    self.error_file)
-            if self.error_file else "")
+            self.status, ", {} failures: {}".format(
+                self.num_failures, self.error_file) if self.error_file else "")
 
     def has_checkpoint(self):
         return self._checkpoint.value is not None
@@ -506,7 +505,6 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
-
 
     def compare_checkpoints(self, attr_mean):
         """Compares two checkpoints based on the attribute attr_mean param.

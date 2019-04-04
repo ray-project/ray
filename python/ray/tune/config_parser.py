@@ -108,16 +108,15 @@ def make_parser(parser_creator=None, **kwargs):
         default=None,
         type=int,
         help="Number of last checkpoints to keep. Others get "
-             "deleted. Default (None) keeps all checkpoints."
-    )
+        "deleted. Default (None) keeps all checkpoints.")
     parser.add_argument(
         "--checkpoint-score-attr",
         default="training_iteration",
         type=str,
-        help="Specifies by which attribute to rank the best checkpoint. Default is"
-             "increasing order. If attribute starts with min- it will rank "
-             "attribute in decreasing order. example: min-validation_loss"
-    )
+        help=
+        "Specifies by which attribute to rank the best checkpoint. Default is"
+        "increasing order. If attribute starts with min- it will rank "
+        "attribute in decreasing order. example: min-validation_loss")
     parser.add_argument(
         "--export-formats",
         default=None,
