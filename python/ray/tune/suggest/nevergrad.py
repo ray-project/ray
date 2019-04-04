@@ -39,15 +39,17 @@ class NevergradSearch(SuggestionAlgorithm):
         >>>                        reward_attr="neg_mean_loss")
 
     Note:
-    In v0.2.0+ of nevergrad, optimizers can be instrumented.
-    For instance, this will specifies searching for "lr" from 1 to 2.
+        In nevergrad v0.2.0+, optimizers can be instrumented.
+        For instance, the following will specifies searching
+        for "lr" from 1 to 2.
+
         >>> from nevergrad.optimization import optimizerlib
         >>> from nevergrad import instrumentation as inst
-        >>> instrumentation = inst.Instrumentation(
-        >>>     ilr=inst.var.Array(1).bounded(1, 2).asfloat())
+        >>> lr = inst.var.Array(1).bounded(1, 2).asfloat()
+        >>> instrumentation = inst.Instrumentation(lr=lr)
         >>> optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
-        >>> algo = NevergradSearch(
-        >>>     optimizer, None, max_concurrent=4, reward_attr="neg_mean_loss")
+        >>> algo = NevergradSearch(optimizer, None, max_concurrent=4,
+        >>>                        reward_attr="neg_mean_loss")
 
     """
 
