@@ -97,7 +97,8 @@ class RemoteFunction(object):
                 num_return_vals=None,
                 num_cpus=None,
                 num_gpus=None,
-                resources=None):
+                resources=None,
+                profile=True):
         """An experimental alternate way to submit remote functions."""
         worker = ray.worker.get_global_worker()
         worker.check_connected()
@@ -130,4 +131,5 @@ class RemoteFunction(object):
             self._function_descriptor_list,
             args,
             num_return_vals=num_return_vals,
-            resources=resources)
+            resources=resources,
+            profile=profile)

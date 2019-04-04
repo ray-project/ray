@@ -582,7 +582,7 @@ class Worker(object):
         """
         self.task_context.task_index += 1
         kwargs["driver_id"] = kwargs.get("driver_id", self.task_driver_id)
-        if profile:
+        if kwargs["profile"]:
             with profiling.profile("submit_task"):
                 return self.raylet_client.submit_task(
                     function_descriptor_list, args, self.current_task_id,

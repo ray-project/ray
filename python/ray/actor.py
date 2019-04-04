@@ -123,7 +123,7 @@ class ActorMethod(object):
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
 
-    def _remote(self, args=None, kwargs=None, num_return_vals=None):
+    def _remote(self, args=None, kwargs=None, num_return_vals=None, profile=True):
         if args is None:
             args = []
         if kwargs is None:
@@ -135,7 +135,8 @@ class ActorMethod(object):
             self._method_name,
             args=args,
             kwargs=kwargs,
-            num_return_vals=num_return_vals)
+            num_return_vals=num_return_vals,
+            profile=profile)
 
 
 class ActorClass(object):
@@ -238,7 +239,8 @@ class ActorClass(object):
                 kwargs=None,
                 num_cpus=None,
                 num_gpus=None,
-                resources=None):
+                resources=None,
+                profile=True):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -252,6 +254,7 @@ class ActorClass(object):
             num_gpus: The number of GPUs required by the actor creation task.
             resources: The custom resources required by the actor creation
                 task.
+            profile: If True, profile this task submission.
 
         Returns:
             A handle to the newly created actor.
@@ -332,7 +335,8 @@ class ActorClass(object):
                 max_actor_reconstructions=self._max_reconstructions,
                 num_return_vals=1,
                 resources=resources,
-                placement_resources=actor_placement_resources)
+                placement_resources=actor_placement_resources,
+                profile=profile)
             assert isinstance(actor_cursor, ObjectID)
 
         actor_handle = ActorHandle(
@@ -443,7 +447,8 @@ class ActorHandle(object):
                            method_name,
                            args=None,
                            kwargs=None,
-                           num_return_vals=None):
+                           num_return_vals=None,
+                           profile=profile):
         """Method execution stub for an actor handle.
 
         This is the function that executes when
@@ -456,6 +461,7 @@ class ActorHandle(object):
             args: A list of arguments for the actor method.
             kwargs: A dictionary of keyword arguments for the actor method.
             num_return_vals (int): The number of return values for the method.
+            profile: If True, profile this actor method call.
 
         Returns:
             object_ids: A list of object IDs returned by the remote actor
@@ -496,6 +502,7 @@ class ActorHandle(object):
                 resources={"CPU": self._ray_actor_method_cpus},
                 placement_resources={},
                 driver_id=self._ray_actor_driver_id,
+                profile=profile
             )
             # Update the actor counter and cursor to reflect the most recent
             # invocation.
