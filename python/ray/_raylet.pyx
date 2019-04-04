@@ -215,7 +215,7 @@ cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
     return out
 
 
-def extend_args(function_signature, args, kwargs):
+cdef extend_args(function_signature, args, kwargs):
     """Extend the arguments that were passed into a function.
 
     This extends the arguments that were passed into a function with the
@@ -324,8 +324,7 @@ cdef class RayletClient:
         args = [] if args is None else args
 
         if kwargs != {} or len(function_signature.arg_names) != len(args):
-            args = ray._raylet.extend_args(function_signature, args,
-                                           kwargs)
+            args = extend_args(function_signature, args, kwargs)
 
         args_for_raylet = []
         for arg in args:
