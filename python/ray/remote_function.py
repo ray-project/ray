@@ -125,5 +125,6 @@ class RemoteFunction(object):
             self._function_descriptor_list,
             self._function_signature,
             args,
+            kwargs,
             num_return_vals=num_return_vals,
             resources=resources)
