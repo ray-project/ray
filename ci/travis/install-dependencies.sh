@@ -52,6 +52,12 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
   pip install -q cython==0.29.0 tensorflow gym opencv-python-headless pyyaml pandas==0.23.4 requests \
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx tabulate psutil
+elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "windows" ]]; then
+  echo "Legacy Python is not yet supported on Windows."
+  exit 1
+elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "windows" ]]; then
+  pip install -q scipy tensorflow cython==0.29.0 gym opencv-python-headless pyyaml pandas==0.23.4 requests \
+    feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx tabulate psutil
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip
@@ -67,6 +73,6 @@ elif [[ "$LINUX_WHEELS" == "1" ]]; then
 elif [[ "$MAC_WHEELS" == "1" ]]; then
   :
 else
-  echo "Unrecognized environment."
+  echo "$unamestr is an unrecognized platform."
   exit 1
 fi
