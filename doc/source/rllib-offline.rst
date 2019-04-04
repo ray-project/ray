@@ -155,7 +155,7 @@ Input API
 
 You can configure experience input for an agent using the following options:
 
-.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+.. literalinclude:: ../../python/ray/rllib/agents/trainer.py
    :language: python
    :start-after: === Offline Datasets ===
    :end-before: Specify where experiences should be saved
@@ -170,7 +170,7 @@ Output API
 
 You can configure experience output for an agent using the following options:
 
-.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+.. literalinclude:: ../../python/ray/rllib/agents/trainer.py
    :language: python
    :start-after: shuffle_buffer_size
    :end-before: === Multiagent ===
