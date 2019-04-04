@@ -15,7 +15,7 @@ elif [[ "$unamestr" == "MSYS_NT-10.0" ]]; then
   echo "Platform is Windows."
   URL="https://github.com/bazelbuild/bazel/releases/download/0.21.0/bazel-0.21.0-windows-x86_64.exe"
   wget -O bazel_install.exe $URL
-  bazel_install.exe
+  ./bazel_install.exe
   exit 0
 else
   echo "$unamestr is an unrecognized platform."
