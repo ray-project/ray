@@ -37,7 +37,7 @@ matrix:
         - pip --version
         - pip install --upgrade pip || true
         - conda --version
-        - conda-env create -n test-environment python=$PYTHON
+        - conda create -n test-environment python=$PYTHON
         - pip install --upgrade pip
         - conda --version ; python --version ; pip --version
 
