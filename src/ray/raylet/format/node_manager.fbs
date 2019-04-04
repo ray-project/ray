@@ -1,4 +1,4 @@
-// Local scheduler protocol specification
+// raylet protocol specification
 
 include "gcs.fbs";
 
@@ -8,50 +8,48 @@ include "gcs.fbs";
 namespace ray.protocol;
 
 enum MessageType:int {
-  // Task is submitted to the local scheduler. This is sent from a worker to a
-  // local scheduler.
+  // Task is submitted to the raylet. This is sent from a worker to a
+  // raylet.
   SubmitTask = 1,
-  // Notify the local scheduler that a task has finished. This is sent from a
-  // worker to a local scheduler.
+  // Notify the raylet that a task has finished. This is sent from a
+  // worker to a raylet.
   TaskDone,
-  // Log a message to the event table. This is sent from a worker to a local
-  // scheduler.
+  // Log a message to the event table. This is sent from a worker to a raylet.
   EventLogMessage,
-  // Send an initial connection message to the local scheduler. This is sent
-  // from a worker or driver to a local scheduler.
+  // Send an initial connection message to the raylet. This is sent
+  // from a worker or driver to a raylet.
   RegisterClientRequest,
   // Send a reply confirming the successful registration of a worker or driver.
-  // This is sent from the local scheduler to a worker or driver.
+  // This is sent from the raylet to a worker or driver.
   RegisterClientReply,
-  // Notify the local scheduler that this client is disconnecting unexpectedly.
-  // This is sent from a worker to a local scheduler.
+  // Notify the raylet that this client is disconnecting unexpectedly.
+  // This is sent from a worker to a raylet.
   DisconnectClient,
-  // Notify the local scheduler that this client is disconnecting gracefully.
-  // This is sent from a worker to a local scheduler.
+  // Notify the raylet that this client is disconnecting gracefully.
+  // This is sent from a worker to a raylet.
   IntentionalDisconnectClient,
-  // Get a new task from the local scheduler. This is sent from a worker to a
-  // local scheduler.
+  // Get a new task from the raylet. This is sent from a worker to a
+  // raylet.
   GetTask,
-  // Tell a worker to execute a task. This is sent from a local scheduler to a
+  // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
   // Reconstruct or fetch possibly lost objects. This is sent from a worker to
-  // a local scheduler.
+  // a raylet.
   FetchOrReconstruct,
-  // For a worker that was blocked on some object(s), tell the local scheduler
-  // that the worker is now unblocked. This is sent from a worker to a local
-  // scheduler.
+  // For a worker that was blocked on some object(s), tell the raylet
+  // that the worker is now unblocked. This is sent from a worker to a raylet.
   NotifyUnblocked,
   // A request to get the task frontier for an actor, called by the actor when
   // saving a checkpoint.
   GetActorFrontierRequest,
-  // The ActorFrontier response to a GetActorFrontierRequest. The local
-  // scheduler returns the actor's per-handle task counts and execution
-  // dependencies, which can later be used as the argument to SetActorFrontier
+  // The ActorFrontier response to a GetActorFrontierRequest. The raylet
+  // returns the actor's per-handle task counts and execution dependencies,
+  // which can later be used as the argument to SetActorFrontier
   // when resuming from the checkpoint.
   GetActorFrontierReply,
   // A request to set the task frontier for an actor, called when resuming from
-  // a checkpoint. The local scheduler will update the actor's per-handle task
+  // a checkpoint. The raylet will update the actor's per-handle task
   // counts and execution dependencies, discard any tasks that already executed
   // before the checkpoint, and make any tasks on the frontier runnable by
   // making their execution dependencies available.
@@ -87,7 +85,7 @@ table TaskExecutionSpecification {
   dependencies: [string];
   // The last time this task was received for scheduling.
   last_timestamp: double;
-  // The number of times this task was spilled back by local schedulers.
+  // The number of times this task was spilled back by raylets.
   num_forwards: int;
 }
 
@@ -117,7 +115,7 @@ table ResourceIdSetInfo {
 table DisconnectClient {
 }
 
-// This message is sent from the local scheduler to a worker.
+// This message is sent from the raylet to a worker.
 table GetTaskReply {
   // A string of bytes representing the task specification.
   task_spec: string;
@@ -125,7 +123,7 @@ table GetTaskReply {
   fractional_resource_ids: [ResourceIdSetInfo];
 }
 
-// This struct is used to register a new worker with the local scheduler.
+// This struct is used to register a new worker with the raylet.
 // It is shipped as part of raylet_connect.
 table RegisterClientRequest {
   // True if the client is a worker and false if the client is a driver.

@@ -161,3 +161,22 @@ def call_ray_start(request):
     ray.shutdown()
     # Kill the Ray cluster.
     subprocess.Popen(["ray", "stop"]).wait()
+
+
+@pytest.fixture()
+def two_node_cluster():
+    internal_config = json.dumps({
+        "initial_reconstruction_timeout_milliseconds": 200,
+        "num_heartbeats_timeout": 10,
+    })
+    cluster = ray.tests.cluster_utils.Cluster(
+        head_node_args={"_internal_config": internal_config})
+    for _ in range(2):
+        remote_node = cluster.add_node(
+            num_cpus=1, _internal_config=internal_config)
+    ray.init(redis_address=cluster.redis_address)
+    yield cluster, remote_node
+
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+    cluster.shutdown()

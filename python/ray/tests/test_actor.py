@@ -502,6 +502,89 @@ def test_actor_class_methods(ray_start_regular):
     assert ray.get(a.g.remote(2)) == 4
 
 
+def test_resource_assignment(shutdown_only):
+    """Test to make sure that we assign resource to actors at instantiation."""
+    # This test will create 16 actors. Declaring this many CPUs initially will
+    # speed up the test because the workers will be started ahead of time.
+    ray.init(num_cpus=16, num_gpus=1, resources={"Custom": 1})
+
+    class Actor(object):
+        def __init__(self):
+            self.resources = ray.get_resource_ids()
+
+        def get_actor_resources(self):
+            return self.resources
+
+        def get_actor_method_resources(self):
+            return ray.get_resource_ids()
+
+    decorator_resource_args = [{}, {
+        "num_cpus": 0.1
+    }, {
+        "num_gpus": 0.1
+    }, {
+        "resources": {
+            "Custom": 0.1
+        }
+    }]
+    instantiation_resource_args = [{}, {
+        "num_cpus": 0.2
+    }, {
+        "num_gpus": 0.2
+    }, {
+        "resources": {
+            "Custom": 0.2
+        }
+    }]
+    for decorator_args in decorator_resource_args:
+        for instantiation_args in instantiation_resource_args:
+            if len(decorator_args) == 0:
+                actor_class = ray.remote(Actor)
+            else:
+                actor_class = ray.remote(**decorator_args)(Actor)
+            actor = actor_class._remote(**instantiation_args)
+            actor_resources = ray.get(actor.get_actor_resources.remote())
+            actor_method_resources = ray.get(
+                actor.get_actor_method_resources.remote())
+            if len(decorator_args) == 0 and len(instantiation_args) == 0:
+                assert len(actor_resources) == 0, (
+                    "Actor should not be assigned resources.")
+                assert list(actor_method_resources.keys()) == [
+                    "CPU"
+                ], ("Actor method should only have CPUs")
+                assert actor_method_resources["CPU"][0][1] == 1, (
+                    "Actor method should default to one cpu.")
+            else:
+                if ("num_cpus" not in decorator_args
+                        and "num_cpus" not in instantiation_args):
+                    assert actor_resources["CPU"][0][1] == 1, (
+                        "Actor should default to one cpu.")
+                correct_resources = {}
+                defined_resources = decorator_args.copy()
+                defined_resources.update(instantiation_args)
+                for resource, value in defined_resources.items():
+                    if resource == "num_cpus":
+                        correct_resources["CPU"] = value
+                    elif resource == "num_gpus":
+                        correct_resources["GPU"] = value
+                    elif resource == "resources":
+                        for custom_resource, amount in value.items():
+                            correct_resources[custom_resource] = amount
+                for resource, amount in correct_resources.items():
+                    assert (actor_resources[resource][0][0] ==
+                            actor_method_resources[resource][0][0]), (
+                                "Should have assigned same {} for both actor ",
+                                "and actor method.".format(resource))
+                    assert (actor_resources[resource][0][
+                        1] == actor_method_resources[resource][0][1]), (
+                            "Should have assigned same amount of {} for both ",
+                            "actor and actor method.".format(resource))
+                    assert actor_resources[resource][0][1] == amount, (
+                        "Actor should have {amount} {resource} but has ",
+                        "{amount} {resource}".format(
+                            amount=amount, resource=resource))
+
+
 def test_multiple_actors(ray_start_regular):
     @ray.remote
     class Counter(object):
@@ -790,7 +873,7 @@ def test_actor_load_balancing(ray_start_cluster):
     num_attempts = 20
     minimum_count = 5
 
-    # Make sure that actors are spread between the local schedulers.
+    # Make sure that actors are spread between the raylets.
     attempts = 0
     while attempts < num_attempts:
         actors = [Actor1.remote() for _ in range(num_actors)]
@@ -1212,43 +1295,6 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     assert set(gpu_ids) == set(range(10))
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
-def test_actors_and_task_resource_bookkeeping(ray_start_regular):
-    @ray.remote
-    class Foo(object):
-        def __init__(self):
-            start = time.monotonic()
-            time.sleep(0.1)
-            end = time.monotonic()
-            self.interval = (start, end)
-
-        def get_interval(self):
-            return self.interval
-
-        def sleep(self):
-            start = time.monotonic()
-            time.sleep(0.01)
-            end = time.monotonic()
-            return start, end
-
-    # First make sure that we do not have more actor methods running at a
-    # time than we have CPUs.
-    actors = [Foo.remote() for _ in range(4)]
-    interval_ids = []
-    interval_ids += [actor.get_interval.remote() for actor in actors]
-    for _ in range(4):
-        interval_ids += [actor.sleep.remote() for actor in actors]
-
-    # Make sure that the intervals don't overlap.
-    intervals = ray.get(interval_ids)
-    intervals.sort(key=lambda x: x[0])
-    for interval1, interval2 in zip(intervals[:-1], intervals[1:]):
-        assert interval1[0] < interval1[1]
-        assert interval1[1] < interval2[0]
-        assert interval2[0] < interval2[1]
-
-
 def test_blocking_actor_task(shutdown_only):
     ray.init(num_cpus=1, num_gpus=1)
 
@@ -1317,7 +1363,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
             self.x += 1
             return self.x
 
-    # Create an actor that is not on the local scheduler.
+    # Create an actor that is not on the raylet.
     actor = Counter.remote()
     while (ray.get(actor.local_plasma.remote()) !=
            remote_node.plasma_store_socket_name):
@@ -1369,7 +1415,7 @@ def test_actor_init_fails(ray_start_cluster_head):
 
 def test_reconstruction_suppression(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    num_nodes = 10
+    num_nodes = 5
     worker_nodes = [cluster.add_node() for _ in range(num_nodes)]
 
     @ray.remote(max_reconstructions=1)
@@ -1386,7 +1432,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
         return ray.get(actor_handle.inc.remote())
 
     # Make sure all of the actors have started.
-    actors = [Counter.remote() for _ in range(20)]
+    actors = [Counter.remote() for _ in range(10)]
     ray.get([actor.inc.remote() for actor in actors])
 
     # Kill a node.
@@ -1450,7 +1496,7 @@ def setup_counter_actor(test_checkpoint=False,
 
     local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
-    # Create an actor that is not on the local scheduler.
+    # Create an actor that is not on the raylet.
     actor = Counter.remote(save_exception)
     while ray.get(actor.local_plasma.remote()) == local_plasma:
         actor = Counter.remote(save_exception)
@@ -1485,7 +1531,7 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
     count += num_incs * num_iters
 
     # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding local scheduler to exit.
+    # trigger the corresponding raylet to exit.
     cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that the actor did not restore from a checkpoint.
@@ -1524,7 +1570,7 @@ def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
     count += num_incs * num_iters
 
     # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding local scheduler to exit.
+    # trigger the corresponding raylet to exit.
     cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
@@ -1564,7 +1610,7 @@ def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
     count += num_incs * num_iters
 
     # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding local scheduler to exit.
+    # trigger the corresponding raylet to exit.
     cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
@@ -1592,7 +1638,7 @@ def _test_nondeterministic_reconstruction(
         def read(self):
             return self.queue
 
-    # Schedule the shared queue onto the remote local scheduler.
+    # Schedule the shared queue onto the remote raylet.
     local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
     actor = Queue.remote()
     while ray.get(actor.local_plasma.remote()) == local_plasma:
@@ -1627,7 +1673,7 @@ def _test_nondeterministic_reconstruction(
     queue = ray.get(actor.read.remote())
 
     # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding local scheduler to exit.
+    # trigger the corresponding raylet to exit.
     cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Read the queue again and check for deterministic reconstruction.
@@ -2221,7 +2267,7 @@ def test_multiple_actor_reconstruction(ray_start_cluster_head):
     result_ids = collections.defaultdict(lambda: [])
 
     # In a loop we are going to create some actors, run some methods, kill
-    # a local scheduler, and run some more methods.
+    # a raylet, and run some more methods.
     for node in worker_nodes:
         # Create some actors.
         actors.extend(

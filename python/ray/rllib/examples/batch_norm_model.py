@@ -9,9 +9,9 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 import ray
+from ray import tune
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.models.misc import normc_initializer
-from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-iters", type=int, default=200)
@@ -47,18 +47,14 @@ if __name__ == "__main__":
     ray.init()
 
     ModelCatalog.register_custom_model("bn_model", BatchNormModel)
-    run_experiments({
-        "batch_norm_demo": {
-            "run": args.run,
+    tune.run(
+        args.run,
+        stop={"training_iteration": args.num_iters},
+        config={
             "env": "Pendulum-v0" if args.run == "DDPG" else "CartPole-v0",
-            "stop": {
-                "training_iteration": args.num_iters
+            "model": {
+                "custom_model": "bn_model",
             },
-            "config": {
-                "model": {
-                    "custom_model": "bn_model",
-                },
-                "num_workers": 0,
-            },
+            "num_workers": 0,
         },
-    })
+    )

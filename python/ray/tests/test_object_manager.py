@@ -139,8 +139,11 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
             pass
 
     actors = [
-        Actor._remote(args=[], kwargs={}, resources={str(i % num_nodes): 1})
-        for i in range(100)
+        Actor._remote(
+            args=[],
+            kwargs={},
+            num_cpus=0.01,
+            resources={str(i % num_nodes): 1}) for i in range(30)
     ]
 
     # Wait for the actors to start up.
@@ -149,7 +152,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     object_ids = []
 
     # Broadcast a large object to all actors.
-    for _ in range(10):
+    for _ in range(5):
         x_id = ray.put(np.zeros(10**7, dtype=np.uint8))
         object_ids.append(x_id)
         # Pass the object into a method for every actor.

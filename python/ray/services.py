@@ -924,10 +924,9 @@ def start_dashboard(redis_address,
         import aiohttp  # noqa: F401
         import psutil  # noqa: F401
     except ImportError:
-        logger.warning(
+        raise ImportError(
             "Failed to start the dashboard. The dashboard requires Python 3 "
             "as well as 'pip install aiohttp psutil'.")
-        return None, None
 
     process_info = start_ray_process(
         command,
@@ -971,11 +970,11 @@ def check_and_update_resources(num_cpus, num_gpus, resources):
     # See if CUDA_VISIBLE_DEVICES has already been set.
     gpu_ids = ray.utils.get_cuda_visible_devices()
 
-    # Check that the number of GPUs that the local scheduler wants doesn't
+    # Check that the number of GPUs that the raylet wants doesn't
     # excede the amount allowed by CUDA_VISIBLE_DEVICES.
     if ("GPU" in resources and gpu_ids is not None
             and resources["GPU"] > len(gpu_ids)):
-        raise Exception("Attempting to start local scheduler with {} GPUs, "
+        raise Exception("Attempting to start raylet with {} GPUs, "
                         "but CUDA_VISIBLE_DEVICES contains {}.".format(
                             resources["GPU"], gpu_ids))
 
