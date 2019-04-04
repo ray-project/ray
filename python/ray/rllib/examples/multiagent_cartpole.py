@@ -21,10 +21,8 @@ import tensorflow.contrib.slim as slim
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.models import Model, ModelCatalog
-from ray.rllib.test.test_multi_agent_env import MultiCartpole
-from ray.tune import run_experiments
+from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -47,6 +45,8 @@ class CustomModel1(Model):
                 auxiliary_name_scope=False):
             last_layer = slim.fully_connected(
                 input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
+        last_layer = slim.fully_connected(
+            last_layer, 64, activation_fn=tf.nn.relu, scope="fc2")
         output = slim.fully_connected(
             last_layer, num_outputs, activation_fn=None, scope="fc_out")
         return output, last_layer
@@ -61,6 +61,8 @@ class CustomModel2(Model):
                 auxiliary_name_scope=False):
             last_layer = slim.fully_connected(
                 input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
+        last_layer = slim.fully_connected(
+            last_layer, 64, activation_fn=tf.nn.relu, scope="fc2")
         output = slim.fully_connected(
             last_layer, num_outputs, activation_fn=None, scope="fc_out")
         return output, last_layer
@@ -84,9 +86,9 @@ if __name__ == "__main__":
             "model": {
                 "custom_model": ["model1", "model2"][i % 2],
             },
-            "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
+            "gamma": random.choice([0.95, 0.99]),
         }
-        return (PPOPolicyGraph, obs_space, act_space, config)
+        return (None, obs_space, act_space, config)
 
     # Setup PPO with an ensemble of `num_policies` different policy graphs
     policy_graphs = {
@@ -95,20 +97,17 @@ if __name__ == "__main__":
     }
     policy_ids = list(policy_graphs.keys())
 
-    run_experiments({
-        "test": {
-            "run": "PPO",
+    tune.run(
+        "PPO",
+        stop={"training_iteration": args.num_iters},
+        config={
             "env": "multi_cartpole",
-            "stop": {
-                "training_iteration": args.num_iters
+            "log_level": "DEBUG",
+            "num_sgd_iter": 10,
+            "multiagent": {
+                "policy_graphs": policy_graphs,
+                "policy_mapping_fn": tune.function(
+                    lambda agent_id: random.choice(policy_ids)),
             },
-            "config": {
-                "simple_optimizer": True,
-                "multiagent": {
-                    "policy_graphs": policy_graphs,
-                    "policy_mapping_fn": tune.function(
-                        lambda agent_id: random.choice(policy_ids)),
-                },
-            },
-        }
-    })
+        },
+    )

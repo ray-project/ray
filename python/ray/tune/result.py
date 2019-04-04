@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import os
 
+# yapf: disable
+# __sphinx_doc_begin__
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
 DONE = "done"
 
@@ -15,6 +17,15 @@ NODE_IP = "node_ip"
 
 # (Auto-filled) The pid of the training process.
 PID = "pid"
+
+# (Optional) Mean reward for current training iteration
+EPISODE_REWARD_MEAN = "episode_reward_mean"
+
+# (Optional) Mean loss for training iteration
+MEAN_LOSS = "mean_loss"
+
+# (Optional) Mean accuracy for training iteration
+MEAN_ACCURACY = "mean_accuracy"
 
 # Number of episodes in this iteration.
 EPISODES_THIS_ITER = "episodes_this_iter"
@@ -37,6 +48,12 @@ TIME_TOTAL_S = "time_total_s"
 
 # (Auto-filled) The index of this training iteration.
 TRAINING_ITERATION = "training_iteration"
+# __sphinx_doc_end__
+# yapf: enable
+
+# __duplicate__ is a magic keyword used internally to
+# avoid double-logging results when using the Function API.
+RESULT_DUPLICATE = "__duplicate__"
 
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = (os.environ.get("TUNE_RESULT_DIR")

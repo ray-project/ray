@@ -13,7 +13,7 @@ atari-a2c:
         clip_rewards: True
         num_workers: 5
         num_envs_per_worker: 5
-        gpu: true
+        num_gpus: 1
         lr_schedule: [
             [0, 0.0007],
             [20000000, 0.000000000001],

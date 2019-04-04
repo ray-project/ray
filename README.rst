@@ -1,5 +1,4 @@
-Ray
-===
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
 .. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
     :target: https://travis-ci.com/ray-project/ray
@@ -7,9 +6,12 @@ Ray
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest
 
+.. image:: https://img.shields.io/badge/pypi-0.6.5-blue.svg
+    :target: https://pypi.org/project/ray/
+
 |
 
-Ray is a flexible, high-performance distributed execution framework.
+**Ray is a flexible, high-performance distributed execution framework.**
 
 
 Ray is easy to install: ``pip install ray``
@@ -37,11 +39,12 @@ Example Use
 
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
-- `Ray Tune`_: Hyperparameter Optimization Framework
-- `Ray RLlib`_: Scalable Reinforcement Learning
+- `Tune`_: Hyperparameter Optimization Framework
+- `RLlib`_: Scalable Reinforcement Learning
+- `Distributed Training <http://ray.readthedocs.io/en/latest/distributed_sgd.html>`__
 
-.. _`Ray Tune`: http://ray.readthedocs.io/en/latest/tune.html
-.. _`Ray RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
+.. _`Tune`: http://ray.readthedocs.io/en/latest/tune.html
+.. _`RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
 
 Installation
 ------------
@@ -70,10 +73,13 @@ More Information
 Getting Involved
 ----------------
 
-- Ask questions on our mailing list `ray-dev@googlegroups.com`_.
-- Please report bugs by submitting a `GitHub issue`_.
-- Submit contributions using `pull requests`_.
+- `ray-dev@googlegroups.com`_: For discussions about development or any general
+  questions.
+- `StackOverflow`_: For questions about how to use Ray.
+- `GitHub Issues`_: For reporting bugs and feature requests.
+- `Pull Requests`_: For submitting code contributions.
 
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
-.. _`GitHub issue`: https://github.com/ray-project/ray/issues
-.. _`pull requests`: https://github.com/ray-project/ray/pulls
+.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
+.. _`Pull Requests`: https://github.com/ray-project/ray/pulls

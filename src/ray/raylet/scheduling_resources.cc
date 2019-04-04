@@ -1,6 +1,7 @@
 #include "scheduling_resources.h"
 
 #include <cmath>
+#include <sstream>
 
 #include "ray/util/logging.h"
 
@@ -144,8 +145,8 @@ const std::string ResourceSet::ToString() const {
   // Convert the first element to a string.
   if (it != resource_capacity_.end()) {
     return_string += "{" + it->first + "," + std::to_string(it->second) + "}";
+    it++;
   }
-  it++;
 
   // Add the remaining elements to the string (along with a comma).
   for (; it != resource_capacity_.end(); ++it) {
@@ -256,12 +257,15 @@ void ResourceIds::Release(const ResourceIds &resource_ids) {
     if (fractional_pair_it == fractional_ids_.end()) {
       fractional_ids_.push_back(fractional_pair_to_return);
     } else {
+      RAY_CHECK(fractional_pair_it->second < 1);
       fractional_pair_it->second += fractional_pair_to_return.second;
-      RAY_CHECK(fractional_pair_it->second <= 1);
       // If this makes the ID whole, then return it to the list of whole IDs.
-      if (fractional_pair_it->second == 1) {
+      if (fractional_pair_it->second >= 1) {
         whole_ids_.push_back(resource_id);
-        fractional_ids_.erase(fractional_pair_it);
+        fractional_pair_it->second -= 1;
+        if (fractional_pair_it->second < 1e-6) {
+          fractional_ids_.erase(fractional_pair_it);
+        }
       }
     }
   }
@@ -511,6 +515,13 @@ bool SchedulingResources::Release(const ResourceSet &resources) {
 bool SchedulingResources::Acquire(const ResourceSet &resources) {
   return resources_available_.SubtractResourcesStrict(resources);
 }
+
+std::string SchedulingResources::DebugString() const {
+  std::stringstream result;
+  result << "\n- total: " << resources_total_.ToString();
+  result << "\n- avail: " << resources_available_.ToString();
+  return result.str();
+};
 
 }  // namespace raylet
 

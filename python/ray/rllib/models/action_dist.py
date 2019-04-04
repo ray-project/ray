@@ -4,14 +4,16 @@ from __future__ import print_function
 
 from collections import namedtuple
 import distutils.version
-
 import tensorflow as tf
 import numpy as np
+
+from ray.rllib.utils.annotations import override, DeveloperAPI
 
 use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
                  distutils.version.LooseVersion("1.5.0"))
 
 
+@DeveloperAPI
 class ActionDistribution(object):
     """The policy action distribution of an agent.
 
@@ -19,33 +21,55 @@ class ActionDistribution(object):
       inputs (Tensor): The input vector to compute samples from.
     """
 
+    @DeveloperAPI
     def __init__(self, inputs):
         self.inputs = inputs
+        self.sample_op = self._build_sample_op()
 
+    @DeveloperAPI
     def logp(self, x):
         """The log-likelihood of the action distribution."""
         raise NotImplementedError
 
+    @DeveloperAPI
     def kl(self, other):
         """The KL-divergence between two action distributions."""
         raise NotImplementedError
 
+    @DeveloperAPI
     def entropy(self):
-        """The entroy of the action distribution."""
+        """The entropy of the action distribution."""
         raise NotImplementedError
 
+    @DeveloperAPI
+    def _build_sample_op(self):
+        """Implement this instead of sample(), to enable op reuse.
+
+        This is needed since the sample op is non-deterministic and is shared
+        between sample() and sampled_action_prob().
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
     def sample(self):
         """Draw a sample from the action distribution."""
-        raise NotImplementedError
+        return self.sample_op
+
+    @DeveloperAPI
+    def sampled_action_prob(self):
+        """Returns the log probability of the sampled action."""
+        return tf.exp(self.logp(self.sample_op))
 
 
 class Categorical(ActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
+    @override(ActionDistribution)
     def logp(self, x):
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=self.inputs, labels=x)
 
+    @override(ActionDistribution)
     def entropy(self):
         if use_tf150_api:
             a0 = self.inputs - tf.reduce_max(
@@ -61,6 +85,7 @@ class Categorical(ActionDistribution):
         p0 = ea0 / z0
         return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
 
+    @override(ActionDistribution)
     def kl(self, other):
         if use_tf150_api:
             a0 = self.inputs - tf.reduce_max(
@@ -84,8 +109,34 @@ class Categorical(ActionDistribution):
         return tf.reduce_sum(
             p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), reduction_indices=[1])
 
-    def sample(self):
+    @override(ActionDistribution)
+    def _build_sample_op(self):
         return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
+
+
+class MultiCategorical(ActionDistribution):
+    """Categorical distribution for discrete action spaces."""
+
+    def __init__(self, inputs):
+        self.cats = [Categorical(input_) for input_ in inputs]
+        self.sample_op = self._build_sample_op()
+
+    def logp(self, actions):
+        # If tensor is provided, unstack it into list
+        if isinstance(actions, tf.Tensor):
+            actions = tf.unstack(actions, axis=1)
+        logps = tf.stack(
+            [cat.logp(act) for cat, act in zip(self.cats, actions)])
+        return tf.reduce_sum(logps, axis=0)
+
+    def entropy(self):
+        return tf.stack([cat.entropy() for cat in self.cats], axis=1)
+
+    def kl(self, other):
+        return [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)]
+
+    def _build_sample_op(self):
+        return tf.stack([cat.sample() for cat in self.cats], axis=1)
 
 
 class DiagGaussian(ActionDistribution):
@@ -95,28 +146,21 @@ class DiagGaussian(ActionDistribution):
     second half the gaussian standard deviations.
     """
 
-    def __init__(self, inputs, low=None, high=None):
-        ActionDistribution.__init__(self, inputs)
+    def __init__(self, inputs):
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
-        self.low = low
-        self.high = high
-
-        # Squash to range if specified.
-        # TODO(ekl) might make sense to use a beta distribution instead:
-        # http://proceedings.mlr.press/v70/chou17a/chou17a.pdf
-        if low is not None:
-            self.mean = low + tf.sigmoid(self.mean) * (high - low)
-
         self.log_std = log_std
         self.std = tf.exp(log_std)
+        ActionDistribution.__init__(self, inputs)
 
+    @override(ActionDistribution)
     def logp(self, x):
         return (-0.5 * tf.reduce_sum(
             tf.square((x - self.mean) / self.std), reduction_indices=[1]) -
                 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
                 tf.reduce_sum(self.log_std, reduction_indices=[1]))
 
+    @override(ActionDistribution)
     def kl(self, other):
         assert isinstance(other, DiagGaussian)
         return tf.reduce_sum(
@@ -125,16 +169,15 @@ class DiagGaussian(ActionDistribution):
             (2.0 * tf.square(other.std)) - 0.5,
             reduction_indices=[1])
 
+    @override(ActionDistribution)
     def entropy(self):
         return tf.reduce_sum(
             .5 * self.log_std + .5 * np.log(2.0 * np.pi * np.e),
             reduction_indices=[1])
 
-    def sample(self):
-        out = self.mean + self.std * tf.random_normal(tf.shape(self.mean))
-        if self.low is not None:
-            out = tf.clip_by_value(out, self.low, self.high)
-        return out
+    @override(ActionDistribution)
+    def _build_sample_op(self):
+        return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
 
 
 class Deterministic(ActionDistribution):
@@ -143,36 +186,13 @@ class Deterministic(ActionDistribution):
     This is similar to DiagGaussian with standard deviation zero.
     """
 
-    def sample(self):
+    @override(ActionDistribution)
+    def sampled_action_prob(self):
+        return 1.0
+
+    @override(ActionDistribution)
+    def _build_sample_op(self):
         return self.inputs
-
-
-def squash_to_range(dist_cls, low, high):
-    """Squashes an action distribution to a range in (low, high).
-
-    Arguments:
-        dist_cls (class): ActionDistribution class to wrap.
-        low (float|array): Scalar value or array of values.
-        high (float|array): Scalar value or array of values.
-    """
-
-    class SquashToRangeWrapper(dist_cls):
-        def __init__(self, inputs):
-            dist_cls.__init__(self, inputs, low=low, high=high)
-
-        def logp(self, x):
-            return dist_cls.logp(self, x)
-
-        def kl(self, other):
-            return dist_cls.kl(self, other)
-
-        def entropy(self):
-            return dist_cls.entropy(self)
-
-        def sample(self):
-            return dist_cls.sample(self)
-
-    return SquashToRangeWrapper
 
 
 class MultiActionDistribution(ActionDistribution):
@@ -190,8 +210,8 @@ class MultiActionDistribution(ActionDistribution):
             child_list.append(distribution(split_inputs[i]))
         self.child_distributions = child_list
 
+    @override(ActionDistribution)
     def logp(self, x):
-        """The log-likelihood of the action distribution."""
         split_indices = []
         for dist in self.child_distributions:
             if isinstance(dist, Categorical):
@@ -210,8 +230,8 @@ class MultiActionDistribution(ActionDistribution):
         ])
         return np.sum(log_list)
 
+    @override(ActionDistribution)
     def kl(self, other):
-        """The KL-divergence between two action distributions."""
         kl_list = np.asarray([
             distribution.kl(other_distribution)
             for distribution, other_distribution in zip(
@@ -219,16 +239,49 @@ class MultiActionDistribution(ActionDistribution):
         ])
         return np.sum(kl_list)
 
+    @override(ActionDistribution)
     def entropy(self):
-        """The entropy of the action distribution."""
         entropy_list = np.array(
             [s.entropy() for s in self.child_distributions])
         return np.sum(entropy_list)
 
+    @override(ActionDistribution)
     def sample(self):
-        """Draw a sample from the action distribution."""
-
         return TupleActions([s.sample() for s in self.child_distributions])
+
+    @override(ActionDistribution)
+    def sampled_action_prob(self):
+        p = self.child_distributions[0].sampled_action_prob()
+        for c in self.child_distributions[1:]:
+            p *= c.sampled_action_prob()
+        return p
 
 
 TupleActions = namedtuple("TupleActions", ["batches"])
+
+
+class Dirichlet(ActionDistribution):
+    """Dirichlet distribution for countinuous actions that are between
+    [0,1] and sum to 1.
+
+    e.g. actions that represent resource allocation."""
+
+    def __init__(self, inputs):
+        self.dist = tf.distributions.Dirichlet(concentration=inputs)
+        ActionDistribution.__init__(self, inputs)
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        return self.dist.log_prob(x)
+
+    @override(ActionDistribution)
+    def entropy(self):
+        return self.dist.entropy()
+
+    @override(ActionDistribution)
+    def kl(self, other):
+        return self.dist.kl_divergence(other.dist)
+
+    @override(ActionDistribution)
+    def _build_sample_op(self):
+        return self.dist.sample()

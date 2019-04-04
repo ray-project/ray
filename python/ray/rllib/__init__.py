@@ -10,10 +10,10 @@ from ray.tune.registry import register_trainable
 
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
-from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.sample_batch import SampleBatch
 
@@ -31,12 +31,11 @@ def _setup_logger():
 
 def _register_all():
 
-    for key in [
-            "PPO", "ES", "DQN", "APEX", "A3C", "BC", "PG", "DDPG", "APEX_DDPG",
-            "IMPALA", "ARS", "A2C", "__fake", "__sigmoid_fake_data",
-            "__parameter_tuning"
-    ]:
-        from ray.rllib.agents.agent import get_agent_class
+    from ray.rllib.agents.registry import ALGORITHMS
+    from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
+    for key in list(ALGORITHMS.keys()) + list(CONTRIBUTED_ALGORITHMS.keys(
+    )) + ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]:
+        from ray.rllib.agents.registry import get_agent_class
         register_trainable(key, get_agent_class(key))
 
 
@@ -48,8 +47,8 @@ __all__ = [
     "TFPolicyGraph",
     "PolicyEvaluator",
     "SampleBatch",
-    "AsyncVectorEnv",
+    "BaseEnv",
     "MultiAgentEnv",
     "VectorEnv",
-    "ServingEnv",
+    "ExternalEnv",
 ]

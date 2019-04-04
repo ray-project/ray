@@ -41,7 +41,10 @@ public final class Ray extends RayCall {
    * Shutdown Ray runtime.
    */
   public static void shutdown() {
-    runtime.shutdown();
+    if (runtime != null) {
+      runtime.shutdown();
+      runtime = null;
+    }
   }
 
   /**
@@ -116,5 +119,12 @@ public final class Ray extends RayCall {
    */
   public static RayRuntime internal() {
     return runtime;
+  }
+
+  /**
+   * Get the runtime context.
+   */
+  public static RuntimeContext getRuntimeContext() {
+    return runtime.getRuntimeContext();
   }
 }

@@ -24,10 +24,11 @@ enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3
 
 #ifdef NDEBUG
 
-#define RAY_DCHECK(condition) \
-  RAY_IGNORE_EXPR(condition); \
-  while (false) ::ray::RayLogBase()
-
+#define RAY_DCHECK(condition)                                                  \
+  (condition) ? RAY_IGNORE_EXPR(0)                                             \
+              : ::ray::Voidify() &                                             \
+                    ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
+                        << " Debug check failed: " #condition " "
 #else
 
 #define RAY_DCHECK(condition) RAY_CHECK(condition)
@@ -82,6 +83,9 @@ class RayLog : public RayLogBase {
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   static void ShutDownRayLog();
 
+  /// Uninstall the signal actions installed by InstallFailureSignalHandler.
+  static void UninstallSignalAction();
+
   /// Return whether or not the log level is enabled in current setting.
   ///
   /// \param log_level The input log level to test.
@@ -104,6 +108,9 @@ class RayLog : public RayLogBase {
   // In InitGoogleLogging, it simply keeps the pointer.
   // We need to make sure the app name passed to InitGoogleLogging exist.
   static std::string app_name_;
+  /// The directory where the log files are stored.
+  /// If this is empty, logs are printed to stdout.
+  static std::string log_dir_;
 
  protected:
   virtual std::ostream &Stream();

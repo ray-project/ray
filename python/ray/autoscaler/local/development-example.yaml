@@ -1,0 +1,32 @@
+cluster_name: default
+min_workers: 0
+max_workers: 0
+docker:
+    image: ""
+    container_name: ""
+target_utilization_fraction: 0.8
+idle_timeout_minutes: 5
+provider:
+    type: local
+    head_ip: YOUR_HEAD_NODE_HOSTNAME
+    worker_ips: []
+auth:
+    ssh_user: YOUR_USERNAME
+    ssh_private_key: ~/.ssh/id_rsa
+head_node: {}
+worker_nodes: {}
+file_mounts:
+     "/tmp/ray_sha": "/YOUR/LOCAL/RAY/REPO/.git/refs/heads/YOUR_BRANCH"
+setup_commands: []
+head_setup_commands: []
+worker_setup_commands: []
+setup_commands:
+    - source activate ray && test -e ray || git clone https://github.com/YOUR_GITHUB/ray.git
+    - source activate ray && cd ray && git fetch && git reset --hard `cat /tmp/ray_sha`
+#    - source activate ray && cd ray/python && pip install -e .
+head_start_ray_commands:
+    - source activate ray && ray stop
+    - source activate ray && ulimit -c unlimited && ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+worker_start_ray_commands:
+    - source activate ray && ray stop
+    - source activate ray && ray start --redis-address=$RAY_HEAD_IP:6379

@@ -11,7 +11,6 @@
 #include <boost/bind.hpp>
 
 #include "plasma/client.h"
-#include "plasma/events.h"
 
 #include "ray/id.h"
 #include "ray/status.h"
@@ -40,10 +39,7 @@ class ObjectBufferPool {
   /// \param store_socket_name The socket name of the store to which plasma clients
   /// connect.
   /// \param chunk_size The chunk size into which objects are to be split.
-  /// \param release_delay The number of release calls before objects are released
-  /// from the store client (FIFO).
-  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size,
-                   const int release_delay);
+  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size);
 
   ~ObjectBufferPool();
 
@@ -129,6 +125,11 @@ class ObjectBufferPool {
   /// \return Void.
   void FreeObjects(const std::vector<ObjectID> &object_ids);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
@@ -180,7 +181,7 @@ class ObjectBufferPool {
 
   /// Mutex on public methods for thread-safe operations on
   /// get_buffer_state_, create_buffer_state_, and store_client_.
-  std::mutex pool_mutex_;
+  mutable std::mutex pool_mutex_;
   /// Determines the maximum chunk size to be transferred by a single thread.
   const uint64_t default_chunk_size_;
   /// The state of a buffer that's currently being used.

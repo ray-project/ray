@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<suite name="RAY suite" verbose="2">
+<test name = "RAY test" >
+    <packages>
+        <package name = "org.ray.api.test.*" />
+        <package name = "org.ray.runtime.*" />
+    </packages>
+</test>
+</suite>

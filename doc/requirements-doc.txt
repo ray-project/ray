@@ -1,10 +1,11 @@
 colorama
 click
+filelock
 flatbuffers
 funcsigs
 mock
 numpy
-opencv-python
+opencv-python-headless
 pyarrow
 pyyaml
 recommonmark

@@ -33,7 +33,7 @@ import tempfile
 import time
 
 import ray
-from ray.tune import grid_search, run_experiments
+from ray.tune import grid_search, run
 
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -212,14 +212,13 @@ def train(config={'activation': 'relu'}, reporter=None):
 
 
 # !!! Example of using the ray.tune Python API !!!
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--smoke-test', action='store_true', help='Finish quickly for testing')
     args, _ = parser.parse_known_args()
 
     mnist_spec = {
-        'run': train,
         'num_samples': 10,
         'stop': {
             'mean_accuracy': 0.99,
@@ -237,12 +236,11 @@ if __name__ == '__main__':
     ray.init()
 
     from ray.tune.schedulers import AsyncHyperBandScheduler
-    run_experiments(
-        {
-            'tune_mnist_test': mnist_spec
-        },
+    run(train,
+        name='tune_mnist_test',
         scheduler=AsyncHyperBandScheduler(
             time_attr="timesteps_total",
             reward_attr="mean_accuracy",
             max_t=600,
-        ))
+        ),
+        **mnist_spec)

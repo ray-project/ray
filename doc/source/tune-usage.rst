@@ -8,10 +8,7 @@ Tune Overview
 
 Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized either by a *config* variation from Tune's Variant Generator or a user-specified **search algorithm**. The trials are scheduled and managed by a **trial scheduler**.
 
-More information about Tune's `search algorithms can be found here <tune-searchalg.html>`__.
-
-More information about Tune's `trial schedulers can be found here <tune-schedulers.html>`__.
-
+More information about Tune's `search algorithms can be found here <tune-searchalg.html>`__. More information about Tune's `trial schedulers can be found here <tune-schedulers.html>`__.
 
 Start by installing, importing, and initializing Ray.
 
@@ -22,9 +19,55 @@ Start by installing, importing, and initializing Ray.
 
     ray.init()
 
-Tune provides a ``run_experiments`` function that generates and runs the trials as described by the `experiment specification <tune-usage.html#experiment-configuration>`__.
 
-.. autofunction:: ray.tune.run_experiments
+Experiment Configuration
+------------------------
+
+This section will cover the main steps needed to modify your code to run Tune: using the `Training API <tune-usage.html#training-api>`__ and  `executing your Tune experiment <tune-usage.html#specifying-experiments>`__.
+
+You can checkout out our `examples page <tune-examples.html>`__ for more code examples.
+
+Training API
+~~~~~~~~~~~~
+
+Training can be done with either the **function-based API** or **Trainable API**.
+
+**Python functions** will need to have the following signature:
+
+.. code-block:: python
+
+    def trainable(config, reporter):
+        """
+        Args:
+            config (dict): Parameters provided from the search algorithm
+                or variant generation.
+            reporter (Reporter): Handle to report intermediate metrics to Tune.
+        """
+
+        while True:
+            # ...
+            reporter(**kwargs)
+
+The reporter will allow you to report metrics used for scheduling, search, or early stopping.
+
+Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. The reporter documentation can be `found here <tune-package-ref.html#ray.tune.function_runner.StatusReporter>`__.
+
+.. note::
+    If you have a lambda function that you want to train, you will need to first register the function: ``tune.register_trainable("lambda_id", lambda x: ...)``. You can then use ``lambda_id`` in place of ``my_trainable``.
+
+**Python classes** passed into Tune will need to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__.
+
+Both the Trainable and function-based API will have `autofilled metrics <tune-usage.html#auto-filled-results>`__ in addition to the metrics reported.
+
+See the `experiment specification <tune-usage.html#specifying-experiments>`__ section on how to specify and execute your training.
+
+
+Launching an Experiment
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune provides a ``run`` function that generates and runs the trials.
+
+.. autofunction:: ray.tune.run
     :noindex:
 
 This function will report status on the command line until all Trials stop:
@@ -43,90 +86,37 @@ This function will report status on the command line until all Trials stop:
      - train_func_5_lr=0.6,momentum=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
 
-Experiment Configuration
-------------------------
+Custom Trial Names
+~~~~~~~~~~~~~~~~~~
 
-Specifying Experiments
-~~~~~~~~~~~~~~~~~~~~~~
-
-There are two ways to specify the configuration for an experiment - one via Python and one via JSON.
-
-**Using Python**: specify a configuration is to create an Experiment object.
-
-.. autoclass:: ray.tune.Experiment
-    :noindex:
-
-An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
-
-**Using JSON/Dict**: This uses the same fields as the ``ray.tune.Experiment``, except the experiment name is the key of the top level
-dictionary. Tune will convert the dict into an ``ray.tune.Experiment`` object.
+To specify custom trial names, you can pass use the ``trial_name_creator`` argument
+to `tune.run`.  This takes a function with the following signature, and
+be sure to wrap it with `tune.function`:
 
 .. code-block:: python
 
-    experiment_spec = {
-        "my_experiment_name": {
-            "run": my_func,
-            "stop": { "mean_accuracy": 100 },
-            "config": {
-                "alpha": tune.grid_search([0.2, 0.4, 0.6]),
-                "beta": tune.grid_search([1, 2]),
-            },
-            "trial_resources": { "cpu": 1, "gpu": 0 },
-            "num_samples": 10,
-            "local_dir": "~/ray_results",
-            "upload_dir": "s3://your_bucket/path",
-            "checkpoint_freq": 10,
-            "max_failures": 2
-        }
-    }
-    run_experiments(experiment_spec)
-
-
-An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__.
-
-Model API
-~~~~~~~~~
-
-You can either pass in a Python function or Python class for model training as follows, each requiring a specific signature/interface:
-
-.. code-block:: python
-   :emphasize-lines: 3,8
-
-    experiment_spec = {
-        "my_experiment_name": {
-            "run": my_trainable
-        }
-    }
-
-    # or with the Experiment API
-    experiment_spec = Experiment("my_experiment_name", my_trainable)
-
-    run_experiments(experiments=experiment_spec)
-
-
-**Python functions** will need to have the following signature:
-
-.. code-block:: python
-
-    def trainable(config, reporter):
+    def trial_name_string(trial):
         """
         Args:
-            config (dict): Parameters provided from the search algorithm
-                or variant generation.
-            reporter (Reporter): Handle to report intermediate metrics to Tune.
+            trial (Trial): A generated trial object.
+
+        Returns:
+            trial_name (str): String representation of Trial.
         """
+        return str(trial)
 
-Tune will run this function on a separate thread in a Ray actor process. Note that trainable functions are not checkpointable, since they never return control back to their caller. See `Trial Checkpointing for more details <tune-usage.html#trial-checkpointing>`__.
+    tune.run(
+        MyTrainableClass,
+        name="hyperband_test",
+        num_samples=1,
+        trial_name_creator=tune.function(trial_name_string)
+    )
 
-.. note::
-    If you have a lambda function that you want to train, you will need to first register the function: ``tune.register_trainable("lambda_id", lambda x: ...)``. You can then use ``lambda_id`` in place of ``my_trainable``.
+An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
-**Python classes** passed into Tune will need to subclass ``ray.tune.Trainable``.
 
-.. autoclass:: ray.tune.Trainable
-    :members: __init__, _save, _restore, _train, _setup, _stop
-    :noindex:
-
+Training Features
+-----------------
 
 Tune Search Space (Default)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -142,23 +132,22 @@ The following shows grid search over two nested parameters combined with random 
 .. code-block:: python
    :emphasize-lines: 4-11
 
-    run_experiments({
-        "my_experiment_name": {
-            "run": my_trainable,
-            "config": {
-                "alpha": lambda spec: np.random.uniform(100),
-                "beta": lambda spec: spec.config.alpha * np.random.normal(),
-                "nn_layers": [
-                    tune.grid_search([16, 64, 256]),
-                    tune.grid_search([16, 64, 256]),
-                ],
-            }
+    tune.run(
+        my_trainable,
+        name="my_trainable",
+        config={
+            "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
+            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+            "nn_layers": [
+                tune.grid_search([16, 64, 256]),
+                tune.grid_search([16, 64, 256]),
+            ],
         }
-    })
+    )
 
 
 .. note::
-    Lambda functions will be evaluated during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
+    Use ``tune.sample_from(...)`` to sample from a function during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
@@ -170,28 +159,27 @@ By default, each random variable and grid search point is sampled once. To take 
 .. code-block:: python
    :emphasize-lines: 12
 
-    run_experiments({
-        "my_experiment_name": {
-            "run": my_trainable,
-            "config": {
-                "alpha": lambda spec: np.random.uniform(100),
-                "beta": lambda spec: spec.config.alpha * np.random.normal(),
-                "nn_layers": [
-                    tune.grid_search([16, 64, 256]),
-                    tune.grid_search([16, 64, 256]),
-                ],
-            },
-            "num_samples": 10
-        }
-    })
+    tune.run(
+        my_trainable,
+        name="my_trainable",
+        config={
+            "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
+            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+            "nn_layers": [
+                tune.grid_search([16, 64, 256]),
+                tune.grid_search([16, 64, 256]),
+            ],
+        },
+        num_samples=10
+    )
 
-E.g. in the above, ``"num_samples": 10`` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
+E.g. in the above, ``num_samples=10`` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
 
 
 Using GPUs (Resource Allocation)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune will allocate the specified GPU and CPU ``trial_resources`` to each individual trial (defaulting to 1 CPU per trial). Under the hood, Tune runs each trial as a Ray actor, using Ray's resource handling to allocate resources and place actors. A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
+Tune will allocate the specified GPU and CPU ``resources_per_trial`` to each individual trial (defaulting to 1 CPU per trial). Under the hood, Tune runs each trial as a Ray actor, using Ray's resource handling to allocate resources and place actors. A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
 Fractional values are also supported, (i.e., ``"gpu": 0.2``). You can find an example of this in the `Keras MNIST example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_keras.py>`__.
 
@@ -204,22 +192,21 @@ If your trainable function / class creates further Ray actors or tasks that also
 .. code-block:: python
    :emphasize-lines: 4-8
 
-    run_experiments({
-        "my_experiment_name": {
-            "run": my_trainable,
-            "trial_resources": {
-                "cpu": 1,
-                "gpu": 1,
-                "extra_gpu": 4
-            }
+    tune.run(
+        my_trainable,
+        name="my_trainable",
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": 1,
+            "extra_gpu": 4
         }
-    })
+    )
 
 
 Trial Checkpointing
 ~~~~~~~~~~~~~~~~~~~
 
-To enable checkpointing, you must implement a `Trainable class <tune-usage.html#model-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. Implementing this interface is required to support resource multiplexing in  Trial Schedulers such as HyperBand and PBT.
+To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. Implementing this interface is required to support resource multiplexing in  Trial Schedulers such as HyperBand and PBT.
 
 For TensorFlow model training, this would look something like this `(full tensorflow example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
 
@@ -244,18 +231,16 @@ For TensorFlow model training, this would look something like this `(full tensor
             return self.saver.restore(self.sess, path)
 
 
-Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq: N`` and ``max_failures: M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=N`` and ``max_failures=M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
 
 .. code-block:: python
    :emphasize-lines: 4,5
 
-    run_experiments({
-        "my_experiment_name": {
-            "run": my_trainable
-            "checkpoint_freq": 10,
-            "max_failures": 5,
-        },
-    })
+    tune.run(
+        my_trainable,
+        checkpoint_freq=10,
+        max_failures=5,
+    )
 
 The checkpoint_freq may not coincide with the exact end of an experiment. If you want a checkpoint to be created at the end
 of a trial, you can additionally set the checkpoint_at_end to True. An example is shown below:
@@ -263,14 +248,37 @@ of a trial, you can additionally set the checkpoint_at_end to True. An example i
 .. code-block:: python
    :emphasize-lines: 5
 
-    run_experiments({
-        "my_experiment_name": {
-            "run": my_trainable
-            "checkpoint_freq": 10,
-            "checkpoint_at_end": True,
-            "max_failures": 5,
-        },
-    })
+    tune.run(
+        my_trainable,
+        checkpoint_freq=10,
+        checkpoint_at_end=True,
+        max_failures=5,
+    )
+
+
+Recovering From Failures (Experimental)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune automatically persists the progress of your experiments, so if an experiment crashes or is otherwise cancelled, it can be resumed with ``resume=True``. The default setting of ``resume=False`` creates a new experiment, and ``resume="prompt"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
+
+Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
+
+E.g.:
+
+.. code-block:: python
+
+    tune.run(
+        my_trainable,
+        checkpoint_freq=10,
+        local_dir="~/path/to/results",
+        resume=True
+    )
+
+
+Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored.
+
+This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be preserved. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
+
 
 Handling Large Datasets
 -----------------------
@@ -280,7 +288,7 @@ You often will want to compute a large object (e.g., training data, model weight
 .. code-block:: python
 
     import ray
-    from ray.tune import run_experiments
+    from ray import tune
     from ray.tune.util import pin_in_object_store, get_pinned_object
 
     import numpy as np
@@ -294,11 +302,29 @@ You often will want to compute a large object (e.g., training data, model weight
         X = get_pinned_object(X_id)
         # use X
 
-    run_experiments({
-        "my_experiment_name": {
-            "run": f
-        }
-    })
+    tune.run(f)
+
+
+Auto-Filled Results
+-------------------
+
+During training, Tune will automatically fill certain fields if not already provided. All of these can be used as stopping conditions or in the Scheduler/Search Algorithm specification.
+
+.. literalinclude:: ../../python/ray/tune/result.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+The following fields will automatically show up on the console output, if provided:
+
+1. ``episode_reward_mean``
+2. ``mean_loss``
+3. ``mean_accuracy``
+4. ``timesteps_this_iter`` (aggregated into ``timesteps_total``).
+
+.. code-block:: bash
+
+    Example_0:  TERMINATED [pid=68248], 179 s, 2 iter, 60000 ts, 94 rew
 
 
 Logging and Visualizing Results
@@ -338,35 +364,157 @@ Finally, to view the results with a `parallel coordinates visualization <https:/
 
 .. image:: ray-tune-parcoords.png
 
+Custom Loggers
+~~~~~~~~~~~~~~
 
-Client API
-----------
+You can pass in your own logging mechanisms to output logs in custom formats as follows:
 
-You can modify an ongoing experiment by adding or deleting trials using the Tune Client API. To do this, verify that you have the ``requests`` library installed:
+.. code-block:: python
+
+    from ray.tune.logger import DEFAULT_LOGGERS
+
+    tune.run(
+        MyTrainableClass
+        name="experiment_name",
+        loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
+    )
+
+These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__.
+
+Tune has default loggers for Tensorboard, CSV, and JSON formats.
+
+You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
+
+An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+
+Custom Sync/Upload Commands
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If an upload directory is provided, Tune will automatically sync results to the given
+directory with standard S3/gsutil commands. You can customize the upload command by
+providing either a function or a string.
+
+If a string is provided, then it must include replacement fields ``{local_dir}`` and
+``{remote_dir}``, like ``"aws s3 sync {local_dir} {remote_dir}"``.
+
+Alternatively, a function can be provided with the following signature (and must
+be wrapped with ``tune.function``):
+
+.. code-block:: python
+
+    def custom_sync_func(local_dir, remote_dir):
+        sync_cmd = "aws s3 sync {local_dir} {remote_dir}".format(
+            local_dir=local_dir,
+            remote_dir=remote_dir)
+        sync_process = subprocess.Popen(sync_cmd, shell=True)
+        sync_process.wait()
+
+    tune.run(
+        MyTrainableClass,
+        name="experiment_name",
+        sync_function=tune.function(custom_sync_func)
+    )
+
+
+Tune Client API
+---------------
+
+You can interact with an ongoing experiment with the Tune Client API. The Tune Client API is organized around REST, which includes resource-oriented URLs, accepts form-encoded requests, returns JSON-encoded responses, and uses standard HTTP protocol.
+
+To allow Tune to receive and respond to your API calls, you have to start your experiment with ``with_server=True``:
+
+.. code-block:: python
+
+    tune.run(..., with_server=True, server_port=4321)
+
+The easiest way to use the Tune Client API is with the built-in TuneClient. To use TuneClient, verify that you have the ``requests`` library installed:
 
 .. code-block:: bash
 
     $ pip install requests
 
-To use the Client API, you can start your experiment with ``with_server=True``:
-
-.. code-block:: python
-
-    run_experiments({...}, with_server=True, server_port=4321)
-
-Then, on the client side, you can use the following class. The server address defaults to ``localhost:4321``. If on a cluster, you may want to forward this port (e.g. ``ssh -L <local_port>:localhost:<remote_port> <address>``) so that you can use the Client on your local machine.
+Then, on the client side, you can use the following class. If on a cluster, you may want to forward this port (e.g. ``ssh -L <local_port>:localhost:<remote_port> <address>``) so that you can use the Client on your local machine.
 
 .. autoclass:: ray.tune.web_server.TuneClient
     :members:
 
-
 For an example notebook for using the Client API, see the `Client API Example <https://github.com/ray-project/ray/tree/master/python/ray/tune/TuneClient.ipynb>`__.
 
+The API also supports curl. Here are the examples for getting trials (``GET /trials/[:id]``):
 
-Examples
---------
+.. code-block:: bash
 
-You can find a comprehensive of examples `using Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__, including examples using Keras, TensorFlow, and Population-Based Training.
+    curl http://<address>:<port>/trials
+    curl http://<address>:<port>/trials/<trial_id>
+
+And stopping a trial (``PUT /trials/:id``):
+
+.. code-block:: bash
+
+    curl -X PUT http://<address>:<port>/trials/<trial_id>
+
+
+Tune CLI (Experimental)
+-----------------------
+
+``tune`` has an easy-to-use command line interface (CLI) to manage and monitor your experiments on Ray. To do this, verify that you have the ``tabulate`` library installed:
+
+.. code-block:: bash
+
+    $ pip install tabulate
+
+Here are a few examples of command line calls.
+
+- ``tune list-trials``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``.
+
+.. code-block:: bash
+
+    $ tune list-trials [EXPERIMENT_DIR]
+
+    +------------------+-----------------------+------------+
+    | trainable_name   | experiment_tag        | trial_id   |
+    |------------------+-----------------------+------------|
+    | MyTrainableClass | 0_height=40,width=37  | 87b54a1d   |
+    | MyTrainableClass | 1_height=21,width=70  | 23b89036   |
+    | MyTrainableClass | 2_height=99,width=90  | 518dbe95   |
+    | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
+    | MyTrainableClass | 4_height=90,width=69  | ae4e02fb   |
+    +------------------+-----------------------+------------+
+    Dropped columns: ['status', 'last_update_time']
+
+    $ tune list-trials [EXPERIMENT_DIR] --filter "trial_id == 7b99a28a"
+
+    +------------------+-----------------------+------------+
+    | trainable_name   | experiment_tag        | trial_id   |
+    |------------------+-----------------------+------------|
+    | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
+    +------------------+-----------------------+------------+
+    Dropped columns: ['status', 'last_update_time']
+
+- ``tune list-experiments``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``.
+
+.. code-block:: bash
+
+    $ tune list-experiments [PROJECT_DIR]
+
+    +----------------------+----------------+------------------+---------------------+
+    | name                 |   total_trials |   running_trials |   terminated_trials |
+    |----------------------+----------------+------------------+---------------------|
+    | pbt_test             |             10 |                0 |                   0 |
+    | test                 |              1 |                0 |                   0 |
+    | hyperband_test       |              1 |                0 |                   1 |
+    +----------------------+----------------+------------------+---------------------+
+    Dropped columns: ['error_trials', 'last_updated']
+
+    $ tune list-experiments [PROJECT_DIR] --filter "total_trials <= 1" --sort name
+
+    +----------------------+----------------+------------------+---------------------+
+    | name                 |   total_trials |   running_trials |   terminated_trials |
+    |----------------------+----------------+------------------+---------------------|
+    | hyperband_test       |              1 |                0 |                   1 |
+    | test                 |              1 |                0 |                   0 |
+    +----------------------+----------------+------------------+---------------------+
+    Dropped columns: ['error_trials', 'last_updated']
 
 
 Further Questions or Issues?
@@ -374,9 +522,11 @@ Further Questions or Issues?
 
 You can post questions or issues or feedback through the following channels:
 
-1. `Our Mailing List`_: For discussions about development, questions about
-   usage, or any general questions and feedback.
-2. `GitHub Issues`_: For bug reports and feature requests.
+1. `ray-dev@googlegroups.com`_: For discussions about development or any general
+   questions and feedback.
+2. `StackOverflow`_: For questions about how to use Ray.
+3. `GitHub Issues`_: For bug reports and feature requests.
 
-.. _`Our Mailing List`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues

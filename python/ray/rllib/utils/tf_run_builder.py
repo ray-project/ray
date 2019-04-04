@@ -9,6 +9,8 @@ import time
 import tensorflow as tf
 from tensorflow.python.client import timeline
 
+from ray.rllib.utils.debug import log_once
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,10 +47,9 @@ class TFRunBuilder(object):
                 self._executed = run_timeline(
                     self.session, self.fetches, self.debug_name,
                     self.feed_dict, os.environ.get("TF_TIMELINE_DIR"))
-            except Exception as e:
-                logger.error("Error fetching: {}, feed_dict={}".format(
+            except Exception:
+                raise ValueError("Error fetching: {}, feed_dict={}".format(
                     self.fetches, self.feed_dict))
-                raise e
         if isinstance(to_fetch, int):
             return self._executed[to_fetch]
         elif isinstance(to_fetch, list):
@@ -76,12 +77,16 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
         global _count
         outf = os.path.join(
             timeline_dir, "timeline-{}-{}-{}.json".format(
-                debug_name, os.getpid(), _count))
+                debug_name, os.getpid(), _count % 10))
         _count += 1
         trace_file = open(outf, "w")
         logger.info("Wrote tf timeline ({} s) to {}".format(
             time.time() - start, os.path.abspath(outf)))
         trace_file.write(trace.generate_chrome_trace_format())
     else:
+        if log_once("tf_timeline"):
+            logger.info(
+                "Executing TF run without tracing. To dump TF timeline traces "
+                "to disk, set the TF_TIMELINE_DIR environment variable.")
         fetches = sess.run(ops, feed_dict=feed_dict)
     return fetches

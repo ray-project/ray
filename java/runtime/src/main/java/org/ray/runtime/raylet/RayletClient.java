@@ -15,13 +15,20 @@ public interface RayletClient {
 
   TaskSpec getTask();
 
-  void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly);
+  void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId);
 
-  void notifyUnblocked();
+  void notifyUnblocked(UniqueId currentTaskId);
 
   UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex);
 
-  <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs);
+  <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
+      timeoutMs, UniqueId currentTaskId);
 
   void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly);
+
+  UniqueId prepareCheckpoint(UniqueId actorId);
+
+  void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId);
+
+  void destroy();
 }

@@ -1,7 +1,7 @@
 #ifndef RAY_COMMON_CLIENT_CONNECTION_H
 #define RAY_COMMON_CLIENT_CONNECTION_H
 
-#include <list>
+#include <deque>
 #include <memory>
 
 #include <boost/asio.hpp>
@@ -29,6 +29,9 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
 template <typename T>
 class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>> {
  public:
+  /// ServerConnection destructor.
+  virtual ~ServerConnection();
+
   /// Allocate a new server connection.
   ///
   /// \param socket A reference to the server socket.
@@ -56,15 +59,14 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// Write a buffer to this connection.
   ///
   /// \param buffer The buffer.
-  /// \param ec The error code object in which to store error codes.
+  /// \return Status.
   Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
 
   /// Read a buffer from this connection.
   ///
   /// \param buffer The buffer.
-  /// \param ec The error code object in which to store error codes.
-  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
-                  boost::system::error_code &ec);
+  /// \return Status.
+  Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
 
   /// Shuts down socket for this connection.
   void Close() {
@@ -72,13 +74,15 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
     socket_.close(ec);
   }
 
+  std::string DebugString() const;
+
  protected:
   /// A private constructor for a server connection.
   ServerConnection(boost::asio::basic_stream_socket<T> &&socket);
 
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
-    int64_t write_version;
+    int64_t write_cookie;
     int64_t write_type;
     uint64_t write_length;
     std::vector<uint8_t> write_message;
@@ -92,10 +96,25 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   const int async_write_max_messages_;
 
   /// List of pending messages to write.
-  std::list<std::unique_ptr<AsyncWriteBuffer>> async_write_queue_;
+  std::deque<std::unique_ptr<AsyncWriteBuffer>> async_write_queue_;
 
   /// Whether we are in the middle of an async write.
   bool async_write_in_flight_;
+
+  /// Whether we've met a broken-pipe error during writing.
+  bool async_write_broken_pipe_;
+
+  /// Count of async messages sent total.
+  int64_t async_writes_ = 0;
+
+  /// Count of sync messages sent total.
+  int64_t sync_writes_ = 0;
+
+  /// Count of bytes sent total.
+  int64_t bytes_written_ = 0;
+
+  /// Count of bytes read total.
+  int64_t bytes_read_ = 0;
 
  private:
   /// Asynchronously flushes the write queue. While async writes are running, the flag
@@ -128,17 +147,23 @@ class ClientConnection : public ServerConnection<T> {
   /// \param new_client_handler A reference to the client handler.
   /// \param message_handler A reference to the message handler.
   /// \param socket The client socket.
+  /// \param debug_label Label that is printed in debug messages, to identify
+  /// the type of client.
+  /// \param message_type_enum_names A table of printable enum names for the
+  /// message types received from this client, used for debug messages.
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection<T>> Create(
       ClientHandler<T> &new_client_handler, MessageHandler<T> &message_handler,
-      boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label);
+      boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label,
+      const std::vector<std::string> &message_type_enum_names,
+      int64_t error_message_type);
 
   std::shared_ptr<ClientConnection<T>> shared_ClientConnection_from_this() {
     return std::static_pointer_cast<ClientConnection<T>>(shared_from_this());
   }
 
   /// \return The ClientID of the remote client.
-  const ClientID &GetClientID();
+  const ClientID &GetClientId() const;
 
   /// \param client_id The ClientID of the remote client.
   void SetClientID(const ClientID &client_id);
@@ -152,13 +177,26 @@ class ClientConnection : public ServerConnection<T> {
   /// A private constructor for a node client connection.
   ClientConnection(MessageHandler<T> &message_handler,
                    boost::asio::basic_stream_socket<T> &&socket,
-                   const std::string &debug_label);
+                   const std::string &debug_label,
+                   const std::vector<std::string> &message_type_enum_names,
+                   int64_t error_message_type);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
   void ProcessMessageHeader(const boost::system::error_code &error);
   /// Process an error from reading the message header, then process the
   /// message from the client.
   void ProcessMessage(const boost::system::error_code &error);
+  /// Check if the ray cookie in a received message is correct. Note, if the cookie
+  /// is wrong and the remote endpoint is known, raylet process will crash. If the remote
+  /// endpoint is unknown, this method will only print a warning.
+  ///
+  /// \return If the cookie is correct.
+  bool CheckRayCookie();
+  /// Return information about IP and port for the remote endpoint. For local connection
+  /// this returns an empty string.
+  ///
+  /// \return Information of remote endpoint.
+  std::string RemoteEndpointInfo();
 
   /// The ClientID of the remote client.
   ClientID client_id_;
@@ -166,8 +204,13 @@ class ClientConnection : public ServerConnection<T> {
   MessageHandler<T> message_handler_;
   /// A label used for debug messages.
   const std::string debug_label_;
+  /// A table of printable enum names for the message types, used for debug
+  /// messages.
+  const std::vector<std::string> message_type_enum_names_;
+  /// The value for disconnect client message.
+  int64_t error_message_type_;
   /// Buffers for the current message being read from the client.
-  int64_t read_version_;
+  int64_t read_cookie_;
   int64_t read_type_;
   uint64_t read_length_;
   std::vector<uint8_t> read_message_;

@@ -5,23 +5,43 @@ from __future__ import print_function
 from ray.rllib.agents.agent import with_common_config
 from ray.rllib.agents.dqn.dqn import DQNAgent
 from ray.rllib.agents.ddpg.ddpg_policy_graph import DDPGPolicyGraph
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
-
-OPTIMIZER_SHARED_CONFIGS = [
-    "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts"
-]
 
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # === Twin Delayed DDPG (TD3) and Soft Actor-Critic (SAC) tricks ===
+    # TD3: https://spinningup.openai.com/en/latest/algorithms/td3.html
+    # twin Q-net
+    "twin_q": False,
+    # delayed policy update
+    "policy_delay": 1,
+    # target policy smoothing
+    # this also forces the use of gaussian instead of OU noise for exploration
+    "smooth_target_policy": False,
+    # gaussian stddev of act noise
+    "act_noise": 0.1,
+    # gaussian stddev of target noise
+    "target_noise": 0.2,
+    # target noise limit (bound)
+    "noise_clip": 0.5,
+
+    # === Evaluation ===
+    # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
+    # The evaluation stats will be reported under the "evaluation" metric key.
+    # Note that evaluation is currently not parallelized, and that for Ape-X
+    # metrics are already only reported for the lowest epsilon workers.
+    "evaluation_interval": None,
+    # Number of episodes to run per evaluation period.
+    "evaluation_num_episodes": 10,
+
     # === Model ===
-    # Hidden layer sizes of the policy network
+    # Postprocess the policy network model output with these hidden layers
     "actor_hiddens": [64, 64],
     # Hidden layers activation of the policy network
     "actor_hidden_activation": "relu",
-    # Hidden layer sizes of the critic network
+    # Postprocess the critic network model output with these hidden layers
     "critic_hiddens": [64, 64],
     # Hidden layers activation of the critic network
     "critic_hidden_activation": "relu",
@@ -50,6 +70,9 @@ DEFAULT_CONFIG = with_common_config({
     "target_network_update_freq": 0,
     # Update the target by \tau * policy + (1-\tau) * target_policy
     "tau": 0.002,
+    # If True parameter space noise will be used for exploration
+    # See https://blog.openai.com/better-exploration-with-parameter-noise/
+    "parameter_noise": False,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -67,9 +90,11 @@ DEFAULT_CONFIG = with_common_config({
     "compress_observations": False,
 
     # === Optimization ===
-    # Learning rate for adam optimizer
-    "actor_lr": 1e-4,
-    "critic_lr": 1e-3,
+    # Learning rate for adam optimizer.
+    # Instead of using two optimizers, we use two different loss coefficients
+    "lr": 1e-3,
+    "actor_loss_coeff": 0.1,
+    "critic_loss_coeff": 1.0,
     # If True, use huber loss instead of squared loss for critic network
     # Conventionally, no need to clip gradients if using a huber loss
     "use_huber": False,
@@ -90,16 +115,10 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 256,
 
     # === Parallelism ===
-    # Whether to use a GPU for local optimization.
-    "gpu": False,
     # Number of workers for collecting samples with. This only makes sense
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Whether to allocate GPUs for workers (if > 0).
-    "num_gpus_per_worker": 0,
-    # Whether to allocate CPUs for workers (if > 0).
-    "num_cpus_per_worker": 1,
     # Optimizer class to use.
     "optimizer_class": "SyncReplayOptimizer",
     # Whether to use a distribution of epsilons across workers for exploration.
@@ -119,14 +138,22 @@ class DDPGAgent(DQNAgent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = DDPGPolicyGraph
 
+    @override(DQNAgent)
     def _make_exploration_schedule(self, worker_index):
         # Override DQN's schedule to take into account `noise_scale`
         if self.config["per_worker_exploration"]:
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
-            exponent = (
-                1 + worker_index / float(self.config["num_workers"] - 1) * 7)
-            return ConstantSchedule(self.config["noise_scale"] * 0.4**exponent)
+            if worker_index >= 0:
+                exponent = (
+                    1 +
+                    worker_index / float(self.config["num_workers"] - 1) * 7)
+                return ConstantSchedule(
+                    self.config["noise_scale"] * 0.4**exponent)
+            else:
+                # local ev should have zero exploration so that eval rollouts
+                # run properly
+                return ConstantSchedule(0.0)
         else:
             return LinearSchedule(
                 schedule_timesteps=int(self.config["exploration_fraction"] *

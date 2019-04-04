@@ -5,13 +5,14 @@ from __future__ import print_function
 import logging
 
 import ray
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class PolicyOptimizer(object):
     """Policy optimizers encapsulate distributed RL optimization strategies.
 
@@ -37,6 +38,7 @@ class PolicyOptimizer(object):
             evaluators created by this optimizer.
     """
 
+    @DeveloperAPI
     def __init__(self, local_evaluator, remote_evaluators=None, config=None):
         """Create an optimizer instance.
 
@@ -60,11 +62,13 @@ class PolicyOptimizer(object):
         logger.debug("Created policy optimizer with {}: {}".format(
             config, self))
 
-    def _init(self):
+    @DeveloperAPI
+    def _init(self, **config):
         """Subclasses should prefer overriding this instead of __init__."""
 
-        pass
+        raise NotImplementedError
 
+    @DeveloperAPI
     def step(self):
         """Takes a logical optimization step.
 
@@ -78,6 +82,7 @@ class PolicyOptimizer(object):
 
         raise NotImplementedError
 
+    @DeveloperAPI
     def stats(self):
         """Returns a dictionary of internal performance statistics."""
 
@@ -86,11 +91,37 @@ class PolicyOptimizer(object):
             "num_steps_sampled": self.num_steps_sampled,
         }
 
-    def collect_metrics(self, timeout_seconds, min_history=100):
+    @DeveloperAPI
+    def save(self):
+        """Returns a serializable object representing the optimizer state."""
+
+        return [self.num_steps_trained, self.num_steps_sampled]
+
+    @DeveloperAPI
+    def restore(self, data):
+        """Restores optimizer state from the given data object."""
+
+        self.num_steps_trained = data[0]
+        self.num_steps_sampled = data[1]
+
+    @DeveloperAPI
+    def stop(self):
+        """Release any resources used by this optimizer."""
+        pass
+
+    @DeveloperAPI
+    def collect_metrics(self,
+                        timeout_seconds,
+                        min_history=100,
+                        selected_evaluators=None):
         """Returns evaluator and optimizer stats.
 
         Arguments:
+            timeout_seconds (int): Max wait time for a evaluator before
+                dropping its results. This usually indicates a hung evaluator.
             min_history (int): Min history length to smooth results over.
+            selected_evaluators (list): Override the list of remote evaluators
+                to collect metrics from.
 
         Returns:
             res (dict): A training result dict from evaluator metrics with
@@ -98,7 +129,7 @@ class PolicyOptimizer(object):
         """
         episodes, num_dropped = collect_episodes(
             self.local_evaluator,
-            self.remote_evaluators,
+            selected_evaluators or self.remote_evaluators,
             timeout_seconds=timeout_seconds)
         orig_episodes = list(episodes)
         missing = min_history - len(episodes)
@@ -111,17 +142,13 @@ class PolicyOptimizer(object):
         res.update(info=self.stats())
         return res
 
-    def save(self):
-        """Returns a serializable object representing the optimizer state."""
+    @DeveloperAPI
+    def reset(self, remote_evaluators):
+        """Called to change the set of remote evaluators being used."""
 
-        return [self.num_steps_trained, self.num_steps_sampled]
+        self.remote_evaluators = remote_evaluators
 
-    def restore(self, data):
-        """Restores optimizer state from the given data object."""
-
-        self.num_steps_trained = data[0]
-        self.num_steps_sampled = data[1]
-
+    @DeveloperAPI
     def foreach_evaluator(self, func):
         """Apply the given function to each evaluator instance."""
 
@@ -130,6 +157,7 @@ class PolicyOptimizer(object):
             [ev.apply.remote(func) for ev in self.remote_evaluators])
         return local_result + remote_results
 
+    @DeveloperAPI
     def foreach_evaluator_with_index(self, func):
         """Apply the given function to each evaluator instance.
 
@@ -142,12 +170,6 @@ class PolicyOptimizer(object):
             for i, ev in enumerate(self.remote_evaluators)
         ])
         return local_result + remote_results
-
-    @staticmethod
-    def _check_not_multiagent(sample_batch):
-        if isinstance(sample_batch, MultiAgentBatch):
-            raise NotImplementedError(
-                "This optimizer does not support multi-agent yet.")
 
     @classmethod
     def make(cls,

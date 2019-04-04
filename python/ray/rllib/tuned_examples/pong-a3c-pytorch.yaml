@@ -6,7 +6,7 @@ pong-a3c-pytorch-cnn:
         sample_batch_size: 20
         use_pytorch: true
         vf_loss_coeff: 0.5
-        entropy_coeff: -0.01
+        entropy_coeff: 0.01
         gamma: 0.99
         grad_clip: 40.0
         lambda: 1.0
@@ -14,7 +14,6 @@ pong-a3c-pytorch-cnn:
         observation_filter: NoFilter
         model:
             use_lstm: false
-            channel_major: true
             dim: 84
             grayscale: true
             zero_mean: false

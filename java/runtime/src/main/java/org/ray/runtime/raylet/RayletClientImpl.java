@@ -10,18 +10,23 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
+import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.functionmanager.FunctionDescriptor;
+import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.generated.Arg;
 import org.ray.runtime.generated.Language;
 import org.ray.runtime.generated.ResourcePair;
 import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.task.FunctionArg;
+import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.UniqueIdUtil;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RayletClientImpl implements RayletClient {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(RayletClientImpl.class);
 
   private static final int TASK_SPEC_BUFFER_SIZE = 2 * 1024 * 1024;
 
@@ -33,7 +38,7 @@ public class RayletClientImpl implements RayletClient {
   );
 
   /**
-   * Point to c++'s local scheduler client.
+   * The pointer to c++'s local scheduler client.
    */
   private long client = 0;
 
@@ -44,14 +49,20 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs) {
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
+      timeoutMs, UniqueId currentTaskId) {
+    Preconditions.checkNotNull(waitFor);
+    if (waitFor.isEmpty()) {
+      return new WaitResult<>(new ArrayList<>(), new ArrayList<>());
+    }
+
     List<UniqueId> ids = new ArrayList<>();
     for (RayObject<T> element : waitFor) {
       ids.add(element.getId());
     }
 
     boolean[] ready = nativeWaitObject(client, UniqueIdUtil.getIdBytes(ids),
-        numReturns, timeoutMs, false);
+        numReturns, timeoutMs, false, currentTaskId.getBytes());
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 
@@ -68,7 +79,10 @@ public class RayletClientImpl implements RayletClient {
 
   @Override
   public void submitTask(TaskSpec spec) {
-    RayLog.core.debug("Submitting task: {}", spec);
+    LOGGER.debug("Submitting task: {}", spec);
+    Preconditions.checkState(!spec.parentTaskId.isNil());
+    Preconditions.checkState(!spec.driverId.isNil());
+
     ByteBuffer info = convertTaskSpecToFlatbuffer(spec);
     byte[] cursorId = null;
     if (!spec.getExecutionDependencies().isEmpty()) {
@@ -87,12 +101,14 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly) {
-    if (RayLog.core.isInfoEnabled()) {
-      RayLog.core.info("Reconstructing objects for task {}, object IDs are {}",
+  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
+      UniqueId currentTaskId) {
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
-    nativeReconstructObjects(client, UniqueIdUtil.getIdBytes(objectIds), fetchOnly);
+    nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
+        fetchOnly, currentTaskId.getBytes());
   }
 
   @Override
@@ -102,8 +118,8 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void notifyUnblocked() {
-    nativeNotifyUnblocked(client);
+  public void notifyUnblocked(UniqueId currentTaskId) {
+    nativeNotifyUnblocked(client, currentTaskId.getBytes());
   }
 
   @Override
@@ -111,6 +127,17 @@ public class RayletClientImpl implements RayletClient {
     byte[][] objectIdsArray = UniqueIdUtil.getIdBytes(objectIds);
     nativeFreePlasmaObjects(client, objectIdsArray, localOnly);
   }
+
+  @Override
+  public UniqueId prepareCheckpoint(UniqueId actorId) {
+    return new UniqueId(nativePrepareCheckpoint(client, actorId.getBytes()));
+  }
+
+  @Override
+  public void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId) {
+    nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
+  }
+
 
   private static TaskSpec parseTaskSpecFromFlatbuffer(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
@@ -120,17 +147,25 @@ public class RayletClientImpl implements RayletClient {
     UniqueId parentTaskId = UniqueId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     int parentCounter = info.parentCounter();
     UniqueId actorCreationId = UniqueId.fromByteBuffer(info.actorCreationIdAsByteBuffer());
+    int maxActorReconstructions = info.maxActorReconstructions();
     UniqueId actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
     UniqueId actorHandleId = UniqueId.fromByteBuffer(info.actorHandleIdAsByteBuffer());
     int actorCounter = info.actorCounter();
+
+    // Deserialize new actor handles
+    UniqueId[] newActorHandles = UniqueIdUtil.getUniqueIdsFromByteBuffer(
+        info.newActorHandlesAsByteBuffer());
+
     // Deserialize args
     FunctionArg[] args = new FunctionArg[info.argsLength()];
     for (int i = 0; i < info.argsLength(); i++) {
       Arg arg = info.args(i);
-      if (arg.objectIdsLength() > 0) {
-        Preconditions.checkArgument(arg.objectIdsLength() == 1,
-            "This arg has more than one id: {}", arg.objectIdsLength());
-        UniqueId id = UniqueId.fromByteBuffer(arg.objectIdAsByteBuffer(0));
+
+      int objectIdsLength = arg.objectIdsAsByteBuffer().remaining() / UniqueId.LENGTH;
+      if (objectIdsLength > 0) {
+        Preconditions.checkArgument(objectIdsLength == 1,
+            "This arg has more than one id: {}", objectIdsLength);
+        UniqueId id = UniqueIdUtil.getUniqueIdsFromByteBuffer(arg.objectIdsAsByteBuffer())[0];
         args[i] = FunctionArg.passByReference(id);
       } else {
         ByteBuffer lbb = arg.dataAsByteBuffer();
@@ -141,22 +176,22 @@ public class RayletClientImpl implements RayletClient {
       }
     }
     // Deserialize return ids
-    UniqueId[] returnIds = new UniqueId[info.returnsLength()];
-    for (int i = 0; i < info.returnsLength(); i++) {
-      returnIds[i] = UniqueId.fromByteBuffer(info.returnsAsByteBuffer(i));
-    }
+    UniqueId[] returnIds = UniqueIdUtil.getUniqueIdsFromByteBuffer(info.returnsAsByteBuffer());
+
     // Deserialize required resources;
     Map<String, Double> resources = new HashMap<>();
     for (int i = 0; i < info.requiredResourcesLength(); i++) {
       resources.put(info.requiredResources(i).key(), info.requiredResources(i).value());
     }
     // Deserialize function descriptor
+    Preconditions.checkArgument(info.language() == Language.JAVA);
     Preconditions.checkArgument(info.functionDescriptorLength() == 3);
-    FunctionDescriptor functionDescriptor = new FunctionDescriptor(
+    JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
-    return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId, actorId,
-        actorHandleId, actorCounter, args, returnIds, resources, functionDescriptor);
+    return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
+        maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
+        args, returnIds, resources, TaskLanguage.JAVA, functionDescriptor);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -169,21 +204,26 @@ public class RayletClientImpl implements RayletClient {
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.actorCreationId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb.createString(UniqueId.NIL.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb.createString(task.actorId.toByteBuffer());
+    final int maxActorReconstructions = task.maxActorReconstructions;
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
-    final int functionIdOffset = fbb.createString(UniqueId.NIL.toByteBuffer());
+
+    // Serialize the new actor handles.
+    int newActorHandlesOffset
+        = fbb.createString(UniqueIdUtil.concatUniqueIds(task.newActorHandles));
+
     // Serialize args
     int[] argsOffsets = new int[task.args.length];
     for (int i = 0; i < argsOffsets.length; i++) {
       int objectIdOffset = 0;
       int dataOffset = 0;
       if (task.args[i].id != null) {
-        int[] idOffsets = new int[]{fbb.createString(task.args[i].id.toByteBuffer())};
-        objectIdOffset = fbb.createVectorOfTables(idOffsets);
+        objectIdOffset = fbb.createString(
+            UniqueIdUtil.concatUniqueIds(new UniqueId[]{task.args[i].id}));
       } else {
-        objectIdOffset = fbb.createVectorOfTables(new int[0]);
+        objectIdOffset = fbb.createString("");
       }
       if (task.args[i].data != null) {
         dataOffset = fbb.createString(ByteBuffer.wrap(task.args[i].data));
@@ -191,13 +231,10 @@ public class RayletClientImpl implements RayletClient {
       argsOffsets[i] = Arg.createArg(fbb, objectIdOffset, dataOffset);
     }
     int argsOffset = fbb.createVectorOfTables(argsOffsets);
+
     // Serialize returns
-    int returnCount = task.returnIds.length;
-    int[] returnsOffsets = new int[returnCount];
-    for (int k = 0; k < returnCount; k++) {
-      returnsOffsets[k] = fbb.createString(task.returnIds[k].toByteBuffer());
-    }
-    int returnsOffset = fbb.createVectorOfTables(returnsOffsets);
+    int returnsOffset = fbb.createString(UniqueIdUtil.concatUniqueIds(task.returnIds));
+
     // Serialize required resources
     // The required_resources vector indicates the quantities of the different
     // resources required by this task. The index in this vector corresponds to
@@ -215,30 +252,57 @@ public class RayletClientImpl implements RayletClient {
     int requiredPlacementResourcesOffset =
         fbb.createVectorOfTables(requiredPlacementResourcesOffsets);
 
-    int[] functionDescriptorOffsets = new int[]{
-        fbb.createString(task.functionDescriptor.className),
-        fbb.createString(task.functionDescriptor.name),
-        fbb.createString(task.functionDescriptor.typeDescriptor)
-    };
-    int functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+    int language;
+    int functionDescriptorOffset;
+
+    if (task.language == TaskLanguage.JAVA) {
+      // This is a Java task.
+      language = Language.JAVA;
+      int[] functionDescriptorOffsets = new int[]{
+          fbb.createString(task.getJavaFunctionDescriptor().className),
+          fbb.createString(task.getJavaFunctionDescriptor().name),
+          fbb.createString(task.getJavaFunctionDescriptor().typeDescriptor)
+      };
+      functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+    } else {
+      // This is a Python task.
+      language = Language.PYTHON;
+      int[] functionDescriptorOffsets = new int[]{
+          fbb.createString(task.getPyFunctionDescriptor().moduleName),
+          fbb.createString(task.getPyFunctionDescriptor().className),
+          fbb.createString(task.getPyFunctionDescriptor().functionName),
+          fbb.createString("")
+      };
+      functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+    }
 
     int root = TaskInfo.createTaskInfo(
-        fbb, driverIdOffset, taskIdOffset,
-        parentTaskIdOffset, parentCounter,
-        actorCreateIdOffset, actorCreateDummyIdOffset,
-        actorIdOffset, actorHandleIdOffset, actorCounter,
-        false, functionIdOffset,
-        argsOffset, returnsOffset, requiredResourcesOffset,
-        requiredPlacementResourcesOffset, Language.JAVA,
+        fbb,
+        driverIdOffset,
+        taskIdOffset,
+        parentTaskIdOffset,
+        parentCounter,
+        actorCreateIdOffset,
+        actorCreateDummyIdOffset,
+        maxActorReconstructions,
+        actorIdOffset,
+        actorHandleIdOffset,
+        actorCounter,
+        newActorHandlesOffset,
+        argsOffset,
+        returnsOffset,
+        requiredResourcesOffset,
+        requiredPlacementResourcesOffset,
+        language,
         functionDescriptorOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
 
     if (buffer.remaining() > TASK_SPEC_BUFFER_SIZE) {
-      RayLog.core.error(
-          "Allocated buffer is not enough to transfer the task specification: "
-              + TASK_SPEC_BUFFER_SIZE + " vs " + buffer.remaining());
-      assert (false);
+      LOGGER.error(
+          "Allocated buffer is not enough to transfer the task specification: {} vs {}",
+          TASK_SPEC_BUFFER_SIZE, buffer.remaining());
+      throw new RuntimeException("Allocated buffer is not enough to transfer to task.");
     }
     return buffer;
   }
@@ -264,27 +328,32 @@ public class RayletClientImpl implements RayletClient {
       boolean isWorker, byte[] driverTaskId);
 
   private static native void nativeSubmitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
-      int pos, int taskSize);
+      int pos, int taskSize) throws RayException;
 
   // return TaskInfo (in FlatBuffer)
-  private static native byte[] nativeGetTask(long client);
+  private static native byte[] nativeGetTask(long client) throws RayException;
 
-  private static native void nativeDestroy(long client);
+  private static native void nativeDestroy(long client) throws RayException;
 
-  private static native void nativeReconstructObjects(long client, byte[][] objectIds,
-      boolean fetchOnly);
+  private static native void nativeFetchOrReconstruct(long client, byte[][] objectIds,
+      boolean fetchOnly, byte[] currentTaskId) throws RayException;
 
-  private static native void nativeNotifyUnblocked(long client);
+  private static native void nativeNotifyUnblocked(long client, byte[] currentTaskId)
+      throws RayException;
 
   private static native void nativePutObject(long client, byte[] taskId, byte[] objectId);
 
   private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
-      int numReturns, int timeout, boolean waitLocal);
+      int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId) throws RayException;
 
   private static native byte[] nativeGenerateTaskId(byte[] driverId, byte[] parentTaskId,
       int taskIndex);
 
   private static native void nativeFreePlasmaObjects(long conn, byte[][] objectIds,
-      boolean localOnly);
+      boolean localOnly) throws RayException;
 
+  private static native byte[] nativePrepareCheckpoint(long conn, byte[] actorId);
+
+  private static native void nativeNotifyActorResumedFromCheckpoint(long conn, byte[] actorId,
+      byte[] checkpointId);
 }

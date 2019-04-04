@@ -24,6 +24,11 @@ std::mt19937 RandomlySeededMersenneTwister() {
   return seeded_engine;
 }
 
+UniqueID::UniqueID() {
+  // Set the ID to nil.
+  std::fill_n(id_, kUniqueIDSize, 255);
+}
+
 UniqueID::UniqueID(const plasma::UniqueID &from) {
   std::memcpy(&id_, from.data(), kUniqueIDSize);
 }
@@ -50,11 +55,9 @@ UniqueID UniqueID::from_binary(const std::string &binary) {
   return id;
 }
 
-const UniqueID UniqueID::nil() {
-  UniqueID result;
-  uint8_t *data = result.mutable_data();
-  std::fill_n(data, kUniqueIDSize, 255);
-  return result;
+const UniqueID &UniqueID::nil() {
+  static const UniqueID nil_id;
+  return nil_id;
 }
 
 bool UniqueID::is_nil() const {
@@ -67,17 +70,11 @@ bool UniqueID::is_nil() const {
   return true;
 }
 
-const uint8_t *UniqueID::data() const {
-  return id_;
-}
+const uint8_t *UniqueID::data() const { return id_; }
 
-uint8_t *UniqueID::mutable_data() {
-  return id_;
-}
+uint8_t *UniqueID::mutable_data() { return id_; }
 
-size_t UniqueID::size() const {
-  return kUniqueIDSize;
-}
+size_t UniqueID::size() const { return kUniqueIDSize; }
 
 std::string UniqueID::binary() const {
   return std::string(reinterpret_cast<const char *>(id_), kUniqueIDSize);
@@ -158,13 +155,17 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
 size_t UniqueID::hash() const { return MurmurHash64A(&id_[0], kUniqueIDSize, 0); }
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
-  os << id.hex();
+  if (id.is_nil()) {
+    os << "NIL_ID";
+  } else {
+    os << id.hex();
+  }
   return os;
 }
 
 const ObjectID ComputeObjectId(const TaskID &task_id, int64_t object_index) {
   RAY_CHECK(object_index <= kMaxTaskReturns && object_index >= -kMaxTaskPuts);
-  ObjectID return_id = task_id;
+  ObjectID return_id = ObjectID(task_id);
   int64_t *first_bytes = reinterpret_cast<int64_t *>(&return_id);
   // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
   // object ID.
@@ -175,7 +176,9 @@ const ObjectID ComputeObjectId(const TaskID &task_id, int64_t object_index) {
   return return_id;
 }
 
-const TaskID FinishTaskId(const TaskID &task_id) { return ComputeObjectId(task_id, 0); }
+const TaskID FinishTaskId(const TaskID &task_id) {
+  return TaskID(ComputeObjectId(task_id, 0));
+}
 
 const ObjectID ComputeReturnId(const TaskID &task_id, int64_t return_index) {
   RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns);
@@ -189,7 +192,7 @@ const ObjectID ComputePutId(const TaskID &task_id, int64_t put_index) {
 }
 
 const TaskID ComputeTaskId(const ObjectID &object_id) {
-  TaskID task_id = object_id;
+  TaskID task_id = TaskID(object_id);
   int64_t *first_bytes = reinterpret_cast<int64_t *>(&task_id);
   // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
   // object ID.

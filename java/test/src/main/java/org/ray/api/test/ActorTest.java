@@ -1,17 +1,21 @@
 package org.ray.api.test;
 
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import com.google.common.collect.ImmutableList;
+import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
-import org.ray.api.function.RayFunc2;
+import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.RayActorImpl;
+import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
-@RunWith(MyRunner.class)
-public class ActorTest {
+public class ActorTest extends BaseTest {
 
   @RayRemote
   public static class Counter {
@@ -71,10 +75,45 @@ public class ActorTest {
   @Test
   public void testPassActorAsParameter() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 0);
-    RayFunc2<RayActor, Integer, Integer> f = ActorTest::testActorAsFirstParameter;
     Assert.assertEquals(Integer.valueOf(1),
         Ray.call(ActorTest::testActorAsFirstParameter, actor, 1).get());
     Assert.assertEquals(Integer.valueOf(11),
         Ray.call(ActorTest::testActorAsSecondParameter, 10, actor).get());
+  }
+
+  @Test
+  public void testForkingActorHandle() {
+    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
+    Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increase, counter, 1).get());
+    RayActor<Counter> counter2 = ((RayActorImpl<Counter>) counter).fork();
+    Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increase, counter2, 2).get());
+  }
+
+  @Test
+  public void testUnreconstructableActorObject() throws InterruptedException {
+    TestUtils.skipTestUnderSingleProcess();
+    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
+    // Call an actor method.
+    RayObject value = Ray.call(Counter::getValue, counter);
+    Assert.assertEquals(100, value.get());
+    // Delete the object from the object store.
+    Ray.internal().free(ImmutableList.of(value.getId()), false);
+    // Wait until the object is deleted, because the above free operation is async.
+    while (true) {
+      GetResult<Integer> result = ((AbstractRayRuntime)
+          Ray.internal()).getObjectStoreProxy().get(value.getId(), 0);
+      if (!result.exists) {
+        break;
+      }
+      TimeUnit.MILLISECONDS.sleep(100);
+    }
+
+    try {
+      // Try getting the object again, this should throw an UnreconstructableException.
+      value.get();
+      Assert.fail("This line should not be reachable.");
+    } catch (UnreconstructableException e) {
+      Assert.assertEquals(value.getId(), e.objectId);
+    }
   }
 }

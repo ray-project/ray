@@ -8,7 +8,9 @@ import argparse
 import yaml
 
 import ray
-from ray.tune.config_parser import make_parser, resources_to_json
+from ray.tests.cluster_utils import Cluster
+from ray.tune.config_parser import make_parser
+from ray.tune.trial import resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
 EXAMPLE_USAGE = """
@@ -37,24 +39,42 @@ def create_parser(parser_creator=None):
         "--redis-address",
         default=None,
         type=str,
-        help="The Redis address of the cluster.")
+        help="Connect to an existing Ray cluster at this address instead "
+        "of starting a new one.")
     parser.add_argument(
         "--ray-num-cpus",
         default=None,
         type=int,
-        help="--num-cpus to pass to Ray."
-        " This only has an affect in local mode.")
+        help="--num-cpus to use if starting a new cluster.")
     parser.add_argument(
         "--ray-num-gpus",
         default=None,
         type=int,
-        help="--num-gpus to pass to Ray."
-        " This only has an affect in local mode.")
+        help="--num-gpus to use if starting a new cluster.")
+    parser.add_argument(
+        "--ray-num-nodes",
+        default=None,
+        type=int,
+        help="Emulate multiple cluster nodes for debugging.")
+    parser.add_argument(
+        "--ray-redis-max-memory",
+        default=None,
+        type=int,
+        help="--redis-max-memory to use if starting a new cluster.")
+    parser.add_argument(
+        "--ray-object-store-memory",
+        default=None,
+        type=int,
+        help="--object-store-memory to use if starting a new cluster.")
     parser.add_argument(
         "--experiment-name",
         default="default",
         type=str,
         help="Name of the subdirectory under `local_dir` to put results in.")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Whether to attempt to resume previous Tune experiments.")
     parser.add_argument(
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
@@ -85,9 +105,9 @@ def run(args, parser):
                 "run": args.run,
                 "checkpoint_freq": args.checkpoint_freq,
                 "local_dir": args.local_dir,
-                "trial_resources": (
-                    args.trial_resources and
-                    resources_to_json(args.trial_resources)),
+                "resources_per_trial": (
+                    args.resources_per_trial and
+                    resources_to_json(args.resources_per_trial)),
                 "stop": args.stop,
                 "config": dict(args.config, env=args.env),
                 "restore": args.restore,
@@ -102,14 +122,27 @@ def run(args, parser):
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
 
-    ray.init(
-        redis_address=args.redis_address,
-        num_cpus=args.ray_num_cpus,
-        num_gpus=args.ray_num_gpus)
+    if args.ray_num_nodes:
+        cluster = Cluster()
+        for _ in range(args.ray_num_nodes):
+            cluster.add_node(
+                num_cpus=args.ray_num_cpus or 1,
+                num_gpus=args.ray_num_gpus or 0,
+                object_store_memory=args.ray_object_store_memory,
+                redis_max_memory=args.ray_redis_max_memory)
+        ray.init(redis_address=cluster.redis_address)
+    else:
+        ray.init(
+            redis_address=args.redis_address,
+            object_store_memory=args.ray_object_store_memory,
+            redis_max_memory=args.ray_redis_max_memory,
+            num_cpus=args.ray_num_cpus,
+            num_gpus=args.ray_num_gpus)
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
-        queue_trials=args.queue_trials)
+        queue_trials=args.queue_trials,
+        resume=args.resume)
 
 
 if __name__ == "__main__":

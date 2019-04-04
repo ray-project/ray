@@ -6,14 +6,9 @@ RUN apt-get update \
         git \
         wget \
         cmake \
-        pkg-config \
         build-essential \
-        autoconf \
         curl \
-        libtool \
         unzip \
-        flex \
-        bison \
     && apt-get clean \
     && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && wget \
@@ -26,6 +21,11 @@ RUN apt-get update \
     && /opt/conda/bin/conda clean -y --all \
     && /opt/conda/bin/pip install \
         flatbuffers \
-        cython==0.27.3
+        cython==0.29.0 \
+        numpy==1.15.4
+
+# To avoid the following error on Jenkins:
+# AttributeError: 'numpy.ufunc' object has no attribute '__module__'
+RUN /opt/conda/bin/pip uninstall -y dask
 
 ENV PATH "/opt/conda/bin:$PATH"

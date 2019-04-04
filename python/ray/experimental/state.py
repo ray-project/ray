@@ -2,19 +2,88 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 from collections import defaultdict
-import heapq
 import json
 import redis
 import sys
 import time
 
 import ray
+from ray.function_manager import FunctionDescriptor
 import ray.gcs_utils
-import ray.ray_constants as ray_constants
+
+from ray.ray_constants import ID_SIZE
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
+
+
+def parse_client_table(redis_client):
+    """Read the client table.
+
+    Args:
+        redis_client: A client to the primary Redis shard.
+
+    Returns:
+        A list of information about the nodes in the cluster.
+    """
+    NIL_CLIENT_ID = ray.ObjectID.nil().binary()
+    message = redis_client.execute_command("RAY.TABLE_LOOKUP",
+                                           ray.gcs_utils.TablePrefix.CLIENT,
+                                           "", NIL_CLIENT_ID)
+
+    # Handle the case where no clients are returned. This should only
+    # occur potentially immediately after the cluster is started.
+    if message is None:
+        return []
+
+    node_info = {}
+    gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+
+    ordered_client_ids = []
+
+    # Since GCS entries are append-only, we override so that
+    # only the latest entries are kept.
+    for i in range(gcs_entry.EntriesLength()):
+        client = (ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
+            gcs_entry.Entries(i), 0))
+
+        resources = {
+            decode(client.ResourcesTotalLabel(i)):
+            client.ResourcesTotalCapacity(i)
+            for i in range(client.ResourcesTotalLabelLength())
+        }
+        client_id = ray.utils.binary_to_hex(client.ClientId())
+
+        # If this client is being removed, then it must
+        # have previously been inserted, and
+        # it cannot have previously been removed.
+        if not client.IsInsertion():
+            assert client_id in node_info, "Client removed not found!"
+            assert node_info[client_id]["IsInsertion"], (
+                "Unexpected duplicate removal of client.")
+        else:
+            ordered_client_ids.append(client_id)
+
+        node_info[client_id] = {
+            "ClientID": client_id,
+            "IsInsertion": client.IsInsertion(),
+            "NodeManagerAddress": decode(
+                client.NodeManagerAddress(), allow_none=True),
+            "NodeManagerPort": client.NodeManagerPort(),
+            "ObjectManagerPort": client.ObjectManagerPort(),
+            "ObjectStoreSocketName": decode(
+                client.ObjectStoreSocketName(), allow_none=True),
+            "RayletSocketName": decode(
+                client.RayletSocketName(), allow_none=True),
+            "Resources": resources
+        }
+    # NOTE: We return the list comprehension below instead of simply doing
+    # 'list(node_info.values())' in order to have the nodes appear in the order
+    # that they joined the cluster. Python dictionaries do not preserve
+    # insertion order. We could use an OrderedDict, but then we'd have to be
+    # sure to only insert a given node a single time (clients that die appear
+    # twice in the GCS log).
+    return [node_info[client_id] for client_id in ordered_client_ids]
 
 
 class GlobalState(object):
@@ -51,6 +120,11 @@ class GlobalState(object):
             raise Exception("The ray.global_state API cannot be used before "
                             "ray.init has been called.")
 
+    def disconnect(self):
+        """Disconnect global state from GCS."""
+        self.redis_client = None
+        self.redis_clients = None
+
     def _initialize_global_state(self,
                                  redis_ip_address,
                                  redis_port,
@@ -84,7 +158,7 @@ class GlobalState(object):
                 time.sleep(1)
                 continue
             num_redis_shards = int(num_redis_shards)
-            if (num_redis_shards < 1):
+            if num_redis_shards < 1:
                 raise Exception("Expected at least one Redis shard, found "
                                 "{}.".format(num_redis_shards))
 
@@ -148,8 +222,7 @@ class GlobalState(object):
         """Fetch and parse the object table information for a single object ID.
 
         Args:
-            object_id_binary: A string of bytes with the object ID to get
-                information about.
+            object_id: An object ID to get information about.
 
         Returns:
             A dictionary with information about the object ID in question.
@@ -161,7 +234,9 @@ class GlobalState(object):
         # Return information about a single object ID.
         message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.OBJECT, "",
-                                        object_id.id())
+                                        object_id.binary())
+        if message is None:
+            return {}
         gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
@@ -173,13 +248,7 @@ class GlobalState(object):
         object_info = {
             "DataSize": entry.ObjectSize(),
             "Manager": entry.Manager(),
-            "IsEviction": [entry.IsEviction()],
         }
-
-        for i in range(1, gcs_entry.EntriesLength()):
-            entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
-                gcs_entry.Entries(i), 0)
-            object_info["IsEviction"].append(entry.IsEviction())
 
         return object_info
 
@@ -216,15 +285,17 @@ class GlobalState(object):
         """Fetch and parse the task table information for a single task ID.
 
         Args:
-            task_id_binary: A string of bytes with the task ID to get
-                information about.
+            task_id: A task ID to get information about.
 
         Returns:
             A dictionary with information about the task ID in question.
         """
+        assert isinstance(task_id, ray.TaskID)
         message = self._execute_command(task_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
-                                        "", task_id.id())
+                                        "", task_id.binary())
+        if message is None:
+            return {}
         gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
@@ -235,22 +306,29 @@ class GlobalState(object):
 
         execution_spec = task_table_message.TaskExecutionSpec()
         task_spec = task_table_message.TaskSpecification()
-        task_spec = ray.raylet.task_from_string(task_spec)
+        task = ray._raylet.Task.from_string(task_spec)
+        function_descriptor_list = task.function_descriptor_list()
+        function_descriptor = FunctionDescriptor.from_bytes_list(
+            function_descriptor_list)
+
         task_spec_info = {
-            "DriverID": binary_to_hex(task_spec.driver_id().id()),
-            "TaskID": binary_to_hex(task_spec.task_id().id()),
-            "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
-            "ParentCounter": task_spec.parent_counter(),
-            "ActorID": binary_to_hex(task_spec.actor_id().id()),
-            "ActorCreationID": binary_to_hex(
-                task_spec.actor_creation_id().id()),
-            "ActorCreationDummyObjectID": binary_to_hex(
-                task_spec.actor_creation_dummy_object_id().id()),
-            "ActorCounter": task_spec.actor_counter(),
-            "FunctionID": binary_to_hex(task_spec.function_id().id()),
-            "Args": task_spec.arguments(),
-            "ReturnObjectIDs": task_spec.returns(),
-            "RequiredResources": task_spec.required_resources()
+            "DriverID": task.driver_id().hex(),
+            "TaskID": task.task_id().hex(),
+            "ParentTaskID": task.parent_task_id().hex(),
+            "ParentCounter": task.parent_counter(),
+            "ActorID": (task.actor_id().hex()),
+            "ActorCreationID": task.actor_creation_id().hex(),
+            "ActorCreationDummyObjectID": (
+                task.actor_creation_dummy_object_id().hex()),
+            "ActorCounter": task.actor_counter(),
+            "Args": task.arguments(),
+            "ReturnObjectIDs": task.returns(),
+            "RequiredResources": task.required_resources(),
+            "FunctionID": function_descriptor.function_id.hex(),
+            "FunctionHash": binary_to_hex(function_descriptor.function_hash),
+            "ModuleName": function_descriptor.module_name,
+            "ClassName": function_descriptor.class_name,
+            "FunctionName": function_descriptor.function_name,
         }
 
         return {
@@ -277,7 +355,7 @@ class GlobalState(object):
         """
         self._check_connected()
         if task_id is not None:
-            task_id = ray.ObjectID(hex_to_binary(task_id))
+            task_id = ray.TaskID(hex_to_binary(task_id))
             return self._task_table(task_id)
         else:
             task_table_keys = self._keys(
@@ -290,7 +368,7 @@ class GlobalState(object):
             results = {}
             for task_id_binary in task_ids_binary:
                 results[binary_to_hex(task_id_binary)] = self._task_table(
-                    ray.ObjectID(task_id_binary))
+                    ray.TaskID(task_id_binary))
             return results
 
     def function_table(self, function_id=None):
@@ -322,219 +400,22 @@ class GlobalState(object):
         """
         self._check_connected()
 
-        NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
-            NIL_CLIENT_ID)
+        return parse_client_table(self.redis_client)
 
-        # Handle the case where no clients are returned. This should only
-        # occur potentially immediately after the cluster is started.
-        if message is None:
-            return []
-
-        node_info = {}
-        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            message, 0)
-
-        # Since GCS entries are append-only, we override so that
-        # only the latest entries are kept.
-        for i in range(gcs_entry.EntriesLength()):
-            client = (ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
-                gcs_entry.Entries(i), 0))
-
-            resources = {
-                decode(client.ResourcesTotalLabel(i)):
-                client.ResourcesTotalCapacity(i)
-                for i in range(client.ResourcesTotalLabelLength())
-            }
-            client_id = ray.utils.binary_to_hex(client.ClientId())
-
-            # If this client is being removed, then it must
-            # have previously been inserted, and
-            # it cannot have previously been removed.
-            if not client.IsInsertion():
-                assert client_id in node_info, "Client removed not found!"
-                assert node_info[client_id]["IsInsertion"], (
-                    "Unexpected duplicate removal of client.")
-
-            node_info[client_id] = {
-                "ClientID": client_id,
-                "IsInsertion": client.IsInsertion(),
-                "NodeManagerAddress": decode(client.NodeManagerAddress()),
-                "NodeManagerPort": client.NodeManagerPort(),
-                "ObjectManagerPort": client.ObjectManagerPort(),
-                "ObjectStoreSocketName": decode(
-                    client.ObjectStoreSocketName()),
-                "RayletSocketName": decode(client.RayletSocketName()),
-                "Resources": resources
-            }
-        return list(node_info.values())
-
-    def log_files(self):
-        """Fetch and return a dictionary of log file names to outputs.
-
-        Returns:
-            IP address to log file name to log file contents mappings.
-        """
-        relevant_files = self.redis_client.keys("LOGFILE*")
-
-        ip_filename_file = {}
-
-        for filename in relevant_files:
-            filename = decode(filename)
-            filename_components = filename.split(":")
-            ip_addr = filename_components[1]
-
-            file = self.redis_client.lrange(filename, 0, -1)
-            file_str = []
-            for x in file:
-                y = decode(x)
-                file_str.append(y)
-
-            if ip_addr not in ip_filename_file:
-                ip_filename_file[ip_addr] = {}
-
-            ip_filename_file[ip_addr][filename] = file_str
-
-        return ip_filename_file
-
-    def task_profiles(self, num_tasks, start=None, end=None, fwd=True):
-        """Fetch and return a list of task profiles.
+    def _profile_table(self, batch_id):
+        """Get the profile events for a given batch of profile events.
 
         Args:
-            num_tasks: A limit on the number of tasks that task_profiles will
-                return.
-            start: The start point of the time window that is queried for
-                tasks.
-            end: The end point in time of the time window that is queried for
-                tasks.
-            fwd: If True, means that zrange will be used. If False, zrevrange.
-                This argument is only meaningful in conjunction with the
-                num_tasks argument. This controls whether the tasks returned
-                are the most recent or the least recent.
+            batch_id: An identifier for a batch of profile events.
 
         Returns:
-            A tuple of two elements. The first element is a dictionary mapping
-                the task ID of a task to a list of the profiling information
-                for all of the executions of that task. The second element is a
-                list of profiling information for tasks where the events have
-                no task ID.
-        """
-        task_info = {}
-        event_log_sets = self.redis_client.keys("event_log*")
-
-        # The heap is used to maintain the set of x tasks that occurred the
-        # most recently across all of the workers, where x is defined as the
-        # function parameter num. The key is the start time of the "get_task"
-        # component of each task. Calling heappop will result in the task with
-        # the earliest "get_task_start" to be removed from the heap.
-        heap = []
-        heapq.heapify(heap)
-        heap_size = 0
-
-        # Set up a param dict to pass the redis command
-        params = {"withscores": True}
-        if start is not None:
-            params["min"] = start
-        elif end is not None:
-            params["min"] = 0
-
-        if end is not None:
-            params["max"] = end
-        elif start is not None:
-            params["max"] = time.time()
-
-        if start is None and end is None:
-            params["end"] = num_tasks - 1
-        else:
-            params["num"] = num_tasks
-        params["start"] = 0
-
-        # Parse through event logs to determine task start and end points.
-        for event_log_set in event_log_sets:
-            if start is None and end is None:
-                if fwd:
-                    event_list = self.redis_client.zrange(
-                        event_log_set, **params)
-                else:
-                    event_list = self.redis_client.zrevrange(
-                        event_log_set, **params)
-            else:
-                if fwd:
-                    event_list = self.redis_client.zrangebyscore(
-                        event_log_set, **params)
-                else:
-                    event_list = self.redis_client.zrevrangebyscore(
-                        event_log_set, **params)
-
-            for (event, score) in event_list:
-                event_dict = json.loads(decode(event))
-                task_id = ""
-                for event in event_dict:
-                    if "task_id" in event[3]:
-                        task_id = event[3]["task_id"]
-                task_info[task_id] = {}
-                task_info[task_id]["score"] = score
-                # Add task to (min/max) heap by its start point.
-                # if fwd, we want to delete the largest elements, so -score
-                heapq.heappush(heap, (-score if fwd else score, task_id))
-                heap_size += 1
-
-                for event in event_dict:
-                    if event[1] == "get_task" and event[2] == 1:
-                        task_info[task_id]["get_task_start"] = event[0]
-                    if event[1] == "get_task" and event[2] == 2:
-                        task_info[task_id]["get_task_end"] = event[0]
-                    if (event[1] == "register_remote_function"
-                            and event[2] == 1):
-                        task_info[task_id]["import_remote_start"] = event[0]
-                    if (event[1] == "register_remote_function"
-                            and event[2] == 2):
-                        task_info[task_id]["import_remote_end"] = event[0]
-                    if (event[1] == "task:deserialize_arguments"
-                            and event[2] == 1):
-                        task_info[task_id]["get_arguments_start"] = event[0]
-                    if (event[1] == "task:deserialize_arguments"
-                            and event[2] == 2):
-                        task_info[task_id]["get_arguments_end"] = event[0]
-                    if event[1] == "task:execute" and event[2] == 1:
-                        task_info[task_id]["execute_start"] = event[0]
-                    if event[1] == "task:execute" and event[2] == 2:
-                        task_info[task_id]["execute_end"] = event[0]
-                    if event[1] == "task:store_outputs" and event[2] == 1:
-                        task_info[task_id]["store_outputs_start"] = event[0]
-                    if event[1] == "task:store_outputs" and event[2] == 2:
-                        task_info[task_id]["store_outputs_end"] = event[0]
-                    if "worker_id" in event[3]:
-                        task_info[task_id]["worker_id"] = event[3]["worker_id"]
-                    if "function_name" in event[3]:
-                        task_info[task_id]["function_name"] = (
-                            event[3]["function_name"])
-
-                if heap_size > num_tasks:
-                    min_task, task_id_hex = heapq.heappop(heap)
-                    del task_info[task_id_hex]
-                    heap_size -= 1
-
-        for key, info in task_info.items():
-            self._add_missing_timestamps(info)
-
-        return task_info
-
-    def _profile_table(self, component_id):
-        """Get the profile events for a given component.
-
-        Args:
-            component_id: An identifier for a component.
-
-        Returns:
-            A list of the profile events for the specified process.
+            A list of the profile events for the specified batch.
         """
         # TODO(rkn): This method should support limiting the number of log
         # events and should also support returning a window of events.
-        message = self._execute_command(component_id, "RAY.TABLE_LOOKUP",
+        message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.PROFILE, "",
-                                        component_id.id())
+                                        batch_id.binary())
 
         if message is None:
             return []
@@ -550,7 +431,8 @@ class GlobalState(object):
 
             component_type = decode(profile_table_message.ComponentType())
             component_id = binary_to_hex(profile_table_message.ComponentId())
-            node_ip_address = decode(profile_table_message.NodeIpAddress())
+            node_ip_address = decode(
+                profile_table_message.NodeIpAddress(), allow_none=True)
 
             for j in range(profile_table_message.ProfileEventsLength()):
                 profile_event_message = profile_table_message.ProfileEvents(j)
@@ -573,16 +455,21 @@ class GlobalState(object):
     def profile_table(self):
         profile_table_keys = self._keys(
             ray.gcs_utils.TablePrefix_PROFILE_string + "*")
-        component_identifiers_binary = [
+        batch_identifiers_binary = [
             key[len(ray.gcs_utils.TablePrefix_PROFILE_string):]
             for key in profile_table_keys
         ]
 
-        return {
-            binary_to_hex(component_id): self._profile_table(
-                binary_to_object_id(component_id))
-            for component_id in component_identifiers_binary
-        }
+        result = defaultdict(list)
+        for batch_id in batch_identifiers_binary:
+            profile_data = self._profile_table(binary_to_object_id(batch_id))
+            # Note that if keys are being evicted from Redis, then it is
+            # possible that the batch will be evicted before we get it.
+            if len(profile_data) > 0:
+                component_id = profile_data[0]["component_id"]
+                result[component_id].extend(profile_data)
+
+        return dict(result)
 
     def _seconds_to_microseconds(self, time_in_seconds):
         """A helper function for converting seconds to microseconds."""
@@ -806,341 +693,6 @@ class GlobalState(object):
         else:
             return all_events
 
-    def dump_catapult_trace(self,
-                            path,
-                            task_info,
-                            breakdowns=True,
-                            task_dep=True,
-                            obj_dep=True):
-        """Dump task profiling information to a file.
-
-        This information can be viewed as a timeline of profiling information
-        by going to chrome://tracing in the chrome web browser and loading the
-        appropriate file.
-
-        Args:
-            path: The filepath to dump the profiling information to.
-            task_info: The task info to use to generate the trace. Should be
-                the output of ray.global_state.task_profiles().
-            breakdowns: Boolean indicating whether to break down the tasks into
-                more fine-grained segments.
-            task_dep: Boolean indicating whether or not task submission edges
-                should be included in the trace.
-            obj_dep: Boolean indicating whether or not object dependency edges
-                should be included in the trace.
-        """
-        workers = self.workers()
-
-        task_table = {}
-        # TODO(ekl) reduce the number of RPCs here with MGET
-        for task_id, _ in task_info.items():
-            try:
-                # TODO (hme): do something to correct slider here,
-                # slider should be correct to begin with, though.
-                task_table[task_id] = self.task_table(task_id)
-                task_table[task_id]["TaskSpec"]["Args"] = [
-                    repr(arg)
-                    for arg in task_table[task_id]["TaskSpec"]["Args"]
-                ]
-            except Exception:
-                print("Could not find task {}".format(task_id))
-
-        # filter out tasks not in task_table
-        task_info = {k: v for k, v in task_info.items() if k in task_table}
-
-        start_time = None
-        for info in task_info.values():
-            task_start = min(self._get_times(info))
-            if not start_time or task_start < start_time:
-                start_time = task_start
-
-        def micros(ts):
-            return int(1e6 * ts)
-
-        def micros_rel(ts):
-            return micros(ts - start_time)
-
-        seen_obj = {}
-
-        full_trace = []
-        for task_id, info in task_info.items():
-            worker = workers[info["worker_id"]]
-            task_t_info = task_table[task_id]
-
-            # The total_info dictionary is what is displayed when selecting a
-            # task in the timeline. We copy the task spec so that we don't
-            # modify it in place since we will use the original values later.
-            total_info = copy.copy(task_table[task_id]["TaskSpec"])
-            total_info["Args"] = [
-                oid.hex() if isinstance(oid, ray.ObjectID) else oid
-                for oid in task_t_info["TaskSpec"]["Args"]
-            ]
-            total_info["ReturnObjectIDs"] = [
-                oid.hex() for oid in task_t_info["TaskSpec"]["ReturnObjectIDs"]
-            ]
-            total_info["LocalSchedulerID"] = task_t_info["LocalSchedulerID"]
-            total_info["get_arguments"] = (
-                info["get_arguments_end"] - info["get_arguments_start"])
-            total_info["execute"] = (
-                info["execute_end"] - info["execute_start"])
-            total_info["store_outputs"] = (
-                info["store_outputs_end"] - info["store_outputs_start"])
-            total_info["function_name"] = info["function_name"]
-            total_info["worker_id"] = info["worker_id"]
-
-            parent_info = task_info.get(
-                task_table[task_id]["TaskSpec"]["ParentTaskID"])
-            worker = workers[info["worker_id"]]
-            # The catapult trace format documentation can be found here:
-            # https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview  # noqa: E501
-            if breakdowns:
-                if "get_arguments_end" in info:
-                    get_args_trace = {
-                        "cat": "get_arguments",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "id": task_id,
-                        "ts": micros_rel(info["get_arguments_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":get_arguments",
-                        "args": total_info,
-                        "dur": micros(info["get_arguments_end"] -
-                                      info["get_arguments_start"]),
-                        "cname": "rail_idle"
-                    }
-                    full_trace.append(get_args_trace)
-
-                if "store_outputs_end" in info:
-                    outputs_trace = {
-                        "cat": "store_outputs",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "id": task_id,
-                        "ts": micros_rel(info["store_outputs_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":store_outputs",
-                        "args": total_info,
-                        "dur": micros(info["store_outputs_end"] -
-                                      info["store_outputs_start"]),
-                        "cname": "thread_state_runnable"
-                    }
-                    full_trace.append(outputs_trace)
-
-                if "execute_end" in info:
-                    execute_trace = {
-                        "cat": "execute",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "id": task_id,
-                        "ts": micros_rel(info["execute_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":execute",
-                        "args": total_info,
-                        "dur": micros(info["execute_end"] -
-                                      info["execute_start"]),
-                        "cname": "rail_animation"
-                    }
-                    full_trace.append(execute_trace)
-
-            else:
-                if parent_info:
-                    parent_worker = workers[parent_info["worker_id"]]
-                    parent_times = self._get_times(parent_info)
-                    parent_profile = task_info.get(
-                        task_table[task_id]["TaskSpec"]["ParentTaskID"])
-
-                    _parent_id = parent_info["worker_id"] + str(
-                        micros(min(parent_times)))
-
-                    parent = {
-                        "cat": "submit_task",
-                        "pid": "Node " + parent_worker["node_ip_address"],
-                        "tid": parent_info["worker_id"],
-                        "ts": micros_rel(
-                            parent_profile
-                            and parent_profile["get_arguments_start"]
-                            or start_time),
-                        "ph": "s",
-                        "name": "SubmitTask",
-                        "args": {},
-                        "id": _parent_id,
-                    }
-                    full_trace.append(parent)
-
-                    _id = info["worker_id"] + str(micros(min(parent_times)))
-
-                    task_trace = {
-                        "cat": "submit_task",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "ts": micros_rel(info["get_arguments_start"]),
-                        "ph": "f",
-                        "name": "SubmitTask",
-                        "args": {},
-                        "id": _id,
-                        "bp": "e",
-                        "cname": "olive"
-                    }
-                    full_trace.append(task_trace)
-
-                task = {
-                    "cat": "task",
-                    "pid": "Node " + worker["node_ip_address"],
-                    "tid": info["worker_id"],
-                    "id": task_id,
-                    "ts": micros_rel(info["get_arguments_start"]),
-                    "ph": "X",
-                    "name": info["function_name"],
-                    "args": total_info,
-                    "dur": micros(info["store_outputs_end"] -
-                                  info["get_arguments_start"]),
-                    "cname": "thread_state_runnable"
-                }
-                full_trace.append(task)
-
-            if task_dep:
-                if parent_info:
-                    parent_worker = workers[parent_info["worker_id"]]
-                    parent_times = self._get_times(parent_info)
-                    parent_profile = task_info.get(
-                        task_table[task_id]["TaskSpec"]["ParentTaskID"])
-
-                    _parent_id = parent_info["worker_id"] + str(
-                        micros(min(parent_times)))
-
-                    parent = {
-                        "cat": "submit_task",
-                        "pid": "Node " + parent_worker["node_ip_address"],
-                        "tid": parent_info["worker_id"],
-                        "ts": micros_rel(
-                            parent_profile
-                            and parent_profile["get_arguments_start"]
-                            or start_time),
-                        "ph": "s",
-                        "name": "SubmitTask",
-                        "args": {},
-                        "id": _parent_id,
-                    }
-                    full_trace.append(parent)
-
-                    _id = info["worker_id"] + str(micros(min(parent_times)))
-
-                    task_trace = {
-                        "cat": "submit_task",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "ts": micros_rel(info["get_arguments_start"]),
-                        "ph": "f",
-                        "name": "SubmitTask",
-                        "args": {},
-                        "id": _id,
-                        "bp": "e"
-                    }
-                    full_trace.append(task_trace)
-
-            if obj_dep:
-                args = task_table[task_id]["TaskSpec"]["Args"]
-                for arg in args:
-                    # Don't visualize arguments that are not object IDs.
-                    if isinstance(arg, ray.ObjectID):
-                        object_info = self._object_table(arg)
-                        # Don't visualize objects that were created by calls to
-                        # put.
-                        if not object_info["IsPut"]:
-                            if arg not in seen_obj:
-                                seen_obj[arg] = 0
-                            seen_obj[arg] += 1
-                            owner_task = self._object_table(arg)["TaskID"]
-                            if owner_task in task_info:
-                                owner_worker = (workers[task_info[owner_task][
-                                    "worker_id"]])
-                                # Adding/subtracting 2 to the time associated
-                                # with the beginning/ending of the flow event
-                                # is necessary to make the flow events show up
-                                # reliably. When these times are exact, this is
-                                # presumably an edge case, and catapult doesn't
-                                # recognize that there is a duration event at
-                                # that exact point in time that the flow event
-                                # should be bound to. This issue is solved by
-                                # adding the 2 ms to the start/end time of the
-                                # flow event, which guarantees overlap with the
-                                # duration event that it's associated with, and
-                                # the flow event therefore always gets drawn.
-                                owner = {
-                                    "cat": "obj_dependency",
-                                    "pid": ("Node " +
-                                            owner_worker["node_ip_address"]),
-                                    "tid": task_info[owner_task]["worker_id"],
-                                    "ts": micros_rel(task_info[owner_task]
-                                                     ["store_outputs_end"]) -
-                                    2,
-                                    "ph": "s",
-                                    "name": "ObjectDependency",
-                                    "args": {},
-                                    "bp": "e",
-                                    "cname": "cq_build_attempt_failed",
-                                    "id": "obj" + str(arg) + str(seen_obj[arg])
-                                }
-                                full_trace.append(owner)
-
-                            dependent = {
-                                "cat": "obj_dependency",
-                                "pid": "Node " + worker["node_ip_address"],
-                                "tid": info["worker_id"],
-                                "ts": micros_rel(info["get_arguments_start"]) +
-                                2,
-                                "ph": "f",
-                                "name": "ObjectDependency",
-                                "args": {},
-                                "cname": "cq_build_attempt_failed",
-                                "bp": "e",
-                                "id": "obj" + str(arg) + str(seen_obj[arg])
-                            }
-                            full_trace.append(dependent)
-
-        print("Creating JSON {}/{}".format(len(full_trace), len(task_info)))
-        with open(path, "w") as outfile:
-            json.dump(full_trace, outfile)
-
-    def _get_times(self, data):
-        """Extract the numerical times from a task profile.
-
-        This is a helper method for dump_catapult_trace.
-
-        Args:
-            data: This must be a value in the dictionary returned by the
-                task_profiles function.
-        """
-        all_times = []
-        all_times.append(data["acquire_lock_start"])
-        all_times.append(data["acquire_lock_end"])
-        all_times.append(data["get_arguments_start"])
-        all_times.append(data["get_arguments_end"])
-        all_times.append(data["execute_start"])
-        all_times.append(data["execute_end"])
-        all_times.append(data["store_outputs_start"])
-        all_times.append(data["store_outputs_end"])
-        return all_times
-
-    def _add_missing_timestamps(self, info):
-        """Fills in any missing timestamp values in a task info.
-
-        Task timestamps may be missing if the task fails or is partially
-        executed.
-        """
-
-        keys = [
-            "acquire_lock_start", "acquire_lock_end", "get_arguments_start",
-            "get_arguments_end", "execute_start", "execute_end",
-            "store_outputs_start", "store_outputs_end"
-        ]
-
-        latest_timestamp = 0
-        for key in keys:
-            cur = info.get(key, latest_timestamp)
-            info[key] = cur
-            latest_timestamp = cur
-
     def workers(self):
         """Get a dictionary mapping worker ID to worker information."""
         worker_keys = self.redis_client.keys("Worker*")
@@ -1151,8 +703,6 @@ class GlobalState(object):
             worker_id = binary_to_hex(worker_key[len("Workers:"):])
 
             workers_data[worker_id] = {
-                "local_scheduler_socket": (decode(
-                    worker_info[b"local_scheduler_socket"])),
                 "node_ip_address": decode(worker_info[b"node_ip_address"]),
                 "plasma_store_socket": decode(
                     worker_info[b"plasma_store_socket"])
@@ -1171,7 +721,7 @@ class GlobalState(object):
         for key in actor_keys:
             info = self.redis_client.hgetall(key)
             actor_id = key[len("Actor:"):]
-            assert len(actor_id) == ray_constants.ID_SIZE
+            assert len(actor_id) == ID_SIZE
             actor_info[binary_to_hex(actor_id)] = {
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),
@@ -1198,7 +748,7 @@ class GlobalState(object):
 
             num_tasks += self.redis_client.zcount(
                 event_log_set, min=0, max=time.time())
-        if num_tasks is 0:
+        if num_tasks == 0:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
 
@@ -1292,6 +842,10 @@ class GlobalState(object):
             for resource_id, num_available in available_resources.items():
                 total_available_resources[resource_id] += num_available
 
+        # Close the pubsub clients to avoid leaking file descriptors.
+        for subscribe_client in subscribe_clients:
+            subscribe_client.close()
+
         return dict(total_available_resources)
 
     def _error_messages(self, job_id):
@@ -1303,9 +857,10 @@ class GlobalState(object):
         Returns:
             A list of the error messages for this job.
         """
+        assert isinstance(job_id, ray.DriverID)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
-            job_id.id())
+            job_id.binary())
 
         # If there are no errors, return early.
         if message is None:
@@ -1317,7 +872,7 @@ class GlobalState(object):
         for i in range(gcs_entries.EntriesLength()):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
-            assert job_id.id() == error_data.JobId()
+            assert job_id.binary() == error_data.JobId()
             error_message = {
                 "type": decode(error_data.Type()),
                 "message": decode(error_data.ErrorMessage()),
@@ -1338,6 +893,7 @@ class GlobalState(object):
                 that job.
         """
         if job_id is not None:
+            assert isinstance(job_id, ray.DriverID)
             return self._error_messages(job_id)
 
         error_table_keys = self.redis_client.keys(
@@ -1348,6 +904,45 @@ class GlobalState(object):
         ]
 
         return {
-            binary_to_hex(job_id): self._error_messages(ray.ObjectID(job_id))
+            binary_to_hex(job_id): self._error_messages(ray.DriverID(job_id))
             for job_id in job_ids
+        }
+
+    def actor_checkpoint_info(self, actor_id):
+        """Get checkpoint info for the given actor id.
+         Args:
+            actor_id: Actor's ID.
+         Returns:
+            A dictionary with information about the actor's checkpoint IDs and
+            their timestamps.
+        """
+        self._check_connected()
+        message = self._execute_command(
+            actor_id,
+            "RAY.TABLE_LOOKUP",
+            ray.gcs_utils.TablePrefix.ACTOR_CHECKPOINT_ID,
+            "",
+            actor_id.binary(),
+        )
+        if message is None:
+            return None
+        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
+        entry = (
+            ray.gcs_utils.ActorCheckpointIdData.GetRootAsActorCheckpointIdData(
+                gcs_entry.Entries(0), 0))
+        checkpoint_ids_str = entry.CheckpointIds()
+        num_checkpoints = len(checkpoint_ids_str) // ID_SIZE
+        assert len(checkpoint_ids_str) % ID_SIZE == 0
+        checkpoint_ids = [
+            ray.ActorCheckpointID(
+                checkpoint_ids_str[(i * ID_SIZE):((i + 1) * ID_SIZE)])
+            for i in range(num_checkpoints)
+        ]
+        return {
+            "ActorID": ray.utils.binary_to_hex(entry.ActorId()),
+            "CheckpointIds": checkpoint_ids,
+            "Timestamps": [
+                entry.Timestamps(i) for i in range(num_checkpoints)
+            ],
         }

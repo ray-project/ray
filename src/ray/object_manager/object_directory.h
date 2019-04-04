@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "plasma/client.h"
+
 #include "ray/gcs/client.h"
 #include "ray/id.h"
 #include "ray/object_manager/format/object_manager_generated.h"
@@ -48,8 +50,8 @@ class ObjectDirectoryInterface {
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
   /// Callback for object location notifications.
-  using OnLocationsFound = std::function<void(const std::vector<ray::ClientID> &,
-                                              const ray::ObjectID &object_id)>;
+  using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
+                                              const std::unordered_set<ray::ClientID> &)>;
 
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
@@ -58,6 +60,13 @@ class ObjectDirectoryInterface {
   /// \return Status of whether async call to backend succeeded.
   virtual ray::Status LookupLocations(const ObjectID &object_id,
                                       const OnLocationsFound &callback) = 0;
+
+  /// Handle the removal of an object manager client. This updates the
+  /// locations of all subscribed objects that have the removed client as a
+  /// location, and fires the subscribed callbacks for those objects.
+  ///
+  /// \param client_id The object manager client that was removed.
+  virtual void HandleClientRemoved(const ClientID &client_id) = 0;
 
   /// Subscribe to be notified of locations (ClientID) of the given object.
   /// The callback will be invoked with the complete list of known locations
@@ -100,9 +109,21 @@ class ObjectDirectoryInterface {
   ///
   /// \param object_id The object id that was removed from the store.
   /// \param client_id The client id corresponding to this node.
+  /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
-                                          const ClientID &client_id) = 0;
+  virtual ray::Status ReportObjectRemoved(
+      const ObjectID &object_id, const ClientID &client_id,
+      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+
+  /// Get local client id
+  ///
+  /// \return ClientID
+  virtual ray::ClientID GetLocalClientID() = 0;
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  virtual std::string DebugString() const = 0;
 };
 
 /// Ray ObjectDirectory declaration.
@@ -128,6 +149,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status LookupLocations(const ObjectID &object_id,
                               const OnLocationsFound &callback) override;
 
+  void HandleClientRemoved(const ClientID &client_id) override;
+
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
                                        const OnLocationsFound &callback) override;
@@ -137,8 +160,13 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
-  ray::Status ReportObjectRemoved(const ObjectID &object_id,
-                                  const ClientID &client_id) override;
+  ray::Status ReportObjectRemoved(
+      const ObjectID &object_id, const ClientID &client_id,
+      const object_manager::protocol::ObjectInfoT &object_info) override;
+
+  ray::ClientID GetLocalClientID() override;
+
+  std::string DebugString() const override;
 
   /// ObjectDirectory should not be copied.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
@@ -150,6 +178,12 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<ClientID> current_object_locations;
+    /// This flag will get set to true if received any notification of the object.
+    /// It means current_object_locations is up-to-date with GCS. It
+    /// should never go back to false once set to true. If this is true, and
+    /// the current_object_locations is empty, then this means that the object
+    /// does not exist on any nodes due to eviction or the object never getting created.
+    bool subscribed;
   };
 
   /// Reference to the event loop.
@@ -158,9 +192,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
-  /// Map from object ID to the number of times it's been evicted on this
-  /// node before.
-  std::unordered_map<ObjectID, int> object_evictions_;
 };
 
 }  // namespace ray

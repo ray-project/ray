@@ -1,6 +1,7 @@
 # The build output should clearly not be checked in
+/bazel-*
 /python/ray/core
-/python/ray/pyarrow_files/pyarrow/
+/python/ray/pyarrow_files/
 /python/build
 /python/dist
 /python/flatbuffers-1.7.1/
@@ -11,6 +12,10 @@
 /src/ray/gcs/format/*_generated.h
 /src/ray/object_manager/format/*_generated.h
 /src/ray/raylet/format/*_generated.h
+/java/runtime/src/main/java/org/ray/runtime/generated/*
+
+# Modin source files
+/python/ray/modin
 
 # Redis temporary files
 *dump.rdb
@@ -87,10 +92,6 @@ scripts/nodes.txt
 *.dSYM/
 *.su
 
-# CMake
-cmake-build-debug/
-build
-
 # Python setup files
 *.egg-info
 
@@ -130,6 +131,7 @@ build
 
 # Pytest Cache
 **/.pytest_cache
+.benchmarks
 
 # Vscode
 .vscode/
@@ -142,6 +144,14 @@ java/**/lib
 java/**/.settings
 java/**/.classpath
 java/**/.project
+java/runtime/native_dependencies/
 
 # python virtual env
 venv
+
+# Vim
+.*.swp
+*.swp
+
+# tools
+tools/prometheus*

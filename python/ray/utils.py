@@ -3,11 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+import errno
 import functools
 import hashlib
 import inspect
+import logging
 import numpy as np
 import os
+import six
 import subprocess
 import sys
 import threading
@@ -15,7 +18,6 @@ import time
 import uuid
 
 import ray.gcs_utils
-import ray.raylet
 import ray.ray_constants as ray_constants
 
 
@@ -49,11 +51,7 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(worker,
-                         error_type,
-                         message,
-                         driver_id=None,
-                         data=None):
+def push_error_to_driver(worker, error_type, message, driver_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Args:
@@ -63,21 +61,17 @@ def push_error_to_driver(worker,
             on the driver.
         driver_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
-        data: This should be a dictionary mapping strings to strings. It
-            will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray_constants.NIL_JOB_ID.id()
-    data = {} if data is None else data
-    worker.local_scheduler_client.push_error(
-        ray.ObjectID(driver_id), error_type, message, time.time())
+        driver_id = ray.DriverID.nil()
+    worker.raylet_client.push_error(driver_id, error_type, message,
+                                    time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
                                        error_type,
                                        message,
-                                       driver_id=None,
-                                       data=None):
+                                       driver_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
@@ -92,19 +86,17 @@ def push_error_to_driver_through_redis(redis_client,
             on the driver.
         driver_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
-        data: This should be a dictionary mapping strings to strings. It
-            will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray_constants.NIL_JOB_ID.id()
-    data = {} if data is None else data
+        driver_id = ray.DriverID.nil()
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
     error_data = ray.gcs_utils.construct_error_message(driver_id, error_type,
                                                        message, time.time())
-    redis_client.execute_command(
-        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-        ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id, error_data)
+    redis_client.execute_command("RAY.TABLE_APPEND",
+                                 ray.gcs_utils.TablePrefix.ERROR_INFO,
+                                 ray.gcs_utils.TablePubsub.ERROR_INFO,
+                                 driver_id.binary(), error_data)
 
 
 def is_cython(obj):
@@ -131,7 +123,7 @@ def is_function_or_method(obj):
     Returns:
         True if the object is an function or method.
     """
-    return (inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj))
+    return inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj)
 
 
 def is_class_method(f):
@@ -165,14 +157,59 @@ def random_string():
     return random_id
 
 
-def decode(byte_str):
-    """Make this unicode in Python 3, otherwise leave it as bytes."""
+def decode(byte_str, allow_none=False):
+    """Make this unicode in Python 3, otherwise leave it as bytes.
+
+    Args:
+        byte_str: The byte string to decode.
+        allow_none: If true, then we will allow byte_str to be None in which
+            case we will return an empty string. TODO(rkn): Remove this flag.
+            This is only here to simplify upgrading to flatbuffers 1.10.0.
+
+    Returns:
+        A byte string in Python 2 and a unicode string in Python 3.
+    """
+    if byte_str is None and allow_none:
+        return ""
+
     if not isinstance(byte_str, bytes):
-        raise ValueError("The argument must be a bytes object.")
+        raise ValueError(
+            "The argument {} must be a bytes object.".format(byte_str))
     if sys.version_info >= (3, 0):
         return byte_str.decode("ascii")
     else:
         return byte_str
+
+
+def ensure_str(s, encoding="utf-8", errors="strict"):
+    """Coerce *s* to `str`.
+
+    To keep six with lower version, see Issue 4169, we copy this function
+    from six == 1.12.0.
+
+    TODO(yuhguo): remove this function when six >= 1.12.0.
+
+    For Python 2:
+      - `unicode` -> encoded to `str`
+      - `str` -> `str`
+
+    For Python 3:
+      - `str` -> `str`
+      - `bytes` -> decoded to `str`
+    """
+    if six.PY3:
+        text_type = str
+        binary_type = bytes
+    else:
+        text_type = unicode  # noqa: F821
+        binary_type = str
+    if not isinstance(s, (text_type, binary_type)):
+        raise TypeError("not expecting type '%s'" % type(s))
+    if six.PY2 and isinstance(s, text_type):
+        s = s.encode(encoding, errors)
+    elif six.PY3 and isinstance(s, binary_type):
+        s = s.decode(encoding, errors)
+    return s
 
 
 def binary_to_object_id(binary_object_id):
@@ -262,6 +299,23 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
     return resources
 
 
+_default_handler = None
+
+
+def setup_logger(logging_level, logging_format):
+    """Setup default logging for ray."""
+    logger = logging.getLogger("ray")
+    if type(logging_level) is str:
+        logging_level = logging.getLevelName(logging_level.upper())
+    logger.setLevel(logging_level)
+    global _default_handler
+    if _default_handler is None:
+        _default_handler = logging.StreamHandler()
+        logger.addHandler(_default_handler)
+    _default_handler.setFormatter(logging.Formatter(logging_format))
+    logger.propagate = False
+
+
 # This function is copied and modified from
 # https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
 def vmstat(stat):
@@ -308,20 +362,37 @@ def get_system_memory():
     Returns:
         The total amount of system memory in bytes.
     """
+    # Try to accurately figure out the memory limit if we are in a docker
+    # container. Note that this file is not specific to Docker and its value is
+    # often much larger than the actual amount of memory.
+    docker_limit = None
+    memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    if os.path.exists(memory_limit_filename):
+        with open(memory_limit_filename, "r") as f:
+            docker_limit = int(f.read())
+
     # Use psutil if it is available.
+    psutil_memory_in_bytes = None
     try:
         import psutil
-        return psutil.virtual_memory().total
+        psutil_memory_in_bytes = psutil.virtual_memory().total
     except ImportError:
         pass
 
-    if sys.platform == "linux" or sys.platform == "linux2":
+    if psutil_memory_in_bytes is not None:
+        memory_in_bytes = psutil_memory_in_bytes
+    elif sys.platform == "linux" or sys.platform == "linux2":
         # Handle Linux.
         bytes_in_kilobyte = 1024
-        return vmstat("total memory") * bytes_in_kilobyte
+        memory_in_bytes = vmstat("total memory") * bytes_in_kilobyte
     else:
         # Handle MacOS.
-        return sysctl(["sysctl", "hw.memsize"])
+        memory_in_bytes = sysctl(["sysctl", "hw.memsize"])
+
+    if docker_limit is not None:
+        return min(docker_limit, memory_in_bytes)
+    else:
+        return memory_in_bytes
 
 
 def get_shared_memory_bytes():
@@ -368,7 +439,7 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
         worker,
         ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
         warning_message,
-        driver_id=worker.task_driver_id.id())
+        driver_id=worker.task_driver_id)
 
 
 class _ThreadSafeProxy(object):
@@ -423,3 +494,40 @@ def thread_safe_client(client, lock=None):
     if lock is None:
         lock = threading.Lock()
     return _ThreadSafeProxy(client, lock)
+
+
+def is_main_thread():
+    return threading.current_thread().getName() == "MainThread"
+
+
+def try_to_create_directory(directory_path):
+    """Attempt to create a directory that is globally readable/writable.
+
+    Args:
+        directory_path: The path of the directory to create.
+    """
+    logger = logging.getLogger("ray")
+    directory_path = os.path.expanduser(directory_path)
+    if not os.path.exists(directory_path):
+        try:
+            os.makedirs(directory_path)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise e
+            logger.warning(
+                "Attempted to create '{}', but the directory already "
+                "exists.".format(directory_path))
+        # Change the log directory permissions so others can use it. This is
+        # important when multiple people are using the same machine.
+    try:
+        os.chmod(directory_path, 0o0777)
+    except OSError as e:
+        # Silently suppress the PermissionError that is thrown by the chmod.
+        # This is done because the user attempting to change the permissions
+        # on a directory may not own it. The chmod is attempted whether the
+        # directory is new or not to avoid race conditions.
+        # ray-project/ray/#3591
+        if e.errno in [errno.EACCES, errno.EPERM]:
+            pass
+        else:
+            raise

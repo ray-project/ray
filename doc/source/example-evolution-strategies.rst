@@ -11,24 +11,24 @@ To run the application, first install some dependencies.
 
 You can view the `code for this example`_.
 
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/es
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/agents/es
 
 The script can be run as follows. Note that the configuration is tuned to work
 on the ``Humanoid-v1`` gym environment.
 
 .. code-block:: bash
 
-  python/ray/rllib/train.py --env=Humanoid-v1 --run=ES
+  rllib train --env=Humanoid-v1 --run=ES
 
 To train a policy on a cluster (e.g., using 900 workers), run the following.
 
 .. code-block:: bash
 
-  python ray/python/ray/rllib/train.py \
+  rllib train \
       --env=Humanoid-v1 \
       --run=ES \
       --redis-address=<redis-address> \
-      --config='{"num_workers": 900, "episodes_per_batch": 10000, "timesteps_per_batch": 100000}'
+      --config='{"num_workers": 900, "episodes_per_batch": 10000, "train_batch_size": 100000}'
 
 At the heart of this example, we define a ``Worker`` class. These workers have
 a method ``do_rollouts``, which will be used to perform simulate randomly

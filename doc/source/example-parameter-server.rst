@@ -123,5 +123,5 @@ resulting gradients.
       current_weights = ps.apply_gradients.remote(*gradients)
 
 Both of these examples implement the parameter server using a single actor,
-however they can be easily extended to **shard the parameters across multiple
+however they can be easily extended to **split the parameters across multiple
 actors**.

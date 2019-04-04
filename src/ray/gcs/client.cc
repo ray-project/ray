@@ -106,17 +106,20 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                              /*password=*/password));
   }
 
+  actor_table_.reset(new ActorTable({primary_context_}, this));
   client_table_.reset(new ClientTable({primary_context_}, this, client_id));
   error_table_.reset(new ErrorTable({primary_context_}, this));
   driver_table_.reset(new DriverTable({primary_context_}, this));
+  heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
   // Tables below would be sharded.
-  object_table_.reset(new ObjectTable(shard_contexts_, this, command_type));
-  actor_table_.reset(new ActorTable(shard_contexts_, this));
+  object_table_.reset(new ObjectTable(shard_contexts_, this));
   raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
   profile_table_.reset(new ProfileTable(shard_contexts_, this));
+  actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
+  actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
   command_type_ = command_type;
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
@@ -157,12 +160,6 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)
     : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}
 
-Status Attach(plasma::EventLoop &event_loop) {
-  // TODO(pcm): Implement this via
-  // context()->AttachToEventLoop(event loop)
-  return Status::OK();
-}
-
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.
   RAY_CHECK(shard_asio_async_clients_.empty()) << "Attach shall be called only once";
@@ -177,6 +174,21 @@ Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   asio_subscribe_auxiliary_client_.reset(
       new RedisAsioClient(io_service, primary_context_->subscribe_context()));
   return Status::OK();
+}
+
+std::string AsyncGcsClient::DebugString() const {
+  std::stringstream result;
+  result << "AsyncGcsClient:";
+  result << "\n- TaskTable: " << raylet_task_table_->DebugString();
+  result << "\n- ActorTable: " << actor_table_->DebugString();
+  result << "\n- TaskReconstructionLog: " << task_reconstruction_log_->DebugString();
+  result << "\n- TaskLeaseTable: " << task_lease_table_->DebugString();
+  result << "\n- HeartbeatTable: " << heartbeat_table_->DebugString();
+  result << "\n- ErrorTable: " << error_table_->DebugString();
+  result << "\n- ProfileTable: " << profile_table_->DebugString();
+  result << "\n- ClientTable: " << client_table_->DebugString();
+  result << "\n- DriverTable: " << driver_table_->DebugString();
+  return result.str();
 }
 
 ObjectTable &AsyncGcsClient::object_table() { return *object_table_; }
@@ -199,11 +211,23 @@ ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
 
 HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
+HeartbeatBatchTable &AsyncGcsClient::heartbeat_batch_table() {
+  return *heartbeat_batch_table_;
+}
+
 ErrorTable &AsyncGcsClient::error_table() { return *error_table_; }
 
 DriverTable &AsyncGcsClient::driver_table() { return *driver_table_; }
 
 ProfileTable &AsyncGcsClient::profile_table() { return *profile_table_; }
+
+ActorCheckpointTable &AsyncGcsClient::actor_checkpoint_table() {
+  return *actor_checkpoint_table_;
+}
+
+ActorCheckpointIdTable &AsyncGcsClient::actor_checkpoint_id_table() {
+  return *actor_checkpoint_id_table_;
+}
 
 }  // namespace gcs
 

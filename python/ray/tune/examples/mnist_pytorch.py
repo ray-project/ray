@@ -8,7 +8,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-from torch.autograd import Variable
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -27,9 +26,9 @@ parser.add_argument(
 parser.add_argument(
     '--epochs',
     type=int,
-    default=10,
+    default=1,
     metavar='N',
-    help='number of epochs to train (default: 10)')
+    help='number of epochs to train (default: 1)')
 parser.add_argument(
     '--lr',
     type=float,
@@ -120,7 +119,6 @@ def train_mnist(args, config, reporter):
         for batch_idx, (data, target) in enumerate(train_loader):
             if args.cuda:
                 data, target = data.cuda(), target.cuda()
-            data, target = Variable(data), Variable(target)
             optimizer.zero_grad()
             output = model(data)
             loss = F.nll_loss(output, target)
@@ -131,19 +129,19 @@ def train_mnist(args, config, reporter):
         model.eval()
         test_loss = 0
         correct = 0
-        for data, target in test_loader:
-            if args.cuda:
-                data, target = data.cuda(), target.cuda()
-            data, target = Variable(data, volatile=True), Variable(target)
-            output = model(data)
-            test_loss += F.nll_loss(
-                output, target,
-                size_average=False).data[0]  # sum up batch loss
-            pred = output.data.max(
-                1, keepdim=True)[1]  # get the index of the max log-probability
-            correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
+        with torch.no_grad():
+            for data, target in test_loader:
+                if args.cuda:
+                    data, target = data.cuda(), target.cuda()
+                output = model(data)
+                # sum up batch loss
+                test_loss += F.nll_loss(output, target, reduction='sum').item()
+                # get the index of the max log-probability
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(
+                    target.data.view_as(pred)).long().cpu().sum()
 
-        test_loss = test_loss.item() / len(test_loader.dataset)
+        test_loss = test_loss / len(test_loader.dataset)
         accuracy = correct.item() / len(test_loader.dataset)
         reporter(mean_loss=test_loss, mean_accuracy=accuracy)
 
@@ -152,7 +150,7 @@ def train_mnist(args, config, reporter):
         test()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     datasets.MNIST('~/data', train=True, download=True)
     args = parser.parse_args()
 
@@ -167,25 +165,27 @@ if __name__ == '__main__':
         reward_attr="neg_mean_loss",
         max_t=400,
         grace_period=20)
-    tune.register_trainable("train_mnist",
-                            lambda cfg, rprtr: train_mnist(args, cfg, rprtr))
-    tune.run_experiments(
-        {
-            "exp": {
-                "stop": {
-                    "mean_accuracy": 0.98,
-                    "training_iteration": 1 if args.smoke_test else 20
-                },
-                "trial_resources": {
-                    "cpu": 3
-                },
-                "run": "train_mnist",
-                "num_samples": 1 if args.smoke_test else 10,
-                "config": {
-                    "lr": lambda spec: np.random.uniform(0.001, 0.1),
-                    "momentum": lambda spec: np.random.uniform(0.1, 0.9),
-                }
+    tune.register_trainable(
+        "TRAIN_FN",
+        lambda config, reporter: train_mnist(args, config, reporter))
+    tune.run(
+        "TRAIN_FN",
+        name="exp",
+        scheduler=sched,
+        **{
+            "stop": {
+                "mean_accuracy": 0.98,
+                "training_iteration": 1 if args.smoke_test else 20
+            },
+            "resources_per_trial": {
+                "cpu": 3,
+                "gpu": int(not args.no_cuda)
+            },
+            "num_samples": 1 if args.smoke_test else 10,
+            "config": {
+                "lr": tune.sample_from(
+                    lambda spec: np.random.uniform(0.001, 0.1)),
+                "momentum": tune.sample_from(
+                    lambda spec: np.random.uniform(0.1, 0.9)),
             }
-        },
-        verbose=0,
-        scheduler=sched)
+        })

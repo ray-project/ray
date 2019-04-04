@@ -37,7 +37,7 @@ enum MessageType:int {
   ExecuteTask,
   // Reconstruct or fetch possibly lost objects. This is sent from a worker to
   // a local scheduler.
-  ReconstructObjects,
+  FetchOrReconstruct,
   // For a worker that was blocked on some object(s), tell the local scheduler
   // that the worker is now unblocked. This is sent from a worker to a local
   // scheduler.
@@ -71,6 +71,14 @@ enum MessageType:int {
   PushProfileEventsRequest,
   // Free the objects in objects store.
   FreeObjectsInObjectStoreRequest,
+  // Request raylet backend to prepare a checkpoint for an actor.
+  PrepareActorCheckpointRequest,
+  // Reply of `PrepareActorCheckpointRequest`.
+  PrepareActorCheckpointReply,
+  // Notify raylet backend that an actor was resumed from a checkpoint.
+  NotifyActorResumedFromCheckpoint,
+  // A node manager requests to connect to another node manager.
+  ConnectClient,
 }
 
 table TaskExecutionSpecification {
@@ -118,7 +126,7 @@ table GetTaskReply {
 }
 
 // This struct is used to register a new worker with the local scheduler.
-// It is shipped as part of local_scheduler_connect.
+// It is shipped as part of raylet_connect.
 table RegisterClientRequest {
   // True if the client is a worker and false if the client is a driver.
   is_worker: bool;
@@ -150,11 +158,18 @@ table ForwardTaskRequest {
   uncommitted_tasks: [Task];
 }
 
-table ReconstructObjects {
+table FetchOrReconstruct {
   // List of object IDs of the objects that we want to reconstruct or fetch.
   object_ids: [string];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
+  // The current task ID. If fetch_only is false, then this task is blocked.
+  task_id: string;
+}
+
+table NotifyUnblocked {
+  // The current task ID. This task is no longer blocked.
+  task_id: string;
 }
 
 table WaitRequest {
@@ -166,6 +181,9 @@ table WaitRequest {
   timeout: long;
   // Whether to wait until objects appear locally.
   wait_local: bool;
+  // The current task ID. If there are less than num_ready_objects local, then
+  // this task is blocked.
+  task_id: string;
 }
 
 table WaitReply {
@@ -178,7 +196,7 @@ table WaitReply {
 // This struct is the same as ErrorTableData.
 table PushErrorRequest {
   // The ID of the job that the error is for.
-  job_id: string;
+  driver_id: string;
   // The type of the error.
   type: string;
   // The error message.
@@ -193,4 +211,26 @@ table FreeObjectsRequest {
   local_only: bool;
   // List of object ids we'll delete from object store.
   object_ids: [string];
+}
+
+table PrepareActorCheckpointRequest {
+  // ID of the actor.
+  actor_id: string;
+}
+
+table PrepareActorCheckpointReply {
+  // ID of the checkpoint.
+  checkpoint_id: string;
+}
+
+table NotifyActorResumedFromCheckpoint {
+  // ID of the actor.
+  actor_id: string;
+  // ID of the checkpoint from which the actor was resumed.
+  checkpoint_id: string;
+}
+
+table ConnectClient {
+  // ID of the connecting client.
+  client_id: string;
 }

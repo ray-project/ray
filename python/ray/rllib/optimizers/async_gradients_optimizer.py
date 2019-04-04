@@ -3,7 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
 
 
@@ -15,6 +17,7 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
     gradient computations on the remote workers.
     """
 
+    @override(PolicyOptimizer)
     def _init(self, grads_per_step=100):
         self.apply_timer = TimerStat()
         self.wait_timer = TimerStat()
@@ -25,6 +28,7 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
             raise ValueError(
                 "Async optimizer requires at least 1 remote evaluator")
 
+    @override(PolicyOptimizer)
     def step(self):
         weights = ray.put(self.local_evaluator.get_weights())
         pending_gradients = {}
@@ -46,9 +50,7 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
 
                 gradient, info = ray.get(future)
                 e = pending_gradients.pop(future)
-
-                if "stats" in info:
-                    self.learner_stats = info["stats"]
+                self.learner_stats = get_learner_stats(info)
 
             if gradient is not None:
                 with self.apply_timer:
@@ -64,6 +66,7 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
                     pending_gradients[future] = e
                     num_gradients += 1
 
+    @override(PolicyOptimizer)
     def stats(self):
         return dict(
             PolicyOptimizer.stats(self), **{

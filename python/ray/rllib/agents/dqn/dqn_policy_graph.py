@@ -4,17 +4,141 @@ from __future__ import print_function
 
 from gym.spaces import Discrete
 import numpy as np
+from scipy.stats import entropy
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 import ray
-from ray.rllib.models import ModelCatalog
 from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
+from ray.rllib.models import ModelCatalog, Categorical
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
+    LearningRateSchedule
 
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
+
+# Importance sampling weights for prioritized replay
+PRIO_WEIGHTS = "weights"
+
+
+class QLoss(object):
+    def __init__(self,
+                 q_t_selected,
+                 q_logits_t_selected,
+                 q_tp1_best,
+                 q_dist_tp1_best,
+                 importance_weights,
+                 rewards,
+                 done_mask,
+                 gamma=0.99,
+                 n_step=1,
+                 num_atoms=1,
+                 v_min=-10.0,
+                 v_max=10.0):
+
+        if num_atoms > 1:
+            # Distributional Q-learning which corresponds to an entropy loss
+
+            z = tf.range(num_atoms, dtype=tf.float32)
+            z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
+
+            # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
+            r_tau = tf.expand_dims(
+                rewards, -1) + gamma**n_step * tf.expand_dims(
+                    1.0 - done_mask, -1) * tf.expand_dims(z, 0)
+            r_tau = tf.clip_by_value(r_tau, v_min, v_max)
+            b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
+            lb = tf.floor(b)
+            ub = tf.ceil(b)
+            # indispensable judgement which is missed in most implementations
+            # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
+            # be discarded because (ub-b) == (b-lb) == 0
+            floor_equal_ceil = tf.to_float(tf.less(ub - lb, 0.5))
+
+            l_project = tf.one_hot(
+                tf.cast(lb, dtype=tf.int32),
+                num_atoms)  # (batch_size, num_atoms, num_atoms)
+            u_project = tf.one_hot(
+                tf.cast(ub, dtype=tf.int32),
+                num_atoms)  # (batch_size, num_atoms, num_atoms)
+            ml_delta = q_dist_tp1_best * (ub - b + floor_equal_ceil)
+            mu_delta = q_dist_tp1_best * (b - lb)
+            ml_delta = tf.reduce_sum(
+                l_project * tf.expand_dims(ml_delta, -1), axis=1)
+            mu_delta = tf.reduce_sum(
+                u_project * tf.expand_dims(mu_delta, -1), axis=1)
+            m = ml_delta + mu_delta
+
+            # Rainbow paper claims that using this cross entropy loss for
+            # priority is robust and insensitive to `prioritized_replay_alpha`
+            self.td_error = tf.nn.softmax_cross_entropy_with_logits(
+                labels=m, logits=q_logits_t_selected)
+            self.loss = tf.reduce_mean(self.td_error * importance_weights)
+            self.stats = {
+                # TODO: better Q stats for dist dqn
+                "mean_td_error": tf.reduce_mean(self.td_error),
+            }
+        else:
+            q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
+
+            # compute RHS of bellman equation
+            q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
+
+            # compute the error (potentially clipped)
+            self.td_error = (
+                q_t_selected - tf.stop_gradient(q_t_selected_target))
+            self.loss = tf.reduce_mean(
+                importance_weights * _huber_loss(self.td_error))
+            self.stats = {
+                "mean_q": tf.reduce_mean(q_t_selected),
+                "min_q": tf.reduce_min(q_t_selected),
+                "max_q": tf.reduce_max(q_t_selected),
+                "mean_td_error": tf.reduce_mean(self.td_error),
+            }
+
+
+class DQNPostprocessing(object):
+    """Implements n-step learning and param noise adjustments."""
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self), **{
+                "q_values": self.q_values,
+            })
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        if self.config["parameter_noise"]:
+            # adjust the sigma of parameter space noise
+            states = [list(x) for x in sample_batch.columns(["obs"])][0]
+
+            noisy_action_distribution = self.sess.run(
+                self.action_probs, feed_dict={self.cur_observations: states})
+            self.sess.run(self.remove_noise_op)
+            clean_action_distribution = self.sess.run(
+                self.action_probs, feed_dict={self.cur_observations: states})
+            distance_in_action_space = np.mean(
+                entropy(clean_action_distribution.T,
+                        noisy_action_distribution.T))
+            self.pi_distance = distance_in_action_space
+            if (distance_in_action_space <
+                    -np.log(1 - self.cur_epsilon +
+                            self.cur_epsilon / self.num_actions)):
+                self.parameter_noise_sigma_val *= 1.01
+            else:
+                self.parameter_noise_sigma_val /= 1.01
+            self.parameter_noise_sigma.load(
+                self.parameter_noise_sigma_val, session=self.sess)
+
+        return _postprocess_dqn(self, sample_batch)
 
 
 class QNetwork(object):
@@ -27,18 +151,27 @@ class QNetwork(object):
                  num_atoms=1,
                  v_min=-10.0,
                  v_max=10.0,
-                 sigma0=0.5):
+                 sigma0=0.5,
+                 parameter_noise=False):
+        self.model = model
         with tf.variable_scope("action_value"):
-            action_out = model.last_layer
-            for i in range(len(hiddens)):
-                if use_noisy:
-                    action_out = self.noisy_layer("hidden_%d" % i, action_out,
-                                                  hiddens[i], sigma0)
-                else:
-                    action_out = layers.fully_connected(
-                        action_out,
-                        num_outputs=hiddens[i],
-                        activation_fn=tf.nn.relu)
+            if hiddens:
+                action_out = model.last_layer
+                for i in range(len(hiddens)):
+                    if use_noisy:
+                        action_out = self.noisy_layer(
+                            "hidden_%d" % i, action_out, hiddens[i], sigma0)
+                    else:
+                        action_out = layers.fully_connected(
+                            action_out,
+                            num_outputs=hiddens[i],
+                            activation_fn=tf.nn.relu,
+                            normalizer_fn=layers.layer_norm
+                            if parameter_noise else None)
+            else:
+                # Avoid postprocessing the outputs. This enables custom models
+                # to be used for parametric action DQN.
+                action_out = model.outputs
             if use_noisy:
                 action_scores = self.noisy_layer(
                     "output",
@@ -46,11 +179,13 @@ class QNetwork(object):
                     num_actions * num_atoms,
                     sigma0,
                     non_linear=False)
-            else:
+            elif hiddens:
                 action_scores = layers.fully_connected(
                     action_out,
                     num_outputs=num_actions * num_atoms,
                     activation_fn=None)
+            else:
+                action_scores = model.outputs
             if num_atoms > 1:
                 # Distributional Q-learning uses a discrete support z
                 # to represent the action value distribution
@@ -80,7 +215,9 @@ class QNetwork(object):
                         state_out = layers.fully_connected(
                             state_out,
                             num_outputs=hiddens[i],
-                            activation_fn=tf.nn.relu)
+                            activation_fn=tf.nn.relu,
+                            normalizer_fn=layers.layer_norm
+                            if parameter_noise else None)
                 if use_noisy:
                     state_score = self.noisy_layer(
                         "dueling_output",
@@ -106,7 +243,7 @@ class QNetwork(object):
                 self.logits = support_logits_per_action
                 self.dist = support_prob_per_action
             else:
-                action_scores_mean = tf.reduce_mean(action_scores, 1)
+                action_scores_mean = _reduce_mean_ignore_inf(action_scores, 1)
                 action_scores_centered = action_scores - tf.expand_dims(
                     action_scores_mean, 1)
                 self.value = state_score + action_scores_centered
@@ -172,89 +309,35 @@ class QNetwork(object):
 
 
 class QValuePolicy(object):
-    def __init__(self, q_values, observations, num_actions, stochastic, eps):
+    def __init__(self, q_values, observations, num_actions, stochastic, eps,
+                 softmax, softmax_temp):
+        if softmax:
+            action_dist = Categorical(q_values / softmax_temp)
+            self.action = action_dist.sample()
+            self.action_prob = action_dist.sampled_action_prob()
+            return
+
         deterministic_actions = tf.argmax(q_values, axis=1)
         batch_size = tf.shape(observations)[0]
-        random_actions = tf.random_uniform(
-            tf.stack([batch_size]),
-            minval=0,
-            maxval=num_actions,
-            dtype=tf.int64)
+
+        # Special case masked out actions (q_value ~= -inf) so that we don't
+        # even consider them for exploration.
+        random_valid_action_logits = tf.where(
+            tf.equal(q_values, tf.float32.min),
+            tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
+        random_actions = tf.squeeze(
+            tf.multinomial(random_valid_action_logits, 1), axis=1)
+
         chose_random = tf.random_uniform(
             tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32) < eps
         stochastic_actions = tf.where(chose_random, random_actions,
                                       deterministic_actions)
         self.action = tf.cond(stochastic, lambda: stochastic_actions,
                               lambda: deterministic_actions)
+        self.action_prob = None
 
 
-class QLoss(object):
-    def __init__(self,
-                 q_t_selected,
-                 q_logits_t_selected,
-                 q_tp1_best,
-                 q_dist_tp1_best,
-                 importance_weights,
-                 rewards,
-                 done_mask,
-                 gamma=0.99,
-                 n_step=1,
-                 num_atoms=1,
-                 v_min=-10.0,
-                 v_max=10.0):
-
-        if num_atoms > 1:
-            # Distributional Q-learning which corresponds to an entropy loss
-
-            z = tf.range(num_atoms, dtype=tf.float32)
-            z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
-
-            # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
-            r_tau = tf.expand_dims(
-                rewards, -1) + gamma**n_step * tf.expand_dims(
-                    1.0 - done_mask, -1) * tf.expand_dims(z, 0)
-            r_tau = tf.clip_by_value(r_tau, v_min, v_max)
-            b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
-            lb = tf.floor(b)
-            ub = tf.ceil(b)
-            # indispensable judgement which is missed in most implementations
-            # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
-            # be discarded because (ub-b) == (b-lb) == 0
-            floor_equal_ceil = tf.to_float(tf.less(ub - lb, 0.5))
-
-            l_project = tf.one_hot(
-                tf.cast(lb, dtype=tf.int32),
-                num_atoms)  # (batch_size, num_atoms, num_atoms)
-            u_project = tf.one_hot(
-                tf.cast(ub, dtype=tf.int32),
-                num_atoms)  # (batch_size, num_atoms, num_atoms)
-            ml_delta = q_dist_tp1_best * (ub - b + floor_equal_ceil)
-            mu_delta = q_dist_tp1_best * (b - lb)
-            ml_delta = tf.reduce_sum(
-                l_project * tf.expand_dims(ml_delta, -1), axis=1)
-            mu_delta = tf.reduce_sum(
-                u_project * tf.expand_dims(mu_delta, -1), axis=1)
-            m = ml_delta + mu_delta
-
-            # Rainbow paper claims that using this cross entropy loss for
-            # priority is robust and insensitive to `prioritized_replay_alpha`
-            self.td_error = tf.nn.softmax_cross_entropy_with_logits(
-                labels=m, logits=q_logits_t_selected)
-            self.loss = tf.reduce_mean(self.td_error * importance_weights)
-        else:
-            q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
-
-            # compute RHS of bellman equation
-            q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
-
-            # compute the error (potentially clipped)
-            self.td_error = (
-                q_t_selected - tf.stop_gradient(q_t_selected_target))
-            self.loss = tf.reduce_mean(
-                importance_weights * _huber_loss(self.td_error))
-
-
-class DQNPolicyGraph(TFPolicyGraph):
+class DQNPolicyGraph(LearningRateSchedule, DQNPostprocessing, TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Discrete):
@@ -274,12 +357,21 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
-            q_values, q_logits, q_dist = self._build_q_network(
-                self.cur_observations, observation_space)
+            q_values, q_logits, q_dist, _ = self._build_q_network(
+                self.cur_observations, observation_space, action_space)
+            self.q_values = q_values
             self.q_func_vars = _scope_vars(scope.name)
 
+        # Noise vars for Q network except for layer normalization vars
+        if self.config["parameter_noise"]:
+            self._build_parameter_noise([
+                var for var in self.q_func_vars if "LayerNorm" not in var.name
+            ])
+            self.action_probs = tf.nn.softmax(self.q_values)
+
         # Action outputs
-        self.output_actions = self._build_q_value_policy(q_values)
+        self.output_actions, self.action_prob = self._build_q_value_policy(
+            q_values)
 
         # Replay inputs
         self.obs_t = tf.placeholder(
@@ -294,13 +386,17 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_t, q_logits_t, q_dist_t = self._build_q_network(
-                self.obs_t, observation_space)
+            prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+            q_t, q_logits_t, q_dist_t, model = self._build_q_network(
+                self.obs_t, observation_space, action_space)
+            q_batchnorm_update_ops = list(
+                set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
+                prev_update_ops)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1, q_logits_tp1, q_dist_tp1 = self._build_q_network(
-                self.obs_tp1, observation_space)
+            q_tp1, q_logits_tp1, q_dist_tp1, _ = self._build_q_network(
+                self.obs_tp1, observation_space, action_space)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
@@ -313,8 +409,8 @@ class DQNPolicyGraph(TFPolicyGraph):
         if config["double_q"]:
             with tf.variable_scope(Q_SCOPE, reuse=True):
                 q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-                    q_dist_tp1_using_online_net = self._build_q_network(
-                        self.obs_tp1, observation_space)
+                    q_dist_tp1_using_online_net, _ = self._build_q_network(
+                        self.obs_tp1, observation_space, action_space)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best_one_hot_selection = tf.one_hot(
                 q_tp1_best_using_online_net, self.num_actions)
@@ -336,22 +432,25 @@ class DQNPolicyGraph(TFPolicyGraph):
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
         update_target_expr = []
-        for var, var_target in zip(
-                sorted(self.q_func_vars, key=lambda v: v.name),
-                sorted(self.target_q_func_vars, key=lambda v: v.name)):
+        assert len(self.q_func_vars) == len(self.target_q_func_vars), \
+            (self.q_func_vars, self.target_q_func_vars)
+        for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
         # initialize TFPolicyGraph
         self.sess = tf.get_default_session()
         self.loss_inputs = [
-            ("obs", self.obs_t),
-            ("actions", self.act_t),
-            ("rewards", self.rew_t),
-            ("new_obs", self.obs_tp1),
-            ("dones", self.done_mask),
-            ("weights", self.importance_weights),
+            (SampleBatch.CUR_OBS, self.obs_t),
+            (SampleBatch.ACTIONS, self.act_t),
+            (SampleBatch.REWARDS, self.rew_t),
+            (SampleBatch.NEXT_OBS, self.obs_tp1),
+            (SampleBatch.DONES, self.done_mask),
+            (PRIO_WEIGHTS, self.importance_weights),
         ]
+
+        LearningRateSchedule.__init__(self, self.config["lr"],
+                                      self.config["lr_schedule"])
         TFPolicyGraph.__init__(
             self,
             observation_space,
@@ -359,66 +458,95 @@ class DQNPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
+            action_prob=self.action_prob,
             loss=self.loss.loss,
-            loss_inputs=self.loss_inputs)
+            model=model,
+            loss_inputs=self.loss_inputs,
+            update_ops=q_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
 
-    def _build_q_network(self, obs, space):
-        qnet = QNetwork(
-            ModelCatalog.get_model({
-                "obs": obs
-            }, space, 1, self.config["model"]), self.num_actions,
-            self.config["dueling"], self.config["hiddens"],
-            self.config["noisy"], self.config["num_atoms"],
-            self.config["v_min"], self.config["v_max"], self.config["sigma0"])
-        return qnet.value, qnet.logits, qnet.dist
+        self.stats_fetches = dict({
+            "cur_lr": tf.cast(self.cur_lr, tf.float64),
+        }, **self.loss.stats)
 
-    def _build_q_value_policy(self, q_values):
-        return QValuePolicy(q_values, self.cur_observations, self.num_actions,
-                            self.stochastic, self.eps).action
-
-    def _build_q_loss(self, q_t_selected, q_logits_t_selected, q_tp1_best,
-                      q_dist_tp1_best):
-        return QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,
-                     q_dist_tp1_best, self.importance_weights, self.rew_t,
-                     self.done_mask, self.config["gamma"],
-                     self.config["n_step"], self.config["num_atoms"],
-                     self.config["v_min"], self.config["v_max"])
-
+    @override(TFPolicyGraph)
     def optimizer(self):
         return tf.train.AdamOptimizer(
-            learning_rate=self.config["lr"],
-            epsilon=self.config["adam_epsilon"])
+            learning_rate=self.cur_lr, epsilon=self.config["adam_epsilon"])
 
-    def gradients(self, optimizer):
+    @override(TFPolicyGraph)
+    def gradients(self, optimizer, loss):
         if self.config["grad_norm_clipping"] is not None:
             grads_and_vars = _minimize_and_clip(
                 optimizer,
-                self.loss.loss,
+                loss,
                 var_list=self.q_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
         else:
             grads_and_vars = optimizer.compute_gradients(
-                self.loss.loss, var_list=self.q_func_vars)
+                loss, var_list=self.q_func_vars)
         grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
         return grads_and_vars
 
+    @override(TFPolicyGraph)
     def extra_compute_action_feed_dict(self):
         return {
             self.stochastic: True,
             self.eps: self.cur_epsilon,
         }
 
+    @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.loss.td_error,
+            LEARNER_STATS_KEY: self.stats_fetches,
         }
 
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        return _postprocess_dqn(self, sample_batch)
+    @override(PolicyGraph)
+    def get_state(self):
+        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
+
+    @override(PolicyGraph)
+    def set_state(self, state):
+        TFPolicyGraph.set_state(self, state[0])
+        self.set_epsilon(state[1])
+
+    def _build_parameter_noise(self, pnet_params):
+        self.parameter_noise_sigma_val = 1.0
+        self.parameter_noise_sigma = tf.get_variable(
+            initializer=tf.constant_initializer(
+                self.parameter_noise_sigma_val),
+            name="parameter_noise_sigma",
+            shape=(),
+            trainable=False,
+            dtype=tf.float32)
+        self.parameter_noise = list()
+        # No need to add any noise on LayerNorm parameters
+        for var in pnet_params:
+            noise_var = tf.get_variable(
+                name=var.name.split(':')[0] + "_noise",
+                shape=var.shape,
+                initializer=tf.constant_initializer(.0),
+                trainable=False)
+            self.parameter_noise.append(noise_var)
+        remove_noise_ops = list()
+        for var, var_noise in zip(pnet_params, self.parameter_noise):
+            remove_noise_ops.append(tf.assign_add(var, -var_noise))
+        self.remove_noise_op = tf.group(*tuple(remove_noise_ops))
+        generate_noise_ops = list()
+        for var_noise in self.parameter_noise:
+            generate_noise_ops.append(
+                tf.assign(
+                    var_noise,
+                    tf.random_normal(
+                        shape=var_noise.shape,
+                        stddev=self.parameter_noise_sigma)))
+        with tf.control_dependencies(generate_noise_ops):
+            add_noise_ops = list()
+            for var, var_noise in zip(pnet_params, self.parameter_noise):
+                add_noise_ops.append(tf.assign_add(var, var_noise))
+            self.add_noise_op = tf.group(*tuple(add_noise_ops))
+        self.pi_distance = None
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
@@ -434,21 +562,45 @@ class DQNPolicyGraph(TFPolicyGraph):
             })
         return td_err
 
+    def add_parameter_noise(self):
+        if self.config["parameter_noise"]:
+            self.sess.run(self.add_noise_op)
+
     def update_target(self):
         return self.sess.run(self.update_target_expr)
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
 
-    def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
+    def _build_q_network(self, obs, obs_space, action_space):
+        qnet = QNetwork(
+            ModelCatalog.get_model({
+                "obs": obs,
+                "is_training": self._get_is_training_placeholder(),
+            }, obs_space, action_space, self.num_actions,
+                                   self.config["model"]), self.num_actions,
+            self.config["dueling"], self.config["hiddens"],
+            self.config["noisy"], self.config["num_atoms"],
+            self.config["v_min"], self.config["v_max"], self.config["sigma0"],
+            self.config["parameter_noise"])
+        return qnet.value, qnet.logits, qnet.dist, qnet.model
 
-    def set_state(self, state):
-        TFPolicyGraph.set_state(self, state[0])
-        self.set_epsilon(state[1])
+    def _build_q_value_policy(self, q_values):
+        policy = QValuePolicy(
+            q_values, self.cur_observations, self.num_actions, self.stochastic,
+            self.eps, self.config["soft_q"], self.config["softmax_temp"])
+        return policy.action, policy.action_prob
+
+    def _build_q_loss(self, q_t_selected, q_logits_t_selected, q_tp1_best,
+                      q_dist_tp1_best):
+        return QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,
+                     q_dist_tp1_best, self.importance_weights, self.rew_t,
+                     self.done_mask, self.config["gamma"],
+                     self.config["n_step"], self.config["num_atoms"],
+                     self.config["v_min"], self.config["v_max"])
 
 
-def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
+def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
     """Rewrites the given trajectory fragments to encode n-step rewards.
 
     reward[i] = (
@@ -473,37 +625,36 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
                 rewards[i] += gamma**j * rewards[i + j]
 
 
-def _postprocess_dqn(policy_graph, sample_batch):
-    obs, actions, rewards, new_obs, dones = [
-        list(x) for x in sample_batch.columns(
-            ["obs", "actions", "rewards", "new_obs", "dones"])
-    ]
-
+def _postprocess_dqn(policy_graph, batch):
     # N-step Q adjustments
     if policy_graph.config["n_step"] > 1:
-        adjust_nstep(policy_graph.config["n_step"],
-                     policy_graph.config["gamma"], obs, actions, rewards,
-                     new_obs, dones)
+        _adjust_nstep(policy_graph.config["n_step"],
+                      policy_graph.config["gamma"], batch[SampleBatch.CUR_OBS],
+                      batch[SampleBatch.ACTIONS], batch[SampleBatch.REWARDS],
+                      batch[SampleBatch.NEXT_OBS], batch[SampleBatch.DONES])
 
-    batch = SampleBatch({
-        "obs": obs,
-        "actions": actions,
-        "rewards": rewards,
-        "new_obs": new_obs,
-        "dones": dones,
-        "weights": np.ones_like(rewards)
-    })
+    if PRIO_WEIGHTS not in batch:
+        batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
     # Prioritize on the worker side
     if batch.count > 0 and policy_graph.config["worker_side_prioritization"]:
         td_errors = policy_graph.compute_td_error(
-            batch["obs"], batch["actions"], batch["rewards"], batch["new_obs"],
-            batch["dones"], batch["weights"])
+            batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+            batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
+            batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (
             np.abs(td_errors) + policy_graph.config["prioritized_replay_eps"])
-        batch.data["weights"] = new_priorities
+        batch.data[PRIO_WEIGHTS] = new_priorities
 
     return batch
+
+
+def _reduce_mean_ignore_inf(x, axis):
+    """Same as tf.reduce_mean() but ignores -inf values."""
+    mask = tf.not_equal(x, tf.float32.min)
+    x_zeroed = tf.where(mask, x, tf.zeros_like(x))
+    return (tf.reduce_sum(x_zeroed, axis) / tf.reduce_sum(
+        tf.cast(mask, tf.float32), axis))
 
 
 def _huber_loss(x, delta=1.0):

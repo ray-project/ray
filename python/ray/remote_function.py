@@ -3,10 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import hashlib
-import inspect
+import logging
 
-import ray.ray_constants as ray_constants
+from ray.function_manager import FunctionDescriptor
 import ray.signature
 
 # Default parameters for remote functions.
@@ -14,32 +13,7 @@ DEFAULT_REMOTE_FUNCTION_CPUS = 1
 DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS = 1
 DEFAULT_REMOTE_FUNCTION_MAX_CALLS = 0
 
-
-def compute_function_id(function):
-    """Compute an function ID for a function.
-
-    Args:
-        func: The actual function.
-
-    Returns:
-        Raw bytes of the function id
-    """
-    function_id_hash = hashlib.sha1()
-    # Include the function module and name in the hash.
-    function_id_hash.update(function.__module__.encode("ascii"))
-    function_id_hash.update(function.__name__.encode("ascii"))
-    try:
-        # If we are running a script or are in IPython, include the source code
-        # in the hash.
-        source = inspect.getsource(function).encode("ascii")
-        function_id_hash.update(source)
-    except (IOError, OSError, TypeError):
-        # Source code may not be available: e.g. Cython or Python interpreter.
-        pass
-    # Compute the function ID.
-    function_id = function_id_hash.digest()
-    assert len(function_id) == ray_constants.ID_SIZE
-    return function_id
+logger = logging.getLogger(__name__)
 
 
 class RemoteFunction(object):
@@ -49,7 +23,7 @@ class RemoteFunction(object):
 
     Attributes:
         _function: The original function.
-        _function_id: The ID of the function.
+        _function_descriptor: The function descriptor.
         _function_name: The module and function name.
         _num_cpus: The default number of CPUs to use for invocations of this
             remote function.
@@ -67,10 +41,7 @@ class RemoteFunction(object):
     def __init__(self, function, num_cpus, num_gpus, resources,
                  num_return_vals, max_calls):
         self._function = function
-        # TODO(rkn): We store the function ID as a string, so that
-        # RemoteFunction objects can be pickled. We should undo this when
-        # we allow ObjectIDs to be pickled.
-        self._function_id = compute_function_id(function)
+        self._function_descriptor = FunctionDescriptor.from_function(function)
         self._function_name = (
             self._function.__module__ + '.' + self._function.__name__)
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -86,8 +57,10 @@ class RemoteFunction(object):
         self._function_signature = ray.signature.extract_signature(
             self._function)
 
-        # # Export the function.
+        # Export the function.
         worker = ray.worker.get_global_worker()
+        # In which session this function was exported last time.
+        self._last_export_session = worker._session_index
         worker.function_actor_manager.export(self)
 
     def __call__(self, *args, **kwargs):
@@ -97,9 +70,26 @@ class RemoteFunction(object):
 
     def remote(self, *args, **kwargs):
         """This runs immediately when a remote function is called."""
-        return self._submit(args=args, kwargs=kwargs)
+        return self._remote(args=args, kwargs=kwargs)
 
     def _submit(self,
+                args=None,
+                kwargs=None,
+                num_return_vals=None,
+                num_cpus=None,
+                num_gpus=None,
+                resources=None):
+        logger.warning(
+            "WARNING: _submit() is being deprecated. Please use _remote().")
+        return self._remote(
+            args=args,
+            kwargs=kwargs,
+            num_return_vals=num_return_vals,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources=resources)
+
+    def _remote(self,
                 args=None,
                 kwargs=None,
                 num_return_vals=None,
@@ -109,7 +99,15 @@ class RemoteFunction(object):
         """An experimental alternate way to submit remote functions."""
         worker = ray.worker.get_global_worker()
         worker.check_connected()
+
+        if self._last_export_session < worker._session_index:
+            # If this function was exported in a previous session, we need to
+            # export this function again, because current GCS doesn't have it.
+            self._last_export_session = worker._session_index
+            worker.function_actor_manager.export(self)
+
         kwargs = {} if kwargs is None else kwargs
+        args = [] if args is None else args
         args = ray.signature.extend_args(self._function_signature, args,
                                          kwargs)
 
@@ -127,7 +125,7 @@ class RemoteFunction(object):
             result = self._function(*copy.deepcopy(args))
             return result
         object_ids = worker.submit_task(
-            ray.ObjectID(self._function_id),
+            self._function_descriptor,
             args,
             num_return_vals=num_return_vals,
             resources=resources)

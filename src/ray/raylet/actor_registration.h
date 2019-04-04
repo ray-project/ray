@@ -5,6 +5,7 @@
 
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/id.h"
+#include "ray/raylet/task.h"
 
 namespace ray {
 
@@ -24,6 +25,12 @@ class ActorRegistration {
   /// this actor. This includes the actor's node manager location.
   ActorRegistration(const ActorTableDataT &actor_table_data);
 
+  /// Recreate an actor's registration from a checkpoint.
+  ///
+  /// \param checkpoint_data The checkpoint used to restore the actor.
+  ActorRegistration(const ActorTableDataT &actor_table_data,
+                    const ActorCheckpointDataT &checkpoint_data);
+
   /// Each actor may have multiple callers, or "handles". A frontier leaf
   /// represents the execution state of the actor with respect to a single
   /// handle.
@@ -35,6 +42,19 @@ class ActorRegistration {
     /// that most recently executed on the actor.
     ObjectID execution_dependency;
   };
+
+  /// Get the actor table data.
+  ///
+  /// \return The actor table data.
+  const ActorTableDataT &GetTableData() const { return actor_table_data_; }
+
+  /// Get the actor's current state (ALIVE or DEAD).
+  ///
+  /// \return The actor's current state.
+  const ActorState &GetState() const { return actor_table_data_.state; }
+
+  /// Update actor's state.
+  void SetState(const ActorState &state) { actor_table_data_.state = state; }
 
   /// Get the actor's node manager location.
   ///
@@ -48,6 +68,15 @@ class ActorRegistration {
   ///
   /// \return The execution dependency returned by the actor's creation task.
   const ObjectID GetActorCreationDependency() const;
+
+  /// Get actor's driver ID.
+  const DriverID GetDriverId() const;
+
+  /// Get the max number of times this actor should be reconstructed.
+  const int64_t GetMaxReconstructions() const;
+
+  /// Get the remaining number of times this actor should be reconstructed.
+  const int64_t GetRemainingReconstructions() const;
 
   /// Get the object that represents the actor's current state. This is the
   /// execution dependency returned by the task most recently executed on the
@@ -66,31 +95,49 @@ class ActorRegistration {
   /// that handle.
   const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier() const;
 
+  /// Get all the dummy objects of this actor's tasks.
+  const std::unordered_map<ObjectID, int64_t> &GetDummyObjects() const {
+    return dummy_objects_;
+  }
+
   /// Extend the frontier of the actor by a single task. This should be called
   /// whenever the actor executes a task.
   ///
   /// \param handle_id The ID of the handle that submitted the task.
   /// \param execution_dependency The object representing the actor's new
   /// state. This is the execution dependency returned by the task.
-  void ExtendFrontier(const ActorHandleID &handle_id,
-                      const ObjectID &execution_dependency);
+  /// \return The dummy object that can be released as a result of the executed
+  /// task. If no dummy object can be released, then this is nil.
+  ObjectID ExtendFrontier(const ActorHandleID &handle_id,
+                          const ObjectID &execution_dependency);
 
-  /// Return whether the actor is alive or not. This should only be called on
-  /// local actors.
+  /// Add a new handle to the actor frontier. This does nothing if the actor
+  /// handle already exists.
   ///
-  /// \return True if the local actor is alive and false if it is dead.
-  bool IsAlive() const;
+  /// \param handle_id The ID of the handle to add.
+  /// \param execution_dependency This is the expected execution dependency for
+  /// the first task submitted on the new handle. If the new handle hasn't been
+  /// seen yet, then this dependency will be added to the actor frontier and is
+  /// not safe to release until the first task has been submitted.
+  void AddHandle(const ActorHandleID &handle_id, const ObjectID &execution_dependency);
 
-  /// Mark the actor as dead.
-  /// \return Void.
-  void MarkDead();
+  /// Returns num handles to this actor entry.
+  ///
+  /// \return int.
+  int NumHandles() const;
+
+  /// Generate checkpoint data based on actor's current state.
+  ///
+  /// \param actor_id ID of this actor.
+  /// \param task The task that just finished on the actor.
+  /// \return A shared pointer to the generated checkpoint data.
+  std::shared_ptr<ActorCheckpointDataT> GenerateCheckpointData(const ActorID &actor_id,
+                                                               const Task &task);
 
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.
   ActorTableDataT actor_table_data_;
-  /// True if the actor is alive and false otherwise.
-  bool alive_;
   /// The object representing the state following the actor's most recently
   /// executed task. The next task to execute on the actor should be marked as
   /// execution-dependent on this object.
@@ -99,6 +146,24 @@ class ActorRegistration {
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
+  /// This map is used to track all the unreleased dummy objects for this
+  /// actor.  The map key is the dummy object ID, and the map value is the
+  /// number of actor handles that depend on that dummy object. When the map
+  /// value decreases to 0, the dummy object is safe to release from the object
+  /// manager, since this means that no actor handle will depend on that dummy
+  /// object again.
+  ///
+  /// An actor handle depends on a dummy object when its next unfinished task
+  /// depends on the dummy object. For a given dummy object (say D) created by
+  /// task (say T) that was submitted by an actor handle (say H), there could
+  /// be 2 types of such actor handles:
+  /// 1. T is the last task submitted by H that was executed. If the next task
+  /// submitted by H hasn't finished yet, then H still depends on D since D
+  /// will be in the next task's execution dependencies.
+  /// 2. Any handles that were forked from H after T finished, and before T's
+  /// next task finishes. Such handles depend on D until their first tasks
+  /// finish since D will be their first tasks' execution dependencies.
+  std::unordered_map<ObjectID, int64_t> dummy_objects_;
 };
 
 }  // namespace raylet

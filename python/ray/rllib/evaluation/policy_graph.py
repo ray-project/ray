@@ -2,7 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+import gym
 
+from ray.rllib.utils.annotations import DeveloperAPI
+
+
+@DeveloperAPI
 class PolicyGraph(object):
     """An agent policy and loss, i.e., a TFPolicyGraph or other subclass.
 
@@ -21,6 +27,7 @@ class PolicyGraph(object):
         action_space (gym.Space): Action space of the policy.
     """
 
+    @DeveloperAPI
     def __init__(self, observation_space, action_space, config):
         """Initialize the graph.
 
@@ -37,13 +44,15 @@ class PolicyGraph(object):
         self.observation_space = observation_space
         self.action_space = action_space
 
+    @DeveloperAPI
     def compute_actions(self,
                         obs_batch,
                         state_batches,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        is_training=False,
-                        episodes=None):
+                        info_batch=None,
+                        episodes=None,
+                        **kwargs):
         """Compute actions for the current policy.
 
         Arguments:
@@ -51,10 +60,11 @@ class PolicyGraph(object):
             state_batches (list): list of RNN state input batches, if any
             prev_action_batch (np.ndarray): batch of previous action values
             prev_reward_batch (np.ndarray): batch of previous rewards
-            is_training (bool): whether we are training the policy
+            info_batch (info): batch of info objects
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
+            kwargs: forward compatibility placeholder
 
         Returns:
             actions (np.ndarray): batch of output actions, with shape like
@@ -66,24 +76,29 @@ class PolicyGraph(object):
         """
         raise NotImplementedError
 
+    @DeveloperAPI
     def compute_single_action(self,
                               obs,
                               state,
-                              prev_action_batch=None,
-                              prev_reward_batch=None,
-                              is_training=False,
-                              episode=None):
+                              prev_action=None,
+                              prev_reward=None,
+                              info=None,
+                              episode=None,
+                              clip_actions=False,
+                              **kwargs):
         """Unbatched version of compute_actions.
 
         Arguments:
             obs (obj): single observation
             state_batches (list): list of RNN state inputs, if any
-            prev_action_batch (np.ndarray): batch of previous action values
-            prev_reward_batch (np.ndarray): batch of previous rewards
-            is_training (bool): whether we are training the policy
+            prev_action (obj): previous action value, if any
+            prev_reward (int): previous reward, if any
+            info (dict): info object, if any
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
+            clip_actions (bool): should the action be clipped
+            kwargs: forward compatibility placeholder
 
         Returns:
             actions (obj): single action
@@ -91,11 +106,30 @@ class PolicyGraph(object):
             info (dict): dictionary of extra features, if any
         """
 
+        prev_action_batch = None
+        prev_reward_batch = None
+        info_batch = None
+        episodes = None
+        if prev_action is not None:
+            prev_action_batch = [prev_action]
+        if prev_reward is not None:
+            prev_reward_batch = [prev_reward]
+        if info is not None:
+            info_batch = [info]
+        if episode is not None:
+            episodes = [episode]
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state], is_training, episodes=[episode])
+            [obs], [[s] for s in state],
+            prev_action_batch=prev_action_batch,
+            prev_reward_batch=prev_reward_batch,
+            info_batch=info_batch,
+            episodes=episodes)
+        if clip_actions:
+            action = clip_action(action, self.action_space)
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
+    @DeveloperAPI
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
@@ -120,25 +154,12 @@ class PolicyGraph(object):
         """
         return sample_batch
 
-    def compute_gradients(self, postprocessed_batch):
-        """Computes gradients against a batch of experiences.
-
-        Returns:
-            grads (list): List of gradient output values
-            info (dict): Extra policy-specific values
-        """
-        raise NotImplementedError
-
-    def apply_gradients(self, gradients):
-        """Applies previously computed gradients.
-
-        Returns:
-            info (dict): Extra policy-specific values
-        """
-        raise NotImplementedError
-
-    def compute_apply(self, samples):
+    @DeveloperAPI
+    def learn_on_batch(self, samples):
         """Fused compute gradients and apply gradients call.
+
+        Either this or the combination of compute/apply grads must be
+        implemented by subclasses.
 
         Returns:
             grad_info: dictionary of extra metadata from compute_gradients().
@@ -146,13 +167,43 @@ class PolicyGraph(object):
 
         Examples:
             >>> batch = ev.sample()
-            >>> ev.compute_apply(samples)
+            >>> ev.learn_on_batch(samples)
         """
+
+        return self.compute_apply(samples)
+
+    @DeveloperAPI
+    def compute_gradients(self, postprocessed_batch):
+        """Computes gradients against a batch of experiences.
+
+        Either this or learn_on_batch() must be implemented by subclasses.
+
+        Returns:
+            grads (list): List of gradient output values
+            info (dict): Extra policy-specific values
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def apply_gradients(self, gradients):
+        """Applies previously computed gradients.
+
+        Either this or learn_on_batch() must be implemented by subclasses.
+
+        Returns:
+            info (dict): Extra policy-specific values
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def compute_apply(self, samples):
+        """Deprecated: override learn_on_batch instead."""
 
         grads, grad_info = self.compute_gradients(samples)
         apply_info = self.apply_gradients(grads)
         return grad_info, apply_info
 
+    @DeveloperAPI
     def get_weights(self):
         """Returns model weights.
 
@@ -161,6 +212,7 @@ class PolicyGraph(object):
         """
         raise NotImplementedError
 
+    @DeveloperAPI
     def set_weights(self, weights):
         """Sets model weights.
 
@@ -169,10 +221,12 @@ class PolicyGraph(object):
         """
         raise NotImplementedError
 
+    @DeveloperAPI
     def get_initial_state(self):
         """Returns initial RNN state for the current policy."""
         return []
 
+    @DeveloperAPI
     def get_state(self):
         """Saves all local state.
 
@@ -181,6 +235,7 @@ class PolicyGraph(object):
         """
         return self.get_weights()
 
+    @DeveloperAPI
     def set_state(self, state):
         """Restores all local state.
 
@@ -189,6 +244,7 @@ class PolicyGraph(object):
         """
         self.set_weights(state)
 
+    @DeveloperAPI
     def on_global_var_update(self, global_vars):
         """Called on an update to global vars.
 
@@ -196,3 +252,46 @@ class PolicyGraph(object):
             global_vars (dict): Global variables broadcast from the driver.
         """
         pass
+
+    @DeveloperAPI
+    def export_model(self, export_dir):
+        """Export PolicyGraph to local directory for serving.
+
+        Arguments:
+            export_dir (str): Local writable directory.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def export_checkpoint(self, export_dir):
+        """Export PolicyGraph checkpoint to local directory.
+
+        Argument:
+            export_dir (str): Local writable directory.
+        """
+        raise NotImplementedError
+
+
+def clip_action(action, space):
+    """Called to clip actions to the specified range of this policy.
+
+    Arguments:
+        action: Single action.
+        space: Action space the actions should be present in.
+
+    Returns:
+        Clipped batch of actions.
+    """
+
+    if isinstance(space, gym.spaces.Box):
+        return np.clip(action, space.low, space.high)
+    elif isinstance(space, gym.spaces.Tuple):
+        if type(action) not in (tuple, list):
+            raise ValueError("Expected tuple space for actions {}: {}".format(
+                action, space))
+        out = []
+        for a, s in zip(action, space.spaces):
+            out.append(clip_action(a, s))
+        return out
+    else:
+        return action

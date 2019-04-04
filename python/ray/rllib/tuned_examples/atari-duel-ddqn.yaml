@@ -1,3 +1,5 @@
+# Runs on a single g3.4xl node
+# See https://github.com/ray-project/rl-experiments for results
 dueling-ddqn:
     env:
         grid_search:
@@ -27,5 +29,5 @@ dueling-ddqn:
         prioritized_replay_alpha: 0.5
         beta_annealing_fraction: 1.0
         final_prioritized_replay_beta: 1.0
-        gpu: true
+        num_gpus: 0.2
         timesteps_per_iteration: 10000

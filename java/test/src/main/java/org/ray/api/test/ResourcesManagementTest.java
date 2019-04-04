@@ -2,23 +2,21 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import jdk.nashorn.internal.ir.annotations.Immutable;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 /**
  * Resources Management Test.
  */
-@RunWith(MyRunner.class)
-public class ResourcesManagementTest {
+public class ResourcesManagementTest extends BaseTest {
 
   @RayRemote
   public static Integer echo(Integer number) {
@@ -27,6 +25,7 @@ public class ResourcesManagementTest {
 
   @RayRemote
   public static class Echo {
+
     public Integer echo(Integer number) {
       return number;
     }
@@ -34,6 +33,7 @@ public class ResourcesManagementTest {
 
   @Test
   public void testMethods() {
+    TestUtils.skipTestUnderSingleProcess();
     CallOptions callOptions1 = new CallOptions(ImmutableMap.of("CPU", 4.0, "GPU", 0.0));
 
     // This is a case that can satisfy required resources.
@@ -54,6 +54,7 @@ public class ResourcesManagementTest {
 
   @Test
   public void testActors() {
+    TestUtils.skipTestUnderSingleProcess();
 
     ActorCreationOptions actorCreationOptions1 =
         new ActorCreationOptions(ImmutableMap.of("CPU", 2.0, "GPU", 0.0));

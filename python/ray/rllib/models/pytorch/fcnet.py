@@ -3,30 +3,27 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-
-from ray.rllib.models.pytorch.model import Model, SlimFC
-from ray.rllib.models.pytorch.misc import normc_initializer
+import numpy as np
 import torch.nn as nn
+
+from ray.rllib.models.pytorch.model import TorchModel
+from ray.rllib.models.pytorch.misc import normc_initializer, SlimFC, \
+    _get_activation_fn
+from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
 
 
-class FullyConnectedNetwork(Model):
-    """TODO(rliaw): Logits, Value should both be contained here"""
+class FullyConnectedNetwork(TorchModel):
+    """Generic fully connected network."""
 
-    def _build_layers(self, inputs, num_outputs, options):
-        assert type(inputs) is int
-        hiddens = options.get("fcnet_hiddens", [256, 256])
-        fcnet_activation = options.get("fcnet_activation", "tanh")
-        activation = None
-        if fcnet_activation == "tanh":
-            activation = nn.Tanh
-        elif fcnet_activation == "relu":
-            activation = nn.ReLU
-        logger.info("Constructing fcnet {} {}".format(hiddens, activation))
-
+    def __init__(self, obs_space, num_outputs, options):
+        TorchModel.__init__(self, obs_space, num_outputs, options)
+        hiddens = options.get("fcnet_hiddens")
+        activation = _get_activation_fn(options.get("fcnet_activation"))
+        logger.debug("Constructing fcnet {} {}".format(hiddens, activation))
         layers = []
-        last_layer_size = inputs
+        last_layer_size = np.product(obs_space.shape)
         for size in hiddens:
             layers.append(
                 SlimFC(
@@ -36,29 +33,25 @@ class FullyConnectedNetwork(Model):
                     activation_fn=activation))
             last_layer_size = size
 
-        self.hidden_layers = nn.Sequential(*layers)
+        self._hidden_layers = nn.Sequential(*layers)
 
-        self.logits = SlimFC(
+        self._logits = SlimFC(
             in_size=last_layer_size,
             out_size=num_outputs,
             initializer=normc_initializer(0.01),
             activation_fn=None)
-        self.value_branch = SlimFC(
+        self._value_branch = SlimFC(
             in_size=last_layer_size,
             out_size=1,
             initializer=normc_initializer(1.0),
             activation_fn=None)
 
-    def forward(self, obs):
-        """ Internal method - pass in torch tensors, not numpy arrays
-
-        Args:
-            obs: observations and features
-
-        Return:
-            logits: logits to be sampled from for each state
-            value: value function for each state"""
-        res = self.hidden_layers(obs)
-        logits = self.logits(res)
-        value = self.value_branch(res).squeeze(1)
-        return logits, value
+    @override(nn.Module)
+    def forward(self, input_dict, hidden_state):
+        # Note that we override forward() and not _forward() to get the
+        # flattened obs here.
+        obs = input_dict["obs"]
+        features = self._hidden_layers(obs.reshape(obs.shape[0], -1))
+        logits = self._logits(features)
+        value = self._value_branch(features).squeeze(1)
+        return logits, features, value, hidden_state

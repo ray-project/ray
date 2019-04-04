@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 
+#include "ray/status.h"
+
 #include "ray/raylet/raylet.h"
 
 namespace ray {
@@ -74,8 +76,8 @@ class TestObjectManagerBase : public ::testing::Test {
         GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_sock_1, "", plasma::kPlasmaDefaultReleaseDelay));
-    ARROW_CHECK_OK(client2.Connect(store_sock_2, "", plasma::kPlasmaDefaultReleaseDelay));
+    RAY_ARROW_CHECK_OK(client1.Connect(store_sock_1));
+    RAY_ARROW_CHECK_OK(client2.Connect(store_sock_2));
   }
 
   void TearDown() {
@@ -102,9 +104,9 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
-    ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata,
-                                 metadata_size, &data));
-    ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
+    RAY_ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata,
+                                     metadata_size, &data));
+    RAY_ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
     return object_id;
   }
 
@@ -206,7 +208,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
                   << "\n";
     ClientTableDataT data;
     gcs_client_2->client_table().GetClient(client_id_1, data);
-    RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+    RAY_LOG(INFO) << (ClientID::from_binary(data.client_id).is_nil());
     RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
     RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port;

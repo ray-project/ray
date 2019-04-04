@@ -3,13 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tune import register_env, run_experiments
+from ray.tune import run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
 from models import register_carla_model
 from scenarios import TOWN2_ONE_CURVE
 
-env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
 env_config.update({
     "verbose": False,
@@ -21,7 +20,6 @@ env_config.update({
     "scenarios": TOWN2_ONE_CURVE,
 })
 
-register_env(env_name, lambda env_config: CarlaEnv(env_config))
 register_carla_model()
 
 ray.init()
@@ -35,7 +33,7 @@ def shape_out(spec):
 run_experiments({
     "carla-dqn": {
         "run": "DQN",
-        "env": "carla_env",
+        "env": CarlaEnv,
         "config": {
             "env_config": env_config,
             "model": {

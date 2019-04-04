@@ -6,20 +6,21 @@ import os
 import pickle
 import numpy as np
 
-from ray.rllib.agents.agent import Agent
+from ray.rllib.agents.agent import Agent, with_common_config
 
 
 class _MockAgent(Agent):
     """Mock agent for use in tests"""
 
     _agent_name = "MockAgent"
-    _default_config = {
+    _default_config = with_common_config({
         "mock_error": False,
         "persistent_error": False,
-        "test_variable": 1
-    }
+        "test_variable": 1,
+        "num_workers": 0,
+    })
 
-    def _init(self):
+    def _init(self, config, env_creator):
         self.info = None
         self.restored = False
 
@@ -45,6 +46,9 @@ class _MockAgent(Agent):
         self.info = info
         self.restored = True
 
+    def _register_if_needed(self, env_object):
+        pass
+
     def set_info(self, info):
         self.info = info
         return info
@@ -59,13 +63,14 @@ class _SigmoidFakeData(_MockAgent):
     This can be helpful for evaluating early stopping algorithms."""
 
     _agent_name = "SigmoidFakeData"
-    _default_config = {
+    _default_config = with_common_config({
         "width": 100,
         "height": 100,
         "offset": 0,
         "iter_time": 10,
         "iter_timesteps": 1,
-    }
+        "num_workers": 0,
+    })
 
     def _train(self):
         i = max(0, self.iteration - self.config["offset"])
@@ -82,13 +87,14 @@ class _SigmoidFakeData(_MockAgent):
 class _ParameterTuningAgent(_MockAgent):
 
     _agent_name = "ParameterTuningAgent"
-    _default_config = {
+    _default_config = with_common_config({
         "reward_amt": 10,
         "dummy_param": 10,
         "dummy_param2": 15,
         "iter_time": 10,
-        "iter_timesteps": 1
-    }
+        "iter_timesteps": 1,
+        "num_workers": 0,
+    })
 
     def _train(self):
         return dict(
@@ -97,3 +103,16 @@ class _ParameterTuningAgent(_MockAgent):
             timesteps_this_iter=self.config["iter_timesteps"],
             time_this_iter_s=self.config["iter_time"],
             info={})
+
+
+def _agent_import_failed(trace):
+    """Returns dummy agent class for if PyTorch etc. is not installed."""
+
+    class _AgentImportFailed(Agent):
+        _agent_name = "AgentImportFailed"
+        _default_config = with_common_config({})
+
+        def _setup(self, config):
+            raise ImportError(trace)
+
+    return _AgentImportFailed

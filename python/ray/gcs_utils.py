@@ -3,31 +3,47 @@ from __future__ import division
 from __future__ import print_function
 
 import flatbuffers
-
 import ray.core.generated.ErrorTableData
 
-from ray.core.generated.GcsTableEntry import GcsTableEntry
+from ray.core.generated.ActorCheckpointIdData import ActorCheckpointIdData
 from ray.core.generated.ClientTableData import ClientTableData
-from ray.core.generated.ErrorTableData import ErrorTableData
-from ray.core.generated.ProfileTableData import ProfileTableData
-from ray.core.generated.HeartbeatTableData import HeartbeatTableData
 from ray.core.generated.DriverTableData import DriverTableData
+from ray.core.generated.ErrorTableData import ErrorTableData
+from ray.core.generated.GcsTableEntry import GcsTableEntry
+from ray.core.generated.HeartbeatBatchTableData import HeartbeatBatchTableData
+from ray.core.generated.HeartbeatTableData import HeartbeatTableData
+from ray.core.generated.Language import Language
 from ray.core.generated.ObjectTableData import ObjectTableData
-from ray.core.generated.ray.protocol.Task import Task
-
+from ray.core.generated.ProfileTableData import ProfileTableData
 from ray.core.generated.TablePrefix import TablePrefix
 from ray.core.generated.TablePubsub import TablePubsub
 
+from ray.core.generated.ray.protocol.Task import Task
+
 __all__ = [
-    "GcsTableEntry", "ClientTableData", "ErrorTableData", "HeartbeatTableData",
-    "DriverTableData", "ProfileTableData", "ObjectTableData", "Task",
-    "TablePrefix", "TablePubsub", "construct_error_message"
+    "ActorCheckpointIdData",
+    "ClientTableData",
+    "DriverTableData",
+    "ErrorTableData",
+    "GcsTableEntry",
+    "HeartbeatBatchTableData",
+    "HeartbeatTableData",
+    "Language",
+    "ObjectTableData",
+    "ProfileTableData",
+    "TablePrefix",
+    "TablePubsub",
+    "Task",
+    "construct_error_message",
 ]
 
 FUNCTION_PREFIX = "RemoteFunction:"
+LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
+REPORTER_CHANNEL = "RAY_REPORTER"
 
 # xray heartbeats
 XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
+XRAY_HEARTBEAT_BATCH_CHANNEL = str(TablePubsub.HEARTBEAT_BATCH).encode("ascii")
 
 # xray driver updates
 XRAY_DRIVER_CHANNEL = str(TablePubsub.DRIVER).encode("ascii")
@@ -55,7 +71,7 @@ def construct_error_message(driver_id, error_type, message, timestamp):
         The serialized object.
     """
     builder = flatbuffers.Builder(0)
-    driver_offset = builder.CreateString(driver_id)
+    driver_offset = builder.CreateString(driver_id.binary())
     error_type_offset = builder.CreateString(error_type)
     message_offset = builder.CreateString(message)
 

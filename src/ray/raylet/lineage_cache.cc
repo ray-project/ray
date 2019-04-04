@@ -1,5 +1,7 @@
 #include "lineage_cache.h"
 
+#include <sstream>
+
 namespace ray {
 
 namespace raylet {
@@ -87,30 +89,72 @@ boost::optional<LineageEntry &> Lineage::GetEntryMutable(const TaskID &task_id) 
   }
 }
 
+void Lineage::RemoveChild(const TaskID &parent_id, const TaskID &child_id) {
+  auto parent_it = children_.find(parent_id);
+  RAY_CHECK(parent_it->second.erase(child_id) == 1);
+  if (parent_it->second.empty()) {
+    children_.erase(parent_it);
+  }
+}
+
+void Lineage::AddChild(const TaskID &parent_id, const TaskID &child_id) {
+  auto inserted = children_[parent_id].insert(child_id);
+  RAY_CHECK(inserted.second);
+}
+
 bool Lineage::SetEntry(const Task &task, GcsStatus status) {
   // Get the status of the current entry at the key.
   auto task_id = task.GetTaskSpecification().TaskId();
-  auto current_entry = GetEntryMutable(task_id);
-  if (current_entry) {
-    if (current_entry->SetStatus(status)) {
+  auto it = entries_.find(task_id);
+  bool updated = false;
+  std::unordered_set<TaskID> old_parents;
+  if (it != entries_.end()) {
+    if (it->second.SetStatus(status)) {
+      // The task's spec may have changed, so record its old dependencies.
+      old_parents = it->second.GetParentTaskIds();
       // SetStatus() would check if the new status is greater,
       // if it succeeds, go ahead to update the task field.
-      current_entry->UpdateTaskData(task);
-      return true;
+      it->second.UpdateTaskData(task);
+      updated = true;
     }
-    return false;
   } else {
     LineageEntry new_entry(task, status);
-    entries_.emplace(std::make_pair(task_id, std::move(new_entry)));
-    return true;
+    it = entries_.emplace(std::make_pair(task_id, std::move(new_entry))).first;
+    updated = true;
   }
+
+  // If the task data was updated, then record which tasks it depends on. Add
+  // all new tasks that it depends on and remove any old tasks that it no
+  // longer depends on.
+  // TODO(swang): Updating the task data every time could be inefficient for
+  // tasks that have lots of dependencies and/or large specs. A flag could be
+  // passed in for tasks whose data has not changed.
+  if (updated) {
+    for (const auto &parent_id : it->second.GetParentTaskIds()) {
+      if (old_parents.count(parent_id) == 0) {
+        AddChild(parent_id, task_id);
+      } else {
+        old_parents.erase(parent_id);
+      }
+    }
+    for (const auto &old_parent_id : old_parents) {
+      RemoveChild(old_parent_id, task_id);
+    }
+  }
+  return updated;
 }
 
 boost::optional<LineageEntry> Lineage::PopEntry(const TaskID &task_id) {
   auto entry = entries_.find(task_id);
   if (entry != entries_.end()) {
     LineageEntry entry = std::move(entries_.at(task_id));
+
+    // Remove the task's dependencies.
+    for (const auto &parent_id : entry.GetParentTaskIds()) {
+      RemoveChild(parent_id, task_id);
+    }
     entries_.erase(task_id);
+
     return entry;
   } else {
     return boost::optional<LineageEntry>();
@@ -133,6 +177,16 @@ flatbuffers::Offset<protocol::ForwardTaskRequest> Lineage::ToFlatbuffer(
   auto request = protocol::CreateForwardTaskRequest(fbb, to_flatbuf(fbb, task_id),
                                                     fbb.CreateVector(uncommitted_tasks));
   return request;
+}
+
+const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) const {
+  static const std::unordered_set<TaskID> empty_children;
+  const auto it = children_.find(task_id);
+  if (it != children_.end()) {
+    return it->second;
+  } else {
+    return empty_children;
+  }
 }
 
 LineageCache::LineageCache(const ClientID &client_id,
@@ -161,7 +215,6 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
   if (lineage_.SetEntry(entry->TaskData(), entry->GetStatus())) {
     subscribe_tasks.insert(task_id);
     for (const auto &parent_id : parent_ids) {
-      children_[parent_id].insert(task_id);
       AddUncommittedLineage(parent_id, uncommitted_lineage, subscribe_tasks);
     }
   }
@@ -169,7 +222,7 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
 
 bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage) {
   auto task_id = task.GetTaskSpecification().TaskId();
-  RAY_LOG(DEBUG) << "add waiting task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Add waiting task " << task_id << " on " << client_id_;
 
   // Merge the uncommitted lineage into the lineage cache. Collect the IDs of
   // tasks that we should subscribe to. These are all of the tasks that were
@@ -195,19 +248,12 @@ bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
     RAY_CHECK(SubscribeTask(task_id));
   }
 
-  // For every task that the waiting task depends on, record the fact that the
-  // waiting task depends on it.
-  auto entry = lineage_.GetEntry(task_id);
-  for (const auto &parent_id : entry->GetParentTaskIds()) {
-    children_[parent_id].insert(task_id);
-  }
-
   return added;
 }
 
 bool LineageCache::AddReadyTask(const Task &task) {
   const TaskID task_id = task.GetTaskSpecification().TaskId();
-  RAY_LOG(DEBUG) << "add ready task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Add ready task " << task_id << " on " << client_id_;
 
   // Set the task to READY.
   if (lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_READY)) {
@@ -222,7 +268,7 @@ bool LineageCache::AddReadyTask(const Task &task) {
 }
 
 bool LineageCache::RemoveWaitingTask(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "remove waiting task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Remove waiting task " << task_id << " on " << client_id_;
   auto entry = lineage_.GetEntryMutable(task_id);
   if (!entry) {
     // The task was already evicted.
@@ -278,8 +324,8 @@ void GetUncommittedLineageHelper(const TaskID &task_id, const Lineage &lineage_f
   }
 }
 
-Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
-                                            const ClientID &node_id) const {
+Lineage LineageCache::GetUncommittedLineageOrDie(const TaskID &task_id,
+                                                 const ClientID &node_id) const {
   Lineage uncommitted_lineage;
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
@@ -312,8 +358,9 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   auto task_data = std::make_shared<protocol::TaskT>();
   auto root = flatbuffers::GetRoot<protocol::Task>(fbb.GetBufferPointer());
   root->UnPackTo(task_data.get());
-  RAY_CHECK_OK(task_storage_.Add(task->TaskData().GetTaskSpecification().DriverId(),
-                                 task_id, task_data, task_callback));
+  RAY_CHECK_OK(
+      task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().DriverId()),
+                        task_id, task_data, task_callback));
 
   // We successfully wrote the task, so mark it as committing.
   // TODO(swang): Use a batched interface and write with all object entries.
@@ -371,28 +418,21 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   }
 
   // Evict the task.
-  RAY_LOG(DEBUG) << "evicting task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Evicting task " << task_id << " on " << client_id_;
   lineage_.PopEntry(task_id);
   committed_tasks_.erase(commit_it);
   // Try to evict the children of the evict task. These are the tasks that have
   // a dependency on the evicted task.
-  auto children_entry = children_.find(task_id);
-  if (children_entry != children_.end()) {
-    // Get the children of the evicted task.
-    auto children = std::move(children_entry->second);
-    children_.erase(children_entry);
-    // Try to evict the children.  If all of the child's parents are evicted,
-    // then the child will be evicted here.
-    for (const auto &child_id : children) {
-      EvictTask(child_id);
-    }
+  const auto children = lineage_.GetChildren(task_id);
+  for (const auto &child_id : children) {
+    EvictTask(child_id);
   }
 
   return;
 }
 
 void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "task committed: " << task_id;
+  RAY_LOG(DEBUG) << "Task committed: " << task_id;
   auto entry = lineage_.GetEntry(task_id);
   if (!entry) {
     // The task has already been evicted due to a previous commit notification.
@@ -406,7 +446,7 @@ void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
   UnsubscribeTask(task_id);
 }
 
-const Task &LineageCache::GetTask(const TaskID &task_id) const {
+const Task &LineageCache::GetTaskOrDie(const TaskID &task_id) const {
   const auto &entries = lineage_.GetEntries();
   auto it = entries.find(task_id);
   RAY_CHECK(it != entries.end());
@@ -419,7 +459,17 @@ bool LineageCache::ContainsTask(const TaskID &task_id) const {
   return it != entries.end();
 }
 
-size_t LineageCache::NumEntries() const { return lineage_.GetEntries().size(); }
+const Lineage &LineageCache::GetLineage() const { return lineage_; }
+
+std::string LineageCache::DebugString() const {
+  std::stringstream result;
+  result << "LineageCache:";
+  result << "\n- committed tasks: " << committed_tasks_.size();
+  result << "\n- child map size: " << lineage_.GetChildrenSize();
+  result << "\n- num subscribed tasks: " << subscribed_tasks_.size();
+  result << "\n- lineage size: " << lineage_.GetEntries().size();
+  return result.str();
+}
 
 }  // namespace raylet
 

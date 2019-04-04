@@ -19,7 +19,7 @@ from ray.rllib.agents.dqn.dqn import DQNAgent
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.agents.ppo.ppo import PPOAgent
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-from ray.rllib.test.test_multi_agent_env import MultiCartpole
+from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
@@ -57,7 +57,6 @@ if __name__ == "__main__":
                 "policy_mapping_fn": policy_mapping_fn,
                 "policies_to_train": ["ppo_policy"],
             },
-            "simple_optimizer": True,
             # disable filters, otherwise we would need to synchronize those
             # as well to the DQN agent
             "observation_filter": "NoFilter",

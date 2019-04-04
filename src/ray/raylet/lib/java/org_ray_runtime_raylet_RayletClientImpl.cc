@@ -3,33 +3,42 @@
 #include <jni.h>
 
 #include "ray/id.h"
-#include "ray/raylet/local_scheduler_client.h"
+#include "ray/raylet/raylet_client.h"
 #include "ray/util/logging.h"
+
+template <typename ID>
+class UniqueIdFromJByteArray {
+ public:
+  const ID &GetId() const { return *id_pointer_; }
+
+  UniqueIdFromJByteArray(JNIEnv *env, jbyteArray bytes) : env_(env), bytes_(bytes) {
+    jbyte *b = reinterpret_cast<jbyte *>(env_->GetByteArrayElements(bytes_, nullptr));
+    id_pointer_ = reinterpret_cast<ID *>(b);
+  }
+
+  ~UniqueIdFromJByteArray() {
+    env_->ReleaseByteArrayElements(bytes_, reinterpret_cast<jbyte *>(id_pointer_), 0);
+  }
+
+ private:
+  JNIEnv *env_;
+  jbyteArray bytes_;
+  ID *id_pointer_;
+};
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-class UniqueIdFromJByteArray {
- private:
-  JNIEnv *_env;
-  jbyteArray _bytes;
-
- public:
-  UniqueID *PID;
-
-  UniqueIdFromJByteArray(JNIEnv *env, jbyteArray wid) {
-    _env = env;
-    _bytes = wid;
-
-    jbyte *b = reinterpret_cast<jbyte *>(_env->GetByteArrayElements(_bytes, nullptr));
-    PID = reinterpret_cast<UniqueID *>(b);
+inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
+  if (!status.ok()) {
+    jclass exception_class = env->FindClass("org/ray/api/exception/RayException");
+    env->ThrowNew(exception_class, status.message().c_str());
+    return true;
+  } else {
+    return false;
   }
-
-  ~UniqueIdFromJByteArray() {
-    _env->ReleaseByteArrayElements(_bytes, reinterpret_cast<jbyte *>(PID), 0);
-  }
-};
+}
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -39,13 +48,13 @@ class UniqueIdFromJByteArray {
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
     JNIEnv *env, jclass, jstring sockName, jbyteArray workerId, jboolean isWorker,
     jbyteArray driverId) {
-  UniqueIdFromJByteArray worker_id(env, workerId);
-  UniqueIdFromJByteArray driver_id(env, driverId);
+  UniqueIdFromJByteArray<ClientID> worker_id(env, workerId);
+  UniqueIdFromJByteArray<DriverID> driver_id(env, driverId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
-  auto client = LocalSchedulerConnection_init(nativeString, *worker_id.PID, isWorker,
-                                              *driver_id.PID, Language::JAVA);
+  auto raylet_client = new RayletClient(nativeString, worker_id.GetId(), isWorker,
+                                        driver_id.GetId(), Language::JAVA);
   env->ReleaseStringUTFChars(sockName, nativeString);
-  return reinterpret_cast<jlong>(client);
+  return reinterpret_cast<jlong>(raylet_client);
 }
 
 /*
@@ -56,17 +65,18 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(
     JNIEnv *env, jclass, jlong client, jbyteArray cursorId, jobject taskBuff, jint pos,
     jint taskSize) {
-  auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
 
   std::vector<ObjectID> execution_dependencies;
   if (cursorId != nullptr) {
-    UniqueIdFromJByteArray cursor_id(env, cursorId);
-    execution_dependencies.push_back(*cursor_id.PID);
+    UniqueIdFromJByteArray<ObjectID> cursor_id(env, cursorId);
+    execution_dependencies.push_back(cursor_id.GetId());
   }
 
   auto data = reinterpret_cast<char *>(env->GetDirectBufferAddress(taskBuff)) + pos;
   ray::raylet::TaskSpecification task_spec(std::string(data, taskSize));
-  local_scheduler_submit_raylet(conn, execution_dependencies, task_spec);
+  auto status = raylet_client->SubmitTask(execution_dependencies, task_spec);
+  ThrowRayExceptionIfNotOK(env, status);
 }
 
 /*
@@ -76,10 +86,13 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
  */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeGetTask(
     JNIEnv *env, jclass, jlong client) {
-  auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
 
-  // TODO: handle actor failure later
-  ray::raylet::TaskSpecification *spec = local_scheduler_get_task_raylet(conn);
+  std::unique_ptr<ray::raylet::TaskSpecification> spec;
+  auto status = raylet_client->GetTask(&spec);
+  if (ThrowRayExceptionIfNotOK(env, status)) {
+    return nullptr;
+  }
 
   // We serialize the task specification using flatbuffers and then parse the
   // resulting string. This awkwardness is due to the fact that the Java
@@ -100,7 +113,6 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
       result, 0, task_message->size(),
       reinterpret_cast<jbyte *>(const_cast<char *>(task_message->data())));
 
-  delete spec;
   return result;
 }
 
@@ -110,68 +122,80 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(
-    JNIEnv *, jclass, jlong client) {
-  auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
-  local_scheduler_disconnect_client(conn);
-  LocalSchedulerConnection_free(conn);
+    JNIEnv *env, jclass, jlong client) {
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  ThrowRayExceptionIfNotOK(env, raylet_client->Disconnect());
+  delete raylet_client;
 }
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeReconstructObjects
- * Signature: (J[[BZ)V
+ * Method:    nativeFetchOrReconstruct
+ * Signature: (J[[BZ[B)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeReconstructObjects(
-    JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jboolean fetchOnly) {
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
+    JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jboolean fetchOnly,
+    jbyteArray currentTaskId) {
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
     jbyteArray object_id_bytes =
         static_cast<jbyteArray>(env->GetObjectArrayElement(objectIds, i));
-    UniqueIdFromJByteArray object_id(env, object_id_bytes);
-    object_ids.push_back(*object_id.PID);
+    UniqueIdFromJByteArray<ObjectID> object_id(env, object_id_bytes);
+    object_ids.push_back(object_id.GetId());
     env->DeleteLocalRef(object_id_bytes);
   }
-  auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
-  local_scheduler_reconstruct_objects(conn, object_ids, fetchOnly);
+  UniqueIdFromJByteArray<TaskID> current_task_id(env, currentTaskId);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  auto status =
+      raylet_client->FetchOrReconstruct(object_ids, fetchOnly, current_task_id.GetId());
+  ThrowRayExceptionIfNotOK(env, status);
 }
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeNotifyUnblocked
- * Signature: (J)V
+ * Signature: (J[B)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(
-    JNIEnv *, jclass, jlong client) {
-  auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
-  local_scheduler_notify_unblocked(conn);
+    JNIEnv *env, jclass, jlong client, jbyteArray currentTaskId) {
+  UniqueIdFromJByteArray<TaskID> current_task_id(env, currentTaskId);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  auto status = raylet_client->NotifyUnblocked(current_task_id.GetId());
+  ThrowRayExceptionIfNotOK(env, status);
 }
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeWaitObject
- * Signature: (J[[BIIZ)[Z
+ * Signature: (J[[BIIZ[B)[Z
  */
 JNIEXPORT jbooleanArray JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
     JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jint numReturns,
-    jint timeoutMillis, jboolean isWaitLocal) {
+    jint timeoutMillis, jboolean isWaitLocal, jbyteArray currentTaskId) {
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
     jbyteArray object_id_bytes =
         static_cast<jbyteArray>(env->GetObjectArrayElement(objectIds, i));
-    UniqueIdFromJByteArray object_id(env, object_id_bytes);
-    object_ids.push_back(*object_id.PID);
+    UniqueIdFromJByteArray<ObjectID> object_id(env, object_id_bytes);
+    object_ids.push_back(object_id.GetId());
     env->DeleteLocalRef(object_id_bytes);
   }
+  UniqueIdFromJByteArray<TaskID> current_task_id(env, currentTaskId);
 
-  auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
 
   // Invoke wait.
-  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result = local_scheduler_wait(
-      conn, object_ids, numReturns, timeoutMillis, static_cast<bool>(isWaitLocal));
+  WaitResultPair result;
+  auto status = raylet_client->Wait(object_ids, numReturns, timeoutMillis,
+                                    static_cast<bool>(isWaitLocal),
+                                    current_task_id.GetId(), &result);
+  if (ThrowRayExceptionIfNotOK(env, status)) {
+    return nullptr;
+  }
 
   // Convert result to java object.
   jboolean put_value = true;
@@ -206,15 +230,12 @@ JNIEXPORT jbyteArray JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(
     JNIEnv *env, jclass, jbyteArray driverId, jbyteArray parentTaskId,
     jint parent_task_counter) {
-  UniqueIdFromJByteArray object_id1(env, driverId);
-  ray::DriverID driver_id = *object_id1.PID;
+  UniqueIdFromJByteArray<DriverID> driver_id(env, driverId);
+  UniqueIdFromJByteArray<TaskID> parent_task_id(env, parentTaskId);
 
-  UniqueIdFromJByteArray object_id2(env, parentTaskId);
-  ray::TaskID parent_task_id = *object_id2.PID;
-
-  ray::TaskID task_id =
-      ray::GenerateTaskId(driver_id, parent_task_id, parent_task_counter);
-  jbyteArray result = env->NewByteArray(sizeof(ray::TaskID));
+  TaskID task_id =
+      ray::GenerateTaskId(driver_id.GetId(), parent_task_id.GetId(), parent_task_counter);
+  jbyteArray result = env->NewByteArray(sizeof(TaskID));
   if (nullptr == result) {
     return nullptr;
   }
@@ -236,12 +257,51 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
   for (int i = 0; i < len; i++) {
     jbyteArray object_id_bytes =
         static_cast<jbyteArray>(env->GetObjectArrayElement(objectIds, i));
-    UniqueIdFromJByteArray object_id(env, object_id_bytes);
-    object_ids.push_back(*object_id.PID);
+    UniqueIdFromJByteArray<ObjectID> object_id(env, object_id_bytes);
+    object_ids.push_back(object_id.GetId());
     env->DeleteLocalRef(object_id_bytes);
   }
-  auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
-  local_scheduler_free_objects_in_object_store(conn, object_ids, localOnly);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  auto status = raylet_client->FreeObjects(object_ids, localOnly);
+  ThrowRayExceptionIfNotOK(env, status);
+}
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativePrepareCheckpoint
+ * Signature: (J[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_raylet_RayletClientImpl_nativePrepareCheckpoint(JNIEnv *env, jclass,
+                                                                     jlong client,
+                                                                     jbyteArray actorId) {
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  UniqueIdFromJByteArray<ActorID> actor_id(env, actorId);
+  ActorCheckpointID checkpoint_id;
+  auto status = raylet_client->PrepareActorCheckpoint(actor_id.GetId(), checkpoint_id);
+  if (ThrowRayExceptionIfNotOK(env, status)) {
+    return nullptr;
+  }
+  jbyteArray result = env->NewByteArray(sizeof(ActorCheckpointID));
+  env->SetByteArrayRegion(result, 0, sizeof(ActorCheckpointID),
+                          reinterpret_cast<jbyte *>(&checkpoint_id));
+  return result;
+}
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeNotifyActorResumedFromCheckpoint
+ * Signature: (J[B[B)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyActorResumedFromCheckpoint(
+    JNIEnv *env, jclass, jlong client, jbyteArray actorId, jbyteArray checkpointId) {
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  UniqueIdFromJByteArray<ActorID> actor_id(env, actorId);
+  UniqueIdFromJByteArray<ActorCheckpointID> checkpoint_id(env, checkpointId);
+  auto status = raylet_client->NotifyActorResumedFromCheckpoint(actor_id.GetId(),
+                                                                checkpoint_id.GetId());
+  ThrowRayExceptionIfNotOK(env, status);
 }
 
 #ifdef __cplusplus

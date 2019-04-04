@@ -1,6 +1,7 @@
 #ifndef RAY_RAYLET_LINEAGE_CACHE_H
 #define RAY_RAYLET_LINEAGE_CACHE_H
 
+#include <gtest/gtest_prod.h>
 #include <boost/optional.hpp>
 
 // clang-format off
@@ -176,9 +177,28 @@ class Lineage {
   flatbuffers::Offset<protocol::ForwardTaskRequest> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb, const TaskID &entry_id) const;
 
+  /// Return the IDs of tasks in the lineage that are dependent on the given
+  /// task.
+  ///
+  /// \param The ID of the task whose children to get.
+  /// \return The list of IDs for tasks that are in the lineage and dependent
+  /// on the given task.
+  const std::unordered_set<TaskID> &GetChildren(const TaskID &task_id) const;
+
+  /// Return the size of the children_ map. This is used for debugging purposes
+  /// only.
+  size_t GetChildrenSize() const { return children_.size(); }
+
  private:
   /// The lineage entries.
   std::unordered_map<const TaskID, LineageEntry> entries_;
+  /// A mapping from each task in the lineage to its children.
+  std::unordered_map<TaskID, std::unordered_set<TaskID>> children_;
+
+  /// Record the fact that the child task depends on the parent task.
+  void AddChild(const TaskID &parent_id, const TaskID &child_id);
+  /// Erase the fact that the child task depends on the parent task.
+  void RemoveChild(const TaskID &parent_id, const TaskID &child_id);
 };
 
 /// \class LineageCache
@@ -243,11 +263,13 @@ class LineageCache {
   /// The uncommitted lineage consists of all tasks in the given task's lineage
   /// that have not been committed in the GCS, as far as we know.
   ///
-  /// \param task_id The ID of the task to get the uncommitted lineage for.
+  /// \param task_id The ID of the task to get the uncommitted lineage for. It is
+  ///                a fatal error if the task is not found.
   /// \param node_id The ID of the receiving node.
   /// \return The uncommitted, unforwarded lineage of the task. The returned lineage
   /// includes the entry for the requested entry_id.
-  Lineage GetUncommittedLineage(const TaskID &task_id, const ClientID &node_id) const;
+  Lineage GetUncommittedLineageOrDie(const TaskID &task_id,
+                                     const ClientID &node_id) const;
 
   /// Handle the commit of a task entry in the GCS. This attempts to evict the
   /// task if possible.
@@ -259,7 +281,7 @@ class LineageCache {
   ///
   /// \param task_id The ID of the task to get.
   /// \return A const reference to the task data.
-  const Task &GetTask(const TaskID &task_id) const;
+  const Task &GetTaskOrDie(const TaskID &task_id) const;
 
   /// Get whether the lineage cache contains the task.
   ///
@@ -267,12 +289,18 @@ class LineageCache {
   /// \return Whether the task is in the lineage cache.
   bool ContainsTask(const TaskID &task_id) const;
 
-  /// Get the number of entries in the lineage cache.
+  /// Get all lineage in the lineage cache.
   ///
-  /// \return The number of entries in the lineage cache.
-  size_t NumEntries() const;
+  /// \return A const reference to the lineage.
+  const Lineage &GetLineage() const;
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
 
  private:
+  FRIEND_TEST(LineageCacheTest, BarReturnsZeroOnNull);
   /// Flush a task that is in UNCOMMITTED_READY state.
   void FlushTask(const TaskID &task_id);
   /// Evict a single task. This should only be called if we are sure that the
@@ -300,8 +328,6 @@ class LineageCache {
   gcs::PubsubInterface<TaskID> &task_pubsub_;
   /// The set of tasks that have been committed but not evicted.
   std::unordered_set<TaskID> committed_tasks_;
-  /// A mapping from each task in the lineage cache to its children.
-  std::unordered_map<TaskID, std::unordered_set<TaskID>> children_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;

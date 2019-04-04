@@ -1,39 +1,39 @@
-sudo: required
-
 language: generic
 
 matrix:
   include:
     - os: linux
-      dist: trusty
-      env: PYTHON=2.7
+      env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: linux
-      dist: trusty
-      env: PYTHON=3.5
+      env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=2.7
+      env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=3.5
+      env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: linux
-      dist: trusty
       env:
         - JDK='Oracle JDK 8'
-        - PYTHON=3.5
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - RAY_INSTALL_JAVA=1
       install:
-        - ./.travis/install-dependencies.sh
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
+        - ./ci/suppress_output ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-      - ./java/test.sh
+        - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
+        - ./java/test.sh
 
     - os: linux
-      dist: trusty
-      env: LINT=1
+      env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         # In case we ever want to use a different version of clang-format:
         #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
@@ -42,10 +42,10 @@ matrix:
         - sudo apt-get install -qq clang-format-3.8
       install: []
       script:
-        - .travis/check-git-clang-format-output.sh
+        - ./ci/travis/check-git-clang-format-output.sh
         # Try generating Sphinx documentation. To do this, we need to install
         # Ray first.
-        - ./.travis/install-dependencies.sh
+        - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
         - pip install -q -r requirements-doc.txt
@@ -54,74 +54,105 @@ matrix:
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
         - flake8 --exclude=python/ray/core/generated/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
-        - .travis/format.sh --all
+        - ./ci/travis/format.sh --all
+        # Make sure that the README is formatted properly.
+        - cd python
+        - python setup.py check --restructuredtext --strict --metadata
+        - cd ..
+        # Run Bazel linter Buildifier.
+        - wget https://dl.google.com/go/go1.11.linux-amd64.tar.gz
+        - tar -xf go1.11.linux-amd64.tar.gz
+        - mkdir $HOME/go_dir
+        - export GOROOT=`pwd`/go
+        - export GOPATH="$HOME/go_dir"
+        - export PATH="$GOROOT/bin:$GOPATH/bin:$PATH"
+        - go get github.com/bazelbuild/buildtools/buildifier
+        - ./ci/travis/bazel-format.sh
 
     - os: linux
-      dist: trusty
-      env: VALGRIND=1 PYTHON=2.7
+      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       install:
-        - ./.travis/install-dependencies.sh
+        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+
+        - ./ci/suppress_output ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./.travis/install-ray.sh
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
 
       script:
-        - cd build
-        - bash ../src/ray/test/run_object_manager_valgrind.sh
-        - cd ..
+        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+
+        - bash src/ray/test/run_object_manager_valgrind.sh
+
+        - export RAY_PLASMA_STORE_VALGRIND=1
+        # - export RAY_RAYLET_VALGRIND=1
+        # - export RAY_RAYLET_MONITOR_VALGRIND=1
+        # - export RAY_REDIS_SERVER_VALGRIND=1
+
+        # # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
+        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 python/ray/experimental/test/async_test.py
+        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_mini.py
+        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_array.py
+        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_multi_node_2.py
+        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_node_manager.py
 
     # Build Linux wheels.
     - os: linux
-      dist: trusty
-      env: LINUX_WHEELS=1
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
       install:
-        - ./.travis/install-dependencies.sh
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+
         # This command should be kept in sync with ray/python/README-building-wheels.md.
-        - docker run --rm -w /ray -v `pwd`:/ray -ti quay.io/xhochy/arrow_manylinux1_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+        - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
       script:
-        - ./.travis/test-wheels.sh
+        - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
+
+        - ./ci/travis/test-wheels.sh
 
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
       install:
-        - ./.travis/install-dependencies.sh
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
+
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
         - ./python/build-wheel-macos.sh
       script:
-        - ./.travis/test-wheels.sh
+        - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
 
-    # Test GCS integration
-    - os: linux
-      dist: trusty
-      env:
-        - PYTHON=3.5
-        - RAY_USE_NEW_GCS=on
-
+        - ./ci/travis/test-wheels.sh
 
 install:
-  - ./.travis/install-dependencies.sh
+  - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+  - if [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+
+  - ./ci/suppress_output ./ci/travis/install-bazel.sh
+  - ./ci/suppress_output ./ci/travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
-  - ./.travis/install-ray.sh
-  - ./.travis/install-cython-examples.sh
+  - ./ci/suppress_output ./ci/travis/install-ray.sh
+  - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
-  - cd build
-  - bash ../src/ray/test/run_gcs_tests.sh
+  - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
+  # stats test.
+  - ./ci/suppress_output bazel build //:stats_test -c opt
+  - ./bazel-bin/stats_test
+
   # Raylet tests.
-  - bash ../src/ray/test/run_object_manager_tests.sh
-  - ./src/ray/raylet/task_test
-  - ./src/ray/raylet/worker_pool_test
-  - ./src/ray/raylet/lineage_cache_test
-  - ./src/ray/raylet/task_dependency_manager_test
-  - ./src/ray/raylet/reconstruction_policy_test
-  - ./src/ray/raylet/client_connection_test
-  - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
-  - ./src/ray/util/signal_test
-
-  - cd ..
+  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
+  - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc //:all
+  # Shutdown bazel to release the memory held by bazel.
+  - bazel shutdown
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
@@ -129,46 +160,23 @@ script:
   # class definitions: The main module of tests that are run
   # with pytest have the same name as the test file -- and this
   # module is only found if the test directory is in the PYTHONPATH.
-  - export PYTHONPATH="$PYTHONPATH:./test/"
-
-  - python -m pytest -v python/ray/test/test_global_state.py
-  - python -m pytest -v python/ray/test/test_queue.py
-  - python -m pytest -v python/ray/test/test_ray_init.py
-  - python -m pytest -v test/xray_test.py
-
-  - python -m pytest -v test/runtest.py
-  - python -m pytest -v test/array_test.py
-  - python -m pytest -v test/actor_test.py
-  - python -m pytest -v test/autoscaler_test.py
-  - python -m pytest -v test/tensorflow_test.py
-  - python -m pytest -v test/failure_test.py
-  - python -m pytest -v test/microbenchmarks.py
-  - python -m pytest -v test/stress_tests.py
-  - python -m pytest -v test/component_failures_test.py
-  - python -m pytest -v test/multi_node_test.py
-  - python -m pytest -v test/multi_node_test_2.py
-  - python -m pytest -v test/recursion_test.py
-  - python -m pytest -v test/monitor_test.py
-  - python -m pytest -v test/cython_test.py
-  - python -m pytest -v test/credis_test.py
+  # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
   # ray tune tests
-  - python python/ray/tune/test/dependency_test.py
-  - python -m pytest -v python/ray/tune/test/trial_runner_test.py
-  - python -m pytest -v python/ray/tune/test/trial_scheduler_test.py
-  - python -m pytest -v python/ray/tune/test/experiment_test.py
-  - python -m pytest -v python/ray/tune/test/tune_server_test.py
-  - python -m pytest -v python/ray/tune/test/ray_trial_executor_test.py
-  - python -m pytest -v python/ray/tune/test/automl_searcher_test.py
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/tune/tests/test_dependency.py; fi
+  # `cluster_tests.py` runs on Jenkins, not Travis.
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then python -m pytest --durations=10 --timeout=300 --ignore=python/ray/tune/tests/test_cluster.py --ignore=python/ray/tune/tests/test_actor_reuse.py python/ray/tune/tests; fi
 
   # ray rllib tests
-  - python -m pytest -v python/ray/rllib/test/test_catalog.py
-  - python -m pytest -v python/ray/rllib/test/test_filters.py
-  - python -m pytest -v python/ray/rllib/test/test_optimizers.py
-  - python -m pytest -v python/ray/rllib/test/test_evaluators.py
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_catalog.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_filters.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_optimizers.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_evaluators.py; fi
 
-  # ray temp file tests
-  - python -m pytest -v test/tempfile_test.py
+  # ray tests
+  # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 python/ray/tests; fi
 
 deploy:
   - provider: s3
