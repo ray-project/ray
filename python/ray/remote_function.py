@@ -114,6 +114,10 @@ class RemoteFunction(object):
         if kwargs != {}:
             args = ray.signature.extend_args(self._function_signature, args,
                                              kwargs)
+        else:
+            if len(args) > len(self._function_signature.arg_names):
+                raise Exception("Too many arguments were passed to the function '{}'"
+                                .format(self._function_signature.function_name))
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
