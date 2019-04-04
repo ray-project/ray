@@ -14,6 +14,7 @@ import traceback
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
+from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.util import warn_if_slow
@@ -69,6 +70,7 @@ class TrialRunner(object):
                  launch_web_server=False,
                  local_checkpoint_dir=None,
                  remote_checkpoint_dir=None,
+                 sync_function=None,
                  resume=None,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
@@ -120,18 +122,12 @@ class TrialRunner(object):
         self._stop_queue = []
         self._local_checkpoint_dir = local_checkpoint_dir
         self._remote_checkpoint_dir = remote_checkpoint_dir
-        self._syncer = Syncer(local_checkpoint_dir, remote_checkpoint_dir)
+        self._syncer = get_syncer(
+            local_checkpoint_dir, remote_checkpoint_dir, sync_function)
 
         self._resumed = False
-        if resume == "prompt":
-            if self.checkpoint_exists(self._local_checkpoint_dir):
-                resume = input("Found local checkpoint directory. Resume?")
-            elif self.checkpoint_exists(self._remote_checkpoint_dir):
-                resume = input("Found remote checkpoint directory. Resume?")
-            else:
-                resume = False
 
-        if resume:
+        if self._validate_resume(resume_type=resume):
             try:
                 self._resume()
                 logger.info("Resuming trial.")
@@ -139,13 +135,46 @@ class TrialRunner(object):
             except Exception as e:
                 logger.exception(
                     "Runner restore failed. Restarting experiment.")
-
         else:
             logger.info("Starting a new experiment.")
 
         self._start_time = time.time()
         self._session_str = datetime.fromtimestamp(
             self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
+
+    def _validate_resume(self, resume_type):
+        """
+        Args:
+            resume_type: One of "REMOTE", "LOCAL", "PROMPT".
+        """
+        assert self._local_checkpoint_dir or self._remote_checkpoint_dir
+        if not resume_type:
+            return False
+        if resume_type in ["LOCAL", "PROMPT"]:
+            if not self.checkpoint_exists(self._local_checkpoint_dir):
+                raise ValueError(
+                    "Called resume when no checkpoint exists "
+                    "in local directory.")
+            elif resume_type == "PROMPT":
+                if confirm("Resume from local directory?"):
+                    return True
+
+        if resume_type in ["REMOTE", "PROMPT"]:
+            if resume_type == "PROMPT" and not confirm(
+                    "Try downloading from remote directory?"):
+                return False
+            if not self._remote_checkpoint_dir:
+                raise ValueError(
+                    "Called resume from remote without remote directory.")
+
+            # Try syncing down the upload directory.
+            self._syncer.sync_down_if_needed()
+
+            if not self.checkpoint_exists(self._local_checkpoint_dir):
+                raise ValueError(
+                    "Called resume when no checkpoint exists "
+                    "in remote or local directory.")
+        return True
 
     @classmethod
     def checkpoint_exists(cls, directory):
@@ -169,25 +198,27 @@ class TrialRunner(object):
         """
         if not self._metadata_checkpoint_dir:
             return
-        metadata_checkpoint_dir = self._metadata_checkpoint_dir
-        if not os.path.exists(metadata_checkpoint_dir):
-            os.makedirs(metadata_checkpoint_dir)
+
+        # TODO(rliaw): This may fail
+        if not os.path.exists(self.metadata_checkpoint_dir):
+            os.makedirs(self.metadata_checkpoint_dir)
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
             "runner_data": self.__getstate__(),
             "timestamp": time.time()
         }
-        tmp_file_name = os.path.join(metadata_checkpoint_dir,
+        tmp_file_name = os.path.join(self.metadata_checkpoint_dir,
                                      ".tmp_checkpoint")
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2)
 
         os.rename(
             tmp_file_name,
-            os.path.join(metadata_checkpoint_dir,
+            os.path.join(self.metadata_checkpoint_dir,
                          TrialRunner.CKPT_FILE_TMPL.format(self._session_str)))
-        return metadata_checkpoint_dir
+        self._syncer.sync_up_if_needed()
+        return self.metadata_checkpoint_dir
 
     def _resume(self):
         """Resumes all checkpointed trials from previous run.
@@ -196,24 +227,13 @@ class TrialRunner(object):
         all ongoing trials.
         """
 
-        assert self._local_checkpoint_dir or self._remote_checkpoint_dir
-
-        if not self.checkpoint_exists(self._local_checkpoint_dir):
-            if self._remote_checkpoint_dir is None:
-                raise ValueError(self._remote_checkpoint_dir)
-            self._syncer.sync_down()
-            if not self.checkpoint_exists(self._local_checkpoint_dir):
-                raise ValueError(self._local_checkpoint_dir)
-
-        checkpoint_dir = self._local_checkpoint_dir
-
-        newest_ckpt_path = _find_newest_ckpt(checkpoint_dir)
+        newest_ckpt_path = _find_newest_ckpt(self._local_checkpoint_dir)
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f)
 
         logger.warning("".join([
             "Attempting to resume experiment from {}. ".format(
-                checkpoint_dir), "This feature is experimental, "
+                self._local_checkpoint_dir), "This feature is experimental, "
             "and may not work with all search algorithms. ",
             "This will ignore any new changes to the specification."
         ]))

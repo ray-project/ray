@@ -7,61 +7,63 @@ import tempfile
 import os
 
 
-### START TODO
 S3_PREFIX = "s3://"
 GS_PREFIX = "gs://"
+ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX)
 
 
-def get_syncer(local_dir, remote_dir, *args, **kwargs):
+def get_syncer(local_dir, remote_dir, sync_function=None):
+    """This returns a Syncer depending on given args."""
+    if sync_function:
+        if isinstance(sync_function, types.FunctionType) or isinstance(sync_function, tune_function):
+            return BaseSyncer(local_dir, remote_dir, sync_function)
+        elif isinstance(sync_function, str):
+            return CommandSyncer(local_dir, remote_dir, sync_function)
+        else:
+            raise ValueError("Sync function {} must be string or function".format(
+                sync_function))
+
     if remote_dir.startswith(S3_PREFIX):
+        if not distutils.spawn.find_executable("aws"):
+            raise TuneError(
+                "Upload uri starting with '{}' requires awscli tool"
+                " to be installed".format(S3_PREFIX))
         return CommandSyncer(local_dir, remote_dir, "aws s3 sync {source} {target}")
-    elif remote_dir.startswith(GS_PREFIX)
+    elif remote_dir.startswith(GS_PREFIX):
+        if not distutils.spawn.find_executable("gsutil"):
+            raise TuneError(
+                "Upload uri starting with '{}' requires gsutil tool"
+                " to be installed".format(GS_PREFIX))
         return CommandSyncer(local_dir, remote_dir, "gsutil rsync -r {source} {target}")
-    # TODO: Find out where this switch logic occurs!
-    if isinstance(sync_fn, types.FunctionType) or isinstance(
-            sync_fn, tune_function):
-        self.sync_fn = sync_fn
-    elif isinstance(sync_fn, str):
-        self.sync_cmd_tmpl = sync_fn
     else:
-        raise ValueError(type(sync_fn))
+        raise TuneError("Upload uri must start with one of: {}"
+                        "".format(ALLOWED_REMOTE_PREFIXES))
 
 
-
-def validate_sync_function(sync_function):
-    if sync_function is None:
-        return
-    elif isinstance(sync_function, str):
-        assert "{source}" in sync_function, (
-            "Sync template missing '{source}'.")
-        assert "{target}" in sync_function, (
-            "Sync template missing '{target}'.")
-    elif not (isinstance(sync_function, types.FunctionType)
-              or isinstance(sync_function, tune_function)):
-        raise ValueError("Sync function {} must be string or function".format(
-            sync_function))
-
-
-### END TODO
+def validate_sync_string(sync_string):
+    if "{source}" not in sync_string:
+        raise ValueError("Sync template missing '{source}'.")
+    if "{target}" not in sync_string:
+        raise ValueError("Sync template missing '{target}'.")
 
 
 class BaseSyncer(object):
-    def __init__(self, local_dir, remote_dir, sync_fn=None):
+    def __init__(self, local_dir, remote_dir, sync_function=None):
         """
         Arguments:
             local_dir (str): Directory to sync. Uniquely identifies the syncer.
             remote_dir (str): Remote directory to sync with.
-            sync_fn (func): Function for syncing the local_dir to
+            sync_function (func): Function for syncing the local_dir to
                 remote_dir.
         """
         self._local_dir = os.path.join(local_dir, '')
         self._remote_dir = remote_dir or self._local_dir  # TODO(rliaw) - double check
-        self.last_sync_time = 0
-        if sync_fn:  # TODO(rliaw): Check on this
-            self.sync_fn = sync_fn
+        self.last_sync_up_time = 0
+        self.last_sync_down_time = 0
+        if sync_function:  # TODO(rliaw): Check on this
+            self.sync_function = sync_function
 
     def sync(self, source, target):
-        self.last_sync_time = time.time()
 
         if not (source and target):
             logger.debug("Source or target is empty, skipping log sync for {}".format(
@@ -69,20 +71,26 @@ class BaseSyncer(object):
             return
 
         try:
-            self.sync_fn(source, target)
+            self.sync_function(source, target)
             return True
         except Exception:
             logger.exception("Sync function failed.")
 
-    def sync_if_needed(self):
-        if time.time() - self.last_sync_time > 300:
+    def sync_up_if_needed(self):
+        if time.time() - self.last_sync_up_time > 300:
+            self.sync_up()
+
+    def sync_down_if_needed(self):
+        if time.time() - self.last_sync_down_time > 300:  # Maybe change in future
             self.sync_down()
 
     def sync_down(self, *args, **kwargs):
         self.sync(self.remote_path, self.local_dir, *args, **kwargs)
+        self.last_sync_down_time = time.time()
 
     def sync_up(self, *args, **kwargs):
         self.sync(self.local_dir, self.remote_path, *args, **kwargs)
+        self.last_sync_up_time = time.time()
 
     def close(self):
         pass
@@ -109,6 +117,7 @@ class CommandSyncer(BaseSyncer):
                 for syncer to run and needs to include replacement fields
                 '{local_dir}' and '{remote_dir}'.
         """
+        validate_sync_string(sync_cmd_tmpl)
         super(CommandSyncer, self).__init(local_dir, remote_dir)
         self.sync_cmd_tmpl = sync_cmd_tmpl
         self.logfile = tempfile.NamedTemporaryFile(
@@ -116,7 +125,7 @@ class CommandSyncer(BaseSyncer):
 
         self.sync_process = None
 
-    def sync_fn(self, source, target):
+    def sync_function(self, source, target):
         self.last_sync_time = time.time()
         if self.sync_process:
             self.sync_process.poll()
