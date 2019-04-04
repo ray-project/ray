@@ -106,9 +106,11 @@ def run(args, parser):
 
 class DefaultMapping(collections.defaultdict):
     """default_factory now takes as an argument the missing key."""
+
     def __missing__(self, key):
         self[key] = value = self.default_factory(key)
         return value
+
 
 def rollout(agent, env_name, num_steps, out=None, no_render=True):
     if hasattr(agent, "local_evaluator"):
@@ -123,7 +125,10 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         policy_map = agent.local_evaluator.policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
-        action_init = {p: m.action_space.sample() for p, m in policy_map.items()}
+        action_init = {
+            p: m.action_space.sample()
+            for p, m in policy_map.items()
+        }
     else:
         env = gym.make(env_name)
         multiagent = False
@@ -137,10 +142,10 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
             rollout = []
         obs = env.reset()
         multi_obs = obs if multiagent else {0: obs}
-        agent_states = DefaultMapping(
-            lambda agent_id: state_init[mapping_cache[agent_id]])
-        prev_actions = DefaultMapping(
-            lambda agent_id: action_init[mapping_cache[agent_id]])
+        agent_states = DefaultMapping(lambda agent_id: state_init[
+            mapping_cache[agent_id]])
+        prev_actions = DefaultMapping(lambda agent_id: action_init[
+            mapping_cache[agent_id]])
         prev_rewards = collections.defaultdict(lambda: 0.)
         done = False
         reward_total = 0.0
