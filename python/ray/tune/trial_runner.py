@@ -122,8 +122,8 @@ class TrialRunner(object):
         self._stop_queue = []
         self._local_checkpoint_dir = local_checkpoint_dir
         self._remote_checkpoint_dir = remote_checkpoint_dir
-        self._syncer = get_syncer(
-            local_checkpoint_dir, remote_checkpoint_dir, sync_function)
+        self._syncer = get_syncer(local_checkpoint_dir, remote_checkpoint_dir,
+                                  sync_function)
 
         self._resumed = False
 
@@ -152,9 +152,8 @@ class TrialRunner(object):
             return False
         if resume_type in ["LOCAL", "PROMPT"]:
             if not self.checkpoint_exists(self._local_checkpoint_dir):
-                raise ValueError(
-                    "Called resume when no checkpoint exists "
-                    "in local directory.")
+                raise ValueError("Called resume when no checkpoint exists "
+                                 "in local directory.")
             elif resume_type == "PROMPT":
                 if confirm("Resume from local directory?"):
                     return True
@@ -171,9 +170,8 @@ class TrialRunner(object):
             self._syncer.sync_down_if_needed()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
-                raise ValueError(
-                    "Called resume when no checkpoint exists "
-                    "in remote or local directory.")
+                raise ValueError("Called resume when no checkpoint exists "
+                                 "in remote or local directory.")
         return True
 
     @classmethod

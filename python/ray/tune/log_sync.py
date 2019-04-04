@@ -27,7 +27,6 @@ _log_sync_warned = False
 # Map from (local_dir, remote_dir) -> syncer
 _syncers = {}
 
-
 ### START TODO
 
 
@@ -43,13 +42,13 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
 
     return _syncers[key]
 
+
 ### END TODO
 
 
 def wait_for_log_sync():
     for syncer in _syncers.values():
         syncer.wait()
-
 
 
 class LogSyncer(CommandSyncer):
@@ -86,8 +85,9 @@ class LogSyncer(CommandSyncer):
                 self.local_dir))
             return
         if self.worker_ip == self.local_ip:
-            logger.debug("Worker ip is local ip, skipping log sync for {}".format(
-                self.local_dir))
+            logger.debug(
+                "Worker ip is local ip, skipping log sync for {}".format(
+                    self.local_dir))
             return
         if not distutils.spawn.find_executable("rsync"):
             logger.error("Log sync requires rsync to be installed.")
@@ -101,8 +101,8 @@ class LogSyncer(CommandSyncer):
             return
 
         return ("""rsync -savz -e "ssh -i {ssh_key} -o ConnectTimeout=120s """
-                """-o StrictHostKeyChecking=no" {{source}} {{target}}""").format(
-                    ssh_key=quote(ssh_key))
+                """-o StrictHostKeyChecking=no" {{source}} {{target}}"""
+                ).format(ssh_key=quote(ssh_key))
 
     @property
     def remote_path(self):
@@ -114,4 +114,3 @@ class LogSyncer(CommandSyncer):
                 _log_sync_warned = True
             return
         return '{}@{}:{}/'.format(ssh_user, self.worker_ip, self.remote_dir)
-

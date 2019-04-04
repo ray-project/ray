@@ -6,7 +6,6 @@ import types
 import tempfile
 import os
 
-
 S3_PREFIX = "s3://"
 GS_PREFIX = "gs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX)
@@ -15,26 +14,30 @@ ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX)
 def get_syncer(local_dir, remote_dir, sync_function=None):
     """This returns a Syncer depending on given args."""
     if sync_function:
-        if isinstance(sync_function, types.FunctionType) or isinstance(sync_function, tune_function):
+        if isinstance(sync_function, types.FunctionType) or isinstance(
+                sync_function, tune_function):
             return BaseSyncer(local_dir, remote_dir, sync_function)
         elif isinstance(sync_function, str):
             return CommandSyncer(local_dir, remote_dir, sync_function)
         else:
-            raise ValueError("Sync function {} must be string or function".format(
-                sync_function))
+            raise ValueError(
+                "Sync function {} must be string or function".format(
+                    sync_function))
 
     if remote_dir.startswith(S3_PREFIX):
         if not distutils.spawn.find_executable("aws"):
             raise TuneError(
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX))
-        return CommandSyncer(local_dir, remote_dir, "aws s3 sync {source} {target}")
+        return CommandSyncer(local_dir, remote_dir,
+                             "aws s3 sync {source} {target}")
     elif remote_dir.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):
             raise TuneError(
                 "Upload uri starting with '{}' requires gsutil tool"
                 " to be installed".format(GS_PREFIX))
-        return CommandSyncer(local_dir, remote_dir, "gsutil rsync -r {source} {target}")
+        return CommandSyncer(local_dir, remote_dir,
+                             "gsutil rsync -r {source} {target}")
     else:
         raise TuneError("Upload uri must start with one of: {}"
                         "".format(ALLOWED_REMOTE_PREFIXES))
@@ -66,8 +69,9 @@ class BaseSyncer(object):
     def sync(self, source, target):
 
         if not (source and target):
-            logger.debug("Source or target is empty, skipping log sync for {}".format(
-                self.local_dir))
+            logger.debug(
+                "Source or target is empty, skipping log sync for {}".format(
+                    self.local_dir))
             return
 
         try:
@@ -81,7 +85,8 @@ class BaseSyncer(object):
             self.sync_up()
 
     def sync_down_if_needed(self):
-        if time.time() - self.last_sync_down_time > 300:  # Maybe change in future
+        if time.time(
+        ) - self.last_sync_down_time > 300:  # Maybe change in future
             self.sync_down()
 
     def sync_down(self, *args, **kwargs):
@@ -138,8 +143,7 @@ class CommandSyncer(BaseSyncer):
 
         sync_template = self.get_remote_sync_template()
         final_cmd = sync_template.format(
-            source=quote(source),
-            target=quote(target))
+            source=quote(source), target=quote(target))
         logger.debug("Running sync: {}".format(final_cmd))
         self.sync_process = subprocess.Popen(
             final_cmd, shell=True, stdout=self.logfile)
