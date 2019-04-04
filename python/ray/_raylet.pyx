@@ -251,14 +251,14 @@ cdef class RayletClient:
                     DriverID driver_id=DriverID.nil()):
         cdef Task task
 
-        args_for_local_scheduler = []
+        args_for_raylet = []
         for arg in args:
             if isinstance(arg, ObjectID):
-                args_for_local_scheduler.append(arg)
+                args_for_raylet.append(arg)
             elif check_simple_value(arg):
-                args_for_local_scheduler.append(arg)
+                args_for_raylet.append(arg)
             else:
-                args_for_local_scheduler.append(put_function(arg))
+                args_for_raylet.append(put_function(arg))
 
         if execution_dependencies is None:
             execution_dependencies = []
@@ -284,7 +284,7 @@ cdef class RayletClient:
         task = Task(
             driver_id,
             function_descriptor_list,
-            args_for_local_scheduler,
+            args_for_raylet,
             num_return_vals,
             current_task_id,
             task_index,
