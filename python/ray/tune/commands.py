@@ -129,8 +129,8 @@ def list_trials(experiment_path,
                 sort=None,
                 output=None,
                 filter_op=None,
-                info_keys=DEFAULT_EXPERIMENT_INFO_KEYS,
-                result_keys=DEFAULT_RESULT_KEYS):
+                info_keys=None,
+                result_keys=None):
     """Lists trials in the directory subtree starting at the given path.
 
     Args:
@@ -151,6 +151,10 @@ def list_trials(experiment_path,
     checkpoint_dicts = [flatten_dict(g) for g in checkpoint_dicts]
     checkpoints_df = pd.DataFrame(checkpoint_dicts)
 
+    if not info_keys:
+        info_keys = DEFAULT_EXPERIMENT_INFO_KEYS
+    if not result_keys:
+        result_keys = DEFAULT_RESULT_KEYS
     result_keys = ["last_result:{}".format(k) for k in result_keys]
     col_keys = [
         k for k in list(info_keys) + result_keys if k in checkpoints_df
@@ -210,7 +214,7 @@ def list_experiments(project_path,
                      sort=None,
                      output=None,
                      filter_op=None,
-                     info_keys=DEFAULT_PROJECT_INFO_KEYS):
+                     info_keys=None):
     """Lists experiments in the directory subtree.
 
     Args:
@@ -265,6 +269,8 @@ def list_experiments(project_path,
         sys.exit(0)
 
     info_df = pd.DataFrame(experiment_data_collection)
+    if not info_keys:
+        info_keys = DEFAULT_PROJECT_INFO_KEYS
     col_keys = [k for k in list(info_keys) if k in info_df]
     if not col_keys:
         print("None of keys {} in experiment data!".format(info_keys))
