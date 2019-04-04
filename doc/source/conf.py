@@ -74,6 +74,7 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx_click.ext',
 ]
@@ -222,7 +223,7 @@ html_sidebars = {'**': ['index.html']}
 #html_split_index = False
 
 # If true, links to the reST sources are added to the pages.
-html_show_sourcelink = True
+#html_show_sourcelink = True
 
 # If true, "Created using Sphinx" is shown in the HTML footer. Default is True.
 #html_show_sphinx = True
