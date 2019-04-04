@@ -20,8 +20,10 @@ matrix:
         - PYTHON=3.5 PYTHONWARNINGS=ignore
         #- PATH=/c/Python35:/c/Python35/Scripts:$PATH
       before_install:  # choco install python --version 3.5.4
+        - echo $PATH
         - choco install miniconda3 --params="'/AddToPath:1'"
-        - refreshenv
+        - echo $PATH
+        #- refreshenv
         - conda create -n myenv python
         - python --version ; pip --version
 
