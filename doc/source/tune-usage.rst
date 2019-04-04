@@ -482,7 +482,7 @@ Here are a few examples of command line calls.
     +------------------+-----------------------+------------+
     Dropped columns: ['status', 'last_update_time']
     Please increase your terminal size to view remaining columns.
-    Output saved at: [EXPERIMENT_DIR]/note.csv
+    Output saved at: note.csv
 
     $ tune list-trials [EXPERIMENT_DIR] --filter "trial_id == 7b99a28a"
 
@@ -509,7 +509,7 @@ Here are a few examples of command line calls.
     +----------------------+----------------+------------------+---------------------+
     Dropped columns: ['error_trials', 'last_updated']
     Please increase your terminal size to view remaining columns.
-    Output saved at: [PROJECT_DIR]/note.csv
+    Output saved at: note.csv
 
     $ tune list-experiments [PROJECT_DIR] --filter "total_trials <= 1" --sort name
 
