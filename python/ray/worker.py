@@ -367,18 +367,17 @@ class Worker(object):
             # should return an error code to the caller instead of printing a
             # message.
             logger.info(
-                "The object with ID {} already exists in the object store.".
-                format(object_id))
+                "The object with ID {} already exists in the object store.",
+                object_id)
         except TypeError:
             # This error can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need these extra
             # fallbacks here to start from the beginning. Hopefully the object
             # could have a `__reduce__` method.
             register_custom_serializer(type(value), use_pickle=True)
-            warning_message = (
-                "WARNING: Serializing the class {} failed, "
-                "so are are falling back to cloudpickle.".format(type(value)))
-            logger.warning(warning_message)
+            logger.warning(
+                "WARNING: Serializing the class {} failed, so "
+                "are falling back to cloudpickle.", type(value))
             self.store_and_register(object_id, value)
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
