@@ -141,7 +141,7 @@ CLUSTER_CONFIG_SCHEMA = {
 class LoadMetrics(object):
     """Container for cluster load metrics.
 
-    Metrics here are updated from local scheduler heartbeats. The autoscaler
+    Metrics here are updated from raylet heartbeats. The autoscaler
     queries these metrics to determine when to scale up, and which nodes
     can be removed.
     """

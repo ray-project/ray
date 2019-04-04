@@ -315,7 +315,7 @@ def check_components_alive(cluster, component_type, check_component_alive):
     }], indirect=True)
 def test_raylet_failed(ray_start_cluster):
     cluster = ray_start_cluster
-    # Kill all local schedulers on worker nodes.
+    # Kill all raylets on worker nodes.
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_RAYLET)
 
     # The plasma stores should still be alive on the worker nodes.
