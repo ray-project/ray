@@ -19,7 +19,7 @@ matrix:
       python: "3.5"
       env:
         - PYTHON=3.5 PYTHONWARNINGS=ignore
-        - PATH="/c/tools/miniconda3/:/c/tools/miniconda3/scripts:$PATH"
+        - PATH="/c/tools/miniconda3/:/c/tools/miniconda3/Scripts:/c/tools/miniconda3/Tools:$PATH"
       before_install:
         #- choco upgrade chocolatey
         # - echo $PATH
@@ -29,7 +29,8 @@ matrix:
         #- refreshenv  # is useless on Travis CI
         - ls -l /c/tools
         - ls -l /c/tools/miniconda3
-        - ls -l /c/tools/miniconda3/Scripts
+        - ls -l /c/tools/miniconda3/tcripts
+        - ls -l /c/tools/miniconda3/scripts
         #- /c/tools/miniconda3/Scripts/activate.bat /c/tools/miniconda3
         # - echo $PATH
         #- conda create -n myenv python
