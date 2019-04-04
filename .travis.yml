@@ -166,6 +166,8 @@ install:
   # Raylet tests.
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
   - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc //:all
+  # Shutdown bazel to release the memory held by bazel.
+  - bazel shutdown
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
