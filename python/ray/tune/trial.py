@@ -254,7 +254,7 @@ class Trial(object):
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  keep_checkpoints_num=None,
-                 checkpoint_score_attr=None,
+                 checkpoint_score_attr="",
                  export_formats=None,
                  restore_path=None,
                  upload_dir=None,
