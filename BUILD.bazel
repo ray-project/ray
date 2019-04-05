@@ -91,6 +91,7 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":stats_lib",
+        ":plasma_client",
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
@@ -100,7 +101,6 @@ cc_library(
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
-        "@plasma//:plasma_client",
     ],
 )
 
@@ -215,8 +215,8 @@ cc_library(
         ":object_manager_fbs",
         ":ray_common",
         ":ray_util",
+        ":plasma_client",
         "@boost//:asio",
-        "@plasma//:plasma_client",
     ],
 )
 
@@ -264,8 +264,8 @@ cc_library(
     ],
     deps = [
         ":sha256",
+        ":plasma_client",
         "@com_github_google_glog//:glog",
-        "@plasma//:plasma_client",
     ],
 )
 
@@ -393,13 +393,6 @@ flatbuffer_cc_library(
 )
 
 flatbuffer_cc_library(
-    name = "common_fbs",
-    srcs = ["@plasma//:cpp/src/plasma/format/common.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/common/",
-)
-
-flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
@@ -413,6 +406,16 @@ flatbuffer_cc_library(
     srcs = ["src/ray/object_manager/format/object_manager.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "src/ray/object_manager/format/",
+)
+
+pyx_library(
+    name = "_plasma",
+    srcs = glob([
+        "python/ray/_plasma.pyx",
+        "python/ray/includes/*.pxd",
+        "python/ray/includes/*.pxi",
+    ]),
+    deps = ["//:plasma_lib"],
 )
 
 pyx_library(
@@ -452,7 +455,7 @@ cc_binary(
     linkstatic = 1,
     deps = [
         "//:raylet_lib",
-        "@plasma//:plasma_client",
+        ":plasma_client",
     ],
 )
 
@@ -606,6 +609,178 @@ cc_binary(
     ],
 )
 
+java_library(
+    name = "org_apache_arrow_arrow_plasma",
+    srcs = glob(["java/plasma/src/main/java/**/*.java"]),
+    data = [":plasma_client_java"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@org_slf4j_slf4j_api//jar",
+    ],
+)
+
+java_binary(
+    name = "org_apache_arrow_arrow_plasma_test",
+    srcs = ["src/plasma/java/plasma/src/test/java/org/apache/arrow/plasma/PlasmaClientTest.java"],
+    main_class = "org.apache.arrow.plasma.PlasmaClientTest",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":org_apache_arrow_arrow_plasma",
+        "@junit_junit//jar",
+    ],
+)
+
+cc_library(
+    name = "plasma_client",
+    srcs = [
+        "src/plasma/client.cc",
+        "src/plasma/common.cc",
+        "src/plasma/fling.cc",
+        "src/plasma/io.cc",
+        "src/plasma/malloc.cc",
+        "src/plasma/plasma.cc",
+        "src/plasma/protocol.cc",
+    ],
+    hdrs = [
+        "src/plasma/client.h",
+        "src/plasma/common.h",
+        "src/plasma/common_generated.h",
+        "src/plasma/compat.h",
+        "src/plasma/external_store.h",
+        "src/plasma/fling.h",
+        "src/plasma/io.h",
+        "src/plasma/malloc.h",
+        "src/plasma/plasma.h",
+        "src/plasma/plasma_generated.h",
+        "src/plasma/protocol.h",
+    ],
+    visibility = ["//visibility:public"],
+    includes = [
+        "src",
+    ],
+    deps = [
+        "@plasma//:arrow",
+        ":common_fbs",
+        ":plasma_fbs",
+    ],
+)
+
+cc_binary(
+    name = "libplasma_java.so",
+    srcs = [
+        "src/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.cc",
+        "src/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.h",
+        ":jni.h",
+        ":jni_md.h",
+    ],
+    includes = [
+        ".",
+        "cpp/src",
+    ],
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [":plasma_client"],
+)
+
+genrule(
+    name = "copy_jni_h",
+    srcs = ["@bazel_tools//tools/jdk:jni_header"],
+    outs = ["jni.h"],
+    cmd = "cp -f $< $@",
+)
+
+genrule(
+    name = "copy_jni_md_h",
+    srcs = select({
+        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
+        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    }),
+    outs = ["jni_md.h"],
+    cmd = "cp -f $< $@",
+)
+
+genrule(
+    name = "plasma-jni-darwin-compat",
+    srcs = [":libplasma_java.so"],
+    outs = ["libplasma_java.dylib"],
+    cmd = "cp $< $@",
+    output_to_bindir = 1,
+)
+
+filegroup(
+    name = "plasma_client_java",
+    srcs = select({
+        "@bazel_tools//src/conditions:darwin": [":libplasma_java.dylib"],
+        "//conditions:default": [":libplasma_java.so"],
+    }),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "plasma_lib",
+    srcs = [
+        "src/plasma/dlmalloc.cc",
+        "src/plasma/events.cc",
+        "src/plasma/eviction_policy.cc",
+        "src/plasma/external_store.cc",
+        "src/plasma/plasma_allocator.cc",
+        "src/plasma/thirdparty/ae/ae.c",
+    ],
+    hdrs = [
+        "src/plasma/events.h",
+        "src/plasma/eviction_policy.h",
+        "src/plasma/external_store.h",
+        "src/plasma/plasma_allocator.h",
+        "src/plasma/store.h",
+        "src/plasma/thirdparty/ae/ae.h",
+        "src/plasma/thirdparty/ae/ae_epoll.c",
+        "src/plasma/thirdparty/ae/ae_evport.c",
+        "src/plasma/thirdparty/ae/ae_kqueue.c",
+        "src/plasma/thirdparty/ae/ae_select.c",
+        "src/plasma/thirdparty/ae/config.h",
+        "src/plasma/thirdparty/ae/zmalloc.h",
+        "src/plasma/thirdparty/dlmalloc.c",
+    ],
+    includes = [
+        "src",
+    ],
+    deps = [":plasma_client"],
+)
+
+cc_binary(
+    name = "plasma_store_server",
+    srcs = [
+        "src/plasma/store.cc",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [":plasma_lib"],
+)
+
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]
+
+flatbuffer_cc_library(
+    name = "common_fbs",
+    srcs = ["src/plasma/format/common.fbs"],
+    flatc_args = FLATC_ARGS,
+    out_prefix = "src/plasma/",
+)
+
+
+flatbuffer_cc_library(
+    name = "plasma_fbs",
+    srcs = ["src/plasma/format/plasma.fbs"],
+    flatc_args = FLATC_ARGS,
+    includes = ["src/plasma/format/common.fbs"],
+    out_prefix = "src/plasma/",
+)
+
+exports_files(["src/plasma/format/common.fbs"])
+
 genrule(
     name = "ray_pkg",
     srcs = [
@@ -618,7 +793,7 @@ genrule(
         "//:libray_redis_module.so",
         "//:raylet",
         "//:raylet_monitor",
-        "@plasma//:plasma_store_server",
+        ":plasma_store_server",
     ],
     outs = ["ray_pkg.out"],
     cmd = """
@@ -631,12 +806,12 @@ genrule(
         mkdir -p $$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/ &&
         cp -f $(locations //:libray_redis_module.so) $$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/ &&
         cp -f $(location //:raylet_monitor) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
-        cp -f $(location @plasma//:plasma_store_server) $$WORK_DIR/python/ray/core/src/plasma/ &&
+        cp -f $(location :plasma_store_server) $$WORK_DIR/python/ray/core/src/plasma/ &&
         cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
         for f in $(locations //:python_gcs_fbs); do cp -f $$f $$WORK_DIR/python/ray/core/generated/; done &&
         mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
-        for f in $(locations //:python_node_manager_fbs); do 
-            cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/; 
+        for f in $(locations //:python_node_manager_fbs); do
+            cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/;
         done &&
         echo $$WORK_DIR > $@
     """,
