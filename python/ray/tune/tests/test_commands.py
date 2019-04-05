@@ -82,11 +82,15 @@ def test_ls(start_ray, tmpdir):
         commands.list_trials(
             experiment_path,
             info_keys=("status", ),
-            result_keys=("training_iteration", ))
+            result_keys=(
+                "episode_reward_mean",
+                "training_iteration",
+            ))
     lines = output.captured
     assert sum("TERMINATED" in line for line in lines) == num_samples
-    assert "status" in lines[1] and "training_iteration" in lines[1]
-    assert lines[1].count('|') == 3
+    columns = ["status", "episode_reward_mean", "training_iteration"]
+    assert all(col in lines[1] for col in columns)
+    assert lines[1].count('|') == 4
 
     with Capturing() as output:
         commands.list_trials(
