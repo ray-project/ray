@@ -9,6 +9,8 @@ windows-steps: &windows-steps
     - python -m pip install --upgrade pip
 
 matrix:
+  allow_failures:
+    - os: windows
   include:
     - os: linux
       env: PYTHON=2.7 PYTHONWARNINGS=ignore
