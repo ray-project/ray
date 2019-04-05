@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <thread>
 
+#include "ray/ray_config.h"
+#include "ray/stats/stats.h"
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
@@ -130,6 +132,8 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
     state.starting_worker_processes.emplace(
         std::make_pair(pid, num_workers_per_process_));
+    stats::CurrentWorker().Record(pid, {{stats::LanguageKey, EnumNameLanguage(language)},
+                                        {stats::WorkerPidKey, std::to_string(pid)}});
     return;
   }
 }
@@ -232,6 +236,11 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
+
+  stats::CurrentWorker().Record(
+      0, {{stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
+          {stats::WorkerPidKey, std::to_string(worker->Pid())}});
+
   return RemoveWorker(state.idle, worker);
 }
 

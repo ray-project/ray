@@ -2,22 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pytest
 import ray
 
 test_values = [1, 1.0, "test", b"test", (0, 1), [0, 1], {0: 1}]
 
 
-@pytest.fixture
-def ray_start():
-    # Start the Ray processes.
-    ray.init(num_cpus=1)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def test_basic_task_api(ray_start):
+def test_basic_task_api(ray_start_regular):
 
     # Test a simple function.
 
@@ -50,7 +40,7 @@ def test_basic_task_api(ray_start):
     # Test keyword arguments.
 
 
-def test_put_api(ray_start):
+def test_put_api(ray_start_regular):
 
     for obj in test_values:
         assert ray.get(ray.put(obj)) == obj
@@ -61,7 +51,7 @@ def test_put_api(ray_start):
         assert ray.get(ray.put(obj)) == obj
 
 
-def test_actor_api(ray_start):
+def test_actor_api(ray_start_regular):
     @ray.remote
     class Foo(object):
         def __init__(self, val):

@@ -1,15 +1,11 @@
-sudo: required
-
 language: generic
 
 matrix:
   include:
     - os: linux
-      dist: trusty
       env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: linux
-      dist: trusty
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: osx
@@ -21,26 +17,22 @@ matrix:
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: linux
-      dist: trusty
       env:
         - JDK='Oracle JDK 8'
         - PYTHON=3.5 PYTHONWARNINGS=ignore
-        - RAY_USE_CMAKE=1
         - RAY_INSTALL_JAVA=1
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
-
-        - ./ci/travis/install-dependencies.sh
+        - ./ci/suppress_output ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/travis/install-ray.sh
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
-
         - ./java/test.sh
 
     - os: linux
-      dist: trusty
       env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         # In case we ever want to use a different version of clang-format:
@@ -78,7 +70,6 @@ matrix:
         - ./ci/travis/bazel-format.sh
 
     - os: linux
-      dist: trusty
       env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
@@ -105,16 +96,14 @@ matrix:
         # - export RAY_REDIS_SERVER_VALGRIND=1
 
         # # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py
-        - python -m pytest --durations=5 python/ray/tests/test_mini.py
-        - python -m pytest --durations=5 python/ray/tests/test_array.py
-        - python -m pytest --durations=5 python/ray/tests/test_multi_node_2.py
-        - python -m pytest --durations=5 python/ray/tests/test_node_manager.py
-
+        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 python/ray/experimental/test/async_test.py
+        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_mini.py
+        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_array.py
+        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_multi_node_2.py
+        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_node_manager.py
 
     # Build Linux wheels.
     - os: linux
-      dist: trusty
       env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
@@ -144,16 +133,6 @@ matrix:
 
         - ./ci/travis/test-wheels.sh
 
-    # Test GCS integration
-    - os: linux
-      dist: trusty
-      env:
-        - PYTHON=3.5
-        - RAY_USE_NEW_GCS=on
-        - PYTHONWARNINGS=ignore
-        - RAY_USE_CMAKE=1
-
-
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
   - if [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
@@ -165,9 +144,15 @@ install:
   - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
   - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
+  # stats test.
+  - ./ci/suppress_output bazel build //:stats_test -c opt
+  - ./bazel-bin/stats_test
+
   # Raylet tests.
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
-  - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc ... -c opt
+  - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc //:all
+  # Shutdown bazel to release the memory held by bazel.
+  - bazel shutdown
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
@@ -180,18 +165,18 @@ script:
   # ray tune tests
   - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/tune/tests/test_dependency.py; fi
   # `cluster_tests.py` runs on Jenkins, not Travis.
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then python -m pytest --durations=10 --ignore=python/ray/tune/tests/test_cluster.py --ignore=python/ray/tune/tests/test_actor_reuse.py python/ray/tune/tests; fi
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then python -m pytest --durations=10 --timeout=300 --ignore=python/ray/tune/tests/test_cluster.py --ignore=python/ray/tune/tests/test_actor_reuse.py python/ray/tune/tests; fi
 
   # ray rllib tests
-  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh tests/test_catalog.py; fi
-  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh tests/test_filters.py; fi
-  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh tests/test_optimizers.py; fi
-  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python/ray/rllib/tests/run_silent.sh tests/test_evaluators.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_catalog.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_filters.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_optimizers.py; fi
+  - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_evaluators.py; fi
 
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest --durations=5 python/ray/experimental/test/async_test.py; fi
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest --durations=10 python/ray/tests; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 python/ray/tests; fi
 
 deploy:
   - provider: s3

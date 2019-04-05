@@ -559,13 +559,13 @@ TEST_F(TestGcsWithAsio, TestDeleteKey) {
 void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
                const TaskTableDataT &data) {
   ASSERT_EQ(data.scheduling_state, SchedulingState::SCHEDULED);
-  ASSERT_EQ(data.scheduler_id, kRandomId);
+  ASSERT_EQ(data.raylet_id, kRandomId);
 }
 
 void TaskLookupHelper(gcs::AsyncGcsClient *client, const TaskID &id,
                       const TaskTableDataT &data, bool do_stop) {
   ASSERT_EQ(data.scheduling_state, SchedulingState::SCHEDULED);
-  ASSERT_EQ(data.scheduler_id, kRandomId);
+  ASSERT_EQ(data.raylet_id, kRandomId);
   if (do_stop) {
     test->Stop();
   }
@@ -690,7 +690,12 @@ void TestSetSubscribeAll(const JobID &job_id,
       for (size_t j = 0; j < managers.size(); j++) {
         auto data = std::make_shared<ObjectTableDataT>();
         data->manager = managers[j];
-        RAY_CHECK_OK(client->object_table().Remove(job_id, object_ids[i], data, nullptr));
+        for (int k = 0; k < 3; k++) {
+          // Remove the same entry several times.
+          // Expect no notification if the entry doesn't exist.
+          RAY_CHECK_OK(
+              client->object_table().Remove(job_id, object_ids[i], data, nullptr));
+        }
       }
     }
   };

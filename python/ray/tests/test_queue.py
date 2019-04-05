@@ -9,16 +9,7 @@ import ray
 from ray.experimental.queue import Queue, Empty, Full
 
 
-@pytest.fixture
-def ray_start():
-    # Start the Ray process.
-    ray.init(num_cpus=1)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def test_queue(ray_start):
+def test_queue(ray_start_regular):
     @ray.remote
     def get_async(queue, block, timeout, sleep):
         time.sleep(sleep)

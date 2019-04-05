@@ -17,6 +17,7 @@ from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
 from ray.rllib.agents.ars import utils
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import FilterManager
 
@@ -87,7 +88,7 @@ class Worker(object):
 
     @property
     def filters(self):
-        return {"default": self.policy.get_filter()}
+        return {DEFAULT_POLICY_ID: self.policy.get_filter()}
 
     def sync_filters(self, new_filters):
         for k in self.filters:
@@ -163,32 +164,31 @@ class ARSAgent(Agent):
     _default_config = DEFAULT_CONFIG
 
     @override(Agent)
-    def _init(self):
-        env = self.env_creator(self.config["env_config"])
+    def _init(self, config, env_creator):
+        env = env_creator(config["env_config"])
         from ray.rllib import models
         preprocessor = models.ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
             self.sess, env.action_space, env.observation_space, preprocessor,
-            self.config["observation_filter"], self.config["model"])
-        self.optimizer = optimizers.SGD(self.policy,
-                                        self.config["sgd_stepsize"])
+            config["observation_filter"], config["model"])
+        self.optimizer = optimizers.SGD(self.policy, config["sgd_stepsize"])
 
-        self.rollouts_used = self.config["rollouts_used"]
-        self.num_rollouts = self.config["num_rollouts"]
-        self.report_length = self.config["report_length"]
+        self.rollouts_used = config["rollouts_used"]
+        self.num_rollouts = config["num_rollouts"]
+        self.report_length = config["report_length"]
 
         # Create the shared noise table.
         logger.info("Creating shared noise table.")
-        noise_id = create_shared_noise.remote(self.config["noise_size"])
+        noise_id = create_shared_noise.remote(config["noise_size"])
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
         logger.info("Creating actors.")
         self.workers = [
-            Worker.remote(self.config, self.env_creator, noise_id)
-            for _ in range(self.config["num_workers"])
+            Worker.remote(config, env_creator, noise_id)
+            for _ in range(config["num_workers"])
         ]
 
         self.episodes_so_far = 0
@@ -271,7 +271,7 @@ class ARSAgent(Agent):
 
         # Now sync the filters
         FilterManager.synchronize({
-            "default": self.policy.get_filter()
+            DEFAULT_POLICY_ID: self.policy.get_filter()
         }, self.workers)
 
         info = {
@@ -335,5 +335,5 @@ class ARSAgent(Agent):
         self.policy.set_weights(state["weights"])
         self.policy.set_filter(state["filter"])
         FilterManager.synchronize({
-            "default": self.policy.get_filter()
+            DEFAULT_POLICY_ID: self.policy.get_filter()
         }, self.workers)

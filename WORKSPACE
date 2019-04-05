@@ -1,4 +1,17 @@
+workspace(name = "com_github_ray_project_ray")
+
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
+load("//java:repo.bzl", "java_repositories")
+
+java_repositories()
+
+git_repository(
+    name = "com_github_checkstyle_java",
+    commit = "85f37871ca03b9d3fee63c69c8107f167e24e77b",
+    remote = "https://github.com/ruifangChen/checkstyle_java",
+)
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 git_repository(
     name = "com_github_nelhage_rules_boost",
@@ -28,8 +41,9 @@ git_repository(
     tag = "v2.2.2",
 )
 
-git_repository(
+new_git_repository(
     name = "com_github_google_glog",
+    build_file = "@//bazel:BUILD.glog",
     commit = "5c576f78c49b28d89b23fbb1fc80f54c879ec02e",
     remote = "https://github.com/google/glog",
 )
@@ -37,8 +51,8 @@ git_repository(
 new_git_repository(
     name = "plasma",
     build_file = "@//bazel:BUILD.plasma",
-    commit = "6a27c660ea700febf6fd73b2e851ab96e9315134",
-    remote = "https://github.com/ray-project/arrow",
+    commit = "d00497b38be84fd77c40cbf77f3422f2a81c44f9",
+    remote = "https://github.com/apache/arrow",
 )
 
 new_git_repository(
@@ -51,3 +65,31 @@ new_git_repository(
 load("@//bazel:python_configure.bzl", "python_configure")
 
 python_configure(name = "local_config_python")
+
+http_archive(
+    name = "io_opencensus_cpp",
+    strip_prefix = "opencensus-cpp-0.3.0",
+    urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/v0.3.0.zip"],
+)
+
+# OpenCensus depends on Abseil so we have to explicitly pull it in.
+# This is how diamond dependencies are prevented.
+git_repository(
+    name = "com_google_absl",
+    commit = "88a152ae747c3c42dc9167d46c590929b048d436",
+    remote = "https://github.com/abseil/abseil-cpp.git",
+)
+
+# OpenCensus depends on jupp0r/prometheus-cpp
+http_archive(
+    name = "com_github_jupp0r_prometheus_cpp",
+    strip_prefix = "prometheus-cpp-master",
+
+    # TODO(qwang): We should use the repository of `jupp0r` here when this PR
+    # `https://github.com/jupp0r/prometheus-cpp/pull/225` getting merged.
+    urls = ["https://github.com/jovany-wang/prometheus-cpp/archive/master.zip"],
+)
+
+load("@com_github_jupp0r_prometheus_cpp//:repositories.bzl", "prometheus_cpp_repositories")
+
+prometheus_cpp_repositories()
