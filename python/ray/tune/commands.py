@@ -194,16 +194,14 @@ def list_trials(experiment_path,
     print_format_output(checkpoints_df)
 
     if output:
-        experiment_path = os.path.expanduser(experiment_path)
-        output_path = os.path.join(experiment_path, output)
         file_extension = os.path.splitext(output)[1].lower()
         if file_extension in (".p", ".pkl", ".pickle"):
-            checkpoints_df.to_pickle(output_path)
+            checkpoints_df.to_pickle(output)
         elif file_extension == ".csv":
-            checkpoints_df.to_csv(output_path, index=False)
+            checkpoints_df.to_csv(output, index=False)
         else:
             raise ValueError("Unsupported filetype: {}".format(output))
-        print("Output saved at:", output_path)
+        print("Output saved at:", output)
 
 
 def list_experiments(project_path,
@@ -295,15 +293,14 @@ def list_experiments(project_path,
     print_format_output(info_df)
 
     if output:
-        output_path = os.path.join(base, output)
         file_extension = os.path.splitext(output)[1].lower()
         if file_extension in (".p", ".pkl", ".pickle"):
-            info_df.to_pickle(output_path)
+            info_df.to_pickle(output)
         elif file_extension == ".csv":
-            info_df.to_csv(output_path, index=False)
+            info_df.to_csv(output, index=False)
         else:
             raise ValueError("Unsupported filetype: {}".format(output))
-        print("Output saved at:", output_path)
+        print("Output saved at:", output)
 
 
 def add_note(path, filename="note.txt"):
