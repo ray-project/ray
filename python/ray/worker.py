@@ -553,9 +553,10 @@ class Worker(object):
 
         Args:
             function_descriptor_list: The function descriptor list to execute.
-            args: The arguments to pass into the function. Arguments can be
-                object IDs or they can be values. If they are values, they must
-                be serializable objects.
+            func_args: The arguments to pass into the function. Arguments can
+                be object IDs or they can be values. If they are values, they
+                must be serializable objects.
+            func_kwargs: The keyword arguments to pass into the function.
             actor_id: The ID of the actor that this task is for.
             actor_counter: The counter of the actor task.
             actor_creation_id: The ID of the actor to create, if this is an
