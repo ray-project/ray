@@ -41,7 +41,8 @@ def get_learner_stats(grad_info):
 
 
 @DeveloperAPI
-def collect_metrics(local_evaluator=None, remote_evaluators=[],
+def collect_metrics(local_evaluator=None,
+                    remote_evaluators=[],
                     timeout_seconds=180):
     """Gathers episode metrics from PolicyEvaluator instances."""
 

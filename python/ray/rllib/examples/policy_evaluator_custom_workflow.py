@@ -66,8 +66,8 @@ def training_workflow(config, reporter):
     env = gym.make("CartPole-v0")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = [
-        PolicyEvaluator.as_remote().remote(
-            lambda c: gym.make("CartPole-v0"), CustomPolicy)
+        PolicyEvaluator.as_remote().remote(lambda c: gym.make("CartPole-v0"),
+                                           CustomPolicy)
         for _ in range(config["num_workers"])
     ]
 
@@ -78,7 +78,8 @@ def training_workflow(config, reporter):
             w.set_weights.remote(weights)
 
         # Gather a batch of samples
-        T1 = SampleBatch.concat_samples(ray.get([w.sample.remote() for w in workers]))
+        T1 = SampleBatch.concat_samples(
+            ray.get([w.sample.remote() for w in workers]))
 
         # Update the remote policy replicas and gather another batch of samples
         new_value = policy.w * 2.0
@@ -86,7 +87,8 @@ def training_workflow(config, reporter):
             w.for_policy.remote(lambda p: p.update_some_value(new_value))
 
         # Gather another batch of samples
-        T2 = SampleBatch.concat_samples(ray.get([w.sample.remote() for w in workers]))
+        T2 = SampleBatch.concat_samples(
+            ray.get([w.sample.remote() for w in workers]))
 
         # Improve the policy using the T1 batch
         policy.learn_on_batch(T1)
