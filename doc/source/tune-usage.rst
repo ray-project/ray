@@ -465,11 +465,11 @@ Tune CLI (Experimental)
 
 Here are a few examples of command line calls.
 
-- ``tune list-trials``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``.
+- ``tune list-trials``: List tabular information about trials within an experiment. Empty columns will be dropped by default. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--output`` flag to write the trial information to a specific file (CSV or Pickle).
 
 .. code-block:: bash
 
-    $ tune list-trials [EXPERIMENT_DIR]
+    $ tune list-trials [EXPERIMENT_DIR] --output note.csv
 
     +------------------+-----------------------+------------+
     | trainable_name   | experiment_tag        | trial_id   |
@@ -481,6 +481,8 @@ Here are a few examples of command line calls.
     | MyTrainableClass | 4_height=90,width=69  | ae4e02fb   |
     +------------------+-----------------------+------------+
     Dropped columns: ['status', 'last_update_time']
+    Please increase your terminal size to view remaining columns.
+    Output saved at: note.csv
 
     $ tune list-trials [EXPERIMENT_DIR] --filter "trial_id == 7b99a28a"
 
@@ -490,12 +492,13 @@ Here are a few examples of command line calls.
     | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
     +------------------+-----------------------+------------+
     Dropped columns: ['status', 'last_update_time']
+    Please increase your terminal size to view remaining columns.
 
-- ``tune list-experiments``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``.
+- ``tune list-experiments``: List tabular information about experiments within a project. Empty columns will be dropped by default. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--output`` flag to write the trial information to a specific file (CSV or Pickle).
 
 .. code-block:: bash
 
-    $ tune list-experiments [PROJECT_DIR]
+    $ tune list-experiments [PROJECT_DIR] --output note.csv
 
     +----------------------+----------------+------------------+---------------------+
     | name                 |   total_trials |   running_trials |   terminated_trials |
@@ -505,6 +508,8 @@ Here are a few examples of command line calls.
     | hyperband_test       |              1 |                0 |                   1 |
     +----------------------+----------------+------------------+---------------------+
     Dropped columns: ['error_trials', 'last_updated']
+    Please increase your terminal size to view remaining columns.
+    Output saved at: note.csv
 
     $ tune list-experiments [PROJECT_DIR] --filter "total_trials <= 1" --sort name
 
@@ -515,6 +520,7 @@ Here are a few examples of command line calls.
     | test                 |              1 |                0 |                   0 |
     +----------------------+----------------+------------------+---------------------+
     Dropped columns: ['error_trials', 'last_updated']
+    Please increase your terminal size to view remaining columns.
 
 
 Further Questions or Issues?
