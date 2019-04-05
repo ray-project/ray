@@ -9,6 +9,7 @@ import glob
 import pandas as pd
 
 from ray.tune.util import flatten_dict
+from ray.tune.trainable import Trainable
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,8 @@ class ExperimentAnalysis():
         self._checkpoints = self._experiment_state["checkpoints"]
 
     def dataframe(self):
-        checkpoint_dicts = self._checkpoints
-        checkpoint_dicts = [flatten_dict(g) for g in checkpoint_dicts]
-        return pd.DataFrame(checkpoint_dicts)
+        flattened_checkpoints = [flatten_dict(c) for c in self._checkpoints] 
+        return pd.DataFrame(flattened_checkpoints)
 
     def checkpoints(self): # this is the data that tune.run returns (as list of Trial)
         return self._checkpoints
@@ -42,18 +42,17 @@ class ExperimentAnalysis():
 
     def trial_dataframe(self, trial_id):
         """Returns a dataframe for one trial."""
-        checkpoint_dicts = self._experiment_state["checkpoints"]
-        trial_dict = filter(lambda d: d["trial_id"] == trial_id, checkpoint_dicts)
-        return pd.DataFrame(trial_dict)
+        df = self.dataframe()
+        return df.loc[df['trial_id'] == trial_id]
 
     def get_best_trainable(self, metric):
         # get best trainable if not a function
         # return Trainable(restore=trial.checkpoint)
-        return Trainable(config=get_best_config(metric))
+        return Trainable(config=self.get_best_config(metric))
 
     def get_best_config(self, metric):
-        return self.get_best_trial()["config"]
+        return self.get_best_trial(metric)["config"]
     
-    def get_best_trial(trial_list, metric):
+    def get_best_trial(self, metric):
         """Retrieve the best trial."""
-        return max(self._checkpoints, key=lambda trial: trial.last_result.get(metric, 0))
+        return max(self._checkpoints, key=lambda d: d['last_result'].get(metric, 0))
