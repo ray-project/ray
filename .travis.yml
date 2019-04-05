@@ -9,7 +9,7 @@ matrix:
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: osx
-      osx_image: xcode7
+      osx_image: xcode10.2
       env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: osx
