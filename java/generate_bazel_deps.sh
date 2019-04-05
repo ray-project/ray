@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Generate Java dependencies for bazel.
 
+# Cause the script to exit if a single command fails.
+set -e
+# Show explicitly which commands are currently running.
+set -x
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 jar_file="/tmp/bazel_deps.jar"
