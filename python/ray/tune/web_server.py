@@ -46,29 +46,49 @@ class TuneClient(object):
         self._path = "http://{}:{}".format(tune_address, port_forward)
 
     def get_all_trials(self):
-        """Returns a list of all trials' information."""
+        """Requests to stop trial by trial_id.
+ 
+        Returns:
+            List of Trial information.
+        """
         response = requests.get(urljoin(self._path, "trials"))
         return self._deserialize(response)
 
     def stop_all_trials(self):
-        """Requests to stop all trials and returns trial information."""
+        """Requests to stop all trials.
+ 
+        Returns:
+            List of stopped Trial information.
+        """
         response = requests.put(urljoin(self._path, "trials"))
         return self._deserialize(response)
 
     def get_trial(self, trial_id):
-        """Returns trial information by trial_id."""
+        """Requests trial by trial_id.
+ 
+        Returns:
+            Trial information.
+        """
         response = requests.get(
             urljoin(self._path, "trials/{}".format(trial_id)))
         return self._deserialize(response)
 
     def add_trial(self, name, specification):
-        """Adds a trial by name and specification (dict)."""
+        """Requests to add a trial by name and specification (dict).
+ 
+        Returns:
+            Added Trial information.
+        """
         payload = {"name": name, "spec": specification}
         response = requests.post(urljoin(self._path, "trials"), json=payload)
         return self._deserialize(response)
 
     def stop_trial(self, trial_id):
-        """Requests to stop trial by trial_id and returns trial information."""
+        """Requests to stop trial by trial_id.
+ 
+        Returns:
+            Stopped Trial information.
+        """
         response = requests.put(
             urljoin(self._path, "trials/{}".format(trial_id)))
         return self._deserialize(response)
@@ -156,10 +176,13 @@ def RunnerHandler(runner):
                 resource = {}
                 if result:
                     if isinstance(result, list):
-                        infos = [self._trial_info(t) for t in result]
-                        resource["trials"] = infos
+                        resource["trials"] = []
                         for t in result:
-                            runner.request_stop_trial(t)
+                            info = self._trial_info(t)
+                            resource["trials"].append(info)
+                            if info["status"] == "RUNNING":
+                                print(t)
+                                runner.request_stop_trial(t)
                     else:
                         resource["trial"] = self._trial_info(result)
                         runner.request_stop_trial(result)
@@ -178,7 +201,7 @@ def RunnerHandler(runner):
             content_len = int(self.headers.get('Content-Length'), 0)
             raw_body = self.rfile.read(content_len)
             parsed_input = json.loads(raw_body.decode())
-            resource = self._add_trials(parsed_input["name"],
+            resource = self._add_trial(parsed_input["name"],
                                         parsed_input["spec"])
 
             headers = [('Content-type', 'application/json'), ('Location',
@@ -212,7 +235,7 @@ def RunnerHandler(runner):
                 trial_id = path.split("/")[-1]
                 return runner.get_trial(trial_id)
 
-        def _add_trials(self, name, spec):
+        def _add_trial(self, name, spec):
             """Add trial by invoking TrialRunner."""
             resource = {}
             resource["trials"] = []

@@ -15,7 +15,7 @@ from ray.tune.web_server import TuneClient
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial_runner import TrialRunner
 
-
+import pdb
 def get_valid_port():
     port = 4321
     while True:
@@ -44,6 +44,18 @@ class TuneServerSuite(unittest.TestCase):
             "resources": Resources(cpu=1, gpu=1),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+        client = TuneClient("localhost", port)
+        return runner, client
+
+    def basicSetup2(self):
+        ray.init(num_cpus=4, num_gpus=1)
+        port = get_valid_port()
+        self.runner = TrialRunner(
+            BasicVariantGenerator(), launch_web_server=True, server_port=port, reuse_actors=True)
+        runner = self.runner
+        trials = [Trial("__fake"), Trial("__fake"), Trial("__fake"), Trial("__fake")]
         for t in trials:
             runner.add_trial(t)
         client = TuneClient("localhost", port)
@@ -128,8 +140,25 @@ class TuneServerSuite(unittest.TestCase):
         self.assertEqual(
             len([t for t in all_trials if t["status"] == Trial.RUNNING]), 0)
 
+    def testStopAllTrials(self):
+        """Check if Stop Trials works"""
+        runner, client = self.basicSetup2()
+        for i in range(4):
+            runner.step()
+        all_trials = client.get_all_trials()["trials"]
+        self.assertEqual(
+            len([t for t in all_trials if t["status"] == Trial.RUNNING]), 4)
+
+        client.stop_all_trials()
+        runner.step()
+
+        print("before get")
+        all_trials = client.get_all_trials()["trials"]
+        print("after get")
+        self.assertEqual(
+            len([t for t in all_trials if t["status"] == Trial.RUNNING]), 0)
+
     def testCurlCommand(self):
-        """Check if Stop Trial works."""
         runner, client = self.basicSetup()
         for i in range(2):
             runner.step()
