@@ -73,8 +73,8 @@ class ParametricActionCartpole(gym.Env):
         })
 
     def update_avail_actions(self):
-        self.action_assignments = [[0, 0]] * self.action_space.n
-        self.action_mask = [0] * self.action_space.n
+        self.action_assignments = np.array([[0, 0]] * self.action_space.n)
+        self.action_mask = np.array([0] * self.action_space.n)
         self.left_idx, self.right_idx = random.sample(
             range(self.action_space.n), 2)
         self.action_assignments[self.left_idx] = self.left_action_embed

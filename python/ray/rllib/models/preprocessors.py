@@ -53,9 +53,15 @@ class Preprocessor(object):
         if self._i % VALIDATION_INTERVAL == 0:
             if type(observation) is list:
                 observation = np.array(observation)
-            if not self._obs_space.contains(observation):
-                raise ValueError("Observation outside expected value range",
-                                 self._obs_space, observation)
+            try:
+                if not self._obs_space.contains(observation):
+                    raise ValueError(
+                        "Observation outside expected value range",
+                        self._obs_space, observation)
+            except AttributeError:
+                raise ValueError(
+                    "Observation for a Box space should be an np.array, "
+                    "not a Python list.", observation)
         self._i += 1
 
     @property
