@@ -1974,10 +1974,10 @@ def connect(info,
         # are the same.
         script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
         current_directory = os.path.abspath(os.path.curdir)
-        worker.run_function_on_all_workers(lambda worker_info: sys.path.insert(
-            1, script_directory))
-        worker.run_function_on_all_workers(lambda worker_info: sys.path.insert(
-            1, current_directory))
+        worker.run_function_on_all_workers(lambda worker_info:
+            sys.path.insert(1, script_directory))
+        worker.run_function_on_all_workers(lambda worker_info:
+            sys.path.insert(1, current_directory))
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
         # run may set the Python path, which is needed to import a module used
