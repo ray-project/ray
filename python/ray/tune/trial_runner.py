@@ -11,12 +11,15 @@ import re
 import time
 import traceback
 
+import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
 from ray.tune.trial import Trial, Checkpoint
+from ray.tune.suggest import function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.util import warn_if_slow
+from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.web_server import TuneServer
 
 MAX_DEBUG_TRIALS = 20
@@ -37,6 +40,27 @@ def _find_newest_ckpt(ckpt_dir):
         if fname.startswith("experiment_state") and fname.endswith(".json")
     ]
     return max(full_paths)
+
+
+class _TuneFunctionEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, function):
+            return {
+                "_type": "function",
+                "value": binary_to_hex(cloudpickle.dumps(obj))
+            }
+        return super(_TuneFunctionEncoder, self).default(obj)
+
+
+class _TuneFunctionDecoder(json.JSONDecoder):
+    def __init__(self, *args, **kwargs):
+        json.JSONDecoder.__init__(
+            self, object_hook=self.object_hook, *args, **kwargs)
+
+    def object_hook(self, obj):
+        if obj.get("_type") == "function":
+            return cloudpickle.loads(hex_to_binary(obj["value"]))
+        return obj
 
 
 class TrialRunner(object):
@@ -150,7 +174,7 @@ class TrialRunner(object):
         tmp_file_name = os.path.join(metadata_checkpoint_dir,
                                      ".tmp_checkpoint")
         with open(tmp_file_name, "w") as f:
-            json.dump(runner_state, f, indent=2)
+            json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
         os.rename(
             tmp_file_name,
@@ -183,7 +207,7 @@ class TrialRunner(object):
 
         newest_ckpt_path = _find_newest_ckpt(metadata_checkpoint_dir)
         with open(newest_ckpt_path, "r") as f:
-            runner_state = json.load(f)
+            runner_state = json.load(f, cls=_TuneFunctionDecoder)
 
         logger.warning("".join([
             "Attempting to resume experiment from {}. ".format(
