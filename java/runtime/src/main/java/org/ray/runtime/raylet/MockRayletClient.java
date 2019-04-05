@@ -6,11 +6,11 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -47,7 +47,7 @@ public class MockRayletClient implements RayletClient {
     store.addObjectPutCallback(this::onObjectPut);
     // The thread pool that executes tasks in parallel.
     exec = Executors.newFixedThreadPool(numberThreads);
-    idleWorkers = new LinkedList<>();
+    idleWorkers = new ConcurrentLinkedDeque<>();
     actorWorkers = new HashMap<>();
     currentWorker = new ThreadLocal<>();
   }
@@ -69,18 +69,18 @@ public class MockRayletClient implements RayletClient {
   /**
    * Get a worker from the worker pool to run the given task.
    */
-  private Worker getWorker(TaskSpec task) {
+  private synchronized Worker getWorker(TaskSpec task) {
     Worker worker;
     if (task.isActorTask()) {
       worker = actorWorkers.get(task.actorId);
     } else {
-      if (idleWorkers.size() > 0) {
+      if (task.isActorCreationTask()) {
+        worker = new Worker(runtime);
+        actorWorkers.put(task.actorCreationId, worker);
+      } else if (idleWorkers.size() > 0) {
         worker = idleWorkers.pop();
       } else {
         worker = new Worker(runtime);
-      }
-      if (task.isActorCreationTask()) {
-        actorWorkers.put(task.actorCreationId, worker);
       }
     }
     currentWorker.set(worker);

@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 import shutil
 import sys
@@ -19,7 +20,9 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
-                             EPISODES_TOTAL, TRAINING_ITERATION)
+                             HOSTNAME, NODE_IP, PID, EPISODES_TOTAL,
+                             TRAINING_ITERATION, TIMESTEPS_THIS_ITER,
+                             TIME_THIS_ITER_S, TIME_TOTAL_S)
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
@@ -46,6 +49,111 @@ class TrainableFunctionApiTest(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
+    def checkAndReturnConsistentLogs(self, results, sleep_per_iter=None):
+        """Checks logging is the same between APIs.
+
+        Ignore "DONE" for logging but checks that the
+        scheduler is notified properly with the last result.
+        """
+        class_results = copy.deepcopy(results)
+        function_results = copy.deepcopy(results)
+
+        class_output = []
+        function_output = []
+        scheduler_notif = []
+
+        class MockScheduler(FIFOScheduler):
+            def on_trial_complete(self, runner, trial, result):
+                scheduler_notif.append(result)
+
+        class ClassAPILogger(Logger):
+            def on_result(self, result):
+                class_output.append(result)
+
+        class FunctionAPILogger(Logger):
+            def on_result(self, result):
+                function_output.append(result)
+
+        class _WrappedTrainable(Trainable):
+            def _setup(self, config):
+                del config
+                self._result_iter = copy.deepcopy(class_results)
+
+            def _train(self):
+                if sleep_per_iter:
+                    time.sleep(sleep_per_iter)
+                res = self._result_iter.pop(0)  # This should not fail
+                if not self._result_iter:  # Mark "Done" for last result
+                    res[DONE] = True
+                return res
+
+        def _function_trainable(config, reporter):
+            for result in function_results:
+                if sleep_per_iter:
+                    time.sleep(sleep_per_iter)
+                reporter(**result)
+
+        class_trainable_name = "class_trainable"
+        register_trainable(class_trainable_name, _WrappedTrainable)
+
+        trials = run_experiments(
+            {
+                "function_api": {
+                    "run": _function_trainable,
+                    "loggers": [FunctionAPILogger],
+                },
+                "class_api": {
+                    "run": class_trainable_name,
+                    "loggers": [ClassAPILogger],
+                },
+            },
+            raise_on_failed_trial=False,
+            scheduler=MockScheduler())
+
+        # Ignore these fields
+        NO_COMPARE_FIELDS = {
+            HOSTNAME,
+            NODE_IP,
+            PID,
+            TIME_THIS_ITER_S,
+            TIME_TOTAL_S,
+            DONE,  # This is ignored because FunctionAPI has different handling
+            "timestamp",
+            "time_since_restore",
+            "experiment_id",
+            "date",
+        }
+
+        self.assertEqual(len(class_output), len(results))
+        self.assertEqual(len(function_output), len(results))
+
+        def as_comparable_result(result):
+            return {
+                k: v
+                for k, v in result.items() if k not in NO_COMPARE_FIELDS
+            }
+
+        function_comparable = [
+            as_comparable_result(result) for result in function_output
+        ]
+        class_comparable = [
+            as_comparable_result(result) for result in class_output
+        ]
+
+        self.assertEqual(function_comparable, class_comparable)
+
+        self.assertEqual(sum(t.get(DONE) for t in scheduler_notif), 2)
+        self.assertEqual(
+            as_comparable_result(scheduler_notif[0]),
+            as_comparable_result(scheduler_notif[1]))
+
+        # Make sure the last result is the same.
+        self.assertEqual(
+            as_comparable_result(trials[0].last_result),
+            as_comparable_result(trials[1].last_result))
+
+        return function_output, trials
+
     def testPinObject(self):
         X = pin_in_object_store("hello")
 
@@ -66,9 +174,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -90,9 +195,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -123,9 +225,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "test",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -337,9 +436,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
                     "stop": {
                         "time": 10
                     },
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
                 }
             })
 
@@ -354,25 +450,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
-            }
-        })
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
-
-    def testAbruptReturn(self):
-        def train(config, reporter):
-            reporter(timesteps_total=100)
-
-        register_trainable("f1", train)
-        [trial] = run_experiments({
-            "foo": {
-                "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -388,9 +465,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             run_experiments({
                 "foo": {
                     "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
                 }
             })
 
@@ -405,9 +479,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -415,9 +486,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testNoRaiseFlag(self):
         def train(config, reporter):
-            # Finish this trial without any metric,
-            # which leads to a failed trial
-            return
+            raise Exception()
 
         register_trainable("f1", train)
 
@@ -425,12 +494,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
             {
                 "foo": {
                     "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
                 }
-            },
-            raise_on_failed_trial=False)
+            }, raise_on_failed_trial=False)
         self.assertEqual(trial.status, Trial.ERROR)
 
     def testReportInfinity(self):
@@ -442,58 +507,111 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result['mean_accuracy'], float('inf'))
 
     def testReportTimeStep(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(mean_accuracy=5)
+        # Test that no timestep count are logged if never the Trainable never
+        # returns any.
+        results1 = [dict(mean_accuracy=5, done=i == 99) for i in range(100)]
+        logs1, _ = self.checkAndReturnConsistentLogs(results1)
 
-        [trial] = run_experiments({
-            "foo": {
-                "run": train,
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
-            }
-        })
-        self.assertIsNone(trial.last_result[TIMESTEPS_TOTAL])
+        self.assertTrue(all(log[TIMESTEPS_TOTAL] is None for log in logs1))
 
-        def train2(config, reporter):
-            for i in range(10):
-                reporter(timesteps_total=5)
+        # Test that no timesteps_this_iter are logged if only timesteps_total
+        # are returned.
+        results2 = [dict(timesteps_total=5, done=i == 9) for i in range(10)]
+        logs2, _ = self.checkAndReturnConsistentLogs(results2)
 
-        [trial2] = run_experiments({
-            "foo": {
-                "run": train2,
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
-            }
-        })
-        self.assertEqual(trial2.last_result[TIMESTEPS_TOTAL], 5)
-        self.assertEqual(trial2.last_result["timesteps_this_iter"], 0)
+        # Re-run the same trials but with added delay. This is to catch some
+        # inconsistent timestep counting that was present in the multi-threaded
+        # FunctionRunner. This part of the test can be removed once the
+        # multi-threaded FunctionRunner is removed from ray/tune.
+        # TODO: remove once the multi-threaded function runner is gone.
+        logs2, _ = self.checkAndReturnConsistentLogs(results2, 0.5)
 
-        def train3(config, reporter):
-            for i in range(10):
-                reporter(timesteps_this_iter=0, episodes_this_iter=0)
+        # check all timesteps_total report the same value
+        self.assertTrue(all(log[TIMESTEPS_TOTAL] == 5 for log in logs2))
+        # check that none of the logs report timesteps_this_iter
+        self.assertFalse(
+            any(hasattr(log, TIMESTEPS_THIS_ITER) for log in logs2))
 
-        [trial3] = run_experiments({
-            "foo": {
-                "run": train3,
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
-            }
-        })
-        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 0)
-        self.assertEqual(trial3.last_result[EPISODES_TOTAL], 0)
+        # Test that timesteps_total and episodes_total are reported when
+        # timesteps_this_iter and episodes_this_iter despite only return zeros.
+        results3 = [
+            dict(timesteps_this_iter=0, episodes_this_iter=0)
+            for i in range(10)
+        ]
+        logs3, _ = self.checkAndReturnConsistentLogs(results3)
+
+        self.assertTrue(all(log[TIMESTEPS_TOTAL] == 0 for log in logs3))
+        self.assertTrue(all(log[EPISODES_TOTAL] == 0 for log in logs3))
+
+        # Test that timesteps_total and episodes_total are properly counted
+        # when timesteps_this_iter and episodes_this_iter report non-zero
+        # values.
+        results4 = [
+            dict(timesteps_this_iter=3, episodes_this_iter=i)
+            for i in range(10)
+        ]
+        logs4, _ = self.checkAndReturnConsistentLogs(results4)
+
+        # The last reported result should not be double-logged.
+        self.assertEqual(logs4[-1][TIMESTEPS_TOTAL], 30)
+        self.assertNotEqual(logs4[-2][TIMESTEPS_TOTAL],
+                            logs4[-1][TIMESTEPS_TOTAL])
+        self.assertEqual(logs4[-1][EPISODES_TOTAL], 45)
+        self.assertNotEqual(logs4[-2][EPISODES_TOTAL],
+                            logs4[-1][EPISODES_TOTAL])
+
+    def testAllValuesReceived(self):
+        results1 = [
+            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4)
+            for i in range(5)
+        ]
+
+        logs1, _ = self.checkAndReturnConsistentLogs(results1)
+
+        # check if the correct number of results were reported
+        self.assertEqual(len(logs1), len(results1))
+
+        def check_no_missing(reported_result, result):
+            common_results = [reported_result[k] == result[k] for k in result]
+            return all(common_results)
+
+        # check that no result was dropped or modified
+        complete_results = [
+            check_no_missing(log, result)
+            for log, result in zip(logs1, results1)
+        ]
+        self.assertTrue(all(complete_results))
+
+        # check if done was logged exactly once
+        self.assertEqual(len([r for r in logs1 if r.get("done")]), 1)
+
+    def testNoDoneReceived(self):
+        # repeat same test but without explicitly reporting done=True
+        results1 = [
+            dict(timesteps_total=(i + 1), my_score=i**2) for i in range(5)
+        ]
+
+        logs1, trials = self.checkAndReturnConsistentLogs(results1)
+
+        # check if the correct number of results were reported.
+        self.assertEqual(len(logs1), len(results1))
+
+        def check_no_missing(reported_result, result):
+            common_results = [reported_result[k] == result[k] for k in result]
+            return all(common_results)
+
+        # check that no result was dropped or modified
+        complete_results1 = [
+            check_no_missing(log, result)
+            for log, result in zip(logs1, results1)
+        ]
+        self.assertTrue(all(complete_results1))
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
@@ -563,7 +681,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testIterationCounter(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(itr=i, done=i == 99)
+                reporter(itr=i, timesteps_this_iter=1)
 
         register_trainable("exp", train)
         config = {
@@ -600,15 +718,9 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments({
             "foo": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
             },
             "bar": {
                 "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
             }
         })
         for trial in trials:
@@ -624,9 +736,6 @@ class RunExperimentTest(unittest.TestCase):
         exp1 = Experiment(**{
             "name": "foo",
             "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
-            }
         })
         [trial] = run_experiments(exp1)
         self.assertEqual(trial.status, Trial.TERMINATED)
@@ -641,16 +750,10 @@ class RunExperimentTest(unittest.TestCase):
         exp1 = Experiment(**{
             "name": "foo",
             "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
-            }
         })
         exp2 = Experiment(**{
             "name": "bar",
             "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
-            }
         })
         trials = run_experiments([exp1, exp2])
         for trial in trials:
@@ -670,9 +773,6 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments({
             "foo": {
                 "run": train,
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
             },
             "bar": {
                 "run": B
@@ -742,22 +842,6 @@ class RunExperimentTest(unittest.TestCase):
             })
 
         self.assertRaises(TuneError, fail_trial)
-
-    def testDeprecatedResources(self):
-        class train(Trainable):
-            def _train(self):
-                return {"timesteps_this_iter": 1, "done": True}
-
-        trials = run_experiments({
-            "foo": {
-                "run": train,
-                "trial_resources": {
-                    "cpu": 1
-                }
-            }
-        })
-        for trial in trials:
-            self.assertEqual(trial.status, Trial.TERMINATED)
 
     def testCustomResources(self):
         ray.shutdown()

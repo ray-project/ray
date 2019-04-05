@@ -3,16 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+try:  # Python 3 only -- needed for lint test.
+    import bayes_opt as byo
+except ImportError:
+    byo = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
-
-byo = None
-
-
-def _import_bayesopt():
-    global byo
-    import bayes_opt
-    byo = bayes_opt
 
 
 class BayesOptSearch(SuggestionAlgorithm):
@@ -38,15 +34,6 @@ class BayesOptSearch(SuggestionAlgorithm):
         >>>     'width': (0, 20),
         >>>     'height': (-100, 100),
         >>> }
-        >>> config = {
-        >>>     "my_exp": {
-        >>>         "run": "exp",
-        >>>         "num_samples": 10 if args.smoke_test else 1000,
-        >>>         "stop": {
-        >>>             "training_iteration": 100
-        >>>         },
-        >>>     }
-        >>> }
         >>> algo = BayesOptSearch(
         >>>     space, max_concurrent=4, reward_attr="neg_mean_loss")
     """
@@ -59,7 +46,6 @@ class BayesOptSearch(SuggestionAlgorithm):
                  random_state=1,
                  verbose=0,
                  **kwargs):
-        _import_bayesopt()
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
             " the command: `pip install bayesian-optimization`.")

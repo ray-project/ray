@@ -11,6 +11,7 @@ cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
     copts = COPTS,
+    visibility = ["//java:__subpackages__"],
     deps = [
         ":ray_util",
         ":raylet_lib",
@@ -32,6 +33,40 @@ cc_binary(
 )
 
 cc_library(
+    name = "stats_lib",
+    srcs = glob(
+        [
+            "src/ray/stats/*.cc",
+        ],
+        exclude = [
+            "src/ray/stats/*_test.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/stats/*.h",
+        ],
+    ),
+    copts = COPTS,
+    includes = [
+        "src",
+    ],
+    linkopts = ["-pthread"],
+    deps = [
+        ":ray_util",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
+    ],
+)
+
+cc_library(
     name = "raylet_lib",
     srcs = glob(
         [
@@ -47,6 +82,7 @@ cc_library(
         "src/ray/raylet/*.h",
     ]),
     copts = COPTS,
+    linkopts = ["-pthread"],
     deps = [
         ":gcs",
         ":gcs_fbs",
@@ -54,8 +90,16 @@ cc_library(
         ":object_manager",
         ":ray_common",
         ":ray_util",
+        ":stats_lib",
         "@boost//:asio",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
         "@plasma//:plasma_client",
     ],
 )
@@ -100,6 +144,7 @@ cc_test(
     copts = COPTS,
     deps = [
         ":ray_util",
+        "@boost//:asio",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -140,6 +185,15 @@ cc_test(
     copts = COPTS,
     deps = [
         ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stats_test",
+    srcs = ["src/ray/stats/stats_test.cc"],
+    deps = [
+        ":stats_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -297,6 +351,7 @@ cc_library(
         ":node_manager_fbs",
         ":ray_common",
         ":ray_util",
+        ":stats_lib",
         "@boost//:asio",
     ],
 )
@@ -372,7 +427,7 @@ pyx_library(
 )
 
 cc_binary(
-    name = "raylet_library_java.so",
+    name = "libraylet_library_java.so",
     srcs = [
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
@@ -394,7 +449,7 @@ cc_binary(
         "//conditions:default": ["external/bazel_tools/tools/jdk/include/linux"],
     }),
     linkshared = 1,
-    linkstatic = 0,
+    linkstatic = 1,
     deps = [
         "//:raylet_lib",
         "@plasma//:plasma_client",
@@ -403,8 +458,8 @@ cc_binary(
 
 genrule(
     name = "raylet-jni-darwin-compat",
-    srcs = [":raylet_library_java.so"],
-    outs = ["raylet_library_java.dylib"],
+    srcs = [":libraylet_library_java.so"],
+    outs = ["libraylet_library_java.dylib"],
     cmd = "cp $< $@",
     output_to_bindir = 1,
 )
@@ -412,16 +467,22 @@ genrule(
 filegroup(
     name = "raylet_library_java",
     srcs = select({
-        "@bazel_tools//src/conditions:darwin": [":raylet_library_java.dylib"],
-        "//conditions:default": [":raylet_library_java.so"],
+        "@bazel_tools//src/conditions:darwin": [":libraylet_library_java.dylib"],
+        "//conditions:default": [":libraylet_library_java.so"],
     }),
-    visibility = ["//visibility:public"],
+    visibility = ["//java:__subpackages__"],
+)
+
+filegroup(
+    name = "gcs_fbs_file",
+    srcs = ["src/ray/gcs/format/gcs.fbs"],
+    visibility = ["//java:__subpackages__"],
 )
 
 flatbuffer_py_library(
     name = "python_gcs_fbs",
     srcs = [
-        "src/ray/gcs/format/gcs.fbs",
+        ":gcs_fbs_file",
     ],
     outs = [
         "ActorCheckpointIdData.py",
@@ -526,10 +587,11 @@ genrule(
         mv ./src/redis-cli $(location redis-cli) &&
         chmod +x $(location redis-cli)
     """,
+    visibility = ["//java:__subpackages__"],
 )
 
 cc_binary(
-    name = "ray_redis_module.so",
+    name = "libray_redis_module.so",
     srcs = [
         "src/ray/gcs/redis_module/ray_redis_module.cc",
         "src/ray/gcs/redis_module/redis_string.h",
@@ -538,6 +600,7 @@ cc_binary(
     copts = COPTS,
     linkshared = 1,
     linkstatic = 1,
+    visibility = ["//java:__subpackages__"],
     deps = [
         ":ray_common",
     ],
@@ -552,29 +615,30 @@ genrule(
         "//:python_node_manager_fbs",
         "//:redis-server",
         "//:redis-cli",
-        "//:ray_redis_module.so",
+        "//:libray_redis_module.so",
         "//:raylet",
         "//:raylet_monitor",
         "@plasma//:plasma_store_server",
     ],
-    outs = ["ray_pkg"],
+    outs = ["ray_pkg.out"],
     cmd = """
         set -x &&
-        mkdir -p python/ray &&
-        cp $(location python/ray/_raylet.so) python/ray &&
-        mkdir -p python/ray/core/src/ray/thirdparty/redis/src/ &&
-        cp $(location //:redis-server) python/ray/core/src/ray/thirdparty/redis/src/ &&
-        cp $(location //:redis-cli) python/ray/core/src/ray/thirdparty/redis/src/ &&
-        mkdir -p python/ray/core/src/ray/gcs/redis_module/ &&
-        cp $(locations //:ray_redis_module.so) python/ray/core/src/ray/gcs/redis_module/libray_redis_module.so &&
-        mkdir -p python/ray/core/src/ray/raylet/ &&
-        cp $(location //:raylet_monitor) python/ray/core/src/ray/raylet/ &&
-        mkdir -p python/ray/core/src/plasma &&
-        cp $(location @plasma//:plasma_store_server) python/ray/core/src/plasma/ &&
-        cp $(location //:raylet) python/ray/core/src/ray/raylet/ &&
-        for f in $(locations //:python_gcs_fbs); do cp $$f python/ray/core/generated/; done &&
-        mkdir -p python/ray/core/generated/ray/protocol/ &&
-        for f in $(locations //:python_node_manager_fbs); do cp $$f python/ray/core/generated/ray/protocol/; done &&
-        mv python $(location ray_pkg)
-        """,
+        WORK_DIR=$$(pwd) &&
+        cp -f $(location python/ray/_raylet.so) $$WORK_DIR/python/ray &&
+        mkdir -p $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
+        cp -f $(location //:redis-server) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
+        cp -f $(location //:redis-cli) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
+        mkdir -p $$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/ &&
+        cp -f $(locations //:libray_redis_module.so) $$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/ &&
+        cp -f $(location //:raylet_monitor) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
+        cp -f $(location @plasma//:plasma_store_server) $$WORK_DIR/python/ray/core/src/plasma/ &&
+        cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
+        for f in $(locations //:python_gcs_fbs); do cp -f $$f $$WORK_DIR/python/ray/core/generated/; done &&
+        mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
+        for f in $(locations //:python_node_manager_fbs); do 
+            cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/; 
+        done &&
+        echo $$WORK_DIR > $@
+    """,
+    local = 1,
 )

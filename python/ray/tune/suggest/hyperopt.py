@@ -5,19 +5,15 @@ from __future__ import print_function
 import numpy as np
 import copy
 import logging
+try:
+    hyperopt_logger = logging.getLogger("hyperopt")
+    hyperopt_logger.setLevel(logging.WARNING)
+    import hyperopt as hpo
+except ImportError:
+    hpo = None
 
 from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
-
-hpo = None
-
-
-def _import_hyperopt():
-    global hpo
-    hyperopt_logger = logging.getLogger("hyperopt")
-    hyperopt_logger.setLevel(logging.WARNING)
-    import hyperopt
-    hpo = hyperopt
 
 
 class HyperOptSearch(SuggestionAlgorithm):
@@ -55,15 +51,6 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>>     'height': 0,
         >>>     'activation': 0, # The index of "relu"
         >>> }]
-        >>> config = {
-        >>>     "my_exp": {
-        >>>         "run": "exp",
-        >>>         "num_samples": 10 if args.smoke_test else 1000,
-        >>>         "stop": {
-        >>>             "training_iteration": 100
-        >>>         },
-        >>>     }
-        >>> }
         >>> algo = HyperOptSearch(
         >>>     space, max_concurrent=4, reward_attr="neg_mean_loss",
         >>>     points_to_evaluate=current_best_params)
@@ -75,7 +62,6 @@ class HyperOptSearch(SuggestionAlgorithm):
                  reward_attr="episode_reward_mean",
                  points_to_evaluate=None,
                  **kwargs):
-        _import_hyperopt()
         assert hpo is not None, "HyperOpt must be installed!"
         from hyperopt.fmin import generate_trials_to_calculate
         assert type(max_concurrent) is int and max_concurrent > 0

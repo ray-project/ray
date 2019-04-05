@@ -218,23 +218,24 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
         if not new_state.last_checkpoint:
-            logger.warning("[pbt]: no checkpoint for trial."
-                           " Skip exploit for Trial {}".format(trial))
+            logger.info("[pbt]: no checkpoint for trial."
+                        " Skip exploit for Trial {}".format(trial))
             return
         new_config = explore(trial_to_clone.config, self._hyperparam_mutations,
                              self._resample_probability,
                              self._custom_explore_fn)
-        logger.warning("[exploit] transferring weights from trial "
-                       "{} (score {}) -> {} (score {})".format(
-                           trial_to_clone, new_state.last_score, trial,
-                           trial_state.last_score))
-        # TODO(ekl) restarting the trial is expensive. We should implement a
-        # lighter way reset() method that can alter the trial config.
+        logger.info("[exploit] transferring weights from trial "
+                    "{} (score {}) -> {} (score {})".format(
+                        trial_to_clone, new_state.last_score, trial,
+                        trial_state.last_score))
         new_tag = make_experiment_tag(trial_state.orig_tag, new_config,
                                       self._hyperparam_mutations)
         reset_successful = trial_executor.reset_trial(trial, new_config,
                                                       new_tag)
-        if not reset_successful:
+        if reset_successful:
+            trial_executor.restore(
+                trial, Checkpoint.from_object(new_state.last_checkpoint))
+        else:
             trial_executor.stop_trial(trial, stop_logger=False)
             trial.config = new_config
             trial.experiment_tag = new_tag

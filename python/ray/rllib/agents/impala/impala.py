@@ -8,7 +8,10 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
+from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.utils.annotations import override
+from ray.tune.trainable import Trainable
+from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
     "lr",
@@ -23,6 +26,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "broadcast_interval",
     "num_sgd_iter",
     "minibatch_buffer_size",
+    "num_aggregation_workers",
 ]
 
 # yapf: disable
@@ -71,6 +75,9 @@ DEFAULT_CONFIG = with_common_config({
     "max_sample_requests_in_flight_per_worker": 2,
     # max number of workers to broadcast one set of weights to
     "broadcast_interval": 1,
+    # use intermediate actors for multi-level aggregation. This can make sense
+    # if ingesting >2GB/s of samples, or if the data requires decompression.
+    "num_aggregation_workers": 0,
 
     # Learning params.
     "grad_clip": 40.0,
@@ -84,7 +91,10 @@ DEFAULT_CONFIG = with_common_config({
     "epsilon": 0.1,
     # balancing the three losses
     "vf_loss_coeff": 0.5,
-    "entropy_coeff": -0.01,
+    "entropy_coeff": 0.01,
+
+    # use fake (infinite speed) sampler for testing
+    "_fake_sampler": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -98,28 +108,51 @@ class ImpalaAgent(Agent):
     _policy_graph = VTracePolicyGraph
 
     @override(Agent)
-    def _init(self):
+    def _init(self, config, env_creator):
         for k in OPTIMIZER_SHARED_CONFIGS:
-            if k not in self.config["optimizer"]:
-                self.config["optimizer"][k] = self.config[k]
+            if k not in config["optimizer"]:
+                config["optimizer"][k] = config[k]
         policy_cls = self._get_policy_graph()
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
+
+        if self.config["num_aggregation_workers"] > 0:
+            # Create co-located aggregator actors first for placement pref
+            aggregators = TreeAggregator.precreate_aggregators(
+                self.config["num_aggregation_workers"])
+
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"])
-        self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
-                                               self.remote_evaluators,
-                                               self.config["optimizer"])
+            env_creator, policy_cls, config["num_workers"])
+        self.optimizer = AsyncSamplesOptimizer(
+            self.local_evaluator, self.remote_evaluators, config["optimizer"])
+        if config["entropy_coeff"] < 0:
+            raise DeprecationWarning("entropy_coeff must be >= 0")
+
+        if self.config["num_aggregation_workers"] > 0:
+            # Assign the pre-created aggregators to the optimizer
+            self.optimizer.aggregator.init(aggregators)
+
+    @classmethod
+    @override(Trainable)
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        Agent._validate_config(cf)
+        return Resources(
+            cpu=cf["num_cpus_for_driver"],
+            gpu=cf["num_gpus"],
+            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"] +
+            cf["num_aggregation_workers"],
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     @override(Agent)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()
         self.optimizer.step()
-        while time.time() - start < self.config["min_iter_time_s"]:
+        while (time.time() - start < self.config["min_iter_time_s"]
+               or self.optimizer.num_steps_sampled == prev_steps):
             self.optimizer.step()
-        result = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
+        result = self.collect_metrics()
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result

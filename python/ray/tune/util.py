@@ -2,11 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import base64
 import copy
 import numpy as np
+import time
 
 import ray
+
+logger = logging.getLogger(__name__)
 
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
@@ -34,6 +38,28 @@ def get_pinned_object(pinned_id):
     return _from_pinnable(
         ray.get(
             ObjectID(base64.b64decode(pinned_id[len(PINNED_OBJECT_PREFIX):]))))
+
+
+class warn_if_slow(object):
+    """Prints a warning if a given operation is slower than 100ms.
+
+    Example:
+        >>> with warn_if_slow("some_operation"):
+        ...    ray.get(something)
+    """
+
+    def __init__(self, name):
+        self.name = name
+
+    def __enter__(self):
+        self.start = time.time()
+
+    def __exit__(self, type, value, traceback):
+        now = time.time()
+        if now - self.start > 0.1:
+            logger.warning("The `{}` operation took {} seconds to complete, ".
+                           format(self.name, now - self.start) +
+                           "which may be a performance bottleneck.")
 
 
 def merge_dicts(d1, d2):

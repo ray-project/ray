@@ -96,8 +96,6 @@ table TaskInfo {
   // uniquely describe a function.
   // For a Python function, it should be: [module_name, class_name, function_name]
   // For a Java function, it should be: [class_name, method_name, type_descriptor]
-  // TODO(hchen): after changing Python worker to use function_descriptor,
-  // function_id can be removed.
   function_descriptor: [string];
 }
 
@@ -153,11 +151,11 @@ enum SchedulingState:int {
 table TaskTableData {
   // The state of the task.
   scheduling_state: SchedulingState;
-  // A local scheduler ID.
-  scheduler_id: string;
+  // A raylet ID.
+  raylet_id: string;
   // A string of bytes representing the task's TaskExecutionDependencies.
   execution_dependencies: string;
-  // The number of times the task was spilled back by local schedulers.
+  // The number of times the task was spilled back by raylets.
   spillback_count: long;
   // A string of bytes representing the task specification.
   task_info: string;
@@ -166,7 +164,7 @@ table TaskTableData {
 }
 
 table TaskTableTestAndUpdate {
-  test_scheduler_id: string;
+  test_raylet_id: string;
   test_state_bitmask: SchedulingState;
   update_state: SchedulingState;
 }

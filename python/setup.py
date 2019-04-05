@@ -17,7 +17,7 @@ import setuptools.command.build_ext as _build_ext
 # before these files have been created, so we have to move the files
 # manually.
 
-# NOTE: The lists below must be kept in sync with ray/CMakeLists.txt.
+# NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
@@ -137,7 +137,7 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.10.4",
+    "numpy >= 1.14",
     "filelock",
     "funcsigs",
     "click",

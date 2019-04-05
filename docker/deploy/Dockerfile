@@ -2,9 +2,10 @@
 # for end users.
 
 FROM ray-project/base-deps
-ENV RAY_USE_CMAKE=1
 ADD ray.tar /ray
 ADD git-rev /ray/git-rev
+RUN /ray/ci/travis/install-bazel.sh
+ENV PATH=$PATH:/root/bin
 WORKDIR /ray/python
 RUN pip install -e .
 WORKDIR /ray
