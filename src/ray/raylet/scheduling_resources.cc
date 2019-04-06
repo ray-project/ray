@@ -83,9 +83,23 @@ bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
 bool ResourceSet::RemoveResource(const std::string &resource_name) {
   throw std::runtime_error("Method not implemented");
 }
+void ResourceSet::SubtractResources(const ResourceSet &other) {
+  // Subtract the resources and delete any if new capacity is zero.
+  for (const auto &resource_pair : other.GetResourceMap()) {
+    const std::string &resource_label = resource_pair.first;
+    const double &resource_capacity = resource_pair.second;
+    if (resource_capacity_.count(resource_label) == 1) {
+      resource_capacity_[resource_label] -= resource_capacity;
+      if (resource_capacity_[resource_label] < 0 + EPSILON) {
+        resource_capacity_.erase(resource_label);
+      }
+    }
+  }
+}
 
 void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
-  // Subtract the resources and delete any if new capacity is zero.
+  // Subtract the resources, make sure none goes below zero and delete any if new capacity
+  // is zero.
   for (const auto &resource_pair : other.GetResourceMap()) {
     const std::string &resource_label = resource_pair.first;
     const double &resource_capacity = resource_pair.second;
@@ -118,9 +132,9 @@ double ResourceSet::GetResource(const std::string &resource_name) const {
     return 0;
   }
   double capacity = resource_capacity_.at(resource_name);
-  RAY_CHECK(capacity > 0 + EPSILON)
-      << "Resource " << resource_name << " capacity is " << capacity
-      << ". Should have been greater than zero.";
+  RAY_CHECK(capacity > 0 + EPSILON) << "Resource " << resource_name << " capacity is "
+                                    << capacity
+                                    << ". Should have been greater than zero.";
   return capacity;
 }
 
@@ -332,9 +346,9 @@ bool ResourceIdSet::Contains(const ResourceSet &resource_set) const {
   for (auto const &resource_pair : resource_set.GetResourceMap()) {
     auto const &resource_name = resource_pair.first;
     double resource_quantity = resource_pair.second;
-    RAY_CHECK(resource_quantity > 0 + EPSILON)
-        << "Resource " << resource_name << " capacity is " << resource_quantity
-        << ". Should have been greater than zero.";
+    RAY_CHECK(resource_quantity > 0 + EPSILON) << "Resource " << resource_name
+                                               << " capacity is " << resource_quantity
+                                               << ". Should have been greater than zero.";
 
     auto it = available_resources_.find(resource_name);
     if (it == available_resources_.end()) {
@@ -354,9 +368,9 @@ ResourceIdSet ResourceIdSet::Acquire(const ResourceSet &resource_set) {
   for (auto const &resource_pair : resource_set.GetResourceMap()) {
     auto const &resource_name = resource_pair.first;
     double resource_quantity = resource_pair.second;
-    RAY_CHECK(resource_quantity > 0 + EPSILON)
-        << "Resource " << resource_name << " capacity is " << resource_quantity
-        << ". Should have been greater than zero.";
+    RAY_CHECK(resource_quantity > 0 + EPSILON) << "Resource " << resource_name
+                                               << " capacity is " << resource_quantity
+                                               << ". Should have been greater than zero.";
 
     auto it = available_resources_.find(resource_name);
     RAY_CHECK(it != available_resources_.end());

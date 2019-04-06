@@ -86,7 +86,15 @@ class ResourceSet {
   /// \return Void.
   void AddResources(const ResourceSet &other);
 
-  /// \brief Subtract a set of resources from the current set of resources. Assumes other
+  /// \brief Subtract a set of resources from the current set of resources.
+  /// Deletes any resource if the capacity after subtraction is zero or negative.
+  ///
+  /// \param other: The resource set to subtract from the current resource set.
+  /// \return Void.
+  void SubtractResources(const ResourceSet &other);
+
+  /// \brief Subtract a set of resources from the current set of resources and
+  /// check that the post-subtraction result nonnegative. Assumes other
   /// is a subset of the ResourceSet. Deletes any resource if the capacity after
   /// subtraction is zero.
   ///

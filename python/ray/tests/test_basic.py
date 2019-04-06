@@ -2116,14 +2116,24 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
 
     def test():
-        return ray.global_state.available_resources()
+        resources = ray.global_state.available_resources()
+        retry_count = 0
+
+        while resources and retry_count < 5:
+            time.sleep(0.1)
+            resources = ray.global_state.available_resources()
+            retry_count += 1
+
+        if retry_count >= 5:
+            raise RuntimeError("Resources were available even after retries.")
+
+        return resources
 
     function = ray.remote(
         num_cpus=2, num_gpus=1, resources={"test_resource": 1})(test)
     cluster_resources = ray.get(function.remote())
 
-    # A
-    # ll cluster resources should be utilized and
+    # All cluster resources should be utilized and
     # cluster_resources must be empty
     assert cluster_resources == {}
 

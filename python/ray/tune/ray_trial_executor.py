@@ -356,15 +356,14 @@ class RayTrialExecutor(TrialExecutor):
         for i in range(num_retries):
             try:
                 resources = ray.global_state.cluster_resources()
+                if "CPU" not in resources:
+                    resources["CPU"] = 0
             except Exception:
                 # TODO(rliaw): Remove this when local mode is fixed.
                 # https://github.com/ray-project/ray/issues/4147
                 logger.debug("Using resources for local machine.")
                 resources = ray.services.check_and_update_resources(
                     None, None, None)
-            if not resources:
-                logger.warning("Cluster resources not detected. Retrying...")
-                time.sleep(0.5)
 
         if not resources or "CPU" not in resources:
             raise TuneError("Cluster resources cannot be detected. "

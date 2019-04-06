@@ -2027,6 +2027,9 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
 
     RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
                   << node_manager_id;
+
+    // TODO(romilb): We should probably revert the load subtraction from
+    // SchedulingPolicy::Schedule()
     // Mark the failed task as pending to let other raylets know that we still
     // have the task. TaskDependencyManager::TaskPending() is assumed to be
     // idempotent.
