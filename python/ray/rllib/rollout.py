@@ -120,7 +120,10 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
             policy_agent_mapping = agent.config["multiagent"][
                 "policy_mapping_fn"]
         else:
-            policy_agent_mapping = lambda _: DEFAULT_POLICY_ID
+
+            def policy_agent_mapping(unused_agent_id):
+                return DEFAULT_POLICY_ID
+
         mapping_cache = {}  # in case policy_agent_mapping is stochastic
         policy_map = agent.local_evaluator.policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
