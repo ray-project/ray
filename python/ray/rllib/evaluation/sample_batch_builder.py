@@ -71,12 +71,13 @@ class MultiAgentSampleBatchBuilder(object):
     corresponding policy batch for the agent's policy.
     """
 
-    def __init__(self, policy_map, clip_rewards):
+    def __init__(self, policy_map, clip_rewards, postp_callback):
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Arguments:
             policy_map (dict): Maps policy ids to policy graph instances.
             clip_rewards (bool): Whether to clip rewards before postprocessing.
+            postp_callback: function to call on each postprocessed batch.
         """
 
         self.policy_map = policy_map
@@ -87,6 +88,7 @@ class MultiAgentSampleBatchBuilder(object):
         }
         self.agent_builders = {}
         self.agent_to_policy = {}
+        self.postp_callback = postp_callback
         self.count = 0  # increment this manually
 
     def total(self):
@@ -158,6 +160,8 @@ class MultiAgentSampleBatchBuilder(object):
         for agent_id, post_batch in sorted(post_batches.items()):
             self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
                 post_batch)
+            if self.postp_callback:
+                self.postp_callback({"episode": episode, "batch": post_batch})
 
         self.agent_builders.clear()
         self.agent_to_policy.clear()

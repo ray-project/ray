@@ -279,7 +279,8 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         if batch_builder_pool:
             return batch_builder_pool.pop()
         else:
-            return MultiAgentSampleBatchBuilder(policies, clip_rewards)
+            return MultiAgentSampleBatchBuilder(
+                policies, clip_rewards, callbacks["on_postprocess_traj"])
 
     def new_episode():
         episode = MultiAgentEpisode(policies, policy_mapping_fn,

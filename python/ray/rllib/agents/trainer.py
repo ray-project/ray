@@ -52,11 +52,12 @@ COMMON_CONFIG = {
     # metrics can be attached to the episode by updating the episode object's
     # custom metrics dict (see examples/custom_metrics_and_callbacks.py).
     "callbacks": {
-        "on_episode_start": None,  # arg: {"env": .., "episode": ...}
-        "on_episode_step": None,   # arg: {"env": .., "episode": ...}
-        "on_episode_end": None,    # arg: {"env": .., "episode": ...}
-        "on_sample_end": None,     # arg: {"samples": .., "evaluator": ...}
-        "on_train_result": None,   # arg: {"trainer": ..., "result": ...}
+        "on_episode_start": None,     # arg: {"env": .., "episode": ...}
+        "on_episode_step": None,      # arg: {"env": .., "episode": ...}
+        "on_episode_end": None,       # arg: {"env": .., "episode": ...}
+        "on_sample_end": None,        # arg: {"samples": .., "evaluator": ...}
+        "on_train_result": None,      # arg: {"trainer": ..., "result": ...}
+        "on_postprocess_traj": None,  # arg: {"batch": ..., "episode": ...}
     },
     # Whether to attempt to continue training if a worker crashes.
     "ignore_worker_failures": False,

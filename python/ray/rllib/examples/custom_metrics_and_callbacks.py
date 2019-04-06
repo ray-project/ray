@@ -44,6 +44,15 @@ def on_train_result(info):
     info["result"]["callback_ok"] = True
 
 
+def on_postprocess_traj(info):
+    episode = info["episode"]
+    batch = info["batch"]
+    print("postprocessed {} steps".format(batch.count))
+    if "num_batches" not in episode.custom_metrics:
+        episode.custom_metrics["num_batches"] = 0
+    episode.custom_metrics["num_batches"] += 1
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-iters", type=int, default=2000)
@@ -63,6 +72,7 @@ if __name__ == "__main__":
                 "on_episode_end": tune.function(on_episode_end),
                 "on_sample_end": tune.function(on_sample_end),
                 "on_train_result": tune.function(on_train_result),
+                "on_postprocess_traj": tune.function(on_postprocess_traj),
             },
         },
     )
@@ -73,5 +83,6 @@ if __name__ == "__main__":
     assert "pole_angle_mean" in custom_metrics
     assert "pole_angle_min" in custom_metrics
     assert "pole_angle_max" in custom_metrics
+    assert "num_batches_mean" in custom_metrics
     assert type(custom_metrics["pole_angle_mean"]) is float
     assert "callback_ok" in trials[0].last_result
