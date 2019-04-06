@@ -35,11 +35,13 @@ import socket
 import warnings
 
 import pyarrow
-from pyarrow.lib cimport Buffer, NativeFile, check_status, pyarrow_wrap_buffer
-from pyarrow.includes.libarrow cimport (CBuffer, CMutableBuffer,
-                                        CFixedSizeBufferWriter, CStatus)
+from _arrow cimport check_status, CBuffer, CMutableBuffer, CStatus, Buffer, pyarrow_wrap_buffer
+from _arrow import py_buffer, get_socket_from_fd, FixedSizeBufferWriter
+# from pyarrow.lib cimport Buffer, NativeFile, check_status, pyarrow_wrap_buffer
+# from pyarrow.includes.libarrow cimport (CBuffer, CMutableBuffer,
+#                                         CFixedSizeBufferWriter, CStatus)
 
-from pyarrow import compat
+# from pyarrow import compat
 
 PLASMA_WAIT_TIMEOUT = 2 ** 30
 
@@ -461,9 +463,9 @@ cdef class PlasmaClient:
         """
         cdef ObjectID target_id = (object_id if object_id
                                    else ObjectID.from_random())
-        cdef Buffer arrow_buffer = pyarrow.py_buffer(value)
+        cdef Buffer arrow_buffer = py_buffer(value)
         write_buffer = self.create(target_id, len(value), metadata)
-        stream = pyarrow.FixedSizeBufferWriter(write_buffer)
+        stream = FixedSizeBufferWriter(write_buffer)
         stream.set_memcopy_threads(memcopy_threads)
         stream.write(arrow_buffer)
         self.seal(target_id)
@@ -628,9 +630,9 @@ cdef class PlasmaClient:
         """
         Get the notification socket.
         """
-        return compat.get_socket_from_fd(self.notification_fd,
-                                         family=socket.AF_UNIX,
-                                         type=socket.SOCK_STREAM)
+        return get_socket_from_fd(self.notification_fd,
+                                  family=socket.AF_UNIX,
+                                  type=socket.SOCK_STREAM)
 
     def decode_notification(self, const uint8_t* buf):
         """

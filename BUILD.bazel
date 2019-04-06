@@ -411,11 +411,17 @@ flatbuffer_cc_library(
 pyx_library(
     name = "_plasma",
     srcs = glob([
+        "python/ray/_arrow.pyx",
+        "python/ray/_arrow.pxd",
         "python/ray/_plasma.pyx",
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:plasma_lib"],
+    deps = [
+        "//:plasma_lib",
+        "@plasma//:arrow",
+        "@plasma//:arrow_python"
+    ],
 )
 
 pyx_library(
@@ -785,6 +791,7 @@ genrule(
     name = "ray_pkg",
     srcs = [
         "python/ray/_raylet.so",
+        "python/ray/_plasma.so",
         "//:python_sources",
         "//:python_gcs_fbs",
         "//:python_node_manager_fbs",
