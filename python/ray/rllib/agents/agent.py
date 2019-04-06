@@ -3,6 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.trainer import Trainer
+from ray.rllib.utils import renamed_class
 
-# TODO(ekl) remove legacy agent name
-Agent = Trainer
+Agent = renamed_class(Trainer)

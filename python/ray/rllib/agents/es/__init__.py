@@ -1,6 +1,6 @@
 from ray.rllib.agents.es.es import (ESTrainer, DEFAULT_CONFIG)
+from ray.rllib.utils import renamed_class
 
-# TODO: remove the legacy agent names
-ESAgent = ESTrainer
+ESAgent = renamed_class(ESTrainer)
 
 __all__ = ["ESAgent", "ESTrainer", "DEFAULT_CONFIG"]

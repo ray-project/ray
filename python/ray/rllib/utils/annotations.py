@@ -30,7 +30,7 @@ def PublicAPI(obj):
     assumed part of the RLlib public API as well (e.g., all trainer classes
     are in public API because Trainer is ``@PublicAPI``).
 
-    In addition, you can assume all agent configurations are part of their
+    In addition, you can assume all trainer configurations are part of their
     public API as well.
     """
 
