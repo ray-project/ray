@@ -46,7 +46,7 @@ To actually create an actor, we can instantiate this class by calling
 When an actor is instantiated, the following events happen.
 
 1. A node in the cluster is chosen and a worker process is created on that node
-   (by the local scheduler on that node) for the purpose of running methods
+   (by the raylet on that node) for the purpose of running methods
    called on the actor.
 2. A ``Counter`` object is created on that worker and the ``Counter``
    constructor is run.
@@ -64,8 +64,8 @@ We can schedule tasks on the actor by calling its methods.
 When ``a1.increment.remote()`` is called, the following events happens.
 
 1. A task is created.
-2. The task is assigned directly to the local scheduler responsible for the
-   actor by the driver's local scheduler.
+2. The task is assigned directly to the raylet responsible for the
+   actor by the driver's raylet.
 3. An object ID is returned.
 
 We can then call ``ray.get`` on the object ID to retrieve the actual value.
