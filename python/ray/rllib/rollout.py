@@ -148,10 +148,10 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
             rollout = []
         obs = env.reset()
         multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
-        agent_states = DefaultMapping(lambda agent_id: state_init[
-            mapping_cache[agent_id]])
-        prev_actions = DefaultMapping(lambda agent_id: action_init[
-            mapping_cache[agent_id]])
+        agent_states = DefaultMapping(
+            lambda agent_id: state_init[mapping_cache[agent_id]])
+        prev_actions = DefaultMapping(
+            lambda agent_id: action_init[mapping_cache[agent_id]])
         prev_rewards = collections.defaultdict(lambda: 0.)
         done = False
         reward_total = 0.0
