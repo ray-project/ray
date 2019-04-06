@@ -14,6 +14,7 @@ import gym
 import ray
 from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.env import MultiAgentEnv
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.tune.util import merge_dicts
 
@@ -144,7 +145,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         if out is not None:
             rollout = []
         obs = env.reset()
-        multi_obs = obs if multiagent else {0: obs}
+        multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
         agent_states = DefaultMapping(lambda agent_id: state_init[
             mapping_cache[agent_id]])
         prev_actions = DefaultMapping(lambda agent_id: action_init[
@@ -182,7 +183,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
                 for agent_id, r in reward.items():
                     prev_rewards[agent_id] = r
             else:
-                prev_rewards[0] = reward
+                prev_rewards[_DUMMY_AGENT_ID] = reward
 
             if multiagent:
                 done = done["__all__"]
