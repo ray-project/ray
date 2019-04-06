@@ -75,7 +75,7 @@ def push_error_to_driver_through_redis(redis_client,
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
-    instances, the local scheduler client is not available, e.g., because the
+    instances, the raylet client is not available, e.g., because the
     error happens in Python before the driver or worker has connected to the
     backend processes.
 

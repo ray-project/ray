@@ -725,8 +725,7 @@ class GlobalState(object):
             actor_info[binary_to_hex(actor_id)] = {
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),
-                "local_scheduler_id": binary_to_hex(
-                    info[b"local_scheduler_id"]),
+                "raylet_id": binary_to_hex(info[b"raylet_id"]),
                 "num_gpus": int(info[b"num_gpus"]),
                 "removed": decode(info[b"removed"]) == "True"
             }
