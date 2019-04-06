@@ -113,19 +113,20 @@ class DefaultMapping(collections.defaultdict):
         return value
 
 
+def default_policy_agent_mapping(unused_agent_id):
+    return DEFAULT_POLICY_ID
+
+
 def rollout(agent, env_name, num_steps, out=None, no_render=True):
+    policy_agent_mapping = default_policy_agent_mapping
+
     if hasattr(agent, "local_evaluator"):
         env = agent.local_evaluator.env
         multiagent = isinstance(env, MultiAgentEnv)
         if agent.local_evaluator.multiagent:
             policy_agent_mapping = agent.config["multiagent"][
                 "policy_mapping_fn"]
-        else:
 
-            def policy_agent_mapping(unused_agent_id):
-                return DEFAULT_POLICY_ID
-
-        mapping_cache = {}  # in case policy_agent_mapping is stochastic
         policy_map = agent.local_evaluator.policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
@@ -142,6 +143,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         rollouts = []
     steps = 0
     while steps < (num_steps or steps + 1):
+        mapping_cache = {}  # in case policy_agent_mapping is stochastic
         if out is not None:
             rollout = []
         obs = env.reset()
