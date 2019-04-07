@@ -253,6 +253,8 @@ class Trial(object):
                  stopping_criterion=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
+                 keep_checkpoints_num=None,
+                 checkpoint_score_attr="",
                  export_formats=None,
                  restore_path=None,
                  upload_dir=None,
@@ -288,6 +290,16 @@ class Trial(object):
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
+
+        self.history = []
+        self.keep_checkpoints_num = keep_checkpoints_num
+        self._cmp_greater = not checkpoint_score_attr.startswith("min-")
+        self.best_checkpoint_attr_value = -float("inf") \
+            if self._cmp_greater else float("inf")
+        # Strip off "min-" from checkpoint attribute
+        self.checkpoint_score_attr = checkpoint_score_attr \
+            if self._cmp_greater else checkpoint_score_attr[4:]
+
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
         self.export_formats = export_formats
@@ -299,7 +311,6 @@ class Trial(object):
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
-
         self.custom_trial_name = None
 
         # AutoML fields
@@ -310,10 +321,8 @@ class Trial(object):
 
         self._nonjson_fields = [
             "_checkpoint",
-            "config",
             "loggers",
             "sync_function",
-            "last_result",
             "results",
             "best_result",
             "param_config",
@@ -496,6 +505,28 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
+
+    def compare_checkpoints(self, attr_mean):
+        """Compares two checkpoints based on the attribute attr_mean param.
+        Greater than is used by default. If  command-line parameter
+        checkpoint_score_attr starts with "min-" less than is used.
+
+        Arguments:
+            attr_mean: mean of attribute value for the current checkpoint
+
+        Returns:
+            True: when attr_mean is greater than previous checkpoint attr_mean
+                  and greater than function is selected
+                  when attr_mean is less than previous checkpoint attr_mean and
+                  less than function is selected
+            False: when attr_mean is not in alignment with selected cmp fn
+        """
+        if self._cmp_greater and attr_mean > self.best_checkpoint_attr_value:
+            return True
+        elif (not self._cmp_greater
+              and attr_mean < self.best_checkpoint_attr_value):
+            return True
+        return False
 
     def _get_trainable_cls(self):
         return ray.tune.registry._global_registry.get(

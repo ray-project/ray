@@ -278,7 +278,7 @@ def test_incorrect_method_calls(ray_start_regular):
 def test_worker_raising_exception(ray_start_regular):
     @ray.remote
     def f():
-        ray.worker.global_worker._get_next_task_from_local_scheduler = None
+        ray.worker.global_worker._get_next_task_from_raylet = None
 
     # Running this task should cause the worker to raise an exception after
     # the task has successfully completed.
