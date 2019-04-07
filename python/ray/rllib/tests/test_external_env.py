@@ -18,22 +18,32 @@ from ray.rllib.tests.test_policy_evaluator import (BadPolicyGraph,
 from ray.tune.registry import register_env
 
 
-class SimpleServing(ExternalEnv):
-    def __init__(self, env):
-        ExternalEnv.__init__(self, env.action_space, env.observation_space)
-        self.env = env
+def make_simple_serving(multiagent, superclass):
+    class SimpleServing(superclass):
+        def __init__(self, env):
+            superclass.__init__(self, env.action_space, env.observation_space)
+            self.env = env
 
-    def run(self):
-        eid = self.start_episode()
-        obs = self.env.reset()
-        while True:
-            action = self.get_action(eid, obs)
-            obs, reward, done, info = self.env.step(action)
-            self.log_returns(eid, reward, info=info)
-            if done:
-                self.end_episode(eid, obs)
-                obs = self.env.reset()
-                eid = self.start_episode()
+        def run(self):
+            eid = self.start_episode()
+            obs = self.env.reset()
+            while True:
+                action = self.get_action(eid, obs)
+                obs, reward, done, info = self.env.step(action)
+                if multiagent:
+                    self.log_returns(eid, reward)
+                else:
+                    self.log_returns(eid, reward, info=info)
+                if done:
+                    self.end_episode(eid, obs)
+                    obs = self.env.reset()
+                    eid = self.start_episode()
+
+    return SimpleServing
+
+
+# generate & register SimpleServing class
+SimpleServing = make_simple_serving(False, ExternalEnv)
 
 
 class PartOffPolicyServing(ExternalEnv):
