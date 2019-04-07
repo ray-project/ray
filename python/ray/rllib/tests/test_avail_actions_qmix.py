@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 from gym.spaces import Tuple, Discrete, Dict, Box
 
 import ray
@@ -20,7 +21,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
     def __init__(self, env_config):
         self.state = None
         self.avail = env_config["avail_action"]
-        self.action_mask = [0] * 10
+        self.action_mask = np.array([0] * 10)
         self.action_mask[env_config["avail_action"]] = 1
 
     def reset(self):
