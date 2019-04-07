@@ -13,6 +13,7 @@ import sys
 import time
 
 from threading import Thread
+from getpass import getuser
 
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 from ray.autoscaler.log_timer import LogTimer
@@ -55,7 +56,7 @@ class NodeUpdater(object):
                  use_internal_ip=False):
 
         ssh_control_path = "/tmp/{}_ray_ssh_sockets/{}".format(
-            os.environ["USER"], cluster_name)
+            getuser(), cluster_name)
 
         self.daemon = True
         self.process_runner = process_runner
