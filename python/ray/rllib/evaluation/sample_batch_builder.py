@@ -32,6 +32,7 @@ class SampleBatchBuilder(object):
     def __init__(self):
         self.buffers = collections.defaultdict(list)
         self.count = 0
+        self.unroll_id = 0  # disambiguates unrolls within a single episode
 
     @PublicAPI
     def add_values(self, **values):
@@ -56,8 +57,11 @@ class SampleBatchBuilder(object):
         batch = SampleBatch(
             {k: to_float_array(v)
              for k, v in self.buffers.items()})
+        batch.data[SampleBatch.UNROLL_ID] = np.repeat(self.unroll_id,
+                                                      batch.count)
         self.buffers.clear()
         self.count = 0
+        self.unroll_id += 1
         return batch
 
 
