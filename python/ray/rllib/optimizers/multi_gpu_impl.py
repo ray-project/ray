@@ -164,35 +164,55 @@ class LocalSyncParallelOptimizer(object):
             smallest_array = inputs[0]
             self._loaded_max_seq_len = 1
 
-        seq_batch_size = (self.max_per_device_batch_size //
-                          self._loaded_max_seq_len * len(self.devices))
-        if len(smallest_array) < seq_batch_size:
+        sequences_per_minibatch = (
+            self.max_per_device_batch_size // self._loaded_max_seq_len * len(
+                self.devices))
+        if sequences_per_minibatch < 1:
+            logger.warn(
+                ("Target minibatch size is {}, however the rollout sequence "
+                 "length is {}, hence the minibatch size will be raised to "
+                 "{}.").format(self.max_per_device_batch_size,
+                               self._loaded_max_seq_len,
+                               self._loaded_max_seq_len * len(self.devices)))
+            sequences_per_minibatch = 1
+
+        if len(smallest_array) < sequences_per_minibatch:
             # Dynamically shrink the batch size if insufficient data
-            seq_batch_size = make_divisible_by(
+            sequences_per_minibatch = make_divisible_by(
                 len(smallest_array), len(self.devices))
-        if seq_batch_size < len(self.devices):
+
+        if log_once("data_slicing"):
+            logger.info(
+                ("Divided {} rollout sequences, each of length {}, among "
+                 "{} devices.").format(
+                     len(smallest_array), self._loaded_max_seq_len,
+                     len(self.devices)))
+
+        if sequences_per_minibatch < len(self.devices):
             raise ValueError(
                 "Must load at least 1 tuple sequence per device. Try "
                 "increasing `sgd_minibatch_size` or reducing `max_seq_len` "
                 "to ensure that at least one sequence fits per device.")
-        self._loaded_per_device_batch_size = (
-            seq_batch_size // len(self.devices) * self._loaded_max_seq_len)
+        self._loaded_per_device_batch_size = (sequences_per_minibatch // len(
+            self.devices) * self._loaded_max_seq_len)
 
         if len(state_inputs) > 0:
-            # First truncate the RNN state arrays to the seq_batch_size
+            # First truncate the RNN state arrays to the sequences_per_minib.
             state_inputs = [
-                make_divisible_by(arr, seq_batch_size) for arr in state_inputs
+                make_divisible_by(arr, sequences_per_minibatch)
+                for arr in state_inputs
             ]
             # Then truncate the data inputs to match
             inputs = [arr[:len(state_inputs[0]) * seq_len] for arr in inputs]
             assert len(state_inputs[0]) * seq_len == len(inputs[0]), \
-                (len(state_inputs[0]), seq_batch_size, seq_len, len(inputs[0]))
+                (len(state_inputs[0]), sequences_per_minibatch, seq_len,
+                 len(inputs[0]))
             for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
                 feed_dict[ph] = arr
             truncated_len = len(inputs[0])
         else:
             for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
-                truncated_arr = make_divisible_by(arr, seq_batch_size)
+                truncated_arr = make_divisible_by(arr, sequences_per_minibatch)
                 feed_dict[ph] = truncated_arr
                 truncated_len = len(truncated_arr)
 
