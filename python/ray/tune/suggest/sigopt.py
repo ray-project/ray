@@ -4,10 +4,9 @@ from __future__ import print_function
 
 import copy
 import os
-
 try:
     import sigopt as sgo
-except Exception:
+except ImportError:
     sgo = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm

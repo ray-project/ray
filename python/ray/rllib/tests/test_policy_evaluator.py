@@ -235,6 +235,34 @@ class TestPolicyEvaluator(unittest.TestCase):
         result2 = collect_metrics(ev2, [])
         self.assertEqual(result2["episode_reward_mean"], 1000)
 
+    def testHardHorizon(self):
+        ev = PolicyEvaluator(
+            env_creator=lambda _: MockEnv(episode_length=10),
+            policy_graph=MockPolicyGraph,
+            batch_mode="complete_episodes",
+            batch_steps=10,
+            episode_horizon=4,
+            soft_horizon=False)
+        samples = ev.sample()
+        # three logical episodes
+        self.assertEqual(len(set(samples["eps_id"])), 3)
+        # 3 done values
+        self.assertEqual(sum(samples["dones"]), 3)
+
+    def testSoftHorizon(self):
+        ev = PolicyEvaluator(
+            env_creator=lambda _: MockEnv(episode_length=10),
+            policy_graph=MockPolicyGraph,
+            batch_mode="complete_episodes",
+            batch_steps=10,
+            episode_horizon=4,
+            soft_horizon=True)
+        samples = ev.sample()
+        # three logical episodes
+        self.assertEqual(len(set(samples["eps_id"])), 3)
+        # only 1 hard done value
+        self.assertEqual(sum(samples["dones"]), 1)
+
     def testMetrics(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: MockEnv(episode_length=10),

@@ -7,6 +7,7 @@
 #include "ray/common/common_protocol.h"
 #include "ray/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/stats/stats.h"
 
 namespace {
 
@@ -454,7 +455,7 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
-  // Extract decision for this local scheduler.
+  // Extract decision for this raylet.
   auto decision = scheduling_policy_.SpillOver(remote_resources);
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
@@ -934,7 +935,7 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
       from_flatbuf<ObjectID>(*message->execution_dependencies()));
   TaskSpecification task_spec(*message->task_spec());
   Task task(task_execution_spec, task_spec);
-  // Submit the task to the local scheduler. Since the task was submitted
+  // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
   SubmitTask(task, Lineage());
 }
@@ -1153,7 +1154,7 @@ void NodeManager::ScheduleTasks(
   }
 #endif
 
-  // Extract decision for this local scheduler.
+  // Extract decision for this raylet.
   std::unordered_set<TaskID> local_task_ids;
   // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
   for (const auto &task_client_pair : policy_decision) {
@@ -1318,6 +1319,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
+  stats::TaskCountReceived().Record(1);
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Submitting task: task_id=" << task_id
