@@ -23,12 +23,12 @@ docker:
     run_options:
       - --runtime=nvidia
 
-    # Example of running a GPU head with CPU workers
-    # head_image: "tensorflow/tensorflow:1.13.1-py3"
+    # # Example of running a GPU head with CPU workers
+    # head_image: "tensorflow/tensorflow:1.13.1-gpu-py3"
     # head_run_options:
     #     - --runtime=nvidia
 
-    # worker_image: "ubuntu:18.04"
+    # worker_image: "tensorflow/tensorflow:1.13.1-py3"
     # worker_run_options: []
 
 # The autoscaler will scale up the cluster to this target fraction of resource
