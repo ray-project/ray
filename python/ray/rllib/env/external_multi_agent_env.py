@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from six.moves import queue
-import threading
 import uuid
 
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -26,13 +24,17 @@ class ExternalMultiAgentEnv(ExternalEnv):
             max_concurrent (int): Max number of active episodes to allow at
                 once. Exceeding this limit raises an error.
         """
-        ExternalEnv.__init__(
-            self, action_space, observation_space, max_concurrent)
+        ExternalEnv.__init__(self, action_space, observation_space,
+                             max_concurrent)
 
         # we require to know all agents' spaces
-        if isinstance(self.action_space, dict) or isinstance(self.observation_space, dict):
+        if isinstance(self.action_space, dict) or isinstance(
+                self.observation_space, dict):
             if not (self.action_space.keys() == self.observation_space.keys()):
-                raise ValueError("Agent ids disagree for action space and obs space dict: {} {}".format(self.action_space.keys(), self.observation_space.keys()))
+                raise ValueError("Agent ids disagree for action space and obs "
+                                 "space dict: {} {}".format(
+                                     self.action_space.keys(),
+                                     self.observation_space.keys()))
 
     @PublicAPI
     def run(self):
@@ -66,7 +68,10 @@ class ExternalMultiAgentEnv(ExternalEnv):
                 "Episode {} is already started".format(episode_id))
 
         self._episodes[episode_id] = _ExternalEnvEpisode(
-            episode_id, self._results_avail_condition, training_enabled, multiagent=True)
+            episode_id,
+            self._results_avail_condition,
+            training_enabled,
+            multiagent=True)
 
         return episode_id
 
@@ -125,7 +130,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
             if agent in episode.cur_reward_dict:
                 episode.cur_reward_dict[agent] += rew
             else:
-                episode.cur_reward_dict[agent] = rew 
+                episode.cur_reward_dict[agent] = rew
         if info_dict:
             episode.cur_info_dict = info_dict or {}
 
@@ -142,4 +147,3 @@ class ExternalMultiAgentEnv(ExternalEnv):
         episode = self._get(episode_id)
         self._finished.add(episode.episode_id)
         episode.done(observation_dict)
-

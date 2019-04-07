@@ -184,7 +184,11 @@ class ExternalEnv(threading.Thread):
 class _ExternalEnvEpisode(object):
     """Tracked state for each active episode."""
 
-    def __init__(self, episode_id, results_avail_condition, training_enabled, multiagent=False):
+    def __init__(self,
+                 episode_id,
+                 results_avail_condition,
+                 training_enabled,
+                 multiagent=False):
         self.episode_id = episode_id
         self.results_avail_condition = results_avail_condition
         self.training_enabled = training_enabled
@@ -266,4 +270,3 @@ class _ExternalEnvEpisode(object):
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)
             self.results_avail_condition.notify()
-

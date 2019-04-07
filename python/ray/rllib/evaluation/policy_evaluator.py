@@ -310,12 +310,13 @@ class PolicyEvaluator(EvaluatorInterface):
         self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent:
             if not ((isinstance(self.env, MultiAgentEnv)
-                    or isinstance(self.env, ExternalMultiAgentEnv))
+                     or isinstance(self.env, ExternalMultiAgentEnv))
                     or isinstance(self.env, BaseEnv)):
                 raise ValueError(
                     "Have multiple policy graphs {}, but the env ".format(
                         self.policy_map) +
-                    "{} is not a subclass of BaseEnv, MultiAgentEnv or ExternalMultiAgentEnv?".format(self.env))
+                    "{} is not a subclass of BaseEnv, MultiAgentEnv or "
+                    "ExternalMultiAgentEnv?".format(self.env))
 
         self.filters = {
             policy_id: get_filter(observation_filter,

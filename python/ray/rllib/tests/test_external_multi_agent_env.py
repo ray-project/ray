@@ -6,23 +6,16 @@ import gym
 import numpy as np
 import random
 import unittest
-import uuid
 
 import ray
-from ray.rllib.agents.dqn import DQNAgent
-from ray.rllib.agents.pg import PGAgent
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
-from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.tests.test_policy_evaluator import (BadPolicyGraph,
-                                                   MockPolicyGraph, MockEnv)
+from ray.rllib.tests.test_policy_evaluator import MockPolicyGraph
 from ray.rllib.tests.test_external_env import make_simple_serving
 from ray.rllib.tests.test_multi_agent_env import BasicMultiAgent, MultiCartpole
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.tune.registry import register_env
-
 
 SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)
 
@@ -69,7 +62,6 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
 
     def testTrainExternalMultiCartpoleManyPolicies(self):
         n = 20
-        env = SimpleMultiServing(MultiCartpole(n))
         single_env = gym.make("CartPole-v0")
         act_space = single_env.action_space
         obs_space = single_env.observation_space

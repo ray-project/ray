@@ -7,7 +7,6 @@ import numpy as np
 import random
 import unittest
 import uuid
-import sys
 
 import ray
 from ray.rllib.agents.dqn import DQNAgent
@@ -17,7 +16,6 @@ from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.tests.test_policy_evaluator import (BadPolicyGraph,
                                                    MockPolicyGraph, MockEnv)
 from ray.tune.registry import register_env
-
 
 
 def make_simple_serving(multiagent, superclass):
@@ -43,9 +41,9 @@ def make_simple_serving(multiagent, superclass):
 
     return SimpleServing
 
+
 # generate & register SimpleServing class
-_gen = make_simple_serving(False, ExternalEnv)
-globals()[_gen.__name__] = _gen
+SimpleServing = make_simple_serving(False, ExternalEnv)
 
 
 class PartOffPolicyServing(ExternalEnv):

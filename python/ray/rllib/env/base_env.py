@@ -106,7 +106,8 @@ class BaseEnv(object):
             elif isinstance(env, ExternalMultiAgentEnv):
                 if num_envs != 1:
                     raise ValueError(
-                        "ExternalMultiAgentEnv does not currently support num_envs > 1.")
+                        "ExternalMultiAgentEnv does not currently support "
+                        "num_envs > 1.")
                 env = _ExternalEnvToBaseEnv(env, multiagent=True)
             elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
@@ -250,7 +251,8 @@ class _ExternalEnvToBaseEnv(BaseEnv):
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
-            cur_done = episode.cur_done_dict["__all__"] if self.multiagent else episode.cur_done
+            cur_done = episode.cur_done_dict[
+                "__all__"] if self.multiagent else episode.cur_done
             if cur_done:
                 del self.external_env._episodes[eid]
             if data:
@@ -268,13 +270,16 @@ class _ExternalEnvToBaseEnv(BaseEnv):
             # rely on all_obs having all possible keys for now
             for eid, eid_dict in all_obs.items():
                 for agent_id in eid_dict.keys():
+
                     def fix(d, zero_val):
                         if agent_id not in d[eid]:
                             d[eid][agent_id] = zero_val
+
                     fix(all_rewards, 0.0)
                     fix(all_dones, False)
                     fix(all_infos, {})
-            return all_obs, all_rewards, all_dones, all_infos, off_policy_actions
+            return (all_obs, all_rewards, all_dones, all_infos,
+                    off_policy_actions)
         else:
             return _with_dummy_agent_id(all_obs), \
                 _with_dummy_agent_id(all_rewards), \
