@@ -35,6 +35,19 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
 
+# Handle to the current evaluator, which will be set to the most recently
+# created PolicyEvaluator in this process. This can be helpful to access in
+# custom env or policy classes for debugging or advanced use cases.
+_global_evaluator = None
+
+
+@DeveloperAPI
+def get_global_evaluator():
+    """Returns a handle to the active policy evaluator in this process."""
+
+    global _global_evaluator
+    return _global_evaluator
+
 
 @DeveloperAPI
 class PolicyEvaluator(EvaluatorInterface):
@@ -214,6 +227,9 @@ class PolicyEvaluator(EvaluatorInterface):
                 environment when the horizon is hit.
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
+
+        global _global_evaluator
+        _global_evaluator = self
 
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)

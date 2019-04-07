@@ -10,8 +10,8 @@ import unittest
 from collections import Counter
 
 import ray
-from ray.rllib.agents.pg import PGAgent
-from ray.rllib.agents.a3c import A2CAgent
+from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -170,7 +170,7 @@ class TestPolicyEvaluator(unittest.TestCase):
         print()
 
     def testGlobalVarsUpdate(self):
-        agent = A2CAgent(
+        agent = A2CTrainer(
             env="CartPole-v0",
             config={
                 "lr_schedule": [[0, 0.1], [400, 0.000001]],
@@ -182,12 +182,12 @@ class TestPolicyEvaluator(unittest.TestCase):
 
     def testNoStepOnInit(self):
         register_env("fail", lambda _: FailOnStepEnv())
-        pg = PGAgent(env="fail", config={"num_workers": 1})
+        pg = PGTrainer(env="fail", config={"num_workers": 1})
         self.assertRaises(Exception, lambda: pg.train())
 
     def testCallbacks(self):
         counts = Counter()
-        pg = PGAgent(
+        pg = PGTrainer(
             env="CartPole-v0", config={
                 "num_workers": 0,
                 "sample_batch_size": 50,
@@ -211,7 +211,7 @@ class TestPolicyEvaluator(unittest.TestCase):
 
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
-        pg = PGAgent(
+        pg = PGTrainer(
             env="test",
             config={
                 "num_workers": 2,

@@ -6,7 +6,7 @@ import time
 
 from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.utils.annotations import override
@@ -100,14 +100,14 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class ImpalaAgent(Agent):
+class ImpalaTrainer(Trainer):
     """IMPALA implementation using DeepMind's V-trace."""
 
-    _agent_name = "IMPALA"
+    _name = "IMPALA"
     _default_config = DEFAULT_CONFIG
     _policy_graph = VTracePolicyGraph
 
-    @override(Agent)
+    @override(Trainer)
     def _init(self, config, env_creator):
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in config["optimizer"]:
@@ -136,7 +136,7 @@ class ImpalaAgent(Agent):
     @override(Trainable)
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
-        Agent._validate_config(cf)
+        Trainer._validate_config(cf)
         return Resources(
             cpu=cf["num_cpus_for_driver"],
             gpu=cf["num_gpus"],
@@ -144,7 +144,7 @@ class ImpalaAgent(Agent):
             cf["num_aggregation_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()

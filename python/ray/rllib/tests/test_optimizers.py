@@ -9,7 +9,7 @@ import time
 import unittest
 
 import ray
-from ray.rllib.agents.ppo import PPOAgent
+from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
@@ -41,7 +41,7 @@ class PPOCollectTest(unittest.TestCase):
         ray.init(num_cpus=4)
 
         # Check we at least collect the initial wave of samples
-        ppo = PPOAgent(
+        ppo = PPOTrainer(
             env="CartPole-v0",
             config={
                 "sample_batch_size": 200,
@@ -53,7 +53,7 @@ class PPOCollectTest(unittest.TestCase):
         ppo.stop()
 
         # Check we collect at least the specified amount of samples
-        ppo = PPOAgent(
+        ppo = PPOTrainer(
             env="CartPole-v0",
             config={
                 "sample_batch_size": 200,
@@ -65,7 +65,7 @@ class PPOCollectTest(unittest.TestCase):
         ppo.stop()
 
         # Check in vectorized mode
-        ppo = PPOAgent(
+        ppo = PPOTrainer(
             env="CartPole-v0",
             config={
                 "sample_batch_size": 200,
@@ -78,7 +78,7 @@ class PPOCollectTest(unittest.TestCase):
         ppo.stop()
 
         # Check legacy mode
-        ppo = PPOAgent(
+        ppo = PPOTrainer(
             env="CartPole-v0",
             config={
                 "sample_batch_size": 200,
