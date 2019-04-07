@@ -54,8 +54,8 @@ class NodeUpdater(object):
                  process_runner=subprocess,
                  use_internal_ip=False):
 
-        ssh_control_path = '/tmp/{}_ray_ssh_sockets/{}'.format(
-            os.environ['USER'], cluster_name)
+        ssh_control_path = "/tmp/{}_ray_ssh_sockets/{}".format(
+            os.environ["USER"], cluster_name)
 
         self.daemon = True
         self.process_runner = process_runner
