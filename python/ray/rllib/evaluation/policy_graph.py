@@ -170,7 +170,9 @@ class PolicyGraph(object):
             >>> ev.learn_on_batch(samples)
         """
 
-        raise NotImplementedError
+        grads, grad_info = self.compute_gradients(samples)
+        apply_info = self.apply_gradients(grads)
+        return grad_info, apply_info
 
     @DeveloperAPI
     def compute_gradients(self, postprocessed_batch):
