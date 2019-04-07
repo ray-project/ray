@@ -6,13 +6,10 @@ from __future__ import print_function
 
 import numpy as np
 import argparse
-import json
-import os
 import random
-import time
 
 import ray
-from ray.tune import Trainable, run, sample_from
+from ray.tune import Trainable, run
 from ray.tune.schedulers import PopulationBasedTraining
 
 
@@ -43,9 +40,9 @@ class PBTBenchmarkExample(Trainable):
         self.accuracy = 0.0  # end = 1000
 
     def _train(self):
-        midpoint = 100
-        q_tolerance = 3
-        noise_level = 2
+        midpoint = 100  # lr starts decreasing after acc > midpoint
+        q_tolerance = 3  # penalize exceeding lr by more than this multiple
+        noise_level = 2  # add gaussian noise to the acc increase
         # triangle wave:
         #  - start at 0.001 @ t=0,
         #  - peak at 0.01 @ t=midpoint,
@@ -56,6 +53,7 @@ class PBTBenchmarkExample(Trainable):
             optimal_lr = 0.01 - 0.01 * (self.accuracy - midpoint) / midpoint
         optimal_lr = min(0.01, max(0.001, optimal_lr))
 
+        # compute accuracy increase
         q_err = max(self.lr, optimal_lr) / min(self.lr, optimal_lr)
         if q_err < q_tolerance:
             self.accuracy += (1.0 / q_err) * random.random()
@@ -67,8 +65,8 @@ class PBTBenchmarkExample(Trainable):
         return {
             "mean_accuracy": self.accuracy,
             "cur_lr": self.lr,
-            "optimal_lr": optimal_lr,
-            "q_err": q_err,
+            "optimal_lr": optimal_lr,  # for debugging
+            "q_err": q_err,  # for debugging
             "done": self.accuracy > midpoint * 2,
         }
 
