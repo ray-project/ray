@@ -15,9 +15,9 @@ import argparse
 import gym
 
 import ray
-from ray.rllib.agents.dqn.dqn import DQNAgent
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
-from ray.rllib.agents.ppo.ppo import PPOAgent
+from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.logger import pretty_print
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         else:
             return "dqn_policy"
 
-    ppo_trainer = PPOAgent(
+    ppo_trainer = PPOTrainer(
         env="multi_cartpole",
         config={
             "multiagent": {
@@ -62,7 +62,7 @@ if __name__ == "__main__":
             "observation_filter": "NoFilter",
         })
 
-    dqn_trainer = DQNAgent(
+    dqn_trainer = DQNTrainer(
         env="multi_cartpole",
         config={
             "multiagent": {
