@@ -14,7 +14,7 @@ import time
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader
@@ -44,7 +44,7 @@ class AgentIOTest(unittest.TestCase):
         shutil.rmtree(self.test_dir)
 
     def writeOutputs(self, output):
-        agent = PGAgent(
+        agent = PGTrainer(
             env="CartPole-v0",
             config={
                 "output": output,
@@ -65,7 +65,7 @@ class AgentIOTest(unittest.TestCase):
 
     def testAgentInputDir(self):
         self.writeOutputs(self.test_dir)
-        agent = PGAgent(
+        agent = PGTrainer(
             env="CartPole-v0",
             config={
                 "input": self.test_dir,
@@ -97,7 +97,7 @@ class AgentIOTest(unittest.TestCase):
                 for data in out:
                     f.write(json.dumps(data))
 
-        agent = PGAgent(
+        agent = PGTrainer(
             env="CartPole-v0",
             config={
                 "input": self.test_dir,
@@ -111,7 +111,7 @@ class AgentIOTest(unittest.TestCase):
 
     def testAgentInputEvalSim(self):
         self.writeOutputs(self.test_dir)
-        agent = PGAgent(
+        agent = PGTrainer(
             env="CartPole-v0",
             config={
                 "input": self.test_dir,
@@ -126,7 +126,7 @@ class AgentIOTest(unittest.TestCase):
 
     def testAgentInputList(self):
         self.writeOutputs(self.test_dir)
-        agent = PGAgent(
+        agent = PGTrainer(
             env="CartPole-v0",
             config={
                 "input": glob.glob(self.test_dir + "/*.json"),
@@ -139,7 +139,7 @@ class AgentIOTest(unittest.TestCase):
 
     def testAgentInputDict(self):
         self.writeOutputs(self.test_dir)
-        agent = PGAgent(
+        agent = PGTrainer(
             env="CartPole-v0",
             config={
                 "input": {
@@ -161,7 +161,7 @@ class AgentIOTest(unittest.TestCase):
             act_space = single_env.action_space
             return (PGPolicyGraph, obs_space, act_space, {})
 
-        pg = PGAgent(
+        pg = PGTrainer(
             env="multi_cartpole",
             config={
                 "num_workers": 0,
@@ -180,7 +180,7 @@ class AgentIOTest(unittest.TestCase):
         self.assertEqual(len(os.listdir(self.test_dir)), 1)
 
         pg.stop()
-        pg = PGAgent(
+        pg = PGTrainer(
             env="multi_cartpole",
             config={
                 "num_workers": 0,

@@ -34,9 +34,9 @@ class ExternalEnv(threading.Thread):
 
     Examples:
         >>> register_env("my_env", lambda config: YourExternalEnv(config))
-        >>> agent = DQNAgent(env="my_env")
+        >>> trainer = DQNTrainer(env="my_env")
         >>> while True:
-              print(agent.train())
+              print(trainer.train())
     """
 
     @PublicAPI

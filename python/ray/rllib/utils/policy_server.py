@@ -39,7 +39,7 @@ class PolicyServer(ThreadingMixIn, HTTPServer):
                    server = PolicyServer(self, "localhost", 8900)
                    server.serve_forever()
         >>> register_env("srv", lambda _: CartpoleServing())
-        >>> pg = PGAgent(env="srv", config={"num_workers": 0})
+        >>> pg = PGTrainer(env="srv", config={"num_workers": 0})
         >>> while True:
                 pg.train()
 
