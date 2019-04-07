@@ -475,13 +475,13 @@ class RayTrialExecutor(TrialExecutor):
                 try:
                     last_attr_val = trial.last_result[
                         trial.checkpoint_score_attr]
-                    if trial.compare_checkpoints(last_attr_val) and \
-                        not math.isnan(last_attr_val):
+                    if (trial.compare_checkpoints(last_attr_val)
+                            and not math.isnan(last_attr_val)):
                         trial.best_checkpoint_attr_value = last_attr_val
                         self._checkpoint_and_erase(trial)
-                except KeyError as e:
+                except KeyError:
                     logger.warning(
-                        "Result dict has no key: {}. keep_"
+                        "Result dict has no key: {}. keep"
                         "_checkpoints_num flag will not work".format(
                             trial.checkpoint_score_attr))
             else:

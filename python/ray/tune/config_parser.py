@@ -113,10 +113,10 @@ def make_parser(parser_creator=None, **kwargs):
         "--checkpoint-score-attr",
         default="training_iteration",
         type=str,
-        help=
-        "Specifies by which attribute to rank the best checkpoint. Default is"
-        "increasing order. If attribute starts with min- it will rank "
-        "attribute in decreasing order. example: min-validation_loss")
+        help="Specifies by which attribute to rank the best checkpoint. "
+        "Default is increasing order. If attribute starts with min- it "
+        "will rank attribute in decreasing order. Example: "
+        "min-validation_loss")
     parser.add_argument(
         "--export-formats",
         default=None,

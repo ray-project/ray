@@ -473,8 +473,9 @@ class Trial(object):
 
     def _status_string(self):
         return "{}{}".format(
-            self.status, ", {} failures: {}".format(
-                self.num_failures, self.error_file) if self.error_file else "")
+            self.status, ", {} failures: {}".format(self.num_failures,
+                                                    self.error_file)
+            if self.error_file else "")
 
     def has_checkpoint(self):
         return self._checkpoint.value is not None
@@ -507,22 +508,23 @@ class Trial(object):
 
     def compare_checkpoints(self, attr_mean):
         """Compares two checkpoints based on the attribute attr_mean param.
-        Greater than is used by default. If  command-line parameter checkpoint_score_attr
-        starts with "min-" less than is used.
-        Parameters
-        ----------
-            attr_mean : mean of attribute value for the current checkpoint
-        Returns
-        -------
+        Greater than is used by default. If  command-line parameter
+        checkpoint_score_attr starts with "min-" less than is used.
+
+        Arguments:
+            attr_mean: mean of attribute value for the current checkpoint
+
+        Returns:
             True: when attr_mean is greater than previous checkpoint attr_mean
                   and greater than function is selected
                   when attr_mean is less than previous checkpoint attr_mean and
                   less than function is selected
-            False: when attr_mean is not in alignment with selected cmp function
+            False: when attr_mean is not in alignment with selected cmp fn
         """
         if self._cmp_greater and attr_mean > self.best_checkpoint_attr_value:
             return True
-        elif not self._cmp_greater and attr_mean < self.best_checkpoint_attr_value:
+        elif (not self._cmp_greater
+              and attr_mean < self.best_checkpoint_attr_value):
             return True
         return False
 
