@@ -166,20 +166,6 @@ class TestPolicyEvaluator(unittest.TestCase):
         self.assertEqual(
             len(set(SampleBatch.concat(batch1, batch2)["unroll_id"])), 2)
 
-    # 11/23/18: Samples per second 8501.125113727468
-    def testBaselinePerformance(self):
-        ev = PolicyEvaluator(
-            env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_graph=MockPolicyGraph,
-            batch_steps=100)
-        start = time.time()
-        count = 0
-        while time.time() - start < 1:
-            count += ev.sample().count
-        print()
-        print("Samples per second {}".format(count / (time.time() - start)))
-        print()
-
     def testGlobalVarsUpdate(self):
         agent = A2CTrainer(
             env="CartPole-v0",
