@@ -68,7 +68,7 @@ class ParametricActionCartpole(gym.Env):
         self.wrapped = gym.make("CartPole-v0")
         self.observation_space = Dict({
             "action_mask": Box(0, 1, shape=(max_avail_actions, )),
-            "avail_actions": Box(-1, 1, shape=(max_avail_actions, 2)),
+            "avail_actions": Box(-10, 10, shape=(max_avail_actions, 2)),
             "cart": self.wrapped.observation_space,
         })
 
