@@ -12,12 +12,12 @@ from __future__ import print_function
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo import PPOAgent
+from ray.rllib.agents.ppo import PPOTrainer
 
 
 def my_train_fn(config, reporter):
     # Train for 100 iterations with high LR
-    agent1 = PPOAgent(env="CartPole-v0", config=config)
+    agent1 = PPOTrainer(env="CartPole-v0", config=config)
     for _ in range(10):
         result = agent1.train()
         result["phase"] = 1
@@ -28,7 +28,7 @@ def my_train_fn(config, reporter):
 
     # Train for 100 iterations with low LR
     config["lr"] = 0.0001
-    agent2 = PPOAgent(env="CartPole-v0", config=config)
+    agent2 = PPOTrainer(env="CartPole-v0", config=config)
     agent2.restore(state)
     for _ in range(10):
         result = agent2.train()

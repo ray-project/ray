@@ -7,7 +7,7 @@ from gym.spaces import Tuple, Discrete, Dict, Box
 import ray
 from ray.tune import register_env
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.agents.qmix import QMixAgent
+from ray.rllib.agents.qmix import QMixTrainer
 
 
 class AvailActionsTestEnv(MultiAgentEnv):
@@ -55,7 +55,7 @@ if __name__ == "__main__":
             grouping, obs_space=obs_space, act_space=act_space))
 
     ray.init()
-    agent = QMixAgent(
+    agent = QMixTrainer(
         env="action_mask_test",
         config={
             "num_envs_per_worker": 5,  # test with vectorization on
