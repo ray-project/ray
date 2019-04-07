@@ -434,7 +434,8 @@ class Trainer(Trainable):
                        prev_action=None,
                        prev_reward=None,
                        info=None,
-                       policy_id=DEFAULT_POLICY_ID):
+                       policy_id=DEFAULT_POLICY_ID,
+                       full_fetch=False):
         """Computes an action for the specified policy.
 
         Note that you can also access the policy object through
@@ -451,6 +452,12 @@ class Trainer(Trainable):
             prev_reward (int): previous reward, if any
             info (dict): info object, if any
             policy_id (str): policy to query (only applies to multi-agent).
+            full_fetch (bool): whether to return extra action fetch results.
+                This is always set to true if RNN state is specified.
+
+        Returns:
+            Just the computed action if full_fetch=False, or the full output
+            of policy.compute_actions() otherwise.
         """
 
         if state is None:
@@ -467,13 +474,17 @@ class Trainer(Trainable):
                 prev_reward,
                 info,
                 clip_actions=self.config["clip_actions"])
-        return self.get_policy(policy_id).compute_single_action(
+        res = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
             state,
             prev_action,
             prev_reward,
             info,
-            clip_actions=self.config["clip_actions"])[0]
+            clip_actions=self.config["clip_actions"])
+        if full_fetch:
+            return res
+        else:
+            return res[0]  # backwards compatibility
 
     @property
     def iteration(self):
