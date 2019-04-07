@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.agents.agent import Trainer, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.utils.annotations import override
 
 
