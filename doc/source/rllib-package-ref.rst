@@ -19,7 +19,7 @@ ray.rllib.agents
 .. autoclass:: ray.rllib.agents.ppo.APPOTrainer
 .. autoclass:: ray.rllib.agents.ppo.PPOTrainer
 .. autoclass:: ray.rllib.agents.marwil.MARWILTrainer
-.. autoclass:: ray.rllib.agents.qmix.QMixTrainer
+
 
 ray.rllib.env
 -------------
