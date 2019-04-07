@@ -103,6 +103,8 @@ DEFAULT_CONFIG = with_common_config({
     # === Optimization ===
     # Learning rate for adam optimizer
     "lr": 5e-4,
+    # Learning rate schedule
+    "lr_schedule": None,
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
@@ -148,7 +150,7 @@ class DQNAgent(Agent):
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
 
     @override(Agent)
-    def _init(self):
+    def _init(self, config, env_creator):
         if self.config["use_pytorch"]:
             from ray.rllib.agents.dqn.torch_dqn_policy_graph import \
                 DQNTorchPolicyGraph
@@ -159,14 +161,14 @@ class DQNAgent(Agent):
         self._validate_config()
 
         # Update effective batch size to include n-step
-        adjusted_batch_size = max(self.config["sample_batch_size"],
-                                  self.config.get("n_step", 1))
-        self.config["sample_batch_size"] = adjusted_batch_size
+        adjusted_batch_size = max(config["sample_batch_size"],
+                                  config.get("n_step", 1))
+        config["sample_batch_size"] = adjusted_batch_size
 
         self.exploration0 = self._make_exploration_schedule(-1)
         self.explorations = [
             self._make_exploration_schedule(i)
-            for i in range(self.config["num_workers"])
+            for i in range(config["num_workers"])
         ]
 
         for k in self._optimizer_shared_configs:
@@ -176,12 +178,12 @@ class DQNAgent(Agent):
             ]:
                 # only Rainbow needs annealing prioritized_replay_beta
                 continue
-            if k not in self.config["optimizer"]:
-                self.config["optimizer"][k] = self.config[k]
+            if k not in config["optimizer"]:
+                config["optimizer"][k] = config[k]
 
-        if self.config.get("parameter_noise", False):
-            if self.config["callbacks"]["on_episode_start"]:
-                start_callback = self.config["callbacks"]["on_episode_start"]
+        if config.get("parameter_noise", False):
+            if config["callbacks"]["on_episode_start"]:
+                start_callback = config["callbacks"]["on_episode_start"]
             else:
                 start_callback = None
 
@@ -194,10 +196,10 @@ class DQNAgent(Agent):
                 if start_callback:
                     start_callback(info)
 
-            self.config["callbacks"]["on_episode_start"] = tune.function(
+            config["callbacks"]["on_episode_start"] = tune.function(
                 on_episode_start)
-            if self.config["callbacks"]["on_episode_end"]:
-                end_callback = self.config["callbacks"]["on_episode_end"]
+            if config["callbacks"]["on_episode_end"]:
+                end_callback = config["callbacks"]["on_episode_end"]
             else:
                 end_callback = None
 
@@ -211,15 +213,15 @@ class DQNAgent(Agent):
                 if end_callback:
                     end_callback(info)
 
-            self.config["callbacks"]["on_episode_end"] = tune.function(
+            config["callbacks"]["on_episode_end"] = tune.function(
                 on_episode_end)
 
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)
+            env_creator, policy_cls)
 
-        if self.config["evaluation_interval"]:
+        if config["evaluation_interval"]:
             self.evaluation_ev = self.make_local_evaluator(
-                self.env_creator,
+                env_creator,
                 policy_cls,
                 extra_config={
                     "batch_mode": "complete_episodes",
@@ -228,19 +230,18 @@ class DQNAgent(Agent):
             self.evaluation_metrics = self._evaluate()
 
         def create_remote_evaluators():
-            return self.make_remote_evaluators(self.env_creator,
+            return self.make_remote_evaluators(env_creator,
                                                policy_cls,
-                                               self.config["num_workers"])
+                                               config["num_workers"])
 
-        if self.config["optimizer_class"] != "AsyncReplayOptimizer":
+        if config["optimizer_class"] != "AsyncReplayOptimizer":
             self.remote_evaluators = create_remote_evaluators()
         else:
             # Hack to workaround https://github.com/ray-project/ray/issues/2541
             self.remote_evaluators = None
 
-        self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
-            self.local_evaluator, self.remote_evaluators,
-            self.config["optimizer"])
+        self.optimizer = getattr(optimizers, config["optimizer_class"])(
+            self.local_evaluator, self.remote_evaluators, config["optimizer"])
         # Create the remote evaluators *after* the replay actors
         if self.remote_evaluators is None:
             self.remote_evaluators = create_remote_evaluators()

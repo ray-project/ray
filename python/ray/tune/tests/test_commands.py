@@ -4,7 +4,9 @@ from __future__ import print_function
 
 import os
 import pytest
+import subprocess
 import sys
+import time
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -37,6 +39,29 @@ def start_ray():
     ray.shutdown()
 
 
+def test_time(start_ray, tmpdir):
+    experiment_name = "test_time"
+    experiment_path = os.path.join(str(tmpdir), experiment_name)
+    num_samples = 2
+    tune.run_experiments({
+        experiment_name: {
+            "run": "__fake",
+            "stop": {
+                "training_iteration": 1
+            },
+            "num_samples": num_samples,
+            "local_dir": str(tmpdir)
+        }
+    })
+    times = []
+    for i in range(5):
+        start = time.time()
+        subprocess.check_call(["tune", "ls", experiment_path])
+        times += [time.time() - start]
+
+    assert sum(times) / len(times) < 2.0, "CLI is taking too long!"
+
+
 def test_ls(start_ray, tmpdir):
     """This test captures output of list_trials."""
     experiment_name = "test_ls"
@@ -55,6 +80,14 @@ def test_ls(start_ray, tmpdir):
 
     with Capturing() as output:
         commands.list_trials(experiment_path, info_keys=("status", ))
+    lines = output.captured
+    assert sum("TERMINATED" in line for line in lines) == num_samples
+
+    with Capturing() as output:
+        commands.list_trials(
+            experiment_path,
+            info_keys=("status", ),
+            filter_op="status == TERMINATED")
     lines = output.captured
     assert sum("TERMINATED" in line for line in lines) == num_samples
 
@@ -79,4 +112,13 @@ def test_lsx(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_experiments(project_path, info_keys=("total_trials", ))
     lines = output.captured
-    assert sum("1" in line for line in lines) >= 3
+    assert sum("1" in line for line in lines) >= num_experiments
+
+    with Capturing() as output:
+        commands.list_experiments(
+            project_path,
+            info_keys=("total_trials", ),
+            filter_op="total_trials == 1")
+    lines = output.captured
+    assert sum("1" in line for line in lines) >= num_experiments
+    assert len(lines) == 3 + num_experiments + 1

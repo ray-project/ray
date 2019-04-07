@@ -92,10 +92,6 @@ scripts/nodes.txt
 *.dSYM/
 *.su
 
-# CMake
-cmake-build-debug/
-build
-
 # Python setup files
 *.egg-info
 
@@ -156,3 +152,6 @@ venv
 # Vim
 .*.swp
 *.swp
+
+# tools
+tools/prometheus*

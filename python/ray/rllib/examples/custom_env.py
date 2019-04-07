@@ -18,7 +18,8 @@ from ray.rllib.models import FullyConnectedNetwork, Model, ModelCatalog
 from gym.spaces import Discrete, Box
 
 import ray
-from ray.tune import run_experiments, grid_search
+from ray import tune
+from ray.tune import grid_search
 
 
 class SimpleCorridor(gym.Env):
@@ -66,22 +67,20 @@ if __name__ == "__main__":
     # register_env("corridor", lambda config: SimpleCorridor(config))
     ray.init()
     ModelCatalog.register_custom_model("my_model", CustomModel)
-    run_experiments({
-        "demo": {
-            "run": "PPO",
+    tune.run(
+        "PPO",
+        stop={
+            "timesteps_total": 10000,
+        },
+        config={
             "env": SimpleCorridor,  # or "corridor" if registered above
-            "stop": {
-                "timesteps_total": 10000,
+            "model": {
+                "custom_model": "my_model",
             },
-            "config": {
-                "model": {
-                    "custom_model": "my_model",
-                },
-                "lr": grid_search([1e-2, 1e-4, 1e-6]),  # try different lrs
-                "num_workers": 1,  # parallelism
-                "env_config": {
-                    "corridor_length": 5,
-                },
+            "lr": grid_search([1e-2, 1e-4, 1e-6]),  # try different lrs
+            "num_workers": 1,  # parallelism
+            "env_config": {
+                "corridor_length": 5,
             },
         },
-    })
+    )
