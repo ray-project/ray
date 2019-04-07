@@ -25,7 +25,7 @@ parser.add_argument("--num-workers", type=int, default=2)
 
 class CustomPolicy(PolicyGraph):
     """Example of a custom policy graph written from scratch.
-    
+
     You might find it more convenient to extend TF/TorchPolicyGraph instead
     for a real policy.
     """
