@@ -7,7 +7,7 @@ import time
 
 from ray import tune
 from ray.rllib import optimizers
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
@@ -141,15 +141,15 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class DQNAgent(Agent):
+class DQNTrainer(Trainer):
     """DQN implementation in TensorFlow."""
 
-    _agent_name = "DQN"
+    _name = "DQN"
     _default_config = DEFAULT_CONFIG
     _policy_graph = DQNPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
 
-    @override(Agent)
+    @override(Trainer)
     def _init(self, config, env_creator):
         if self.config["use_pytorch"]:
             from ray.rllib.agents.dqn.torch_dqn_policy_graph import \
@@ -172,7 +172,7 @@ class DQNAgent(Agent):
         ]
 
         for k in self._optimizer_shared_configs:
-            if self._agent_name != "DQN" and k in [
+            if self._name != "DQN" and k in [
                     "schedule_max_timesteps", "beta_annealing_fraction",
                     "final_prioritized_replay_beta"
             ]:
@@ -250,7 +250,7 @@ class DQNAgent(Agent):
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         start_timestep = self.global_timestep
 
@@ -338,7 +338,7 @@ class DQNAgent(Agent):
             final_p=self.config["exploration_final_eps"])
 
     def __getstate__(self):
-        state = Agent.__getstate__(self)
+        state = Trainer.__getstate__(self)
         state.update({
             "num_target_updates": self.num_target_updates,
             "last_target_update_ts": self.last_target_update_ts,
@@ -346,7 +346,7 @@ class DQNAgent(Agent):
         return state
 
     def __setstate__(self, state):
-        Agent.__setstate__(self, state)
+        Trainer.__setstate__(self, state)
         self.num_target_updates = state["num_target_updates"]
         self.last_target_update_ts = state["last_target_update_ts"]
 

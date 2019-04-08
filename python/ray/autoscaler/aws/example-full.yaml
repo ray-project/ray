@@ -22,6 +22,14 @@ docker:
     container_name: "" # e.g. ray_docker
     run_options: []  # Extra options to pass into "docker run"
 
+    # Example of running a GPU head with CPU workers
+    # head_image: "tensorflow/tensorflow:1.13.1-py3"
+    # head_run_options:
+    #     - --runtime=nvidia
+
+    # worker_image: "ubuntu:18.04"
+    # worker_run_options: []
+
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
 # target_utilization is 0.8, it would resize the cluster to 13. This fraction
