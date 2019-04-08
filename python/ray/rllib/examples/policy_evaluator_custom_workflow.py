@@ -18,7 +18,7 @@ from ray.rllib.evaluation import PolicyGraph, PolicyEvaluator, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--gpu", type=bool, action="store_true")
+parser.add_argument("--gpu", action="store_true")
 parser.add_argument("--num-iters", type=int, default=20)
 parser.add_argument("--num-workers", type=int, default=2)
 
