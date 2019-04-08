@@ -107,7 +107,7 @@ SMALL_CLUSTER = {
     "min_workers": 2,
     "max_workers": 2,
     "initial_workers": 0,
-    "aggressive_autoscaling": False,
+    "autoscaling_mode": "default",
     "target_utilization_fraction": 0.8,
     "idle_timeout_minutes": 5,
     "provider": {
@@ -352,7 +352,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 20
         config["initial_workers"] = 10
         config["idle_timeout_minutes"] = 0
-        config["aggressive_autoscaling"] = True
+        config["autoscaling_mode"] = "aggressive"
         config_path = self.write_config(config)
 
         self.provider = MockProvider()

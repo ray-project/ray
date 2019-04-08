@@ -51,9 +51,8 @@ CLUSTER_CONFIG_SCHEMA = {
     # The number of workers to launch initially, in addition to the head node.
     "initial_workers": (int, OPTIONAL),
 
-    # Whether or not to scale aggressively, e.g. to jump back to at least
-    #   initial_workers if we're ever below it and are scaling up
-    "aggressive_autoscaling": (bool, OPTIONAL),
+    # The mode of the autoscaler e.g. default, aggressive
+    "autoscaling_mode": (str, OPTIONAL),
 
     # The autoscaler will scale up the cluster to this target fraction of
     # resources usage. For example, if a cluster of 8 nodes is 100% busy
@@ -524,7 +523,7 @@ class StandardAutoscaler(object):
         ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
 
         initial_workers = self.config["initial_workers"]
-        aggressive = self.config["aggressive_autoscaling"]
+        aggressive = self.config["autoscaling_mode"] == "aggressive"
         if self.bringup:
             ideal_num_workers = max(ideal_num_workers, initial_workers)
         elif aggressive and cur_used > 0:

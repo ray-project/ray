@@ -17,7 +17,7 @@ initial_workers: 0
 # Whether or not to autoscale aggressively. If this is enabled, if at any point
 #   we would start more workers, we start at least enough to bring us to
 #   initial_workers.
-aggressive_autoscaling: false
+autoscaling_mode: default
 
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
