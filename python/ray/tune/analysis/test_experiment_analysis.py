@@ -5,12 +5,15 @@ from __future__ import print_function
 import unittest
 import subprocess
 import shutil
+import random
 
 from experiment_analysis import *
+import ray
+from ray.tune import run, sample_from
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
+from ray.tune.schedulers import AsyncHyperBandScheduler
 
 test_dir = "~/analysis_test"
-test_name = "analysis_exp"
 
 def run_test_exp():
     ray.init()
@@ -22,7 +25,7 @@ def run_test_exp():
         max_t=100)
 
     run(MyTrainableClass,
-        name=test_name,
+        name="analysis_exp",
         scheduler=ahb,
         local_dir=test_dir,
         **{
@@ -42,8 +45,7 @@ def run_test_exp():
         })
 
 def remove_test_exp():
-    exp_dir = os.path.join(test_dir, test_name)
-    shutil.rmtree(exp_dir)
+    shutil.rmtree(os.path.expanduser(test_dir))
 
 class ExperimentAnalysisSuite(unittest.TestCase):
     def setup(self):
@@ -77,7 +79,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         pass
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    remove_test_exp()
 
 """nevergrad_analysis = ExperimentAnalysis("~adizim/ray_results/nevergrad")
 #print(nevergrad_analysis.checkpoints()[0])
