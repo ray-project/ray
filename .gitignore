@@ -155,3 +155,8 @@ venv
 
 # tools
 tools/prometheus*
+
+# java build
+build/java/*
+java/third_party/*
+
