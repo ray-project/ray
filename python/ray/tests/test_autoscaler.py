@@ -388,7 +388,7 @@ class AutoscalingTest(unittest.TestCase):
         rtc1.clear()
         autoscaler.update()
         # Synchronization: wait for launchy thread to be blocked on rtc1
-        if hasattr(rtc1, '_cond'):  # Python 3.5
+        if hasattr(rtc1, "_cond"):  # Python 3.5
             waiters = rtc1._cond._waiters
         else:  # Python 2.7
             waiters = rtc1._Event__cond._Condition__waiters
