@@ -7,7 +7,7 @@ import random
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
@@ -519,7 +519,7 @@ class TestMultiAgentEnv(unittest.TestCase):
     def testTrainMultiCartpoleSinglePolicy(self):
         n = 10
         register_env("multi_cartpole", lambda _: MultiCartpole(n))
-        pg = PGAgent(env="multi_cartpole", config={"num_workers": 0})
+        pg = PGTrainer(env="multi_cartpole", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
@@ -542,7 +542,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             act_space = single_env.action_space
             return (None, obs_space, act_space, config)
 
-        pg = PGAgent(
+        pg = PGTrainer(
             env="multi_cartpole",
             config={
                 "num_workers": 0,
