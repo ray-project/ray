@@ -9,6 +9,12 @@ import pytest
 import ray
 from ray.tests.cluster_utils import Cluster
 
+# Py2 compatibility
+try:
+    FileNotFoundError
+except NameError:
+    FileNotFoundError = OSError
+
 
 def test_conn_cluster():
     # plasma_store_socket_name
