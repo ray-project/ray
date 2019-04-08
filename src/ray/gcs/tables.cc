@@ -48,7 +48,6 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -73,7 +72,6 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
         (failure)(client_, id, *dataT);
       }
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -101,7 +99,6 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
       }
       lookup(client_, id, results);
     }
-    return true;
   };
   std::vector<uint8_t> nil;
   return GetRedisContext(id)->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
@@ -153,10 +150,8 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
         subscribe(client_, id, root->notification_mode(), results);
       }
     }
-    // We do not delete the callback after calling it since there may be
-    // more subscription messages.
-    return false;
   };
+
   subscribe_callback_index_ = 1;
   for (auto &context : shard_contexts_) {
     RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback,
@@ -229,7 +224,6 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -295,7 +289,6 @@ Status Set<ID, Data>::Add(const JobID &job_id, const ID &id,
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -313,7 +306,6 @@ Status Set<ID, Data>::Remove(const JobID &job_id, const ID &id,
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -436,8 +428,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
 
 void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT &data) {
   auto connected_client_id = ClientID::from_binary(data.client_id);
-  RAY_CHECK(client_id_ == connected_client_id) << connected_client_id << " "
-                                               << client_id_;
+  RAY_CHECK(client_id_ == connected_client_id)
+      << connected_client_id << " " << client_id_;
 }
 
 const ClientID &ClientTable::GetLocalClientId() const { return client_id_; }
@@ -466,8 +458,8 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
 
     // Callback for a notification from the client table.
     auto notification_callback = [this](
-        AsyncGcsClient *client, const UniqueID &log_key,
-        const std::vector<ClientTableDataT> &notifications) {
+                                     AsyncGcsClient *client, const UniqueID &log_key,
+                                     const std::vector<ClientTableDataT> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
       std::unordered_map<std::string, ClientTableDataT> connected_nodes;
       std::unordered_map<std::string, ClientTableDataT> disconnected_nodes;
@@ -559,8 +551,8 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id) {
   auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
-      ray::gcs::AsyncGcsClient *client, const UniqueID &id,
-      const ActorCheckpointIdDataT &data) {
+                             ray::gcs::AsyncGcsClient *client, const UniqueID &id,
+                             const ActorCheckpointIdDataT &data) {
     std::shared_ptr<ActorCheckpointIdDataT> copy =
         std::make_shared<ActorCheckpointIdDataT>(data);
     copy->timestamps.push_back(current_sys_time_ms());
@@ -579,7 +571,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
   };
   auto failure_callback = [this, checkpoint_id, job_id, actor_id](
-      ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
+                              ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
     std::shared_ptr<ActorCheckpointIdDataT> data =
         std::make_shared<ActorCheckpointIdDataT>();
     data->actor_id = id.binary();
