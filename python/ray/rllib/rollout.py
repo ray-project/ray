@@ -147,10 +147,10 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         if out is not None:
             rollout = []
         obs = env.reset()
-        agent_states = DefaultMapping(lambda agent_id: state_init[
-            mapping_cache[agent_id]])
-        prev_actions = DefaultMapping(lambda agent_id: action_init[
-            mapping_cache[agent_id]])
+        agent_states = DefaultMapping(
+            lambda agent_id: state_init[mapping_cache[agent_id]])
+        prev_actions = DefaultMapping(
+            lambda agent_id: action_init[mapping_cache[agent_id]])
         prev_rewards = collections.defaultdict(lambda: 0.)
         done = False
         reward_total = 0.0
