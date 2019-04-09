@@ -146,6 +146,11 @@ java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
 
+# Java third-party dependencies.
+java/third_party/*/
+!java/third_party/workspace.bzl
+!java/third_party/BUILD
+
 # python virtual env
 venv
 

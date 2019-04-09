@@ -564,21 +564,21 @@ class PolicyEvaluator(EvaluatorInterface):
                     summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
+            to_fetch = {}
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "learn_on_batch")
-                for pid, batch in samples.policy_batches.items():
-                    if pid not in self.policies_to_train:
-                        continue
-                    info_out[pid], _ = (
-                        self.policy_map[pid]._build_learn_on_batch(
-                            builder, batch))
-                info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
-                for pid, batch in samples.policy_batches.items():
-                    if pid not in self.policies_to_train:
-                        continue
-                    info_out[pid], _ = (
-                        self.policy_map[pid].learn_on_batch(batch))
+                builder = None
+            for pid, batch in samples.policy_batches.items():
+                if pid not in self.policies_to_train:
+                    continue
+                policy = self.policy_map[pid]
+                if builder and hasattr(policy, "_build_learn_on_batch"):
+                    to_fetch[pid], _ = policy._build_learn_on_batch(
+                        builder, batch)
+                else:
+                    info_out[pid], _ = policy.learn_on_batch(batch)
+            info_out.update({k: builder.get(v) for k, v in to_fetch.items()})
         else:
             info_out, _ = (
                 self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(samples))
