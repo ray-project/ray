@@ -963,6 +963,28 @@ class Worker(object):
                 last_checkpoint_timestamp=int(1000 * time.time()),
                 checkpoint_ids=[],
             )
+            old_stdout_file, old_stderr_file = self.redis_client.hmget(
+                b"Workers:" + self.worker_id, ["stdout_file", "stderr_file"])
+            stdout_file, stderr_file = redirect_to_log_if_necessary(
+                self, self.actors[self.actor_id].__class__.__name__)
+            if old_stdout_file is not None and stdout_file is not None:
+                # Clean the old log files, if they only contain 1 line.
+                def clean_log_if_oneline(log_file):
+                    line_count = 0
+                    with open(log_file, "r") as fi:
+                        for line in fi:
+                            line_count += 1
+                            if line_count > 2:
+                                break
+                    if line_count < 2:
+                        os.remove(log_file)
+
+                clean_log_if_oneline(old_stdout_file)
+                clean_log_if_oneline(old_stderr_file)
+                self.redis_client.hmset(b"Workers:" + self.worker_id, {
+                    "stdout_file": stdout_file,
+                    "stderr_file": stderr_file
+                })
 
         execution_info = self.function_actor_manager.get_execution_info(
             driver_id, function_descriptor)
@@ -1691,6 +1713,40 @@ def is_initialized():
     return ray.worker.global_worker.connected
 
 
+def redirect_to_log_if_necessary(worker=global_worker, actor_name=""):
+    # Check the RedirectOutput key in Redis and based on its value redirect
+    # worker output and error to their own files.
+    # This key is set in services.py when Redis is started.
+    redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
+    if (redirect_worker_output_val is not None
+            and int(redirect_worker_output_val) == 1):
+        log_stdout_file, log_stderr_file = (
+            worker.node.new_worker_redirected_log_file(worker.worker_id,
+                                                       actor_name))
+        # Redirect stdout/stderr at the file descriptor level. If we simply
+        # set sys.stdout and sys.stderr, then logging from C++ can fail to
+        # be redirected.
+        os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
+        os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
+        # We also manually set sys.stdout and sys.stderr because that seems
+        # to have an affect on the output buffering. Without doing this,
+        # stdout and stderr are heavily buffered resulting in seemingly
+        # lost logging statements.
+        sys.stdout = log_stdout_file
+        sys.stderr = log_stderr_file
+        # This should always be the first message to appear in the worker's
+        # stdout and stderr log files. The string "Ray worker pid:" is
+        # parsed in the log monitor process.
+        print("Ray worker pid: {}".format(os.getpid()))
+        print("Ray worker pid: {}".format(os.getpid()), file=sys.stderr)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        return (os.path.abspath(log_stdout_file.name),
+                os.path.abspath(log_stderr_file.name))
+    else:
+        return (None, None)
+
+
 def connect(node,
             mode=WORKER_MODE,
             log_to_driver=False,
@@ -1800,35 +1856,10 @@ def connect(node,
             "node_ip_address": node.node_ip_address,
             "plasma_store_socket": node.plasma_store_socket_name,
         }
-        # Check the RedirectOutput key in Redis and based on its value redirect
-        # worker output and error to their own files.
-        # This key is set in services.py when Redis is started.
-        redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
-        if (redirect_worker_output_val is not None
-                and int(redirect_worker_output_val) == 1):
-            log_stdout_file, log_stderr_file = (
-                node.new_worker_redirected_log_file(worker.worker_id))
-            # Redirect stdout/stderr at the file descriptor level. If we simply
-            # set sys.stdout and sys.stderr, then logging from C++ can fail to
-            # be redirected.
-            os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
-            os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
-            # We also manually set sys.stdout and sys.stderr because that seems
-            # to have an affect on the output buffering. Without doing this,
-            # stdout and stderr are heavily buffered resulting in seemingly
-            # lost logging statements.
-            sys.stdout = log_stdout_file
-            sys.stderr = log_stderr_file
-            # This should always be the first message to appear in the worker's
-            # stdout and stderr log files. The string "Ray worker pid:" is
-            # parsed in the log monitor process.
-            print("Ray worker pid: {}".format(os.getpid()))
-            print("Ray worker pid: {}".format(os.getpid()), file=sys.stderr)
-            sys.stdout.flush()
-            sys.stderr.flush()
-
-            worker_dict["stdout_file"] = os.path.abspath(log_stdout_file.name)
-            worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
+        stdout_file, stderr_file = redirect_to_log_if_necessary(worker)
+        if stdout_file is not None:
+            worker_dict["stdout_file"] = stdout_file
+            worker_dict["stderr_file"] = stderr_file
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
     else:
         raise Exception("This code should be unreachable.")

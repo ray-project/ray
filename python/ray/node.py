@@ -425,10 +425,15 @@ class Node(object):
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
-    def new_worker_redirected_log_file(self, worker_id):
+    def new_worker_redirected_log_file(self, worker_id, actor_name):
         """Create new logging files for workers to redirect its output."""
+        if actor_name is None or len(actor_name) == 0:
+            actor_name_with_separator = ""
+        else:
+            actor_name_with_separator = actor_name + "-"
         worker_stdout_file, worker_stderr_file = (self.new_log_files(
-            "worker-" + ray.utils.binary_to_hex(worker_id), True))
+            "worker-" + actor_name_with_separator +
+            ray.utils.binary_to_hex(worker_id), True))
         return worker_stdout_file, worker_stderr_file
 
     def start_worker(self):
