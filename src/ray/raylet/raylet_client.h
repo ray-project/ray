@@ -147,7 +147,8 @@ class RayletClient {
   /// or send it to all the object stores.
   /// \param delete_creating_tasks Whether also delete objects' creating tasks from GCS.
   /// \return ray::Status.
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only, bool deleteCreatingTasks);
+  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only,
+                          bool deleteCreatingTasks);
 
   /// Request raylet backend to prepare a checkpoint for an actor.
   ///

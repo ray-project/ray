@@ -46,4 +46,5 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         if len(object_ids) == 0:
             return
 
-        worker.raylet_client.free_objects(object_ids, local_only, delete_creating_tasks)
+        worker.raylet_client.free_objects(object_ids, local_only,
+                                          delete_creating_tasks)
