@@ -795,7 +795,8 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   // Serialize.
   auto object_header =
       flatbuffers::GetRoot<object_manager_protocol::PushRequestMessage>(message);
-  const ObjectID object_id = ObjectID::FromBinary(object_header->object_id()->str());
+  UniqueID push_id = UniqueId::from_binary(object_header->push_id()->str());
+  const ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
   uint64_t chunk_index = object_header->chunk_index();
   uint64_t data_size = object_header->data_size();
   uint64_t metadata_size = object_header->metadata_size();
@@ -803,7 +804,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   int64_t num_chunks = buffer_pool_.GetNumChunks(data_size + metadata_size);
   std::vector<ClientID> clients_to_cancel;
   bool start_timer;
-  pull_manager_.ReceivePushRequest(object_id, client_id, chunk_index, num_chunks,
+  pull_manager_.ReceivePushRequest(push_id, object_id, client_id, chunk_index, num_chunks,
                                    &clients_to_cancel, &start_timer);
   for (const ClientID &client_id : clients_to_cancel) {
     SendCancelPullRequest(object_id, client_id);

@@ -179,7 +179,7 @@ class PullManager {
   /// \param[out] start_timer This will be set to true if the caller should
   /// start a timer for this object ID and false otherwise.
   /// \return Void.
-  void ReceivePushRequest(const ObjectID &object_id, const ClientID &client_id,
+  void ReceivePushRequest(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
                           int64_t chunk_index, int64_t num_chunks,
                           std::vector<ClientID> *clients_to_cancel, bool *start_timer);
 
@@ -260,11 +260,11 @@ class PullManager {
   int64_t total_failed_chunk_reads_;
   /// The client ID of the object manager that this pull manager is part of.
   ClientID client_id_;
-  /// This is a map from object ID that we are pulling to the information
+  /// This is a map from push ID that we are pulling to the information
   /// associated with that pull. NOTE: We use unique_ptr<PullInfo> instead of
   /// PullInfo because the PullInfo object uses the "this" pointer and so cannot
   /// be moved around.
-  std::unordered_map<ObjectID, PullInfo> pulls_;
+  std::unordered_map<UniqueID, PullInfo> pulls_;
   /// A random number generator.
   std::mt19937_64 gen_;
 };

@@ -34,7 +34,7 @@ PullManager::PullManager(const ClientID &client_id)
       client_id_(client_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
-void PullManager::ReceivePushRequest(const ObjectID &object_id, const ClientID &client_id,
+void PullManager::ReceivePushRequest(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
                                      int64_t chunk_index, int64_t num_chunks,
                                      std::vector<ClientID> *clients_to_cancel,
                                      bool *start_timer) {
