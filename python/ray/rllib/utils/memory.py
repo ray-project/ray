@@ -10,7 +10,8 @@ def ray_get_and_free(object_ids):
     """Call ray.get and then free the input object ids.
 
     This function should be used whenever possible in RLlib, to optimize
-    memory usage.
+    memory usage. The only exception is when an object_id is shared among
+    multiple readers.
 
     Args:
         object_ids (ObjectID|List[ObjectID]): Object ids to fetch and free.
@@ -21,7 +22,7 @@ def ray_get_and_free(object_ids):
     result = ray.get(object_ids)
     if type(object_ids) is not list:
         object_ids = [object_ids]
-    ray.internal.free(object_ids)
+    ray.internal.free(object_ids)  # mark it for gc
     return result
 
 
