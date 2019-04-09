@@ -10,6 +10,7 @@ import ray
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ def collect_episodes(local_evaluator=None,
             "Timed out waiting for metrics from workers. You can configure "
             "this timeout with `collect_metrics_timeout`.")
 
-    metric_lists = ray.get(collected)
+    metric_lists = ray_get_and_free(collected)
     if local_evaluator:
         metric_lists.append(local_evaluator.get_metrics())
     episodes = []

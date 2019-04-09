@@ -2,7 +2,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ray
 import numpy as np
+
+
+def ray_get_and_free(object_ids):
+    """Call ray.get and then free the input object ids.
+
+    This function should be used whenever possible in RLlib, to optimize
+    memory usage.
+
+    Args:
+        object_ids (ObjectID|List[ObjectID]): Object ids to fetch and free.
+
+    Returns:
+        The result of ray.get(object_ids).
+    """
+    result = ray.get(object_ids)
+    if type(object_ids) is not list:
+        object_ids = [object_ids]
+    ray.internal.free(object_ids)
+    return result
 
 
 def aligned_array(size, dtype, align=64):
