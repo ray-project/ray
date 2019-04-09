@@ -156,7 +156,7 @@ venv
 # tools
 tools/prometheus*
 
-# java build
-build/java/*
-java/third_party/*
-
+# java third party
+java/third_party/*/
+!java/third_party/workspace.bzl
+!java/third_party/BUILD
