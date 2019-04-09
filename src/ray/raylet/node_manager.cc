@@ -711,7 +711,16 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
     std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+    // Clean up objects from the object store.
     object_manager_.FreeObjects(object_ids, message->local_only());
+    if (message->delete_creating_tasks()) {
+      // Clean up their creating tasks from GCS.
+      std::vector<TaskID> creating_task_ids;
+      for (const auto &object_id : object_ids) {
+        creating_task_ids.push_back(ComputeTaskId(object_id));
+      }
+      gcs_client_->raylet_task_table().Delete(JobID::nil(), creating_task_ids);
+    }
   } break;
   case protocol::MessageType::PrepareActorCheckpointRequest: {
     ProcessPrepareActorCheckpointRequest(client, message_data);

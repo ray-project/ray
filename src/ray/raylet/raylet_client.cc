@@ -349,9 +349,9 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_eve
 }
 
 ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_ids,
-                                      bool local_only) {
+                                      bool local_only, bool delete_creating_tasks) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreateFreeObjectsRequest(fbb, local_only,
+  auto message = ray::protocol::CreateFreeObjectsRequest(fbb, local_only, delete_creating_tasks,
                                                          to_flatbuf(fbb, object_ids));
   fbb.Finish(message);
 

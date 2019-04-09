@@ -33,7 +33,7 @@ public class PlasmaFreeTest extends BaseTest {
 
     List<UniqueId> freeList = new ArrayList<>();
     freeList.add(helloId.getId());
-    Ray.internal().free(freeList, true);
+    Ray.internal().free(freeList, true, false);
     // Flush: trigger the release function because Plasma Client has cache.
     for (int i = 0; i < 128; i++) {
       Ray.call(PlasmaFreeTest::hello).get();

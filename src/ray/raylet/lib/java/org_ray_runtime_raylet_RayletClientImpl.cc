@@ -251,7 +251,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(
  */
 JNIEXPORT void JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
-    JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jboolean localOnly) {
+    JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jboolean localOnly, jboolean deleteCreatingTasks) {
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
@@ -262,7 +262,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
     env->DeleteLocalRef(object_id_bytes);
   }
   auto raylet_client = reinterpret_cast<RayletClient *>(client);
-  auto status = raylet_client->FreeObjects(object_ids, localOnly);
+  auto status = raylet_client->FreeObjects(object_ids, localOnly, deleteCreatingTasks);
   ThrowRayExceptionIfNotOK(env, status);
 }
 
