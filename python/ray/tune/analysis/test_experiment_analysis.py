@@ -6,33 +6,41 @@ import unittest
 import subprocess
 import shutil
 import random
+import os
+import pandas as pd
 
-from experiment_analysis import *
+from experiment_analysis import ExperimentAnalysis, parse_exp
 import ray
-from ray.tune import run, sample_from
+from ray.tune import run, sample_from, Trainable
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
+
 test_dir = "~/analysis_test"
+test_name = "analysis_exp"
+test_path = os.path.join(test_dir, test_name)
+num_samples = 10
+iterations = 5
+metric = "episode_reward_mean"
 
 def run_test_exp():
     ray.init()
 
     ahb = AsyncHyperBandScheduler(
         time_attr="training_iteration",
-        reward_attr="episode_reward_mean",
+        reward_attr=metric,
         grace_period=5,
         max_t=100)
 
     run(MyTrainableClass,
-        name="analysis_exp",
+        name=test_name,
         scheduler=ahb,
         local_dir=test_dir,
         **{
             "stop": {
-                "training_iteration": 100
+                "training_iteration": iterations
             },
-            "num_samples": 20,
+            "num_samples": num_samples,
             "resources_per_trial": {
                 "cpu": 1,
                 "gpu": 0
@@ -45,46 +53,70 @@ def run_test_exp():
         })
 
 def remove_test_exp():
-    shutil.rmtree(os.path.expanduser(test_dir))
+    shutil.rmtree(os.path.expanduser(test_dir), ignore_errors=True)
+
 
 class ExperimentAnalysisSuite(unittest.TestCase):
-    def setup(self):
+    def setUp(self):
         run_test_exp()
+        self.ea = ExperimentAnalysis(test_path)
 
     def tearDown(self):
         remove_test_exp()
+        ray.shutdown()
 
     def testDataframe(self):
-        pass
+        df = self.ea.dataframe()
+        self.assertTrue(isinstance(df, pd.DataFrame))
 
     def testTrialDataframe(self):
-        pass
+        trial_df = self.ea.trial_dataframe(self.ea.checkpoints()[0]["trial_id"])
+        self.assertTrue(isinstance(trial_df, pd.DataFrame))
 
     def testBestTrainable(self):
-        pass
+        best_trainable = self.ea.get_best_trainable(metric)
+        self.assertTrue(isinstance(best_trainable, Trainable))
 
     def testBestConfig(self):
-        pass
+        best_config = self.ea.get_best_config(metric)
+
+        self.assertTrue(isinstance(best_config, dict))
+        self.assertTrue("width" in best_config)
+        self.assertTrue("height" in best_config)
 
     def testBestTrial(self):
-        pass
+        best_trial = self.ea.get_best_trial(metric)
+
+        self.assertTrue(isinstance(best_trial, dict))
+        self.assertTrue("local_dir" in best_trial)
+        self.assertEqual(best_trial["local_dir"], os.path.expanduser(test_path))
+        self.assertTrue("config" in best_trial)
+        self.assertTrue("width" in best_trial["config"])
+        self.assertTrue("height" in best_trial["config"])
+        self.assertTrue("last_result" in best_trial)
+        self.assertTrue(metric in best_trial["last_result"])
 
     def testCheckpoints(self):
-        pass
+        checkpoints = self.ea.checkpoints()
+
+        self.assertTrue(isinstance(checkpoints, list))
+        self.assertTrue(isinstance(checkpoints[0], dict))
+        self.assertEqual(len(checkpoints), num_samples)
 
     def testStats(self):
-        pass
+        stats = self.ea.stats()
+
+        self.assertTrue(isinstance(stats, dict))
+        self.assertTrue("start_time" in stats)
+        self.assertTrue("timestamp" in stats)
 
     def testRunnerData(self):
-        pass
+        runner_data = self.ea.runner_data()
+
+        self.assertTrue(isinstance(runner_data, dict))
+        self.assertTrue("_metadata_checkpoint_dir" in runner_data)
+        self.assertEqual(runner_data["_metadata_checkpoint_dir"], os.path.expanduser(test_path))
+
 
 if __name__ == "__main__":
-    remove_test_exp()
-
-"""nevergrad_analysis = ExperimentAnalysis("~adizim/ray_results/nevergrad")
-#print(nevergrad_analysis.checkpoints()[0])
-print(nevergrad_analysis.dataframe())
-print(nevergrad_analysis.trial_dataframe("f5234953"))
-#print(nevergrad_analysis.get_best_trainable("neg_mean_loss"))
-#print(nevergrad_analysis.trials())
-#print(nevergrad_analysis.stats())"""
+    unittest.main(verbosity=2)

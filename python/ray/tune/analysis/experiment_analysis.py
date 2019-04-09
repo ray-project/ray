@@ -24,6 +24,7 @@ def parse_exp(experiment_path):
 
 class ExperimentAnalysis():
     def __init__(self, experiment_path):
+        # TODO(Adi): Raise ValueError if experiment_path is not "ray_results"
         self._experiment_dir, self._experiment_trials, self._experiment_state = parse_exp(experiment_path)
         self._checkpoints = self._experiment_state["checkpoints"]
 
@@ -46,8 +47,6 @@ class ExperimentAnalysis():
         return df.loc[df['trial_id'] == trial_id]
 
     def get_best_trainable(self, metric):
-        # get best trainable if not a function
-        # return Trainable(restore=trial.checkpoint)
         return Trainable(config=self.get_best_config(metric))
 
     def get_best_config(self, metric):
