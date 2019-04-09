@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import collections
 import numpy as np
 
@@ -9,12 +10,15 @@ import ray
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer, \
     PrioritizedReplayBuffer
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
+from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.schedules import LinearSchedule
+
+logger = logging.getLogger(__name__)
 
 
 class SyncReplayOptimizer(PolicyOptimizer):
@@ -68,7 +72,9 @@ class SyncReplayOptimizer(PolicyOptimizer):
 
         self.replay_buffers = collections.defaultdict(new_buffer)
 
-        assert buffer_size >= self.replay_starts
+        if buffer_size < self.replay_starts:
+            logger.warning("buffer_size={} < replay_starts={}".format(
+                buffer_size, self.replay_starts))
 
     @override(PolicyOptimizer)
     def step(self):
@@ -128,8 +134,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
         with self.grad_timer:
             info_dict = self.local_evaluator.learn_on_batch(samples)
             for policy_id, info in info_dict.items():
-                if "stats" in info:
-                    self.learner_stats[policy_id] = info["stats"]
+                self.learner_stats[policy_id] = get_learner_stats(info)
                 replay_buffer = self.replay_buffers[policy_id]
                 if isinstance(replay_buffer, PrioritizedReplayBuffer):
                     td_error = info["td_error"]

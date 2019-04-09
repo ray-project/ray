@@ -4,25 +4,25 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.utils.annotations import override
 
 
 # yapf: disable
 # __sphinx_doc_begin__
-class RandomAgent(Agent):
-    """Agent that takes random actions and never learns."""
+class RandomAgent(Trainer):
+    """Policy that takes random actions and never learns."""
 
-    _agent_name = "RandomAgent"
+    _name = "RandomAgent"
     _default_config = with_common_config({
         "rollouts_per_iteration": 10,
     })
 
-    @override(Agent)
-    def _init(self):
-        self.env = self.env_creator(self.config["env_config"])
+    @override(Trainer)
+    def _init(self, config, env_creator):
+        self.env = env_creator(config["env_config"])
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         rewards = []
         steps = 0
@@ -45,8 +45,8 @@ class RandomAgent(Agent):
 
 
 if __name__ == "__main__":
-    agent = RandomAgent(
+    trainer = RandomAgent(
         env="CartPole-v0", config={"rollouts_per_iteration": 10})
-    result = agent.train()
+    result = trainer.train()
     assert result["episode_reward_mean"] > 10, result
     print("Test: OK")

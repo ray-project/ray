@@ -16,12 +16,12 @@ from ray.rllib.models.visionnet import VisionNetwork
 
 class CustomPreprocessor(Preprocessor):
     def _init_shape(self, obs_space, options):
-        return None
+        return [1]
 
 
 class CustomPreprocessor2(Preprocessor):
     def _init_shape(self, obs_space, options):
-        return None
+        return [1]
 
 
 class CustomModel(Model):
@@ -47,12 +47,12 @@ class ModelCatalogTest(unittest.TestCase):
             def __init__(self):
                 self.observation_space = Tuple(
                     [Discrete(5),
-                     Box(0, 1, shape=(3, ), dtype=np.float32)])
+                     Box(0, 5, shape=(3, ), dtype=np.float32)])
 
         p1 = ModelCatalog.get_preprocessor(TupleEnv())
         self.assertEqual(p1.shape, (8, ))
         self.assertEqual(
-            list(p1.transform((0, [1, 2, 3]))),
+            list(p1.transform((0, np.array([1, 2, 3])))),
             [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
 
     def testCustomPreprocessor(self):
@@ -73,13 +73,14 @@ class ModelCatalogTest(unittest.TestCase):
         with tf.variable_scope("test1"):
             p1 = ModelCatalog.get_model({
                 "obs": tf.zeros((10, 3), dtype=tf.float32)
-            }, Box(0, 1, shape=(3, ), dtype=np.float32), 5, {})
+            }, Box(0, 1, shape=(3, ), dtype=np.float32), Discrete(5), 5, {})
             self.assertEqual(type(p1), FullyConnectedNetwork)
 
         with tf.variable_scope("test2"):
             p2 = ModelCatalog.get_model({
                 "obs": tf.zeros((10, 84, 84, 3), dtype=tf.float32)
-            }, Box(0, 1, shape=(84, 84, 3), dtype=np.float32), 5, {})
+            }, Box(0, 1, shape=(84, 84, 3), dtype=np.float32), Discrete(5), 5,
+                                        {})
             self.assertEqual(type(p2), VisionNetwork)
 
     def testCustomModel(self):
@@ -87,7 +88,7 @@ class ModelCatalogTest(unittest.TestCase):
         ModelCatalog.register_custom_model("foo", CustomModel)
         p1 = ModelCatalog.get_model({
             "obs": tf.constant([1, 2, 3])
-        }, Box(0, 1, shape=(3, ), dtype=np.float32), 5,
+        }, Box(0, 1, shape=(3, ), dtype=np.float32), Discrete(5), 5,
                                     {"custom_model": "foo"})
         self.assertEqual(str(type(p1)), str(CustomModel))
 

@@ -3,10 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import logging
 import numpy as np
 
 from ray.rllib.evaluation.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.debug import log_once, summarize
+
+logger = logging.getLogger(__name__)
 
 
 def to_float_array(v):
@@ -28,6 +32,7 @@ class SampleBatchBuilder(object):
     def __init__(self):
         self.buffers = collections.defaultdict(list)
         self.count = 0
+        self.unroll_id = 0  # disambiguates unrolls within a single episode
 
     @PublicAPI
     def add_values(self, **values):
@@ -52,8 +57,11 @@ class SampleBatchBuilder(object):
         batch = SampleBatch(
             {k: to_float_array(v)
              for k, v in self.buffers.items()})
+        batch.data[SampleBatch.UNROLL_ID] = np.repeat(self.unroll_id,
+                                                      batch.count)
         self.buffers.clear()
         self.count = 0
+        self.unroll_id += 1
         return batch
 
 
@@ -67,12 +75,13 @@ class MultiAgentSampleBatchBuilder(object):
     corresponding policy batch for the agent's policy.
     """
 
-    def __init__(self, policy_map, clip_rewards):
+    def __init__(self, policy_map, clip_rewards, postp_callback):
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Arguments:
             policy_map (dict): Maps policy ids to policy graph instances.
             clip_rewards (bool): Whether to clip rewards before postprocessing.
+            postp_callback: function to call on each postprocessed batch.
         """
 
         self.policy_map = policy_map
@@ -83,6 +92,7 @@ class MultiAgentSampleBatchBuilder(object):
         }
         self.agent_builders = {}
         self.agent_to_policy = {}
+        self.postp_callback = postp_callback
         self.count = 0  # increment this manually
 
     def total(self):
@@ -145,10 +155,18 @@ class MultiAgentSampleBatchBuilder(object):
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
 
+        if log_once("after_post"):
+            logger.info(
+                "Trajectory fragment after postprocess_trajectory():\n\n{}\n".
+                format(summarize(post_batches)))
+
         # Append into policy batches and reset
         for agent_id, post_batch in sorted(post_batches.items()):
             self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
                 post_batch)
+            if self.postp_callback:
+                self.postp_callback({"episode": episode, "batch": post_batch})
+
         self.agent_builders.clear()
         self.agent_to_policy.clear()
 

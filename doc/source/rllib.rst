@@ -1,7 +1,7 @@
 RLlib: Scalable Reinforcement Learning
 ======================================
 
-RLlib is an open-source library for reinforcement learning that offers both a collection of reference algorithms and scalable primitives for composing new ones.
+RLlib is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications.
 
 .. image:: rllib-stack.svg
 
@@ -40,7 +40,17 @@ Environments
 * `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
 * `Interfacing with External Agents <rllib-env.html#interfacing-with-external-agents>`__
-* `Batch Asynchronous <rllib-env.html#batch-asynchronous>`__
+* `Advanced Integrations <rllib-env.html#advanced-integrations>`__
+
+Models and Preprocessors
+------------------------
+* `RLlib Models and Preprocessors Overview <rllib-models.html>`__
+* `Custom Models (TensorFlow) <rllib-models.html#custom-models-tensorflow>`__
+* `Custom Models (PyTorch) <rllib-models.html#custom-models-pytorch>`__
+* `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
+* `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
+* `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
+* `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
 
 Algorithms
 ----------
@@ -78,16 +88,6 @@ Algorithms
 *  Offline
 
    -  `Advantage Re-Weighted Imitation Learning (MARWIL) <rllib-algorithms.html#advantage-re-weighted-imitation-learning-marwil>`__
-
-Models and Preprocessors
-------------------------
-* `RLlib Models and Preprocessors Overview <rllib-models.html>`__
-* `Custom Models (TensorFlow) <rllib-models.html#custom-models-tensorflow>`__
-* `Custom Models (PyTorch) <rllib-models.html#custom-models-pytorch>`__
-* `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
-* `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
-* `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
-* `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
 
 Offline Datasets
 ----------------

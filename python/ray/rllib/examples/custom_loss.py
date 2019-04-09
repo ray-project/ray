@@ -18,7 +18,7 @@ import os
 import tensorflow as tf
 
 import ray
-from ray.tune import run_experiments
+from ray import tune
 from ray.rllib.models import (Categorical, FullyConnectedNetwork, Model,
                               ModelCatalog)
 from ray.rllib.models.model import restore_original_dimensions
@@ -41,7 +41,8 @@ class CustomLossModel(Model):
         self.obs_in = input_dict["obs"]
         with tf.variable_scope("shared", reuse=tf.AUTO_REUSE):
             self.fcnet = FullyConnectedNetwork(input_dict, self.obs_space,
-                                               num_outputs, options)
+                                               self.action_space, num_outputs,
+                                               options)
         return self.fcnet.outputs, self.fcnet.last_layer
 
     def custom_loss(self, policy_loss, loss_inputs):
@@ -50,9 +51,9 @@ class CustomLossModel(Model):
         input_ops = reader.tf_input_ops()
 
         # define a secondary loss by building a graph copy with weight sharing
+        obs = tf.cast(input_ops["obs"], tf.float32)
         logits, _ = self._build_layers_v2({
-            "obs": restore_original_dimensions(input_ops["obs"],
-                                               self.obs_space)
+            "obs": restore_original_dimensions(obs, self.obs_space)
         }, self.num_outputs, self.options)
 
         # You can also add self-supervised losses easily by referencing tensors
@@ -81,21 +82,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model("custom_loss", CustomLossModel)
-    run_experiments({
-        "custom_loss": {
-            "run": "PG",
+    tune.run(
+        "PG",
+        stop={
+            "training_iteration": args.iters,
+        },
+        config={
             "env": "CartPole-v0",
-            "stop": {
-                "training_iteration": args.iters,
-            },
-            "config": {
-                "num_workers": 0,
-                "model": {
-                    "custom_model": "custom_loss",
-                    "custom_options": {
-                        "input_files": args.input_files,
-                    },
+            "num_workers": 0,
+            "model": {
+                "custom_model": "custom_loss",
+                "custom_options": {
+                    "input_files": args.input_files,
                 },
             },
         },
-    })
+    )

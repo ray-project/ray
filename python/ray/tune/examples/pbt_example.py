@@ -11,7 +11,7 @@ import random
 import time
 
 import ray
-from ray.tune import Trainable, run_experiments
+from ray.tune import Trainable, run
 from ray.tune.schedulers import PopulationBasedTraining
 
 
@@ -81,19 +81,18 @@ if __name__ == "__main__":
         })
 
     # Try to find the best factor 1 and factor 2
-    run_experiments(
-        {
-            "pbt_test": {
-                "run": MyTrainableClass,
-                "stop": {
-                    "training_iteration": 20 if args.smoke_test else 99999
-                },
-                "num_samples": 10,
-                "config": {
-                    "factor_1": 4.0,
-                    "factor_2": 1.0,
-                },
-            }
-        },
+    run(MyTrainableClass,
+        name="pbt_test",
         scheduler=pbt,
-        verbose=False)
+        reuse_actors=True,
+        verbose=False,
+        **{
+            "stop": {
+                "training_iteration": 20 if args.smoke_test else 99999
+            },
+            "num_samples": 10,
+            "config": {
+                "factor_1": 4.0,
+                "factor_2": 1.0,
+            },
+        })

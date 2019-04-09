@@ -17,16 +17,15 @@ import setuptools.command.build_ext as _build_ext
 # before these files have been created, so we have to move the files
 # manually.
 
-# NOTE: The lists below must be kept in sync with ray/CMakeLists.txt.
+# NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store_server", "ray/_raylet.so",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
-    "ray/WebUI.ipynb", "ray/dashboard/dashboard.py",
-    "ray/dashboard/index.html", "ray/dashboard/res/main.css",
-    "ray/dashboard/res/main.js"
+    "ray/dashboard/dashboard.py", "ray/dashboard/index.html",
+    "ray/dashboard/res/main.css", "ray/dashboard/res/main.js"
 ]
 
 # These are the directories where automatically generated Python flatbuffer
@@ -37,11 +36,6 @@ generated_python_directories = [
 ]
 
 optional_ray_files = []
-
-ray_ui_files = [
-    "ray/core/src/catapult_files/index.html",
-    "ray/core/src/catapult_files/trace_viewer_full.html"
-]
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
@@ -55,13 +49,6 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
         "ray/core/src/credis/build/src/libmaster.so",
         "ray/core/src/credis/redis/src/redis-server"
     ]
-
-# The UI files are mandatory if the INCLUDE_UI environment variable equals 1.
-# Otherwise, they are optional.
-if "INCLUDE_UI" in os.environ and os.environ["INCLUDE_UI"] == "1":
-    ray_files += ray_ui_files
-else:
-    optional_ray_files += ray_ui_files
 
 optional_ray_files += ray_autoscaler_files
 
@@ -150,7 +137,7 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.10.4",
+    "numpy >= 1.14",
     "filelock",
     "funcsigs",
     "click",
@@ -188,7 +175,7 @@ setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]"
+            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
         ]
     },
     include_package_data=True,

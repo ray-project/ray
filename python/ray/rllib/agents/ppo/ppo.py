@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import logging
 
-from ray.rllib.agents import Agent, with_common_config
+from ray.rllib.agents import Trainer, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.rllib.utils.annotations import override
@@ -63,41 +63,40 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class PPOAgent(Agent):
+class PPOTrainer(Trainer):
     """Multi-GPU optimized implementation of PPO in TensorFlow."""
 
-    _agent_name = "PPO"
+    _name = "PPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = PPOPolicyGraph
 
-    @override(Agent)
-    def _init(self):
+    @override(Trainer)
+    def _init(self, config, env_creator):
         self._validate_config()
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, self._policy_graph)
+            env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"])
-        if self.config["simple_optimizer"]:
+            env_creator, self._policy_graph, config["num_workers"])
+        if config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
-                    "num_sgd_iter": self.config["num_sgd_iter"],
-                    "train_batch_size": self.config["train_batch_size"],
+                    "num_sgd_iter": config["num_sgd_iter"],
+                    "train_batch_size": config["train_batch_size"],
                 })
         else:
             self.optimizer = LocalMultiGPUOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
-                    "sgd_batch_size": self.config["sgd_minibatch_size"],
-                    "num_sgd_iter": self.config["num_sgd_iter"],
-                    "num_gpus": self.config["num_gpus"],
-                    "sample_batch_size": self.config["sample_batch_size"],
-                    "num_envs_per_worker": self.config["num_envs_per_worker"],
-                    "train_batch_size": self.config["train_batch_size"],
+                    "sgd_batch_size": config["sgd_minibatch_size"],
+                    "num_sgd_iter": config["num_sgd_iter"],
+                    "num_gpus": config["num_gpus"],
+                    "sample_batch_size": config["sample_batch_size"],
+                    "num_envs_per_worker": config["num_envs_per_worker"],
+                    "train_batch_size": config["train_batch_size"],
                     "standardize_fields": ["advantages"],
-                    "straggler_mitigation": (
-                        self.config["straggler_mitigation"]),
+                    "straggler_mitigation": config["straggler_mitigation"],
                 })
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         if "observation_filter" not in self.raw_user_config:
             # TODO(ekl) remove this message after a few releases
@@ -124,11 +123,10 @@ class PPOAgent(Agent):
 
             # multi-agent
             self.local_evaluator.foreach_trainable_policy(update)
-        res = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
+        res = self.collect_metrics()
         res.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
-            info=dict(fetches, **res.get("info", {})))
+            info=res.get("info", {}))
 
         # Warn about bad clipping configs
         if self.config["vf_clip_param"] <= 0:
@@ -139,7 +137,7 @@ class PPOAgent(Agent):
             rew_scale = round(
                 abs(res["episode_reward_mean"]) / self.config["vf_clip_param"],
                 0)
-        if rew_scale > 100:
+        if rew_scale > 200:
             logger.warning(
                 "The magnitude of your environment rewards are more than "
                 "{}x the scale of `vf_clip_param`. ".format(rew_scale) +
@@ -150,6 +148,8 @@ class PPOAgent(Agent):
         return res
 
     def _validate_config(self):
+        if self.config["entropy_coeff"] < 0:
+            raise DeprecationWarning("entropy_coeff must be >= 0")
         if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
             raise ValueError(
                 "Minibatch size {} must be <= train batch size {}.".format(

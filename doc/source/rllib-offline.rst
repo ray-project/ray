@@ -69,13 +69,13 @@ This example plot shows the Q-value metric in addition to importance sampling (I
 
 .. code-block:: python
 
-    agent = DQNAgent(...)
-    ...  # train agent offline
+    trainer = DQNTrainer(...)
+    ...  # train policy offline
 
     from ray.rllib.offline.json_reader import JsonReader
     from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 
-    estimator = WeightedImportanceSamplingEstimator(agent.get_policy(), gamma=0.99)
+    estimator = WeightedImportanceSamplingEstimator(trainer.get_policy(), gamma=0.99)
     reader = JsonReader("/path/to/data")
     for _ in range(1000):
         batch = reader.next()
@@ -155,10 +155,10 @@ Input API
 
 You can configure experience input for an agent using the following options:
 
-.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+.. literalinclude:: ../../python/ray/rllib/agents/trainer.py
    :language: python
-   :start-after: __sphinx_doc_input_begin__
-   :end-before: __sphinx_doc_input_end__
+   :start-after: === Offline Datasets ===
+   :end-before: Specify where experiences should be saved
 
 The interface for a custom input reader is as follows:
 
@@ -170,10 +170,10 @@ Output API
 
 You can configure experience output for an agent using the following options:
 
-.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+.. literalinclude:: ../../python/ray/rllib/agents/trainer.py
    :language: python
-   :start-after: __sphinx_doc_output_begin__
-   :end-before: __sphinx_doc_output_end__
+   :start-after: shuffle_buffer_size
+   :end-before: === Multiagent ===
 
 The interface for a custom output writer is as follows:
 

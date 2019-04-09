@@ -23,6 +23,14 @@ docker:
     run_options:
       - --runtime=nvidia
 
+    # # Example of running a GPU head with CPU workers
+    # head_image: "tensorflow/tensorflow:1.13.1-gpu-py3"
+    # head_run_options:
+    #     - --runtime=nvidia
+
+    # worker_image: "tensorflow/tensorflow:1.13.1-py3"
+    # worker_run_options: []
+
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
 # target_utilization is 0.8, it would resize the cluster to 13. This fraction
@@ -92,9 +100,9 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev1-cp27-cp27mu-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev1-cp35-cp35m-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev1-cp36-cp36m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp27-cp27mu-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp35-cp35m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp36-cp36m-manylinux1_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

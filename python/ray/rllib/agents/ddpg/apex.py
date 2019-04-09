@@ -2,7 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.ddpg.ddpg import DDPGAgent, DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
+    DEFAULT_CONFIG as DDPG_CONFIG
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import merge_dicts
 
@@ -23,7 +24,6 @@ APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
         "learning_starts": 50000,
         "train_batch_size": 512,
         "sample_batch_size": 50,
-        "max_weight_sync_delay": 400,
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
         "per_worker_exploration": True,
@@ -33,17 +33,17 @@ APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
 )
 
 
-class ApexDDPGAgent(DDPGAgent):
+class ApexDDPGTrainer(DDPGTrainer):
     """DDPG variant that uses the Ape-X distributed policy optimizer.
 
     By default, this is configured for a large single node (32 cores). For
     running in a large cluster, increase the `num_workers` config var.
     """
 
-    _agent_name = "APEX_DDPG"
+    _name = "APEX_DDPG"
     _default_config = APEX_DDPG_DEFAULT_CONFIG
 
-    @override(DDPGAgent)
+    @override(DDPGTrainer)
     def update_target_if_needed(self):
         # Ape-X updates based on num steps trained, not sampled
         if self.optimizer.num_steps_trained - self.last_target_update_ts > \

@@ -4,10 +4,9 @@ from __future__ import print_function
 
 import copy
 import os
-
 try:
     import sigopt as sgo
-except Exception:
+except ImportError:
     sgo = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
@@ -48,17 +47,8 @@ class SigOptSearch(SuggestionAlgorithm):
         >>>         },
         >>>     },
         >>> ]
-        >>> config = {
-        >>>     "my_exp": {
-        >>>         "run": "exp",
-        >>>         "num_samples": 10 if args.smoke_test else 1000,
-        >>>         "stop": {
-        >>>             "training_iteration": 100
-        >>>         },
-        >>>     }
-        >>> }
         >>> algo = SigOptSearch(
-        >>>     parameters, name="SigOpt Example Experiment",
+        >>>     space, name="SigOpt Example Experiment",
         >>>     max_concurrent=1, reward_attr="neg_mean_loss")
     """
 

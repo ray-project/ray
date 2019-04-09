@@ -783,8 +783,10 @@ class FunctionActorManager(object):
                     method_returns = method(actor, *args)
             except Exception as e:
                 # Save the checkpoint before allowing the method exception
-                # to be thrown.
-                if isinstance(actor, ray.actor.Checkpointable):
+                # to be thrown, but don't save the checkpoint for actor
+                # creation task.
+                if (isinstance(actor, ray.actor.Checkpointable)
+                        and self._worker.actor_task_counter != 1):
                     self._save_and_log_checkpoint(actor)
                 raise e
             else:

@@ -6,20 +6,23 @@ echo 10
 EOF
 chmod +x /usr/bin/nproc
 
-export RAY_USE_CMAKE=1
-
 PYTHONS=("cp27-cp27mu"
-         "cp34-cp34m"
          "cp35-cp35m"
          "cp36-cp36m"
          "cp37-cp37m")
 
-# On python 3.7, a newer version of numpy seems to be necessary.
-NUMPY_VERSIONS=("1.10.4"
-                "1.10.4"
-                "1.10.4"
-                "1.10.4"
+# The minimum supported numpy version is 1.14, see
+# https://issues.apache.org/jira/browse/ARROW-3141
+NUMPY_VERSIONS=("1.14.5"
+                "1.14.5"
+                "1.14.5"
                 "1.14.5")
+
+sudo apt-get install unzip
+/ray/ci/travis/install-bazel.sh
+
+# Put bazel into the PATH
+export PATH=$PATH:/root/bin
 
 # Remove this old Python 2.4.3 executable, and make the "python2" command find
 # a newer version of Python. We need this for autogenerating some files for the
@@ -39,7 +42,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
     /opt/python/${PYTHON}/bin/pip install -q numpy==${NUMPY_VERSION} cython==0.29.0
-    INCLUDE_UI=1 PATH=/opt/python/${PYTHON}/bin:$PATH /opt/python/${PYTHON}/bin/python setup.py bdist_wheel
+    PATH=/opt/python/${PYTHON}/bin:$PATH /opt/python/${PYTHON}/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
   popd

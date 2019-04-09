@@ -291,10 +291,9 @@ class TestObjectManager : public TestObjectManagerBase {
     UniqueID sub_id = ray::ObjectID::from_random();
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
-        sub_id, object_1,
-        [this, sub_id, object_1, object_2](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients, bool created) {
+        sub_id, object_1, [this, sub_id, object_1, object_2](
+                              const ray::ObjectID &object_id,
+                              const std::unordered_set<ray::ClientID> &clients) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }

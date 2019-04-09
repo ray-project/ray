@@ -36,6 +36,8 @@ public class ObjectStoreProxy {
   private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META = String
       .valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE).getBytes();
 
+  private static final byte[] RAW_TYPE_META = "RAW".getBytes();
+
   private final AbstractRayRuntime runtime;
 
   private static ThreadLocal<ObjectStoreLink> objectStore;
@@ -78,16 +80,13 @@ public class ObjectStoreProxy {
 
     List<GetResult<T>> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {
-      // TODO(hchen): Plasma API returns data and metadata in wrong order, this should be fixed
-      //  from the arrow side first.
-      byte[] meta = dataAndMetaList.get(i).data;
-      byte[] data = dataAndMetaList.get(i).metadata;
+      byte[] meta = dataAndMetaList.get(i).metadata;
+      byte[] data = dataAndMetaList.get(i).data;
 
       GetResult<T> result;
       if (meta != null) {
-        // If meta is not null, deserialize the exception.
-        RayException exception = deserializeRayExceptionFromMeta(meta, ids.get(i));
-        result = new GetResult<>(true, null, exception);
+        // If meta is not null, deserialize the object from meta.
+        result = deserializeFromMeta(meta, data, ids.get(i));
       } else if (data != null) {
         // If data is not null, deserialize the Java object.
         Object object = Serializer.decode(data, runtime.getWorkerContext().getCurrentClassLoader());
@@ -114,13 +113,16 @@ public class ObjectStoreProxy {
     return results;
   }
 
-  private RayException deserializeRayExceptionFromMeta(byte[] meta, UniqueId objectId) {
-    if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
-      return RayWorkerException.INSTANCE;
+  @SuppressWarnings("unchecked")
+  private <T> GetResult<T> deserializeFromMeta(byte[] meta, byte[] data, UniqueId objectId) {
+    if (Arrays.equals(meta, RAW_TYPE_META)) {
+      return (GetResult<T>) new GetResult<>(true, data, null);
+    } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
+      return new GetResult<>(true, null, RayWorkerException.INSTANCE);
     } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
-      return RayActorException.INSTANCE;
+      return new GetResult<>(true, null, RayActorException.INSTANCE);
     } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
-      return new UnreconstructableException(objectId);
+      return new GetResult<>(true, null, new UnreconstructableException(objectId));
     }
     throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
   }
@@ -133,7 +135,13 @@ public class ObjectStoreProxy {
    */
   public void put(UniqueId id, Object object) {
     try {
-      objectStore.get().put(id.getBytes(), Serializer.encode(object), null);
+      if (object instanceof byte[]) {
+        // If the object is a byte array, skip serializing it and use a special metadata to
+        // indicate it's raw binary. So that this object can also be read by Python.
+        objectStore.get().put(id.getBytes(), (byte[]) object, RAW_TYPE_META);
+      } else {
+        objectStore.get().put(id.getBytes(), Serializer.encode(object), null);
+      }
     } catch (DuplicateObjectException e) {
       LOGGER.warn(e.getMessage());
     }

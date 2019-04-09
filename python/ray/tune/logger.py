@@ -5,10 +5,12 @@ from __future__ import print_function
 import csv
 import json
 import logging
-import numpy as np
 import os
 import yaml
 import distutils.version
+import numbers
+
+import numpy as np
 
 import ray.cloudpickle as cloudpickle
 from ray.tune.log_sync import get_syncer
@@ -17,15 +19,8 @@ from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
 
 logger = logging.getLogger(__name__)
 
-try:
-    import tensorflow as tf
-    use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                     distutils.version.LooseVersion("1.5.0"))
-except ImportError:
-    tf = None
-    use_tf150_api = True
-    logger.warning("Couldn't import TensorFlow - "
-                   "disabling TensorBoard logging.")
+tf = None
+use_tf150_api = True
 
 
 class Logger(object):
@@ -121,6 +116,15 @@ def to_tf_values(result, path):
 
 class TFLogger(Logger):
     def _init(self):
+        try:
+            global tf, use_tf150_api
+            import tensorflow
+            tf = tensorflow
+            use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
+                             distutils.version.LooseVersion("1.5.0"))
+        except ImportError:
+            logger.warning("Couldn't import TensorFlow - "
+                           "disabling TensorBoard logging.")
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
@@ -226,14 +230,13 @@ class UnifiedLogger(Logger):
     def close(self):
         for _logger in self._loggers:
             _logger.close()
-        self._log_syncer.sync_now(force=True)
+        self._log_syncer.sync_now(force=False)
         self._log_syncer.close()
 
     def flush(self):
         for _logger in self._loggers:
             _logger.flush()
-        self._log_syncer.sync_now(force=True)
-        self._log_syncer.wait()
+        self._log_syncer.sync_now(force=False)
 
     def sync_results_to_new_location(self, worker_ip):
         """Sends the current log directory to the remote node.
@@ -254,11 +257,19 @@ class _SafeFallbackEncoder(json.JSONEncoder):
     def default(self, value):
         try:
             if np.isnan(value):
-                return None
-            if np.issubdtype(value, float):
-                return float(value)
-            if np.issubdtype(value, int):
+                return self.nan_str
+
+            if (type(value).__module__ == np.__name__
+                    and isinstance(value, np.ndarray)):
+                return value.tolist()
+
+            if issubclass(type(value), numbers.Integral):
                 return int(value)
+            if issubclass(type(value), numbers.Number):
+                return float(value)
+
+            return super(_SafeFallbackEncoder, self).default(value)
+
         except Exception:
             return str(value)  # give up, just stringify it (ok for logs)
 

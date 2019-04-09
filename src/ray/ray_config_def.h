@@ -23,7 +23,7 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100);
 /// The duration between heartbeats. These are sent by the raylet.
 RAY_CONFIG(int64_t, heartbeat_timeout_milliseconds, 100);
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
-/// heartbeat intervals, the global scheduler or monitor process will report
+/// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
 RAY_CONFIG(int64_t, num_heartbeats_timeout, 300);
 /// For a raylet, if the last heartbeat was sent more than this many
@@ -59,29 +59,32 @@ RAY_CONFIG(int64_t, actor_max_dummy_objects, 1000);
 RAY_CONFIG(int64_t, num_connect_attempts, 5);
 RAY_CONFIG(int64_t, connect_timeout_milliseconds, 500);
 
-/// The duration that the local scheduler will wait before reinitiating a
+/// The duration that the raylet will wait before reinitiating a
 /// fetch request for a missing task dependency. This time may adapt based on
 /// the number of missing task dependencies.
-RAY_CONFIG(int64_t, local_scheduler_fetch_timeout_milliseconds, 1000);
-/// The duration that the local scheduler will wait between initiating
+RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000);
+
+/// The duration that the raylet will wait between initiating
 /// reconstruction calls for missing task dependencies. If there are many
 /// missing task dependencies, we will only iniate reconstruction calls for
 /// some of them each time.
-RAY_CONFIG(int64_t, local_scheduler_reconstruction_timeout_milliseconds, 1000);
-/// The maximum number of objects that the local scheduler will issue
+RAY_CONFIG(int64_t, raylet_reconstruction_timeout_milliseconds, 1000);
+
+/// The maximum number of objects that the raylet will issue
 /// reconstruct calls for in a single pass through the reconstruct object
 /// timeout handler.
 RAY_CONFIG(int64_t, max_num_to_reconstruct, 10000);
+
 /// The maximum number of objects to include in a single fetch request in the
-/// regular local scheduler fetch timeout handler.
-RAY_CONFIG(int64_t, local_scheduler_fetch_request_size, 10000);
+/// regular raylet fetch timeout handler.
+RAY_CONFIG(int64_t, raylet_fetch_request_size, 10000);
 
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100);
 
-/// This is a timeout used to cause failures in the plasma manager and local
-/// scheduler when certain event loop handlers take too long.
+/// This is a timeout used to cause failures in the plasma manager and raylet
+/// when certain event loop handlers take too long.
 RAY_CONFIG(int64_t, max_time_for_handler_milliseconds, 1000);
 
 /// This is used by the Python extension when serializing objects as part of

@@ -7,7 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tune import run_experiments, register_trainable
+from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.automl import GeneticSearch
 from ray.tune.automl import ContinuousSpace, DiscreteSpace, SearchSpace
@@ -36,8 +36,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    register_trainable("exp", michalewicz_function)
-
     space = SearchSpace({
         ContinuousSpace('x1', 0, 4, 100),
         ContinuousSpace('x2', -2, 2, 100),
@@ -46,18 +44,15 @@ if __name__ == "__main__":
         DiscreteSpace('x5', [-1, 0, 1, 2, 3]),
     })
 
-    config = {
-        "my_exp": {
-            "run": "exp",
-            "stop": {
-                "training_iteration": 100
-            },
-        }
-    }
+    config = {"stop": {"training_iteration": 100}}
     algo = GeneticSearch(
         space,
         reward_attr="neg_mean_loss",
         max_generation=2 if args.smoke_test else 10,
         population_size=10 if args.smoke_test else 50)
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
-    run_experiments(config, search_alg=algo, scheduler=scheduler)
+    run(michalewicz_function,
+        name="my_exp",
+        search_alg=algo,
+        scheduler=scheduler,
+        **config)
