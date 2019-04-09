@@ -500,6 +500,7 @@ class StandardAutoscaler(object):
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
             new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
+                new_config["setup_commands"],
                 new_config["worker_setup_commands"],
                 new_config["worker_start_ray_commands"]
             ])
@@ -582,9 +583,11 @@ class StandardAutoscaler(object):
         if successful_updated and self.config.get("restart_only", False):
             init_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = (self.config["worker_setup_commands"])
+            init_commands = (self.config["setup_commands"] +
+                             self.config["worker_setup_commands"])
         else:
-            init_commands = (self.config["worker_setup_commands"] +
+            init_commands = (self.config["setup_commands"] +
+                             self.config["worker_setup_commands"] +
                              self.config["worker_start_ray_commands"])
 
         return (node_id, init_commands)
@@ -712,10 +715,10 @@ def fillout_defaults(config):
 
 
 def merge_setup_commands(config):
-    config["head_setup_commands"] = config["setup_commands"] + \
-        config["head_setup_commands"]
-    config["worker_setup_commands"] = config["setup_commands"] + \
-        config["worker_setup_commands"]
+    config["head_setup_commands"] = (config["setup_commands"] +
+                                     config["head_setup_commands"])
+    config["worker_setup_commands"] = (config["setup_commands"] +
+                                       config["worker_setup_commands"])
     return config
 
 
