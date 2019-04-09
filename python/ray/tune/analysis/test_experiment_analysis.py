@@ -67,14 +67,21 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     def testDataframe(self):
         df = self.ea.dataframe()
+
         self.assertTrue(isinstance(df, pd.DataFrame))
+        self.assertEquals(df.shape[0], num_samples)
 
     def testTrialDataframe(self):
-        trial_df = self.ea.trial_dataframe(self.ea.checkpoints()[0]["trial_id"])
+        cs = self.ea.checkpoints()
+        idx = random.randint(0, len(cs)-1)
+        trial_df = self.ea.trial_dataframe(cs[idx]["trial_id"]) # random trial df
+
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
+        self.assertEqual(trial_df.shape[0], 1)
 
     def testBestTrainable(self):
         best_trainable = self.ea.get_best_trainable(metric)
+        
         self.assertTrue(isinstance(best_trainable, Trainable))
 
     def testBestConfig(self):
