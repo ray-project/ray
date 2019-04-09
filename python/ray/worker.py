@@ -1496,6 +1496,32 @@ def shutdown(exiting_interpreter=False):
     global_worker.set_mode(None)
 
 
+def exit_actor():
+    """Exiting the current actor.
+
+    This function is used to disconnect an actor and exit the worker.
+    TODO(guoyuhong): The actor should not be reconstructed after this
+    function is called even when max_reconstructions is not 0.
+
+    Raises:
+        Exception: An exception is raised if this is a driver or this
+        worker is not an actor.
+    """
+    worker = global_worker
+    if worker.mode == WORKER_MODE and not worker.actor_id.is_nil():
+        # Disconnect the worker from the raylet. The point of
+        # this is so that when the worker kills itself below, the
+        # raylet won't push an error message to the driver.
+        worker.raylet_client.disconnect()
+        disconnect()
+        # Disconnect global state from GCS.
+        global_state.disconnect()
+        sys.exit(0)
+        assert False, "This process should have terminated."
+    else:
+        raise Exception("exit_actor called on none-actor worker.")
+
+
 atexit.register(shutdown, True)
 
 # Define a custom excepthook so that if the driver exits with an exception, we

@@ -7,7 +7,6 @@ import hashlib
 import inspect
 import logging
 import six
-import sys
 import threading
 
 from abc import ABCMeta, abstractmethod
@@ -708,12 +707,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
         def __ray_terminate__(self):
             worker = ray.worker.get_global_worker()
             if worker.mode != ray.LOCAL_MODE:
-                # Disconnect the worker from the raylet. The point of
-                # this is so that when the worker kills itself below, the
-                # raylet won't push an error message to the driver.
-                worker.raylet_client.disconnect()
-                sys.exit(0)
-                assert False, "This process should have terminated."
+                ray.exit_actor()
 
         def __ray_checkpoint__(self):
             """Save a checkpoint.

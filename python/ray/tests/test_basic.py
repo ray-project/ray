@@ -2892,32 +2892,3 @@ def test_redis_lru_with_set(ray_start_object_store_memory):
 
     # Now evict the object from the object store.
     ray.put(x)  # This should not crash.
-
-
-@pytest.mark.parametrize("two_node_cluster", [{"num_cpus": 10}], indirect=True)
-def test_call_shutdown_in_remote_function(two_node_cluster):
-    num_cpus = 10
-
-    @ray.remote
-    class Actor(object):
-        def shutdown(self):
-            time.sleep(1)
-            ray.shutdown()
-
-    actors = [Actor.remote() for i in range(num_cpus)]
-    [actors[i].shutdown.remote() for i in range(num_cpus)]
-
-    def function(num):
-        pass
-
-    def export_thread():
-        for i in range(200):
-            ray.remote(num_gpus=0)(lambda: function())
-            time.sleep(0.01)
-
-    thread = threading.Thread(target=export_thread)
-    thread.start()
-
-    ray.tests.utils.wait_for_errors(ray.ray_constants.WORKER_DIED_PUSH_ERROR,
-                                    num_cpus)
-    thread.join()
