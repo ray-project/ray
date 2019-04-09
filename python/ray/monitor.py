@@ -16,7 +16,6 @@ import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.services import get_ip_address, get_port
 from ray.utils import (binary_to_hex, binary_to_object_id, hex_to_binary,
                        setup_logger)
 
@@ -32,17 +31,15 @@ class Monitor(object):
 
     Attributes:
         redis: A connection to the Redis server.
-        subscribe_client: A pubsub client for the Redis server. This is used to
-            receive notifications about failed components.
+        primary_subscribe_client: A pubsub client for the Redis server.
+            This is used to receive notifications about failed components.
     """
 
     def __init__(self, redis_address, autoscaling_config, redis_password=None):
         # Initialize the Redis clients.
         self.state = ray.experimental.state.GlobalState()
-        redis_ip_address = get_ip_address(args.redis_address)
-        redis_port = get_port(args.redis_address)
         self.state._initialize_global_state(
-            redis_ip_address, redis_port, redis_password=redis_password)
+            args.redis_address, redis_password=redis_password)
         self.redis = ray.services.create_redis_client(
             redis_address, password=redis_password)
         # Setup subscriptions to the primary Redis server and the Redis shards.
