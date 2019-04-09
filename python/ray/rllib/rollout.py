@@ -169,7 +169,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
                             prev_action=prev_actions[agent_id],
                             prev_reward=prev_rewards[agent_id],
                             policy_id=policy_id)
-                        agent_states[policy_id] = p_state
+                        agent_states[agent_id] = p_state
                     else:
                         a_action = agent.compute_action(
                             a_obs,
