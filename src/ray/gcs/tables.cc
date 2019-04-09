@@ -84,7 +84,8 @@ Status Log<ID, Data>::AppendAt(const DriverID &driver_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id, const Callback &lookup) {
+Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
+                             const Callback &lookup) {
   num_lookups_++;
   auto callback = [this, id, lookup](const std::string &data) {
     if (lookup != nullptr) {
@@ -240,8 +241,8 @@ Status Table<ID, Data>::Add(const DriverID &driver_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Lookup(const DriverID &driver_id, const ID &id, const Callback &lookup,
-                               const FailureCallback &failure) {
+Status Table<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
+                               const Callback &lookup, const FailureCallback &failure) {
   num_lookups_++;
   return Log<ID, Data>::Lookup(driver_id, id,
                                [lookup, failure](AsyncGcsClient *client, const ID &id,

@@ -176,8 +176,8 @@ ray::Status NodeManager::RegisterGcs() {
       const std::vector<DriverTableDataT> &driver_data) {
     HandleDriverTableUpdate(client_id, driver_data);
   };
-  RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(DriverID::nil(), ClientID::nil(),
-                                                          driver_table_handler, nullptr));
+  RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(
+    DriverID::nil(), ClientID::nil(),driver_table_handler, nullptr));
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();

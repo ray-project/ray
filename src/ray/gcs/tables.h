@@ -1,4 +1,4 @@
-#ifndef RAY_GCS_TABLES_H
+x#ifndef RAY_GCS_TABLES_H
 #define RAY_GCS_TABLES_H
 
 #include <map>
@@ -51,8 +51,8 @@ class LogInterface {
   using DataT = typename Data::NativeTableType;
   using WriteCallback =
       std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
-  virtual Status Append(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
-                        const WriteCallback &done) = 0;
+  virtual Status Append(const DriverID &driver_id, const ID &id,
+                        std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
   virtual Status AppendAt(const DriverID &driver_id, const ID &task_id,
                           std::shared_ptr<DataT> &data, const WriteCallback &done,
                           const WriteCallback &failure, int log_length) = 0;
@@ -261,8 +261,8 @@ class TableInterface {
  public:
   using DataT = typename Data::NativeTableType;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const DriverID &driver_id, const ID &task_id, std::shared_ptr<DataT> &data,
-                     const WriteCallback &done) = 0;
+  virtual Status Add(const DriverID &driver_id, const ID &task_id,
+                     std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
   virtual ~TableInterface(){};
 };
 
@@ -341,7 +341,9 @@ class Table : private Log<ID, Data>,
                    const Callback &subscribe, const FailureCallback &failure,
                    const SubscriptionCallback &done);
 
-  void Delete(const DriverID &driver_id, const ID &id) { Log<ID, Data>::Delete(driver_id, id); }
+  void Delete(const DriverID &driver_id, const ID &id) {
+    Log<ID, Data>::Delete(driver_id, id);
+  }
 
   void Delete(const DriverID &driver_id, const std::vector<ID> &ids) {
     Log<ID, Data>::Delete(driver_id, ids);
@@ -369,10 +371,10 @@ class SetInterface {
  public:
   using DataT = typename Data::NativeTableType;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
-                     const WriteCallback &done) = 0;
-  virtual Status Remove(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
-                        const WriteCallback &done) = 0;
+  virtual Status Add(const DriverID &driver_id, const ID &id,
+                     std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
+  virtual Status Remove(const DriverID &driver_id, const ID &id,
+                        std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
   virtual ~SetInterface(){};
 };
 
@@ -547,8 +549,8 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
     prefix_ = TablePrefix::TASK_LEASE;
   }
 
-  Status Add(const DriverID &driver_id, const TaskID &id, std::shared_ptr<TaskLeaseDataT> &data,
-             const WriteCallback &done) override {
+  Status Add(const DriverID &driver_id, const TaskID &id,
+             std::shared_ptr<TaskLeaseDataT> &data, const WriteCallback &done) override {
     RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(driver_id, id, data, done)));
     // Mark the entry for expiration in Redis. It's okay if this command fails
     // since the lease entry itself contains the expiration period. In the
