@@ -147,7 +147,6 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         if out is not None:
             rollout = []
         obs = env.reset()
-        multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
         agent_states = DefaultMapping(lambda agent_id: state_init[
             mapping_cache[agent_id]])
         prev_actions = DefaultMapping(lambda agent_id: action_init[
@@ -156,6 +155,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         done = False
         reward_total = 0.0
         while not done and steps < (num_steps or steps + 1):
+            multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
             action_dict = {}
             for agent_id, a_obs in multi_obs.items():
                 if a_obs is not None:
@@ -180,6 +180,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
                     prev_actions[agent_id] = a_action
             action = action_dict
 
+            action = action if multiagent else action[_DUMMY_AGENT_ID]
             next_obs, reward, done, _ = env.step(action)
             if multiagent:
                 for agent_id, r in reward.items():
