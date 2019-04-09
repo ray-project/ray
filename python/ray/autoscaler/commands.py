@@ -352,8 +352,8 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             container_name = config["docker"]["container_name"]
             if not container_name:
                 raise ValueError("Docker container not specified in config.")
-            return with_docker_exec(
-                [command], container_name=container_name)[0]
+            return with_docker_exec([command],
+                                    container_name=container_name)[0]
 
         cmd = wrap_docker(cmd) if docker else cmd
 

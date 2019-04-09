@@ -623,9 +623,8 @@ class StandardAutoscaler(object):
         self.launch_queue.put((config, count))
 
     def workers(self):
-        return self.provider.non_terminated_nodes(tag_filters={
-            TAG_RAY_NODE_TYPE: "worker"
-        })
+        return self.provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_TYPE: "worker"})
 
     def log_info_string(self, nodes):
         logger.info("StandardAutoscaler: {}".format(self.info_string(nodes)))
