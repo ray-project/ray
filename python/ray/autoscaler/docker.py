@@ -127,6 +127,7 @@ def docker_autoscaler_setup(cname):
         cmds.append("docker cp {path} {cname}:{dpath}".format(
             path=path, dpath=base_path, cname=cname))
         cmds.extend(
-            with_docker_exec(["cp {} {}".format("/" + base_path, path)],
-                             container_name=cname))
+            with_docker_exec(
+                ["cp {} {}".format("/" + base_path, path)],
+                container_name=cname))
     return cmds

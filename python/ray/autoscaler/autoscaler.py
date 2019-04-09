@@ -715,10 +715,10 @@ def fillout_defaults(config):
 
 
 def merge_setup_commands(config):
-    config["head_setup_commands"] = (config["setup_commands"] +
-                                     config["head_setup_commands"])
-    config["worker_setup_commands"] = (config["setup_commands"] +
-                                       config["worker_setup_commands"])
+    config["head_setup_commands"] = (
+        config["setup_commands"] + config["head_setup_commands"])
+    config["worker_setup_commands"] = (
+        config["setup_commands"] + config["worker_setup_commands"])
     return config
 
 
