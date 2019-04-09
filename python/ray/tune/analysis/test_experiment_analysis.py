@@ -9,7 +9,7 @@ import random
 import os
 import pandas as pd
 
-from experiment_analysis import ExperimentAnalysis, parse_exp
+from experiment_analysis import ExperimentAnalysis
 import ray
 from ray.tune import run, sample_from, Trainable
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
@@ -24,7 +24,7 @@ iterations = 5
 metric = "episode_reward_mean"
 
 def run_test_exp():
-    ray.init()
+    
 
     ahb = AsyncHyperBandScheduler(
         time_attr="training_iteration",
@@ -58,6 +58,7 @@ def remove_test_exp():
 
 class ExperimentAnalysisSuite(unittest.TestCase):
     def setUp(self):
+        ray.init()
         run_test_exp()
         self.ea = ExperimentAnalysis(test_path)
 

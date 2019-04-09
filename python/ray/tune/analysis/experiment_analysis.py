@@ -13,19 +13,23 @@ from ray.tune.trainable import Trainable
 
 logger = logging.getLogger(__name__)
 
-def parse_exp(experiment_path):
-    experiment_path = os.path.expanduser(experiment_path)
-    experiment_dir, experiment_trials, experiment_state_paths = next(os.walk(experiment_path))
-    experiment_filename = max(list(experiment_state_paths)) # if more than one, pick latest
-    with open(os.path.join(experiment_path, experiment_filename)) as f:
-        experiment_state = json.load(f)
-    return experiment_dir, experiment_trials, experiment_state 
-
 
 class ExperimentAnalysis():
     def __init__(self, experiment_path):
-        # TODO(Adi): Raise ValueError if experiment_path is not "ray_results"
-        self._experiment_dir, self._experiment_trials, self._experiment_state = parse_exp(experiment_path)
+        experiment_path = os.path.expanduser(experiment_path)
+        if not os.path.isdir(experiment_path):
+            raise ValueError("{} is not a valid directory.".format(experiment_path))
+        self._experiment_dir, self._experiment_trials, experiment_state_paths = next(os.walk(experiment_path))
+        if len(self._experiment_trials) == 0:
+            raise ValueError("This is not a valid directory because it has zero trial directories.")
+        if len(experiment_state_paths) == 0:
+            raise ValueError("This is not a valid directory because it has no experiment state JSON file.")
+        experiment_filename = max(list(experiment_state_paths)) # if more than one, pick latest
+        with open(os.path.join(experiment_path, experiment_filename)) as f:
+            self._experiment_state = json.load(f)
+
+        if "checkpoints" not in self._experiment_state:
+            raise ValueError("The experiment state JSON file is not valid because it must have checkpoints.")
         self._checkpoints = self._experiment_state["checkpoints"]
 
     def dataframe(self):
