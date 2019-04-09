@@ -368,9 +368,13 @@ class RayTrialExecutor(TrialExecutor):
                 time.sleep(0.5)
 
         if not resources:
-            raise TuneError("Cluster resources cannot be detected or are 0. "
-                            "You can resume this experiment by passing in "
-                            "`resume=True` to `run`.")
+            # NOTE: This hides the possibility that Ray may be waiting for
+            # clients to connect.
+            resources.setdefault("CPU", 0)
+            resources.setdefault("GPU", 0)
+            logger.warning("Cluster resources cannot be detected or are 0. "
+                           "You can resume this experiment by passing in "
+                           "`resume=True` to `run`.")
 
         resources = resources.copy()
         num_cpus = resources.pop("CPU", 0)
