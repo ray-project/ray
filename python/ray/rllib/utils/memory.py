@@ -7,7 +7,7 @@ import time
 
 import ray
 
-FREE_DELAY_S = 5.0
+FREE_DELAY_S = 10.0
 MAX_FREE_QUEUE_SIZE = 100
 _last_free_time = 0.0
 _to_free = []
