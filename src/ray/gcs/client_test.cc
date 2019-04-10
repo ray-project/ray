@@ -416,7 +416,7 @@ void TestDeleteKeysFromTable(const DriverID &driver_id,
                                const protocol::TaskT &data) { ASSERT_TRUE(false); };
   for (size_t i = 0; i < ids.size(); ++i) {
     RAY_CHECK_OK(client->raylet_task_table().Lookup(
-      driver_id, task_id, undesired_callback, expected_failure_callback));
+        driver_id, task_id, undesired_callback, expected_failure_callback));
   }
   if (stop_at_end) {
     auto stop_callback = [](AsyncGcsClient *client, const TaskID &id) { test->Stop(); };
@@ -936,7 +936,7 @@ void TestSetSubscribeId(const DriverID &driver_id,
   // Subscribe to notifications for this client. This allows us to request and
   // receive notifications for specific keys.
   RAY_CHECK_OK(client->object_table().Subscribe(
-      driver_id, client->client_table().GetLocalClientId(),notification_callback,
+      driver_id, client->client_table().GetLocalClientId(), notification_callback,
       subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called for the requested key.
@@ -1082,7 +1082,7 @@ void TestLogSubscribeCancel(const DriverID &driver_id,
   // Subscribe to notifications for this client. This allows us to request and
   // receive notifications for specific keys.
   RAY_CHECK_OK(client->driver_table().Subscribe(
-      driver_id, client->client_table().GetLocalClientId(),notification_callback,
+      driver_id, client->client_table().GetLocalClientId(), notification_callback,
       subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called for the requested key.
@@ -1165,7 +1165,7 @@ void TestSetSubscribeCancel(const DriverID &driver_id,
   // Subscribe to notifications for this client. This allows us to request and
   // receive notifications for specific keys.
   RAY_CHECK_OK(client->object_table().Subscribe(
-      driver_id, client->client_table().GetLocalClientId(),notification_callback,
+      driver_id, client->client_table().GetLocalClientId(), notification_callback,
       subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called for the requested key.
