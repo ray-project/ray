@@ -32,12 +32,13 @@ def ray_get_and_free(object_ids):
     _to_free.extend(object_ids)
 
     global _last_free_time
+    global _to_free
 
     now = time.time()
     if (len(_to_free) > MAX_FREE_QUEUE_SIZE
             or now - _last_free_time > FREE_DELAY_S):
         ray.internal.free(_to_free)
-        _to_free.clear()
+        _to_free = []
         _last_free_time = now
 
     return result
