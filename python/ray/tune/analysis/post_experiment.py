@@ -16,8 +16,6 @@ from ray.tune.result import EXPR_PROGRESS_FILE, \
 
 logger = logging.getLogger(__name__)
 
-import pdb
-
 
 def get_best_trial(trial_list, metric):
     """Retrieve the best trial."""
@@ -153,7 +151,7 @@ def clean_trial(trial_dir):
 
     try:
         dataframe = pd.read_csv(result_backup_path)
-    except pd.errors.EmptyDataError: # trial has an empty CSV file
+    except pd.errors.EmptyDataError:  # trial has an empty CSV file
         return
 
     cleaned_dataframe = clean_dataframe(dataframe)
@@ -163,7 +161,8 @@ def clean_trial(trial_dir):
 
 def fix_ray_results(experiment_dir):
     if not os.path.exists(experiment_dir):
-        raise ValueError("could not find experiment directory {}".format(experiment_dir))
+        raise ValueError(
+            "could not find experiment directory {}".format(experiment_dir))
 
     trial_dirs = [
         os.path.join(experiment_dir, trial_dir)

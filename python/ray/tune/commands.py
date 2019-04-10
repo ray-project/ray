@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import glob
-import json
 import logging
 import os
 import sys
@@ -13,9 +11,10 @@ from datetime import datetime
 
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
-from ray.tune.util import flatten_dict
 from ray.tune.result import TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS
 from ray.tune.trial import Trial
+from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
+from ray.tune import TuneError
 try:
     from tabulate import tabulate
 except ImportError:
@@ -106,7 +105,6 @@ def print_format_output(dataframe):
         print("Empty columns:", empty_cols)
 
     return table, dropped_cols, empty_cols
-
 
 
 def list_trials(experiment_path,
@@ -234,7 +232,8 @@ def list_experiments(project_path,
         experiment_data = {
             "name": experiment_dir,
             "total_trials": checkpoints_df.shape[0],
-            "running_trials": (checkpoints_df["status"] == Trial.RUNNING).sum(),
+            "running_trials": (
+                checkpoints_df["status"] == Trial.RUNNING).sum(),
             "terminated_trials": (
                 checkpoints_df["status"] == Trial.TERMINATED).sum(),
             "error_trials": (checkpoints_df["status"] == Trial.ERROR).sum(),

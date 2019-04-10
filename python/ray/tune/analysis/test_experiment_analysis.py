@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
-import subprocess
 import shutil
 import random
 import os
@@ -15,7 +14,6 @@ from ray.tune import run, sample_from, Trainable
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
-
 test_dir = "~/analysis_test"
 test_name = "analysis_exp"
 test_path = os.path.join(test_dir, test_name)
@@ -23,8 +21,8 @@ num_samples = 10
 iterations = 5
 metric = "episode_reward_mean"
 
+
 def run_test_exp():
-    
 
     ahb = AsyncHyperBandScheduler(
         time_attr="training_iteration",
@@ -52,6 +50,7 @@ def run_test_exp():
             },
         })
 
+
 def remove_test_exp():
     shutil.rmtree(os.path.expanduser(test_dir), ignore_errors=True)
 
@@ -74,15 +73,16 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     def testTrialDataframe(self):
         cs = self.ea.checkpoints()
-        idx = random.randint(0, len(cs)-1)
-        trial_df = self.ea.trial_dataframe(cs[idx]["trial_id"]) # random trial df
+        idx = random.randint(0, len(cs) - 1)
+        trial_df = self.ea.trial_dataframe(
+            cs[idx]["trial_id"])  # random trial df
 
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
         self.assertEqual(trial_df.shape[0], 1)
 
     def testBestTrainable(self):
         best_trainable = self.ea.get_best_trainable(metric)
-        
+
         self.assertTrue(isinstance(best_trainable, Trainable))
 
     def testBestConfig(self):
@@ -97,7 +97,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
         self.assertTrue(isinstance(best_trial, dict))
         self.assertTrue("local_dir" in best_trial)
-        self.assertEqual(best_trial["local_dir"], os.path.expanduser(test_path))
+        self.assertEqual(best_trial["local_dir"],
+                         os.path.expanduser(test_path))
         self.assertTrue("config" in best_trial)
         self.assertTrue("width" in best_trial["config"])
         self.assertTrue("height" in best_trial["config"])
@@ -123,7 +124,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
         self.assertTrue(isinstance(runner_data, dict))
         self.assertTrue("_metadata_checkpoint_dir" in runner_data)
-        self.assertEqual(runner_data["_metadata_checkpoint_dir"], os.path.expanduser(test_path))
+        self.assertEqual(runner_data["_metadata_checkpoint_dir"],
+                         os.path.expanduser(test_path))
 
 
 if __name__ == "__main__":
