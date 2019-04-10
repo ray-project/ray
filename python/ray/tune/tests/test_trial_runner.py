@@ -331,21 +331,21 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertFalse(trial.upload_dir)
 
     def testLogdirStartingWithTilde(self):
-        local_dir = '~/ray_results/local_dir'
+        local_dir = "~/ray_results/local_dir"
 
         def train(config, reporter):
             cwd = os.getcwd()
             assert cwd.startswith(os.path.expanduser(local_dir)), cwd
-            assert not cwd.startswith('~'), cwd
+            assert not cwd.startswith("~"), cwd
             reporter(timesteps_total=1)
 
-        register_trainable('f1', train)
+        register_trainable("f1", train)
         run_experiments({
-            'foo': {
-                'run': 'f1',
-                'local_dir': local_dir,
-                'config': {
-                    'a': 'b'
+            "foo": {
+                "run": "f1",
+                "local_dir": local_dir,
+                "config": {
+                    "a": "b"
                 },
             }
         })
@@ -501,7 +501,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testReportInfinity(self):
         def train(config, reporter):
             for i in range(100):
-                reporter(mean_accuracy=float('inf'))
+                reporter(mean_accuracy=float("inf"))
 
         register_trainable("f1", train)
         [trial] = run_experiments({
@@ -510,7 +510,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result['mean_accuracy'], float('inf'))
+        self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
 
     def testReportTimeStep(self):
         # Test that no timestep count are logged if never the Trainable never
@@ -1532,7 +1532,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        with patch('ray.global_state.cluster_resources') as resource_mock:
+        with patch("ray.global_state.cluster_resources") as resource_mock:
             resource_mock.return_value = {"CPU": 1, "GPU": 1}
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)
@@ -1717,12 +1717,12 @@ class TrialRunnerTest(unittest.TestCase):
 
         def on_step_begin(self):
             self._update_avail_resources()
-            cnt = self.pre_step if hasattr(self, 'pre_step') else 0
-            setattr(self, 'pre_step', cnt + 1)
+            cnt = self.pre_step if hasattr(self, "pre_step") else 0
+            setattr(self, "pre_step", cnt + 1)
 
         def on_step_end(self):
-            cnt = self.pre_step if hasattr(self, 'post_step') else 0
-            setattr(self, 'post_step', 1 + cnt)
+            cnt = self.pre_step if hasattr(self, "post_step") else 0
+            setattr(self, "post_step", 1 + cnt)
 
         import types
         runner.trial_executor.on_step_begin = types.MethodType(

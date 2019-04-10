@@ -63,7 +63,7 @@ class Model(object):
         return self.learning_rate
 
     def add_inference(self, unused_cnn):
-        raise ValueError('Must be implemented in derived classes')
+        raise ValueError("Must be implemented in derived classes")
 
     def skip_final_affine_layer(self):
         """Returns if the caller of this class should skip the final affine
@@ -82,11 +82,11 @@ class Model(object):
                       nclass=1001,
                       image_depth=3,
                       data_type=tf.float32,
-                      data_format='NCHW',
+                      data_format="NCHW",
                       use_tf_layers=True,
                       fp16_vars=False):
         """Returns logits and aux_logits from images."""
-        if data_format == 'NCHW':
+        if data_format == "NCHW":
             images = tf.transpose(images, [0, 3, 1, 2])
         var_type = tf.float32
         if data_type == tf.float16 and fp16_vars:
@@ -95,17 +95,17 @@ class Model(object):
             images, image_depth, phase_train, use_tf_layers, data_format,
             data_type, var_type)
         with tf.variable_scope(
-                'cg', custom_getter=network.get_custom_getter()):
+                "cg", custom_getter=network.get_custom_getter()):
             self.add_inference(network)
             # Add the final fully-connected class layer
-            logits = (network.affine(nclass, activation='linear')
+            logits = (network.affine(nclass, activation="linear")
                       if not self.skip_final_affine_layer() else
                       network.top_layer)
             aux_logits = None
             if network.aux_top_layer is not None:
                 with network.switch_to_aux_top_layer():
                     aux_logits = network.affine(
-                        nclass, activation='linear', stddev=0.001)
+                        nclass, activation="linear", stddev=0.001)
         if data_type == tf.float16:
             # TODO(reedwm): Determine if we should do this cast here.
             logits = tf.cast(logits, tf.float32)
