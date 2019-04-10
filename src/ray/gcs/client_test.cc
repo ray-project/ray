@@ -392,8 +392,7 @@ void TestDeleteKeysFromTable(const DriverID &driver_id,
       ASSERT_EQ(data->task_specification, d.task_specification);
       test->IncrementNumCallbacks();
     };
-    RAY_CHECK_OK(client->raylet_task_table().Add(driver_id, task_id,
-                                                 data, add_callback));
+    RAY_CHECK_OK(client->raylet_task_table().Add(driver_id, task_id, data, add_callback));
   }
   for (const auto &task_id : ids) {
     auto task_lookup_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
@@ -401,8 +400,8 @@ void TestDeleteKeysFromTable(const DriverID &driver_id,
       ASSERT_EQ(id, task_id);
       test->IncrementNumCallbacks();
     };
-    RAY_CHECK_OK(client->raylet_task_table().Lookup(
-      driver_id, task_id, task_lookup_callback, nullptr));
+    RAY_CHECK_OK(client->raylet_task_table().Lookup(driver_id, task_id,
+                                                    task_lookup_callback, nullptr));
   }
   if (ids.size() == 1) {
     client->raylet_task_table().Delete(driver_id, ids[0]);
@@ -416,8 +415,8 @@ void TestDeleteKeysFromTable(const DriverID &driver_id,
   auto undesired_callback = [](gcs::AsyncGcsClient *client, const TaskID &id,
                                const protocol::TaskT &data) { ASSERT_TRUE(false); };
   for (size_t i = 0; i < ids.size(); ++i) {
-    RAY_CHECK_OK(client->raylet_task_table().Lookup(driver_id, task_id, undesired_callback,
-                                                    expected_failure_callback));
+    RAY_CHECK_OK(client->raylet_task_table().Lookup(
+      driver_id, task_id, undesired_callback, expected_failure_callback));
   }
   if (stop_at_end) {
     auto stop_callback = [](AsyncGcsClient *client, const TaskID &id) { test->Stop(); };
@@ -861,8 +860,8 @@ void TestLogSubscribeId(const DriverID &driver_id,
   // Subscribe to notifications for this client. This allows us to request and
   // receive notifications for specific keys.
   RAY_CHECK_OK(client->driver_table().Subscribe(
-    driver_id, client->client_table().GetLocalClientId(), notification_callback,
-    subscribe_callback));
+      driver_id, client->client_table().GetLocalClientId(), notification_callback,
+      subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called for the requested key.
   test->Start();
@@ -937,8 +936,8 @@ void TestSetSubscribeId(const DriverID &driver_id,
   // Subscribe to notifications for this client. This allows us to request and
   // receive notifications for specific keys.
   RAY_CHECK_OK(client->object_table().Subscribe(
-    driver_id, client->client_table().GetLocalClientId(),notification_callback,
-    subscribe_callback));
+      driver_id, client->client_table().GetLocalClientId(),notification_callback,
+      subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called for the requested key.
   test->Start();
@@ -1083,8 +1082,8 @@ void TestLogSubscribeCancel(const DriverID &driver_id,
   // Subscribe to notifications for this client. This allows us to request and
   // receive notifications for specific keys.
   RAY_CHECK_OK(client->driver_table().Subscribe(
-    driver_id, client->client_table().GetLocalClientId(),notification_callback,
-    subscribe_callback));
+      driver_id, client->client_table().GetLocalClientId(),notification_callback,
+      subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called for the requested key.
   test->Start();
@@ -1166,8 +1165,8 @@ void TestSetSubscribeCancel(const DriverID &driver_id,
   // Subscribe to notifications for this client. This allows us to request and
   // receive notifications for specific keys.
   RAY_CHECK_OK(client->object_table().Subscribe(
-    driver_id, client->client_table().GetLocalClientId(),notification_callback,
-    subscribe_callback));
+      driver_id, client->client_table().GetLocalClientId(),notification_callback,
+      subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called for the requested key.
   test->Start();
