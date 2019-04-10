@@ -1476,15 +1476,13 @@ def test_free_objects_multi_node(ray_start_cluster):
     # Case3: These cases test the deleting creating tasks for the object.
     (a, b, c) = run_one_test(actors, False, False)
     task_table = ray.global_state.task_table()
-    assert ray._raylet.compute_task_id(a).hex() in task_table
-    assert ray._raylet.compute_task_id(b).hex() in task_table
-    assert ray._raylet.compute_task_id(c).hex() in task_table
+    for obj in [a, b, c]:
+        assert ray._raylet.compute_task_id(obj).hex() in task_table
 
     (a, b, c) = run_one_test(actors, False, True)
     task_table = ray.global_state.task_table()
-    assert ray._raylet.compute_task_id(a).hex() not in task_table
-    assert ray._raylet.compute_task_id(b).hex() not in task_table
-    assert ray._raylet.compute_task_id(c).hex() not in task_table
+    for obj in [a, b, c]:
+        assert ray._raylet.compute_task_id(obj).hex() not in task_table
 
 def test_local_mode(shutdown_only):
     @ray.remote

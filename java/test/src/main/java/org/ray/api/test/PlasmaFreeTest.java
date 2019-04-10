@@ -1,20 +1,20 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.function.Supplier;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
-import org.ray.api.id.UniqueId;
+import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.util.UniqueIdUtil;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-
 public class PlasmaFreeTest extends BaseTest {
+
+  private static final int WAIT_INTERVAL = 5;
+  private static final int WAIT_TIMEOUT_LIMIT_MS = 50;
 
   @RayRemote
   private static String hello() {
@@ -22,49 +22,51 @@ public class PlasmaFreeTest extends BaseTest {
   }
 
   @Test
-  public void test() {
+  public void test() throws InterruptedException {
     RayObject<String> helloId = Ray.call(PlasmaFreeTest::hello);
     String helloString = helloId.get();
     Assert.assertEquals("hello", helloString);
-    List<RayObject<String>> waitFor = ImmutableList.of(helloId);
-    WaitResult<String> waitResult = Ray.wait(waitFor, 1, 2 * 1000);
-    List<RayObject<String>> readyOnes = waitResult.getReady();
-    List<RayObject<String>> unreadyOnes = waitResult.getUnready();
-    Assert.assertEquals(1, readyOnes.size());
-    Assert.assertEquals(0, unreadyOnes.size());
+    Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
 
-    List<UniqueId> freeList = new ArrayList<>();
-    freeList.add(helloId.getId());
-    Ray.internal().free(freeList, true, false);
-    // Flush: trigger the release function because Plasma Client has cache.
-    for (int i = 0; i < 128; i++) {
-      Ray.call(PlasmaFreeTest::hello).get();
-    }
+    final boolean result = waitForCondition(() -> {
+      return !((AbstractRayRuntime) Ray.internal())
+          .getObjectStoreProxy().get(helloId.getId(), 0).exists;
+    }, WAIT_INTERVAL, WAIT_TIMEOUT_LIMIT_MS);
 
-    // Check if the object has been evicted. Don't give ray.wait enough
-    // time to reconstruct the object.
-    waitResult = Ray.wait(waitFor, 1, 0);
-    readyOnes = waitResult.getReady();
-    unreadyOnes = waitResult.getUnready();
-    Assert.assertEquals(0, readyOnes.size());
-    Assert.assertEquals(1, unreadyOnes.size());
-
-    testDeleteCreatingTasks(true);
-    testDeleteCreatingTasks(false);
+    Assert.assertTrue(result);
   }
 
-  private void testDeleteCreatingTasks(boolean deleteCreatingTasks) {
+  @Test
+  public void testDeleteCreatingTasks() throws InterruptedException {
     RayObject<String> helloId = Ray.call(PlasmaFreeTest::hello);
-    String helloString = helloId.get();
-    Assert.assertEquals("hello", helloString);
+    Assert.assertEquals("hello", helloId.get());
+    Ray.internal().free(ImmutableList.of(helloId.getId()), true, true);
 
-    Ray.internal().free(ImmutableList.of(helloId.getId()), true, deleteCreatingTasks);
+    final boolean result = waitForCondition(() -> {
+      return !((RayNativeRuntime) Ray.internal())
+          .rayletTaskExistsInGcs(UniqueIdUtil.computeTaskId(helloId.getId()));
+    }, WAIT_INTERVAL, WAIT_TIMEOUT_LIMIT_MS);
 
-    final boolean taskExists = ((RayNativeRuntime) Ray.internal())
-        .rayletTaskExistsInGcs(UniqueIdUtil.computeTaskId(helloId.getId()));
+    Assert.assertTrue(result);
+  }
 
-    // If deleteCreatingTasks, the creating task should not be in GCS.
-    Assert.assertEquals(deleteCreatingTasks, !taskExists);
+  private boolean waitForCondition(Supplier<Boolean> condition,
+                                   int interval, int timeout) throws InterruptedException {
+    boolean result = false;
+    int waitTime = 0;
+    while (true) {
+      result = condition.get();
+      if (result) {
+        break;
+      }
+
+      waitTime += interval;
+      if (waitTime > timeout) {
+        break;
+      }
+      java.util.concurrent.TimeUnit.MILLISECONDS.sleep(interval);
+    }
+    return result;
   }
 
 }
