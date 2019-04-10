@@ -28,7 +28,7 @@ def free(object_ids, local_only=False):
     """
     worker = ray.worker.get_global_worker()
 
-    if worker._mode() == ray.worker.LOCAL_MODE:
+    if ray.worker._mode() == ray.worker.LOCAL_MODE:
         return
 
     if isinstance(object_ids, ray.ObjectID):
