@@ -123,8 +123,9 @@ class ImpalaTrainer(Trainer):
 
         self.remote_evaluators = self.make_remote_evaluators(
             env_creator, policy_cls, config["num_workers"])
-        self.optimizer = AsyncSamplesOptimizer(
-            self.local_evaluator, self.remote_evaluators, config["optimizer"])
+        self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
+                                               self.remote_evaluators,
+                                               **config["optimizer"])
         if config["entropy_coeff"] < 0:
             raise DeprecationWarning("entropy_coeff must be >= 0")
 

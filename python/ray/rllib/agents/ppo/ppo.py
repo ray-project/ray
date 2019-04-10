@@ -79,22 +79,22 @@ class PPOTrainer(Trainer):
             env_creator, self._policy_graph, config["num_workers"])
         if config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
-                self.local_evaluator, self.remote_evaluators, {
-                    "num_sgd_iter": config["num_sgd_iter"],
-                    "train_batch_size": config["train_batch_size"],
-                })
+                self.local_evaluator,
+                self.remote_evaluators,
+                num_sgd_iter=config["num_sgd_iter"],
+                train_batch_size=config["train_batch_size"])
         else:
             self.optimizer = LocalMultiGPUOptimizer(
-                self.local_evaluator, self.remote_evaluators, {
-                    "sgd_batch_size": config["sgd_minibatch_size"],
-                    "num_sgd_iter": config["num_sgd_iter"],
-                    "num_gpus": config["num_gpus"],
-                    "sample_batch_size": config["sample_batch_size"],
-                    "num_envs_per_worker": config["num_envs_per_worker"],
-                    "train_batch_size": config["train_batch_size"],
-                    "standardize_fields": ["advantages"],
-                    "straggler_mitigation": config["straggler_mitigation"],
-                })
+                self.local_evaluator,
+                self.remote_evaluators,
+                sgd_batch_size=config["sgd_minibatch_size"],
+                num_sgd_iter=config["num_sgd_iter"],
+                num_gpus=config["num_gpus"],
+                sample_batch_size=config["sample_batch_size"],
+                num_envs_per_worker=config["num_envs_per_worker"],
+                train_batch_size=config["train_batch_size"],
+                standardize_fields=["advantages"],
+                straggler_mitigation=config["straggler_mitigation"])
 
     @override(Trainer)
     def _train(self):

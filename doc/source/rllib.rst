@@ -110,6 +110,7 @@ Concepts
 * `Policy Graphs <rllib-concepts.html>`__
 * `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
 * `Policy Optimization <rllib-concepts.html#policy-optimization>`__
+* `Trainers <rllib-concepts.html#trainers>`__
 
 Package Reference
 -----------------

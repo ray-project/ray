@@ -100,7 +100,6 @@ class TorchPolicyGraph(PolicyGraph):
                 if g is not None:
                     p.grad = torch.from_numpy(g)
             self._optimizer.step()
-            return {}
 
     @override(PolicyGraph)
     def get_weights(self):

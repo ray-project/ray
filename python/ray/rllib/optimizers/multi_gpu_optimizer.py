@@ -39,16 +39,19 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     may result in unexpected behavior.
     """
 
-    @override(PolicyOptimizer)
-    def _init(self,
-              sgd_batch_size=128,
-              num_sgd_iter=10,
-              sample_batch_size=200,
-              num_envs_per_worker=1,
-              train_batch_size=1024,
-              num_gpus=0,
-              standardize_fields=[],
-              straggler_mitigation=False):
+    def __init__(self,
+                 local_evaluator,
+                 remote_evaluators,
+                 sgd_batch_size=128,
+                 num_sgd_iter=10,
+                 sample_batch_size=200,
+                 num_envs_per_worker=1,
+                 train_batch_size=1024,
+                 num_gpus=0,
+                 standardize_fields=[],
+                 straggler_mitigation=False):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+
         self.batch_size = sgd_batch_size
         self.num_sgd_iter = num_sgd_iter
         self.num_envs_per_worker = num_envs_per_worker
