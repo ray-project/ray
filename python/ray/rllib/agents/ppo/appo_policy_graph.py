@@ -23,7 +23,6 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 
 logger = logging.getLogger(__name__)
 
-
 class PPOSurrogateLoss(object):
     """Loss used when V-trace is disabled.
 
@@ -49,37 +48,67 @@ class PPOSurrogateLoss(object):
                  valid_mask,
                  advantages,
                  value_targets,
+                 vf_preds,
                  vf_loss_coeff=0.5,
                  entropy_coeff=-0.01,
                  clip_param=0.3,
+                 is_upper_clip=2.0,
+                 is_lower_clip=0.5,
+                 vf_clip_param=0.1,
                  use_kl_loss=False):
+        def reduce_mean_valid(t):
+            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
 
-        self.importance_ratio = tf.clip_by_value(tf.exp(prev_actions_logp-old_policy_actions_logp), 0, 1.0)
-        #self.importance_ratio = tf.constant([1.0]*750)
+        def reduce_sum_valid(t):
+            return tf.reduce_sum(tf.boolean_mask(t, valid_mask))
+
+        #Advantage Normalization
+        #a_mean, a_var = tf.nn.moments(advantages, axes=[0,1])
+        #advantages = (advantages - a_mean)/tf.math.maximum(tf.constant(1e-4), a_var**0.5)
+
+        self.importance_ratio = tf.clip_by_value(tf.exp(prev_actions_logp-old_policy_actions_logp), is_lower_clip, is_upper_clip)
+
         logp_ratio = self.importance_ratio*tf.exp(actions_logp - prev_actions_logp)
         surrogate_loss = tf.minimum(
                 advantages * logp_ratio,
                 advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
                                               1 + clip_param))
+        self.pi_loss = -reduce_sum_valid(surrogate_loss)
+        self.mean_pi_loss = -reduce_mean_valid(surrogate_loss)
 
         self.mean_kl = tf.reduce_mean(action_kl)
-        self.pi_loss = -tf.reduce_sum(surrogate_loss)
 
-        # The baseline loss
-        delta = tf.boolean_mask(values - value_targets, valid_mask)
+        #GAE Value Loss
+        '''
         self.value_targets = value_targets
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        vf_loss1 = tf.square(values - value_targets)
+        vf_clipped = vf_preds + tf.clip_by_value(
+                values - vf_preds, -vf_clip_param, vf_clip_param)
+        vf_loss2 = tf.square(vf_clipped - value_targets)
+
+        vf_loss = tf.maximum(vf_loss1, vf_loss2)
+        self.vf_loss = reduce_sum_valid(vf_loss)
+        self.mean_vf_loss = reduce_mean_valid(vf_loss)
+        '''
+        
+        # The baseline loss
+        delta = values - value_targets
+        self.value_targets = value_targets
+        vf_loss = 0.5 * tf.square(delta)
+        self.vf_loss = reduce_sum_valid(vf_loss)
+        self.mean_vf_loss = reduce_mean_valid(vf_loss)
+        
 
         # The entropy loss
         self.entropy = tf.reduce_sum(
             tf.boolean_mask(actions_entropy, valid_mask))
+        self.mean_entropy = reduce_mean_valid(actions_entropy)
 
         # The summed weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
                            self.entropy * entropy_coeff)
-        print(use_kl_loss)
+
         if use_kl_loss:
-            print("I should not be alive")
             self.total_loss += cur_kl_coeff*action_kl
 
 # ToDo: Make Vtrace workable with continuous spaces
@@ -127,6 +156,12 @@ class VTraceSurrogateLoss(object):
         """
 
         # Compute vtrace on the CPU for better perf.
+        def reduce_mean_valid(t):
+            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
+
+        def reduce_sum_valid(t):
+            return tf.reduce_sum(tf.boolean_mask(t, valid_mask))
+            
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.multi_from_logits(
                 behaviour_policy_logits=behaviour_logits,
@@ -142,25 +177,33 @@ class VTraceSurrogateLoss(object):
                                               tf.float32),
                 is_continuous=is_continuous)
 
-        logp_ratio = tf.exp(actions_logp - prev_actions_logp)
 
+
+        logp_ratio = tf.exp(actions_logp - prev_actions_logp)
         advantages = self.vtrace_returns.pg_advantages
+
+        #Advantage Normalization
+        #a_mean, a_var = tf.nn.moments(advantages, axes=[0,1])
+        #advantages = (advantages - a_mean)/tf.math.maximum(tf.constant(1e-4), a_var**0.5)
+
         surrogate_loss = tf.minimum(
             advantages * logp_ratio,
             advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
                                           1 + clip_param))
-
         self.mean_kl = tf.reduce_mean(action_kl)
         self.pi_loss = -tf.reduce_sum(surrogate_loss)
+        self.mean_pi_loss = -reduce_mean_valid(surrogate_loss)
 
         # The baseline loss
-        delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
+        delta = values - self.vtrace_returns.vs
         self.value_targets = self.vtrace_returns.vs
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        vf_loss = 0.5 * tf.square(delta)
+        self.vf_loss = reduce_sum_valid(vf_loss)
+        self.mean_vf_loss = reduce_mean_valid(vf_loss)
 
         # The entropy loss
-        self.entropy = tf.reduce_sum(
-            tf.boolean_mask(actions_entropy, valid_mask))
+        self.entropy = reduce_sum_valid(actions_entropy)
+        self.mean_entropy = reduce_mean_valid(actions_entropy)
 
         # The summed weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
@@ -192,17 +235,12 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         is_multidiscrete = False
         if isinstance(action_space, gym.spaces.Discrete):
-            actions_shape = [None]
             output_hidden_shape = [action_space.n]
-            actions = tf.placeholder(tf.int64, actions_shape, name="ac")
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
             is_multidiscrete=True
-            actions_shape = [None, len(action_space.nvec)]
             output_hidden_shape = action_space.nvec.astype(np.int32)
-            actions = tf.placeholder(tf.int64, actions_shape, name="ac")
         elif isinstance(action_space, gym.spaces.Box):
-            is_multidiscrete = False
-            actions = ModelCatalog.get_action_placeholder(action_space)
+            is_multidiscrete=False
         else:
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for APPO.",
@@ -226,6 +264,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 existing_state_in = existing_inputs[9:-1]
                 existing_seq_lens = existing_inputs[-1]
         else:
+            actions = ModelCatalog.get_action_placeholder(action_space)
             dones = tf.placeholder(tf.bool, [None], name="dones")
             rewards = tf.placeholder(tf.float32, [None], name="rewards")
             behaviour_logits = tf.placeholder(
@@ -240,6 +279,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                     tf.float32, name="advantages", shape=(None, ))
                 value_targets = tf.placeholder(
                     tf.float32, name="value_targets", shape=(None, ))
+                vf_preds_ph = tf.placeholder(tf.float32, name="vf_preds", shape=(None, ))
         
         self.observations = observations
 
@@ -282,6 +322,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         else:
             action_dist = dist_class(dist_inputs)
             prev_action_dist = dist_class(prev_dist_inputs)
+
         old_policy_action_dist = dist_class(old_policy_behaviour_logits)
 
 
@@ -313,7 +354,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 B = tf.shape(tensor)[0] // T
             rs = tf.reshape(tensor,
                             tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
-
             # swap B and T axes
             res = tf.transpose(
                 rs,
@@ -365,6 +405,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 is_continuous=isinstance(action_space, gym.spaces.Box))
         else:
             logger.info("Using PPO surrogate loss (vtrace=False)")
+
             self.loss = PPOSurrogateLoss(
                 old_policy_actions_logp=old_policy_action_dist.logp(actions),
                 prev_actions_logp=prev_action_dist.logp(actions),
@@ -376,10 +417,12 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 valid_mask=mask,
                 advantages=adv_ph,
                 value_targets=value_targets,
+                vf_preds = vf_preds_ph,
                 vf_loss_coeff=self.config["vf_loss_coeff"],
                 entropy_coeff=self.config["entropy_coeff"],
                 clip_param=self.config["clip_param"],
                 use_kl_loss=self.use_kl_loss)
+
 
         # KL divergence between worker and learner logits for debugging
         if is_multidiscrete or isinstance(action_space, gym.spaces.Discrete):
@@ -432,6 +475,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             loss_in.append(("old_policy_behaviour_logits", old_policy_behaviour_logits))
             loss_in.append(("advantages", adv_ph))
             loss_in.append(("value_targets", value_targets))
+            loss_in.append(("vf_preds", vf_preds_ph))
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
         TFPolicyGraph.__init__(
@@ -455,16 +499,19 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         self.sess.run(tf.global_variables_initializer())
 
-        values_batched = make_time_major(
-            values, drop_last=self.config["vtrace"])
+        if self.config["vtrace"]:
+            values_batched = make_time_major(values, drop_last=True)
+        else:
+            values_batched = values
+
         self.stats_fetches = {
             "stats": dict({
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
-                "policy_loss": self.loss.pi_loss,
-                "entropy": self.loss.entropy,
+                "policy_loss": self.loss.mean_pi_loss,
+                "entropy": self.loss.mean_entropy,
                 "grad_gnorm": tf.global_norm(self._grads),
                 "var_gnorm": tf.global_norm(self.var_list),
-                "vf_loss": self.loss.vf_loss,
+                "vf_loss": self.loss.mean_vf_loss,
                 "vf_explained_var": explained_variance(
                     tf.reshape(self.loss.value_targets, [-1]),
                     tf.reshape(values_batched, [-1])),
@@ -495,7 +542,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         return self.stats_fetches
 
     def update_kl(self, sampled_kl):
-        print("KL COEFFICIENT", sampled_kl, self.kl_coeff_val)
         if sampled_kl > 2.0 * self.kl_target:
             self.kl_coeff_val *= 1.5
         elif sampled_kl < 0.5 * self.kl_target:

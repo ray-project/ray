@@ -86,15 +86,12 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions, is_continuou
   """
 
     log_probs = []
-    print(actions)
     for i in range(len(policy_logits)):
         if is_continuous:
           log_prob = DiagGaussian(policy_logits[i]).logp(actions[i])
-          log_prob = tf.Print(log_prob, ["Log Probs", log_prob])
         else:
           log_prob = -tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=policy_logits[i], labels=actions[i])
-        log_prob = tf.Print(log_prob, ["Log Probs", log_prob])
         log_probs.append(log_prob)
 
     return log_probs

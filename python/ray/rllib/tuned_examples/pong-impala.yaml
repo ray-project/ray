@@ -9,5 +9,5 @@ pong-impala:
     config:
         sample_batch_size: 50
         train_batch_size: 500
-        num_workers: 128
+        num_workers: 32
         num_envs_per_worker: 1

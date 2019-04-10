@@ -144,7 +144,7 @@ class DiagGaussian(ActionDistribution):
     """
 
     def __init__(self, inputs):
-        self.last_dim = inputs.shape.ndims-1
+        self.last_dim = inputs.shape.ndims - 1
         mean, log_std = tf.split(inputs, 2, axis=self.last_dim)
         self.mean = mean
         self.log_std = log_std
@@ -154,9 +154,10 @@ class DiagGaussian(ActionDistribution):
     @override(ActionDistribution)
     def logp(self, x):
         return (-0.5 * tf.reduce_sum(
-            tf.square((x - self.mean) / self.std), reduction_indices=[self.last_dim]) -
-                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[self.last_dim]) -
-                tf.reduce_sum(self.log_std, reduction_indices=[self.last_dim]))
+            tf.square((x - self.mean) / self.std),
+            reduction_indices=[self.last_dim]) - 0.5 * np.log(2.0 * np.pi) *
+                tf.to_float(tf.shape(x)[self.last_dim]) - tf.reduce_sum(
+                    self.log_std, reduction_indices=[self.last_dim]))
 
     @override(ActionDistribution)
     def kl(self, other):

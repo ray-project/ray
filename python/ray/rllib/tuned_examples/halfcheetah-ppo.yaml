@@ -1,7 +1,7 @@
 halfcheetah-ppo:
     env: HalfCheetah-v2
     run: PPO
-    local_dir: /data/mluo/hc-ppo
+    local_dir: /data/mluo/testing
     stop:
         episode_reward_mean: 9800
         time_total_s: 10800           

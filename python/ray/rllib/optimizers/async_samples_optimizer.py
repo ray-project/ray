@@ -197,14 +197,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         for ev, sample_batch in self._augment_with_replay(
                 self.sample_tasks.completed_prefetch()):
-            '''
-            if self.old_policy_evaluator:
-                old_policy_behaviour_logits = self.old_policy_evaluator.policy_map['default'].compute_actions(
-                    sample_batch["obs"],prev_action_batch=sample_batch["prev_actions"],
-                    prev_reward_batch=sample_batch["prev_rewards"])[2]['behaviour_logits']
-            
-                sample_batch["old_policy_behaviour_logits"] = old_policy_behaviour_logits
-            '''
 
             self.batch_buffer.append(sample_batch)
             if sum(b.count
@@ -311,8 +303,6 @@ class LearnerThread(threading.Thread):
                             batch["obs"],prev_action_batch=batch["prev_actions"],
                             prev_reward_batch=batch["prev_rewards"])[2]['behaviour_logits']
                     batch["old_policy_behaviour_logits"] = self.old_policy_behaviour_logits
-            #for key, value in batch.items():
-                #print("Key ", key, " \nValue ", value[0])
             
             # The advantages should be importance sampled then standardized, right now we are dealing with raw advantages from multiple workers
             '''
@@ -332,6 +322,7 @@ class LearnerThread(threading.Thread):
                 self.counter = 0 if self.counter==self.old_policy_lag else self.counter+1 
             self.stats = fetches.get("stats", {})
 
+        #For Later
         '''
         if self.old_policy_counter == 100:
             self.old_policy_counter=0

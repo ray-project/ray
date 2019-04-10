@@ -49,7 +49,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 
     # KL Loss Parameters
     "use_kl_loss": False,
-    "kl_coeff": 1.0,
+    "kl_coeff": 0.05,
     "kl_target": 0.35,
 
     # == IMPALA optimizer params (see documentation in impala.py) ==
@@ -79,7 +79,6 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 # __sphinx_doc_end__
 # yapf: enable
 
-import time 
 class APPOAgent(impala.ImpalaAgent):
     """PPO surrogate loss with IMPALA-architecture."""
 
@@ -99,7 +98,9 @@ class APPOAgent(impala.ImpalaAgent):
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"])
         
+        # Need to fix make_local_evaluator for later
         #self.old_policy_evaluator = self.make_local_evaluator(self.env_creator, policy_cls)
+
         self.old_policy_evaluator = None
 
         self.config["optimizer"]["old_policy_evaluator"] = self.old_policy_evaluator
