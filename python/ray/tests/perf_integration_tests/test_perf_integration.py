@@ -29,7 +29,7 @@ def warmup():
             ray.get([dummy_task.remote(0) for _ in range(1000)])
 
 
-@pytest.mark.benchmark(rounds=10)
+@pytest.mark.benchmark
 @pytest.mark.parametrize("num_tasks", num_tasks_submitted, ids=num_tasks_ids)
 def test_task_submission(benchmark, num_tasks):
     num_cpus = 16
