@@ -16,6 +16,7 @@ import org.ray.api.RuntimeContext;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
+import org.ray.api.gcs.GcsClient;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.BaseTaskOptions;
@@ -67,6 +68,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected ObjectStoreProxy objectStoreProxy;
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
+  protected GcsClient gcsClient;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
@@ -315,6 +317,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     actor.setTaskCursor(spec.returnIds[0]);
     rayletClient.submitTask(spec);
     return actor;
+  }
+
+  @Override
+  public GcsClient getGcsClient() {
+    return gcsClient;
   }
 
   /**
