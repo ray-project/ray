@@ -99,7 +99,10 @@ if __name__ == "__main__":
         reward_attr="mean_accuracy",
         perturbation_interval=20,
         hyperparam_mutations={
+            # distribution for resampling
             "lr": lambda: random.uniform(0.0001, 0.02),
+            # allow perturbations within this set of categorical values
+            "some_other_factor": [1, 2],
         })
 
     run(PBTBenchmarkExample,
@@ -114,5 +117,6 @@ if __name__ == "__main__":
             "num_samples": 4,
             "config": {
                 "lr": 0.0001,
+                "some_other_factor": 1,  # note: has no effect
             },
         })
