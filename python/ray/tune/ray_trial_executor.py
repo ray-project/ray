@@ -11,7 +11,7 @@ import time
 import traceback
 
 import ray
-from ray.tune.error import TuneError, AbortTrialExecution
+from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
