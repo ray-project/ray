@@ -117,6 +117,6 @@ if __name__ == "__main__":
             "num_samples": 4,
             "config": {
                 "lr": 0.0001,
-                "some_other_factor": 1,  # note: has no effect
+                "some_other_factor": 1,  # note: This parameter is not used in this example
             },
         })
