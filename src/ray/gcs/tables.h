@@ -1,4 +1,4 @@
-x#ifndef RAY_GCS_TABLES_H
+#ifndef RAY_GCS_TABLES_H
 #define RAY_GCS_TABLES_H
 
 #include <map>
