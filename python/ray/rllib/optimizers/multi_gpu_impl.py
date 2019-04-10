@@ -250,12 +250,10 @@ class LocalSyncParallelOptimizer(object):
         }
         for tower in self._towers:
             feed_dict.update(tower.loss_graph.extra_compute_grad_feed_dict())
-            feed_dict.update(tower.loss_graph.extra_apply_grad_feed_dict())
 
         fetches = {"train": self._train_op}
         for tower in self._towers:
             fetches.update(tower.loss_graph.extra_compute_grad_fetches())
-            fetches.update(tower.loss_graph.extra_apply_grad_fetches())
 
         return sess.run(fetches, feed_dict=feed_dict)
 
