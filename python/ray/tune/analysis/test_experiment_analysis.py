@@ -18,7 +18,6 @@ test_dir = "~/analysis_test"
 test_name = "analysis_exp"
 test_path = os.path.join(test_dir, test_name)
 num_samples = 10
-iterations = 5
 metric = "episode_reward_mean"
 
 
@@ -36,13 +35,9 @@ def run_test_exp():
         local_dir=test_dir,
         **{
             "stop": {
-                "training_iteration": iterations
+                "training_iteration": 1
             },
             "num_samples": num_samples,
-            "resources_per_trial": {
-                "cpu": 1,
-                "gpu": 0
-            },
             "config": {
                 "width": sample_from(
                     lambda spec: 10 + int(90 * random.random())),
