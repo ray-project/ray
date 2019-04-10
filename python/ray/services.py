@@ -77,20 +77,6 @@ def address(ip_address, port):
     return ip_address + ":" + str(port)
 
 
-def get_ip_address(address):
-    assert type(address) == str, "Address must be a string"
-    ip_address = address.split(":")[0]
-    return ip_address
-
-
-def get_port(address):
-    try:
-        port = int(address.split(":")[1])
-    except Exception:
-        raise Exception("Unable to parse port from address {}".format(address))
-    return port
-
-
 def new_port():
     return random.randint(10000, 65535)
 
@@ -105,6 +91,64 @@ def include_java_from_redis(redis_client):
         True if this cluster backend enables Java worker.
     """
     return redis_client.get("INCLUDE_JAVA") == b"1"
+
+
+def get_address_info_from_redis_helper(redis_address,
+                                       node_ip_address,
+                                       redis_password=None):
+    redis_ip_address, redis_port = redis_address.split(":")
+    # For this command to work, some other client (on the same machine as
+    # Redis) must have run "CONFIG SET protected-mode no".
+    redis_client = create_redis_client(redis_address, password=redis_password)
+
+    client_table = ray.experimental.state.parse_client_table(redis_client)
+    if len(client_table) == 0:
+        raise Exception(
+            "Redis has started but no raylets have registered yet.")
+
+    relevant_client = None
+    for client_info in client_table:
+        client_node_ip_address = client_info["NodeManagerAddress"]
+        if (client_node_ip_address == node_ip_address
+                or (client_node_ip_address == "127.0.0.1"
+                    and redis_ip_address == get_node_ip_address())):
+            relevant_client = client_info
+            break
+    if relevant_client is None:
+        raise Exception(
+            "Redis has started but no raylets have registered yet.")
+
+    return {
+        "object_store_address": relevant_client["ObjectStoreSocketName"],
+        "raylet_socket_name": relevant_client["RayletSocketName"],
+    }
+
+
+def get_address_info_from_redis(redis_address,
+                                node_ip_address,
+                                num_retries=5,
+                                redis_password=None):
+    counter = 0
+    while True:
+        try:
+            return get_address_info_from_redis_helper(
+                redis_address, node_ip_address, redis_password=redis_password)
+        except Exception:
+            if counter == num_retries:
+                raise
+            # Some of the information may not be in Redis yet, so wait a little
+            # bit.
+            logger.warning(
+                "Some processes that the driver needs to connect to have "
+                "not registered with Redis, so retrying. Have you run "
+                "'ray start' on this node?")
+            time.sleep(1)
+        counter += 1
+
+
+def get_webui_url_from_redis(redis_client):
+    webui_url = redis_client.hmget("webui", "url")[0]
+    return ray.utils.decode(webui_url) if webui_url is not None else None
 
 
 def remaining_processes_alive():

@@ -600,7 +600,11 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
 
     def testReportsConfigFailures(self):
-        config_path = self.write_config(SMALL_CLUSTER)
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config['provider']['type'] = 'external'
+        config = fillout_defaults(config)
+        config['provider']['type'] = 'mock'
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner(fail_cmds=["cmd1"])
         autoscaler = StandardAutoscaler(

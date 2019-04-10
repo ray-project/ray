@@ -589,7 +589,7 @@ class StandardAutoscaler(object):
         if successful_updated and self.config.get("restart_only", False):
             init_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = (self.config["worker_setup_commands"])
+            init_commands = self.config["worker_setup_commands"]
         else:
             init_commands = (self.config["worker_setup_commands"] +
                              self.config["worker_start_ray_commands"])
@@ -630,9 +630,8 @@ class StandardAutoscaler(object):
         self.launch_queue.put((config, count))
 
     def workers(self):
-        return self.provider.non_terminated_nodes(tag_filters={
-            TAG_RAY_NODE_TYPE: "worker"
-        })
+        return self.provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_TYPE: "worker"})
 
     def log_info_string(self, nodes):
         logger.info("StandardAutoscaler: {}".format(self.info_string(nodes)))
@@ -720,10 +719,10 @@ def fillout_defaults(config):
 
 
 def merge_setup_commands(config):
-    config["head_setup_commands"] = config["setup_commands"] + \
-        config["head_setup_commands"]
-    config["worker_setup_commands"] = config["setup_commands"] + \
-        config["worker_setup_commands"]
+    config["head_setup_commands"] = (
+        config["setup_commands"] + config["head_setup_commands"])
+    config["worker_setup_commands"] = (
+        config["setup_commands"] + config["worker_setup_commands"])
     return config
 
 
