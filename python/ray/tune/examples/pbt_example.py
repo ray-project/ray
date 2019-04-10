@@ -105,7 +105,8 @@ if __name__ == "__main__":
             "some_other_factor": [1, 2],
         })
 
-    run(PBTBenchmarkExample,
+    run(
+        PBTBenchmarkExample,
         name="pbt_test",
         scheduler=pbt,
         reuse_actors=True,
@@ -117,6 +118,8 @@ if __name__ == "__main__":
             "num_samples": 4,
             "config": {
                 "lr": 0.0001,
-                "some_other_factor": 1,  # note: This parameter is not used in this example
+                # note: this parameter is perturbed but has no effect on
+                # the model training in this example
+                "some_other_factor": 1,
             },
         })
