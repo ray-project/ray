@@ -45,15 +45,15 @@ def dockerize_if_needed(config):
                                             docker_mounts, cname,
                                             run_options + worker_run_options)
 
-    config["head_setup_commands"] = head_docker_start + \
+    config["head_setup_commands"] = head_docker_start + (
         with_docker_exec(config["head_setup_commands"],
-                         container_name=cname)
+                         container_name=cname))
     config["head_start_ray_commands"] = (
         docker_autoscaler_setup(cname) + with_docker_exec(
             config["head_start_ray_commands"], container_name=cname))
 
-    config["worker_setup_commands"] = worker_docker_start + \
-        with_docker_exec(config["worker_setup_commands"], container_name=cname)
+    config["worker_setup_commands"] = worker_docker_start + (
+        with_docker_exec(config["worker_setup_commands"], container_name=cname))
     config["worker_start_ray_commands"] = with_docker_exec(
         config["worker_start_ray_commands"],
         container_name=cname,
