@@ -96,6 +96,23 @@ Offline Datasets
 * `Input API <rllib-offline.html#input-api>`__
 * `Output API <rllib-offline.html#output-api>`__
 
+Concepts
+--------
+* `Policy Graphs <rllib-concepts.html>`__
+* `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
+* `Policy Optimization <rllib-concepts.html#policy-optimization>`__
+* `Trainers <rllib-concepts.html#trainers>`__
+
+Examples
+--------
+
+* `Tuned Examples <rllib-examples.html#tuned-examples>`__
+* `Training Workflows <rllib-examples.html#training-workflows>`__
+* `Custom Envs and Models <rllib-examples.html#custom-envs-and-models>`__
+* `Serving and Offline <rllib-examples.html#serving-and-offline>`__
+* `Multi-Agent and Hierarchical <rllib-examples.html#multi-agent-and-hierarchical>`__
+* `Community Examples <rllib-examples.html#community-examples>`__
+
 Development
 -----------
 
@@ -105,13 +122,6 @@ Development
 * `Benchmarks <rllib-dev.html#benchmarks>`__
 * `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
 
-Concepts
---------
-* `Policy Graphs <rllib-concepts.html>`__
-* `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
-* `Policy Optimization <rllib-concepts.html#policy-optimization>`__
-* `Trainers <rllib-concepts.html#trainers>`__
-
 Package Reference
 -----------------
 * `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
@@ -120,11 +130,6 @@ Package Reference
 * `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
 * `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 * `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
-
-Examples
---------
-
-You can find an index of RLlib code examples on `this page <rllib-examples.html>`__. This includes tuned hyperparameters, demo scripts on how to use specific features of RLlib, and several community examples of applications built on RLlib.
 
 Troubleshooting
 ---------------
