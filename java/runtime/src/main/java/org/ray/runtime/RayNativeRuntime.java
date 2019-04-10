@@ -213,4 +213,22 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     return false;
   }
+
+  /**
+   * Query whether the raylet task exists in Gcs.
+   */
+  public boolean rayletTaskExistsInGcs(UniqueId taskId) {
+    byte[] key = ArrayUtils.addAll("RAYLET_TASK".getBytes(), taskId.getBytes());
+
+    // TODO(qwang): refactor this with `GlobalState` after this issue
+    // getting finished. https://github.com/ray-project/ray/issues/3933
+    for (RedisClient client : redisClients) {
+      if (client.exists(key)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
 }

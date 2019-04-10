@@ -1439,13 +1439,14 @@ def test_free_objects_multi_node(ray_start_cluster):
         assert len(l2) == 0
         return (a, b, c)
 
-    def run_one_test(actors, local_only):
+    def run_one_test(actors, local_only, delete_creating_tasks):
         (a, b, c) = create(actors)
         # The three objects should be generated on different object stores.
         assert ray.get(a) != ray.get(b)
         assert ray.get(a) != ray.get(c)
         assert ray.get(c) != ray.get(b)
-        ray.internal.free([a, b, c], local_only=local_only)
+        ray.internal.free([a, b, c], local_only=local_only,
+                          delete_creating_tasks=delete_creating_tasks)
         # Wait for the objects to be deleted.
         time.sleep(0.1)
         return (a, b, c)
@@ -1456,13 +1457,13 @@ def test_free_objects_multi_node(ray_start_cluster):
         ActorOnNode2.remote()
     ]
     # Case 1: run this local_only=False. All 3 objects will be deleted.
-    (a, b, c) = run_one_test(actors, False)
+    (a, b, c) = run_one_test(actors, False, False)
     (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=1)
     # All the objects are deleted.
     assert len(l1) == 0
     assert len(l2) == 3
     # Case 2: run this local_only=True. Only 1 object will be deleted.
-    (a, b, c) = run_one_test(actors, True)
+    (a, b, c) = run_one_test(actors, True, False)
     (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=3)
     # One object is deleted and 2 objects are not.
     assert len(l1) == 2
@@ -1472,6 +1473,18 @@ def test_free_objects_multi_node(ray_start_cluster):
     for object_id in l1:
         assert ray.get(object_id) != local_return
 
+    # Case3: These cases test the deleting creating tasks for the object.
+    (a, b, c) = run_one_test(actors, False, False)
+    task_table = ray.global_state.task_table()
+    assert ray._raylet.compute_task_id(a).hex() in task_table
+    assert ray._raylet.compute_task_id(b).hex() in task_table
+    assert ray._raylet.compute_task_id(c).hex() in task_table
+
+    (a, b, c) = run_one_test(actors, False, True)
+    task_table = ray.global_state.task_table()
+    assert ray._raylet.compute_task_id(a).hex() not in task_table
+    assert ray._raylet.compute_task_id(b).hex() not in task_table
+    assert ray._raylet.compute_task_id(c).hex() not in task_table
 
 def test_local_mode(shutdown_only):
     @ray.remote

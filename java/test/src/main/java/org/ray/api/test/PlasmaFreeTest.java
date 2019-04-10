@@ -8,6 +8,8 @@ import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.RayNativeRuntime;
+import org.ray.runtime.util.UniqueIdUtil;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -46,5 +48,23 @@ public class PlasmaFreeTest extends BaseTest {
     unreadyOnes = waitResult.getUnready();
     Assert.assertEquals(0, readyOnes.size());
     Assert.assertEquals(1, unreadyOnes.size());
+
+    testDeleteCreatingTasks(true);
+    testDeleteCreatingTasks(false);
   }
+
+  private void testDeleteCreatingTasks(boolean deleteCreatingTasks) {
+    RayObject<String> helloId = Ray.call(PlasmaFreeTest::hello);
+    String helloString = helloId.get();
+    Assert.assertEquals("hello", helloString);
+
+    Ray.internal().free(ImmutableList.of(helloId.getId()), true, deleteCreatingTasks);
+
+    final boolean taskExists = ((RayNativeRuntime) Ray.internal())
+        .rayletTaskExistsInGcs(UniqueIdUtil.computeTaskId(helloId.getId()));
+
+    // If deleteCreatingTasks, the creating task should not be in GCS.
+    Assert.assertEquals(deleteCreatingTasks, !taskExists);
+  }
+
 }
