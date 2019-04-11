@@ -122,6 +122,9 @@ class NodeManager {
   /// Write out debug state to a file.
   void DumpDebugState();
 
+  /// Record metrics of this node manager.
+  void RecordMetrics();
+
   /// Get profiling information from the object manager and push it to the GCS.
   ///
   /// \return Void.

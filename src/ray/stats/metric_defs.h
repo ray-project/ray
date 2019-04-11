@@ -14,14 +14,22 @@
 static Gauge CurrentWorker("current_worker",
                            "This metric is used for report states of workers. "
                            "Through this, we can see the worker's state on dashboard.",
-                           "1 pcs", {NodeAddressKey, LanguageKey, WorkerPidKey});
+                           "1 pcs", {LanguageKey, WorkerPidKey});
 
 static Count TaskCountReceived("task_count_received",
                                "The count that the raylet received.", "pcs",
-                               {NodeAddressKey});
+                               {});
 
 static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "us",
                               {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
-                              {NodeAddressKey, CustomKey});
+                              {CustomKey});
+
+static Gauge LocalAvailableResource("local_available_resource",
+                                    "The available resource of this node.", "pcs",
+                                    {ResourceNameKey});
+
+static Gauge LocalTotalResource("local_total_resource",
+                                "The total resource of this node.", "pcs",
+                                {ResourceNameKey});
 
 #endif  // RAY_STATS_METRIC_DEFS_H

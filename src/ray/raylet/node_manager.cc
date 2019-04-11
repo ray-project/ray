@@ -276,6 +276,7 @@ void NodeManager::Heartbeat() {
   if (debug_dump_period_ > 0 &&
       static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
     DumpDebugState();
+    RecordMetrics();
     last_debug_dump_at_ms_ = now_ms;
   }
 
@@ -2211,6 +2212,21 @@ std::string NodeManager::DebugString() const {
   }
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
+}
+
+void NodeManager::RecordMetrics() {
+  // Record available resources of this node.
+  const auto &available_resources = cluster_resource_map_[client_id_]
+      .GetAvailableResources().GetResourceMap();
+  for (const auto &pair : available_resources) {
+    stats::LocalAvailableResource().Record(pair.second, {{stats::ResourceNameKey, pair.first}});
+  }
+  // Record total resources of this node.
+  const auto &total_resources = cluster_resource_map_[client_id_]
+      .GetTotalResources().GetResourceMap();
+  for (const auto &pair : total_resources) {
+    stats::LocalTotalResource().Record(pair.second, {{stats::ResourceNameKey, pair.first}});
+  }
 }
 
 }  // namespace raylet
