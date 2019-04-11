@@ -17,13 +17,6 @@ from ray.tune.result import EXPR_PROGRESS_FILE, \
 logger = logging.getLogger(__name__)
 
 
-def get_sorted_trials(trial_list, metric):
-    return sorted(
-        trial_list,
-        key=lambda trial: trial.last_result.get(metric, 0),
-        reverse=True)
-
-
 def _parse_results(res_path):
     res_dict = {}
     try:
