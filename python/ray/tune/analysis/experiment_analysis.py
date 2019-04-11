@@ -49,31 +49,36 @@ class ExperimentAnalysis():
         self._checkpoints = self._experiment_state["checkpoints"]
 
     def dataframe(self):
+        """Returns a pandas.DataFrame object constructed from the trials."""
         flattened_checkpoints = [flatten_dict(c) for c in self._checkpoints]
         return pd.DataFrame(flattened_checkpoints)
 
-    def checkpoints(
-            self):  # this is the data that tune.run returns (as list of Trial)
+    def checkpoints(self):
+        """Returns a dictionary of the trials."""  
         return self._checkpoints
 
     def stats(self):
+        """Returns a dictiornay of the statistics of the experiment."""  
         return self._experiment_state.get("stats")
 
     def runner_data(self):
+        """Returns a dictionary of the TrialRunner data.""" 
         return self._experiment_state.get("runner_data")
 
     def trial_dataframe(self, trial_id):
-        """Returns a dataframe for one trial."""
+        """Returns a pandas.DataFrame constructed from one trial."""
         df = self.dataframe()
         return df.loc[df['trial_id'] == trial_id]
 
     def get_best_trainable(self, metric):
+        """Returns the best Trainable based on the experiment metric."""
         return Trainable(config=self.get_best_config(metric))
 
     def get_best_config(self, metric):
+        """Retrieve the best config based on the best trial."""
         return self.get_best_trial(metric)["config"]
 
     def get_best_trial(self, metric):
-        """Retrieve the best trial."""
+        """Retrieve the best trial based on the experiment metric."""
         return max(
             self._checkpoints, key=lambda d: d['last_result'].get(metric, 0))
