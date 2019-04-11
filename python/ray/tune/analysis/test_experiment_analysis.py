@@ -88,7 +88,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue("height" in best_config)
 
     def testBestTrial(self):
-        best_trial = self.ea.get_best_trial(metric)
+        best_trial = self.ea._get_best_trial(metric)
 
         self.assertTrue(isinstance(best_trial, dict))
         self.assertTrue("local_dir" in best_trial)
@@ -101,7 +101,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue(metric in best_trial["last_result"])
 
     def testCheckpoints(self):
-        checkpoints = self.ea.checkpoints()
+        checkpoints = self.ea._checkpoints()
 
         self.assertTrue(isinstance(checkpoints, list))
         self.assertTrue(isinstance(checkpoints[0], dict))
