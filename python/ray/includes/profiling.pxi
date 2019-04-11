@@ -91,13 +91,18 @@ class Profiler(object):
             self.events.append(event)
 
 
-class RayLogSpanRaylet(object):
+cdef class RayLogSpanRaylet(object):
     """An object used to enable logging a span of events with a with statement.
 
     Attributes:
         event_type (str): The type of the event being logged.
         extra_data: Additional information to log.
     """
+
+    cdef public object profiler
+    cdef public object event_type
+    cdef public object extra_data
+    cdef public int start_time
 
     def __init__(self, profiler, event_type, extra_data=None):
         """Initialize a RayLogSpanRaylet object."""
