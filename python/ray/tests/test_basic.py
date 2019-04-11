@@ -2480,11 +2480,28 @@ def test_logging_to_driver(shutdown_only):
         ray.get(f.remote())
         time.sleep(1)
 
-    output_lines = captured["out"]
-    for i in range(200):
-        assert str(i) in output_lines
-    error_lines = captured["err"]
-    assert len(error_lines) == 0
+    def check_captured(captured, start_number):
+        output_lines = captured["out"]
+        for i in range(start_number, start_number + 200):
+            assert str(i) in output_lines
+        error_lines = captured["err"]
+        assert len(error_lines) == 0
+
+    check_captured(captured, 0)
+
+    @ray.remote
+    class PrintingActor(object):
+        def print(self):
+            for i in range(100):
+                print(200 + i)
+                print(300 + i, file=sys.stderr)
+
+    actor = PrintingActor.remote()
+    captured = {}
+    with CaptureOutputAndError(captured):
+        ray.get(actor.print.remote())
+        time.sleep(1)
+    check_captured(captured, 200)
 
 
 def test_not_logging_to_driver(shutdown_only):
