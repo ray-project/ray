@@ -18,7 +18,7 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
-from ray.utils import try_to_create_directory
+from ray.utils import try_to_create_directory, try_make_directory_shared
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -78,6 +78,7 @@ class Node(object):
             include_log_monitor=True,
             resources={},
             include_webui=False,
+            temp_dir="/tmp/ray",
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -86,6 +87,17 @@ class Node(object):
         self._redis_address = ray_params.redis_address
         self._config = (json.loads(ray_params._internal_config)
                         if ray_params._internal_config else None)
+
+        redis_client = self.create_redis_client()
+
+        if head:
+            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            self.session_name = "session_{date_str}_{pid}".format(
+                pid=os.getpid(),
+                date_str=date_str)
+            redis_client.set("session_name", self.session_name)
+        else:
+            self.session_name = redis_client.get("session_name")
 
         self._init_temp()
 
@@ -119,7 +131,6 @@ class Node(object):
             ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
             self._webui_url = None
         else:
-            redis_client = self.create_redis_client()
             self._webui_url = (
                 ray.services.get_webui_url_from_redis(redis_client))
             ray_params.include_java = (
@@ -140,21 +151,17 @@ class Node(object):
         # Create an dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
-        self._temp_dir = self._ray_params.temp_dir
-        if self._temp_dir is None:
-            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            self._temp_dir = self._make_inc_temp(
-                prefix="session_{date_str}_{pid}".format(
-                    pid=os.getpid(), date_str=date_str),
-                directory_name="/tmp/ray")
-
-        try_to_create_directory(self._temp_dir)
+        temp_dir = self._ray_params.temp_dir
+        try_make_directory_shared(temp_dir)
+        self._session_dir = os.path.join(temp_dir, self.session_name)
+        # Send a warning message if the session exists.
+        try_to_create_directory(self._session_dir)
         # Create a directory to be used for socket files.
-        self._sockets_dir = os.path.join(self._temp_dir, "sockets")
-        try_to_create_directory(self._sockets_dir)
+        self._sockets_dir = os.path.join(self._session_dir, "sockets")
+        try_to_create_directory(self._sockets_dir, warn_if_exist=False)
         # Create a directory to be used for process log files.
-        self._logs_dir = os.path.join(self._temp_dir, "logs")
-        try_to_create_directory(self._logs_dir)
+        self._logs_dir = os.path.join(self._session_dir, "logs")
+        try_to_create_directory(self._logs_dir, warn_if_exist=False)
 
     @property
     def node_ip_address(self):
@@ -204,6 +211,7 @@ class Node(object):
             "object_store_address": self._plasma_store_socket_name,
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,
+            "session_dir": self._session_dir,
         }
 
     def create_redis_client(self):
@@ -213,7 +221,11 @@ class Node(object):
 
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
-        return self._temp_dir
+        return self._ray_params.temp_dir
+
+    def get_session_dir_path(self):
+        """Get the path of the session directory."""
+        return self._session_dir
 
     def get_logs_dir_path(self):
         """Get the path of the log files directory."""
