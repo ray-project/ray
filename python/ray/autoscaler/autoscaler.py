@@ -746,7 +746,7 @@ def hash_runtime_conf(file_mounts, extra_objs):
     def add_content_hashes(path):
         def add_hash_of_file(fpath):
             with open(fpath, "rb") as f:
-                for chunk in iter(lambda: f.read(2**20), b''):
+                for chunk in iter(lambda: f.read(2**20), b""):
                     hasher.update(chunk)
 
         path = os.path.expanduser(path)

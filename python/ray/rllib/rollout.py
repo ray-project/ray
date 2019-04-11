@@ -86,7 +86,7 @@ def run(args, parser):
                 "Could not find params.pkl in either the checkpoint dir or "
                 "its parent directory.")
     else:
-        with open(config_path, 'rb') as f:
+        with open(config_path, "rb") as f:
             config = pickle.load(f)
     if "num_workers" in config:
         config["num_workers"] = min(2, config["num_workers"])

@@ -39,8 +39,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     """
 
     def __init__(self,
-                 time_attr='training_iteration',
-                 reward_attr='episode_reward_mean',
+                 time_attr="training_iteration",
+                 reward_attr="episode_reward_mean",
                  max_t=100,
                  grace_period=10,
                  reduction_factor=3,
