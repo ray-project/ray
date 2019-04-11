@@ -1445,8 +1445,10 @@ def test_free_objects_multi_node(ray_start_cluster):
         assert ray.get(a) != ray.get(b)
         assert ray.get(a) != ray.get(c)
         assert ray.get(c) != ray.get(b)
-        ray.internal.free([a, b, c], local_only=local_only,
-                          delete_creating_tasks=delete_creating_tasks)
+        ray.internal.free(
+            [a, b, c],
+            local_only=local_only,
+            delete_creating_tasks=delete_creating_tasks)
         # Wait for the objects to be deleted.
         time.sleep(0.1)
         return (a, b, c)
@@ -1483,6 +1485,7 @@ def test_free_objects_multi_node(ray_start_cluster):
     task_table = ray.global_state.task_table()
     for obj in [a, b, c]:
         assert ray._raylet.compute_task_id(obj).hex() not in task_table
+
 
 def test_local_mode(shutdown_only):
     @ray.remote
