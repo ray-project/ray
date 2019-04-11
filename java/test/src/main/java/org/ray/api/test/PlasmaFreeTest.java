@@ -19,7 +19,7 @@ public class PlasmaFreeTest extends BaseTest {
   }
 
   @Test
-  public void test() {
+  public void testDeleteObjects() {
     RayObject<String> helloId = Ray.call(PlasmaFreeTest::hello);
     String helloString = helloId.get();
     Assert.assertEquals("hello", helloString);

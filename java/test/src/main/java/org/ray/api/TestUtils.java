@@ -3,13 +3,9 @@ package org.ray.api;
 import java.util.function.Supplier;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.config.RunMode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.testng.SkipException;
 
 public class TestUtils {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(TestUtils.class);
 
   private static final int WAIT_INTERVAL_MS = 5;
 
@@ -20,25 +16,30 @@ public class TestUtils {
     }
   }
 
-  public static boolean waitForCondition(Supplier<Boolean> condition, int timeoutMillis) {
-    boolean result = false;
+  /**
+   * Wait until the given condition is met.
+   *
+   * @param condition A function that predicts the condition.
+   * @param timeoutMs Timeout in milliseconds.
+   * @return True if the condition is met within the timeout, false otherwise.
+   */
+  public static boolean waitForCondition(Supplier<Boolean> condition, int timeoutMs) {
     int waitTime = 0;
     while (true) {
-      result = condition.get();
-      if (result) {
-        break;
+      if (condition.get()) {
+        return true;
       }
 
       try {
         java.util.concurrent.TimeUnit.MILLISECONDS.sleep(WAIT_INTERVAL_MS);
-        waitTime += WAIT_INTERVAL_MS;
-        if (waitTime > timeoutMillis) {
-          break;
-        }
       } catch (InterruptedException e) {
-        LOGGER.warn("Got exception when sleeping: ", e);
+        throw new RuntimeException(e);
+      }
+      waitTime += WAIT_INTERVAL_MS;
+      if (waitTime > timeoutMs) {
+        break;
       }
     }
-    return result;
+    return false;
   }
 }
