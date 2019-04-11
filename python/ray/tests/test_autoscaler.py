@@ -539,9 +539,9 @@ class AutoscalingTest(unittest.TestCase):
 
     def testReportsConfigFailures(self):
         config = copy.deepcopy(SMALL_CLUSTER)
-        config['provider']['type'] = 'external'
+        config["provider"]["type"] = "external"
         config = fillout_defaults(config)
-        config['provider']['type'] = 'mock'
+        config["provider"]["type"] = "mock"
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner(fail_cmds=["cmd1"])
