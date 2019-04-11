@@ -61,6 +61,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                  max_weight_sync_delay=400,
                  debug=False,
                  batch_replay=False):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
 
         self.debug = debug
         self.batch_replay = batch_replay
