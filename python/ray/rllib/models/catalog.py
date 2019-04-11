@@ -12,11 +12,11 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
 from ray.rllib.models.extra_spaces import Simplex
-from ray.rllib.models.action_dist import (
-    Categorical, MultiCategorical, Deterministic, DiagGaussian,
-    MultiActionDistribution, Dirichlet)
-from ray.rllib.models.torch_action_dist import (
-    TorchCategorical, TorchDiagGaussian)
+from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
+                                          Deterministic, DiagGaussian,
+                                          MultiActionDistribution, Dirichlet)
+from ray.rllib.models.torch_action_dist import (TorchCategorical,
+                                                TorchDiagGaussian)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork

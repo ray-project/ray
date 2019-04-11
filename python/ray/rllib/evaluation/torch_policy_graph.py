@@ -9,7 +9,6 @@ from threading import Lock
 
 try:
     import torch
-    from torch import nn
 except ImportError:
     pass  # soft dep
 
@@ -56,9 +55,8 @@ class TorchPolicyGraph(PolicyGraph):
         self.observation_space = observation_space
         self.action_space = action_space
         self.lock = Lock()
-        self.device = (torch.device('cuda')
-                       if bool(os.environ['CUDA_VISIBLE_DEVICES'])
-                       else torch.device('cpu'))
+        self.device = (torch.device('cuda') if bool(
+            os.environ['CUDA_VISIBLE_DEVICES']) else torch.device('cpu'))
         self._model = model.to(self.device)
         self._loss = loss
         self._loss_inputs = loss_inputs

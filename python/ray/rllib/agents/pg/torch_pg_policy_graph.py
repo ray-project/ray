@@ -73,9 +73,7 @@ class PGTorchPolicyGraph(PGPostprocessing, TorchPolicyGraph):
 
     @override(TorchPolicyGraph)
     def extra_grad_info(self):
-        return {
-            "policy_loss": self._loss.pi_err.item()
-        }
+        return {"policy_loss": self._loss.pi_err.item()}
 
     def _value(self, obs):
         with self.lock:
