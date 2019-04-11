@@ -542,55 +542,6 @@ class Worker(object):
         assert len(final_results) == len(object_ids)
         return final_results
 
-    def submit_task(self, function_descriptor_list, function_signature,
-                    func_args, func_kwargs, **kwargs):
-        """Submit a remote task to the scheduler.
-
-        Tell the scheduler to schedule the execution of the function with
-        function_descriptor with arguments args. Retrieve object IDs for the
-        outputs of the function from the scheduler and immediately return them.
-
-        Args:
-            function_descriptor_list: The function descriptor list to execute.
-            func_args: The arguments to pass into the function. Arguments can
-                be object IDs or they can be values. If they are values, they
-                must be serializable objects.
-            func_kwargs: The keyword arguments to pass into the function.
-            actor_id: The ID of the actor that this task is for.
-            actor_counter: The counter of the actor task.
-            actor_creation_id: The ID of the actor to create, if this is an
-                actor creation task.
-            actor_creation_dummy_object_id: If this task is an actor method,
-                then this argument is the dummy object ID associated with the
-                actor creation task for the corresponding actor.
-            execution_dependencies: The execution dependencies for this task.
-            num_return_vals: The number of return values this function should
-                have.
-            resources: The resource requirements for this task.
-            placement_resources: The resources required for placing the task.
-                If this is not provided or if it is an empty dictionary, then
-                the placement resources will be equal to resources.
-            driver_id: The ID of the relevant driver. This is almost always the
-                driver ID of the driver that is currently running. However, in
-                the exceptional case that an actor task is being dispatched to
-                an actor created by a different driver, this should be the
-                driver ID of the driver that created the actor.
-
-        Returns:
-            The return object IDs for this task.
-        """
-        if _global_node._ray_params.enable_profiling:
-            with ray._raylet.profile("submit_task"):
-                return self.raylet_client.submit_task(
-                    function_descriptor_list, function_signature, func_args,
-                    func_kwargs, self.current_task_id,
-                    self.task_context.task_index, put, **kwargs)
-        else:
-            return self.raylet_client.submit_task(
-                function_descriptor_list, function_signature, func_args,
-                func_kwargs, self.current_task_id,
-                self.task_context.task_index, put, **kwargs)
-
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
         """Run arbitrary code on all of the workers.
