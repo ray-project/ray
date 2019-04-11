@@ -32,6 +32,7 @@ public class PlasmaFreeTest extends BaseTest {
 
   @Test
   public void testDeleteCreatingTasks() {
+    TestUtils.skipTestUnderSingleProcess();
     RayObject<String> helloId = Ray.call(PlasmaFreeTest::hello);
     Assert.assertEquals("hello", helloId.get());
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, true);
