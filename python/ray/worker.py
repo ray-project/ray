@@ -580,12 +580,6 @@ class Worker(object):
         Returns:
             The return object IDs for this task.
         """
-        self.task_context.task_index += 1
-        kwargs["driver_id"] = kwargs.get("driver_id", self.task_driver_id)
-        # Calling the profiling context manager can add significant overhead
-        # to the function call, therefore we do not introduce enable_profiling
-        # as a flag to profiling.profile but rather duplicate the function
-        # call below.
         if _global_node._ray_params.enable_profiling:
             with profiling.profile("submit_task"):
                 return self.raylet_client.submit_task(

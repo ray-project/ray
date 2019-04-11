@@ -121,10 +121,13 @@ class RemoteFunction(object):
             # immutable remote objects.
             result = self._function(*copy.deepcopy(args))
             return result
-        return worker.submit_task(
+        return worker.raylet_client.submit_task(
+            worker,
             self._function_descriptor_list,
             self._function_signature,
             args,
             kwargs,
+            worker.current_task_id,
+            ray.worker.put,
             num_return_vals=num_return_vals,
             resources=resources)

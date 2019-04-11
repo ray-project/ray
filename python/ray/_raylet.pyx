@@ -40,6 +40,7 @@ from ray.utils import decode
 
 cimport cpython
 
+include "includes/profiling.pxi"
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
 include "includes/task.pxi"
@@ -299,12 +300,12 @@ cdef class RayletClient:
         check_status(self.client.get().Disconnect())
 
     def submit_task(self,
+                    worker,
                     function_descriptor_list,
                     function_signature,
                     args,
                     kwargs,
                     TaskID current_task_id,
-                    int task_index,
                     put_function,
                     ActorID actor_id=ActorID.nil(),
                     ActorHandleID actor_handle_id=ActorHandleID.nil(),
@@ -318,70 +319,109 @@ cdef class RayletClient:
                     resources=None,
                     placement_resources=None,
                     DriverID driver_id=DriverID.nil()):
+        """Submit a remote task to the scheduler.
+
+        Tell the scheduler to schedule the execution of the function with
+        function_descriptor with arguments args. Retrieve object IDs for the
+        outputs of the function from the scheduler and immediately return them.
+
+        Args:
+            function_descriptor_list: The function descriptor list to execute.
+            func_args: The arguments to pass into the function. Arguments can
+                be object IDs or they can be values. If they are values, they
+                must be serializable objects.
+            func_kwargs: The keyword arguments to pass into the function.
+            actor_id: The ID of the actor that this task is for.
+            actor_counter: The counter of the actor task.
+            actor_creation_id: The ID of the actor to create, if this is an
+                actor creation task.
+            actor_creation_dummy_object_id: If this task is an actor method,
+                then this argument is the dummy object ID associated with the
+                actor creation task for the corresponding actor.
+            execution_dependencies: The execution dependencies for this task.
+            num_return_vals: The number of return values this function should
+                have.
+            resources: The resource requirements for this task.
+            placement_resources: The resources required for placing the task.
+                If this is not provided or if it is an empty dictionary, then
+                the placement resources will be equal to resources.
+            driver_id: The ID of the relevant driver. This is almost always the
+                driver ID of the driver that is currently running. However, in
+                the exceptional case that an actor task is being dispatched to
+                an actor created by a different driver, this should be the
+                driver ID of the driver that created the actor.
+
+        Returns:
+            The return object IDs for this task.
+        """
+
         cdef Task task
+        with profile("submit_task"):
+            worker.task_context.task_index += 1
+            if driver_id.is_nil():
+                driver_id = worker.task_driver_id
+            kwargs = {} if kwargs is None else kwargs
+            args = [] if args is None else args
 
-        kwargs = {} if kwargs is None else kwargs
-        args = [] if args is None else args
+            args = extend_args(function_signature, args, kwargs)
 
-        args = extend_args(function_signature, args, kwargs)
+            args_for_raylet = []
+            for arg in args:
+                if isinstance(arg, ObjectID):
+                    args_for_raylet.append(arg)
+                elif check_simple_value(arg):
+                    args_for_raylet.append(arg)
+                else:
+                    args_for_raylet.append(put_function(arg))
 
-        args_for_raylet = []
-        for arg in args:
-            if isinstance(arg, ObjectID):
-                args_for_raylet.append(arg)
-            elif check_simple_value(arg):
-                args_for_raylet.append(arg)
-            else:
-                args_for_raylet.append(put_function(arg))
+            if execution_dependencies is None:
+                execution_dependencies = []
 
-        if execution_dependencies is None:
-            execution_dependencies = []
+            if new_actor_handles is None:
+                new_actor_handles = []
 
-        if new_actor_handles is None:
-            new_actor_handles = []
+            if resources is None:
+                raise ValueError("The resources dictionary is required.")
+            for value in resources.values():
+                assert (isinstance(value, int) or isinstance(value, float))
+                if value < 0:
+                    raise ValueError(
+                        "Resource quantities must be nonnegative.")
+                if (value >= 1 and isinstance(value, float)
+                      and not value.is_integer()):
+                    raise ValueError(
+                        "Resource quantities must all be whole numbers.")
 
-        if resources is None:
-            raise ValueError("The resources dictionary is required.")
-        for value in resources.values():
-            assert (isinstance(value, int) or isinstance(value, float))
-            if value < 0:
-                raise ValueError(
-                    "Resource quantities must be nonnegative.")
-            if (value >= 1 and isinstance(value, float)
-                    and not value.is_integer()):
-                raise ValueError(
-                    "Resource quantities must all be whole numbers.")
+            if placement_resources is None:
+                placement_resources = {}
 
-        if placement_resources is None:
-            placement_resources = {}
+            task = Task(
+                driver_id,
+                function_descriptor_list,
+                args_for_raylet,
+                num_return_vals,
+                current_task_id,
+                worker.task_context.task_index,
+                actor_creation_id,
+                actor_creation_dummy_object_id,
+                max_actor_reconstructions,
+                actor_id,
+                actor_handle_id,
+                actor_counter,
+                new_actor_handles,
+                execution_dependencies,
+                resources,
+                placement_resources)
 
-        task = Task(
-            driver_id,
-            function_descriptor_list,
-            args_for_raylet,
-            num_return_vals,
-            current_task_id,
-            task_index,
-            actor_creation_id,
-            actor_creation_dummy_object_id,
-            max_actor_reconstructions,
-            actor_id,
-            actor_handle_id,
-            actor_counter,
-            new_actor_handles,
-            execution_dependencies,
-            resources,
-            placement_resources)
+            check_status(self.client.get().SubmitTask(
+                task.execution_dependencies.get()[0],
+                task.task_spec.get()[0]))
 
-        check_status(self.client.get().SubmitTask(
-            task.execution_dependencies.get()[0],
-            task.task_spec.get()[0]))
-
-        object_ids = task.returns()
-        if len(object_ids) == 1:
-            return object_ids[0]
-        elif len(object_ids) > 1:
-            return object_ids
+            object_ids = task.returns()
+            if len(object_ids) == 1:
+                return object_ids[0]
+            elif len(object_ids) > 1:
+                return object_ids
 
     def get_task(self):
         cdef:
