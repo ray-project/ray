@@ -574,10 +574,10 @@ class PolicyEvaluator(EvaluatorInterface):
                     continue
                 policy = self.policy_map[pid]
                 if builder and hasattr(policy, "_build_learn_on_batch"):
-                    to_fetch[pid], _ = policy._build_learn_on_batch(
+                    to_fetch[pid] = policy._build_learn_on_batch(
                         builder, batch)
                 else:
-                    info_out[pid], _ = policy.learn_on_batch(batch)
+                    info_out[pid] = policy.learn_on_batch(batch)
             info_out.update({k: builder.get(v) for k, v in to_fetch.items()})
         else:
             info_out = self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(
