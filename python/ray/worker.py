@@ -183,7 +183,7 @@ class Worker(object):
         put_index: The number of objects that have been put from the current
             task.
         """
-        if not hasattr(self._task_context, 'initialized'):
+        if not hasattr(self._task_context, "initialized"):
             # Initialize task_context for the current thread.
             if ray.utils.is_main_thread():
                 # If this is running on the main thread, initialize it to
@@ -196,7 +196,7 @@ class Worker(object):
                 # random task ID so that the backend can differentiate
                 # between different threads.
                 self._task_context.current_task_id = TaskID(_random_string())
-                if getattr(self, '_multithreading_warned', False) is not True:
+                if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
                         "may lead to deadlock if the main thread blocks on "

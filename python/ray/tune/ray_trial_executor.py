@@ -166,7 +166,7 @@ class RayTrialExecutor(TrialExecutor):
 
         try:
             trial.write_error_log(error_msg)
-            if hasattr(trial, 'runner') and trial.runner:
+            if hasattr(trial, "runner") and trial.runner:
                 if (not error and self._reuse_actors
                         and self._cached_actor is None):
                     logger.debug("Reusing actor for {}".format(trial.runner))

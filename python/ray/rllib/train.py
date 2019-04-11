@@ -79,7 +79,7 @@ def create_parser(parser_creator=None):
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
         "--queue-trials",
-        action='store_true',
+        action="store_true",
         help=(
             "Whether to queue trials when the cluster does not currently have "
             "enough resources to launch one. This should be set to True when "
