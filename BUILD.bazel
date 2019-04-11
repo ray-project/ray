@@ -807,6 +807,8 @@ genrule(
         set -x &&
         WORK_DIR=$$(pwd) &&
         cp -f $(location python/ray/_raylet.so) $$WORK_DIR/python/ray &&
+        cp -f $(location python/ray/_plasma.so) $$WORK_DIR/python/ray &&
+        cp -f $(location python/ray/_arrow.so) $$WORK_DIR/python/ray &&
         mkdir -p $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
         cp -f $(location //:redis-server) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
         cp -f $(location //:redis-cli) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
