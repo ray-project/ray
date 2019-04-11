@@ -24,11 +24,6 @@ def get_sorted_trials(trial_list, metric):
         reverse=True)
 
 
-def get_best_result(trial_list, metric):
-    """Retrieve the last result from the best trial."""
-    return {metric: get_best_trial(trial_list, metric).last_result[metric]}
-
-
 def _parse_results(res_path):
     res_dict = {}
     try:
