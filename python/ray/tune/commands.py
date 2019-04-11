@@ -210,7 +210,8 @@ def list_experiments(project_path,
     for experiment_dir in experiment_folders:
         analysis_obj, checkpoints_df = None, None
         try:
-            analysis_obj = ExperimentAnalysis(os.path.join(project_path, experiment_dir))
+            analysis_obj = ExperimentAnalysis(
+                os.path.join(project_path, experiment_dir))
             checkpoints_df = analysis_obj.dataframe()
         except TuneError:
             logger.debug("No experiment state found in %s", experiment_dir)

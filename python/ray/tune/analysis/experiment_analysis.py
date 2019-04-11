@@ -22,7 +22,8 @@ class ExperimentAnalysis():
 
     Example:
         >>> tune.run(my_trainable, name="my_exp", local_dir="~/tune_results")
-        >>> analysis = ExperimentAnalysis(experiment_path="~/tune_results/my_exp")
+        >>> analysis = ExperimentAnalysis(
+        >>>     experiment_path="~/tune_results/my_exp")
     """
 
     def __init__(self, experiment_path):
@@ -54,15 +55,15 @@ class ExperimentAnalysis():
         return pd.DataFrame(flattened_checkpoints)
 
     def checkpoints(self):
-        """Returns a dictionary of the trials."""  
+        """Returns a dictionary of the trials."""
         return self._checkpoints
 
     def stats(self):
-        """Returns a dictiornay of the statistics of the experiment."""  
+        """Returns a dictiornay of the statistics of the experiment."""
         return self._experiment_state.get("stats")
 
     def runner_data(self):
-        """Returns a dictionary of the TrialRunner data.""" 
+        """Returns a dictionary of the TrialRunner data."""
         return self._experiment_state.get("runner_data")
 
     def trial_dataframe(self, trial_id):
@@ -75,7 +76,7 @@ class ExperimentAnalysis():
         return Trainable(config=self.get_best_config(metric))
 
     def get_best_config(self, metric):
-        """Retrieve the best config based on the best trial."""
+        """Retrieve the best config from the best trial."""
         return self.get_best_trial(metric)["config"]
 
     def get_best_trial(self, metric):
