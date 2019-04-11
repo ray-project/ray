@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import ray.worker
-from ray import profiling
 
 __all__ = ["free"]
 
@@ -42,7 +41,7 @@ def free(object_ids, local_only=False):
                             "which is not an ray.ObjectID.".format(object_id))
 
     worker.check_connected()
-    with profiling.profile("ray.free"):
+    with ray._raylet.profile("ray.free"):
         if len(object_ids) == 0:
             return
 

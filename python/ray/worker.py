@@ -46,7 +46,6 @@ from ray import (
     TaskID,
 )
 from ray import import_thread
-from ray import profiling
 
 from ray.core.generated.ErrorType import ErrorType
 from ray.exceptions import (
@@ -581,7 +580,7 @@ class Worker(object):
             The return object IDs for this task.
         """
         if _global_node._ray_params.enable_profiling:
-            with profiling.profile("submit_task"):
+            with ray._raylet.profile("submit_task"):
                 return self.raylet_client.submit_task(
                     function_descriptor_list, function_signature, func_args,
                     func_kwargs, self.current_task_id,
@@ -764,7 +763,7 @@ class Worker(object):
             if function_name != "__ray_terminate__":
                 self.reraise_actor_init_error()
             self.memory_monitor.raise_if_low_memory()
-            with profiling.profile("task:deserialize_arguments"):
+            with ray._raylet.profile("task:deserialize_arguments"):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
         except Exception as e:
@@ -776,7 +775,7 @@ class Worker(object):
         # Execute the task.
         try:
             self._current_task = task
-            with profiling.profile("task:execute"):
+            with ray._raylet.profile("task:execute"):
                 if (task.actor_id().is_nil()
                         and task.actor_creation_id().is_nil()):
                     outputs = function_executor(*arguments)
@@ -801,7 +800,7 @@ class Worker(object):
 
         # Store the outputs in the local object store.
         try:
-            with profiling.profile("task:store_outputs"):
+            with ray._raylet.profile("task:store_outputs"):
                 # If this is an actor task, then the last object ID returned by
                 # the task is a dummy output, not returned by the function
                 # itself. Decrement to get the correct number of return values.
@@ -887,7 +886,7 @@ class Worker(object):
                 title = "ray_{}:{}()".format(actor.__class__.__name__,
                                              function_name)
                 next_title = "ray_{}".format(actor.__class__.__name__)
-            with profiling.profile("task", extra_data=extra_data):
+            with ray._raylet.profile("task", extra_data=extra_data):
                 with _changeproctitle(title, next_title):
                     self._process_task(task, execution_info)
                 # Reset the state fields so the next task can run.
@@ -919,7 +918,7 @@ class Worker(object):
         Returns:
             A task from the raylet.
         """
-        with profiling.profile("worker_idle"):
+        with ray._raylet.profile("worker_idle"):
             task = self.raylet_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
@@ -1736,7 +1735,7 @@ def connect(info,
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
 
-    worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
+    worker.profiler = ray._raylet.Profiler(worker, worker.threads_stopped)
 
     # Initialize some fields.
     if mode is WORKER_MODE:
@@ -2202,7 +2201,7 @@ def get(object_ids):
     """
     worker = global_worker
     worker.check_connected()
-    with profiling.profile("ray.get"):
+    with ray._raylet.profile("ray.get"):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.get is the identity operation (the input will
             # actually be a value not an objectid).
@@ -2237,7 +2236,7 @@ def put(value):
     """
     worker = global_worker
     worker.check_connected()
-    with profiling.profile("ray.put"):
+    with ray._raylet.profile("ray.put"):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.put is the identity operation.
             return value
@@ -2314,7 +2313,7 @@ def wait(object_ids, num_returns=1, timeout=None):
 
     worker.check_connected()
     # TODO(swang): Check main thread.
-    with profiling.profile("ray.wait"):
+    with ray._raylet.profile("ray.wait"):
         # When Ray is run in LOCAL_MODE, all functions are run immediately,
         # so all objects in object_id are ready.
         if worker.mode == LOCAL_MODE:

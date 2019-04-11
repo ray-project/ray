@@ -5,6 +5,11 @@ import traceback
 
 import ray
 
+LOG_POINT = 0
+LOG_SPAN_START = 1
+LOG_SPAN_END = 2
+
+
 cdef class _NullLogSpan(object):
     """A log span context manager that does nothing"""
 
@@ -154,7 +159,7 @@ class RayLogSpanRaylet(object):
         self.profiler.add_event(event)
 
 
-cdef profile(event_type, extra_data=None):
+cpdef profile(event_type, extra_data=None):
     """Profile a span of time so that it appears in the timeline visualization.
 
     This function can be used as follows (both on the driver or within a task).

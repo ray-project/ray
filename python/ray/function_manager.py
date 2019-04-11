@@ -16,7 +16,6 @@ from collections import (
 )
 
 import ray
-from ray import profiling
 from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray.utils import (
@@ -467,7 +466,7 @@ class FunctionActorManager(object):
             # we spend too long in this loop.
             # The driver function may not be found in sys.path. Try to load
             # the function from GCS.
-            with profiling.profile("wait_for_function"):
+            with ray._raylet.profile("wait_for_function"):
                 self._wait_for_function(function_descriptor, driver_id)
         try:
             function_id = function_descriptor.function_id
