@@ -59,7 +59,7 @@ class ExperimentAnalysis():
         return self._checkpoints
 
     def stats(self):
-        """Returns a dictiornay of the statistics of the experiment."""
+        """Returns a dictionary of the statistics of the experiment."""
         return self._experiment_state.get("stats")
 
     def runner_data(self):
