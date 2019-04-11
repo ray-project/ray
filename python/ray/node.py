@@ -18,7 +18,7 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
-from ray.utils import try_to_create_directory, try_make_directory_shared
+from ray.utils import try_to_create_directory
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -62,6 +62,7 @@ class Node(object):
         if shutdown_at_exit and connect_only:
             raise ValueError("'shutdown_at_exit' and 'connect_only' cannot "
                              "be both true.")
+        self.head = head
         self.all_processes = {}
 
         # Try to get node IP address with the parameters.
@@ -99,7 +100,7 @@ class Node(object):
         else:
             self.session_name = redis_client.get("session_name")
 
-        self._init_temp()
+        self._init_temp(redis_client)
 
         if connect_only:
             # Get socket names from the configuration.
@@ -147,13 +148,24 @@ class Node(object):
             atexit.register(lambda: self.kill_all_processes(
                 check_alive=False, allow_graceful=True))
 
-    def _init_temp(self):
+    def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
-        temp_dir = self._ray_params.temp_dir
-        try_make_directory_shared(temp_dir)
-        self._session_dir = os.path.join(temp_dir, self.session_name)
+        if self.head:
+            self._temp_dir = self._ray_params.temp_dir
+            redis_client.set("temp_dir", self._temp_dir)
+        else:
+            self._temp_dir = redis_client.get("temp_dir")
+
+        try_to_create_directory(self._temp_dir, warn_if_exist=False)
+
+        if self.head:
+            self._session_dir = os.path.join(self._temp_dir, self.session_name)
+            redis_client.set("session_dir", self._session_dir)
+        else:
+            self._session_dir = redis_client.get("session_dir")
+
         # Send a warning message if the session exists.
         try_to_create_directory(self._session_dir)
         # Create a directory to be used for socket files.
@@ -221,7 +233,7 @@ class Node(object):
 
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
-        return self._ray_params.temp_dir
+        return self._temp_dir
 
     def get_session_dir_path(self):
         """Get the path of the session directory."""
