@@ -14,6 +14,17 @@ logger = logging.getLogger(__name__)
 
 
 class ExperimentAnalysis():
+    """Analyze results from a Tune experiment.
+
+    Parameters:
+        experiment_path (str): Path to where experiment is located.
+            Corresponds to Experiment.local_dir/Experiment.name
+
+    Example:
+        >>> tune.run(my_trainable, name="my_exp", local_dir="~/tune_results")
+        >>> analysis = ExperimentAnalysis(experiment_path="~/tune_results/my_exp")
+    """
+
     def __init__(self, experiment_path):
         experiment_path = os.path.expanduser(experiment_path)
         if not os.path.isdir(experiment_path):
