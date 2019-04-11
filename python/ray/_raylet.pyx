@@ -330,11 +330,15 @@ cdef class RayletClient:
         outputs of the function from the scheduler and immediately return them.
 
         Args:
+            worker: The worker that submitted this task.
             function_descriptor_list: The function descriptor list to execute.
-            func_args: The arguments to pass into the function. Arguments can
+            function_signature: The signature of the submitted function.
+            args: The arguments to pass into the function. Arguments can
                 be object IDs or they can be values. If they are values, they
                 must be serializable objects.
-            func_kwargs: The keyword arguments to pass into the function.
+            kwargs: The keyword arguments to pass into the function.
+            current_task_id: The ID of the parent task.
+            put_function: The function that puts large arguments in the store.
             actor_id: The ID of the actor that this task is for.
             actor_counter: The counter of the actor task.
             actor_creation_id: The ID of the actor to create, if this is an
@@ -342,7 +346,13 @@ cdef class RayletClient:
             actor_creation_dummy_object_id: If this task is an actor method,
                 then this argument is the dummy object ID associated with the
                 actor creation task for the corresponding actor.
+            max_actor_reconstructions: If this number of 0 or negative,
+                the actor won't be reconstructed on failure.
             execution_dependencies: The execution dependencies for this task.
+            new_actor_handles: If this is an actor task, then this will be
+                populated with all of the new actor handles that were forked
+                from this handle since the last task on this handle was
+                submitted.
             num_return_vals: The number of return values this function should
                 have.
             resources: The resource requirements for this task.
