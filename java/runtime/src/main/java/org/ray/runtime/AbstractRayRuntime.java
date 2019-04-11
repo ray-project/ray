@@ -350,11 +350,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       resources = new HashMap<>(taskOptions.resources);
     }
 
-    if (!resources.containsKey(ResourceUtil.CPU_LITERAL)
-        && !resources.containsKey(ResourceUtil.CPU_LITERAL.toLowerCase())) {
-      resources.put(ResourceUtil.CPU_LITERAL, 0.0);
-    }
-
     int maxActorReconstruction = 0;
     if (taskOptions instanceof ActorCreationOptions) {
       maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
