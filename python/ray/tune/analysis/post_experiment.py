@@ -17,11 +17,6 @@ from ray.tune.result import EXPR_PROGRESS_FILE, \
 logger = logging.getLogger(__name__)
 
 
-def get_best_trial(trial_list, metric):
-    """Retrieve the best trial."""
-    return max(trial_list, key=lambda trial: trial.last_result.get(metric, 0))
-
-
 def get_sorted_trials(trial_list, metric):
     return sorted(
         trial_list,
@@ -32,10 +27,6 @@ def get_sorted_trials(trial_list, metric):
 def get_best_result(trial_list, metric):
     """Retrieve the last result from the best trial."""
     return {metric: get_best_trial(trial_list, metric).last_result[metric]}
-
-
-def get_best_trainable(trial_list):
-    pass
 
 
 def _parse_results(res_path):
