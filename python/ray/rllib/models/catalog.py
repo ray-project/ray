@@ -14,7 +14,9 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
 from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.action_dist import (
     Categorical, MultiCategorical, Deterministic, DiagGaussian,
-    MultiActionDistribution, Dirichlet, TorchCategorical, TorchDiagGaussian)
+    MultiActionDistribution, Dirichlet)
+from ray.rllib.models.torch_action_dist import (
+    TorchCategorical, TorchDiagGaussian)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -131,14 +133,20 @@ class ModelCatalog(object):
                     action, config)
                 child_dist.append(dist)
                 input_lens.append(action_size)
+            if torch:
+                raise NotImplementedError
             return partial(
                 MultiActionDistribution,
                 child_distributions=child_dist,
                 action_space=action_space,
                 input_lens=input_lens), sum(input_lens)
         elif isinstance(action_space, Simplex):
+            if torch:
+                raise NotImplementedError
             return Dirichlet, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
+            if torch:
+                raise NotImplementedError
             return MultiCategorical, sum(action_space.nvec)
 
         raise NotImplementedError("Unsupported args: {} {}".format(

@@ -25,10 +25,8 @@ class PGLoss(nn.Module):
             {SampleBatch.CUR_OBS: observations}, [])
         dist = self.dist_class(logits)
         log_probs = dist.logp(actions)
-        if len(log_probs.shape) > 1:
-            log_probs = log_probs.sum(-1)
-        pi_err = -advantages.dot(log_probs.reshape(-1)).cpu()
-        return pi_err
+        self.pi_err = -advantages.dot(log_probs.reshape(-1))
+        return self.pi_err
 
 
 class PGPostprocessing(object):
@@ -72,6 +70,12 @@ class PGTorchPolicyGraph(PGPostprocessing, TorchPolicyGraph):
     @override(TorchPolicyGraph)
     def optimizer(self):
         return torch.optim.Adam(self._model.parameters(), lr=self.config["lr"])
+
+    @override(TorchPolicyGraph)
+    def extra_grad_info(self):
+        return {
+            "policy_loss": self._loss.pi_err.item()
+        }
 
     def _value(self, obs):
         with self.lock:

@@ -9,9 +9,11 @@ from threading import Lock
 
 try:
     import torch
+    from torch import nn
 except ImportError:
     pass  # soft dep
 
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.utils.annotations import override
 
@@ -54,9 +56,9 @@ class TorchPolicyGraph(PolicyGraph):
         self.observation_space = observation_space
         self.action_space = action_space
         self.lock = Lock()
-        cuda_devices = os.environ['CUDA_VISIBLE_DEVICES'].split(',')
         self.device = (torch.device('cuda')
-                       if len(cuda_devices[0]) > 0 else torch.device('cpu'))
+                       if bool(os.environ['CUDA_VISIBLE_DEVICES'])
+                       else torch.device('cpu'))
         self._model = model.to(self.device)
         self._loss = loss
         self._loss_inputs = loss_inputs
@@ -94,6 +96,9 @@ class TorchPolicyGraph(PolicyGraph):
             loss_out = self._loss(self._model, *loss_in)
             self._optimizer.zero_grad()
             loss_out.backward()
+
+            grad_process_info = self.extra_grad_process()
+
             # Note that return values are just references;
             # calling zero_grad will modify the values
             grads = []
@@ -103,7 +108,9 @@ class TorchPolicyGraph(PolicyGraph):
                 else:
                     grads.append(None)
 
-            return grads, {}
+            grad_info = self.extra_grad_info()
+            grad_info.update(grad_process_info)
+            return grads, {LEARNER_STATS_KEY: grad_info}
 
     @override(PolicyGraph)
     def apply_gradients(self, gradients):
@@ -128,11 +135,21 @@ class TorchPolicyGraph(PolicyGraph):
     def get_initial_state(self):
         return [s.numpy() for s in self._model.state_init()]
 
+    def extra_grad_process(self):
+        """Allow subclass to do extra processing on gradients and
+           return processing info."""
+        return {}
+
     def extra_action_out(self, model_out):
         """Returns dict of extra info to include in experience batch.
 
         Arguments:
             model_out (list): Outputs of the policy model module."""
+        return {}
+
+    def extra_grad_info(self):
+        """Return dict of extra grad info."""
+
         return {}
 
     def optimizer(self):

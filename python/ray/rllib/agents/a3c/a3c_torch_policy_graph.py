@@ -8,7 +8,6 @@ from torch import nn
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -28,15 +27,11 @@ class A3CLoss(nn.Module):
                 value_targets):
         logits, _, values, _ = policy_model(
             {SampleBatch.CUR_OBS: observations}, [])
-        logits = logits
-        values = values
         dist = self.dist_class(logits)
         log_probs = dist.logp(actions)
-        if len(log_probs.shape) > 1:
-            log_probs = log_probs.sum(-1)
-        self.entropy = dist.entropy().mean().cpu()
-        self.pi_err = -advantages.dot(log_probs.reshape(-1)).cpu()
-        self.value_err = F.mse_loss(values.reshape(-1), value_targets).cpu()
+        self.entropy = dist.entropy().mean()
+        self.pi_err = -advantages.dot(log_probs.reshape(-1))
+        self.value_err = F.mse_loss(values.reshape(-1), value_targets)
         overall_err = sum([
             self.pi_err,
             self.vf_loss_coeff * self.value_err,
@@ -91,40 +86,26 @@ class A3CTorchPolicyGraph(A3CPostprocessing, TorchPolicyGraph):
             ],
             action_distribution_cls=dist_class)
 
-    @override(PolicyGraph)
-    def compute_gradients(self, postprocessed_batch):
-        with self.lock:
-            loss_in = []
-            for key in self._loss_inputs:
-                loss_in.append(
-                    torch.from_numpy(postprocessed_batch[key]).to(self.device))
-            loss_out = self._loss(self._model, *loss_in)
-            self._optimizer.zero_grad()
-            loss_out.backward()
-            total_norm = nn.utils.clip_grad_norm_(self._model.parameters(),
-                                                  self.config["grad_clip"])
-
-            # Note that return values are just references;
-            # calling zero_grad will modify the values
-            grads = []
-            for p in self._model.parameters():
-                if p.grad is not None:
-                    grads.append(p.grad.data.cpu().numpy())
-                else:
-                    grads.append(None)
-
-            grad_info = {
-                "grad_gnorm": total_norm,
-                "policy_entropy": self._loss.entropy.item(),
-                "policy_loss": self._loss.pi_err.item(),
-                "vf_loss": self._loss.value_err.item()
-            }
-
-            return grads, {LEARNER_STATS_KEY: grad_info}
-
     @override(TorchPolicyGraph)
     def optimizer(self):
         return torch.optim.Adam(self._model.parameters(), lr=self.config["lr"])
+
+    @override(TorchPolicyGraph)
+    def extra_grad_process(self):
+        info = {}
+        if self.config["grad_clip"]:
+            total_norm = nn.utils.clip_grad_norm_(self._model.parameters(),
+                                                  self.config["grad_clip"])
+            info["grad_gnorm"] = total_norm
+        return info
+
+    @override(TorchPolicyGraph)
+    def extra_grad_info(self):
+        return {
+            "policy_entropy": self._loss.entropy.item(),
+            "policy_loss": self._loss.pi_err.item(),
+            "vf_loss": self._loss.value_err.item()
+        }
 
     def _value(self, obs):
         with self.lock:
