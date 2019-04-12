@@ -9,7 +9,7 @@
 template <typename ID>
 class UniqueIdFromJByteArray {
  public:
-  inline const ID &GetId() const { return id; }
+  const ID &GetId() const { return id; }
 
   UniqueIdFromJByteArray(JNIEnv *env, const jbyteArray& bytes) {
     env->GetByteArrayRegion(bytes, 0, kUniqueIDSize, reinterpret_cast<jbyte *>(id.mutable_data()));
