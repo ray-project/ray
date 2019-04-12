@@ -25,7 +25,8 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         object_ids (List[ObjectID]): List of object IDs to delete.
         local_only (bool): Whether only deleting the list of objects in local
             object store or all object stores.
-        delete_creating_tasks (bool): Whether also delete the object creating tasks.
+        delete_creating_tasks (bool): Whether also delete the object creating
+            tasks.
     """
     worker = ray.worker.get_global_worker()
 
