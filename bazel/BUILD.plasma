@@ -41,6 +41,7 @@ cc_library(
     name = "arrow_python",
     srcs = [
       "cpp/src/arrow/python/common.cc",
+      "cpp/src/arrow/python/helpers.cc",
     ],
     hdrs = [
       "cpp/src/arrow/python/helpers.h",
