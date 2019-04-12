@@ -402,7 +402,7 @@ cdef class RayletClient:
                     raise ValueError(
                         "Resource quantities must be nonnegative.")
                 if (value >= 1 and isinstance(value, float)
-                      and not value.is_integer()):
+                        and not value.is_integer()):
                     raise ValueError(
                         "Resource quantities must all be whole numbers.")
 
