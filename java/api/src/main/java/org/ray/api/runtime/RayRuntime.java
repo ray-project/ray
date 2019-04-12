@@ -61,8 +61,9 @@ public interface RayRuntime {
    *
    * @param objectIds The object ids to free.
    * @param localOnly Whether only free objects for local object store or not.
+   * @param deleteCreatingTasks Whether also delete objects' creating tasks from GCS.
    */
-  void free(List<UniqueId> objectIds, boolean localOnly);
+  void free(List<UniqueId> objectIds, boolean localOnly, boolean deleteCreatingTasks);
 
   /**
    * Invoke a remote function.
