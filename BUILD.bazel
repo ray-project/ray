@@ -790,6 +790,7 @@ exports_files(["src/plasma/format/common.fbs"])
 genrule(
     name = "ray_pkg",
     srcs = [
+        "python/ray/_arrow.so",
         "python/ray/_raylet.so",
         "python/ray/_plasma.so",
         "//:python_sources",
