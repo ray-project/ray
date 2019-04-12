@@ -18,7 +18,7 @@
 import socket
 import sys
 
-from _arrow cimport CStatus
+from ray._arrow cimport CStatus
 cimport cpython as cp
 
 

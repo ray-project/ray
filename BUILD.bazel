@@ -411,6 +411,7 @@ flatbuffer_cc_library(
 pyx_library(
     name = "_plasma",
     srcs = glob([
+        "python/ray/__init__.py",
         "python/ray/_arrow.pyx",
         "python/ray/_arrow.pxd",
         "python/ray/_plasma.pyx",
