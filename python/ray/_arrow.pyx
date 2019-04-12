@@ -154,6 +154,14 @@ cdef class Buffer:
     cdef getitem(self, int64_t i):
         return self.buffer.get().data()[i]
 
+    def to_pybytes(self):
+        """
+        Return this buffer as a Python bytes object.  Memory is copied.
+        """
+        return cp.PyBytes_FromStringAndSize(
+            <const char*>self.buffer.get().data(),
+            self.buffer.get().size())
+
     def __getbuffer__(self, cp.Py_buffer* buffer, int flags):
         if self.buffer.get().is_mutable():
             buffer.readonly = 0
