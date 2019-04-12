@@ -1,6 +1,6 @@
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 
-def load_java_deps():
+def gen_java_deps():
     maven_install(
         artifacts = [
             "com.beust:jcommander:1.72",

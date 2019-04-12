@@ -14,8 +14,8 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_jvm_external/archive/%s.zip" % RULES_JVM_EXTERNAL_TAG,
 )
 
-load("//java:dependencies.bzl", "load_java_deps")
-load_java_deps()
+load("//java:dependencies.bzl", "gen_java_deps")
+gen_java_deps()
 
 git_repository(
     name = "com_github_checkstyle_java",
