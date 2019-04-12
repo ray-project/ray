@@ -26,13 +26,14 @@ def ray_get_and_free(object_ids):
     Returns:
         The result of ray.get(object_ids).
     """
+
+    global _last_free_time
+    global _to_free
+
     result = ray.get(object_ids)
     if type(object_ids) is not list:
         object_ids = [object_ids]
     _to_free.extend(object_ids)
-
-    global _last_free_time
-    global _to_free
 
     now = time.time()
     if (len(_to_free) > MAX_FREE_QUEUE_SIZE
