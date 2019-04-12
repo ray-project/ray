@@ -89,15 +89,14 @@ class Node(object):
         self._config = (json.loads(ray_params._internal_config)
                         if ray_params._internal_config else None)
 
-        redis_client = self.create_redis_client()
-
         if head:
+            redis_client = None
             date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             self.session_name = "session_{date_str}_{pid}".format(
                 pid=os.getpid(),
                 date_str=date_str)
-            redis_client.set("session_name", self.session_name)
         else:
+            redis_client = self.create_redis_client()
             self.session_name = redis_client.get("session_name")
 
         self._init_temp(redis_client)
@@ -140,6 +139,10 @@ class Node(object):
         # Start processes.
         if head:
             self.start_head_processes()
+            redis_client = self.create_redis_client()
+            redis_client.set("session_name", self.session_name)
+            redis_client.set("session_dir", self._session_dir)
+            redis_client.set("temp_dir", self._temp_dir)
 
         if not connect_only:
             self.start_ray_processes()
@@ -154,7 +157,6 @@ class Node(object):
 
         if self.head:
             self._temp_dir = self._ray_params.temp_dir
-            redis_client.set("temp_dir", self._temp_dir)
         else:
             self._temp_dir = redis_client.get("temp_dir")
 
@@ -162,7 +164,6 @@ class Node(object):
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
-            redis_client.set("session_dir", self._session_dir)
         else:
             self._session_dir = redis_client.get("session_dir")
 
