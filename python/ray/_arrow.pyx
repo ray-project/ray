@@ -19,9 +19,17 @@ import socket
 import sys
 
 from _arrow cimport CStatus
-# from pyarrow.includes.common cimport c_string
-from pyarrow.compat import frombytes
 cimport cpython as cp
+
+
+PY2 = sys.version_info[0] == 2
+
+if PY2:
+    def frombytes(o):
+        return o
+else:
+    def frombytes(o):
+        return o.decode('utf8')
 
 
 class ArrowException(Exception):
@@ -215,8 +223,6 @@ def py_buffer(object obj):
     cdef shared_ptr[CBuffer] buf
     check_status(PyBuffer.FromPyObject(obj, &buf))
     return pyarrow_wrap_buffer(buf)
-
-PY2 = sys.version_info[0] == 2
 
 def get_socket_from_fd(fileno, family, type):
     if PY2:

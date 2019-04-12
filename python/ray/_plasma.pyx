@@ -37,11 +37,6 @@ import warnings
 import pyarrow
 from ray._arrow cimport check_status, CBuffer, CMutableBuffer, CStatus, Buffer, pyarrow_wrap_buffer
 from ray._arrow import py_buffer, get_socket_from_fd, FixedSizeBufferWriter
-# from pyarrow.lib cimport Buffer, NativeFile, check_status, pyarrow_wrap_buffer
-# from pyarrow.includes.libarrow cimport (CBuffer, CMutableBuffer,
-#                                         CFixedSizeBufferWriter, CStatus)
-
-# from pyarrow import compat
 
 PLASMA_WAIT_TIMEOUT = 2 ** 30
 
