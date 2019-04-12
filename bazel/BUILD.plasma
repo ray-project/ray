@@ -2,6 +2,7 @@ cc_library(
     name = "arrow",
     srcs = [
         "cpp/src/arrow/buffer.cc",
+        "cpp/src/arrow/io/interfaces.cc",
         "cpp/src/arrow/io/memory.cc",
         "cpp/src/arrow/memory_pool.cc",
         "cpp/src/arrow/status.cc",
