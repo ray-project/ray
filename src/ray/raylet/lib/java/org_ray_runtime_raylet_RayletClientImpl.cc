@@ -66,8 +66,8 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
     execution_dependencies.push_back(cursor_id.GetId());
   }
 
-  auto data = reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(taskBuff)) + pos;
-  ray::raylet::TaskSpecification task_spec(data, taskSize);
+  auto data = reinterpret_cast<char *>(env->GetDirectBufferAddress(taskBuff)) + pos;
+  ray::raylet::TaskSpecification task_spec(std::string(data, taskSize));
   auto status = raylet_client->SubmitTask(execution_dependencies, task_spec);
   ThrowRayExceptionIfNotOK(env, status);
 }

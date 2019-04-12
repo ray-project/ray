@@ -56,10 +56,6 @@ TaskSpecification::TaskSpecification(const std::string &string) {
   AssignSpecification(reinterpret_cast<const uint8_t *>(string.data()), string.size());
 }
 
-TaskSpecification::TaskSpecification(const uint8_t *spec, size_t spec_size) {
-  AssignSpecification(spec, spec_size);
-}
-
 TaskSpecification::TaskSpecification(
     const DriverID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
