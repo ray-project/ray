@@ -55,9 +55,9 @@ class TorchPolicyGraph(PolicyGraph):
         self.observation_space = observation_space
         self.action_space = action_space
         self.lock = Lock()
-        self.device = (torch.device('cuda') if bool(
-            os.environ.get('CUDA_VISIBLE_DEVICES', None)) else
-                       torch.device('cpu'))
+        self.device = (torch.device('cuda')
+                       if bool(os.environ.get('CUDA_VISIBLE_DEVICES', None))
+                       else torch.device('cpu'))
         self._model = model.to(self.device)
         self._loss = loss
         self._loss_inputs = loss_inputs

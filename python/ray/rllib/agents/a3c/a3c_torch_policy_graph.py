@@ -25,8 +25,9 @@ class A3CLoss(nn.Module):
 
     def forward(self, policy_model, observations, actions, advantages,
                 value_targets):
-        logits, _, values, _ = policy_model(
-            {SampleBatch.CUR_OBS: observations}, [])
+        logits, _, values, _ = policy_model({
+            SampleBatch.CUR_OBS: observations
+        }, [])
         dist = self.dist_class(logits)
         log_probs = dist.logp(actions)
         self.entropy = dist.entropy().mean()

@@ -21,8 +21,9 @@ class PGLoss(nn.Module):
         self.dist_class = dist_class
 
     def forward(self, policy_model, observations, actions, advantages):
-        logits, _, values, _ = policy_model(
-            {SampleBatch.CUR_OBS: observations}, [])
+        logits, _, values, _ = policy_model({
+            SampleBatch.CUR_OBS: observations
+        }, [])
         dist = self.dist_class(logits)
         log_probs = dist.logp(actions)
         self.pi_err = -advantages.dot(log_probs.reshape(-1))
