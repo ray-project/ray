@@ -55,7 +55,8 @@ public class ResourcesManagementTest extends BaseTest {
       CallOptions callOptions3 = new CallOptions(ImmutableMap.of("CPU", 0.0));
       Assert.fail();
     } catch (RuntimeException e) {
-      // We should receive a RuntimeException indicate that we should pass a zero capacity resource.
+      // We should receive a RuntimeException indicates that we should not
+      // pass a zero capacity resource.
     }
   }
 
