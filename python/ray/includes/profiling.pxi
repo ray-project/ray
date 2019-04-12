@@ -23,7 +23,7 @@ cdef class _NullLogSpan(object):
 NULL_LOG_SPAN = _NullLogSpan()
 
 
-cdef class Profiler(object):
+class Profiler(object):
     """A class that holds the profiling states.
 
     Attributes:
@@ -33,12 +33,6 @@ cdef class Profiler(object):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-
-    cdef public object worker
-    cdef public object events
-    cdef public object lock
-    cdef public object threads_stopped
-    cdef public object t
 
     def __init__(self, worker, threads_stopped):
         self.worker = worker
@@ -92,7 +86,7 @@ cdef class Profiler(object):
             component_type, ray.UniqueID(self.worker.worker_id),
             self.worker.node_ip_address, events)
 
-    cdef add_event(self, event):
+    def add_event(self, event):
         with self.lock:
             self.events.append(event)
 
@@ -105,12 +99,12 @@ cdef class RayLogSpanRaylet(object):
         extra_data: Additional information to log.
     """
 
-    cdef public Profiler profiler
+    cdef public object profiler
     cdef public object event_type
     cdef public object extra_data
     cdef public int start_time
 
-    def __init__(self, Profiler profiler, event_type, extra_data=None):
+    def __init__(self, profiler, event_type, extra_data=None):
         """Initialize a RayLogSpanRaylet object."""
         self.profiler = profiler
         self.event_type = event_type
