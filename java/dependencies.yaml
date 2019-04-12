@@ -84,3 +84,23 @@ dependencies:
     jaxb-impl:
       lang: java
       version: "2.3.0"
+
+  org.apache.kafka:
+    kafka_2.11:
+      lang: java
+      version: "0.8.2.1"
+
+  org.json:
+    json:
+      lang: java
+      version: "20180130"
+
+  org.yaml:
+    snakeyaml:
+      lang: java
+      version: "1.23"
+
+  redis.clients:
+    jedis:
+      lang: java
+      version: "2.9.0"

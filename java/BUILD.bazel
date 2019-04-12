@@ -129,6 +129,11 @@ define_java_module(
         "@org_slf4j_slf4j_api//jar",
         "@org_slf4j_slf4j_log4j12//jar",
         "@org_testng_testng//jar",
+        "@org_apache_kafka_kafka_2_11//jar",
+        "@org_scala_lang_scala_library//jar",
+        "@org_json_json//jar",
+        "@org_yaml_snakeyaml//jar",
+        "@redis_clients_jedis//jar",
     ],
 )
 
