@@ -31,7 +31,6 @@ import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.UniqueIdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
