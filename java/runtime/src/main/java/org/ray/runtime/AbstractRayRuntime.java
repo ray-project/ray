@@ -205,8 +205,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public void free(List<UniqueId> objectIds, boolean localOnly) {
-    rayletClient.freePlasmaObjects(objectIds, localOnly);
+  public void free(List<UniqueId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+    rayletClient.freePlasmaObjects(objectIds, localOnly, deleteCreatingTasks);
   }
 
   private List<List<UniqueId>> splitIntoBatches(List<UniqueId> objectIds) {
