@@ -229,8 +229,7 @@ ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_depe
   auto message = ray::protocol::CreateSubmitTaskRequest(
       fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
   fbb.Finish(message);
-  return ray::Status::OK();
-  // return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
+  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
 ray::Status RayletClient::GetTask(
