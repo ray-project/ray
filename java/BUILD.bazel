@@ -95,9 +95,9 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
+        "@plasma//:org_apache_arrow_arrow_plasma",
         "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_slf4j_slf4j_api",
-        "@maven//:plasma",
         "@maven//:org_testng_testng",
         "@maven//:com_google_guava_guava",
         "@maven//:commons_io_commons_io",

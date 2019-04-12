@@ -22,6 +22,8 @@ git_repository(
     commit = "85f37871ca03b9d3fee63c69c8107f167e24e77b",
     remote = "https://github.com/ruifangChen/checkstyle_java",
 )
+load("@com_github_checkstyle_java//:repo.bzl", "checkstyle_deps")
+checkstyle_deps()
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
