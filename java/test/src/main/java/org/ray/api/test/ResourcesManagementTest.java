@@ -11,12 +11,24 @@ import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 /**
  * Resources Management Test.
  */
 public class ResourcesManagementTest extends BaseTest {
+
+  @BeforeClass
+  public void setUp() {
+    System.setProperty("ray.resources", "CPU:4,RES-A:4");
+  }
+
+  @AfterClass
+  public void tearDown() {
+    System.clearProperty("ray.resources");
+  }
 
   @RayRemote
   public static Integer echo(Integer number) {

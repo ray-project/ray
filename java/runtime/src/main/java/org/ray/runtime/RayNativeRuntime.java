@@ -6,27 +6,18 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
-import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-import org.apache.commons.lang3.ArrayUtils;
-import org.ray.api.Checkpointable.Checkpoint;
-import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.WorkerMode;
+import org.ray.runtime.gcs.GcsClientImpl;
 import org.ray.runtime.gcs.RedisClient;
-import org.ray.runtime.generated.ActorCheckpointIdData;
-import org.ray.runtime.generated.TablePrefix;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.runner.RunManager;
-import org.ray.runtime.util.UniqueIdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,14 +28,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayNativeRuntime.class);
 
-  /**
-   * Redis client of the primary shard.
-   */
-  private RedisClient redisClient;
-  /**
-   * Redis clients of all shards.
-   */
-  private List<RedisClient> redisClients;
   private RunManager manager = null;
 
   static {
@@ -109,7 +92,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager.startRayProcesses(true);
     }
 
-    initRedisClients();
+    gcsClient = new GcsClientImpl(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
     objectStoreProxy = new ObjectStoreProxy(this, rayConfig.objectStoreSocketName);
@@ -128,16 +111,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
   }
 
-  private void initRedisClients() {
-    redisClient = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-    int numRedisShards = Integer.valueOf(redisClient.get("NumRedisShards", null));
-    List<String> addresses = redisClient.lrange("RedisShards", 0, -1);
-    Preconditions.checkState(numRedisShards == addresses.size());
-    redisClients = addresses.stream().map(RedisClient::new)
-        .collect(Collectors.toList());
-    redisClients.add(redisClient);
-  }
-
   @Override
   public void shutdown() {
     if (null != manager) {
@@ -145,7 +118,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
   }
 
+  /**
+   * Register this worker or driver to GCS.
+   */
   private void registerWorker() {
+    RedisClient redisClient = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
     Map<String, String> workerInfo = new HashMap<>();
     String workerId = new String(workerContext.getCurrentWorkerId().getBytes());
     if (rayConfig.workerMode == WorkerMode.DRIVER) {
@@ -165,70 +142,4 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       redisClient.hmset("Workers:" + workerId, workerInfo);
     }
   }
-
-  /**
-   * Get the available checkpoints for the given actor ID, return a list sorted by checkpoint
-   * timestamp in descending order.
-   */
-  List<Checkpoint> getCheckpointsForActor(UniqueId actorId) {
-    List<Checkpoint> checkpoints = new ArrayList<>();
-    // TODO(hchen): implement the equivalent of Python's `GlobalState`, to avoid looping over
-    //  all redis shards..
-    String prefix = TablePrefix.name(TablePrefix.ACTOR_CHECKPOINT_ID);
-    byte[] key = ArrayUtils.addAll(prefix.getBytes(), actorId.getBytes());
-    for (RedisClient client : redisClients) {
-      byte[] result = client.get(key, null);
-      if (result == null) {
-        continue;
-      }
-      ActorCheckpointIdData data = ActorCheckpointIdData
-          .getRootAsActorCheckpointIdData(ByteBuffer.wrap(result));
-
-      UniqueId[] checkpointIds
-          = UniqueIdUtil.getUniqueIdsFromByteBuffer(data.checkpointIdsAsByteBuffer());
-
-      for (int i = 0; i < checkpointIds.length; i++) {
-        checkpoints.add(new Checkpoint(checkpointIds[i], data.timestamps(i)));
-      }
-      break;
-    }
-    checkpoints.sort((x, y) -> Long.compare(y.timestamp, x.timestamp));
-    return checkpoints;
-  }
-
-
-  /**
-   * Query whether the actor exists in Gcs.
-   */
-  boolean actorExistsInGcs(UniqueId actorId) {
-    byte[] key = ArrayUtils.addAll("ACTOR".getBytes(), actorId.getBytes());
-
-    // TODO(qwang): refactor this with `GlobalState` after this issue
-    // getting finished. https://github.com/ray-project/ray/issues/3933
-    for (RedisClient client : redisClients) {
-      if (client.exists(key)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Query whether the raylet task exists in Gcs.
-   */
-  public boolean rayletTaskExistsInGcs(UniqueId taskId) {
-    byte[] key = ArrayUtils.addAll("RAYLET_TASK".getBytes(), taskId.getBytes());
-
-    // TODO(qwang): refactor this with `GlobalState` after this issue
-    // getting finished. https://github.com/ray-project/ray/issues/3933
-    for (RedisClient client : redisClients) {
-      if (client.exists(key)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
 }
