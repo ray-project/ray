@@ -10,6 +10,7 @@ import org.ray.api.exception.RayTaskException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.functionmanager.RayFunction;
+import org.ray.runtime.gcs.GcsClientImpl;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
 import org.slf4j.Logger;
@@ -171,8 +172,8 @@ public class Worker {
     numTasksSinceLastCheckpoint = 0;
     lastCheckpointTimestamp = System.currentTimeMillis();
     checkpointIds = new ArrayList<>();
-    List<Checkpoint> availableCheckpoints = ((RayNativeRuntime) runtime)
-        .getCheckpointsForActor(actorId);
+    List<Checkpoint> availableCheckpoints
+        = ((GcsClientImpl)runtime.getGcsClient()).getCheckpointsForActor(actorId);
     if (availableCheckpoints.isEmpty()) {
       return;
     }
