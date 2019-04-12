@@ -14,11 +14,11 @@ public class MicroBenchmarks {
 
   private static void time(Runnable runnable, int numRepeats, String name) {
     LOGGER.info("Benchmark \"{}\" started.", name);
-    long start = System.nanoTime();
+    final long start = System.nanoTime();
     for (int i = 0; i < numRepeats; i++) {
       runnable.run();
     }
-    long duration = System.nanoTime() - start;
+    final long duration = System.nanoTime() - start;
     LOGGER.info(
         "Benchmark \"{}\" finished, repeated {} times, total duration {} ms, average duration {} ns.",
         name, numRepeats, duration / 1_000_000, duration / numRepeats);
@@ -31,7 +31,7 @@ public class MicroBenchmarks {
    * submitting tasks to raylet in `raylet_client.cc` before running this benchmark.
    */
   public static void benchmarkTaskSubmission() {
-    int numRepeats = 1_000_000;
+    final int numRepeats = 1_000_000;
     Ray.init();
     try {
       time(() -> {
