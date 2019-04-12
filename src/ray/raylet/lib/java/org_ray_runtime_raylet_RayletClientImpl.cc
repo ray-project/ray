@@ -9,21 +9,14 @@
 template <typename ID>
 class UniqueIdFromJByteArray {
  public:
-  const ID &GetId() const { return *id_pointer_; }
+  inline const ID &GetId() const { return id; }
 
-  UniqueIdFromJByteArray(JNIEnv *env, jbyteArray bytes) : env_(env), bytes_(bytes) {
-    jbyte *b = reinterpret_cast<jbyte *>(env_->GetByteArrayElements(bytes_, nullptr));
-    id_pointer_ = reinterpret_cast<ID *>(b);
-  }
-
-  ~UniqueIdFromJByteArray() {
-    env_->ReleaseByteArrayElements(bytes_, reinterpret_cast<jbyte *>(id_pointer_), 0);
+  UniqueIdFromJByteArray(JNIEnv *env, const jbyteArray& bytes) {
+    env->GetByteArrayRegion(bytes, 0, kUniqueIDSize, reinterpret_cast<jbyte *>(id.mutable_data()));
   }
 
  private:
-  JNIEnv *env_;
-  jbyteArray bytes_;
-  ID *id_pointer_;
+  ID id;
 };
 
 #ifdef __cplusplus
@@ -73,8 +66,8 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
     execution_dependencies.push_back(cursor_id.GetId());
   }
 
-  auto data = reinterpret_cast<char *>(env->GetDirectBufferAddress(taskBuff)) + pos;
-  ray::raylet::TaskSpecification task_spec(std::string(data, taskSize));
+  auto data = reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(taskBuff)) + pos;
+  ray::raylet::TaskSpecification task_spec(data, taskSize);
   auto status = raylet_client->SubmitTask(execution_dependencies, task_spec);
   ThrowRayExceptionIfNotOK(env, status);
 }
