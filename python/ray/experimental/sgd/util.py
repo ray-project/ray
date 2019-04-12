@@ -8,11 +8,11 @@ import logging
 import numpy as np
 import os
 import pyarrow
-import pyarrow.plasma as plasma
 import time
 import tensorflow as tf
 
 import ray
+import ray._plasma as plasma
 
 logger = logging.getLogger(__name__)
 

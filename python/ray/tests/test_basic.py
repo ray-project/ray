@@ -2560,7 +2560,7 @@ def test_wait_reconstruction(shutdown_only):
     ray.wait([x_id])
     ray.wait([f.remote()])
     assert not ray.worker.global_worker.plasma_client.contains(
-        ray.pyarrow.plasma.ObjectID(x_id.binary()))
+        ray._plasma.ObjectID(x_id.binary()))
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
 

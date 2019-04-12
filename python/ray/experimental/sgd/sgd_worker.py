@@ -5,7 +5,6 @@ from __future__ import print_function
 import logging
 import time
 
-import pyarrow.plasma as plasma
 import tensorflow as tf
 
 import ray
@@ -13,6 +12,7 @@ from ray.experimental.sgd.util import (ensure_plasma_tensorflow_op, fetch,
                                        run_timeline, warmup)
 from ray.experimental.sgd.modified_allreduce import (sum_gradients_all_reduce,
                                                      unpack_small_tensors)
+import ray._plasma as plasma
 
 logger = logging.getLogger(__name__)
 

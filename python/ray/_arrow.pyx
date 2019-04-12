@@ -21,6 +21,7 @@ import sys
 from _arrow cimport CStatus
 # from pyarrow.includes.common cimport c_string
 from pyarrow.compat import frombytes
+cimport cpython as cp
 
 
 class ArrowException(Exception):
@@ -153,6 +154,47 @@ cdef class Buffer:
     cdef getitem(self, int64_t i):
         return self.buffer.get().data()[i]
 
+    def __getbuffer__(self, cp.Py_buffer* buffer, int flags):
+        if self.buffer.get().is_mutable():
+            buffer.readonly = 0
+        else:
+            if flags & cp.PyBUF_WRITABLE:
+                raise BufferError("Writable buffer requested but Arrow "
+                                  "buffer was not mutable")
+            buffer.readonly = 1
+        buffer.buf = <char *>self.buffer.get().data()
+        buffer.format = 'b'
+        buffer.internal = NULL
+        buffer.itemsize = 1
+        buffer.len = self.size
+        buffer.ndim = 1
+        buffer.obj = self
+        buffer.shape = self.shape
+        buffer.strides = self.strides
+        buffer.suboffsets = NULL
+
+    def __getsegcount__(self, Py_ssize_t *len_out):
+        if len_out != NULL:
+            len_out[0] = <Py_ssize_t>self.size
+        return 1
+
+    def __getreadbuffer__(self, Py_ssize_t idx, void **p):
+        if idx != 0:
+            raise SystemError("accessing non-existent buffer segment")
+        if p != NULL:
+            p[0] = <void*> self.buffer.get().data()
+        return self.size
+
+    def __getwritebuffer__(self, Py_ssize_t idx, void **p):
+        if not self.buffer.get().is_mutable():
+            raise SystemError("trying to write an immutable buffer")
+        if idx != 0:
+            raise SystemError("accessing non-existent buffer segment")
+        if p != NULL:
+            p[0] = <void*> self.buffer.get().data()
+        return self.size
+
+
 cdef api object pyarrow_wrap_buffer(const shared_ptr[CBuffer]& buf):
     cdef Buffer result = Buffer.__new__(Buffer)
     result.init(buf)
@@ -182,6 +224,7 @@ cdef class FixedSizeBufferWriter:
 
     cdef:
         shared_ptr[OutputStream] output_stream
+        object is_writable
 
     def __cinit__(self, Buffer buffer):
         self.output_stream.reset(new CFixedSizeBufferWriter(buffer.buffer))
@@ -204,6 +247,15 @@ cdef class FixedSizeBufferWriter:
 
     cdef shared_ptr[OutputStream] get_output_stream(self) except *:
         return self.output_stream
+
+    @property
+    def closed(self):
+        return self.output_stream.get().closed()
+
+    def close(self):
+        if not self.closed:
+            with nogil:
+                check_status(self.output_stream.get().Close())
 
     def write(self, data):
         """

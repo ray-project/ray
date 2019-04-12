@@ -35,8 +35,8 @@ import socket
 import warnings
 
 import pyarrow
-from _arrow cimport check_status, CBuffer, CMutableBuffer, CStatus, Buffer, pyarrow_wrap_buffer
-from _arrow import py_buffer, get_socket_from_fd, FixedSizeBufferWriter
+from ray._arrow cimport check_status, CBuffer, CMutableBuffer, CStatus, Buffer, pyarrow_wrap_buffer
+from ray._arrow import py_buffer, get_socket_from_fd, FixedSizeBufferWriter
 # from pyarrow.lib cimport Buffer, NativeFile, check_status, pyarrow_wrap_buffer
 # from pyarrow.includes.libarrow cimport (CBuffer, CMutableBuffer,
 #                                         CFixedSizeBufferWriter, CStatus)
@@ -497,7 +497,7 @@ cdef class PlasmaClient:
                                    else ObjectID.from_random())
         serialized = pyarrow.serialize(value, serialization_context)
         buffer = self.create(target_id, serialized.total_bytes)
-        stream = pyarrow.FixedSizeBufferWriter(buffer)
+        stream = FixedSizeBufferWriter(buffer)
         stream.set_memcopy_threads(memcopy_threads)
         serialized.write_to(stream)
         self.seal(target_id)

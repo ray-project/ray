@@ -27,7 +27,7 @@ def plasma_get(object_id):
     Precondition: plasma_prefetch(object_id) has been called before.
     """
     client = ray.worker.global_worker.plasma_client
-    plasma_id = ray.pyarrow.plasma.ObjectID(object_id)
+    plasma_id = ray._plasma.ObjectID(object_id)
     while not client.contains(plasma_id):
         pass
     return client.get(plasma_id)

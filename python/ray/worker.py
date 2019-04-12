@@ -22,7 +22,6 @@ import traceback
 
 # Ray modules
 import pyarrow
-import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.experimental.signal as ray_signal
 import ray.experimental.no_return
@@ -31,6 +30,7 @@ import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
 import ray.parameter
+import ray._plasma as plasma
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
@@ -284,13 +284,13 @@ class Worker(object):
                     # that this object can also be read by Java.
                     self.plasma_client.put_raw_buffer(
                         value,
-                        object_id=pyarrow.plasma.ObjectID(object_id.binary()),
+                        object_id=plasma.ObjectID(object_id.binary()),
                         metadata=ray_constants.RAW_BUFFER_METADATA,
                         memcopy_threads=self.memcopy_threads)
                 else:
                     self.plasma_client.put(
                         value,
-                        object_id=pyarrow.plasma.ObjectID(object_id.binary()),
+                        object_id=plasma.ObjectID(object_id.binary()),
                         memcopy_threads=self.memcopy_threads,
                         serialization_context=self.get_serialization_context(
                             self.task_driver_id))
@@ -360,7 +360,7 @@ class Worker(object):
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
-        except pyarrow.PlasmaObjectExists:
+        except ray._arrow.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare the hashes
             # and make sure that the objects are in fact the same. We also
@@ -798,7 +798,7 @@ class Worker(object):
                                 "function is not allowed).")
             if outputs[i] is ray.experimental.no_return.NoReturn:
                 if not self.plasma_client.contains(
-                        pyarrow.plasma.ObjectID(object_ids[i].binary())):
+                        plasma.ObjectID(object_ids[i].binary())):
                     raise RuntimeError(
                         "Attempting to return 'ray.experimental.NoReturn' "
                         "from a remote function, but the corresponding "

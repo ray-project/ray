@@ -37,7 +37,7 @@ class ParameterServer(object):
     def add_spinwait(self, grad_shard_ids):
         """Optimized version of add() that operates on multiple grads."""
         self.timeline.start("add_spinwait")
-        plasma_ids = [ray.pyarrow.plasma.ObjectID(x) for x in grad_shard_ids]
+        plasma_ids = [ray._plasma.ObjectID(x) for x in grad_shard_ids]
         while plasma_ids:
             for p in plasma_ids:
                 if ray.worker.global_worker.plasma_client.contains(p):
@@ -54,7 +54,7 @@ class ParameterServer(object):
         """Add the given gradient value to the accumulated gradients."""
         self.timeline.start("add")
         self.timeline.start("get_buffers")
-        oid = ray.pyarrow.plasma.ObjectID(grad_shard_id)
+        oid = ray._plasma.ObjectID(grad_shard_id)
         grads = ray.worker.global_worker.plasma_client.get(oid)
         self.timeline.end("get_buffers")
         self.accumulated += grads
@@ -66,7 +66,7 @@ class ParameterServer(object):
         self.timeline.start("get")
         client = ray.worker.global_worker.plasma_client
         assert self.acc_counter == self.num_sgd_workers, self.acc_counter
-        oid = ray.pyarrow.plasma.ObjectID(object_id)
+        oid = ray._plasma.ObjectID(object_id)
         self.accumulated /= self.acc_counter
         client.put(self.accumulated.flatten(), object_id=oid)
         self.accumulated = np.zeros_like(self.accumulated)

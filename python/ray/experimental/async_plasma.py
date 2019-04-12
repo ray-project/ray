@@ -2,9 +2,8 @@ import asyncio
 import ctypes
 import sys
 
-import pyarrow.plasma as plasma
-
 import ray
+import ray._plasma as plasma
 from ray.services import logger
 
 INT64_SIZE = ctypes.sizeof(ctypes.c_int64)
