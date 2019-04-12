@@ -2678,7 +2678,7 @@ def test_raylet_is_robust_to_random_messages(ray_start_regular):
     # Try to bring down the node manager:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((node_manager_address, node_manager_port))
-    s.send(1000 * b'asdf')
+    s.send(1000 * b"asdf")
 
     @ray.remote
     def f():

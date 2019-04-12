@@ -36,12 +36,12 @@ class _MockTrainer(Trainer):
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "mock_agent.pkl")
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             pickle.dump(self.info, f)
         return path
 
     def _restore(self, checkpoint_path):
-        with open(checkpoint_path, 'rb') as f:
+        with open(checkpoint_path, "rb") as f:
             info = pickle.load(f)
         self.info = info
         self.restored = True

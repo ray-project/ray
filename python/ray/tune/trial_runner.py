@@ -127,7 +127,7 @@ class TrialRunner(object):
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
         self._global_time_limit = float(
-            os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
+            os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float("inf")))
         self._total_time = 0
         self._iteration = 0
         self._verbose = verbose
