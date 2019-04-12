@@ -87,9 +87,6 @@ class ExperimentAnalysis():
     def _get_sorted_trials(self, metric):
         """Retrive trials in sorted order based on the experiment metric."""
         return sorted(
-            trial_list,
-            key=lambda trial: trial.last_result.get(metric, 0),
+            self._checkpoints,
+            key=lambda d: d['last_result'].get(metric, 0),
             reverse=True)
-
-    
-
