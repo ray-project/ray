@@ -229,7 +229,8 @@ class DQNTrainer(Trainer):
             self.remote_evaluators = None
 
         self.optimizer = getattr(optimizers, config["optimizer_class"])(
-            self.local_evaluator, self.remote_evaluators, config["optimizer"])
+            self.local_evaluator, self.remote_evaluators,
+            **config["optimizer"])
         # Create the remote evaluators *after* the replay actors
         if self.remote_evaluators is None:
             self.remote_evaluators = create_remote_evaluators()

@@ -77,4 +77,4 @@ class A3CTrainer(Trainer):
     def _make_optimizer(self):
         return AsyncGradientsOptimizer(self.local_evaluator,
                                        self.remote_evaluators,
-                                       self.config["optimizer"])
+                                       **self.config["optimizer"])

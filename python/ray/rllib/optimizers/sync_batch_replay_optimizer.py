@@ -18,11 +18,14 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
 
     This enables RNN support. Does not currently support prioritization."""
 
-    @override(PolicyOptimizer)
-    def _init(self,
-              learning_starts=1000,
-              buffer_size=10000,
-              train_batch_size=32):
+    def __init__(self,
+                 local_evaluator,
+                 remote_evaluators,
+                 learning_starts=1000,
+                 buffer_size=10000,
+                 train_batch_size=32):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+
         self.replay_starts = learning_starts
         self.max_buffer_size = buffer_size
         self.train_batch_size = train_batch_size
