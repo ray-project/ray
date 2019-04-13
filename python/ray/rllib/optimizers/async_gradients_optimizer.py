@@ -18,8 +18,9 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
     gradient computations on the remote workers.
     """
 
-    @override(PolicyOptimizer)
-    def _init(self, grads_per_step=100):
+    def __init__(self, local_evaluator, remote_evaluators, grads_per_step=100):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+
         self.apply_timer = TimerStat()
         self.wait_timer = TimerStat()
         self.dispatch_timer = TimerStat()

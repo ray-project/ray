@@ -15,6 +15,8 @@ from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
                                           Deterministic, DiagGaussian,
                                           MultiActionDistribution, Dirichlet)
+from ray.rllib.models.torch_action_dist import (TorchCategorical,
+                                                TorchDiagGaussian)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -89,13 +91,14 @@ class ModelCatalog(object):
 
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(action_space, config, dist_type=None):
+    def get_action_dist(action_space, config, dist_type=None, torch=False):
         """Returns action distribution class and size for the given action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
             config (dict): Optional model config.
             dist_type (str): Optional identifier of the action distribution.
+            torch (bool):  Optional whether to return PyTorch distribution.
 
         Returns:
             dist_class (ActionDistribution): Python class of the distribution.
@@ -111,7 +114,7 @@ class ModelCatalog(object):
                     "Consider reshaping this into a single dimension, "
                     "using a Tuple action space, or the multi-agent API.")
             if dist_type is None:
-                dist = DiagGaussian
+                dist = TorchDiagGaussian if torch else DiagGaussian
                 if config.get("squash_to_range"):
                     raise ValueError(
                         "The squash_to_range option is deprecated. See the "
@@ -120,7 +123,8 @@ class ModelCatalog(object):
             elif dist_type == "deterministic":
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
-            return Categorical, action_space.n
+            dist = TorchCategorical if torch else Categorical
+            return dist, action_space.n
         elif isinstance(action_space, gym.spaces.Tuple):
             child_dist = []
             input_lens = []
@@ -129,14 +133,20 @@ class ModelCatalog(object):
                     action, config)
                 child_dist.append(dist)
                 input_lens.append(action_size)
+            if torch:
+                raise NotImplementedError
             return partial(
                 MultiActionDistribution,
                 child_distributions=child_dist,
                 action_space=action_space,
                 input_lens=input_lens), sum(input_lens)
         elif isinstance(action_space, Simplex):
+            if torch:
+                raise NotImplementedError
             return Dirichlet, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
+            if torch:
+                raise NotImplementedError
             return MultiCategorical, sum(action_space.nvec)
 
         raise NotImplementedError("Unsupported args: {} {}".format(

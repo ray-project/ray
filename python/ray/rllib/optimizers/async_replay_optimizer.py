@@ -47,20 +47,22 @@ class AsyncReplayOptimizer(PolicyOptimizer):
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
-    @override(PolicyOptimizer)
-    def _init(self,
-              learning_starts=1000,
-              buffer_size=10000,
-              prioritized_replay=True,
-              prioritized_replay_alpha=0.6,
-              prioritized_replay_beta=0.4,
-              prioritized_replay_eps=1e-6,
-              train_batch_size=512,
-              sample_batch_size=50,
-              num_replay_buffer_shards=1,
-              max_weight_sync_delay=400,
-              debug=False,
-              batch_replay=False):
+    def __init__(self,
+                 local_evaluator,
+                 remote_evaluators,
+                 learning_starts=1000,
+                 buffer_size=10000,
+                 prioritized_replay=True,
+                 prioritized_replay_alpha=0.6,
+                 prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6,
+                 train_batch_size=512,
+                 sample_batch_size=50,
+                 num_replay_buffer_shards=1,
+                 max_weight_sync_delay=400,
+                 debug=False,
+                 batch_replay=False):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
 
         self.debug = debug
         self.batch_replay = batch_replay

@@ -193,7 +193,7 @@ class TFPolicyGraph(PolicyGraph):
     def apply_gradients(self, gradients):
         builder = TFRunBuilder(self._sess, "apply_gradients")
         fetches = self._build_apply_gradients(builder, gradients)
-        return builder.get(fetches)
+        builder.get(fetches)
 
     @override(PolicyGraph)
     def learn_on_batch(self, postprocessed_batch):
@@ -266,16 +266,6 @@ class TFPolicyGraph(PolicyGraph):
     def extra_compute_grad_fetches(self):
         """Extra values to fetch and return from compute_gradients()."""
         return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
-
-    @DeveloperAPI
-    def extra_apply_grad_feed_dict(self):
-        """Extra dict to pass to the apply gradients session run."""
-        return {}
-
-    @DeveloperAPI
-    def extra_apply_grad_fetches(self):
-        """Extra values to fetch and return from apply_gradients()."""
-        return {}  # e.g., batch norm updates
 
     @DeveloperAPI
     def optimizer(self):
@@ -405,24 +395,20 @@ class TFPolicyGraph(PolicyGraph):
             raise ValueError(
                 "Unexpected number of gradients to apply, got {} for {}".
                 format(gradients, self._grads))
-        builder.add_feed_dict(self.extra_apply_grad_feed_dict())
         builder.add_feed_dict({self._is_training: True})
         builder.add_feed_dict(dict(zip(self._grads, gradients)))
-        fetches = builder.add_fetches(
-            [self._apply_op, self.extra_apply_grad_fetches()])
-        return fetches[1]
+        fetches = builder.add_fetches([self._apply_op])
+        return fetches[0]
 
     def _build_learn_on_batch(self, builder, postprocessed_batch):
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
-        builder.add_feed_dict(self.extra_apply_grad_feed_dict())
         builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))
         builder.add_feed_dict({self._is_training: True})
         fetches = builder.add_fetches([
             self._apply_op,
             self._get_grad_and_stats_fetches(),
-            self.extra_apply_grad_fetches()
         ])
-        return fetches[1], fetches[2]
+        return fetches[1]
 
     def _get_grad_and_stats_fetches(self):
         fetches = self.extra_compute_grad_fetches()

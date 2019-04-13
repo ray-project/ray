@@ -115,8 +115,8 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)
     else:
-        min_reward = float('nan')
-        max_reward = float('nan')
+        min_reward = float("nan")
+        max_reward = float("nan")
     avg_reward = np.mean(episode_rewards)
     avg_length = np.mean(episode_lengths)
 

@@ -84,11 +84,11 @@ class AutoMLSearcher(SearchAlgorithm):
 
         for exp in self.experiment_list:
             for param_config, extra_arg in zip(raw_param_list, extra_arg_list):
-                tag = ''
+                tag = ""
                 new_spec = copy.deepcopy(exp.spec)
                 for path, value in param_config.items():
-                    tag += '%s=%s-' % (path.split('.')[-1], value)
-                    deep_insert(path.split('.'), value, new_spec['config'])
+                    tag += "%s=%s-" % (path.split(".")[-1], value)
+                    deep_insert(path.split("."), value, new_spec["config"])
 
                 trial = create_trial_from_spec(
                     new_spec, exp.name, self._parser, experiment_tag=tag)

@@ -79,7 +79,7 @@ def _test_cleanup_on_driver_exit(num_redis_shards):
 
         ray.shutdown()
 
-    success = multiprocessing.Value('b', False)
+    success = multiprocessing.Value("b", False)
     driver = multiprocessing.Process(target=Driver, args=(success, ))
     driver.start()
     # Wait for client to exit.

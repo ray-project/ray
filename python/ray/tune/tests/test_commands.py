@@ -90,7 +90,7 @@ def test_ls(start_ray, tmpdir):
     assert sum("TERMINATED" in line for line in lines) == num_samples
     columns = ["status", "episode_reward_mean", "training_iteration"]
     assert all(col in lines[1] for col in columns)
-    assert lines[1].count('|') == 4
+    assert lines[1].count("|") == 4
 
     with Capturing() as output:
         commands.list_trials(
@@ -123,7 +123,7 @@ def test_lsx(start_ray, tmpdir):
     lines = output.captured
     assert sum("1" in line for line in lines) >= num_experiments
     assert "total_trials" in lines[1]
-    assert lines[1].count('|') == 2
+    assert lines[1].count("|") == 2
 
     with Capturing() as output:
         commands.list_experiments(

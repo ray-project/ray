@@ -226,7 +226,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         if restart_only:
             init_commands = config["head_start_ray_commands"]
         elif no_restart:
-            init_commands = (config["head_setup_commands"])
+            init_commands = config["head_setup_commands"]
         else:
             init_commands = (config["head_setup_commands"] +
                              config["head_start_ray_commands"])

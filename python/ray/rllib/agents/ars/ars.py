@@ -109,7 +109,7 @@ class Worker(object):
             self.env,
             timestep_limit=timestep_limit,
             add_noise=add_noise,
-            offset=self.config['offset'])
+            offset=self.config["offset"])
         return rollout_rewards, rollout_length
 
     def do_rollouts(self, params, timestep_limit=None):
