@@ -404,6 +404,13 @@ cdef class RayletClient:
                     raise ValueError(
                         "Resource quantities must all be whole numbers.")
 
+            # Remove any resources with zero quantity requirements
+            resources = {
+                resource_label: resource_quantity
+                for resource_label, resource_quantity in resources.items()
+                if resource_quantity > 0
+            }
+
             if placement_resources is None:
                 placement_resources = {}
 
