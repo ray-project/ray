@@ -1688,8 +1688,7 @@ def connect(node,
             mode=WORKER_MODE,
             log_to_driver=False,
             worker=global_worker,
-            driver_id=None,
-            load_code_from_local=False):
+            driver_id=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:

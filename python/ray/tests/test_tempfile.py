@@ -89,7 +89,7 @@ def test_temp_plasma_store_socket():
 def test_raylet_tempfiles():
     ray.init(num_cpus=0)
     node = ray.worker._global_node
-    top_levels = set(os.listdir(node.get_temp_dir_path()))
+    top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
     log_files = set(os.listdir(node.get_logs_dir_path()))
     assert log_files.issuperset({
@@ -104,7 +104,7 @@ def test_raylet_tempfiles():
 
     ray.init(num_cpus=2)
     node = ray.worker._global_node
-    top_levels = set(os.listdir(node.get_temp_dir_path()))
+    top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
     time.sleep(3)  # wait workers to start
     log_files = set(os.listdir(node.get_logs_dir_path()))

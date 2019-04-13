@@ -91,13 +91,14 @@ class Node(object):
 
         if head:
             redis_client = None
-            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
             self.session_name = "session_{date_str}_{pid}".format(
                 pid=os.getpid(),
                 date_str=date_str)
         else:
             redis_client = self.create_redis_client()
-            self.session_name = redis_client.get("session_name")
+            self.session_name = ray.utils.decode(
+                redis_client.get("session_name"))
 
         self._init_temp(redis_client)
 
@@ -158,14 +159,15 @@ class Node(object):
         if self.head:
             self._temp_dir = self._ray_params.temp_dir
         else:
-            self._temp_dir = redis_client.get("temp_dir")
+            self._temp_dir = ray.utils.decode(redis_client.get("temp_dir"))
 
         try_to_create_directory(self._temp_dir, warn_if_exist=False)
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
-            self._session_dir = redis_client.get("session_dir")
+            self._session_dir = ray.utils.decode(
+                redis_client.get("session_dir"))
 
         # Send a warning message if the session exists.
         try_to_create_directory(self._session_dir)
