@@ -25,17 +25,17 @@ class TFBenchModel(Model):
             dtype=tf.float32,
             mean=127,
             stddev=60,
-            name='synthetic_images')
+            name="synthetic_images")
 
         # Minor hack to avoid H2D copy when using synthetic data
         inputs = tf.contrib.framework.local_variable(
-            images, name='gpu_cached_images')
+            images, name="gpu_cached_images")
         labels = tf.random_uniform(
             labels_shape,
             minval=0,
             maxval=999,
             dtype=tf.int32,
-            name='synthetic_labels')
+            name="synthetic_labels")
 
         model = model_config.get_model_config("resnet101", MockDataset())
         logits, aux = model.build_network(
@@ -44,7 +44,7 @@ class TFBenchModel(Model):
             logits=logits, labels=labels)
 
         # Implement model interface
-        self.loss = tf.reduce_mean(loss, name='xentropy-loss')
+        self.loss = tf.reduce_mean(loss, name="xentropy-loss")
         self.optimizer = tf.train.GradientDescentOptimizer(1e-6)
 
         self.variables = ray_tf_utils.TensorFlowVariables(

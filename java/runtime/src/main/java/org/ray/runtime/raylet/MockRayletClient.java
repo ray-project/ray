@@ -191,7 +191,8 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly) {
+  public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly,
+                                boolean deleteCreatingTasks) {
     for (UniqueId id : objectIds) {
       store.free(id);
     }

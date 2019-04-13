@@ -27,8 +27,8 @@ class AsyncOptimizerTest(unittest.TestCase):
         local = _MockEvaluator()
         remotes = ray.remote(_MockEvaluator)
         remote_evaluators = [remotes.remote() for i in range(5)]
-        test_optimizer = AsyncGradientsOptimizer(local, remote_evaluators,
-                                                 {"grads_per_step": 10})
+        test_optimizer = AsyncGradientsOptimizer(
+            local, remote_evaluators, grads_per_step=10)
         test_optimizer.step()
         self.assertTrue(all(local.get_weights() == 0))
 
@@ -115,35 +115,34 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
     def testSimple(self):
         local, remotes = self._make_evs()
-        optimizer = AsyncSamplesOptimizer(local, remotes, {})
+        optimizer = AsyncSamplesOptimizer(local, remotes)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiGPU(self):
         local, remotes = self._make_evs()
-        optimizer = AsyncSamplesOptimizer(local, remotes, {
-            "num_gpus": 2,
-            "_fake_gpus": True
-        })
+        optimizer = AsyncSamplesOptimizer(
+            local, remotes, num_gpus=2, _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiGPUParallelLoad(self):
         local, remotes = self._make_evs()
-        optimizer = AsyncSamplesOptimizer(local, remotes, {
-            "num_gpus": 2,
-            "num_data_loader_buffers": 2,
-            "_fake_gpus": True
-        })
+        optimizer = AsyncSamplesOptimizer(
+            local,
+            remotes,
+            num_gpus=2,
+            num_data_loader_buffers=2,
+            _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiplePasses(self):
         local, remotes = self._make_evs()
         optimizer = AsyncSamplesOptimizer(
-            local, remotes, {
-                "minibatch_buffer_size": 10,
-                "num_sgd_iter": 10,
-                "sample_batch_size": 10,
-                "train_batch_size": 50,
-            })
+            local,
+            remotes,
+            minibatch_buffer_size=10,
+            num_sgd_iter=10,
+            sample_batch_size=10,
+            train_batch_size=50)
         self._wait_for(optimizer, 1000, 10000)
         self.assertLess(optimizer.stats()["num_steps_sampled"], 5000)
         self.assertGreater(optimizer.stats()["num_steps_trained"], 8000)
@@ -151,12 +150,13 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
     def testReplay(self):
         local, remotes = self._make_evs()
         optimizer = AsyncSamplesOptimizer(
-            local, remotes, {
-                "replay_buffer_num_slots": 100,
-                "replay_proportion": 10,
-                "sample_batch_size": 10,
-                "train_batch_size": 10,
-            })
+            local,
+            remotes,
+            replay_buffer_num_slots=100,
+            replay_proportion=10,
+            sample_batch_size=10,
+            train_batch_size=10,
+        )
         self._wait_for(optimizer, 1000, 1000)
         stats = optimizer.stats()
         self.assertLess(stats["num_steps_sampled"], 5000)
@@ -167,14 +167,14 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
     def testReplayAndMultiplePasses(self):
         local, remotes = self._make_evs()
         optimizer = AsyncSamplesOptimizer(
-            local, remotes, {
-                "minibatch_buffer_size": 10,
-                "num_sgd_iter": 10,
-                "replay_buffer_num_slots": 100,
-                "replay_proportion": 10,
-                "sample_batch_size": 10,
-                "train_batch_size": 10,
-            })
+            local,
+            remotes,
+            minibatch_buffer_size=10,
+            num_sgd_iter=10,
+            replay_buffer_num_slots=100,
+            replay_proportion=10,
+            sample_batch_size=10,
+            train_batch_size=10)
         self._wait_for(optimizer, 1000, 1000)
 
         stats = optimizer.stats()
@@ -188,17 +188,16 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
     def testMultiTierAggregationBadConf(self):
         local, remotes = self._make_evs()
         aggregators = TreeAggregator.precreate_aggregators(4)
-        optimizer = AsyncSamplesOptimizer(local, remotes,
-                                          {"num_aggregation_workers": 4})
+        optimizer = AsyncSamplesOptimizer(
+            local, remotes, num_aggregation_workers=4)
         self.assertRaises(ValueError,
                           lambda: optimizer.aggregator.init(aggregators))
 
     def testMultiTierAggregation(self):
         local, remotes = self._make_evs()
         aggregators = TreeAggregator.precreate_aggregators(1)
-        optimizer = AsyncSamplesOptimizer(local, remotes, {
-            "num_aggregation_workers": 1,
-        })
+        optimizer = AsyncSamplesOptimizer(
+            local, remotes, num_aggregation_workers=1)
         optimizer.aggregator.init(aggregators)
         self._wait_for(optimizer, 1000, 1000)
 
@@ -207,30 +206,30 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         self.assertRaises(
             ValueError, lambda: AsyncSamplesOptimizer(
                 local, remotes,
-                {"num_data_loader_buffers": 2, "minibatch_buffer_size": 4}))
+                num_data_loader_buffers=2, minibatch_buffer_size=4))
         optimizer = AsyncSamplesOptimizer(
-            local, remotes, {
-                "num_gpus": 2,
-                "train_batch_size": 100,
-                "sample_batch_size": 50,
-                "_fake_gpus": True
-            })
+            local,
+            remotes,
+            num_gpus=2,
+            train_batch_size=100,
+            sample_batch_size=50,
+            _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
         optimizer = AsyncSamplesOptimizer(
-            local, remotes, {
-                "num_gpus": 2,
-                "train_batch_size": 100,
-                "sample_batch_size": 25,
-                "_fake_gpus": True
-            })
+            local,
+            remotes,
+            num_gpus=2,
+            train_batch_size=100,
+            sample_batch_size=25,
+            _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
         optimizer = AsyncSamplesOptimizer(
-            local, remotes, {
-                "num_gpus": 2,
-                "train_batch_size": 100,
-                "sample_batch_size": 74,
-                "_fake_gpus": True
-            })
+            local,
+            remotes,
+            num_gpus=2,
+            train_batch_size=100,
+            sample_batch_size=74,
+            _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
     def _make_evs(self):

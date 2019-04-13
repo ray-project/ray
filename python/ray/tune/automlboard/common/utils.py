@@ -19,9 +19,9 @@ def dump_json(json_info, json_file, overwrite=True):
         overwrite(boolean)
     """
     if overwrite:
-        mode = 'w'
+        mode = "w"
     else:
-        mode = 'w+'
+        mode = "w+"
 
     try:
         with open(json_file, mode) as f:
@@ -45,7 +45,7 @@ def parse_json(json_file):
         return None
 
     try:
-        with open(json_file, 'r') as f:
+        with open(json_file, "r") as f:
             info_str = f.readlines()
             info_str = "".join(info_str)
             json_info = json.loads(info_str)
@@ -76,11 +76,11 @@ def parse_multiple_json(json_file, offset=None):
         return json_info_list
 
     try:
-        with open(json_file, 'r') as f:
+        with open(json_file, "r") as f:
             if offset:
                 f.seek(offset)
             for line in f:
-                if line[-1] != '\n':
+                if line[-1] != "\n":
                     # Incomplete line
                     break
                 json_info = json.loads(line)
@@ -94,7 +94,7 @@ def parse_multiple_json(json_file, offset=None):
 
 def timestamp2date(timestamp):
     """Convert a timestamp to date."""
-    return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timestamp))
 
 
 def unicode2str(content):
@@ -109,4 +109,4 @@ def unicode2str(content):
     elif isinstance(content, int) or isinstance(content, float):
         return content
     else:
-        return content.encode('utf-8')
+        return content.encode("utf-8")
