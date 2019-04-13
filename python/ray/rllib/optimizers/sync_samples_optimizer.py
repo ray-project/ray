@@ -22,8 +22,13 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
-    @override(PolicyOptimizer)
-    def _init(self, num_sgd_iter=1, train_batch_size=1):
+    def __init__(self,
+                 local_evaluator,
+                 remote_evaluators,
+                 num_sgd_iter=1,
+                 train_batch_size=1):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+
         self.update_weights_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()

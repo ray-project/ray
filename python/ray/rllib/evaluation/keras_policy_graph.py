@@ -56,7 +56,7 @@ class KerasPolicyGraph(PolicyGraph):
             epochs=1,
             verbose=0,
             steps_per_epoch=20)
-        return {}, {}
+        return {}
 
     def get_weights(self):
         return [model.get_weights() for model in self.models]

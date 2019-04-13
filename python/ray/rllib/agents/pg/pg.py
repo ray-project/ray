@@ -49,7 +49,7 @@ class PGTrainer(Trainer):
             config["optimizer"],
             **{"train_batch_size": config["train_batch_size"]})
         self.optimizer = SyncSamplesOptimizer(
-            self.local_evaluator, self.remote_evaluators, optimizer_config)
+            self.local_evaluator, self.remote_evaluators, **optimizer_config)
 
     @override(Trainer)
     def _train(self):

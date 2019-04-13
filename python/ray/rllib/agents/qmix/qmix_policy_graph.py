@@ -299,7 +299,7 @@ class QMixPolicyGraph(PolicyGraph):
             mask_elems,
             "target_mean": (targets * mask).sum().item() / mask_elems,
         }
-        return {LEARNER_STATS_KEY: stats}, {}
+        return {LEARNER_STATS_KEY: stats}
 
     @override(PolicyGraph)
     def get_initial_state(self):
