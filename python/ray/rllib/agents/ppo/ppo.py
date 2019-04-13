@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import logging
 
-from ray.rllib.agents import Agent, with_common_config
+from ray.rllib.agents import Trainer, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.rllib.utils.annotations import override
@@ -63,14 +63,14 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class PPOAgent(Agent):
+class PPOTrainer(Trainer):
     """Multi-GPU optimized implementation of PPO in TensorFlow."""
 
-    _agent_name = "PPO"
+    _name = "PPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = PPOPolicyGraph
 
-    @override(Agent)
+    @override(Trainer)
     def _init(self, config, env_creator):
         self._validate_config()
         self.local_evaluator = self.make_local_evaluator(
@@ -96,7 +96,7 @@ class PPOAgent(Agent):
                     "straggler_mitigation": config["straggler_mitigation"],
                 })
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         if "observation_filter" not in self.raw_user_config:
             # TODO(ekl) remove this message after a few releases

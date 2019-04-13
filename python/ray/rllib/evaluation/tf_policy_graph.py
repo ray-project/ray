@@ -464,6 +464,7 @@ class TFPolicyGraph(PolicyGraph):
         ]
         feature_sequences, initial_states, seq_lens = chop_into_sequences(
             batch[SampleBatch.EPS_ID],
+            batch[SampleBatch.UNROLL_ID],
             batch[SampleBatch.AGENT_INDEX], [batch[k] for k in feature_keys],
             [batch[k] for k in state_keys],
             max_seq_len,

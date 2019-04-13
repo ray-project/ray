@@ -148,8 +148,8 @@ class _LogSyncer(object):
         if not distutils.spawn.find_executable("rsync"):
             logger.error("Log sync requires rsync to be installed.")
             return
-        source = '{}/'.format(self.local_dir)
-        target = '{}@{}:{}/'.format(ssh_user, self.worker_ip, self.local_dir)
+        source = "{}/".format(self.local_dir)
+        target = "{}@{}:{}/".format(ssh_user, self.worker_ip, self.local_dir)
         final_cmd = (("""rsync -savz -e "ssh -i {} -o ConnectTimeout=120s """
                       """-o StrictHostKeyChecking=no" {} {}""").format(
                           quote(ssh_key), quote(source), quote(target)))
@@ -180,9 +180,9 @@ class _LogSyncer(object):
             if not distutils.spawn.find_executable("rsync"):
                 logger.error("Log sync requires rsync to be installed.")
                 return
-            source = '{}@{}:{}/'.format(ssh_user, self.worker_ip,
+            source = "{}@{}:{}/".format(ssh_user, self.worker_ip,
                                         self.local_dir)
-            target = '{}/'.format(self.local_dir)
+            target = "{}/".format(self.local_dir)
             worker_to_local_sync_cmd = ((
                 """rsync -savz -e "ssh -i {} -o ConnectTimeout=120s """
                 """-o StrictHostKeyChecking=no" {} {}""").format(

@@ -36,7 +36,7 @@ def from_aws_format(tags):
 class AWSNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
+        config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
         self.ec2 = boto3.resource(
             "ec2", region_name=provider_config["region"], config=config)
 

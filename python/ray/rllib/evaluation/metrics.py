@@ -41,7 +41,8 @@ def get_learner_stats(grad_info):
 
 
 @DeveloperAPI
-def collect_metrics(local_evaluator, remote_evaluators=[],
+def collect_metrics(local_evaluator=None,
+                    remote_evaluators=[],
                     timeout_seconds=180):
     """Gathers episode metrics from PolicyEvaluator instances."""
 
@@ -52,7 +53,7 @@ def collect_metrics(local_evaluator, remote_evaluators=[],
 
 
 @DeveloperAPI
-def collect_episodes(local_evaluator,
+def collect_episodes(local_evaluator=None,
                      remote_evaluators=[],
                      timeout_seconds=180):
     """Gathers new episodes metrics tuples from the given evaluators."""
@@ -69,7 +70,8 @@ def collect_episodes(local_evaluator,
             "this timeout with `collect_metrics_timeout`.")
 
     metric_lists = ray.get(collected)
-    metric_lists.append(local_evaluator.get_metrics())
+    if local_evaluator:
+        metric_lists.append(local_evaluator.get_metrics())
     episodes = []
     for metrics in metric_lists:
         episodes.extend(metrics)
@@ -112,8 +114,8 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)
     else:
-        min_reward = float('nan')
-        max_reward = float('nan')
+        min_reward = float("nan")
+        max_reward = float("nan")
     avg_reward = np.mean(episode_rewards)
     avg_length = np.mean(episode_lengths)
 

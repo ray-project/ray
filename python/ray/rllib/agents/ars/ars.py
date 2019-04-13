@@ -12,7 +12,7 @@ import numpy as np
 import time
 
 import ray
-from ray.rllib.agents import Agent, with_common_config
+from ray.rllib.agents import Trainer, with_common_config
 
 from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
@@ -108,7 +108,7 @@ class Worker(object):
             self.env,
             timestep_limit=timestep_limit,
             add_noise=add_noise,
-            offset=self.config['offset'])
+            offset=self.config["offset"])
         return rollout_rewards, rollout_length
 
     def do_rollouts(self, params, timestep_limit=None):
@@ -157,13 +157,13 @@ class Worker(object):
             eval_lengths=eval_lengths)
 
 
-class ARSAgent(Agent):
+class ARSTrainer(Trainer):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
-    _agent_name = "ARS"
+    _name = "ARS"
     _default_config = DEFAULT_CONFIG
 
-    @override(Agent)
+    @override(Trainer)
     def _init(self, config, env_creator):
         env = env_creator(config["env_config"])
         from ray.rllib import models
@@ -195,7 +195,7 @@ class ARSAgent(Agent):
         self.reward_list = []
         self.tstart = time.time()
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         config = self.config
 
@@ -291,13 +291,13 @@ class ARSAgent(Agent):
 
         return result
 
-    @override(Agent)
+    @override(Trainer)
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:
             w.__ray_terminate__.remote()
 
-    @override(Agent)
+    @override(Trainer)
     def compute_action(self, observation):
         return self.policy.compute(observation, update=True)[0]
 

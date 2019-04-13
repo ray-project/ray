@@ -7,7 +7,7 @@ import ray.worker
 __all__ = ["free"]
 
 
-def free(object_ids, local_only=False):
+def free(object_ids, local_only=False, delete_creating_tasks=False):
     """Free a list of IDs from object stores.
 
     This function is a low-level API which should be used in restricted
@@ -24,6 +24,8 @@ def free(object_ids, local_only=False):
         object_ids (List[ObjectID]): List of object IDs to delete.
         local_only (bool): Whether only deleting the list of objects in local
             object store or all object stores.
+        delete_creating_tasks (bool): Whether also delete the object creating
+            tasks.
     """
     worker = ray.worker.get_global_worker()
 
@@ -45,4 +47,5 @@ def free(object_ids, local_only=False):
         if len(object_ids) == 0:
             return
 
-        worker.raylet_client.free_objects(object_ids, local_only)
+        worker.raylet_client.free_objects(object_ids, local_only,
+                                          delete_creating_tasks)
