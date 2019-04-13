@@ -481,7 +481,6 @@ class ActorHandle(object):
                 args,
                 kwargs,
                 worker.current_task_id,
-                ray.worker.put,
                 actor_id=self._ray_actor_id,
                 actor_handle_id=self._ray_actor_handle_id,
                 actor_counter=self._ray_actor_counter,
