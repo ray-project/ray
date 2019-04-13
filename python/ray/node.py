@@ -91,10 +91,11 @@ class Node(object):
 
         if head:
             redis_client = None
-            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
+            # date including microsecond
+            date_str = datetime.datetime.today().strftime(
+                "%Y-%m-%d_%H-%M-%S_%f")
             self.session_name = "session_{date_str}_{pid}".format(
-                pid=os.getpid(),
-                date_str=date_str)
+                pid=os.getpid(), date_str=date_str)
         else:
             redis_client = self.create_redis_client()
             self.session_name = ray.utils.decode(
