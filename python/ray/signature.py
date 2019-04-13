@@ -69,8 +69,8 @@ def get_signature_params(func):
             for attr in attrs:
                 setattr(func, attr, getattr(original_func, attr))
         else:
-            raise TypeError(
-                "{!r} is not a Python function we can process".format(func))
+            raise TypeError("{!r} is not a Python function we can process"
+                            .format(func))
 
     return list(funcsigs.signature(func).parameters.items())
 

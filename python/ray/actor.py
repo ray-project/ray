@@ -326,7 +326,6 @@ class ActorClass(object):
                 args,
                 kwargs,
                 worker.current_task_id,
-                ray.worker.put,
                 actor_creation_id=actor_id,
                 max_actor_reconstructions=self._max_reconstructions,
                 num_return_vals=1,

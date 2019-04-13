@@ -366,17 +366,18 @@ class Worker(object):
             # should return an error code to the caller instead of printing a
             # message.
             logger.info(
-                "The object with ID {} already exists in the object store.",
-                object_id)
+                "The object with ID {} already exists in the object store."
+                .format(object_id))
         except TypeError:
             # This error can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need these extra
             # fallbacks here to start from the beginning. Hopefully the object
             # could have a `__reduce__` method.
             register_custom_serializer(type(value), use_pickle=True)
-            logger.warning(
-                "WARNING: Serializing the class {} failed, so we "
-                "are falling back to cloudpickle.", type(value))
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "so are are falling back to cloudpickle."
+                               .format(type(value)))
+            logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
@@ -1161,7 +1162,6 @@ def init(redis_address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
-         enable_profiling=True,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1238,8 +1238,6 @@ def init(redis_address=None,
             directory for the Ray process.
         load_code_from_local: Whether code should be loaded from a local module
             or from the GCS.
-        enable_profiling: Whether profiling information for the timeline
-            is collected.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -1322,7 +1320,6 @@ def init(redis_address=None,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
-            enable_profiling=enable_profiling,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we

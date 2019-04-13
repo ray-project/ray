@@ -128,6 +128,5 @@ class RemoteFunction(object):
             args,
             kwargs,
             worker.current_task_id,
-            ray.worker.put,
             num_return_vals=num_return_vals,
             resources=resources)

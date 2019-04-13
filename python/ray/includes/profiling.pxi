@@ -192,10 +192,5 @@ cpdef profile(event_type, extra_data=None):
     Returns:
         An object that can profile a span of time via a "with" statement.
     """
-    if (ray.worker._global_node and
-            ray.worker._global_node._ray_params.enable_profiling):
-        worker = ray.worker.global_worker
-        return RayLogSpanRaylet(worker.profiler, event_type,
-                                extra_data=extra_data)
-    else:
-        return NULL_LOG_SPAN
+    return RayLogSpanRaylet(ray.worker.global_worker.profiler, event_type,
+                            extra_data=extra_data)

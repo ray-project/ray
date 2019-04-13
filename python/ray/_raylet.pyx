@@ -310,7 +310,6 @@ cdef class RayletClient:
                     args,
                     kwargs,
                     TaskID current_task_id,
-                    put_function,
                     ActorID actor_id=ActorID.nil(),
                     ActorHandleID actor_handle_id=ActorHandleID.nil(),
                     int actor_counter=0,
@@ -338,7 +337,6 @@ cdef class RayletClient:
                 must be serializable objects.
             kwargs: The keyword arguments to pass into the function.
             current_task_id: The ID of the parent task.
-            put_function: The function that puts large arguments in the store.
             actor_id: The ID of the actor that this task is for.
             actor_counter: The counter of the actor task.
             actor_creation_id: The ID of the actor to create, if this is an
@@ -386,7 +384,7 @@ cdef class RayletClient:
                 elif check_simple_value(arg):
                     args_for_raylet.append(arg)
                 else:
-                    args_for_raylet.append(put_function(arg))
+                    args_for_raylet.append(ray.worker.put(arg))
 
             if execution_dependencies is None:
                 execution_dependencies = []
