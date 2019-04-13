@@ -2,6 +2,7 @@ package org.ray.streaming.api.stream;
 
 import java.util.Collection;
 import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.function.impl.SourceFunction;
 import org.ray.streaming.api.function.internal.CollectionSourceFunction;
 import org.ray.streaming.operator.impl.SourceOperator;
 
@@ -12,8 +13,8 @@ import org.ray.streaming.operator.impl.SourceOperator;
  */
 public class StreamSource<T> extends DataStream<T> {
 
-  public StreamSource(StreamingContext streamingContext, SourceOperator sourceOperator) {
-    super(streamingContext, sourceOperator);
+  public StreamSource(StreamingContext streamingContext, SourceFunction<T> sourceFunction) {
+    super(streamingContext, new SourceOperator<>(sourceFunction));
   }
 
   /**
@@ -25,7 +26,7 @@ public class StreamSource<T> extends DataStream<T> {
    * @return A StreamSource.
    */
   public static <T> StreamSource<T> buildSource(StreamingContext context, Collection<T> values) {
-    return new StreamSource(context, new SourceOperator(new CollectionSourceFunction(values)));
+    return new StreamSource(context, new CollectionSourceFunction(values));
   }
 
   public StreamSource<T> setParallelism(int parallelism) {

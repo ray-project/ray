@@ -45,7 +45,7 @@ class RemoteFunction(object):
         self._function_descriptor_list = (
             self._function_descriptor.get_function_descriptor_list())
         self._function_name = (
-            self._function.__module__ + '.' + self._function.__name__)
+            self._function.__module__ + "." + self._function.__name__)
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
                           if num_cpus is None else num_cpus)
         self._num_gpus = num_gpus

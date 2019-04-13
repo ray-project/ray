@@ -1439,13 +1439,16 @@ def test_free_objects_multi_node(ray_start_cluster):
         assert len(l2) == 0
         return (a, b, c)
 
-    def run_one_test(actors, local_only):
+    def run_one_test(actors, local_only, delete_creating_tasks):
         (a, b, c) = create(actors)
         # The three objects should be generated on different object stores.
         assert ray.get(a) != ray.get(b)
         assert ray.get(a) != ray.get(c)
         assert ray.get(c) != ray.get(b)
-        ray.internal.free([a, b, c], local_only=local_only)
+        ray.internal.free(
+            [a, b, c],
+            local_only=local_only,
+            delete_creating_tasks=delete_creating_tasks)
         # Wait for the objects to be deleted.
         time.sleep(0.1)
         return (a, b, c)
@@ -1456,13 +1459,13 @@ def test_free_objects_multi_node(ray_start_cluster):
         ActorOnNode2.remote()
     ]
     # Case 1: run this local_only=False. All 3 objects will be deleted.
-    (a, b, c) = run_one_test(actors, False)
+    (a, b, c) = run_one_test(actors, False, False)
     (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=1)
     # All the objects are deleted.
     assert len(l1) == 0
     assert len(l2) == 3
     # Case 2: run this local_only=True. Only 1 object will be deleted.
-    (a, b, c) = run_one_test(actors, True)
+    (a, b, c) = run_one_test(actors, True, False)
     (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=3)
     # One object is deleted and 2 objects are not.
     assert len(l1) == 2
@@ -1471,6 +1474,17 @@ def test_free_objects_multi_node(ray_start_cluster):
     local_return = ray.worker.global_worker.plasma_client.store_socket_name
     for object_id in l1:
         assert ray.get(object_id) != local_return
+
+    # Case3: These cases test the deleting creating tasks for the object.
+    (a, b, c) = run_one_test(actors, False, False)
+    task_table = ray.global_state.task_table()
+    for obj in [a, b, c]:
+        assert ray._raylet.compute_task_id(obj).hex() in task_table
+
+    (a, b, c) = run_one_test(actors, False, True)
+    task_table = ray.global_state.task_table()
+    for obj in [a, b, c]:
+        assert ray._raylet.compute_task_id(obj).hex() not in task_table
 
 
 def test_local_mode(shutdown_only):
@@ -1934,15 +1948,15 @@ def test_multiple_raylets(ray_start_cluster):
     store_names = []
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"]["GPU"] == 0
+        if client["Resources"].get("GPU", 0) == 0
     ]
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"]["GPU"] == 5
+        if client["Resources"].get("GPU", 0) == 5
     ]
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"]["GPU"] == 1
+        if client["Resources"].get("GPU", 0) == 1
     ]
     assert len(store_names) == 3
 
@@ -2110,6 +2124,32 @@ def test_many_custom_resources(shutdown_only):
         results.append(remote_function.remote())
 
     ray.get(results)
+
+
+def test_zero_capacity_deletion_semantics(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
+
+    def test():
+        resources = ray.global_state.available_resources()
+        retry_count = 0
+
+        while resources and retry_count < 5:
+            time.sleep(0.1)
+            resources = ray.global_state.available_resources()
+            retry_count += 1
+
+        if retry_count >= 5:
+            raise RuntimeError("Resources were available even after retries.")
+
+        return resources
+
+    function = ray.remote(
+        num_cpus=2, num_gpus=1, resources={"test_resource": 1})(test)
+    cluster_resources = ray.get(function.remote())
+
+    # All cluster resources should be utilized and
+    # cluster_resources must be empty
+    assert cluster_resources == {}
 
 
 @pytest.fixture
@@ -2678,7 +2718,7 @@ def test_raylet_is_robust_to_random_messages(ray_start_regular):
     # Try to bring down the node manager:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((node_manager_address, node_manager_port))
-    s.send(1000 * b'asdf')
+    s.send(1000 * b"asdf")
 
     @ray.remote
     def f():

@@ -38,19 +38,19 @@ if __name__ == "__main__":
 
     space = [
         {
-            'name': 'width',
-            'type': 'int',
-            'bounds': {
-                'min': 0,
-                'max': 20
+            "name": "width",
+            "type": "int",
+            "bounds": {
+                "min": 0,
+                "max": 20
             },
         },
         {
-            'name': 'height',
-            'type': 'int',
-            'bounds': {
-                'min': -100,
-                'max': 100
+            "name": "height",
+            "type": "int",
+            "bounds": {
+                "min": -100,
+                "max": 100
             },
         },
     ]

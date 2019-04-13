@@ -28,9 +28,26 @@ def cli():
     default=None,
     type=str,
     help="Select filter in the format '<column> <operator> <value>'.")
-def list_trials(experiment_path, sort, output, filter_op):
+@click.option(
+    "--columns",
+    default=None,
+    type=str,
+    help="Select columns to be displayed.")
+@click.option(
+    "--result-columns",
+    "result_columns",
+    default=None,
+    type=str,
+    help="Select columns of last result to be displayed.")
+def list_trials(experiment_path, sort, output, filter_op, columns,
+                result_columns):
     """Lists trials in the directory subtree starting at the given path."""
-    commands.list_trials(experiment_path, sort, output, filter_op)
+    if columns:
+        columns = columns.split(",")
+    if result_columns:
+        result_columns = result_columns.split(",")
+    commands.list_trials(experiment_path, sort, output, filter_op, columns,
+                         result_columns)
 
 
 @cli.command()
@@ -50,9 +67,16 @@ def list_trials(experiment_path, sort, output, filter_op):
     default=None,
     type=str,
     help="Select filter in the format '<column> <operator> <value>'.")
-def list_experiments(project_path, sort, output, filter_op):
+@click.option(
+    "--columns",
+    default=None,
+    type=str,
+    help="Select columns to be displayed.")
+def list_experiments(project_path, sort, output, filter_op, columns):
     """Lists experiments in the directory subtree."""
-    commands.list_experiments(project_path, sort, output, filter_op)
+    if columns:
+        columns = columns.split(",")
+    commands.list_experiments(project_path, sort, output, filter_op, columns)
 
 
 @cli.command()
