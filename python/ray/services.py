@@ -204,22 +204,24 @@ def get_node_ip_address(address="8.8.8.8:53"):
         The IP address of the current node.
     """
     ip_address, port = address.split(":")
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        try:
-            # This command will raise an exception if there is no internet
-            # connection.
-            s.connect((ip_address, int(port)))
-            node_ip_address = s.getsockname()[0]
-        except Exception as e:
-            node_ip_address = "127.0.0.1"
-            # [Errno 101] Network is unreachable
-            if e.errno == 101:
-                try:
-                    # try get node ip address from host name
-                    host_name = socket.getfqdn(socket.gethostname())
-                    node_ip_address = socket.gethostbyname(host_name)
-                except Exception:
-                    pass
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # This command will raise an exception if there is no internet
+        # connection.
+        s.connect((ip_address, int(port)))
+        node_ip_address = s.getsockname()[0]
+    except Exception as e:
+        node_ip_address = "127.0.0.1"
+        # [Errno 101] Network is unreachable
+        if e.errno == 101:
+            try:
+                # try get node ip address from host name
+                host_name = socket.getfqdn(socket.gethostname())
+                node_ip_address = socket.gethostbyname(host_name)
+            except Exception:
+                pass
+    finally:
+        s.close()
 
     return node_ip_address
 
@@ -606,8 +608,8 @@ def start_redis(node_ip_address,
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
     # can access it and know whether or not to redirect their output.
-    primary_redis_client.set("RedirectOutput",
-                             1 if redirect_worker_output else 0)
+    primary_redis_client.set("RedirectOutput", 1
+                             if redirect_worker_output else 0)
 
     # put the include_java bool to primary redis-server, so that other nodes
     # can access it and know whether or not to enable cross-languages.
@@ -827,8 +829,8 @@ def _start_redis_instance(executable,
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
-    cur_config = (redis_client.config_get("client-output-buffer-limit")
-                  ["client-output-buffer-limit"])
+    cur_config = (redis_client.config_get("client-output-buffer-limit")[
+        "client-output-buffer-limit"])
     cur_config_list = cur_config.split()
     assert len(cur_config_list) == 12
     cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
