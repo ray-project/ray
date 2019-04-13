@@ -35,6 +35,7 @@ def ray_get_and_free(object_ids):
         object_ids = [object_ids]
     _to_free.extend(object_ids)
 
+    # batch calls to free to reduce overheads
     now = time.time()
     if (len(_to_free) > MAX_FREE_QUEUE_SIZE
             or now - _last_free_time > FREE_DELAY_S):
