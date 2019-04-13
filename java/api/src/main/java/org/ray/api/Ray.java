@@ -36,6 +36,7 @@ public final class Ray extends RayCall {
   public static synchronized void init(RayRuntimeFactory factory) {
     if (runtime == null) {
       runtime = factory.createRayRuntime();
+      Runtime.getRuntime().addShutdownHook(new Thread(Ray::shutdown));
     }
   }
 
