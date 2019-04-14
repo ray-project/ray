@@ -414,6 +414,13 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output /ray/python/ray/rllib/train.py \
+    --env Pendulum-v0 \
+    --run A3C \
+    --stop '{"training_iteration": 1}' \
+    --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false}'
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output /ray/python/ray/rllib/train.py \
     --env PongDeterministic-v4 \
     --run IMPALA \
     --stop='{"timesteps_total": 40000}' \

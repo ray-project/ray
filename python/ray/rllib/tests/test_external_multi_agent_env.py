@@ -75,7 +75,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
             policy_graph=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
             batch_steps=100)
-        optimizer = SyncSamplesOptimizer(ev, [], {})
+        optimizer = SyncSamplesOptimizer(ev, [])
         for i in range(100):
             optimizer.step()
             result = collect_metrics(ev)

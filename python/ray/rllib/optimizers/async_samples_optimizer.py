@@ -27,23 +27,26 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     and remote evaluators (IMPALA actors).
     """
 
-    @override(PolicyOptimizer)
-    def _init(self,
-              train_batch_size=500,
-              sample_batch_size=50,
-              num_envs_per_worker=1,
-              num_gpus=0,
-              lr=0.0005,
-              replay_buffer_num_slots=0,
-              replay_proportion=0.0,
-              num_data_loader_buffers=1,
-              max_sample_requests_in_flight_per_worker=2,
-              broadcast_interval=1,
-              num_sgd_iter=1,
-              minibatch_buffer_size=1,
-              learner_queue_size=16,
-              num_aggregation_workers=0,
-              _fake_gpus=False):
+    def __init__(self,
+                 local_evaluator,
+                 remote_evaluators,
+                 train_batch_size=500,
+                 sample_batch_size=50,
+                 num_envs_per_worker=1,
+                 num_gpus=0,
+                 lr=0.0005,
+                 replay_buffer_num_slots=0,
+                 replay_proportion=0.0,
+                 num_data_loader_buffers=1,
+                 max_sample_requests_in_flight_per_worker=2,
+                 broadcast_interval=1,
+                 num_sgd_iter=1,
+                 minibatch_buffer_size=1,
+                 learner_queue_size=16,
+                 num_aggregation_workers=0,
+                 _fake_gpus=False):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+
         self._stats_start_time = time.time()
         self._last_stats_time = {}
         self._last_stats_sum = {}

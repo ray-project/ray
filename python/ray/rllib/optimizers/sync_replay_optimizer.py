@@ -28,19 +28,21 @@ class SyncReplayOptimizer(PolicyOptimizer):
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
-    @override(PolicyOptimizer)
-    def _init(self,
-              learning_starts=1000,
-              buffer_size=10000,
-              prioritized_replay=True,
-              prioritized_replay_alpha=0.6,
-              prioritized_replay_beta=0.4,
-              schedule_max_timesteps=100000,
-              beta_annealing_fraction=0.2,
-              final_prioritized_replay_beta=0.4,
-              prioritized_replay_eps=1e-6,
-              train_batch_size=32,
-              sample_batch_size=4):
+    def __init__(self,
+                 local_evaluator,
+                 remote_evaluators,
+                 learning_starts=1000,
+                 buffer_size=10000,
+                 prioritized_replay=True,
+                 prioritized_replay_alpha=0.6,
+                 prioritized_replay_beta=0.4,
+                 schedule_max_timesteps=100000,
+                 beta_annealing_fraction=0.2,
+                 final_prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6,
+                 train_batch_size=32,
+                 sample_batch_size=4):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
 
         self.replay_starts = learning_starts
         # linearly annealing beta used in Rainbow paper
