@@ -864,6 +864,27 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
+def test_submit_many(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
+
+    @ray.remote
+    def f():
+        return 1
+
+    ray.get([f._remote(num_cpus=np.random.uniform()) for _ in range(100)])
+    ray.get([f._remote(num_gpus=np.random.uniform()) for _ in range(100)])
+    ray.get([
+        f._remote(resources={"Custom": np.random.uniform()})
+        for _ in range(100)
+    ])
+
+    assert ray.global_state.available_resources() == {
+        'CPU': 2.0,
+        'Custom': 2.0,
+        'GPU': 2.0
+    }
+
+
 def test_get_multiple(ray_start_regular):
     object_ids = [ray.put(i) for i in range(10)]
     assert ray.get(object_ids) == list(range(10))
