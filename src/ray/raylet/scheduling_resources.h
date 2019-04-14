@@ -32,23 +32,23 @@ class FractionalResourceQuantity {
   FractionalResourceQuantity(std::string resource_name, double resource_quantity);
 
   /// \brief Addition of FractionalResourceQuantity.
-  const FractionalResourceQuantity operator+(const FractionalResourceQuantity& rhs) const;
+  const FractionalResourceQuantity operator+(const FractionalResourceQuantity &rhs) const;
 
   /// \brief Subtraction of FractionalResourceQuantity.
-  const FractionalResourceQuantity operator-(const FractionalResourceQuantity& rhs) const;
+  const FractionalResourceQuantity operator-(const FractionalResourceQuantity &rhs) const;
 
   /// \brief Addition and assignment of FractionalResourceQuantity.
-  FractionalResourceQuantity& operator+=(const FractionalResourceQuantity& rhs);
+  FractionalResourceQuantity &operator+=(const FractionalResourceQuantity &rhs);
 
   /// \brief Subtraction and assignment of FractionalResourceQuantity.
-  FractionalResourceQuantity& operator-=(const FractionalResourceQuantity& rhs);
+  FractionalResourceQuantity &operator-=(const FractionalResourceQuantity &rhs);
 
-  bool operator==(const FractionalResourceQuantity& rhs) const;
-  bool operator!=(const FractionalResourceQuantity& rhs) const;
-  bool operator< (const FractionalResourceQuantity& rhs) const;
-  bool operator> (const FractionalResourceQuantity& rhs) const;
-  bool operator<=(const FractionalResourceQuantity& rhs) const;
-  bool operator>=(const FractionalResourceQuantity& rhs) const;
+  bool operator==(const FractionalResourceQuantity &rhs) const;
+  bool operator!=(const FractionalResourceQuantity &rhs) const;
+  bool operator<(const FractionalResourceQuantity &rhs) const;
+  bool operator>(const FractionalResourceQuantity &rhs) const;
+  bool operator<=(const FractionalResourceQuantity &rhs) const;
+  bool operator>=(const FractionalResourceQuantity &rhs) const;
 
   /// \brief Return actual resource amount as a double.
   double ToDouble() const;
@@ -162,7 +162,8 @@ class ResourceSet {
   /// size is in kResourceConversionFactor of a unit.
   ///
   /// \return map of resource in string to size in FractionalResourceQuantity.
-  const std::unordered_map<std::string, FractionalResourceQuantity> &GetResourceAmountMap() const;
+  const std::unordered_map<std::string, FractionalResourceQuantity>
+      &GetResourceAmountMap() const;
 
   const std::string ToString() const;
 
@@ -203,8 +204,9 @@ class ResourceIds {
   ///
   /// \param whole_ids: A vector of the resource IDs that are completely available.
   /// \param fractional_ids: A vector of the resource IDs that are partially available.
-  ResourceIds(const std::vector<int64_t> &whole_ids,
-              const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &fractional_ids);
+  ResourceIds(
+      const std::vector<int64_t> &whole_ids,
+      const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &fractional_ids);
 
   /// \brief Check if we have at least the requested amount.
   ///
@@ -245,7 +247,8 @@ class ResourceIds {
   /// \brief Return just the fractional IDs.
   ///
   /// \return The fractional IDs.
-  const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &FractionalIds() const;
+  const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &FractionalIds()
+      const;
 
   /// \brief Check if ResourceIds has any resources.
   ///

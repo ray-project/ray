@@ -878,11 +878,14 @@ def test_submit_many(shutdown_only):
         for _ in range(100)
     ])
 
-    assert ray.global_state.available_resources() == {
-        'CPU': 2.0,
-        'Custom': 2.0,
-        'GPU': 2.0
-    }
+    while True:
+        if ray.global_state.available_resources() == {
+                "CPU": 2.0,
+                "Custom": 2.0,
+                "GPU": 2.0
+        }:
+            break
+    assert True
 
 
 def test_get_multiple(ray_start_regular):

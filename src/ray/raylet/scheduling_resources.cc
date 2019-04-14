@@ -16,69 +16,76 @@ FractionalResourceQuantity::FractionalResourceQuantity() {
 
 FractionalResourceQuantity::FractionalResourceQuantity(int resource_quantity) {
   resource_name_ = "";
-  resource_quantity_ = static_cast<int>(std::round(resource_quantity * conversion_factor_));
+  resource_quantity_ =
+      static_cast<int>(std::round(resource_quantity * conversion_factor_));
 }
 
-FractionalResourceQuantity::FractionalResourceQuantity(std::string resource_name, double resource_quantity) {
+FractionalResourceQuantity::FractionalResourceQuantity(std::string resource_name,
+                                                       double resource_quantity) {
   RAY_CHECK(resource_quantity > 0)
       << "Resource " << resource_name << " capacity is " << resource_quantity
       << ". Should have been greater than zero.";
 
   resource_name_ = "";
-  resource_quantity_ = static_cast<int>(std::round(resource_quantity * conversion_factor_));
+  resource_quantity_ =
+      static_cast<int>(std::round(resource_quantity * conversion_factor_));
 }
 
-const FractionalResourceQuantity FractionalResourceQuantity::operator+(const FractionalResourceQuantity& rhs) const {
+const FractionalResourceQuantity FractionalResourceQuantity::operator+(
+    const FractionalResourceQuantity &rhs) const {
   FractionalResourceQuantity result = *this;
   result += rhs;
   return result;
 }
 
-const FractionalResourceQuantity FractionalResourceQuantity::operator-(const FractionalResourceQuantity& rhs) const {
+const FractionalResourceQuantity FractionalResourceQuantity::operator-(
+    const FractionalResourceQuantity &rhs) const {
   FractionalResourceQuantity result = *this;
   result -= rhs;
   return result;
 }
 
-FractionalResourceQuantity& FractionalResourceQuantity::operator+=(const FractionalResourceQuantity& rhs) {
+FractionalResourceQuantity &FractionalResourceQuantity::operator+=(
+    const FractionalResourceQuantity &rhs) {
   resource_quantity_ += rhs.resource_quantity_;
 
   return *this;
 }
 
-FractionalResourceQuantity& FractionalResourceQuantity::operator-=(const FractionalResourceQuantity& rhs) {
+FractionalResourceQuantity &FractionalResourceQuantity::operator-=(
+    const FractionalResourceQuantity &rhs) {
   resource_quantity_ -= rhs.resource_quantity_;
 
   // Ensure that quantity is nonnegative.
   RAY_CHECK(resource_quantity_ >= 0)
       << "Capacity of resource " << resource_name_ << " after subtraction is negative ("
       << this->ToDouble() << ")."
-      << " Debug: resource_capacity_: (" << resource_name_ << ", " << this->ToDouble() << "), other: ("
-      << rhs.resource_name_ << ", " << rhs.ToDouble() << ").";
+      << " Debug: resource_capacity_: (" << resource_name_ << ", " << this->ToDouble()
+      << "), other: (" << rhs.resource_name_ << ", " << rhs.ToDouble() << ").";
   return *this;
 }
 
-bool FractionalResourceQuantity::operator==(const FractionalResourceQuantity& rhs) const {
+bool FractionalResourceQuantity::operator==(const FractionalResourceQuantity &rhs) const {
   return resource_quantity_ == rhs.resource_quantity_;
 }
 
-bool FractionalResourceQuantity::operator!=(const FractionalResourceQuantity& rhs) const {
+bool FractionalResourceQuantity::operator!=(const FractionalResourceQuantity &rhs) const {
   return !(*this == rhs);
 }
 
-bool FractionalResourceQuantity::operator<(const FractionalResourceQuantity& rhs) const {
+bool FractionalResourceQuantity::operator<(const FractionalResourceQuantity &rhs) const {
   return resource_quantity_ < rhs.resource_quantity_;
 }
 
-bool FractionalResourceQuantity::operator>(const FractionalResourceQuantity& rhs) const {
+bool FractionalResourceQuantity::operator>(const FractionalResourceQuantity &rhs) const {
   return rhs < *this;
 }
 
-bool FractionalResourceQuantity::operator<=(const FractionalResourceQuantity& rhs) const {
+bool FractionalResourceQuantity::operator<=(const FractionalResourceQuantity &rhs) const {
   return !(*this > rhs);
 }
 
-bool FractionalResourceQuantity::operator>=(const FractionalResourceQuantity& rhs) const {
+bool FractionalResourceQuantity::operator>=(const FractionalResourceQuantity &rhs) const {
   bool result = !(*this < rhs);
   return result;
 }
@@ -91,7 +98,8 @@ ResourceSet::ResourceSet() {}
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
-    resource_capacity_[resource_pair.first] = FractionalResourceQuantity(resource_pair.first, resource_pair.second);
+    resource_capacity_[resource_pair.first] =
+        FractionalResourceQuantity(resource_pair.first, resource_pair.second);
   }
 }
 
@@ -99,7 +107,8 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (uint i = 0; i < resource_labels.size(); i++) {
-    resource_capacity_[resource_labels[i]] = FractionalResourceQuantity(resource_labels[i], resource_capacity[i]);
+    resource_capacity_[resource_labels[i]] =
+        FractionalResourceQuantity(resource_labels[i], resource_capacity[i]);
   }
 }
 
@@ -166,7 +175,8 @@ void ResourceSet::AddResources(const ResourceSet &other) {
   }
 }
 
-FractionalResourceQuantity ResourceSet::GetResource(const std::string &resource_name) const {
+FractionalResourceQuantity ResourceSet::GetResource(
+    const std::string &resource_name) const {
   if (resource_capacity_.count(resource_name) == 0) {
     return 0;
   }
@@ -259,7 +269,8 @@ ResourceIds ResourceIds::Acquire(FractionalResourceQuantity resource_quantity) {
     // Handle the whole case.
     double whole_quantity = resource_quantity.ToDouble();
     RAY_CHECK(IsWhole(whole_quantity));
-    RAY_CHECK(static_cast<int64_t>(whole_ids_.size()) >= static_cast<int64_t>(whole_quantity));
+    RAY_CHECK(static_cast<int64_t>(whole_ids_.size()) >=
+              static_cast<int64_t>(whole_quantity));
 
     std::vector<int64_t> ids_to_return;
     for (int64_t i = 0; i < whole_quantity; ++i) {
@@ -292,7 +303,8 @@ ResourceIds ResourceIds::Acquire(FractionalResourceQuantity resource_quantity) {
     whole_ids_.pop_back();
 
     auto return_pair = std::make_pair(whole_id, resource_quantity);
-    FractionalResourceQuantity remaining_amount = FractionalResourceQuantity(1) - resource_quantity;
+    FractionalResourceQuantity remaining_amount =
+        FractionalResourceQuantity(1) - resource_quantity;
     fractional_ids_.push_back(std::make_pair(whole_id, remaining_amount));
     return ResourceIds({return_pair});
   }
@@ -309,11 +321,11 @@ void ResourceIds::Release(const ResourceIds &resource_ids) {
   auto const &fractional_ids_to_return = resource_ids.FractionalIds();
   for (auto const &fractional_pair_to_return : fractional_ids_to_return) {
     int64_t resource_id = fractional_pair_to_return.first;
-    auto const &fractional_pair_it =
-        std::find_if(fractional_ids_.begin(), fractional_ids_.end(),
-                     [resource_id](std::pair<int64_t, FractionalResourceQuantity> &fractional_pair) {
-                       return fractional_pair.first == resource_id;
-                     });
+    auto const &fractional_pair_it = std::find_if(
+        fractional_ids_.begin(), fractional_ids_.end(),
+        [resource_id](std::pair<int64_t, FractionalResourceQuantity> &fractional_pair) {
+          return fractional_pair.first == resource_id;
+        });
     if (fractional_pair_it == fractional_ids_.end()) {
       fractional_ids_.push_back(fractional_pair_to_return);
     } else {
@@ -338,8 +350,8 @@ ResourceIds ResourceIds::Plus(const ResourceIds &resource_ids) const {
 
 const std::vector<int64_t> &ResourceIds::WholeIds() const { return whole_ids_; }
 
-const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &ResourceIds::FractionalIds()
-    const {
+const std::vector<std::pair<int64_t, FractionalResourceQuantity>>
+    &ResourceIds::FractionalIds() const {
   return fractional_ids_;
 }
 
@@ -348,7 +360,8 @@ bool ResourceIds::TotalQuantityIsZero() const {
 }
 
 double ResourceIds::TotalQuantity() const {
-  FractionalResourceQuantity total_quantity = FractionalResourceQuantity(whole_ids_.size());
+  FractionalResourceQuantity total_quantity =
+      FractionalResourceQuantity(whole_ids_.size());
   for (auto const &fractional_pair : fractional_ids_) {
     total_quantity += fractional_pair.second;
   }
