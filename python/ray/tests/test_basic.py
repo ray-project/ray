@@ -872,18 +872,23 @@ def test_submit_many(shutdown_only):
         return 1
 
     ray.get([f._remote(num_cpus=np.random.uniform()) for _ in range(100)])
+    print("AAAAAAAAAA")
     ray.get([f._remote(num_gpus=np.random.uniform()) for _ in range(100)])
+    print("BBBBBBBBBB")
     ray.get([
         f._remote(resources={"Custom": np.random.uniform()})
         for _ in range(100)
     ])
+    print("DDDDDDDDDDD")
 
     while True:
+        print(ray.global_state.available_resources())
         if ray.global_state.available_resources() == {
                 "CPU": 2.0,
                 "Custom": 2.0,
                 "GPU": 2.0
         }:
+            print("SSSSSSSSSSSSSS")
             break
     assert True
 
