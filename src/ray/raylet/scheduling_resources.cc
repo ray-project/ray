@@ -22,9 +22,9 @@ FractionalResourceQuantity::FractionalResourceQuantity(int resource_quantity) {
 
 FractionalResourceQuantity::FractionalResourceQuantity(std::string resource_name,
                                                        double resource_quantity) {
-  RAY_CHECK(resource_quantity > 0)
-      << "Resource " << resource_name << " capacity is " << resource_quantity
-      << ". Should have been greater than zero.";
+  RAY_CHECK(resource_quantity > 0) << "Resource " << resource_name << " capacity is " 
+                                   << resource_quantity 
+                                   << ". Should have been greater than zero.";
 
   resource_name_ = "";
   resource_quantity_ =
