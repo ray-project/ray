@@ -23,9 +23,13 @@ class FractionalResourceQuantity {
   /// resources.
   FractionalResourceQuantity();
 
+  /// \brief Construct a FractionalResourceQuantity for implicit conversion of
+  /// operators.
+  FractionalResourceQuantity(int resource_quantity);
+
   /// \brief Construct a FractionalResourceQuantity representing
   /// resource_quantity.
-  FractionalResourceQuantity(double resource_quantity);
+  FractionalResourceQuantity(std::string resource_name, double resource_quantity);
 
   /// \brief Addition of FractionalResourceQuantity.
   const FractionalResourceQuantity operator+(const FractionalResourceQuantity& rhs) const;
@@ -50,6 +54,9 @@ class FractionalResourceQuantity {
   double ToDouble() const;
 
  private:
+  /// The resource name with the associated quantity. This is used only for
+  /// error messages.
+  std::string resource_name_;
   /// The resource quantity represented as 1/10,000th of a unit. This value
   /// will never exceed 10,000 because all resources are either in [0, 1] or
   /// an integer.
@@ -117,13 +124,6 @@ class ResourceSet {
   /// \param other: The other resource set to add.
   /// \return Void.
   void AddResources(const ResourceSet &other);
-
-  /// \brief Subtract a set of resources from the current set of resources.
-  /// Deletes any resource if the capacity after subtraction is zero or negative.
-  ///
-  /// \param other: The resource set to subtract from the current resource set.
-  /// \return Void.
-  void SubtractResources(const ResourceSet &other);
 
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other

@@ -9,11 +9,22 @@ namespace ray {
 
 namespace raylet {
 
-FractionalResourceQuantity::FractionalResourceQuantity () {
+FractionalResourceQuantity::FractionalResourceQuantity() {
+  resource_name_ = "";
   resource_quantity_ = 0;
 }
 
-FractionalResourceQuantity::FractionalResourceQuantity (double resource_quantity) {
+FractionalResourceQuantity::FractionalResourceQuantity(int resource_quantity) {
+  resource_name_ = "";
+  resource_quantity_ = static_cast<int>(std::round(resource_quantity * conversion_factor_));
+}
+
+FractionalResourceQuantity::FractionalResourceQuantity(std::string resource_name, double resource_quantity) {
+  RAY_CHECK(resource_quantity > 0)
+      << "Resource " << resource_name << " capacity is " << resource_quantity
+      << ". Should have been greater than zero.";
+
+  resource_name_ = "";
   resource_quantity_ = static_cast<int>(std::round(resource_quantity * conversion_factor_));
 }
 
@@ -38,6 +49,12 @@ FractionalResourceQuantity& FractionalResourceQuantity::operator+=(const Fractio
 FractionalResourceQuantity& FractionalResourceQuantity::operator-=(const FractionalResourceQuantity& rhs) {
   resource_quantity_ -= rhs.resource_quantity_;
 
+  // Ensure that quantity is nonnegative.
+  RAY_CHECK(resource_quantity_ >= 0)
+      << "Capacity of resource " << resource_name_ << " after subtraction is negative ("
+      << this->ToDouble() << ")."
+      << " Debug: resource_capacity_: (" << resource_name_ << ", " << this->ToDouble() << "), other: ("
+      << rhs.resource_name_ << ", " << rhs.ToDouble() << ").";
   return *this;
 }
 
@@ -74,10 +91,7 @@ ResourceSet::ResourceSet() {}
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
-    RAY_CHECK(resource_pair.second > 0)
-        << "Resource " << resource_pair.first << " capacity is " << resource_pair.second
-        << ". Should have been greater than zero.";
-    resource_capacity_[resource_pair.first] = FractionalResourceQuantity(resource_pair.second);
+    resource_capacity_[resource_pair.first] = FractionalResourceQuantity(resource_pair.first, resource_pair.second);
   }
 }
 
@@ -85,10 +99,7 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (uint i = 0; i < resource_labels.size(); i++) {
-    RAY_CHECK(resource_capacity[i] > 0)
-        << "Resource " << resource_labels[i] << " capacity is " << resource_capacity[i]
-        << ". Should have been greater than zero.";
-    resource_capacity_[resource_labels[i]] = resource_capacity[i];
+    resource_capacity_[resource_labels[i]] = FractionalResourceQuantity(resource_labels[i], resource_capacity[i]);
   }
 }
 
@@ -131,20 +142,6 @@ bool ResourceSet::RemoveResource(const std::string &resource_name) {
   throw std::runtime_error("Method not implemented");
 }
 
-void ResourceSet::SubtractResources(const ResourceSet &other) {
-  // Subtract the resources and delete any if new capacity is zero.
-  for (const auto &resource_pair : other.GetResourceMap()) {
-    const std::string &resource_label = resource_pair.first;
-    const FractionalResourceQuantity &resource_capacity = resource_pair.second;
-    if (resource_capacity_.count(resource_label) == 1) {
-      resource_capacity_[resource_label] -= resource_capacity;
-      if (resource_capacity_[resource_label] <= 0) {
-        resource_capacity_.erase(resource_label);
-      }
-    }
-  }
-}
-
 void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
   // Subtract the resources, make sure none goes below zero and delete any if new capacity
   // is zero.
@@ -154,10 +151,6 @@ void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
     RAY_CHECK(resource_capacity_.count(resource_label) == 1)
         << "Attempt to acquire unknown resource: " << resource_label;
     resource_capacity_[resource_label] -= resource_capacity;
-    RAY_CHECK(resource_capacity_[resource_label] >= 0)
-        << "Capacity of resource " << resource_label << " after subtraction is negative ("
-        << resource_capacity_[resource_label].ToDouble() << ")."
-        << " Debug: resource_capacity_:" << ToString() << ", other: " << other.ToString();
     if (resource_capacity_[resource_label] == 0) {
       resource_capacity_.erase(resource_label);
     }
@@ -178,9 +171,6 @@ FractionalResourceQuantity ResourceSet::GetResource(const std::string &resource_
     return 0;
   }
   FractionalResourceQuantity capacity = resource_capacity_.at(resource_name);
-  RAY_CHECK(capacity > 0) << "Resource " << resource_name << " capacity is "
-                          << capacity.ToDouble()
-                          << ". Should have been greater than zero.";
   return capacity;
 }
 
@@ -405,9 +395,6 @@ bool ResourceIdSet::Contains(const ResourceSet &resource_set) const {
   for (auto const &resource_pair : resource_set.GetResourceAmountMap()) {
     auto const &resource_name = resource_pair.first;
     FractionalResourceQuantity resource_quantity = resource_pair.second;
-    RAY_CHECK(resource_quantity > 0) << "Resource " << resource_name
-                                     << " capacity is " << resource_quantity.ToDouble()
-                                     << ". Should have been greater than zero.";
 
     auto it = available_resources_.find(resource_name);
     if (it == available_resources_.end()) {
@@ -427,9 +414,6 @@ ResourceIdSet ResourceIdSet::Acquire(const ResourceSet &resource_set) {
   for (auto const &resource_pair : resource_set.GetResourceAmountMap()) {
     auto const &resource_name = resource_pair.first;
     FractionalResourceQuantity resource_quantity = resource_pair.second;
-    RAY_CHECK(resource_quantity > 0) << "Resource " << resource_name
-                                     << " capacity is " << resource_quantity.ToDouble()
-                                     << ". Should have been greater than zero.";
 
     auto it = available_resources_.find(resource_name);
     RAY_CHECK(it != available_resources_.end());
