@@ -1497,7 +1497,7 @@ def shutdown(exiting_interpreter=False):
 
 
 def exit_actor():
-    """Exiting the current actor.
+    """Intentionally exit the current actor.
 
     This function is used to disconnect an actor and exit the worker.
     TODO(guoyuhong): The actor should not be reconstructed after this
