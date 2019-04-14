@@ -220,6 +220,8 @@ def get_node_ip_address(address="8.8.8.8:53"):
                 node_ip_address = socket.gethostbyname(host_name)
             except Exception:
                 pass
+    finally:
+        s.close()
 
     return node_ip_address
 
