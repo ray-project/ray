@@ -18,7 +18,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     is when using multiple brackets, trial allocation to bracket is done
     randomly with over a softmax probability.
 
-    See https://openreview.net/forum?id=S1Y7OOlRZ
+    See https://arxiv.org/abs/1810.05934
 
     Args:
         time_attr (str): A training result attr to use for comparing time.
@@ -43,8 +43,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
                  reward_attr="episode_reward_mean",
                  max_t=100,
                  grace_period=10,
-                 reduction_factor=3,
-                 brackets=3):
+                 reduction_factor=4,
+                 brackets=1):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert max_t >= grace_period, "grace_period must be <= max_t!"
         assert grace_period > 0, "grace_period must be positive!"
