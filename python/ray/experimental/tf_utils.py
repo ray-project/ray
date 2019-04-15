@@ -205,28 +205,15 @@ class TensorFlowVariables(object):
             })
 
 
-DEBUG = 0
-def logger_debug_info(txt):
-    if DEBUG:
-        logger.info(txt)
-
-banner_half = "".join(["#"] * 10)
-
 def tf_differentiable(num_return_vals):
     def tf_differentiable_helper(method):
         #TODO(vsatish): Can we automatically determine 
         #that a method is differentiable at runtime based on inputs?
 
-#        def differentiable_method(self, identifier, forward_pass, 
-#                                  persistent_tape, dys,
-#                                  arg_types, kwarg_types, *args, 
-#                                  **kwargs):
         def differentiable_method(self, identifier, forward_pass, 
-                                  persistent_tape, dys,
-                                  arg_types, *args):
-            logger_debug_info("{0} Executing wrapper for remote "
-                              "differentiable function '{1}' {0}".format(banner_half, method.__name__))
-            
+                                  persistent_tape, dys, dys_dtype,
+                                  kwarg_types, kwarg_dtypes, kwargs,
+                                  arg_types, arg_dtypes, *args):
 
             if not tf.executing_eagerly():
                 #TODO(vsatish): Can we automatically 
@@ -250,12 +237,12 @@ def tf_differentiable(num_return_vals):
                 tensors = [] 
 
                 processed_args = []
-                for arg_type, arg in zip(arg_types, args):
+                for arg_type, arg_dtype, arg in zip(arg_types, arg_dtypes, args):
                     if arg_type == "tf_var":
-                        processed_args.append(tf.Variable(arg, dtype=tf.float64))
+                        processed_args.append(tf.Variable(arg, dtype=arg_dtype))
                         tensors.append(processed_args[-1])
                     elif arg_type == "tf_const":
-                        processed_args.append(tf.constant(arg, dtype=tf.float64))
+                        processed_args.append(tf.constant(arg, dtype=arg_dtype))
                         tf_constants.append(processed_args[-1])
                         tensors.append(processed_args[-1])
                     elif arg_type == "native":
@@ -263,28 +250,23 @@ def tf_differentiable(num_return_vals):
                     else:
                         raise ValueError("Invalid argument type: {}".format(arg_type))
 
-                """
                 processed_kwargs = {}
-                for kw, arg in kwargs.iteritems():
+                for kw, arg in kwargs.items():
                     arg_type = kwarg_types[kw]
+                    arg_dtype = kwarg_dtypes[kw]
                     #TODO (vsatish): Does it even make sense to have keyword tensors?
                     # We definitely shouldn't allow them to be differentiable, right?
                     if arg_type == "tf_var":
-                        processed_kwargs[kw] = tf.Variable(arg)
+                        processed_kwargs[kw] = tf.Variable(arg, dtype=arg_dtype)
 #                        tensors.append(processed_kwargs[kw])
                     elif arg_type == "tf_const":
-                        processed_kwargs[kw] = tf.constant(arg)
+                        processed_kwargs[kw] = tf.constant(arg, dtype=arg_dtype)
                         tf_constants.append(processed_kwargs[kw])
 #                        tensors.append(processed_kwargs[kw])
                     elif arg_type == "native":
                         processed_kwargs[kw] = arg
                     else:
                         raise ValueError("Invalid keyword argument type: {}".format(arg_type))
-                """
-
-                logger_debug_info("Executing forward pass...")
-                logger_debug_info("Arguments: {}".format(processed_args))
-                logger_debug_info("Tensors: {}".format(tensors))
 
                 # execute raw method with tf.GradientTape
                 with tf.GradientTape(persistent=persistent_tape) as tape:
@@ -292,33 +274,29 @@ def tf_differentiable(num_return_vals):
                     for constant in tf_constants:
                         tape.watch(constant)
 
-#                    result = method(self, *processed_args, **processed_kwargs)
-                    result = method(self, *processed_args)
-                logger_debug_info("Result: {}".format(result))
+                    results = method(self, *processed_args, **processed_kwargs)
 
                 # cache the tf state for backward pass
                 if not hasattr(self, "__ray_tf_info__"):
                     self.__ray_tf_info__ = {}
-                self.__ray_tf_info__[identifier] = (tape, tensors, result)
+                self.__ray_tf_info__[identifier] = (tape, tensors, results)
 
-                return [r.numpy() for r in result] if isinstance(result, tuple) else result.numpy()
+                return [result.numpy() for result in results] if isinstance(results, tuple) else results.numpy()
             else:
                 # execute the backward pass
-                tape, tensors, result = self.__ray_tf_info__[identifier]
+                tape, tensors, results = self.__ray_tf_info__[identifier]
 
-                logger_debug_info("Executing backward pass...")
-                logger_debug_info("Tensors: {}".format(tensors))
-                logger_debug_info("Result: {}".format(result))
-                logger_debug_info("Dy's: {}".format(dys))
+                dys_processed = [] 
+                if not isinstance(results, (list, tuple)):
+                    results = [results]
+                for dy, result in zip(dys, results):
+                    if isinstance(dy, np.floating) and dy == 0.0:
+                            dys_processed.append(tf.constant(np.zeros_like(result), dtype=dys_dtype))
+                    else:
+                        dys_processed.append(tf.constant(dy, dtype=dys_dtype))
+                dys = dys_processed
 
-#                try:
-                dys = [np.float64(dy) for dy in dys]
-                grads = tape.gradient(result, tensors, output_gradients=dys)
-#                except Exception as e:
-#                    print("CAUGHT EXCEPTION")
-#                    print(e)
-#                    print(result, tensors, dys)
-                logger_debug_info("Gradients: {}".format(grads))
+                grads = tape.gradient(results, tensors, output_gradients=dys)
 
                 if not persistent_tape:
                     # we can no longer use the tape
@@ -392,6 +370,8 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
 #    is_tensor_tf_object_id = [] # was an input tensor a TFObjectID or a TF Tensor
 
     arg_types = []
+    arg_dtypes = []
+    return_dtype = None
     processed_args = []
     for arg in args:
         if isinstance(arg, TFObjectID):
@@ -399,8 +379,10 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
 #            object_ids.append(arg)
             tensors.append(arg.graph_tensor) # this is a dummy tensor used to link the TF computation graph
             arg_types.append("tf_var") # we always want these to be watched
+            arg_dtypes.append(arg.graph_tensor.numpy().dtype)
 #            is_tensor_tf_object_id.append(True)
             processed_args.append(arg)
+            return_dtype = arg_dtypes[-1]
         elif isinstance(arg, (tf.Variable, tf.Tensor)):
             if isinstance(arg, tf.Variable):
                 arg_type = "tf_var"
@@ -408,25 +390,30 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
                 arg_type = "tf_const"                        
 #            is_tensor_tf_object_id.append(False)
             arg_types.append(arg_type)
+            arg_dtypes.append(arg.numpy().dtype)
             tensors.append(arg)
             processed_args.append(arg.numpy())
+            return_dtype = arg_dtypes[-1]
         elif isinstance(arg, ray.ObjectID):
 #            object_ids.append(arg)
             arg_types.append("native")
+            arg_dtypes.append(ray.ObjectID)
             processed_args.append(arg)
         else:
             arg_types.append("native")
+            arg_dtypes.append(type(arg))
             processed_args.append(arg)
 
-    """
     kwarg_types = {}
+    kwarg_dtypes = {}
     processed_kwargs = {}
-    for kw, arg in kwargs.iteritems():
+    for kw, arg in kwargs.items():
         if isinstance(arg, TFObjectID):
 #            tf_object_ids.append(arg)        
 #            object_ids.append(arg)
-            tensors.append(arg.graph_tensor) # this is a dummy tensor used to link the TF computation graph
+#            tensors.append(arg.graph_tensor) # this is a dummy tensor used to link the TF computation graph
             kwarg_types[kw] = "tf_const"
+            kwarg_dtypes[kw] = arg.graph_tensor.numpy().dtype
 #            is_tensor_tf_object_id.append(True)
             processed_kwargs[kw] = arg
         elif isinstance(arg, (tf.Variable, tf.Tensor)):
@@ -436,16 +423,18 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
                 arg_type = "tf_const"                        
 #            is_tensor_tf_object_id.append(False)
             kwarg_types[kw] = arg_type
-            tensors.append(arg)
+            kwarg_dtypes[kw] = arg.numpy().dtype
+#            tensors.append(arg)
             processed_kwargs[kw] = arg.numpy()
         elif isinstance(arg, ray.ObjectID):
 #            object_ids.append(arg)
             kwarg_types[kw] = "native"
+            kwarg_dtypes[kw] = ray.ObjectID
             processed_kwargs[kw] = arg
         else:
             kwarg_types[kw] = "native"
+            kwarg_dtypes[kw] = type(arg)
             processed_kwargs[kw] = arg
-    """
 
 #    assert len(tensors) == len(is_tensor_tf_object_id)
 #    assert len(tf_object_ids) == sum(is_tensor_tf_object_id)
@@ -460,27 +449,20 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
         # submit the remote op
         identifier = np.random.bytes(20)
         forward = True
-        persistent_tape = False #TODO:(vsatish) when would we want this to be True?
-        dy = None
-#        result_obj_ids = actor_method._internal_remote([identifier, forward, 
-#                                                        persistent_tape, dy, 
-#                                                        arg_types, kwarg_types, 
-#                                                        *processed_args], 
-#                                                        processed_kwargs, 
-#                                                        num_return_vals)
-        kwargs = {}
+        persistent_tape = True #TODO:(vsatish) when would we want this to be True?
+        dy, dys_type = None, None
         result_obj_ids = actor_method._internal_remote([identifier, forward, 
-                                                        persistent_tape, dy, 
-                                                        arg_types, 
-                                                        *processed_args],
-                                                        kwargs, 
+                                                        persistent_tape, dy, dys_type,
+                                                        kwarg_types, kwarg_dtypes, processed_kwargs, 
+                                                        arg_types, arg_dtypes, *processed_args],
+                                                        {}, 
                                                         num_return_vals)
        
         if isinstance(result_obj_ids, ray.ObjectID):
             result_obj_ids = [result_obj_ids]
  
         for obj_id in result_obj_ids:
-            graph_tensor = tf.constant(1.0) # this is a dummy tensor used to link the TF computation graph
+            graph_tensor = tf.constant(1.0, dtype=return_dtype) # this is a dummy tensor used to link the TF computation graph
             result_tf_obj_ids.append(TFObjectID(obj_id, graph_tensor, 
                                                 identifier, actor_method, 
                                                 len(tensors), 
@@ -496,24 +478,23 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
 #                                                                                            "must be ray ObjectIDs")
 
             # compute gradients
-            logger_debug_info("{0} Executing 'grad' function of submit op {0}".format(banner_half))
-            logger_debug_info("Dy's: {}".format(dys))
-
             forward = False
-            kwargs = {}
-            num_return_vals = len(tensors) #TODO:(vsatish) confirm that this is correct
+            dys_dtype = return_dtype
+            kwarg_types, kwarg_dtypes, kwargs = None, None, None
+            arg_types, arg_dtypes = None, None
+            num_return_vals = len(tensors)
             grad_ids = actor_method._internal_remote([identifier, forward, 
-                                                      persistent_tape, 
-                                                      dys, None],
-                                                      kwargs,
+                                                      persistent_tape, dys, dys_dtype,
+                                                      kwarg_types, kwarg_dtypes, kwargs,
+                                                      arg_types, arg_dtypes],
+                                                      {},
                                                       num_return_vals)
 
             if isinstance(grad_ids, ray.ObjectID):
                 grad_ids = [grad_ids]
             grads = ray.get(grad_ids) # DESTROYS PARALLELISM!!!
-            logger_debug_info("Gradients: {}".format(grads))
 
-            return [tf.constant(grad, dtype=tf.float64) if grad is not None 
+            return [tf.constant(grad, dtype=return_dtype) if grad is not None 
                     else grad for grad in grads]
 
         results = [tf_obj_id.graph_tensor for tf_obj_id in result_tf_obj_ids] # this is a dummy tensor used 
@@ -540,13 +521,11 @@ def _post_process_get(tf_object_ids, results):
     @tf.custom_gradient
     def get_op(*tensors):
         
-        result_tensors = [tf.constant(result, dtype=tf.float64) #TODO(vsatish): We need a proper way to maintain dtypes.
-                          for result in results]
+        result_tensors = []
+        for result, tensor in zip(results, tensors):
+            result_tensors.append(tf.constant(result, dtype=tensor.dtype))
         
         def grad(*dys):
-            logger_debug_info("{0} Executing 'grad' function of get op {0}".format(banner_half))
-            logger_debug_info("Dy's: {}".format(dys))
-
             return dys
 
         return result_tensors, grad
