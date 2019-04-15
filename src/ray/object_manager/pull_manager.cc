@@ -6,7 +6,7 @@
 
 namespace ray {
 
-PullInfo::PullInfo(bool required, const ObjectID &object_id)
+PullInfo::PullInfo(bool required)
     : required(required),
       total_num_chunks(-1),
       num_in_progress_chunk_ids(0) {}
@@ -41,38 +41,45 @@ void PullManager::ReceivePushRequest(const UniqueID &push_id, const ObjectID &ob
   *start_timer = false;
   RAY_CHECK(client_id != client_id_);
   *clients_to_cancel = std::vector<ClientID>();
+  bool new_client = false;
 
   auto it = pulls_.find(object_id);
   if (it == pulls_.end()) {
+    new_client = true;
     *start_timer = true;
     auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, PullInfo(false, object_id)));
+        object_id, PullInfo(false)));
 
     RAY_CHECK(insertion_it.second);
     it = insertion_it.first;
-
-    auto &pull_info = it->second;
-    RAY_CHECK(!pull_info.required);
-    pull_info.client_receiving_from = client_id;
-    pull_info.InitializeChunksIfNecessary(num_chunks);
   } else {
     auto &pull_info = it->second;
     if (pull_info.client_receiving_from.is_nil()) {
-      pull_info.InitializeChunksIfNecessary(num_chunks);
-      pull_info.client_receiving_from = client_id;
-      // Cancel it from all remote object managers that we've requested it from
-      // except for this one.
-      for (auto const &client_requested_from : pull_info.clients_requested_from) {
-        if (client_requested_from != client_id) {
-          clients_to_cancel->push_back(client_requested_from);
-        }
-      }
-      pull_info.clients_requested_from.clear();
+      new_client = true;
     } else {
       // We are already receiving the object from some other remote object
       // manager.
       RAY_CHECK(pull_info.clients_requested_from.empty());
     }
+  }
+
+  if (new_client) {
+    // Initialize pull_info with client_id and push_id of the push we are
+    // getting this object from.
+    auto &pull_info = it->second;
+    RAY_CHECK(!pull_info.required);
+    pull_info.push_id = push_id;
+    pull_info.client_receiving_from = client_id;
+    pull_info.InitializeChunksIfNecessary(num_chunks);
+
+    // Cancel it from all remote object managers that we've requested it from
+    // except for this one.
+    for (auto const &client_requested_from : pull_info.clients_requested_from) {
+      if (client_requested_from != client_id) {
+        clients_to_cancel->push_back(client_requested_from);
+      }
+    }
+    pull_info.clients_requested_from.clear();
   }
 
   auto &pull_info = it->second;
@@ -194,7 +201,7 @@ void PullManager::CancelPullObject(const ObjectID &object_id,
 }
 
 // We finished reading a chunk.
-void PullManager::ChunkReadSucceeded(const ObjectID &object_id, const ClientID &client_id,
+void PullManager::ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
                                 int64_t chunk_index, bool *abort_creation,
                                 bool *restart_timer) {
   *restart_timer = false;
@@ -208,7 +215,8 @@ void PullManager::ChunkReadSucceeded(const ObjectID &object_id, const ClientID &
   RAY_CHECK(pull_info.remaining_chunk_ids.erase(chunk_index) == 1);
   RAY_CHECK(pull_info.received_chunk_ids.insert(chunk_index).second);
 
-  if (client_id == pull_info.client_receiving_from) {
+  if (client_id == pull_info.client_receiving_from &&
+    push_id == pull_info.push_id) {
     *restart_timer = true;
   }
 
@@ -219,7 +227,7 @@ void PullManager::ChunkReadSucceeded(const ObjectID &object_id, const ClientID &
   }
 }
 
-void PullManager::ChunkReadFailed(
+void PullManager::ChunkReadFailed(const UniqueID &push_id,
     const ObjectID &object_id, const ClientID &client_id, int64_t chunk_index,
     std::vector<ClientID> *clients_to_cancel, bool *abort_creation) {
   ++total_failed_chunk_reads_;
@@ -232,8 +240,10 @@ void PullManager::ChunkReadFailed(
 
   *clients_to_cancel = std::vector<ClientID>();
   if (client_id == pull_info.client_receiving_from &&
+      push_id == pull_info.push_id &&
       pull_info.received_chunk_ids.count(chunk_index) == 0) {
     pull_info.client_receiving_from = ClientID::nil();
+    pull_info.push_id = UniqueID::nil();
     clients_to_cancel->push_back(pull_info.client_receiving_from);
   }
 
@@ -247,7 +257,7 @@ void PullManager::ChunkReadFailed(
 // The timer for this pull request expired. If the object is required, then we
 // need to reissue some new requests. If it is not required, then we may need to
 // end the pull lifetime.
-void PullManager::TimerExpired(const ObjectID &object_id,
+void PullManager::TimerExpired(const UniqueID &push_id, const ObjectID &object_id,
                                std::vector<ClientID> *clients_to_request,
                                bool *abort_creation, bool *restart_timer) {
   auto it = pulls_.find(object_id);
@@ -259,6 +269,7 @@ void PullManager::TimerExpired(const ObjectID &object_id,
     // We could optionally send a cancellation message to this remote object
     // manager.
     pull_info.client_receiving_from = ClientID::nil();
+    pull_info.push_id = UniqueID::nil();
   }
 
   if (pull_info.required && !pull_info.clients_with_object.empty()) {

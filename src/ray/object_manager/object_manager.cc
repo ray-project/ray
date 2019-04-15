@@ -236,7 +236,8 @@ void ObjectManager::AbortObjectCreation(const ObjectID &object_id) {
 }
 
 
-void ObjectManager::SendCancelPullRequest(const ObjectID &object_id,
+void ObjectManager::SendCancelPullRequest(const UniqueID &push_id,
+                                          const ObjectID &object_id,
                                           const ClientID &client_id) {
   // TODO(rkn): Cancellations haven't been implemented yet.
 }
@@ -254,7 +255,7 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
   }
 }
 
-void ObjectManager::HandleSendFinished(const ObjectID &object_id,
+void ObjectManager::HandleSendFinished(const UniqueID &push_id, const ObjectID &object_id,
                                        const ClientID &client_id, uint64_t chunk_index,
                                        double start_time, double end_time,
                                        ray::Status status) {
@@ -269,6 +270,7 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
   profile_event.event_type = "transfer_send";
   profile_event.start_time = start_time;
   profile_event.end_time = end_time;
+  // TODO(williamma12): Add push_id to the extra_data json list.
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
   profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
@@ -277,24 +279,24 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
   profile_events_.push_back(profile_event);
 }
 
-void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
+void ObjectManager::HandleReceiveFinished(const UniqueID &push_id, const ObjectID &object_id,
                                           const ClientID &client_id, uint64_t chunk_index,
                                           double start_time, double end_time,
                                           ray::Status status) {
   bool abort_creation;
   if (status.ok()) {
     bool restart_timer;
-    pull_manager_.ChunkReadSucceeded(object_id, client_id, chunk_index, &abort_creation,
+    pull_manager_.ChunkReadSucceeded(push_id, object_id, client_id, chunk_index, &abort_creation,
                                      &restart_timer);
     if (restart_timer) {
       RestartPullTimer(object_id);
     }
   } else {
     std::vector<ClientID> clients_to_cancel;
-    pull_manager_.ChunkReadFailed(object_id, client_id, chunk_index, &clients_to_cancel,
+    pull_manager_.ChunkReadFailed(push_id, object_id, client_id, chunk_index, &clients_to_cancel,
                                   &abort_creation);
     for (const ClientID &client_id : clients_to_cancel) {
-      SendCancelPullRequest(object_id, client_id);
+      SendCancelPullRequest(push_id, object_id, client_id);
     }
   }
   if (abort_creation) {
@@ -305,6 +307,7 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
   profile_event.event_type = "transfer_receive";
   profile_event.start_time = start_time;
   profile_event.end_time = end_time;
+  // TODO(williamma12): Add push_id to the extra_data json list.
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
   profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
@@ -396,8 +399,8 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
 
         // Notify the main thread that we have finished sending the chunk.
         main_service_->post(
-            [this, object_id, client_id, chunk_index, start_time, end_time, status]() {
-              HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time,
+            [this, push_id, object_id, client_id, chunk_index, start_time, end_time, status]() {
+              HandleSendFinished(push_id, object_id, client_id, chunk_index, start_time, end_time,
                                  status);
             });
       });
@@ -491,7 +494,7 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
   pull_manager_.CancelPullObject(object_id, &clients_to_cancel,
                                  &unsubscribe_from_locations);
   for (const ClientID &client_id : clients_to_cancel) {
-    SendCancelPullRequest(object_id, client_id);
+    SendCancelPullRequest(UniqueID::UniqueID.nil(), object_id, client_id);
   }
 
   if (unsubscribe_from_locations) {
@@ -795,35 +798,34 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   // Serialize.
   auto object_header =
       flatbuffers::GetRoot<object_manager_protocol::PushRequestMessage>(message);
-  UniqueID push_id = UniqueId::from_binary(object_header->push_id()->str());
+  UniqueID push_id = UniqueID::from_binary(object_header->push_id()->str());
   const ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
   uint64_t chunk_index = object_header->chunk_index();
   uint64_t data_size = object_header->data_size();
   uint64_t metadata_size = object_header->metadata_size();
-
   int64_t num_chunks = buffer_pool_.GetNumChunks(data_size + metadata_size);
   std::vector<ClientID> clients_to_cancel;
   bool start_timer;
   pull_manager_.ReceivePushRequest(push_id, object_id, client_id, chunk_index, num_chunks,
                                    &clients_to_cancel, &start_timer);
   for (const ClientID &client_id : clients_to_cancel) {
-    SendCancelPullRequest(object_id, client_id);
+    SendCancelPullRequest(UniqueID::UniqueID.nil(), object_id, client_id);
   }
   if (start_timer) {
     RestartPullTimer(object_id);
   }
 
-  receive_service_.post([this, object_id, client_id, data_size, metadata_size,
+  receive_service_.post([this, push_id, object_id, client_id, data_size, metadata_size,
                          chunk_index, conn]() {
     double start_time = current_sys_time_seconds();
 
-    auto status = ExecuteReceiveObject(client_id, object_id, data_size, metadata_size,
+    auto status = ExecuteReceiveObject(client_id, object_id, push_id, data_size, metadata_size,
                                        chunk_index, *conn);
     double end_time = current_sys_time_seconds();
     // Notify the main thread that we have finished receiving the object.
     main_service_->post(
-        [this, object_id, client_id, chunk_index, start_time, end_time, status]() {
-          HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time,
+        [this, push_id, object_id, client_id, chunk_index, start_time, end_time, status]() {
+          HandleReceiveFinished(push_id, object_id, client_id, chunk_index, start_time, end_time,
                                 status);
         });
   });

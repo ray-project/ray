@@ -21,7 +21,7 @@ class PullManager;
 /// This object manages all of the information associated with an attempt to
 /// receive a given object.
 struct PullInfo {
-  PullInfo(bool required, const ObjectID &object_id);
+  PullInfo(bool required);
 
   /// Fill out the total_num_chunks field. We won't know this until we know the
   /// object size and so can't always fill out this field in the constructor.
@@ -51,6 +51,10 @@ struct PullInfo {
   /// object manager, this will be the client ID of the remote object
   /// manager. Otherwise, it will be nil.
   ClientID client_receiving_from;
+  /// The push id of the attempt to push the object from client_receiving_from.
+  /// We use the push id to determine if this is the original push attempt we
+  /// are receiving the object from.
+  UniqueID push_id;
   /// The total number of chunks that the object is divided into. If this is
   /// -1, then the number is not known.
   int64_t total_num_chunks;
@@ -209,7 +213,7 @@ class PullManager {
   /// \param[out] restart_timer This is set to true if the timer for this object
   /// should be restarted and false otherwise.
   /// \return Void.
-  void ChunkReadSucceeded(const ObjectID &object_id, const ClientID &client_id,
+  void ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
                           int64_t chunk_index, bool *abort_creation, bool *restart_timer);
 
   /// Notify the PullManager that a chunk was not successfully read. This could
@@ -227,7 +231,7 @@ class PullManager {
   /// \param[out] This is set to true if the object creation should be aborted
   /// and false otherwise.
   /// \return Void.
-  void ChunkReadFailed(const ObjectID &object_id, const ClientID &client_id,
+  void ChunkReadFailed(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
                        int64_t chunk_index, std::vector<ClientID> *clients_to_cancel,
                        bool *abort_creation);
 
@@ -241,7 +245,7 @@ class PullManager {
   /// \param[out] restart_timer This will be set to true if the timer for this
   /// object should be restarted and false otherwise.
   /// \return Void.
-  void TimerExpired(const ObjectID &object_id, std::vector<ClientID> *clients_to_request,
+  void TimerExpired(const UniqueID &push_id, const ObjectID &object_id, std::vector<ClientID> *clients_to_request,
                     bool *abort_creation, bool *restart_timer);
 
   /// Print out a human-readable string describing the PullManager's state.
