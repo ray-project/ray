@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def renamed_class(cls):
-    """Helper class for renaming *Agent => *Trainer with a warning."""
+    """Helper class for renaming Agent => Trainer with a warning."""
 
     class DeprecationWrapper(cls):
         def __init__(self, config=None, env=None, logger_creator=None):
