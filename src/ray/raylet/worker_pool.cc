@@ -177,6 +177,9 @@ void WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(!driver->GetAssignedTaskId().is_nil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
+  stats::CurrentDriver().Record(driver->Pid(),
+      {{stats::LanguageKey, EnumNameLanguage(driver->GetLanguage())},
+       {stats::WorkerPidKey, std::to_string(driver->Pid())}});
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
@@ -247,6 +250,9 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
 void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
+  stats::CurrentDriver().Record(
+      0, {{stats::LanguageKey, EnumNameLanguage(driver->GetLanguage())},
+          {stats::WorkerPidKey, std::to_string(driver->Pid())}});
 }
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
