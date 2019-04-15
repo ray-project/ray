@@ -3,10 +3,10 @@ Release Process
 
 This document describes the process for creating new releases.
 
-1. First, you should build wheels that you'd like to use for testing. That can
-   be done by following the `documentation for building wheels`_.
+1. **Increment the Python version:** Create a PR that increments the Python
+   package version. See `this example`_.
 
-2. **Testing:** Before a release is created, significant testing should be done.
+2. **Testing:** Before a release is cut, significant testing should be done.
    Run the script `ci/stress_tests/run_stress_tests.sh`_ and
    `ci/stress_tests/run_application_stress_tests.sh`_ and make sure it
    passes. *And make sure it is testing the right version of Ray!* This will use
@@ -17,9 +17,6 @@ This document describes the process for creating new releases.
 3. **Libraries:** Make sure that the libraries (e.g., RLlib, Tune, SGD) are in a
    releasable state. TODO(rkn): These libraries should be tested automatically
    by the script above, but they aren't yet.
-
-4. **Increment the Python version:** Create a PR that increments the Python
-   package version. See `this example`_.
 
 5. **Create a GitHub release:** Create a GitHub release through the `GitHub
    website`_. The release should be created at the commit from the previous
