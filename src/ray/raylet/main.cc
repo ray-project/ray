@@ -42,8 +42,8 @@ int main(int argc, char *argv[]) {
   const bool disable_stats("true" == disable_stats_str);
   const std::string stat_address =
       (argc >= 18 ? std::string(argv[17]) : "127.0.0.1:8888");
-  const std::string disable_stdout_exporter_str(
-      argc >= 19 ? std::string(argv[18]) : "true");
+  const std::string disable_stdout_exporter_str(argc >= 19 ? std::string(argv[18])
+                                                           : "true");
   const bool disable_stdout_exporter("true" == disable_stdout_exporter_str);
 
   // Initialize stats.
