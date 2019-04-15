@@ -3,9 +3,29 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.ppo.appo_policy_graph import AsyncPPOPolicyGraph
-from ray.rllib.agents.trainer import with_base_config
+from ray.rllib.agents.trainer import with_base_config, Trainer, with_common_config
 from ray.rllib.agents import impala
 from ray.rllib.utils.annotations import override
+from ray.rllib.optimizers import AsyncSamplesOptimizer
+
+
+OPTIMIZER_SHARED_CONFIGS = [
+    "lr",
+    "num_envs_per_worker",
+    "num_gpus",
+    "sample_batch_size",
+    "train_batch_size",
+    "replay_buffer_num_slots",
+    "replay_proportion",
+    "num_data_loader_buffers",
+    "max_sample_requests_in_flight_per_worker",
+    "broadcast_interval",
+    "num_sgd_iter",
+    "minibatch_buffer_size",
+    "old_policy_lag",
+    "use_kl_loss",
+    "use_appo",
+]
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -23,6 +43,17 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 
     # == PPO surrogate loss options ==
     "clip_param": 0.4,
+
+    # Old Policy Parameters
+    "old_policy_lag": 100,
+
+     # KL Loss Parameters
+    "use_kl_loss": False,
+    "kl_coeff": 0.05,
+    "kl_target": 0.35,
+
+    #For AsyncOptimzer to know which agent it is using
+    "use_appo": True,
 
     # == IMPALA optimizer params (see documentation in impala.py) ==
     "sample_batch_size": 50,
@@ -46,7 +77,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "momentum": 0.0,
     "epsilon": 0.1,
     "vf_loss_coeff": 0.5,
-    "entropy_coeff": 0.01,
+    "entropy_coeff": -0.01,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -58,6 +89,33 @@ class APPOTrainer(impala.ImpalaTrainer):
     _name = "APPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = AsyncPPOPolicyGraph
+
+    @override(impala.ImpalaTrainer)
+    def _init(self, config, env_creator):
+        for k in OPTIMIZER_SHARED_CONFIGS:
+            if k not in config["optimizer"]:
+                config["optimizer"][k] = config[k]
+        policy_cls = self._get_policy_graph()
+        self.local_evaluator = self.make_local_evaluator(
+            self.env_creator, policy_cls)
+
+        if self.config["num_aggregation_workers"] > 0:
+            # Create co-located aggregator actors first for placement pref
+            aggregators = TreeAggregator.precreate_aggregators(
+                self.config["num_aggregation_workers"])
+
+        self.remote_evaluators = self.make_remote_evaluators(
+            env_creator, policy_cls, config["num_workers"])
+        self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
+                                               self.remote_evaluators,
+                                               **config["optimizer"])
+        #if config["entropy_coeff"] < 0:
+            #raise DeprecationWarning("entropy_coeff must be >= 0")
+
+        if self.config["num_aggregation_workers"] > 0:
+            # Assign the pre-created aggregators to the optimizer
+            self.optimizer.aggregator.init(aggregators)
+
 
     @override(impala.ImpalaTrainer)
     def _get_policy_graph(self):

@@ -26,7 +26,7 @@ class LearnerThread(threading.Thread):
     """
 
     def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_iter,
-                 learner_queue_size):
+                 learner_queue_size, use_appo=False, old_policy_lag=None, use_kl_loss=False):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
         self.local_evaluator = local_evaluator
@@ -42,6 +42,11 @@ class LearnerThread(threading.Thread):
         self.weights_updated = False
         self.stats = {}
         self.stopped = False
+        self.old_policy_lag=old_policy_lag
+        self.use_kl_loss=use_kl_loss
+        if self.use_kl_loss:
+            self.counter=0
+        self.use_appo = use_appo
 
     def run(self):
         while not self.stopped:
@@ -50,10 +55,20 @@ class LearnerThread(threading.Thread):
     def step(self):
         with self.queue_timer:
             batch, _ = self.minibatch_buffer.get()
+            if "old_policy_behaviour_logits" not in batch and self.use_appo:
+                self.old_policy_behaviour_logits = self.local_evaluator.policy_map['default_policy'].compute_actions(
+                        batch["obs"],prev_action_batch=batch["prev_actions"],
+                        prev_reward_batch=batch["prev_rewards"])[2]['behaviour_logits']
+                batch["old_policy_behaviour_logits"] = self.old_policy_behaviour_logits
 
         with self.grad_timer:
             fetches = self.local_evaluator.learn_on_batch(batch)
             self.weights_updated = True
+            if self.use_kl_loss and self.use_appo:
+                if self.counter == self.old_policy_lag:
+                    self.local_evaluator.for_policy(
+                        lambda pi: pi.update_kl(fetches["stats"]["KL"]))
+                self.counter = 0 if self.counter==self.old_policy_lag else self.counter+1 
             self.stats = get_learner_stats(fetches)
 
         self.outqueue.put(batch.count)

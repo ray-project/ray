@@ -42,40 +42,61 @@ class PPOSurrogateLoss(object):
     """
 
     def __init__(self,
+                 old_policy_actions_logp,
                  prev_actions_logp,
                  actions_logp,
                  action_kl,
                  actions_entropy,
+                 cur_kl_coeff,
                  values,
                  valid_mask,
                  advantages,
                  value_targets,
+                 vf_preds,
                  vf_loss_coeff=0.5,
-                 entropy_coeff=0.01,
-                 clip_param=0.3):
+                 entropy_coeff=-0.01,
+                 clip_param=0.3,
+                 is_upper_clip=2.0,
+                 is_lower_clip=0.5,
+                 use_kl_loss=False):
 
-        logp_ratio = tf.exp(actions_logp - prev_actions_logp)
+        def reduce_mean_valid(t):
+            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
 
+        def reduce_sum_valid(t):
+            return tf.reduce_sum(tf.boolean_mask(t, valid_mask))
+
+        self.importance_ratio = tf.clip_by_value(tf.exp(prev_actions_logp-old_policy_actions_logp), is_lower_clip, is_upper_clip)
+
+        logp_ratio = self.importance_ratio*tf.exp(actions_logp - prev_actions_logp)
+        advantages = tf.Print(advantages, ["advantages", advantages])
         surrogate_loss = tf.minimum(
-            advantages * logp_ratio,
-            advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
-                                          1 + clip_param))
+                advantages * logp_ratio,
+                advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
+                                              1 + clip_param))
+        self.pi_loss = -reduce_sum_valid(surrogate_loss)
+        self.mean_pi_loss = -reduce_mean_valid(surrogate_loss)
 
         self.mean_kl = tf.reduce_mean(action_kl)
-        self.pi_loss = -tf.reduce_sum(surrogate_loss)
-
+        
         # The baseline loss
-        delta = tf.boolean_mask(values - value_targets, valid_mask)
+        delta = values - value_targets
         self.value_targets = value_targets
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        vf_loss = 0.5 * tf.square(delta)
+        self.vf_loss = reduce_sum_valid(vf_loss)
+        self.mean_vf_loss = reduce_mean_valid(vf_loss)
+        
 
         # The entropy loss
-        self.entropy = tf.reduce_sum(
-            tf.boolean_mask(actions_entropy, valid_mask))
+        self.entropy = reduce_sum_valid(actions_entropy)
+        self.mean_entropy = reduce_mean_valid(actions_entropy)
 
         # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
+        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
                            self.entropy * entropy_coeff)
+
+        if use_kl_loss:
+            self.total_loss += cur_kl_coeff*action_kl
 
 
 class VTraceSurrogateLoss(object):
@@ -210,8 +231,20 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
         self.sess = tf.get_default_session()
         self.grads = None
 
+        #Optional-KL Loss Variables
+        self.use_kl_loss = self.config["use_kl_loss"]
+        self.kl_coeff_val = self.config["kl_coeff"]
+        self.kl_target = self.config["kl_target"]
+        self.kl_coeff = tf.get_variable(
+            initializer=tf.constant_initializer(self.kl_coeff_val),
+            name="kl_coeff",
+            shape=(),
+            trainable=False,
+            dtype=tf.float32)
+
+
+        is_multidiscrete = False
         if isinstance(action_space, gym.spaces.Discrete):
-            is_multidiscrete = False
             output_hidden_shape = [action_space.n]
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
             is_multidiscrete = True
@@ -221,7 +254,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
                 "Action space {} is not supported for APPO + VTrace.",
                 format(action_space))
         else:
-            is_multidiscrete = False
             output_hidden_shape = 1
 
         # Policy network model
@@ -257,6 +289,10 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
                     tf.float32, name="advantages", shape=(None, ))
                 value_targets = tf.placeholder(
                     tf.float32, name="value_targets", shape=(None, ))
+                vf_preds_ph = tf.placeholder(tf.float32, name="vf_preds", shape=(None, ))
+                old_policy_behaviour_logits = tf.placeholder(
+                    tf.float32, [None, logit_dim], name="old_policy_behaviour_logits")
+
         self.observations = observations
 
         # Unpack behaviour logits
@@ -281,6 +317,8 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
             self.config["model"],
             state_in=existing_state_in,
             seq_lens=existing_seq_lens)
+
+        # Unpack Model Outputs
         unpacked_outputs = tf.split(
             self.model.outputs, output_hidden_shape, axis=1)
 
@@ -291,6 +329,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
 
         action_dist = dist_class(dist_inputs)
         prev_action_dist = dist_class(prev_dist_inputs)
+        old_policy_action_dist = dist_class(old_policy_behaviour_logits)
 
         values = self.model.value_function()
         self.value_function = values
@@ -373,18 +412,21 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
         else:
             logger.info("Using PPO surrogate loss (vtrace=False)")
             self.loss = PPOSurrogateLoss(
-                prev_actions_logp=make_time_major(
-                    prev_action_dist.logp(actions)),
-                actions_logp=make_time_major(action_dist.logp(actions)),
-                action_kl=prev_action_dist.kl(action_dist),
-                actions_entropy=make_time_major(action_dist.entropy()),
-                values=make_time_major(values),
-                valid_mask=make_time_major(mask),
-                advantages=make_time_major(adv_ph),
-                value_targets=make_time_major(value_targets),
+                old_policy_actions_logp=old_policy_action_dist.logp(actions),
+                prev_actions_logp=prev_action_dist.logp(actions),
+                actions_logp=action_dist.logp(actions),
+                action_kl=old_policy_action_dist.kl(action_dist),
+                actions_entropy=action_dist.entropy(),
+                cur_kl_coeff=self.kl_coeff,
+                values=values,
+                valid_mask=mask,
+                advantages=adv_ph,
+                value_targets=value_targets,
+                vf_preds = vf_preds_ph,
                 vf_loss_coeff=self.config["vf_loss_coeff"],
                 entropy_coeff=self.config["entropy_coeff"],
-                clip_param=self.config["clip_param"])
+                clip_param=self.config["clip_param"],
+                use_kl_loss=self.use_kl_loss)
 
         # KL divergence between worker and learner logits for debugging
         model_dist = MultiCategorical(unpacked_outputs)
@@ -408,6 +450,14 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
                 "median_KL": tf.contrib.distributions.percentile(kls[0], 50.0),
             }
 
+            if not self.config["vtrace"] and not is_multidiscrete:
+                is_stat_mean, is_stat_var = tf.nn.moments(self.loss.importance_ratio, [0])
+                self.KL_stats.update({"mean_IS": is_stat_mean})
+                self.KL_stats.update({"var_IS": is_stat_mean})
+                if self.use_kl_loss:
+                    self.KL_stats.update({"KL_loss": self.loss.mean_kl})
+                    self.KL_stats.update({"KL_coeff": self.kl_coeff})
+
         # Initialize TFPolicyGraph
         loss_in = [
             ("actions", actions),
@@ -419,8 +469,10 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
             ("prev_rewards", prev_rewards),
         ]
         if not self.config["vtrace"]:
+            loss_in.append(("old_policy_behaviour_logits", old_policy_behaviour_logits))
             loss_in.append(("advantages", adv_ph))
             loss_in.append(("value_targets", value_targets))
+            loss_in.append(("vf_preds", vf_preds_ph))
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
         TFPolicyGraph.__init__(
@@ -444,16 +496,20 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
 
         self.sess.run(tf.global_variables_initializer())
 
-        values_batched = make_time_major(
-            values, drop_last=self.config["vtrace"])
+        if self.config["vtrace"]:
+            values_batched = make_time_major(
+                values, drop_last=self.config["vtrace"])
+        else:
+            values_batched = values
+
         self.stats_fetches = {
             LEARNER_STATS_KEY: dict({
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
-                "policy_loss": self.loss.pi_loss,
-                "entropy": self.loss.entropy,
+                "policy_loss": self.loss.mean_pi_loss,
+                "entropy": self.loss.mean_entropy,
                 "grad_gnorm": tf.global_norm(self._grads),
                 "var_gnorm": tf.global_norm(self.var_list),
-                "vf_loss": self.loss.vf_loss,
+                "vf_loss": self.loss.mean_vf_loss,
                 "vf_explained_var": explained_variance(
                     tf.reshape(self.loss.value_targets, [-1]),
                     tf.reshape(values_batched, [-1])),
@@ -476,6 +532,14 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
 
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
+
+    def update_kl(self, sampled_kl):
+        if sampled_kl > 2.0 * self.kl_target:
+            self.kl_coeff_val *= 1.5
+        elif sampled_kl < 0.5 * self.kl_target:
+            self.kl_coeff_val *= 0.5
+        self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
+        return self.kl_coeff_val
 
     def value(self, ob, *args):
         feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
