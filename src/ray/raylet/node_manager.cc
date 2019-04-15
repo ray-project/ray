@@ -2203,9 +2203,18 @@ std::string NodeManager::DebugString() const {
     }
   }
   result << "\n- num live actors: " << live_actors;
-  result << "\n- num reconstructing actors: " << live_actors;
+  result << "\n- num reconstructing actors: " << reconstructing_actors;
   result << "\n- num dead actors: " << dead_actors;
   result << "\n- max num handles: " << max_num_handles;
+  stats::ActorStats().Record(live_actors,
+      {{stats::ActorStatsValueTypeKey, "live_actors"}});
+  stats::ActorStats().Record(reconstructing_actors,
+      {{stats::ActorStatsValueTypeKey, "reconstructing_actors"}});
+  stats::ActorStats().Record(dead_actors,
+      {{stats::ActorStatsValueTypeKey, "dead_actors"}});
+  stats::ActorStats().Record(max_num_handles,
+      {{stats::ActorStatsValueTypeKey, "max_num_handles"}});
+
   result << "\nRemoteConnections:";
   for (auto &pair : remote_server_connections_) {
     result << "\n" << pair.first.hex() << ": " << pair.second->DebugString();

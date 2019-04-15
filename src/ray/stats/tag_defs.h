@@ -23,4 +23,6 @@ static const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
 
 static const TagKeyType ResourceNameKey = TagKeyType::Register("ResourceName");
 
+static const TagKeyType ActorStatsValueTypeKey = TagKeyType::Register("ValueType");
+
 #endif  // RAY_STATS_TAG_DEFS_H

@@ -36,4 +36,8 @@ static Gauge LocalTotalResource("local_total_resource",
                                 "The total resource of this node.", "pcs",
                                 {ResourceNameKey});
 
+static Gauge ActorStats("actor_stats",
+                        "Stat the metric values of actor.", "pcs",
+                        {ActorStatsValueTypeKey});
+
 #endif  // RAY_STATS_METRIC_DEFS_H
