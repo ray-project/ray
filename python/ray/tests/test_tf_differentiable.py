@@ -153,10 +153,10 @@ def check_tensor_outputs(out_1, out_2):
     """ Verifies that two outputs consisting of TF eager tensors are equivalent. """
 
     #TODO(vsatish): Figure out why we sometimes return 0.0 instead of None.
-    if out_1 is None and isinstance(out_2, tf.Tensor) and out_2.numpy() == 0.0:
-        out_1 = tf.constant(0.0)
-    elif out_2 is None and isinstance(out_1, tf.Tensor) and out_1.numpy() == 0.0:
-        out_2 = tf.constant(0.0)
+#    if out_1 is None and isinstance(out_2, tf.Tensor) and out_2.numpy() == 0.0:
+#        out_1 = tf.constant(0.0)
+#    elif out_2 is None and isinstance(out_1, tf.Tensor) and out_1.numpy() == 0.0:
+#        out_2 = tf.constant(0.0)
 
     if isinstance(out_1, list) and isinstance(out_2, tuple):
         out_2 = list(out_2)
@@ -662,6 +662,7 @@ def test_multiple_ops_multiple_in_multiple_out_large_v2(start_ray, ray_actor, du
 
 
 ############################## KWARGS ##############################
+#@pytest.mark.skip()
 def test_kwargs_single_in_single_out(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(5.0)
 
@@ -678,6 +679,7 @@ def test_kwargs_single_in_single_out(start_ray, ray_actor, dummy_actor):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+#@pytest.mark.skip()
 def test_kwargs_single_in_single_out_default(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(5.0, dtype=tf.float64)
 
@@ -694,43 +696,51 @@ def test_kwargs_single_in_single_out_default(start_ray, ray_actor, dummy_actor):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+#@pytest.mark.skip()
 def test_kwargs_single_in_single_out_tensor_kwarg(start_ray, ray_actor, dummy_actor):
+    n = tf.Variable(5.0)
+
+    with tf.GradientTape() as t:
+        i_1 = ray_actor.kw_power.remote(2, n=n)
+        out_hat = ray.get(i_1)
+    grad_hat = t.gradient(out_hat, n)
+
+    with tf.GradientTape() as t:
+        i_1 = dummy_actor.kw_power(2, n=n)
+        out = i_1
+    grad = t.gradient(out, n)
+
+    check_tensor_outputs(out_hat, out)
+    check_tensor_outputs(grad_hat, grad)
+
+def test_kwargs_single_in_single_out_tensor_arg_tensor_kwarg(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(5.0)
     n = tf.Variable(5.0)
 
     with tf.GradientTape() as t:
         i_1 = ray_actor.kw_power.remote(x, n=n)
         out_hat = ray.get(i_1)
-    grad_hat = t.gradient(out_hat, x)
+    grad_hat = t.gradient(out_hat, [x, n])
 
     with tf.GradientTape() as t:
         i_1 = dummy_actor.kw_power(x, n=n)
         out = i_1
-    grad = t.gradient(out, x)
+    grad = t.gradient(out, [x, n])
 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
-@pytest.mark.skip()
-def test_kwargs_single_in_single_out_obj_id_kwarg(start_ray, ray_actor, dummy_actor):
+#@pytest.mark.skip()
+def test_kwargs_single_in_single_out_tf_obj_id_kwarg(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(5.0)
     y = tf.Variable(2.0)
 
     with tf.GradientTape() as t:
         n = ray_actor.prod.remote(y, y)
-        i_1 = ray_actor.kw_power.remote(x, n=n)
-        out_hat = ray.get(i_1)
-    grad_hat = t.gradient(out_hat, x)
+        with pytest.raises(RuntimeError, match="TFObjectID kwargs are not yet supported!"):
+            i_1 = ray_actor.kw_power.remote(x, n=n)
 
-    with tf.GradientTape() as t:
-        n = dummy_actor.prod(y, y)
-        i_1 = dummy_actor.kw_power(x, n=n)
-        out = i_1
-    grad = t.gradient(out, x)
-
-    check_tensor_outputs(out_hat, out)
-    check_tensor_outputs(grad_hat, grad)
-
+#@pytest.mark.skip()
 def test_kwargs_multiple_in_multiple_out_tf_sandwich(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(4.0)
     y = tf.Variable(-3.0)

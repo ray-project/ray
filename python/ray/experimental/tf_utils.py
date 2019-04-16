@@ -258,11 +258,11 @@ def tf_differentiable(num_return_vals):
                     # We definitely shouldn't allow them to be differentiable, right?
                     if arg_type == "tf_var":
                         processed_kwargs[kw] = tf.Variable(arg, dtype=arg_dtype)
-#                        tensors.append(processed_kwargs[kw])
+                        tensors.append(processed_kwargs[kw])
                     elif arg_type == "tf_const":
                         processed_kwargs[kw] = tf.constant(arg, dtype=arg_dtype)
                         tf_constants.append(processed_kwargs[kw])
-#                        tensors.append(processed_kwargs[kw])
+                        tensors.append(processed_kwargs[kw])
                     elif arg_type == "native":
                         processed_kwargs[kw] = arg
                     else:
@@ -281,7 +281,13 @@ def tf_differentiable(num_return_vals):
                     self.__ray_tf_info__ = {}
                 self.__ray_tf_info__[identifier] = (tape, tensors, results)
 
-                return [result.numpy() for result in results] if isinstance(results, tuple) else results.numpy()
+                # process the results
+                if isinstance(results, (list, tuple)):
+                    processed_results = [result.numpy() if isinstance(result, (tf.Tensor, tf.Variable)) else result for result in results]
+                else:
+                    processed_results = results.numpy() if isinstance(results, (tf.Tensor, tf.Variable)) else results
+
+                return processed_results
             else:
                 # execute the backward pass
                 tape, tensors, results = self.__ray_tf_info__[identifier]
@@ -412,10 +418,11 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
 #            tf_object_ids.append(arg)        
 #            object_ids.append(arg)
 #            tensors.append(arg.graph_tensor) # this is a dummy tensor used to link the TF computation graph
-            kwarg_types[kw] = "tf_const"
-            kwarg_dtypes[kw] = arg.graph_tensor.numpy().dtype
+#            kwarg_types[kw] = "tf_const"
+#            kwarg_dtypes[kw] = arg.graph_tensor.numpy().dtype
 #            is_tensor_tf_object_id.append(True)
-            processed_kwargs[kw] = arg
+#            processed_kwargs[kw] = arg
+            raise RuntimeError("TFObjectID kwargs are not yet supported!")
         elif isinstance(arg, (tf.Variable, tf.Tensor)):
             if isinstance(arg, tf.Variable):
                 arg_type = "tf_var"
@@ -424,13 +431,14 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
 #            is_tensor_tf_object_id.append(False)
             kwarg_types[kw] = arg_type
             kwarg_dtypes[kw] = arg.numpy().dtype
-#            tensors.append(arg)
+            tensors.append(arg)
             processed_kwargs[kw] = arg.numpy()
         elif isinstance(arg, ray.ObjectID):
 #            object_ids.append(arg)
-            kwarg_types[kw] = "native"
-            kwarg_dtypes[kw] = ray.ObjectID
-            processed_kwargs[kw] = arg
+#            kwarg_types[kw] = "native"
+#            kwarg_dtypes[kw] = ray.ObjectID
+#            processed_kwargs[kw] = arg
+            raise RuntimeError("TFObjectID kwargs are not yet supported!")
         else:
             kwarg_types[kw] = "native"
             kwarg_dtypes[kw] = type(arg)
@@ -517,14 +525,22 @@ def _post_process_get(tf_object_ids, results):
 
     tensors = [tf_obj_id.graph_tensor for tf_obj_id in tf_object_ids] # these are dummy tensors used 
                                                                       # to link the TF computation graph
+    print("TENSORS", tensors)
+    print("RESULTS", results)
 
     @tf.custom_gradient
     def get_op(*tensors):
-        
+
+        """        
         result_tensors = []
         for result, tensor in zip(results, tensors):
-            result_tensors.append(tf.constant(result, dtype=tensor.dtype))
-        
+            if result != None: 
+                result_tensors.append(tf.constant(result, dtype=tensor.dtype))
+            else:
+                result_tensors.append(-1)        
+        """
+        result_tensors = [tf.constant(result, dtype=tensor.dtype) for result, tensor in zip(results, tensors)]
+
         def grad(*dys):
             return dys
 
