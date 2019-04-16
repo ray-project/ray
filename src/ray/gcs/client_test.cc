@@ -844,15 +844,15 @@ void TestLogSubscribeId(const DriverID &driver_id,
     // Write both keys. We should only receive notifications for the key that
     // we requested them for.
     auto remaining = std::vector<std::string>(++driver_ids1.begin(), driver_ids1.end());
-    for (const auto &driver_id : remaining) {
+    for (const auto &driver_id_it : remaining) {
       auto data = std::make_shared<DriverTableDataT>();
-      data->driver_id = driver_id;
+      data->driver_id = driver_id_it;
       RAY_CHECK_OK(client->driver_table().Append(driver_id, driver_id1, data, nullptr));
     }
     remaining = std::vector<std::string>(++driver_ids2.begin(), driver_ids2.end());
-    for (const auto &driver_id : remaining) {
+    for (const auto &driver_id_it : remaining) {
       auto data = std::make_shared<DriverTableDataT>();
-      data->driver_id = driver_id;
+      data->driver_id = driver_id_it;
       RAY_CHECK_OK(client->driver_table().Append(driver_id, driver_id2, data, nullptr));
     }
   };
@@ -1029,18 +1029,18 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeCancel);
 void TestLogSubscribeCancel(const DriverID &driver_id,
                             std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a log entry.
-  DriverID driver_id = DriverID::from_random();
+  DriverID random_driver_id = DriverID::from_random();
   std::vector<std::string> driver_ids = {"jkl", "mno", "pqr"};
   auto data = std::make_shared<DriverTableDataT>();
   data->driver_id = driver_ids[0];
-  RAY_CHECK_OK(client->driver_table().Append(driver_id, driver_id, data, nullptr));
+  RAY_CHECK_OK(client->driver_table().Append(driver_id, random_driver_id, data, nullptr));
 
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
-  auto notification_callback = [driver_id, driver_ids](
+  auto notification_callback = [random_driver_id, driver_ids](
       gcs::AsyncGcsClient *client, const UniqueID &id,
       const std::vector<DriverTableDataT> &data) {
-    ASSERT_EQ(id, driver_id);
+    ASSERT_EQ(id, random_driver_id);
     // Check that we get a duplicate notification for the first write. We get a
     // duplicate notification because the log is append-only and notifications
     // are canceled after the first write, then requested again.
@@ -1057,14 +1057,14 @@ void TestLogSubscribeCancel(const DriverID &driver_id,
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto subscribe_callback = [driver_id, driver_id,
+  auto subscribe_callback = [driver_id, random_driver_id,
                              driver_ids](gcs::AsyncGcsClient *client) {
     // Request notifications, then cancel immediately. We should receive a
     // notification for the current value at the key.
     RAY_CHECK_OK(client->driver_table().RequestNotifications(
-        driver_id, driver_id, client->client_table().GetLocalClientId()));
+        driver_id, random_driver_id, client->client_table().GetLocalClientId()));
     RAY_CHECK_OK(client->driver_table().CancelNotifications(
-        driver_id, driver_id, client->client_table().GetLocalClientId()));
+        driver_id, random_driver_id, client->client_table().GetLocalClientId()));
     // Append to the key. Since we canceled notifications, we should not
     // receive a notification for these writes.
     auto remaining = std::vector<std::string>(++driver_ids.begin(), driver_ids.end());
@@ -1076,7 +1076,7 @@ void TestLogSubscribeCancel(const DriverID &driver_id,
     // Request notifications again. We should receive a notification for the
     // current values at the key.
     RAY_CHECK_OK(client->driver_table().RequestNotifications(
-        driver_id, driver_id, client->client_table().GetLocalClientId()));
+        driver_id, random_driver_id, client->client_table().GetLocalClientId()));
   };
 
   // Subscribe to notifications for this client. This allows us to request and
