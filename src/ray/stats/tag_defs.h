@@ -25,4 +25,6 @@ static const TagKeyType ResourceNameKey = TagKeyType::Register("ResourceName");
 
 static const TagKeyType ActorStatsValueTypeKey = TagKeyType::Register("ValueType");
 
+static const TagKeyType ObjectStatsValueTypeKey = TagKeyType::Register("ValueType");
+
 #endif  // RAY_STATS_TAG_DEFS_H

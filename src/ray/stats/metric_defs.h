@@ -37,7 +37,11 @@ static Gauge LocalTotalResource("local_total_resource",
                                 {ResourceNameKey});
 
 static Gauge ActorStats("actor_stats",
-                        "Stat the metric values of actor.", "pcs",
+                        "Stat the metric values of actor in raylet.", "pcs",
                         {ActorStatsValueTypeKey});
+
+static Gauge ObjectStats("object_stats",
+                         "Stat the metric values of object in raylet", "pcs",
+                         {ObjectStatsValueTypeKey});
 
 #endif  // RAY_STATS_METRIC_DEFS_H
