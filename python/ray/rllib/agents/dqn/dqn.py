@@ -152,9 +152,9 @@ class DQNTrainer(Trainer):
     @override(Trainer)
     def _init(self, config, env_creator):
         if self.config["use_pytorch"]:
-            from ray.rllib.agents.dqn.torch_dqn_policy_graph import \
-                DQNTorchPolicyGraph
-            policy_cls = DQNTorchPolicyGraph
+            from ray.rllib.agents.dqn.rainbow_torch_policy_graph import \
+                RainbowTorchPolicyGraph
+            policy_cls = RainbowTorchPolicyGraph
         else:
             policy_cls = self._policy_graph
 

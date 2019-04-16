@@ -11,15 +11,13 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.models.catalog import ModelCatalog
 
 
-class DQNTorchLoss(nn.Module):
+class RainbowTorchLoss(nn.Module):
     def __init__(self,
                  model,
-                 n_agents,
                  n_actions,
                  gamma=0.99):
         nn.Module.__init__(self)
         self.model = model
-        self.n_agents = n_agents
         self.n_actions = n_actions
         self.gamma = gamma
 
@@ -27,13 +25,14 @@ class DQNTorchLoss(nn.Module):
             pass  # todo
 
 
-class DQNTorchPolicyGraph(PolicyGraph):
+class RainbowTorchPolicyGraph(PolicyGraph):
     def __init__(self, observation_space, action_space, config):
         _validate(config)
         config = dict(DQN_DEFAULT_CONFIG, **config)
         self.config = config
         self.observation_space = observation_space
         self.action_space = action_space
+        self.n_actions = action_space.spaces[0].n
         self.cur_epsilon = 1.0
 
         agent_obs_space = observation_space.original_space.spaces[0]
@@ -62,7 +61,7 @@ class DQNTorchPolicyGraph(PolicyGraph):
 
         # Setup optimiser
         self.params = list(self.model.parameters())
-        self.loss - DQNTorchLoss()  # todo once DQNTorchLoss is implemented
+        self.loss - RainbowTorchLoss(self.model, self.n_actions)
         self.optimiser = RMSprop(
             params=self.params,
             lr=config["lr"],
@@ -82,10 +81,6 @@ class DQNTorchPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def learn_on_batch(self, samples):
-        pass  # todo
-
-    @override(PolicyGraph)
-    def get_initial_state(self):
         pass  # todo
 
     @override(PolicyGraph)
