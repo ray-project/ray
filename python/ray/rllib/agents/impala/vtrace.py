@@ -35,6 +35,9 @@ from __future__ import print_function
 import collections
 
 import tensorflow as tf
+from ray.rllib.models.action_dist import (Categorical, Deterministic,
+                                          DiagGaussian,
+                                          MultiActionDistribution, Dirichlet)
 
 nest = tf.contrib.framework.nest
 
@@ -51,7 +54,7 @@ def log_probs_from_logits_and_actions(policy_logits, actions):
                                                    [actions])[0]
 
 
-def multi_log_probs_from_logits_and_actions(policy_logits, actions):
+def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class):
     """Computes action log-probs from policy logits and actions.
 
   In the notation used throughout documentation and comments, T refers to the
@@ -85,8 +88,7 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions):
 
     log_probs = []
     for i in range(len(policy_logits)):
-        log_probs.append(-tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=policy_logits[i], labels=actions[i]))
+        log_probs.append(dist_class(policy_logits[i]).logp(actions[i]))
 
     return log_probs
 
@@ -131,6 +133,7 @@ def multi_from_logits(behaviour_policy_logits,
                       rewards,
                       values,
                       bootstrap_value,
+                      dist_class,
                       clip_rho_threshold=1.0,
                       clip_pg_rho_threshold=1.0,
                       name="vtrace_from_logits"):
@@ -200,19 +203,22 @@ def multi_from_logits(behaviour_policy_logits,
       target_action_log_probs: A float32 tensor of shape [T, B] containing
         target policy action probabilities (log \pi(a_t)).
   """
+    if dist_class is DiagGaussian or dist_class is Dirichlet:
+        is_continuous=True
+    else:
+        is_continuous=False
 
     for i in range(len(behaviour_policy_logits)):
         behaviour_policy_logits[i] = tf.convert_to_tensor(
             behaviour_policy_logits[i], dtype=tf.float32)
         target_policy_logits[i] = tf.convert_to_tensor(
             target_policy_logits[i], dtype=tf.float32)
-        actions[i] = tf.convert_to_tensor(actions[i], dtype=tf.int32)
+        actions[i] = actions[i] if is_continuous else tf.convert_to_tensor(actions[i], dtype=tf.int32)
 
         # Make sure tensor ranks are as expected.
         # The rest will be checked by from_action_log_probs.
         behaviour_policy_logits[i].shape.assert_has_rank(3)
         target_policy_logits[i].shape.assert_has_rank(3)
-        actions[i].shape.assert_has_rank(2)
 
     with tf.name_scope(
             name,
@@ -221,9 +227,9 @@ def multi_from_logits(behaviour_policy_logits,
                 discounts, rewards, values, bootstrap_value
             ]):
         target_action_log_probs = multi_log_probs_from_logits_and_actions(
-            target_policy_logits, actions)
+            target_policy_logits, actions, dist_class)
         behaviour_action_log_probs = multi_log_probs_from_logits_and_actions(
-            behaviour_policy_logits, actions)
+            behaviour_policy_logits, actions, dist_class)
 
         log_rhos = get_log_rhos(target_action_log_probs,
                                 behaviour_action_log_probs)

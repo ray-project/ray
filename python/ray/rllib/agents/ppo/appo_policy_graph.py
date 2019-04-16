@@ -21,7 +21,9 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.models.action_dist import MultiCategorical
+from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
+                                          Deterministic, DiagGaussian,
+                                          MultiActionDistribution, Dirichlet)
 from ray.rllib.evaluation.postprocessing import compute_advantages
 
 logger = logging.getLogger(__name__)
@@ -93,8 +95,9 @@ class VTraceSurrogateLoss(object):
                  values,
                  bootstrap_value,
                  valid_mask,
+                 dist_class,
                  vf_loss_coeff=0.5,
-                 entropy_coeff=0.01,
+                 entropy_coeff=-0.01,
                  clip_rho_threshold=1.0,
                  clip_pg_rho_threshold=1.0,
                  clip_param=0.3):
@@ -119,20 +122,32 @@ class VTraceSurrogateLoss(object):
             bootstrap_value: A float32 tensor of shape [B].
             valid_mask: A bool tensor of valid RNN input elements (#2992).
         """
+        def reduce_mean_valid(t):
+            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
+
+        def reduce_sum_valid(t):
+            return tf.reduce_sum(tf.boolean_mask(t, valid_mask))
+
+        if dist_class is DiagGaussian or dist_class is Dirichlet:
+            is_continuous=True
+        else:
+            is_continuous=False
 
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.multi_from_logits(
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
-                actions=tf.unstack(tf.cast(actions, tf.int32), axis=2),
+                actions=tf.unstack(tf.cast(actions, tf.float32), axis=2) if is_continuous else 
+                        tf.unstack(tf.cast(actions, tf.int32), axis=2),
                 discounts=tf.to_float(~dones) * discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
-                                              tf.float32))
+                                              tf.float32),
+                dist_class=dist_class)
 
         logp_ratio = tf.exp(actions_logp - prev_actions_logp)
 
@@ -144,18 +159,21 @@ class VTraceSurrogateLoss(object):
 
         self.mean_kl = tf.reduce_mean(action_kl)
         self.pi_loss = -tf.reduce_sum(surrogate_loss)
+        self.mean_pi_loss = -reduce_mean_valid(surrogate_loss)
 
         # The baseline loss
-        delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
+        delta = values - self.vtrace_returns.vs
         self.value_targets = self.vtrace_returns.vs
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        vf_loss = 0.5 * tf.square(delta)
+        self.vf_loss = reduce_sum_valid(vf_loss)
+        self.mean_vf_loss = reduce_mean_valid(vf_loss)
 
         # The entropy loss
-        self.entropy = tf.reduce_sum(
-            tf.boolean_mask(actions_entropy, valid_mask))
+        self.entropy = reduce_sum_valid(actions_entropy)
+        self.mean_entropy = reduce_mean_valid(actions_entropy)
 
         # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
+        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
                            self.entropy * entropy_coeff)
 
 
@@ -210,18 +228,13 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
         self.sess = tf.get_default_session()
         self.grads = None
 
+        is_multidiscrete = False
         if isinstance(action_space, gym.spaces.Discrete):
-            is_multidiscrete = False
             output_hidden_shape = [action_space.n]
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
             is_multidiscrete = True
             output_hidden_shape = action_space.nvec.astype(np.int32)
-        elif self.config["vtrace"]:
-            raise UnsupportedSpaceException(
-                "Action space {} is not supported for APPO + VTrace.",
-                format(action_space))
         else:
-            is_multidiscrete = False
             output_hidden_shape = 1
 
         # Policy network model
@@ -262,7 +275,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
         # Unpack behaviour logits
         unpacked_behaviour_logits = tf.split(
             behaviour_logits, output_hidden_shape, axis=1)
-
         # Setup the policy
         dist_class, logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
@@ -364,6 +376,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
                 values=make_time_major(values, drop_last=True),
                 bootstrap_value=make_time_major(values)[-1],
                 valid_mask=make_time_major(mask, drop_last=True),
+                dist_class = dist_class,
                 vf_loss_coeff=self.config["vf_loss_coeff"],
                 entropy_coeff=self.config["entropy_coeff"],
                 clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
@@ -444,16 +457,20 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
 
         self.sess.run(tf.global_variables_initializer())
 
-        values_batched = make_time_major(
-            values, drop_last=self.config["vtrace"])
+        if self.config["vtrace"]:
+            values_batched = make_time_major(
+                values, drop_last=self.config["vtrace"])
+        else:
+            values_batched = values
+
         self.stats_fetches = {
             LEARNER_STATS_KEY: dict({
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
-                "policy_loss": self.loss.pi_loss,
-                "entropy": self.loss.entropy,
+                "policy_loss": self.loss.mean_pi_loss,
+                "entropy": self.loss.mean_entropy,
                 "grad_gnorm": tf.global_norm(self._grads),
                 "var_gnorm": tf.global_norm(self.var_list),
-                "vf_loss": self.loss.vf_loss,
+                "vf_loss": self.loss.mean_vf_loss,
                 "vf_explained_var": explained_variance(
                     tf.reshape(self.loss.value_targets, [-1]),
                     tf.reshape(values_batched, [-1])),

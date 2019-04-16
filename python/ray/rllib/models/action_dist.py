@@ -147,7 +147,8 @@ class DiagGaussian(ActionDistribution):
     """
 
     def __init__(self, inputs):
-        mean, log_std = tf.split(inputs, 2, axis=1)
+        self.last_dim = inputs.shape.ndims - 1
+        mean, log_std = tf.split(inputs, 2, axis=self.last_dim)
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
@@ -156,9 +157,10 @@ class DiagGaussian(ActionDistribution):
     @override(ActionDistribution)
     def logp(self, x):
         return (-0.5 * tf.reduce_sum(
-            tf.square((x - self.mean) / self.std), reduction_indices=[1]) -
-                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
-                tf.reduce_sum(self.log_std, reduction_indices=[1]))
+            tf.square((x - self.mean) / self.std),
+            reduction_indices=[self.last_dim]) - 0.5 * np.log(2.0 * np.pi) *
+                tf.to_float(tf.shape(x)[self.last_dim]) - tf.reduce_sum(
+                    self.log_std, reduction_indices=[self.last_dim]))
 
     @override(ActionDistribution)
     def kl(self, other):
@@ -167,13 +169,13 @@ class DiagGaussian(ActionDistribution):
             other.log_std - self.log_std +
             (tf.square(self.std) + tf.square(self.mean - other.mean)) /
             (2.0 * tf.square(other.std)) - 0.5,
-            reduction_indices=[1])
+            reduction_indices=[self.last_dim])
 
     @override(ActionDistribution)
     def entropy(self):
         return tf.reduce_sum(
             .5 * self.log_std + .5 * np.log(2.0 * np.pi * np.e),
-            reduction_indices=[1])
+            reduction_indices=[self.last_dim])
 
     @override(ActionDistribution)
     def _build_sample_op(self):
