@@ -302,6 +302,8 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Send an object cancellation message to a remote object manager.
   ///
+  /// \param push_id the ID of the push attempt by the sender that we no longer need.
+  /// This value is UniqueID::nil() if we want to cancel all of the pushes.
   /// \param object_id the ID of the object that is no longer needed.
   /// \param client_id The ID of the remote object manager to send the message
   /// to.
@@ -314,6 +316,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// This is used to notify the main thread that the sending of a chunk has
   /// completed.
   ///
+  /// \param push_id The ID of the push attempt of object_id from client_id that
+  /// was sent.
   /// \param object_id The ID of the object that was sent.
   /// \param client_id The ID of the client that the chunk was sent to.
   /// \param chunk_index The index of the chunk.
@@ -330,6 +334,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// This is used to notify the main thread that the receiving of a chunk has
   /// completed.
   ///
+  /// \param push_id The ID of the push attempt of object_id from client_id that
+  /// was received from.
   /// \param object_id The ID of the object that was received.
   /// \param client_id The ID of the client that the chunk was received from.
   /// \param chunk_index The index of the chunk.
@@ -383,6 +389,7 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Handles connect message of a new client connection.
   void ConnectClient(std::shared_ptr<TcpClientConnection> &conn, const uint8_t *message);
+
   /// Handles disconnect message of an existing client connection.
   void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                         const uint8_t *message);

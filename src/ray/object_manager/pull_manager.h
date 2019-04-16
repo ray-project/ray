@@ -172,6 +172,8 @@ class PullManager {
   /// object chunk to this object manager. Note that this will happen once per
   /// chunk, not once per object.
   ///
+  /// \param push_id The ID of the push attempt of object_id from client_id that
+  /// the object is being pushed from.
   /// \param object_id The ID of the object that is being pushed.
   /// \param client_id The ID of the remote object manager that is pushing the
   /// object.
@@ -204,6 +206,8 @@ class PullManager {
 
   /// Notify the PullManager that a chunk was read successfully.
   ///
+  /// \param push_id The ID of the push attempt of object_id from client_id that
+  /// the object was read.
   /// \param object_id The ID of the object that was read.
   /// \param client_id The ID of the remote object manager that the object was
   /// read from.
@@ -222,6 +226,8 @@ class PullManager {
   /// because the object store was full or the object was already present in the
   /// object store when we tried to create a chunk.
   ///
+  /// \param push_id The ID of the push attempt of object_id from client_id that
+  /// the object was read.
   /// \param object_id The ID of the object that was read.
   /// \param client_id The ID of the remote object manager that the object was
   /// read from.
@@ -237,6 +243,8 @@ class PullManager {
 
   /// Handle the fact that the timer for a pull has expired.
   ///
+  /// \param push_id The ID of the push attempt of object_id from client_id that
+  /// the pull is for.
   /// \param object_id The ID of the object that the pull is for.
   /// \param[out] clients_to_request This will be set to a vector of clients to
   /// issue requests.
