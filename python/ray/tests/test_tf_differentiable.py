@@ -153,10 +153,10 @@ def check_tensor_outputs(out_1, out_2):
     """ Verifies that two outputs consisting of TF eager tensors are equivalent. """
 
     #TODO(vsatish): Figure out why we sometimes return 0.0 instead of None.
-#    if out_1 is None and isinstance(out_2, tf.Tensor) and out_2.numpy() == 0.0:
-#        out_1 = tf.constant(0.0)
-#    elif out_2 is None and isinstance(out_1, tf.Tensor) and out_1.numpy() == 0.0:
-#        out_2 = tf.constant(0.0)
+    if out_1 is None and isinstance(out_2, tf.Tensor) and np.all(out_2.numpy() == 0.0):
+        out_1 = tf.zeros_like(out_2, dtype=out_2.dtype)
+    elif out_2 is None and isinstance(out_1, tf.Tensor) and np.all(out_1.numpy() == 0.0):
+        out_2 = tf.zeros_like(out_1, dtype=out_1.dtype)
 
     if isinstance(out_1, list) and isinstance(out_2, tuple):
         out_2 = list(out_2)
@@ -181,7 +181,7 @@ def check_tensor_outputs(out_1, out_2):
 ############################## SINGLE INPUT/OUTPUT ##############################
 ### LINEAR
 # custom op w/ single input & single output
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_single_op_single_in_single_out(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     with tf.GradientTape() as t:
@@ -199,7 +199,7 @@ def test_single_op_single_in_single_out(start_ray, ray_actor, dummy_actor):
     check_tensor_outputs(grad_hat, grad)
 
 # custom op w/ single input & single output both preceded and followed by tf ops
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_single_op_single_in_single_out_tf_sandwich(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     with tf.GradientTape() as t:
@@ -221,7 +221,7 @@ def test_single_op_single_in_single_out_tf_sandwich(start_ray, ray_actor, dummy_
     check_tensor_outputs(grad_hat, grad)
 
 # multiple custom ops w/ single input & single output
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_multiple_ops_single_in_single_out(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     with tf.GradientTape() as t:
@@ -243,7 +243,7 @@ def test_multiple_ops_single_in_single_out(start_ray, ray_actor, dummy_actor):
     check_tensor_outputs(grad_hat, grad)
 
 # multiple custom ops w/ single input & single output w/ ray fetches in-between
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_multiple_ops_single_in_single_out_inter_fetches(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     with tf.GradientTape() as t:
@@ -268,7 +268,7 @@ def test_multiple_ops_single_in_single_out_inter_fetches(start_ray, ray_actor, d
 
 ### NON-LINEAR
 # single custom op w/ single input & single output and resulting ObjectID reused multiple times
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_single_op_single_in_single_out_reuse_result(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     with tf.GradientTape() as t:
@@ -289,7 +289,7 @@ def test_single_op_single_in_single_out_reuse_result(start_ray, ray_actor, dummy
     check_tensor_outputs(grad_hat, grad)
 
 # multiple custom ops w/ single input & single output with reused intermediate results
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_multiple_ops_single_in_single_out_reuse_inter_results(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     with tf.GradientTape() as t:
@@ -314,7 +314,7 @@ def test_multiple_ops_single_in_single_out_reuse_inter_results(start_ray, ray_ac
     check_tensor_outputs(grad_hat, grad)
 
 ## LARGE TESTS
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_multiple_ops_single_in_single_out_large_v1(start_ray, ray_actor, dummy_actor):
     x = tf.Variable([2.0, 1.0, -2.0, 4.0], dtype=tf.float64)
     y = tf.Variable(-3.0, dtype=tf.float64)
@@ -342,7 +342,7 @@ def test_multiple_ops_single_in_single_out_large_v1(start_ray, ray_actor, dummy_
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_multiple_ops_single_in_single_out_large_v2(start_ray, ray_actor, dummy_actor):
     w = tf.Variable(-2.0, dtype=tf.float64)
     x = tf.Variable(3.0, dtype=tf.float64)
@@ -374,7 +374,7 @@ def test_multiple_ops_single_in_single_out_large_v2(start_ray, ray_actor, dummy_
 
 ############################## MULTIPLE INPUTS/OUTPUTS ##############################
 # custom op w/ single input & multiple outputs
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_single_op_single_in_multiple_out(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     with tf.GradientTape() as t:
@@ -392,7 +392,7 @@ def test_single_op_single_in_multiple_out(start_ray, ray_actor, dummy_actor):
     check_tensor_outputs(grad_hat, grad)
 
 # custom op w/ multiple inputs & single output
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_single_op_multiple_in_single_out(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     y = tf.Variable(3.0)
@@ -409,7 +409,7 @@ def test_single_op_multiple_in_single_out(start_ray, ray_actor, dummy_actor):
     check_tensor_outputs(grad_hat, grad)
 
 # custom op w/ multiple inputs & outputs
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_single_op_multiple_in_multiple_out(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     y = tf.Variable(3.0)
@@ -426,7 +426,7 @@ def test_single_op_multiple_in_multiple_out(start_ray, ray_actor, dummy_actor):
     check_tensor_outputs(grad_hat, grad)
 
 # custom op w/ multiple inputs & outputs where one input of op is never used
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_single_op_multiple_in_multiple_out_unused_input(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     y = tf.Variable(3.0)
@@ -443,7 +443,7 @@ def test_single_op_multiple_in_multiple_out_unused_input(start_ray, ray_actor, d
     check_tensor_outputs(grad_hat, grad)
 
 # custom op w/ multiple inputs & outputs w/ only one ray.ObjectID fetched
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_single_op_multiple_in_multiple_out_single_fetch(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     y = tf.Variable(3.0)
@@ -462,7 +462,7 @@ def test_single_op_multiple_in_multiple_out_single_fetch(start_ray, ray_actor, d
     check_tensor_outputs(grad_hat, grad)
 
 # custom op w/ multiple inputs & outputs both preceded and followed by tf ops w/ two ray.ObjectIDs fetched
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_single_op_multiple_in_multiple_out_tf_sandwich_double_fetch(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     y = tf.Variable(3.0)
@@ -493,7 +493,7 @@ def test_single_op_multiple_in_multiple_out_tf_sandwich_double_fetch(start_ray, 
     check_tensor_outputs(grad_hat, grad)
 
 # multiple custom ops w/ multiple inputs and outputs
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_multiple_ops_multiple_in_multiple_out(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     y = tf.Variable(3.0)
@@ -516,7 +516,7 @@ def test_multiple_ops_multiple_in_multiple_out(start_ray, ray_actor, dummy_actor
     check_tensor_outputs(grad_hat, grad)
 
 # multiple custom ops w/ multiple inputs and outputs w/ ray fetches in-between
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_multiple_ops_multiple_in_multiple_out_inter_fetches(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0)
     y = tf.Variable(3.0)
@@ -541,7 +541,7 @@ def test_multiple_ops_multiple_in_multiple_out_inter_fetches(start_ray, ray_acto
     check_tensor_outputs(grad_hat, grad)
 
 # multiple custom ops w/ multiple inputs and outputs w/ intertwined tf ops and not all ray.ObjectIDs (intermediate and final) used
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_multiple_ops_multiple_in_multiple_out_tf_intertwined_partial_use(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.5, dtype=tf.float64)
     y = tf.Variable(3.0, dtype=tf.float64)
@@ -570,7 +570,7 @@ def test_multiple_ops_multiple_in_multiple_out_tf_intertwined_partial_use(start_
     check_tensor_outputs(grad_hat, grad)
 
 ## LARGE TESTS
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_multiple_ops_multiple_in_multiple_out_large_v1(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(2.0, dtype=tf.float64)
     y = tf.Variable(3.0, dtype=tf.float64)
@@ -617,7 +617,7 @@ def test_multiple_ops_multiple_in_multiple_out_large_v1(start_ray, ray_actor, du
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
-@pytest.mark.skip()
+#@pytest.mark.skip()
 def test_multiple_ops_multiple_in_multiple_out_large_v2(start_ray, ray_actor, dummy_actor):
     x = tf.Variable([2.0, 2.0, 2.0], dtype=tf.float64)
     y = tf.Variable(3.0, dtype=tf.float64)
@@ -662,6 +662,7 @@ def test_multiple_ops_multiple_in_multiple_out_large_v2(start_ray, ray_actor, du
 
 
 ############################## KWARGS ##############################
+# custom op w/ single input & single output w/ kwarg
 #@pytest.mark.skip()
 def test_kwargs_single_in_single_out(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(5.0)
@@ -679,6 +680,7 @@ def test_kwargs_single_in_single_out(start_ray, ray_actor, dummy_actor):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+# cusotm op w/ single input & single output w/ kwarg & using default kwarg
 #@pytest.mark.skip()
 def test_kwargs_single_in_single_out_default(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(5.0, dtype=tf.float64)
@@ -696,6 +698,7 @@ def test_kwargs_single_in_single_out_default(start_ray, ray_actor, dummy_actor):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+# custom op w/ single input & single output w/ kwarg & using native Python for arg & using Tensor for kwarg
 #@pytest.mark.skip()
 def test_kwargs_single_in_single_out_tensor_kwarg(start_ray, ray_actor, dummy_actor):
     n = tf.Variable(5.0)
@@ -713,6 +716,8 @@ def test_kwargs_single_in_single_out_tensor_kwarg(start_ray, ray_actor, dummy_ac
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+# custom op w/ single input & single output w/ kwarg & using Tensor for arg & using Tensor for kwarg
+#@pytest.mark.skip()
 def test_kwargs_single_in_single_out_tensor_arg_tensor_kwarg(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(5.0)
     n = tf.Variable(5.0)
@@ -730,6 +735,7 @@ def test_kwargs_single_in_single_out_tensor_arg_tensor_kwarg(start_ray, ray_acto
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+# custom op w/ single input & single output w/ kwarg & using output of custom op for kwarg
 #@pytest.mark.skip()
 def test_kwargs_single_in_single_out_tf_obj_id_kwarg(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(5.0)
@@ -737,9 +743,39 @@ def test_kwargs_single_in_single_out_tf_obj_id_kwarg(start_ray, ray_actor, dummy
 
     with tf.GradientTape() as t:
         n = ray_actor.prod.remote(y, y)
-        with pytest.raises(RuntimeError, match="TFObjectID kwargs are not yet supported!"):
-            i_1 = ray_actor.kw_power.remote(x, n=n)
+        i_1 = ray_actor.kw_power.remote(x, n=n)
+        out_hat = ray.get(i_1)
+    grad_hat = t.gradient(out_hat, x, y)
 
+    with tf.GradientTape() as t:
+        n = dummy_actor.prod(y, y)
+        i_1 = dummy_actor.kw_power(x, n=n)
+        out = i_1
+    grad = t.gradient(out, x, y)
+
+    check_tensor_outputs(out_hat, out)
+    check_tensor_outputs(grad_hat, grad)
+
+# custom op w/ multiple inputs and multiple outputs w/ out-of-order kwargs
+#@pytest.mark.skip()
+def test_kwargs_multiple_in_multiple_out_out_of_order(start_ray, ray_actor, dummy_actor):
+    x = tf.Variable(4.0)
+    y = tf.Variable(-3.0)
+
+    with tf.GradientTape() as t:
+        i_1, i_2 = ray_actor.kw_power_mul.remote(x, y, y_mul=x, x_pow=y)
+        out_hat = ray.get(ray_actor.prod.remote(i_1, i_2))
+    grad_hat = t.gradient(out_hat, x)
+
+    with tf.GradientTape() as t:
+        i_1, i_2 = dummy_actor.kw_power_mul(x, y, y_mul=x, x_pow=y)
+        out = dummy_actor.prod(i_1, i_2)
+    grad = t.gradient(out, x)
+
+    check_tensor_outputs(out_hat, out)
+    check_tensor_outputs(grad_hat, grad)
+
+# custom op w/ multiple inputs and multiple outputs w/ TensorFlow ops before and after
 #@pytest.mark.skip()
 def test_kwargs_multiple_in_multiple_out_tf_sandwich(start_ray, ray_actor, dummy_actor):
     x = tf.Variable(4.0)
@@ -764,44 +800,42 @@ def test_kwargs_multiple_in_multiple_out_tf_sandwich(start_ray, ray_actor, dummy
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
-@pytest.mark.skip()
+## LARGE TESTS
 def test_kwargs_large(start_ray, ray_actor, dummy_actor):
     x = tf.Variable([2.0, 2.0, 2.0], dtype=tf.float64)
     y = tf.Variable(3.0, dtype=tf.float64)
     z = tf.Variable([4.0, 4.0, 4.0], dtype=tf.float64)
      
     with tf.GradientTape() as t:
-        i_1 = x * y + z**2.0
-        i_1 = i_1 / 10.0
-        i_2 = (z / 1.0) * 3.0 * ray.get(ray_actor.prod.remote(x, y, y))
-        i_2 = i_2 / 5.0
-        i_3 = i_2 / 3.0
-        i_4, _, i_5, _, i_6 = ray_actor.f.remote(i_1, i_2, i_3)
-        i_7 = ray.get(ray_actor.prod.remote(i_1, i_3, i_4, i_5, i_6))
-        i_7 = i_7 / 8.0
-        i_8, _ = ray_actor.g.remote(i_3, i_5, i_7)
-        i_8 = ray.get(i_8)**2.0 / 5.0
-        _, i_9 = ray_actor.two_in_square_cube_v2.remote(i_8, i_4) 
-        i_9 = ray.get(i_9) / 5.0
-        i_10 = ray_actor.prod.remote(i_9, x)
-        out_hat = ray.get(i_10)
+        i_1 = (x * y + z**2.0) / 10.0
+        i_2, i_3 = ray_actor.kw_power_mul.remote(y, i_1, x_pow=y, y_mul=y)
+        i_4 = ray_actor.prod.remote(i_2, i_3)
+        i_5 = ray_actor.kw_power.remote(y, n=i_4)
+        i_6 = (z / 1.0) * 3.0 * ray.get(ray_actor.prod.remote(x, y, y))
+        i_7 = ray.get(i_2) / 5.0
+        i_8 = ray.get(i_2) / 3.0
+        i_9, _, i_10, _, i_11 = ray_actor.f.remote(i_6, i_7, i_8)
+        i_12, i_13 = ray_actor.kw_power_mul.remote(i_11, i_7, x_pow=1.0, y_mul=i_4)
+        _, i_14 = ray_actor.two_in_square_cube_v2.remote(i_8, i_12) 
+        i_15 = ray.get(i_14) / 5.0
+        i_16 = ray_actor.prod.remote(i_15, x)
+        out_hat = ray.get(i_16)
     grad_hat = t.gradient(out_hat, [x, y, z])
 
     with tf.GradientTape() as t:
-        i_1 = x * y + z**2.0
-        i_1 = i_1 / 10.0
-        i_2 = (z / 1.0) * 3.0 * dummy_actor.prod(x, y, y)
-        i_2 = i_2 / 5.0
-        i_3 = i_2 / 3.0
-        i_4, _, i_5, _, i_6 = dummy_actor.f(i_1, i_2, i_3)
-        i_7 = dummy_actor.prod(i_1, i_3, i_4, i_5, i_6)
-        i_7 = i_7 / 8.0
-        i_8, _ = dummy_actor.g(i_3, i_5, i_7)
-        i_8 = i_8**2.0 / 5.0
-        _, i_9 = dummy_actor.two_in_square_cube_v2(i_8, i_4) 
-        i_9 = i_9 / 5.0
-        i_10 = dummy_actor.prod(i_9, x)
-        out = i_10
+        i_1 = (x * y + z**2.0) / 10.0
+        i_2, i_3 = dummy_actor.kw_power_mul(y, i_1, x_pow=y, y_mul=y)
+        i_4 = dummy_actor.prod(i_2, i_3)
+        i_5 = dummy_actor.kw_power(y, n=i_4)
+        i_6 = (z / 1.0) * 3.0 * dummy_actor.prod(x, y, y)
+        i_7 = i_2 / 5.0
+        i_8 = i_2 / 3.0
+        i_9, _, i_10, _, i_11 = dummy_actor.f(i_6, i_7, i_8)
+        i_12, i_13 = dummy_actor.kw_power_mul(i_11, i_7, x_pow=1.0, y_mul=i_4)
+        _, i_14 = dummy_actor.two_in_square_cube_v2(i_8, i_12) 
+        i_15 = i_14 / 5.0
+        i_16 = dummy_actor.prod(i_15, x)
+        out = i_16
     grad = t.gradient(out, [x, y, z])
 
     check_tensor_outputs(out_hat, out)

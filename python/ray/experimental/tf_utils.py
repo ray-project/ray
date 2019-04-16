@@ -212,7 +212,7 @@ def tf_differentiable(num_return_vals):
 
         def differentiable_method(self, identifier, forward_pass, 
                                   persistent_tape, dys, dys_dtype,
-                                  kwarg_types, kwarg_dtypes, kwargs,
+                                  kwarg_types, kwarg_dtypes, kws,
                                   arg_types, arg_dtypes, *args):
 
             if not tf.executing_eagerly():
@@ -225,9 +225,16 @@ def tf_differentiable(num_return_vals):
             if forward_pass:
                 # execute the forward pass
 
+                if len(kws) > 0: #TODO(vsatish): Clean this up.
+                    kwargs = dict(zip(kws, args[-len(kws):]))
+                    args = args[:-len(kws)]
+                else:
+                    kwargs = {}
+
+
                 # revert the arguments back to their original types
                 assert len(arg_types) == len(args), ("Argument types: {} do not directly map " 
-                                                     "to arguments: {}.".format(arg_types, arguments))
+                                                     "to arguments: {}.".format(arg_types, args))
 
 #                assert isinstance(kwarg_types, dict), ("Keyword argument types must be defined with a dict.")
 #                assert len(kwarg_types) == len(kwargs), ("Keyword argument types: {} do not directly map " 
@@ -412,17 +419,19 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
 
     kwarg_types = {}
     kwarg_dtypes = {}
-    processed_kwargs = {}
+    processed_kwargs = []
+    kws = []
     for kw, arg in kwargs.items():
         if isinstance(arg, TFObjectID):
 #            tf_object_ids.append(arg)        
 #            object_ids.append(arg)
-#            tensors.append(arg.graph_tensor) # this is a dummy tensor used to link the TF computation graph
-#            kwarg_types[kw] = "tf_const"
-#            kwarg_dtypes[kw] = arg.graph_tensor.numpy().dtype
+            tensors.append(arg.graph_tensor) # this is a dummy tensor used to link the TF computation graph
+            kwarg_types[kw] = "tf_const"
+            kwarg_dtypes[kw] = arg.graph_tensor.numpy().dtype
 #            is_tensor_tf_object_id.append(True)
-#            processed_kwargs[kw] = arg
-            raise RuntimeError("TFObjectID kwargs are not yet supported!")
+            processed_kwargs.append(arg)
+            kws.append(kw)
+#            raise RuntimeError("TFObjectID kwargs are not yet supported!")
         elif isinstance(arg, (tf.Variable, tf.Tensor)):
             if isinstance(arg, tf.Variable):
                 arg_type = "tf_var"
@@ -432,17 +441,23 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
             kwarg_types[kw] = arg_type
             kwarg_dtypes[kw] = arg.numpy().dtype
             tensors.append(arg)
-            processed_kwargs[kw] = arg.numpy()
+            processed_kwargs.append(arg.numpy())
+            kws.append(kw)
         elif isinstance(arg, ray.ObjectID):
 #            object_ids.append(arg)
-#            kwarg_types[kw] = "native"
-#            kwarg_dtypes[kw] = ray.ObjectID
-#            processed_kwargs[kw] = arg
-            raise RuntimeError("TFObjectID kwargs are not yet supported!")
+            kwarg_types[kw] = "native"
+            kwarg_dtypes[kw] = ray.ObjectID
+            processed_kwargs.append(arg)
+            kws.append(kw)
+#            raise RuntimeError("TFObjectID kwargs are not yet supported!")
         else:
             kwarg_types[kw] = "native"
             kwarg_dtypes[kw] = type(arg)
-            processed_kwargs[kw] = arg
+            processed_kwargs.append(arg)
+            kws.append(kw)
+
+    print("SUBMIT_OP")
+    print(kws, processed_kwargs, processed_args)
 
 #    assert len(tensors) == len(is_tensor_tf_object_id)
 #    assert len(tf_object_ids) == sum(is_tensor_tf_object_id)
@@ -461,8 +476,8 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
         dy, dys_type = None, None
         result_obj_ids = actor_method._internal_remote([identifier, forward, 
                                                         persistent_tape, dy, dys_type,
-                                                        kwarg_types, kwarg_dtypes, processed_kwargs, 
-                                                        arg_types, arg_dtypes, *processed_args],
+                                                        kwarg_types, kwarg_dtypes, kws, 
+                                                        arg_types, arg_dtypes, *(processed_args+processed_kwargs)],
                                                         {}, 
                                                         num_return_vals)
        
@@ -488,12 +503,12 @@ def _submit_tf(actor_method, args, kwargs, num_return_vals):
             # compute gradients
             forward = False
             dys_dtype = return_dtype
-            kwarg_types, kwarg_dtypes, kwargs = None, None, None
+            kwarg_types, kwarg_dtypes, kws = None, None, None
             arg_types, arg_dtypes = None, None
             num_return_vals = len(tensors)
             grad_ids = actor_method._internal_remote([identifier, forward, 
                                                       persistent_tape, dys, dys_dtype,
-                                                      kwarg_types, kwarg_dtypes, kwargs,
+                                                      kwarg_types, kwarg_dtypes, kws,
                                                       arg_types, arg_dtypes],
                                                       {},
                                                       num_return_vals)
