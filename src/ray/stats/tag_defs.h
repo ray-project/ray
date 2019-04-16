@@ -27,4 +27,7 @@ static const TagKeyType ActorStatsValueTypeKey = TagKeyType::Register("ValueType
 
 static const TagKeyType ObjectStatsValueTypeKey = TagKeyType::Register("ValueType");
 
+static const TagKeyType LineageCacheStatsValueTypeKey =
+    TagKeyType::Register("ValueType");
+
 #endif  // RAY_STATS_TAG_DEFS_H

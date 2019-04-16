@@ -1,4 +1,5 @@
 #include "lineage_cache.h"
+#include "ray/stats/stats.h"
 
 #include <sstream>
 
@@ -461,6 +462,7 @@ bool LineageCache::ContainsTask(const TaskID &task_id) const {
 
 const Lineage &LineageCache::GetLineage() const { return lineage_; }
 
+// TODO(qwang): Move records to `RecordMetrics` method.
 std::string LineageCache::DebugString() const {
   std::stringstream result;
   result << "LineageCache:";
@@ -469,6 +471,17 @@ std::string LineageCache::DebugString() const {
   result << "\n- num subscribed tasks: " << subscribed_tasks_.size();
   result << "\n- lineage size: " << lineage_.GetEntries().size();
   return result.str();
+}
+
+void LineageCache::RecordMetrics() const {
+  stats::LineageCacheStats().Record(committed_tasks_.size(),
+      {{stats::LineageCacheStatsValueTypeKey, "num_committed_tasks"}});
+  stats::LineageCacheStats().Record(lineage_.GetChildrenSize(),
+      {{stats::LineageCacheStatsValueTypeKey, "num_children"}});
+  stats::LineageCacheStats().Record(subscribed_tasks_.size(),
+      {{stats::LineageCacheStatsValueTypeKey, "num_subscribed_tasks"}});
+  stats::LineageCacheStats().Record(lineage_.GetEntries().size(),
+      {{stats::LineageCacheStatsValueTypeKey, "num_lineages"}});
 }
 
 }  // namespace raylet

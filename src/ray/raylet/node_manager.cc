@@ -2185,6 +2185,7 @@ std::string NodeManager::DebugString() const {
   result << "\n" << reconstruction_policy_.DebugString();
   result << "\n" << task_dependency_manager_.DebugString();
   result << "\n" << lineage_cache_.DebugString();
+  lineage_cache_.RecordMetrics();
   result << "\nActorRegistry:";
   int live_actors = 0;
   int dead_actors = 0;

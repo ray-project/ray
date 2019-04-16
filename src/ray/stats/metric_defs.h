@@ -44,4 +44,8 @@ static Gauge ObjectStats("object_stats",
                          "Stat the metric values of object in raylet", "pcs",
                          {ObjectStatsValueTypeKey});
 
+static Gauge LineageCacheStats("lineage_cache_stats",
+                               "Stats the metric values of lineage cache.", "pcs",
+                               {LineageCacheStatsValueTypeKey});
+
 #endif  // RAY_STATS_METRIC_DEFS_H
