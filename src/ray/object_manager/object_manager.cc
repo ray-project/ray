@@ -961,15 +961,15 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num pull requests: " << pull_requests_.size();
   result << "\n- num buffered profile events: " << profile_events_.size();
   stats::ObjectStats().Record(local_objects_.size(),
-      {{stats::ObjectStatsValueTypeKey, "num_local_objects"}});
+      {{stats::ValueTypeKey, "num_local_objects"}});
   stats::ObjectStats().Record(active_wait_requests_.size(),
-      {{stats::ObjectStatsValueTypeKey, "num_active_wait_requests"}});
+      {{stats::ValueTypeKey, "num_active_wait_requests"}});
   stats::ObjectStats().Record(unfulfilled_push_requests_.size(),
-      {{stats::ObjectStatsValueTypeKey, "num_unfulfilled_push_requests"}});
+      {{stats::ValueTypeKey, "num_unfulfilled_push_requests"}});
   stats::ObjectStats().Record(pull_requests_.size(),
-      {{stats::ObjectStatsValueTypeKey, "num_pull_requests"}});
+      {{stats::ValueTypeKey, "num_pull_requests"}});
   stats::ObjectStats().Record(profile_events_.size(),
-      {{stats::ObjectStatsValueTypeKey, "num_profile_events"}});
+      {{stats::ValueTypeKey, "num_profile_events"}});
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_.DebugString();
   result << "\n" << buffer_pool_.DebugString();

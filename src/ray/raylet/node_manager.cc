@@ -2184,6 +2184,7 @@ std::string NodeManager::DebugString() const {
   result << "\n" << local_queues_.DebugString();
   result << "\n" << reconstruction_policy_.DebugString();
   result << "\n" << task_dependency_manager_.DebugString();
+  task_dependency_manager_.RecordMetrics();
   result << "\n" << lineage_cache_.DebugString();
   lineage_cache_.RecordMetrics();
   result << "\nActorRegistry:";
@@ -2208,13 +2209,13 @@ std::string NodeManager::DebugString() const {
   result << "\n- num dead actors: " << dead_actors;
   result << "\n- max num handles: " << max_num_handles;
   stats::ActorStats().Record(live_actors,
-      {{stats::ActorStatsValueTypeKey, "live_actors"}});
+      {{stats::ValueTypeKey, "live_actors"}});
   stats::ActorStats().Record(reconstructing_actors,
-      {{stats::ActorStatsValueTypeKey, "reconstructing_actors"}});
+      {{stats::ValueTypeKey, "reconstructing_actors"}});
   stats::ActorStats().Record(dead_actors,
-      {{stats::ActorStatsValueTypeKey, "dead_actors"}});
+      {{stats::ValueTypeKey, "dead_actors"}});
   stats::ActorStats().Record(max_num_handles,
-      {{stats::ActorStatsValueTypeKey, "max_num_handles"}});
+      {{stats::ValueTypeKey, "max_num_handles"}});
 
   result << "\nRemoteConnections:";
   for (auto &pair : remote_server_connections_) {

@@ -38,14 +38,18 @@ static Gauge LocalTotalResource("local_total_resource",
 
 static Gauge ActorStats("actor_stats",
                         "Stat the metric values of actor in raylet.", "pcs",
-                        {ActorStatsValueTypeKey});
+                        {ValueTypeKey});
 
 static Gauge ObjectStats("object_stats",
                          "Stat the metric values of object in raylet", "pcs",
-                         {ObjectStatsValueTypeKey});
+                         {ValueTypeKey});
 
 static Gauge LineageCacheStats("lineage_cache_stats",
                                "Stats the metric values of lineage cache.", "pcs",
-                               {LineageCacheStatsValueTypeKey});
+                               {ValueTypeKey});
+
+static Gauge TaskDependencyManagerStats("task_dependency_manager_stats",
+                                        "Stat the metric values of task dependency.", "pcs",
+                                        {ValueTypeKey});
 
 #endif  // RAY_STATS_METRIC_DEFS_H

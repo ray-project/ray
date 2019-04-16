@@ -475,13 +475,13 @@ std::string LineageCache::DebugString() const {
 
 void LineageCache::RecordMetrics() const {
   stats::LineageCacheStats().Record(committed_tasks_.size(),
-      {{stats::LineageCacheStatsValueTypeKey, "num_committed_tasks"}});
+      {{stats::ValueTypeKey, "num_committed_tasks"}});
   stats::LineageCacheStats().Record(lineage_.GetChildrenSize(),
-      {{stats::LineageCacheStatsValueTypeKey, "num_children"}});
+      {{stats::ValueTypeKey, "num_children"}});
   stats::LineageCacheStats().Record(subscribed_tasks_.size(),
-      {{stats::LineageCacheStatsValueTypeKey, "num_subscribed_tasks"}});
+      {{stats::ValueTypeKey, "num_subscribed_tasks"}});
   stats::LineageCacheStats().Record(lineage_.GetEntries().size(),
-      {{stats::LineageCacheStatsValueTypeKey, "num_lineages"}});
+      {{stats::ValueTypeKey, "num_lineages"}});
 }
 
 }  // namespace raylet
