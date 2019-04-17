@@ -189,8 +189,6 @@ deploy:
     local_dir: .whl
     upload-dir: $TRAVIS_COMMIT
     skip_cleanup: true
-    only:
-      - master
     on:
       repo: ray-project/ray
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
