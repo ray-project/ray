@@ -1071,7 +1071,7 @@ void TestLogSubscribeCancel(const DriverID &driver_id,
     for (const auto &remaining_driver_id : remaining) {
       auto data = std::make_shared<DriverTableDataT>();
       data->driver_id = remaining_driver_id;
-      RAY_CHECK_OK(client->driver_table().Append(driver_id, driver_id, data, nullptr));
+      RAY_CHECK_OK(client->driver_table().Append(driver_id, random_driver_id, data, nullptr));
     }
     // Request notifications again. We should receive a notification for the
     // current values at the key.
