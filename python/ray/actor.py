@@ -754,7 +754,7 @@ def exit_actor():
         sys.exit(0)
         assert False, "This process should have terminated."
     else:
-        raise Exception("exit_actor called on none-actor worker.")
+        raise Exception("exit_actor called on a non-actor worker.")
 
 
 ray.worker.global_worker.make_actor = make_actor
