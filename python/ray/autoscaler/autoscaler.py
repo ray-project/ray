@@ -154,6 +154,7 @@ class LoadMetrics(object):
 
     def update(self, ip, static_resources, dynamic_resources):
         self.static_resources_by_ip[ip] = static_resources
+
         # We are not guaranteed to have a corresponding dynamic resource for
         # every static resource because dynamic resources are based on the
         # available resources in the heartbeat, which does not exist if it is
