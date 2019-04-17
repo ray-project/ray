@@ -158,6 +158,13 @@ class LoadMetrics(object):
 
     def update(self, ip, static_resources, dynamic_resources):
         self.static_resources_by_ip[ip] = static_resources
+        # TODO(romilb): This is a hotfix to make autoscaler work with #4555
+        dynamic_resources_update = dynamic_resources.copy()
+        for resource_name, capacity in static_resources.items():
+            if resource_name not in dynamic_resources_update:
+                dynamic_resources_update[resource_name] = 0.0
+        self.dynamic_resources_by_ip[ip] = dynamic_resources_update
+
         self.dynamic_resources_by_ip[ip] = dynamic_resources
         now = time.time()
         if ip not in self.last_used_time_by_ip or \
