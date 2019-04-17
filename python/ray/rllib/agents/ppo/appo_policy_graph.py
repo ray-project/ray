@@ -423,7 +423,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 clip_param=self.config["clip_param"],
                 use_kl_loss=self.use_kl_loss)
 
-
         # KL divergence between worker and learner logits for debugging
         if is_multidiscrete or isinstance(action_space, gym.spaces.Discrete):
             model_dist = MultiCategorical(unpacked_outputs)
@@ -436,6 +435,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         #self.kl2 = action_dist.kl(old_policy_action_dist)
         #self.kl3 = prev_action_dist.kl(old_policy_action_dist)
         kls = model_dist.kl(behaviour_dist)
+        self.drop_batch = tf.cond(tf.reduce_max(kls)>=0.6, lambda: tf.constant(True), lambda: tf.constant(False))
 
         if isinstance(kls, (list, tuple)) and len(kls) >= 1:
             self.KL_stats = {}
@@ -515,6 +515,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "vf_explained_var": explained_variance(
                     tf.reshape(self.loss.value_targets, [-1]),
                     tf.reshape(values_batched, [-1])),
+                "drop_batch": self.drop_batch,
             }, **self.KL_stats),
         }
 
@@ -529,6 +530,9 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def gradients(self, optimizer):
         grads = tf.gradients(self.loss.total_loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
+
+        #self.grads = tf.cond(self.drop_batch, lambda: [tf.clip_by_value(grad, -0.0000, 0.0000) for grad in grads], lambda: self.grads)
+
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
 

@@ -1,7 +1,7 @@
 halfcheetah-appo:
     env: HalfCheetah-v2
     run: APPO
-    local_dir: /data/mluo/gggg
+    local_dir: /data/mluo/good_runs_a
     stop:
         episode_reward_mean: 9800
         time_total_s: 3600

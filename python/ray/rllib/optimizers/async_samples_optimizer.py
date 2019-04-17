@@ -314,6 +314,9 @@ class LearnerThread(threading.Thread):
 
         with self.grad_timer:
             fetches = self.local_evaluator.learn_on_batch(batch)
+            print(fetches["stats"]["drop_batch"])
+            if fetches["stats"]["drop_batch"]:
+                self.minibatch_buffer.replace()
             self.weights_updated = True
             if self.use_kl_loss:
                 if self.counter == self.old_policy_lag:
@@ -476,7 +479,7 @@ class MinibatchBuffer(object):
         self.inqueue = inqueue
         self.size = size
         self.max_ttl = num_passes
-        self.cur_max_ttl = 1  # ramp up slowly to better mix the input data
+        self.cur_max_ttl = self.max_ttl  # ramp up slowly to better mix the input data
         self.buffers = [None] * size
         self.ttl = [0] * size
         self.idx = 0
@@ -500,3 +503,9 @@ class MinibatchBuffer(object):
             self.buffers[self.idx] = None
         self.idx = (self.idx + 1) % len(self.buffers)
         return buf, released
+
+    def replace(self):
+        temp = (self.idx-1)%len(self.buffers)
+        self.ttl[temp] = self.cur_max_ttl
+        self.buffers[temp] = self.inqueue.get()
+        return
