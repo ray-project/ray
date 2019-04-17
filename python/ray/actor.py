@@ -740,7 +740,7 @@ def exit_actor():
 
     Raises:
         Exception: An exception is raised if this is a driver or this
-        worker is not an actor.
+            worker is not an actor.
     """
     worker = ray.worker.global_worker
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
