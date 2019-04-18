@@ -27,8 +27,8 @@ class EvalTest(unittest.TestCase):
 
     def testEvaluationOption(self):
         ray.init()
-        agents_clsasses = [DQNTrainer, A3CTrainer]
-        for agent_cls in agents_clsasses:
+        agent_classes = [DQNTrainer, A3CTrainer]
+        for agent_cls in agent_classes:
             agent = agent_cls(
                 env="CartPole-v0",
                 config={"evaluation_interval": 2, "evaluation_num_episodes": 1})
