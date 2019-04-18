@@ -150,6 +150,16 @@ cc_test(
 )
 
 cc_test(
+    name = "util_test",
+    srcs = ["src/ray/util/util_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "task_dependency_manager_test",
     srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
     copts = COPTS,
@@ -252,6 +262,7 @@ cc_library(
         exclude = [
             "src/ray/util/logging_test.cc",
             "src/ray/util/signal_test.cc",
+            "src/ray/util/util_test.cc",
         ],
     ),
     hdrs = glob([

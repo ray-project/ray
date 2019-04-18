@@ -608,8 +608,8 @@ def start_redis(node_ip_address,
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
     # can access it and know whether or not to redirect their output.
-    primary_redis_client.set("RedirectOutput", 1
-                             if redirect_worker_output else 0)
+    primary_redis_client.set("RedirectOutput",
+                             1 if redirect_worker_output else 0)
 
     # put the include_java bool to primary redis-server, so that other nodes
     # can access it and know whether or not to enable cross-languages.
@@ -829,8 +829,8 @@ def _start_redis_instance(executable,
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
-    cur_config = (redis_client.config_get("client-output-buffer-limit")[
-        "client-output-buffer-limit"])
+    cur_config = (redis_client.config_get("client-output-buffer-limit")
+                  ["client-output-buffer-limit"])
     cur_config_list = cur_config.split()
     assert len(cur_config_list) == 12
     cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
@@ -1177,20 +1177,35 @@ def start_raylet(redis_address,
 
     command = [
         RAYLET_EXECUTABLE,
+        "--raylet_socket_name",
         raylet_name,
+        "--store_socket_name",
         plasma_store_name,
+        "--object_manager_port",
         str(object_manager_port),
+        "--node_manager_port",
         str(node_manager_port),
+        "--node_ip_address",
         node_ip_address,
+        "--redis_address",
         gcs_ip_address,
+        "--redis_port",
         gcs_port,
+        "--num_initial_workers",
         str(num_initial_workers),
+        "--maximum_startup_concurrency",
         str(maximum_startup_concurrency),
+        "--static_resource_list",
         resource_argument,
+        "--config_list",
         config_str,
+        "--python_worker_command",
         start_worker_command,
+        "--java_worker_command",
         java_worker_command,
+        "--redis_password",
         redis_password or "",
+        "--temp_dir",
         temp_dir,
     ]
     process_info = start_ray_process(

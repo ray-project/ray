@@ -253,19 +253,33 @@ public class RunManager {
     List<String> command = ImmutableList.of(
         // The raylet executable file.
         getTempFile("/raylet").getAbsolutePath(),
+        "--raylet_socket_name",
         rayConfig.rayletSocketName,
+        "--store_socket_name",
         rayConfig.objectStoreSocketName,
+        "--object_manager_port",
         "0",  // The object manager port.
+        "--node_manager_port",
         "0",  // The node manager port.
+        "--node_ip_address",
         rayConfig.nodeIp,
+        "--redis_address",
         rayConfig.getRedisIp(),
+        "--redis_port",
         rayConfig.getRedisPort().toString(),
+        "--num_initial_workers",
         "0", // number of initial workers
+        "--maximum_startup_concurrency",
         String.valueOf(maximumStartupConcurrency),
+        "--static_resource_list",
         ResourceUtil.getResourcesStringFromMap(rayConfig.resources),
+        "--config_list",
         String.join(",", rayConfig.rayletConfigParameters), // The internal config list.
+        "--python_worker_command",
         buildPythonWorkerCommand(), // python worker command
+        "--java_worker_command",
         buildWorkerCommandRaylet(), // java worker command
+        "--redis_password",
         redisPasswordOption
     );
 

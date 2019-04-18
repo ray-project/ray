@@ -4,6 +4,7 @@
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/status.h"
+#include "ray/util/command_line_args.h"
 
 #ifndef RAYLET_TEST
 
@@ -21,30 +22,32 @@ int main(int argc, char *argv[]) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc >= 14 && argc <= 19);
+  const ray::CommandLineArgs command_line_args(argc, argv);
 
-  const std::string raylet_socket_name = std::string(argv[1]);
-  const std::string store_socket_name = std::string(argv[2]);
-  int object_manager_port = std::stoi(argv[3]);
-  int node_manager_port = std::stoi(argv[4]);
-  const std::string node_ip_address = std::string(argv[5]);
-  const std::string redis_address = std::string(argv[6]);
-  int redis_port = std::stoi(argv[7]);
-  int num_initial_workers = std::stoi(argv[8]);
-  int maximum_startup_concurrency = std::stoi(argv[9]);
-  const std::string static_resource_list = std::string(argv[10]);
-  const std::string config_list = std::string(argv[11]);
-  const std::string python_worker_command = std::string(argv[12]);
-  const std::string java_worker_command = std::string(argv[13]);
-  const std::string redis_password = (argc >= 15 ? std::string(argv[14]) : "");
-  const std::string temp_dir = (argc >= 16 ? std::string(argv[15]) : "/tmp/ray");
-  const std::string disable_stats_str(argc >= 17 ? std::string(argv[16]) : "false");
-  const bool disable_stats("true" == disable_stats_str);
+  const std::string raylet_socket_name = command_line_args.Get("raylet_socket_name");
+  const std::string store_socket_name = command_line_args.Get("store_socket_name");
+  int object_manager_port = std::stoi(command_line_args.Get("object_manager_port"));
+  int node_manager_port = std::stoi(command_line_args.Get("node_manager_port"));
+  const std::string node_ip_address = command_line_args.Get("node_ip_address");
+  const std::string redis_address = command_line_args.Get("redis_address");
+  int redis_port = std::stoi(command_line_args.Get("redis_port"));
+  int num_initial_workers = std::stoi(command_line_args.Get("num_initial_workers"));
+  int maximum_startup_concurrency =
+      std::stoi(command_line_args.Get("maximum_startup_concurrency"));
+  const std::string static_resource_list = command_line_args.Get("static_resource_list");
+  const std::string config_list = command_line_args.Get("config_list");
+  const std::string python_worker_command =
+      command_line_args.Get("python_worker_command");
+  const std::string java_worker_command = command_line_args.Get("java_worker_command");
+  const std::string redis_password = command_line_args.Get("redis_password", "");
+  const std::string temp_dir = command_line_args.Get("temp_dir", "/tmp/ray");
+  const std::string disable_stats_str = command_line_args.Get("disable_stats", "false");
+  const bool disable_stats = ("true" == disable_stats_str);
   const std::string stat_address =
-      (argc >= 18 ? std::string(argv[17]) : "127.0.0.1:8888");
-  const std::string disable_stdout_exporter_str(argc >= 19 ? std::string(argv[18])
-                                                           : "true");
-  const bool disable_stdout_exporter("true" == disable_stdout_exporter_str);
+      command_line_args.Get("stat_address", "127.0.0.1:8888");
+  const std::string disable_stdout_exporter_str =
+      command_line_args.Get("disable_stdout_exporter", "false");
+  const bool disable_stdout_exporter = ("true" == disable_stdout_exporter_str);
 
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
@@ -151,7 +154,7 @@ int main(int argc, char *argv[]) {
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
-      const boost::system::error_code &error, int signal_number) {
+                     const boost::system::error_code &error, int signal_number) {
     auto shutdown_callback = [&server, &main_service]() {
       server.reset();
       main_service.stop();
