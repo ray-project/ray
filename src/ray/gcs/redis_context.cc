@@ -25,7 +25,7 @@ void ProcessCallback(int64_t callback_index, const std::string &data) {
                                  << "but it actually is " << callback_index;
   auto callback_item = ray::gcs::RedisCallbackManager::instance().get(callback_index);
   if (!callback_item.is_subscription) {
-    // Record the redis latency for non-subscription redis operator.
+    // Record the redis latency for non-subscription redis operations.
     auto end_time = current_sys_time_us();
     RAY_LOG(DEBUG) << "Record a redis latency, start time is " << callback_item.start_time
                    << "us, end time is " << end_time << "us, and the elapsed time is "
