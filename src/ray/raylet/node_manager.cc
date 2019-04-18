@@ -2184,10 +2184,17 @@ std::string NodeManager::DebugString() const {
   result << "\n" << local_queues_.DebugString();
   result << "\n" << reconstruction_policy_.DebugString();
   result << "\n" << task_dependency_manager_.DebugString();
-  task_dependency_manager_.RecordMetrics();
   result << "\n" << lineage_cache_.DebugString();
-  lineage_cache_.RecordMetrics();
   result << "\nActorRegistry:";
+
+  // record resources metrics.
+  // object_manager_.RecordMetrics();
+  // gcs_client_.RecordMetrics();
+  // worker_pool_.RecordMetrics();
+  local_queues_.RecordMetrics();
+  task_dependency_manager_.RecordMetrics();
+  lineage_cache_.RecordMetrics();
+
   int live_actors = 0;
   int dead_actors = 0;
   int reconstructing_actors = 0;

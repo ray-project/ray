@@ -3,6 +3,7 @@
 #include <sstream>
 
 #include "ray/status.h"
+#include "ray/stats/stats.h"
 
 namespace {
 
@@ -393,6 +394,16 @@ std::string SchedulingQueue::DebugString() const {
   }
   result << "\n- num tasks blocked: " << blocked_task_ids_.size();
   return result.str();
+}
+
+void SchedulingQueue::RecordMetrics() const {
+  for (const auto &task_state : {
+           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
+           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
+           }) {
+    stats::SchedulingQueueStats().Record(static_cast<double>(GetTaskQueue(task_state)->GetTasks().size()),
+        {{stats::ValueTypeKey, std::string("num_") + GetTaskStateString(task_state) + "tasks"}});
+  }
 }
 
 }  // namespace raylet
