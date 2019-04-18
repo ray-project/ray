@@ -60,4 +60,8 @@ static Gauge ReconstructionPolicyStats("reconstruction_policy_stats",
                                        "Stats the metric values of reconstruction policy.", "pcs",
                                        {ValueTypeKey});
 
+static Gauge ConnectionPoolStats("connection_pool_stats",
+                                 "Stats the connection pool metrics.", "pcs",
+                                 {ValueTypeKey});
+
 #endif  // RAY_STATS_METRIC_DEFS_H

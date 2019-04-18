@@ -960,6 +960,14 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num pull requests: " << pull_requests_.size();
   result << "\n- num buffered profile events: " << profile_events_.size();
+  result << "\n" << object_directory_->DebugString();
+  result << "\n" << store_notification_.DebugString();
+  result << "\n" << buffer_pool_.DebugString();
+  result << "\n" << connection_pool_.DebugString();
+  return result.str();
+}
+
+void ObjectManager::RecordMetrics() const {
   stats::ObjectStats().Record(local_objects_.size(),
       {{stats::ValueTypeKey, "num_local_objects"}});
   stats::ObjectStats().Record(active_wait_requests_.size(),
@@ -970,11 +978,7 @@ std::string ObjectManager::DebugString() const {
       {{stats::ValueTypeKey, "num_pull_requests"}});
   stats::ObjectStats().Record(profile_events_.size(),
       {{stats::ValueTypeKey, "num_profile_events"}});
-  result << "\n" << object_directory_->DebugString();
-  result << "\n" << store_notification_.DebugString();
-  result << "\n" << buffer_pool_.DebugString();
-  result << "\n" << connection_pool_.DebugString();
-  return result.str();
+  connection_pool_.RecordMetrics();
 }
 
 }  // namespace ray
