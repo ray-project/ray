@@ -183,7 +183,7 @@ def list_trials(experiment_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise ValueError("Unsupported dtype for \"{}\": {}".format(
+            raise ValueError("Unsupported dtype for {}: {}".format(
                 val, col_type))
         op = OPERATORS[op]
         filtered_index = op(checkpoints_df[col], val)
@@ -191,7 +191,7 @@ def list_trials(experiment_path,
 
     if sort:
         if sort not in checkpoints_df:
-            raise KeyError("Sort Index \"{}\" not in: {}".format(
+            raise KeyError("{} not in: {}".format(
                 sort, list(checkpoints_df)))
         checkpoints_df = checkpoints_df.sort_values(by=sort)
 
@@ -284,7 +284,7 @@ def list_experiments(project_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise ValueError("Unsupported dtype for \"{}\": {}".format(
+            raise ValueError("Unsupported dtype for {}: {}".format(
                 val, col_type))
         op = OPERATORS[op]
         filtered_index = op(info_df[col], val)
@@ -292,7 +292,7 @@ def list_experiments(project_path,
 
     if sort:
         if sort not in info_df:
-            raise KeyError("Sort Index \"{}\" not in: {}".format(
+            raise KeyError("{} not in: {}".format(
                 sort, list(info_df)))
         info_df = info_df.sort_values(by=sort)
 
