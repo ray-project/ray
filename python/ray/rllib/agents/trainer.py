@@ -104,7 +104,7 @@ COMMON_CONFIG = {
     # Typical usage is to pass extra args to evaluation env creator
     # and to disable exploration by computing deterministic actions
     # TODO(kismuz): implement determ. actions and include relevant keys hints
-    "evaluation_config": None,
+    "evaluation_config": {},
 
     # === Resources ===
     # Number of actors used for parallelism
