@@ -51,8 +51,8 @@ def test_uses_resources(ray_start_regular):
 
     while not resource_used:
         available_resources = ray.global_state.available_resources()
-        resource_used = available_resources.get(
-            "CPU", 0) == cluster_resources.get("CPU", 0) - 1
+        resource_used = available_resources[
+            "CPU"] == cluster_resources["CPU"] - 1
 
     assert resource_used
 

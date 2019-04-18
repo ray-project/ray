@@ -653,13 +653,6 @@ class Worker(object):
                     raise ValueError(
                         "Resource quantities must all be whole numbers.")
 
-            # Remove any resources with zero quantity requirements
-            resources = {
-                resource_label: resource_quantity
-                for resource_label, resource_quantity in resources.items()
-                if resource_quantity > 0
-            }
-
             if placement_resources is None:
                 placement_resources = {}
 
@@ -1877,7 +1870,7 @@ def connect(node,
             nil_actor_counter,  # actor_counter.
             [],  # new_actor_handles.
             [],  # execution_dependencies.
-            {},  # resource_map.
+            {"CPU": 0},  # resource_map.
             {},  # placement_resource_map.
         )
 

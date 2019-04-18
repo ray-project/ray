@@ -1948,15 +1948,15 @@ def test_multiple_raylets(ray_start_cluster):
     store_names = []
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"].get("GPU", 0) == 0
+        if client["Resources"]["GPU"] == 0
     ]
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"].get("GPU", 0) == 5
+        if client["Resources"]["GPU"] == 5
     ]
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"].get("GPU", 0) == 1
+        if client["Resources"]["GPU"] == 1
     ]
     assert len(store_names) == 3
 
@@ -2124,32 +2124,6 @@ def test_many_custom_resources(shutdown_only):
         results.append(remote_function.remote())
 
     ray.get(results)
-
-
-def test_zero_capacity_deletion_semantics(shutdown_only):
-    ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
-
-    def test():
-        resources = ray.global_state.available_resources()
-        retry_count = 0
-
-        while resources and retry_count < 5:
-            time.sleep(0.1)
-            resources = ray.global_state.available_resources()
-            retry_count += 1
-
-        if retry_count >= 5:
-            raise RuntimeError("Resources were available even after retries.")
-
-        return resources
-
-    function = ray.remote(
-        num_cpus=2, num_gpus=1, resources={"test_resource": 1})(test)
-    cluster_resources = ray.get(function.remote())
-
-    # All cluster resources should be utilized and
-    # cluster_resources must be empty
-    assert cluster_resources == {}
 
 
 @pytest.fixture

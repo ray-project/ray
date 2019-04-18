@@ -104,6 +104,10 @@ public class RayConfig {
             + "setting it to the number of CPU cores: {}", numCpu);
         resources.put("CPU", numCpu * 1.0);
       }
+      if (!resources.containsKey("GPU")) {
+        LOGGER.warn("No GPU resource is set in configuration, setting it to 0");
+        resources.put("GPU", 0.0);
+      }
     }
     // Driver id.
     String driverId = config.getString("ray.driver.id");
