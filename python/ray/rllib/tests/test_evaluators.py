@@ -31,7 +31,7 @@ class EvalTest(unittest.TestCase):
         for agent_cls in agent_classes:
             agent = agent_cls(
                 env="CartPole-v0",
-                config={"evaluation_interval": 2, "evaluation_num_episodes": 1})
+                config={"evaluation_interval": 2, "evaluation_num_episodes": 2})
             # Given evaluation_interval=2, r0, r2, r4 should not contain
             # evaluation metrics while r1, r3 should do.
             r0 = agent.train()
