@@ -402,7 +402,7 @@ class Trainer(Trainable):
 
         # Merge the supplied config with the class default
         merged_config = copy.deepcopy(self._default_config)
-        if self.config["evaluation_interval"]:
+        if self.config.get("evaluation_interval"):
             self._allow_unknown_configs = True
         merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
@@ -418,7 +418,7 @@ class Trainer(Trainable):
             self._init(self.config, self.env_creator)
 
             # Evaluation related
-            if self.config["evaluation_interval"]:
+            if self.config.get("evaluation_interval"):
                 # Update env_config with evaluation settings:
                 extra_config = copy.deepcopy(self.config['evaluation_config'])
                 extra_config.update(
