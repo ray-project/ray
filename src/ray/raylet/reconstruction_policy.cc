@@ -1,5 +1,7 @@
 #include "reconstruction_policy.h"
 
+#include "ray/stats/stats.h"
+
 namespace ray {
 
 namespace raylet {
@@ -208,6 +210,11 @@ std::string ReconstructionPolicy::DebugString() const {
   result << "ReconstructionPolicy:";
   result << "\n- num reconstructing: " << listening_tasks_.size();
   return result.str();
+}
+
+void ReconstructionPolicy::RecordMetrics() const {
+  stats::ReconstructionPolicyStats().Record(listening_tasks_.size(),
+      {{stats::ValueTypeKey, "num_reconstructing_tasks"}});
 }
 
 }  // namespace raylet

@@ -56,4 +56,8 @@ static Gauge SchedulingQueueStats("scheduling_queue_stats",
                                   "Stats the metric values of scheduling queue.", "pcs",
                                   {ValueTypeKey});
 
+static Gauge ReconstructionPolicyStats("reconstruction_policy_stats",
+                                       "Stats the metric values of reconstruction policy.", "pcs",
+                                       {ValueTypeKey});
+
 #endif  // RAY_STATS_METRIC_DEFS_H

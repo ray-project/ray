@@ -2189,9 +2189,10 @@ std::string NodeManager::DebugString() const {
 
   // record resources metrics.
   // object_manager_.RecordMetrics();
-  // gcs_client_.RecordMetrics();
+  // gcs_client_->RecordMetrics();
   // worker_pool_.RecordMetrics();
   local_queues_.RecordMetrics();
+  reconstruction_policy_.RecordMetrics();
   task_dependency_manager_.RecordMetrics();
   lineage_cache_.RecordMetrics();
 
