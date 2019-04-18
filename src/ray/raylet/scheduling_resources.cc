@@ -10,25 +10,20 @@ namespace ray {
 namespace raylet {
 
 FractionalResourceQuantity::FractionalResourceQuantity() {
-  resource_name_ = "";
   resource_quantity_ = 0;
 }
 
-FractionalResourceQuantity::FractionalResourceQuantity(int resource_quantity) {
-  resource_name_ = "";
-  resource_quantity_ =
-      static_cast<int>(std::round(resource_quantity * conversion_factor_));
-}
+FractionalResourceQuantity::FractionalResourceQuantity(double resource_quantity) {
+  // We check for nonnegativeity due to the implicit conversion to
+  // FractionalResourceQuantity from ints/doubles when we do logical
+  // comparisons.
+  RAY_CHECK(resource_quantity >= 0)
+      << "Resource capacity, "
+      << resource_quantity
+      << ", should be nonnegative.";
 
-FractionalResourceQuantity::FractionalResourceQuantity(std::string resource_name,
-                                                       double resource_quantity) {
-  RAY_CHECK(resource_quantity > 0) << "Resource " << resource_name << " capacity is "
-                                   << resource_quantity
-                                   << ". Should have been greater than zero.";
-
-  resource_name_ = "";
   resource_quantity_ =
-      static_cast<int>(std::round(resource_quantity * conversion_factor_));
+      static_cast<int>(std::round(resource_quantity * kResourceConversionFactor));
 }
 
 const FractionalResourceQuantity FractionalResourceQuantity::operator+(
@@ -45,24 +40,19 @@ const FractionalResourceQuantity FractionalResourceQuantity::operator-(
   return result;
 }
 
-FractionalResourceQuantity &FractionalResourceQuantity::operator+=(
+void FractionalResourceQuantity::operator+=(
     const FractionalResourceQuantity &rhs) {
   resource_quantity_ += rhs.resource_quantity_;
-
-  return *this;
 }
 
-FractionalResourceQuantity &FractionalResourceQuantity::operator-=(
+void FractionalResourceQuantity::operator-=(
     const FractionalResourceQuantity &rhs) {
   resource_quantity_ -= rhs.resource_quantity_;
 
   // Ensure that quantity is nonnegative.
   RAY_CHECK(resource_quantity_ >= 0)
-      << "Capacity of resource " << resource_name_ << " after subtraction is negative ("
-      << this->ToDouble() << ")."
-      << " Debug: resource_capacity_: (" << resource_name_ << ", " << this->ToDouble()
-      << "), other: (" << rhs.resource_name_ << ", " << rhs.ToDouble() << ").";
-  return *this;
+      << "Capacity of resource after subtraction is negative, "
+      << this->ToDouble() << ".";
 }
 
 bool FractionalResourceQuantity::operator==(const FractionalResourceQuantity &rhs) const {
@@ -91,15 +81,14 @@ bool FractionalResourceQuantity::operator>=(const FractionalResourceQuantity &rh
 }
 
 double FractionalResourceQuantity::ToDouble() const {
-  return static_cast<double>(resource_quantity_ / conversion_factor_);
+  return static_cast<double>(resource_quantity_) / kResourceConversionFactor;
 }
 
 ResourceSet::ResourceSet() {}
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
-    resource_capacity_[resource_pair.first] =
-        FractionalResourceQuantity(resource_pair.first, resource_pair.second);
+    resource_capacity_[resource_pair.first] = FractionalResourceQuantity(resource_pair.second);
   }
 }
 
@@ -107,8 +96,7 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (uint i = 0; i < resource_labels.size(); i++) {
-    resource_capacity_[resource_labels[i]] =
-        FractionalResourceQuantity(resource_labels[i], resource_capacity[i]);
+    resource_capacity_[resource_labels[i]] = FractionalResourceQuantity(resource_capacity[i]);
   }
 }
 
@@ -180,7 +168,7 @@ FractionalResourceQuantity ResourceSet::GetResource(
   if (resource_capacity_.count(resource_name) == 0) {
     return 0;
   }
-  FractionalResourceQuantity capacity = resource_capacity_.at(resource_name);
+  const FractionalResourceQuantity capacity = resource_capacity_.at(resource_name);
   return capacity;
 }
 
@@ -303,6 +291,8 @@ ResourceIds ResourceIds::Acquire(FractionalResourceQuantity resource_quantity) {
     whole_ids_.pop_back();
 
     auto return_pair = std::make_pair(whole_id, resource_quantity);
+    // We cannot make use of the implicit conversion because ints have no
+    // operator-(const FractionalResourceQuantity&) function.
     FractionalResourceQuantity remaining_amount =
         FractionalResourceQuantity(1) - resource_quantity;
     fractional_ids_.push_back(std::make_pair(whole_id, remaining_amount));

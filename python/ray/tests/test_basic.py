@@ -864,7 +864,7 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
-def test_submit_many(shutdown_only):
+def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
     @ray.remote
@@ -877,15 +877,23 @@ def test_submit_many(shutdown_only):
         f._remote(resources={"Custom": np.random.uniform()})
         for _ in range(100)
     ])
+    ray.get([f._remote(num_cpus=np.random.uniform(),
+                       num_gpus=np.random.uniform(),
+                       resources={"Custom": np.random.uniform()})
+             for _ in range(100)])
 
-    while True:
+    stop_time = time.time() + 60 * 10
+    correct_available_resources = False;
+    while time.time() < stop_time:
         if ray.global_state.available_resources() == {
-                "CPU": 2.0,
                 "Custom": 2.0,
-                "GPU": 2.0
+                "GPU": 2.0,
+                "CPU": 2.0,
         }:
+            correct_available_resources = True
             break
-    assert True
+    if (not correct_available_resources):
+        assert False, "Did not get correct available resources."
 
 
 def test_get_multiple(ray_start_regular):
