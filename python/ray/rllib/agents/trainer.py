@@ -97,7 +97,6 @@ COMMON_CONFIG = {
     # The evaluation stats will be reported under the "evaluation" metric key.
     # Note that evaluation is currently not parallelized, and that for Ape-X
     # metrics are already only reported for the lowest epsilon workers.
-    # See: https://github.com/ray-project/ray/issues/4614
     "evaluation_interval": None,
     # Number of episodes to run per evaluation period.
     "evaluation_num_episodes": 10,
