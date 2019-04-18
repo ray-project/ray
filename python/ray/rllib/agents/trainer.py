@@ -420,7 +420,6 @@ class Trainer(Trainable):
             if self.config["evaluation_interval"]:
                 # Update env_config with evaluation settings:
                 if self.config['evaluation_config'] is None:
-                    self.config['evaluation_config'] = {}
                 extra_config = copy.deepcopy(self.config['evaluation_config'])
                 extra_config.update(
                     {
