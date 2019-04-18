@@ -877,13 +877,15 @@ def test_many_fractional_resources(shutdown_only):
         f._remote(resources={"Custom": np.random.uniform()})
         for _ in range(100)
     ])
-    ray.get([f._remote(num_cpus=np.random.uniform(),
-                       num_gpus=np.random.uniform(),
-                       resources={"Custom": np.random.uniform()})
-             for _ in range(100)])
+    ray.get([
+        f._remote(
+            num_cpus=np.random.uniform(),
+            num_gpus=np.random.uniform(),
+            resources={"Custom": np.random.uniform()}) for _ in range(100)
+    ])
 
     stop_time = time.time() + 60 * 10
-    correct_available_resources = False;
+    correct_available_resources = False
     while time.time() < stop_time:
         if ray.global_state.available_resources() == {
                 "Custom": 2.0,

@@ -9,18 +9,14 @@ namespace ray {
 
 namespace raylet {
 
-FractionalResourceQuantity::FractionalResourceQuantity() {
-  resource_quantity_ = 0;
-}
+FractionalResourceQuantity::FractionalResourceQuantity() { resource_quantity_ = 0; }
 
 FractionalResourceQuantity::FractionalResourceQuantity(double resource_quantity) {
   // We check for nonnegativeity due to the implicit conversion to
   // FractionalResourceQuantity from ints/doubles when we do logical
   // comparisons.
   RAY_CHECK(resource_quantity >= 0)
-      << "Resource capacity, "
-      << resource_quantity
-      << ", should be nonnegative.";
+      << "Resource capacity, " << resource_quantity << ", should be nonnegative.";
 
   resource_quantity_ =
       static_cast<int>(std::round(resource_quantity * kResourceConversionFactor));
@@ -40,19 +36,17 @@ const FractionalResourceQuantity FractionalResourceQuantity::operator-(
   return result;
 }
 
-void FractionalResourceQuantity::operator+=(
-    const FractionalResourceQuantity &rhs) {
+void FractionalResourceQuantity::operator+=(const FractionalResourceQuantity &rhs) {
   resource_quantity_ += rhs.resource_quantity_;
 }
 
-void FractionalResourceQuantity::operator-=(
-    const FractionalResourceQuantity &rhs) {
+void FractionalResourceQuantity::operator-=(const FractionalResourceQuantity &rhs) {
   resource_quantity_ -= rhs.resource_quantity_;
 
   // Ensure that quantity is nonnegative.
   RAY_CHECK(resource_quantity_ >= 0)
-      << "Capacity of resource after subtraction is negative, "
-      << this->ToDouble() << ".";
+      << "Capacity of resource after subtraction is negative, " << this->ToDouble()
+      << ".";
 }
 
 bool FractionalResourceQuantity::operator==(const FractionalResourceQuantity &rhs) const {
@@ -88,7 +82,8 @@ ResourceSet::ResourceSet() {}
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
-    resource_capacity_[resource_pair.first] = FractionalResourceQuantity(resource_pair.second);
+    resource_capacity_[resource_pair.first] =
+        FractionalResourceQuantity(resource_pair.second);
   }
 }
 
@@ -96,7 +91,8 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (uint i = 0; i < resource_labels.size(); i++) {
-    resource_capacity_[resource_labels[i]] = FractionalResourceQuantity(resource_capacity[i]);
+    resource_capacity_[resource_labels[i]] =
+        FractionalResourceQuantity(resource_capacity[i]);
   }
 }
 
