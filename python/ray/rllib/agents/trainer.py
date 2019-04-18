@@ -419,7 +419,6 @@ class Trainer(Trainable):
             # see: https://github.com/ray-project/ray/issues/4614
             if self.config["evaluation_interval"]:
                 # Update env_config with evaluation settings:
-                if self.config['evaluation_config'] is None:
                 extra_config = copy.deepcopy(self.config['evaluation_config'])
                 extra_config.update(
                     {
