@@ -264,7 +264,7 @@ class Trainer(Trainable):
     _allow_unknown_configs = False
     _allow_unknown_subkeys = [
         "tf_session_args", "env_config", "model", "optimizer", "multiagent",
-        "custom_resources_per_worker"
+        "custom_resources_per_worker", "evaluation_config"
     ]
 
     @PublicAPI
@@ -402,8 +402,6 @@ class Trainer(Trainable):
 
         # Merge the supplied config with the class default
         merged_config = copy.deepcopy(self._default_config)
-        if self.config.get("evaluation_interval"):
-            self._allow_unknown_configs = True
         merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
@@ -474,15 +472,25 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _evaluate(self):
-        """Evaluates current policy with [possibly] altered
-        Trainer configuration settings.
-        Note that this default implementation does not
-        disables exploration for evaluation runs."""
+        """Evaluates current policy under `evaluation_config` settings.
+
+        Note that this default implementation does not do anything beyond
+        merging evaluation_config with the normal trainer config.
+        """
+
+        if not self.config["evaluation_config"]:
+            raise ValueError(
+                "No evaluation_config specified. It doesn't make sense "
+                "to enable evaluation without specifying any config "
+                "overrides, since the results will be the "
+                "same as reported during normal policy evaluation.")
+
         logger.info("Evaluating current policy for {} episodes".format(
             self.config["evaluation_num_episodes"]))
         self.evaluation_ev.restore(self.local_evaluator.save())
         for _ in range(self.config["evaluation_num_episodes"]):
             self.evaluation_ev.sample()
+
         metrics = collect_metrics(self.evaluation_ev)
         return {"evaluation": metrics}
 
