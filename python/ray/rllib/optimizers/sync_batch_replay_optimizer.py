@@ -68,6 +68,11 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
             batches = tmp
 
             for batch in batches:
+                if batch.count > self.max_buffer_size:
+                    raise ValueError(
+                        "The size of a single sample batch exceeds the replay "
+                        "buffer size ({} > {})".format(batch.count,
+                                                       self.max_buffer_size))
                 self.replay_buffer.append(batch)
                 self.num_steps_sampled += batch.count
                 self.buffer_size += batch.count

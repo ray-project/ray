@@ -61,8 +61,8 @@ class Preprocessor(object):
                         self._obs_space, observation)
             except AttributeError:
                 raise ValueError(
-                    "Observation for a Box space should be an np.array, "
-                    "not a Python list.", observation)
+                    "Observation for a Box/MultiBinary/MultiDiscrete space "
+                    "should be an np.array, not a Python list.", observation)
         self._i += 1
 
     @property
