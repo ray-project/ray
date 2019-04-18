@@ -884,7 +884,7 @@ def test_many_fractional_resources(shutdown_only):
             resources={"Custom": np.random.uniform()}) for _ in range(100)
     ])
 
-    stop_time = time.time() + 60 * 10
+    stop_time = time.time() + 10
     correct_available_resources = False
     while time.time() < stop_time:
         if ray.global_state.available_resources() == {
