@@ -1663,7 +1663,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             assert gcs_entry.EntriesLength() == 1
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entry.Entries(0), 0)
-            job_id = error_data.JobId()
+            job_id = error_data.DriverId()
             if job_id not in [
                     worker.task_driver_id.binary(),
                     DriverID.nil().binary()
