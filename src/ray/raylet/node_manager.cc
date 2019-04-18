@@ -2200,8 +2200,7 @@ std::string NodeManager::DebugString() const {
   }
 
   object_manager_.RecordMetrics();
-  // gcs_client_->RecordMetrics();
-  // worker_pool_.RecordMetrics();
+  worker_pool_.RecordMetrics();
   local_queues_.RecordMetrics();
   reconstruction_policy_.RecordMetrics();
   task_dependency_manager_.RecordMetrics();
