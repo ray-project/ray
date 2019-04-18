@@ -12,7 +12,7 @@
 /// You can follow these examples to define your metrics.
 
 static Gauge CurrentWorker("current_worker",
-                           "This metric is used for report states of workers."
+                           "This metric is used for reporting states of workers."
                            "Through this, we can see the worker's state on dashboard.",
                            "1 pcs", {LanguageKey, WorkerPidKey});
 
