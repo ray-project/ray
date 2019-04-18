@@ -1,8 +1,13 @@
-from functools import reduce
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
+from functools import reduce
+import operator
+
+import numpy as np
 import pytest
 import tensorflow as tf
-import numpy as np
 
 import ray
 from ray.experimental.tf_utils import tf_differentiable
@@ -43,11 +48,11 @@ def ray_actor():
         # multiple inputs, single output
         @tf_differentiable(num_return_vals=1)
         def sum(self, *inputs):
-            return reduce(lambda x, y: x + y, inputs)
+            return sum(inputs)
 
         @tf_differentiable(num_return_vals=1)
         def prod(self, *inputs):
-            return reduce(lambda x, y: x * y, inputs)
+            return reduce(operator.mul, inputs)
 
         @tf_differentiable(num_return_vals=1)
         def sum_square_cube(self, x, y):
@@ -111,10 +116,10 @@ def dummy_actor():
 
         # multiple inputs, single output
         def sum(self, *inputs):
-            return reduce(lambda x, y: x + y, inputs)
+            return sum(inputs)
 
         def prod(self, *inputs):
-            return reduce(lambda x, y: x * y, inputs)
+            return reduce(operator.mul, inputs)
 
         def sum_square_cube(self, x, y):
             return x**2 + y**3
@@ -153,10 +158,10 @@ def check_tensor_outputs(out_1, out_2):
     """ Verifies that two outputs consisting of TF eager tensors are equivalent. """
 
     #TODO(vsatish): Figure out why we sometimes return 0.0 instead of None.
-    if out_1 is None and isinstance(out_2, tf.Tensor) and np.all(out_2.numpy() == 0.0):
-        out_1 = tf.zeros_like(out_2, dtype=out_2.dtype)
-    elif out_2 is None and isinstance(out_1, tf.Tensor) and np.all(out_1.numpy() == 0.0):
-        out_2 = tf.zeros_like(out_1, dtype=out_1.dtype)
+#    if out_1 is None and isinstance(out_2, tf.Tensor) and np.all(out_2.numpy() == 0.0):
+#        out_1 = tf.zeros_like(out_2, dtype=out_2.dtype)
+#    elif out_2 is None and isinstance(out_1, tf.Tensor) and np.all(out_1.numpy() == 0.0):
+#        out_2 = tf.zeros_like(out_1, dtype=out_1.dtype)
 
     if isinstance(out_1, list) and isinstance(out_2, tuple):
         out_2 = list(out_2)
@@ -178,6 +183,7 @@ def check_tensor_outputs(out_1, out_2):
     else:
         raise ValueError("Unsupported comparison type '{}'".format(type(out_1)))
 
+"""
 ############################## SINGLE INPUT/OUTPUT ##############################
 ### LINEAR
 # custom op w/ single input & single output
@@ -801,6 +807,7 @@ def test_kwargs_multiple_in_multiple_out_tf_sandwich(start_ray, ray_actor, dummy
     check_tensor_outputs(grad_hat, grad)
 
 ## LARGE TESTS
+#@pytest.mark.skip()
 def test_kwargs_large(start_ray, ray_actor, dummy_actor):
     x = tf.Variable([2.0, 2.0, 2.0], dtype=tf.float64)
     y = tf.Variable(3.0, dtype=tf.float64)
@@ -837,6 +844,27 @@ def test_kwargs_large(start_ray, ray_actor, dummy_actor):
         i_16 = dummy_actor.prod(i_15, x)
         out = i_16
     grad = t.gradient(out, [x, y, z])
+
+    check_tensor_outputs(out_hat, out)
+    check_tensor_outputs(grad_hat, grad)
+"""
+
+from ray.tests.conftest import ray_start_regular
+#@pytest.mark.skip()
+def test_debug(ray_start_regular, ray_actor, dummy_actor):
+    x = tf.Variable(2.0)
+    y = tf.Variable(3.0)
+    z = tf.Variable(4.0)
+
+    with tf.GradientTape() as t:
+        in_1, in_2, in_3, i_4, i_5 = ray_actor.f.remote(x, y, z)
+        out_hat = ray.get(in_1)
+    grad_hat = t.gradient(out_hat, y)
+
+    with tf.GradientTape() as t:
+        in_1, in_2, in_3, i_4, i_5 = dummy_actor.f(x, y, z)
+        out = in_1
+    grad = t.gradient(out, y)
 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
