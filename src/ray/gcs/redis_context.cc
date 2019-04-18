@@ -22,7 +22,7 @@ namespace {
 /// manager if necessary.
 void ProcessCallback(int64_t callback_index, const std::string &data) {
   RAY_CHECK(callback_index >= 0) << "The callback index must be greater than 0, "
-                                 << "but it actually be " << callback_index;
+                                 << "but it actually is " << callback_index;
   auto callback_item = ray::gcs::RedisCallbackManager::instance().get(callback_index);
   if (!callback_item.is_subscription) {
     // Record the redis latency for non-subscription redis operator.
