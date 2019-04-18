@@ -26,7 +26,8 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
-    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
+    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from six import string_types
 from six.moves import queue
 
@@ -48,12 +49,6 @@ CLUSTER_CONFIG_SCHEMA = {
     # The maximum number of workers nodes to launch in addition to the head
     # node. This takes precedence over min_workers.
     "max_workers": (int, REQUIRED),
-
-    # The number of workers to launch initially, in addition to the head node.
-    "initial_workers": (int, OPTIONAL),
-
-    # The mode of the autoscaler e.g. default, aggressive
-    "autoscaling_mode": (str, OPTIONAL),
 
     # The autoscaler will scale up the cluster to this target fraction of
     # resources usage. For example, if a cluster of 8 nodes is 100% busy
@@ -379,7 +374,6 @@ class StandardAutoscaler(object):
         self.num_failures = 0
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
-        self.bringup = True
 
         # Node launchers
         self.launch_queue = queue.Queue()
@@ -405,6 +399,8 @@ class StandardAutoscaler(object):
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
+
+        self.resource_requests = defaultdict(int)
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
@@ -432,10 +428,15 @@ class StandardAutoscaler(object):
         self.last_update_time = now
         num_pending = self.num_launches_pending.value
         nodes = self.workers()
-        self.log_info_string(nodes)
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
         target_workers = self.target_num_workers()
+
+        if len(nodes) >= target_workers:
+            if "CPU" in self.resource_requests:
+                del self.resource_requests["CPU"]
+
+        self.log_info_string(nodes, target_workers)
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
@@ -457,7 +458,7 @@ class StandardAutoscaler(object):
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
-            self.log_info_string(nodes)
+            self.log_info_string(nodes, target_workers)
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
@@ -470,20 +471,18 @@ class StandardAutoscaler(object):
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
-            self.log_info_string(nodes)
+            self.log_info_string(nodes, target_workers)
 
         # Launch new nodes if needed
         num_workers = len(nodes) + num_pending
         if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
                               self.max_concurrent_launches - num_pending)
+
             num_launches = min(max_allowed, target_workers - num_workers)
             self.launch_new_node(num_launches)
             nodes = self.workers()
-            self.log_info_string(nodes)
-        elif self.load_metrics.num_workers_connected() >= target_workers:
-            logger.info("Ending bringup phase")
-            self.bringup = False
+            self.log_info_string(nodes, target_workers)
 
         # Process any completed updates
         completed = []
@@ -501,7 +500,7 @@ class StandardAutoscaler(object):
             # immediately trying to restart Ray on the new node.
             self.load_metrics.mark_active(self.provider.internal_ip(node_id))
             nodes = self.workers()
-            self.log_info_string(nodes)
+            self.log_info_string(nodes, target_workers)
 
         # Update nodes with out-of-date files
         T = [
@@ -548,13 +547,17 @@ class StandardAutoscaler(object):
         ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
         ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
 
-        initial_workers = self.config["initial_workers"]
-        aggressive = self.config["autoscaling_mode"] == "aggressive"
-        if self.bringup:
-            ideal_num_workers = max(ideal_num_workers, initial_workers)
-        elif aggressive and cur_used > 0:
-            # If we want any workers, we want at least initial_workers
-            ideal_num_workers = max(ideal_num_workers, initial_workers)
+        # Other resources are not supported at present.
+        if "CPU" in self.resource_requests:
+            try:
+                cores_per_worker = self.config["worker_nodes"]["Resources"]["CPU"]
+            except KeyError:
+                cores_per_worker = 1  # Assume the worst
+
+            cores_desired = self.resource_requests["CPU"]
+
+            ideal_num_workers = max(ideal_num_workers,
+                int(np.ceil(cores_desired/cores_per_worker)))
 
         return min(self.config["max_workers"],
                    max(self.config["min_workers"], ideal_num_workers))
@@ -659,11 +662,11 @@ class StandardAutoscaler(object):
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_TYPE: "worker"})
 
-    def log_info_string(self, nodes):
-        logger.info("StandardAutoscaler: {}".format(self.info_string(nodes)))
+    def log_info_string(self, nodes, target):
+        logger.info("StandardAutoscaler: {}".format(self.info_string(nodes, target)))
         logger.info("LoadMetrics: {}".format(self.load_metrics.info_string()))
 
-    def info_string(self, nodes):
+    def info_string(self, nodes, target):
         suffix = ""
         if self.num_launches_pending:
             suffix += " ({} pending)".format(self.num_launches_pending.value)
@@ -672,11 +675,16 @@ class StandardAutoscaler(object):
         if self.num_failed_updates:
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
-        if self.bringup:
-            suffix += " (bringup=True)"
 
         return "{}/{} target nodes{}".format(
-            len(nodes), self.target_num_workers(), suffix)
+            len(nodes), target, suffix)
+
+    def request_resources(self, resources):
+        for resource, count in resources.items():
+            self.resource_requests[resource] = max(self.resource_requests[resource], count)
+
+        logger.info("StandardAutoscaler: resource_requests={}".format(
+            self.resource_requests))
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
@@ -824,3 +832,8 @@ def hash_runtime_conf(file_mounts, extra_objs):
         _hash_cache[conf_str] = hasher.hexdigest()
 
     return _hash_cache[conf_str]
+
+def request_cores(redis_address, cores, redis_password=None):
+    # For now this only supports CPUs. It is non blocking.
+    r = services.create_redis_client(redis_address, password=redis_password)
+    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps({"CPU": cores}))
