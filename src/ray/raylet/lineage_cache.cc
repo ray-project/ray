@@ -347,10 +347,9 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   RAY_CHECK(entry);
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_READY);
 
-  gcs::raylet::TaskTable::WriteCallback task_callback = [this](
-      ray::gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
-    HandleEntryCommitted(id);
-  };
+  gcs::raylet::TaskTable::WriteCallback task_callback =
+      [this](ray::gcs::AsyncGcsClient *client, const TaskID &id,
+             const protocol::TaskT &data) { HandleEntryCommitted(id); };
   auto task = lineage_.GetEntry(task_id);
   // TODO(swang): Make this better...
   flatbuffers::FlatBufferBuilder fbb;
@@ -475,13 +474,13 @@ std::string LineageCache::DebugString() const {
 
 void LineageCache::RecordMetrics() const {
   stats::LineageCacheStats().Record(committed_tasks_.size(),
-      {{stats::ValueTypeKey, "num_committed_tasks"}});
+                                    {{stats::ValueTypeKey, "num_committed_tasks"}});
   stats::LineageCacheStats().Record(lineage_.GetChildrenSize(),
-      {{stats::ValueTypeKey, "num_children"}});
+                                    {{stats::ValueTypeKey, "num_children"}});
   stats::LineageCacheStats().Record(subscribed_tasks_.size(),
-      {{stats::ValueTypeKey, "num_subscribed_tasks"}});
+                                    {{stats::ValueTypeKey, "num_subscribed_tasks"}});
   stats::LineageCacheStats().Record(lineage_.GetEntries().size(),
-      {{stats::ValueTypeKey, "num_lineages"}});
+                                    {{stats::ValueTypeKey, "num_lineages"}});
 }
 
 }  // namespace raylet

@@ -213,8 +213,8 @@ std::string ReconstructionPolicy::DebugString() const {
 }
 
 void ReconstructionPolicy::RecordMetrics() const {
-  stats::ReconstructionPolicyStats().Record(listening_tasks_.size(),
-      {{stats::ValueTypeKey, "num_reconstructing_tasks"}});
+  stats::ReconstructionPolicyStats().Record(
+      listening_tasks_.size(), {{stats::ValueTypeKey, "num_reconstructing_tasks"}});
 }
 
 }  // namespace raylet

@@ -148,17 +148,23 @@ std::string ConnectionPool::DebugString() const {
 }
 
 void ConnectionPool::RecordMetrics() const {
-  stats::ConnectionPoolStats().Record(message_send_connections_.size(),
+  stats::ConnectionPoolStats().Record(
+      message_send_connections_.size(),
       {{stats::ValueTypeKey, "num_message_send_connections"}});
-  stats::ConnectionPoolStats().Record(transfer_send_connections_.size(),
+  stats::ConnectionPoolStats().Record(
+      transfer_send_connections_.size(),
       {{stats::ValueTypeKey, "num_transfer_send_connections"}});
-  stats::ConnectionPoolStats().Record(available_transfer_send_connections_.size(),
+  stats::ConnectionPoolStats().Record(
+      available_transfer_send_connections_.size(),
       {{stats::ValueTypeKey, "num_avail_message_send_connections"}});
-  stats::ConnectionPoolStats().Record(available_transfer_send_connections_.size(),
+  stats::ConnectionPoolStats().Record(
+      available_transfer_send_connections_.size(),
       {{stats::ValueTypeKey, "num_avail_transfer_send_connections"}});
-  stats::ConnectionPoolStats().Record(message_receive_connections_.size(),
+  stats::ConnectionPoolStats().Record(
+      message_receive_connections_.size(),
       {{stats::ValueTypeKey, "num_message_receive_connections"}});
-  stats::ConnectionPoolStats().Record(transfer_receive_connections_.size(),
+  stats::ConnectionPoolStats().Record(
+      transfer_receive_connections_.size(),
       {{stats::ValueTypeKey, "num_transfer_receive_connections"}});
 }
 

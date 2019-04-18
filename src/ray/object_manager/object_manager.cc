@@ -1,7 +1,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/common_protocol.h"
-#include "ray/util/util.h"
 #include "ray/stats/stats.h"
+#include "ray/util/util.h"
 
 namespace asio = boost::asio;
 
@@ -969,15 +969,15 @@ std::string ObjectManager::DebugString() const {
 
 void ObjectManager::RecordMetrics() const {
   stats::ObjectStats().Record(local_objects_.size(),
-      {{stats::ValueTypeKey, "num_local_objects"}});
+                              {{stats::ValueTypeKey, "num_local_objects"}});
   stats::ObjectStats().Record(active_wait_requests_.size(),
-      {{stats::ValueTypeKey, "num_active_wait_requests"}});
+                              {{stats::ValueTypeKey, "num_active_wait_requests"}});
   stats::ObjectStats().Record(unfulfilled_push_requests_.size(),
-      {{stats::ValueTypeKey, "num_unfulfilled_push_requests"}});
+                              {{stats::ValueTypeKey, "num_unfulfilled_push_requests"}});
   stats::ObjectStats().Record(pull_requests_.size(),
-      {{stats::ValueTypeKey, "num_pull_requests"}});
+                              {{stats::ValueTypeKey, "num_pull_requests"}});
   stats::ObjectStats().Record(profile_events_.size(),
-      {{stats::ValueTypeKey, "num_profile_events"}});
+                              {{stats::ValueTypeKey, "num_profile_events"}});
   connection_pool_.RecordMetrics();
 }
 

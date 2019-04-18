@@ -307,16 +307,16 @@ void WorkerPool::RecordMetrics() const {
   for (const auto &entry : states_by_lang_) {
     // Record worker.
     for (auto worker : entry.second.registered_workers) {
-      stats::CurrentWorker().Record(worker->Pid(),
-          {{stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
+      stats::CurrentWorker().Record(
+          worker->Pid(), {{stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
+                          {stats::WorkerPidKey, std::to_string(worker->Pid())}});
     }
 
     // Record driver.
     for (auto driver : entry.second.registered_drivers) {
-      stats::CurrentDriver().Record(driver->Pid(),
-          {{stats::LanguageKey, EnumNameLanguage(driver->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(driver->Pid())}});
+      stats::CurrentDriver().Record(
+          driver->Pid(), {{stats::LanguageKey, EnumNameLanguage(driver->GetLanguage())},
+                          {stats::WorkerPidKey, std::to_string(driver->Pid())}});
     }
   }
 }
