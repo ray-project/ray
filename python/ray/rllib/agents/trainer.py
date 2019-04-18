@@ -428,7 +428,7 @@ class Trainer(Trainable):
                         "batch_steps": 1,
                     }
                 )
-                logger.debug('got extra_config: {}'.format(extra_config))
+                logger.debug("using evaluation_config: {}".format(extra_config))
                 # Make local evaluation evaluators
                 self.evaluation_ev = self.make_local_evaluator(
                     self.env_creator,
