@@ -308,7 +308,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param client_id The ID of the remote object manager to send the message
   /// to.
   /// \return Void.
-  void SendCancelPullRequest(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id);
+  void SendCancelPullRequest(const UniqueID &push_id, const ObjectID &object_id,
+                             const ClientID &client_id);
 
   std::shared_ptr<SenderConnection> CreateSenderConnection(
       ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
@@ -327,9 +328,9 @@ class ObjectManager : public ObjectManagerInterface {
   /// chunk.
   /// \param status The status of the send (e.g., did it succeed or fail).
   /// \return Void.
-  void HandleSendFinished(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
-                          uint64_t chunk_index, double start_time_us, double end_time_us,
-                          ray::Status status);
+  void HandleSendFinished(const UniqueID &push_id, const ObjectID &object_id,
+                          const ClientID &client_id, uint64_t chunk_index,
+                          double start_time_us, double end_time_us, ray::Status status);
 
   /// This is used to notify the main thread that the receiving of a chunk has
   /// completed.
@@ -345,9 +346,10 @@ class ObjectManager : public ObjectManagerInterface {
   /// chunk.
   /// \param status The status of the receive (e.g., did it succeed or fail).
   /// \return Void.
-  void HandleReceiveFinished(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
-                             uint64_t chunk_index, double start_time_us,
-                             double end_time_us, ray::Status status);
+  void HandleReceiveFinished(const UniqueID &push_id, const ObjectID &object_id,
+                             const ClientID &client_id, uint64_t chunk_index,
+                             double start_time_us, double end_time_us,
+                             ray::Status status);
 
   /// Begin executing a send.
   /// Executes on send_service_ thread pool.
@@ -394,7 +396,8 @@ class ObjectManager : public ObjectManagerInterface {
   void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                         const uint8_t *message);
   /// Handle Push task timeout.
-  void HandlePushTaskTimeout(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id);
+  void HandlePushTaskTimeout(const UniqueID &push_id, const ObjectID &object_id,
+                             const ClientID &client_id);
 
   ClientID client_id_;
   const ObjectManagerConfig config_;

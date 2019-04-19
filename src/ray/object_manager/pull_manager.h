@@ -185,9 +185,10 @@ class PullManager {
   /// \param[out] start_timer This will be set to true if the caller should
   /// start a timer for this object ID and false otherwise.
   /// \return Void.
-  void ReceivePushRequest(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
-                          int64_t chunk_index, int64_t num_chunks,
-                          std::vector<ClientID> *clients_to_cancel, bool *start_timer);
+  void ReceivePushRequest(const UniqueID &push_id, const ObjectID &object_id,
+                          const ClientID &client_id, int64_t chunk_index,
+                          int64_t num_chunks, std::vector<ClientID> *clients_to_cancel,
+                          bool *start_timer);
 
   /// Notify the PullManager that the locations of the object in the object
   /// table have changed.
@@ -200,9 +201,9 @@ class PullManager {
   /// \param[out] restart_timer This will be set to true if the timer for this
   /// object ID should be restarted and false otherwise.
   /// \return Void.
-  void NewObjectLocations(
-      const ObjectID &object_id, const std::unordered_set<ClientID> &clients_with_object,
-      std::vector<ClientID> *clients_to_request, bool *restart_timer);
+  void NewObjectLocations(const ObjectID &object_id,
+                          const std::unordered_set<ClientID> &clients_with_object,
+                          std::vector<ClientID> *clients_to_request, bool *restart_timer);
 
   /// Notify the PullManager that a chunk was read successfully.
   ///
@@ -217,8 +218,9 @@ class PullManager {
   /// \param[out] restart_timer This is set to true if the timer for this object
   /// should be restarted and false otherwise.
   /// \return Void.
-  void ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
-                          int64_t chunk_index, bool *abort_creation, bool *restart_timer);
+  void ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &object_id,
+                          const ClientID &client_id, int64_t chunk_index,
+                          bool *abort_creation, bool *restart_timer);
 
   /// Notify the PullManager that a chunk was not successfully read. This could
   /// happen because the chunk was intentionally ignored, because the object
@@ -237,9 +239,9 @@ class PullManager {
   /// \param[out] This is set to true if the object creation should be aborted
   /// and false otherwise.
   /// \return Void.
-  void ChunkReadFailed(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
-                       int64_t chunk_index, std::vector<ClientID> *clients_to_cancel,
-                       bool *abort_creation);
+  void ChunkReadFailed(const UniqueID &push_id, const ObjectID &object_id,
+                       const ClientID &client_id, int64_t chunk_index,
+                       std::vector<ClientID> *clients_to_cancel, bool *abort_creation);
 
   /// Handle the fact that the timer for a pull has expired.
   ///
@@ -253,8 +255,9 @@ class PullManager {
   /// \param[out] restart_timer This will be set to true if the timer for this
   /// object should be restarted and false otherwise.
   /// \return Void.
-  void TimerExpired(const UniqueID &push_id, const ObjectID &object_id, std::vector<ClientID> *clients_to_request,
-                    bool *abort_creation, bool *restart_timer);
+  void TimerExpired(const UniqueID &push_id, const ObjectID &object_id,
+                    std::vector<ClientID> *clients_to_request, bool *abort_creation,
+                    bool *restart_timer);
 
   /// Print out a human-readable string describing the PullManager's state.
   ///

@@ -7,9 +7,7 @@
 namespace ray {
 
 PullInfo::PullInfo(bool required)
-    : required(required),
-      total_num_chunks(-1),
-      num_in_progress_chunk_ids(0) {}
+    : required(required), total_num_chunks(-1), num_in_progress_chunk_ids(0) {}
 
 void PullInfo::InitializeChunksIfNecessary(int64_t num_chunks) {
   if (total_num_chunks == -1) {
@@ -34,8 +32,9 @@ PullManager::PullManager(const ClientID &client_id)
       client_id_(client_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
-void PullManager::ReceivePushRequest(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
-                                     int64_t chunk_index, int64_t num_chunks,
+void PullManager::ReceivePushRequest(const UniqueID &push_id, const ObjectID &object_id,
+                                     const ClientID &client_id, int64_t chunk_index,
+                                     int64_t num_chunks,
                                      std::vector<ClientID> *clients_to_cancel,
                                      bool *start_timer) {
   *start_timer = false;
@@ -47,8 +46,7 @@ void PullManager::ReceivePushRequest(const UniqueID &push_id, const ObjectID &ob
   if (it == pulls_.end()) {
     new_client = true;
     *start_timer = true;
-    auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, PullInfo(false)));
+    auto insertion_it = pulls_.insert(std::make_pair(object_id, PullInfo(false)));
 
     RAY_CHECK(insertion_it.second);
     it = insertion_it.first;
@@ -137,8 +135,8 @@ void PullManager::PullObject(const ObjectID &object_id, bool *subscribe_to_locat
 
   if (it == pulls_.end()) {
     *start_timer = true;
-    auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, PullInfo(true, object_id)));
+    auto insertion_it =
+        pulls_.insert(std::make_pair(object_id, PullInfo(true, object_id)));
     it = insertion_it.first;
     auto &pull_info = it->second;
     RAY_CHECK(pull_info.required);
@@ -201,9 +199,9 @@ void PullManager::CancelPullObject(const ObjectID &object_id,
 }
 
 // We finished reading a chunk.
-void PullManager::ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
-                                int64_t chunk_index, bool *abort_creation,
-                                bool *restart_timer) {
+void PullManager::ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &object_id,
+                                     const ClientID &client_id, int64_t chunk_index,
+                                     bool *abort_creation, bool *restart_timer) {
   *restart_timer = false;
   ++total_successful_chunk_reads_;
   auto it = pulls_.find(object_id);
@@ -215,8 +213,7 @@ void PullManager::ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &ob
   RAY_CHECK(pull_info.remaining_chunk_ids.erase(chunk_index) == 1);
   RAY_CHECK(pull_info.received_chunk_ids.insert(chunk_index).second);
 
-  if (client_id == pull_info.client_receiving_from &&
-    push_id == pull_info.push_id) {
+  if (client_id == pull_info.client_receiving_from && push_id == pull_info.push_id) {
     *restart_timer = true;
   }
 
@@ -227,9 +224,10 @@ void PullManager::ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &ob
   }
 }
 
-void PullManager::ChunkReadFailed(const UniqueID &push_id,
-    const ObjectID &object_id, const ClientID &client_id, int64_t chunk_index,
-    std::vector<ClientID> *clients_to_cancel, bool *abort_creation) {
+void PullManager::ChunkReadFailed(const UniqueID &push_id, const ObjectID &object_id,
+                                  const ClientID &client_id, int64_t chunk_index,
+                                  std::vector<ClientID> *clients_to_cancel,
+                                  bool *abort_creation) {
   ++total_failed_chunk_reads_;
   auto it = pulls_.find(object_id);
   RAY_CHECK(it != pulls_.end());
@@ -239,8 +237,7 @@ void PullManager::ChunkReadFailed(const UniqueID &push_id,
   RAY_CHECK(pull_info.num_in_progress_chunk_ids >= 0);
 
   *clients_to_cancel = std::vector<ClientID>();
-  if (client_id == pull_info.client_receiving_from &&
-      push_id == pull_info.push_id &&
+  if (client_id == pull_info.client_receiving_from && push_id == pull_info.push_id &&
       pull_info.received_chunk_ids.count(chunk_index) == 0) {
     pull_info.client_receiving_from = ClientID::nil();
     pull_info.push_id = UniqueID::nil();

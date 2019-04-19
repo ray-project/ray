@@ -156,7 +156,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
       });
 }
 
-void ObjectManager::SendPullRequest(const ObjectID &object_id, const ClientID &client_id) {
+void ObjectManager::SendPullRequest(const ObjectID &object_id,
+                                    const ClientID &client_id) {
   // Acquire a message connection and send pull request.
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
@@ -235,7 +236,6 @@ void ObjectManager::AbortObjectCreation(const ObjectID &object_id) {
   RAY_LOG(WARNING) << "We do not handle the abort_creation case yet.";
 }
 
-
 void ObjectManager::SendCancelPullRequest(const UniqueID &push_id,
                                           const ObjectID &object_id,
                                           const ClientID &client_id) {
@@ -279,22 +279,23 @@ void ObjectManager::HandleSendFinished(const UniqueID &push_id, const ObjectID &
   profile_events_.push_back(profile_event);
 }
 
-void ObjectManager::HandleReceiveFinished(const UniqueID &push_id, const ObjectID &object_id,
+void ObjectManager::HandleReceiveFinished(const UniqueID &push_id,
+                                          const ObjectID &object_id,
                                           const ClientID &client_id, uint64_t chunk_index,
                                           double start_time, double end_time,
                                           ray::Status status) {
   bool abort_creation;
   if (status.ok()) {
     bool restart_timer;
-    pull_manager_.ChunkReadSucceeded(push_id, object_id, client_id, chunk_index, &abort_creation,
-                                     &restart_timer);
+    pull_manager_.ChunkReadSucceeded(push_id, object_id, client_id, chunk_index,
+                                     &abort_creation, &restart_timer);
     if (restart_timer) {
       RestartPullTimer(object_id);
     }
   } else {
     std::vector<ClientID> clients_to_cancel;
-    pull_manager_.ChunkReadFailed(push_id, object_id, client_id, chunk_index, &clients_to_cancel,
-                                  &abort_creation);
+    pull_manager_.ChunkReadFailed(push_id, object_id, client_id, chunk_index,
+                                  &clients_to_cancel, &abort_creation);
     for (const ClientID &client_id : clients_to_cancel) {
       SendCancelPullRequest(push_id, object_id, client_id);
     }
@@ -398,11 +399,11 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         double end_time = current_sys_time_seconds();
 
         // Notify the main thread that we have finished sending the chunk.
-        main_service_->post(
-            [this, push_id, object_id, client_id, chunk_index, start_time, end_time, status]() {
-              HandleSendFinished(push_id, object_id, client_id, chunk_index, start_time, end_time,
-                                 status);
-            });
+        main_service_->post([this, push_id, object_id, client_id, chunk_index, start_time,
+                             end_time, status]() {
+          HandleSendFinished(push_id, object_id, client_id, chunk_index, start_time,
+                             end_time, status);
+        });
       });
     }
   } else {
@@ -819,15 +820,15 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
                          chunk_index, conn]() {
     double start_time = current_sys_time_seconds();
 
-    auto status = ExecuteReceiveObject(client_id, object_id, push_id, data_size, metadata_size,
-                                       chunk_index, *conn);
+    auto status = ExecuteReceiveObject(client_id, object_id, push_id, data_size,
+                                       metadata_size, chunk_index, *conn);
     double end_time = current_sys_time_seconds();
     // Notify the main thread that we have finished receiving the object.
-    main_service_->post(
-        [this, push_id, object_id, client_id, chunk_index, start_time, end_time, status]() {
-          HandleReceiveFinished(push_id, object_id, client_id, chunk_index, start_time, end_time,
-                                status);
-        });
+    main_service_->post([this, push_id, object_id, client_id, chunk_index, start_time,
+                         end_time, status]() {
+      HandleReceiveFinished(push_id, object_id, client_id, chunk_index, start_time,
+                            end_time, status);
+    });
   });
 }
 
