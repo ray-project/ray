@@ -1,8 +1,6 @@
 package org.ray.api;
 
 import java.util.List;
-
-import org.ray.api.gcs.GcsClient;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
@@ -129,12 +127,5 @@ public final class Ray extends RayCall {
    */
   public static RuntimeContext getRuntimeContext() {
     return runtime.getRuntimeContext();
-  }
-
-  /**
-   * Get gcs client.
-   */
-  public static GcsClient getGcsClient() {
-    return runtime.getGcsClient();
   }
 }

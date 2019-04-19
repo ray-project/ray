@@ -16,7 +16,6 @@ import org.ray.api.RuntimeContext;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
-import org.ray.api.gcs.GcsClient;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.BaseTaskOptions;
@@ -26,6 +25,7 @@ import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
+import org.ray.runtime.gcs.GcsClientImpl;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.raylet.RayletClient;
@@ -67,7 +67,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected ObjectStoreProxy objectStoreProxy;
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
-  protected GcsClient gcsClient;
+  protected GcsClientImpl gcsClientImpl;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
@@ -318,11 +318,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return actor;
   }
 
-  @Override
-  public GcsClient getGcsClient() {
-    return gcsClient;
-  }
-
   /**
    * Create the task specification.
    *
@@ -423,4 +418,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return runtimeContext;
   }
 
+  public GcsClientImpl getGcsClientImpl() {
+    return gcsClientImpl;
+  }
 }
