@@ -72,11 +72,17 @@ struct PullInfo {
 /// deciding when to issue requests to and cancel requests from remote object
 /// managers as well as when to abort an object creation.
 ///
-/// We say that we are "receiving" an object from another object manager if we
-/// received a ReceivePushRequest from it while we were not receiving the
-/// object from any other object managers, no reads from that object manager
-/// have subsequently failed, and not more than a certain amount of time has
-/// passed since the last chunk was received.
+/// We say that we are "receiving" an object from another object manager's
+/// specific push request if we received a ReceivePushRequest from it while we
+/// were not receiving the object from any other object managers, no reads from
+/// that object manager have subsequently failed, and not more than a certain
+/// amount of time has passed since the last chunk from the specific push
+/// request of the sending object manager has been received.
+///
+/// From the "receiving" state, we can transition to the "received" state if we
+/// have received all the chunks associated with the object. We can also
+/// transition into the "not receiving" state if we fail to read a chunk from
+/// the push request from the sending object manager or the timer has expired.
 ///
 /// The lifetime of a "pull" begins when either PullObject is called or when
 /// ReceivePushRequest is called (whichever comes first). The lifetime ends as
