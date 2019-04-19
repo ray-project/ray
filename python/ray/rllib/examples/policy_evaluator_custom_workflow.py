@@ -48,7 +48,7 @@ class CustomPolicy(PolicyGraph):
 
     def learn_on_batch(self, samples):
         # implement your learning code here
-        return {}, {}
+        return {}
 
     def update_some_value(self, w):
         # can also call other methods on policies

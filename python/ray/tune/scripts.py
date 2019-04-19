@@ -43,9 +43,9 @@ def list_trials(experiment_path, sort, output, filter_op, columns,
                 result_columns):
     """Lists trials in the directory subtree starting at the given path."""
     if columns:
-        columns = columns.split(',')
+        columns = columns.split(",")
     if result_columns:
-        result_columns = result_columns.split(',')
+        result_columns = result_columns.split(",")
     commands.list_trials(experiment_path, sort, output, filter_op, columns,
                          result_columns)
 
@@ -75,7 +75,7 @@ def list_trials(experiment_path, sort, output, filter_op, columns,
 def list_experiments(project_path, sort, output, filter_op, columns):
     """Lists experiments in the directory subtree."""
     if columns:
-        columns = columns.split(',')
+        columns = columns.split(",")
     commands.list_experiments(project_path, sort, output, filter_op, columns)
 
 

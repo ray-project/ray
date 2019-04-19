@@ -38,12 +38,12 @@ import tensorflow as tf
 
 nest = tf.contrib.framework.nest
 
-VTraceFromLogitsReturns = collections.namedtuple('VTraceFromLogitsReturns', [
-    'vs', 'pg_advantages', 'log_rhos', 'behaviour_action_log_probs',
-    'target_action_log_probs'
+VTraceFromLogitsReturns = collections.namedtuple("VTraceFromLogitsReturns", [
+    "vs", "pg_advantages", "log_rhos", "behaviour_action_log_probs",
+    "target_action_log_probs"
 ])
 
-VTraceReturns = collections.namedtuple('VTraceReturns', 'vs pg_advantages')
+VTraceReturns = collections.namedtuple("VTraceReturns", "vs pg_advantages")
 
 
 def log_probs_from_logits_and_actions(policy_logits, actions):
@@ -100,7 +100,7 @@ def from_logits(behaviour_policy_logits,
                 bootstrap_value,
                 clip_rho_threshold=1.0,
                 clip_pg_rho_threshold=1.0,
-                name='vtrace_from_logits'):
+                name="vtrace_from_logits"):
     """multi_from_logits wrapper used only for tests"""
 
     res = multi_from_logits(
@@ -133,7 +133,7 @@ def multi_from_logits(behaviour_policy_logits,
                       bootstrap_value,
                       clip_rho_threshold=1.0,
                       clip_pg_rho_threshold=1.0,
-                      name='vtrace_from_logits'):
+                      name="vtrace_from_logits"):
     r"""V-trace for softmax policies.
 
   Calculates V-trace actor critic targets for softmax polices as described in
@@ -251,7 +251,7 @@ def from_importance_weights(log_rhos,
                             bootstrap_value,
                             clip_rho_threshold=1.0,
                             clip_pg_rho_threshold=1.0,
-                            name='vtrace_from_importance_weights'):
+                            name="vtrace_from_importance_weights"):
     r"""V-trace from log importance weights.
 
   Calculates V-trace actor critic targets as described in
@@ -323,19 +323,19 @@ def from_importance_weights(log_rhos,
         rhos = tf.exp(log_rhos)
         if clip_rho_threshold is not None:
             clipped_rhos = tf.minimum(
-                clip_rho_threshold, rhos, name='clipped_rhos')
+                clip_rho_threshold, rhos, name="clipped_rhos")
 
-            tf.summary.histogram('clipped_rhos_1000', tf.minimum(1000.0, rhos))
+            tf.summary.histogram("clipped_rhos_1000", tf.minimum(1000.0, rhos))
             tf.summary.scalar(
-                'num_of_clipped_rhos',
+                "num_of_clipped_rhos",
                 tf.reduce_sum(
                     tf.cast(
                         tf.equal(clipped_rhos, clip_rho_threshold), tf.int32)))
-            tf.summary.scalar('size_of_clipped_rhos', tf.size(clipped_rhos))
+            tf.summary.scalar("size_of_clipped_rhos", tf.size(clipped_rhos))
         else:
             clipped_rhos = rhos
 
-        cs = tf.minimum(1.0, rhos, name='cs')
+        cs = tf.minimum(1.0, rhos, name="cs")
         # Append bootstrapped value to get [v1, ..., v_t+1]
         values_t_plus_1 = tf.concat(
             [values[1:], tf.expand_dims(bootstrap_value, 0)], axis=0)
@@ -362,19 +362,19 @@ def from_importance_weights(log_rhos,
             initializer=initial_values,
             parallel_iterations=1,
             back_prop=False,
-            name='scan')
+            name="scan")
         # Reverse the results back to original order.
-        vs_minus_v_xs = tf.reverse(vs_minus_v_xs, [0], name='vs_minus_v_xs')
+        vs_minus_v_xs = tf.reverse(vs_minus_v_xs, [0], name="vs_minus_v_xs")
 
         # Add V(x_s) to get v_s.
-        vs = tf.add(vs_minus_v_xs, values, name='vs')
+        vs = tf.add(vs_minus_v_xs, values, name="vs")
 
         # Advantage for policy gradient.
         vs_t_plus_1 = tf.concat(
             [vs[1:], tf.expand_dims(bootstrap_value, 0)], axis=0)
         if clip_pg_rho_threshold is not None:
             clipped_pg_rhos = tf.minimum(
-                clip_pg_rho_threshold, rhos, name='clipped_pg_rhos')
+                clip_pg_rho_threshold, rhos, name="clipped_pg_rhos")
         else:
             clipped_pg_rhos = rhos
         pg_advantages = (

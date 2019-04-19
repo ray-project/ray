@@ -20,8 +20,8 @@ parser.add_argument("--run", type=str, default="PPO")
 
 class CartPoleStatelessEnv(gym.Env):
     metadata = {
-        'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second': 60
+        "render.modes": ["human", "rgb_array"],
+        "video.frames_per_second": 60
     }
 
     def __init__(self):
@@ -102,7 +102,7 @@ class CartPoleStatelessEnv(gym.Env):
         rv = np.r_[self.state[0], self.state[2]]
         return rv
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         screen_width = 600
         screen_height = 400
 
@@ -149,7 +149,7 @@ class CartPoleStatelessEnv(gym.Env):
         self.carttrans.set_translation(cartx, carty)
         self.poletrans.set_rotation(-x[2])
 
-        return self.viewer.render(return_rgb_array=mode == 'rgb_array')
+        return self.viewer.render(return_rgb_array=mode == "rgb_array")
 
     def close(self):
         if self.viewer:

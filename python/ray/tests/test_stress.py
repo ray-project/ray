@@ -133,7 +133,7 @@ def test_submitting_many_actors_to_one(ray_start_sharded):
             return ray.get(self.actor.ping.remote())
 
     a = Actor.remote()
-    workers = [Worker.remote(a) for _ in range(100)]
+    workers = [Worker.remote(a) for _ in range(10)]
     for _ in range(10):
         out = ray.get([w.ping.remote() for w in workers])
         assert out == [None for _ in workers]

@@ -41,7 +41,7 @@ def run_and_get_output(command):
         p = subprocess.Popen(command, stdout=tmp, stderr=tmp)
         if p.wait() != 0:
             raise RuntimeError("ray start did not terminate properly")
-        with open(tmp.name, 'r') as f:
+        with open(tmp.name, "r") as f:
             result = f.readlines()
             return "\n".join(result)
 

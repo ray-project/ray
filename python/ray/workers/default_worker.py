@@ -60,7 +60,7 @@ parser.add_argument(
 parser.add_argument(
     "--load-code-from-local",
     default=False,
-    action='store_true',
+    action="store_true",
     help="True if code is loaded from local files, as opposed to the GCS.")
 
 if __name__ == "__main__":
