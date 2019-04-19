@@ -16,80 +16,11 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.tests.utils
 import ray.tests.cluster_utils
+from ray.tests.conftest import generate_internal_config_map
 from ray.tests.utils import (
-    wait_for_errors,
     relevant_errors,
+    wait_for_errors,
 )
-
-
-@pytest.fixture
-def ray_start_regular(request):
-    internal_config = {
-        "initial_reconstruction_timeout_milliseconds": 200,
-        "num_heartbeats_timeout": 10,
-    }
-    internal_config.update(getattr(request, "param", {}))
-    # Start the Ray processes.
-    ray.init(
-        num_cpus=1,
-        _internal_config=json.dumps(internal_config),
-    )
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture()
-def ray_start_cluster():
-    cluster = ray.tests.cluster_utils.Cluster()
-    yield cluster
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
-
-
-@pytest.fixture()
-def two_node_cluster():
-    internal_config = json.dumps({
-        "initial_reconstruction_timeout_milliseconds": 200,
-        "num_heartbeats_timeout": 10,
-    })
-    cluster = ray.tests.cluster_utils.Cluster()
-    for _ in range(2):
-        remote_node = cluster.add_node(
-            num_cpus=1, _internal_config=internal_config)
-    ray.init(redis_address=cluster.redis_address)
-    yield cluster, remote_node
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
-
-
-@pytest.fixture
-def head_node_cluster(request):
-    timeout = getattr(request, "param", 200)
-    cluster = ray.tests.cluster_utils.Cluster(
-        initialize_head=True,
-        connect=True,
-        head_node_args={
-            "_internal_config": json.dumps({
-                "initial_reconstruction_timeout_milliseconds": timeout,
-                "num_heartbeats_timeout": 10,
-            })
-        })
-    yield cluster
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
 
 
 @pytest.fixture
@@ -571,6 +502,89 @@ def test_actor_class_methods(ray_start_regular):
     assert ray.get(a.g.remote(2)) == 4
 
 
+def test_resource_assignment(shutdown_only):
+    """Test to make sure that we assign resource to actors at instantiation."""
+    # This test will create 16 actors. Declaring this many CPUs initially will
+    # speed up the test because the workers will be started ahead of time.
+    ray.init(num_cpus=16, num_gpus=1, resources={"Custom": 1})
+
+    class Actor(object):
+        def __init__(self):
+            self.resources = ray.get_resource_ids()
+
+        def get_actor_resources(self):
+            return self.resources
+
+        def get_actor_method_resources(self):
+            return ray.get_resource_ids()
+
+    decorator_resource_args = [{}, {
+        "num_cpus": 0.1
+    }, {
+        "num_gpus": 0.1
+    }, {
+        "resources": {
+            "Custom": 0.1
+        }
+    }]
+    instantiation_resource_args = [{}, {
+        "num_cpus": 0.2
+    }, {
+        "num_gpus": 0.2
+    }, {
+        "resources": {
+            "Custom": 0.2
+        }
+    }]
+    for decorator_args in decorator_resource_args:
+        for instantiation_args in instantiation_resource_args:
+            if len(decorator_args) == 0:
+                actor_class = ray.remote(Actor)
+            else:
+                actor_class = ray.remote(**decorator_args)(Actor)
+            actor = actor_class._remote(**instantiation_args)
+            actor_resources = ray.get(actor.get_actor_resources.remote())
+            actor_method_resources = ray.get(
+                actor.get_actor_method_resources.remote())
+            if len(decorator_args) == 0 and len(instantiation_args) == 0:
+                assert len(actor_resources) == 0, (
+                    "Actor should not be assigned resources.")
+                assert list(actor_method_resources.keys()) == [
+                    "CPU"
+                ], ("Actor method should only have CPUs")
+                assert actor_method_resources["CPU"][0][1] == 1, (
+                    "Actor method should default to one cpu.")
+            else:
+                if ("num_cpus" not in decorator_args
+                        and "num_cpus" not in instantiation_args):
+                    assert actor_resources["CPU"][0][1] == 1, (
+                        "Actor should default to one cpu.")
+                correct_resources = {}
+                defined_resources = decorator_args.copy()
+                defined_resources.update(instantiation_args)
+                for resource, value in defined_resources.items():
+                    if resource == "num_cpus":
+                        correct_resources["CPU"] = value
+                    elif resource == "num_gpus":
+                        correct_resources["GPU"] = value
+                    elif resource == "resources":
+                        for custom_resource, amount in value.items():
+                            correct_resources[custom_resource] = amount
+                for resource, amount in correct_resources.items():
+                    assert (actor_resources[resource][0][0] ==
+                            actor_method_resources[resource][0][0]), (
+                                "Should have assigned same {} for both actor ",
+                                "and actor method.".format(resource))
+                    assert (actor_resources[resource][0][
+                        1] == actor_method_resources[resource][0][1]), (
+                            "Should have assigned same amount of {} for both ",
+                            "actor and actor method.".format(resource))
+                    assert actor_resources[resource][0][1] == amount, (
+                        "Actor should have {amount} {resource} but has ",
+                        "{amount} {resource}".format(
+                            amount=amount, resource=resource))
+
+
 def test_multiple_actors(ray_start_regular):
     @ray.remote
     class Counter(object):
@@ -610,16 +624,7 @@ def test_multiple_actors(ray_start_regular):
         assert v == num_actors * [j + 1]
 
 
-@pytest.fixture
-def ray_start_bigger():
-    # Start the Ray processes.
-    ray.init(num_cpus=10)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def test_remote_function_within_actor(ray_start_bigger):
+def test_remote_function_within_actor(ray_start_10_cpus):
     # Make sure we can use remote funtions within actors.
 
     # Create some values to close over.
@@ -667,7 +672,7 @@ def test_remote_function_within_actor(ray_start_bigger):
         range(1, 6))
 
 
-def test_define_actor_within_actor(ray_start_bigger):
+def test_define_actor_within_actor(ray_start_10_cpus):
     # Make sure we can use remote funtions within actors.
 
     @ray.remote
@@ -694,7 +699,7 @@ def test_define_actor_within_actor(ray_start_bigger):
     assert ray.get(actor1.get_values.remote(5)) == (3, 5)
 
 
-def test_use_actor_within_actor(ray_start_bigger):
+def test_use_actor_within_actor(ray_start_10_cpus):
     # Make sure we can use actors within actors.
 
     @ray.remote
@@ -718,7 +723,7 @@ def test_use_actor_within_actor(ray_start_bigger):
     assert ray.get(actor2.get_values.remote(5)) == (3, 4)
 
 
-def test_define_actor_within_remote_function(ray_start_bigger):
+def test_define_actor_within_remote_function(ray_start_10_cpus):
     # Make sure we can define and actors within remote funtions.
 
     @ray.remote
@@ -739,7 +744,7 @@ def test_define_actor_within_remote_function(ray_start_bigger):
         [f.remote(i, 20) for i in range(10)]) == [20 * [i] for i in range(10)]
 
 
-def test_use_actor_within_remote_function(ray_start_bigger):
+def test_use_actor_within_remote_function(ray_start_10_cpus):
     # Make sure we can create and use actors within remote funtions.
 
     @ray.remote
@@ -758,7 +763,7 @@ def test_use_actor_within_remote_function(ray_start_bigger):
     assert ray.get(f.remote(3)) == 3
 
 
-def test_actor_import_counter(ray_start_bigger):
+def test_actor_import_counter(ray_start_10_cpus):
     # This is mostly a test of the export counters to make sure that when
     # an actor is imported, all of the necessary remote functions have been
     # imported.
@@ -1379,8 +1384,9 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
 
-def test_exception_raised_when_actor_node_dies(head_node_cluster):
-    remote_node = head_node_cluster.add_node()
+def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    remote_node = cluster.add_node()
 
     @ray.remote
     class Counter(object):
@@ -1401,7 +1407,7 @@ def test_exception_raised_when_actor_node_dies(head_node_cluster):
         actor = Counter.remote()
 
     # Kill the second node.
-    head_node_cluster.remove_node(remote_node)
+    cluster.remove_node(remote_node)
 
     # Submit some new actor tasks both before and after the node failure is
     # detected. Make sure that getting the result raises an exception.
@@ -1419,8 +1425,9 @@ def test_exception_raised_when_actor_node_dies(head_node_cluster):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_actor_init_fails(head_node_cluster):
-    remote_node = head_node_cluster.add_node()
+def test_actor_init_fails(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    remote_node = cluster.add_node()
 
     @ray.remote(max_reconstructions=1)
     class Counter(object):
@@ -1436,16 +1443,17 @@ def test_actor_init_fails(head_node_cluster):
     # Allow some time to forward the actor creation tasks to the other node.
     time.sleep(0.1)
     # Kill the second node.
-    head_node_cluster.remove_node(remote_node)
+    cluster.remove_node(remote_node)
 
     # Get all of the results
     results = ray.get([actor.inc.remote() for actor in actors])
     assert results == [1 for actor in actors]
 
 
-def test_reconstruction_suppression(head_node_cluster):
+def test_reconstruction_suppression(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
     num_nodes = 10
-    worker_nodes = [head_node_cluster.add_node() for _ in range(num_nodes)]
+    worker_nodes = [cluster.add_node() for _ in range(num_nodes)]
 
     @ray.remote(max_reconstructions=1)
     class Counter(object):
@@ -1465,7 +1473,7 @@ def test_reconstruction_suppression(head_node_cluster):
     ray.get([actor.inc.remote() for actor in actors])
 
     # Kill a node.
-    head_node_cluster.remove_node(worker_nodes[0])
+    cluster.remove_node(worker_nodes[0])
 
     # Submit several tasks per actor. These should be randomly scheduled to the
     # nodes, so that multiple nodes will detect and try to reconstruct the
@@ -1537,8 +1545,8 @@ def setup_counter_actor(test_checkpoint=False,
 
 
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
-def test_distributed_handle(two_node_cluster):
-    cluster = two_node_cluster
+def test_distributed_handle(ray_start_cluster_2_nodes):
+    cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=False)
 
     @ray.remote
@@ -1575,8 +1583,8 @@ def test_distributed_handle(two_node_cluster):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_remote_checkpoint_distributed_handle(two_node_cluster):
-    cluster = two_node_cluster
+def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
+    cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
 
     @ray.remote
@@ -1616,8 +1624,8 @@ def test_remote_checkpoint_distributed_handle(two_node_cluster):
 
 
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
-def test_checkpoint_distributed_handle(two_node_cluster):
-    cluster = two_node_cluster
+def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
+    cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
 
     @ray.remote
@@ -1719,16 +1727,17 @@ def _test_nondeterministic_reconstruction(
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Currently doesn't work with the new GCS.")
-def test_nondeterministic_reconstruction(two_node_cluster):
-    cluster = two_node_cluster
+def test_nondeterministic_reconstruction(ray_start_cluster_2_nodes):
+    cluster = ray_start_cluster_2_nodes
     _test_nondeterministic_reconstruction(cluster, 10, 100, 10)
 
 
 @pytest.mark.skip("Nondeterministic reconstruction currently not supported "
                   "when there are concurrent forks that didn't finish "
                   "initial execution.")
-def test_nondeterministic_reconstruction_concurrent_forks(two_node_cluster):
-    cluster = two_node_cluster
+def test_nondeterministic_reconstruction_concurrent_forks(
+        ray_start_cluster_2_nodes):
+    cluster = ray_start_cluster_2_nodes
     _test_nondeterministic_reconstruction(cluster, 10, 100, 1)
 
 
@@ -2098,7 +2107,11 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.get(results)
 
 
-def test_actor_eviction(shutdown_only):
+@pytest.mark.parametrize(
+    "ray_start_object_store_memory", [10**8], indirect=True)
+def test_actor_eviction(ray_start_object_store_memory):
+    object_store_memory = ray_start_object_store_memory
+
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -2106,13 +2119,6 @@ def test_actor_eviction(shutdown_only):
 
         def create_object(self, size):
             return np.random.rand(size)
-
-    object_store_memory = 10**8
-    ray.init(
-        object_store_memory=object_store_memory,
-        _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 200
-        }))
 
     a = Actor.remote()
     # Submit enough methods on the actor so that they exceed the size of the
@@ -2189,9 +2195,9 @@ def test_actor_reconstruction(ray_start_regular):
         ray.get(actor.increase.remote())
 
 
-def test_actor_reconstruction_on_node_failure(head_node_cluster):
+def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
     """Test actor reconstruction when node dies unexpectedly."""
-    cluster = head_node_cluster
+    cluster = ray_start_cluster_head
     max_reconstructions = 3
     # Add a few nodes to the cluster.
     # Use custom resource to make sure the actor is only created on worker
@@ -2253,8 +2259,14 @@ def test_actor_reconstruction_on_node_failure(head_node_cluster):
 # this test. Because if this value is too small, suprious task reconstruction
 # may happen and cause the test fauilure. If the value is too large, this test
 # could be very slow. We can remove this once we support dynamic timeout.
-@pytest.mark.parametrize("head_node_cluster", [1000], indirect=True)
-def test_multiple_actor_reconstruction(head_node_cluster):
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [
+        generate_internal_config_map(
+            initial_reconstruction_timeout_milliseconds=1000)
+    ],
+    indirect=True)
+def test_multiple_actor_reconstruction(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
     # This test can be made more stressful by increasing the numbers below.
     # The total number of actors created will be
     # num_actors_at_a_time * num_nodes.
@@ -2263,7 +2275,7 @@ def test_multiple_actor_reconstruction(head_node_cluster):
     num_function_calls_at_a_time = 10
 
     worker_nodes = [
-        head_node_cluster.add_node(
+        cluster.add_node(
             num_cpus=3,
             _internal_config=json.dumps({
                 "initial_reconstruction_timeout_milliseconds": 200,
@@ -2303,7 +2315,7 @@ def test_multiple_actor_reconstruction(head_node_cluster):
             for _ in range(num_function_calls_at_a_time):
                 result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
         # Kill a node.
-        head_node_cluster.remove_node(node)
+        cluster.remove_node(node)
 
         # Run some more methods.
         for j in range(len(actors)):
@@ -2401,15 +2413,16 @@ def test_remote_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
 
 
-def test_checkpointing_on_node_failure(two_node_cluster,
+def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
                                        ray_checkpointable_actor_cls):
     """Test actor checkpointing on a remote node."""
     # Place the actor on the remote node.
-    cluster, remote_node = two_node_cluster
+    cluster = ray_start_cluster_2_nodes
+    remote_node = [node for node in cluster.worker_nodes]
     actor_cls = ray.remote(max_reconstructions=1)(ray_checkpointable_actor_cls)
     actor = actor_cls.remote()
     while (ray.get(actor.local_plasma.remote()) !=
-           remote_node.plasma_store_socket_name):
+           remote_node[0].plasma_store_socket_name):
         actor = actor_cls.remote()
 
     # Call increase several times.
@@ -2420,7 +2433,7 @@ def test_checkpointing_on_node_failure(two_node_cluster,
     # Assert that the actor wasn't resumed from a checkpoint.
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
     # Kill actor process.
-    cluster.remove_node(remote_node)
+    cluster.remove_node(remote_node[0])
     # Assert that the actor was resumed from a checkpoint and its value is
     # still correct.
     assert ray.get(actor.get.remote()) == expected
@@ -2519,9 +2532,7 @@ def test_checkpointing_load_exception(ray_start_regular,
     "ray_start_regular",
     # This overwrite currently isn't effective,
     # see https://github.com/ray-project/ray/issues/3926.
-    [{
-        "num_actor_checkpoints_to_keep": 20
-    }],
+    [generate_internal_config_map(num_actor_checkpoints_to_keep=20)],
     indirect=True,
 )
 def test_deleting_actor_checkpoint(ray_start_regular):
