@@ -179,28 +179,29 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed =
-      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-             const ClientTableDataT &data) { ClientRemoved(data); };
+  auto node_manager_client_removed = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ClientRemoved(data);
+  };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Subscribe to heartbeat batches from the monitor.
-  const auto &heartbeat_batch_added =
-      [this](gcs::AsyncGcsClient *client, const ClientID &id,
-             const HeartbeatBatchTableDataT &heartbeat_batch) {
-        HeartbeatBatchAdded(heartbeat_batch);
-      };
+  const auto &heartbeat_batch_added = [this](
+      gcs::AsyncGcsClient *client, const ClientID &id,
+      const HeartbeatBatchTableDataT &heartbeat_batch) {
+    HeartbeatBatchAdded(heartbeat_batch);
+  };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
       JobID::nil(), ClientID::nil(), heartbeat_batch_added,
       /*subscribe_callback=*/nullptr,
       /*done_callback=*/nullptr));
 
   // Subscribe to driver table updates.
-  const auto driver_table_handler =
-      [this](gcs::AsyncGcsClient *client, const DriverID &client_id,
-             const std::vector<DriverTableDataT> &driver_data) {
-        HandleDriverTableUpdate(client_id, driver_data);
-      };
+  const auto driver_table_handler = [this](
+      gcs::AsyncGcsClient *client, const DriverID &client_id,
+      const std::vector<DriverTableDataT> &driver_data) {
+    HandleDriverTableUpdate(client_id, driver_data);
+  };
   RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(JobID::nil(), ClientID::nil(),
                                                           driver_table_handler, nullptr));
 

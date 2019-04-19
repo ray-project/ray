@@ -142,11 +142,8 @@ class SchedulingQueue {
   /// Create a scheduling queue.
   SchedulingQueue() : ready_queue_(std::make_shared<ReadyQueue>()) {
     for (const auto &task_state : {
-             TaskState::PLACEABLE,
-             TaskState::WAITING,
-             TaskState::READY,
-             TaskState::RUNNING,
-             TaskState::INFEASIBLE,
+             TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY,
+             TaskState::RUNNING, TaskState::INFEASIBLE,
              TaskState::WAITING_FOR_ACTOR_CREATION,
          }) {
       if (task_state == TaskState::READY) {
