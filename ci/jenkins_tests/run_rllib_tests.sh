@@ -71,6 +71,13 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run PPO \
+    --stop '{"training_iteration": 1}' \
+    --config '{"use_pytorch": true, "simple_optimizer": true}'
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output /ray/python/ray/rllib/train.py \
     --env Pendulum-v0 \
     --run APPO \
     --stop '{"training_iteration": 1}' \
