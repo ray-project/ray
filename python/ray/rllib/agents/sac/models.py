@@ -10,8 +10,9 @@ SCALE_DIAG_MIN_MAX = (-20, 2)
 
 class GaussianLatentSpacePolicy(object):
     def __init__(self,
-                 input_shapes,
-                 output_shape,
+                 observation_space,
+                 action_space,
+                 model_options,
                  hidden_layer_sizes,
                  squash=True,
                  activation='relu',
@@ -21,6 +22,8 @@ class GaussianLatentSpacePolicy(object):
                  **kwargs):
         self._squash = squash
 
+        input_shapes = (observation_space.shape, )
+        output_shape = action_space.shape
         self.condition_inputs = [
             tf.keras.layers.Input(shape=input_shape)
             for input_shape in input_shapes
@@ -30,14 +33,8 @@ class GaussianLatentSpacePolicy(object):
             self.condition_inputs) if len(self.condition_inputs) > 1 else
                       self.condition_inputs[0])
 
-        out = conditions
-        for units in hidden_layer_sizes:
-            out = tf.keras.layers.Dense(
-                units, *args, activation=activation, **kwargs)(out)
-
-        out = tf.keras.layers.Dense(
-            output_shape[0] * 2, *args, activation=output_activation,
-            **kwargs)(out)
+        out = ModelCatalog.get_model_as_keras_layer(
+            obs_space, action_space, output_shape[0] * 20, model_options)
 
         shift, log_scale_diag = tf.keras.layers.Lambda(
             lambda shift_and_log_scale_diag: tf.split(

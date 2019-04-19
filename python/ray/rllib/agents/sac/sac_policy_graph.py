@@ -123,8 +123,7 @@ class SACPolicyGraph(TFPolicyGraph):
         policy_kwargs = self.config['policy']['kwargs']
 
         self.policy = GaussianLatentSpacePolicy(
-            input_shapes=(observation_space.shape, ),
-            output_shape=action_space.shape,
+            observation_space, action_space, self.config["model"],
             **policy_kwargs)
 
         self.log_alpha = tf.get_variable(

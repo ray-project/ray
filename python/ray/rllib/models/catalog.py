@@ -195,6 +195,19 @@ class ModelCatalog(object):
 
     @staticmethod
     @DeveloperAPI
+    def get_model_as_keras_layer(obs_space, action_space, num_outputs,
+                                 options):
+        """Returns a RLlib model as a Keras layer.
+
+        This only supports non-recurrent models."""
+
+        return _KerasModelWrapper(
+            ModelCatalog._get_model_cls(obs_space, action_space, num_outputs,
+                                        options), obs_space, action_space,
+            num_outputs, options)
+
+    @staticmethod
+    @DeveloperAPI
     def get_model(input_dict,
                   obs_space,
                   action_space,
@@ -243,26 +256,27 @@ class ModelCatalog(object):
     @staticmethod
     def _get_model(input_dict, obs_space, action_space, num_outputs, options,
                    state_in, seq_lens):
+        cls = ModelCatalog._get_model_cls(obs_space, action_space, num_outputs,
+                                          options)
+        return cls(input_dict, obs_space, action_space, num_outputs, options,
+                   state_in, seq_lens)
+
+    @staticmethod
+    def _get_model_cls(obs_space, action_space, num_outputs, options):
         if options.get("custom_model"):
             model = options["custom_model"]
             logger.debug("Using custom model {}".format(model))
-            return _global_registry.get(RLLIB_MODEL, model)(
-                input_dict,
-                obs_space,
-                action_space,
-                num_outputs,
-                options,
-                state_in=state_in,
-                seq_lens=seq_lens)
+            return _global_registry.get(RLLIB_MODEL, model)
 
-        obs_rank = len(input_dict["obs"].shape) - 1
+        if isinstance(obs_space, gym.spaces.Box):
+            obs_rank = obs_space.shape - 1
+        else:
+            obs_rank = 1
 
         if obs_rank > 1:
-            return VisionNetwork(input_dict, obs_space, action_space,
-                                 num_outputs, options)
+            return VisionNetwork
 
-        return FullyConnectedNetwork(input_dict, obs_space, action_space,
-                                     num_outputs, options)
+        return FullyConnectedNetwork
 
     @staticmethod
     @DeveloperAPI
@@ -382,3 +396,28 @@ class ModelCatalog(object):
             model_class (type): Python class of the model.
         """
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
+
+
+class _KerasModelWrapper(tf.keras.layers.Layer):
+    def __init__(self, model_cls, obs_space, act_space, num_outputs, options):
+        self.model_cls = model_cls
+        self.observation_space = obs_space
+        self.action_space = act_space
+        self.num_outputs = num_outputs
+        self.options = options
+        tf.keras.layers.Layer.__init__(self)
+
+    def build(self, input_shape):
+        def f(input_dict):
+            return self.model_cls(input_dict, self.observation_space,
+                                  self.action_space, self.num_outputs,
+                                  self.options).outputs
+
+        self.rllib_model = tf.keras.layers.Lambda(f)
+        tf.keras.layers.Layer.build(input_shape)
+
+    def call(self, input_dict):
+        return self.rllib_model(input_dict)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], self.num_outputs)
