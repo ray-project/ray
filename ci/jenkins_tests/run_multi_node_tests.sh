@@ -23,6 +23,11 @@ source $ROOT_DIR/run_rllib_tests.sh
 
 bash $ROOT_DIR/run_tune_tests.sh ${MEMORY_SIZE} ${SHM_SIZE} $DOCKER_SHA
 
+######################## RAY BACKEND TESTS #################################
+
+$SUPPRESS_OUTPUT docker run --rm --shm-size=60G --memory=60G $DOCKER_SHA \
+    python /ray/ci/jenkins_tests/miscellaneous/large_memory_test.py
+
 ######################## SGD TESTS #################################
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -48,8 +53,3 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
         --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
-
-######################## RAY BACKEND TESTS #################################
-
-$SUPPRESS_OUTPUT docker run --rm --shm-size=60G --memory=60G $DOCKER_SHA \
-    python /ray/ci/jenkins_tests/miscellaneous/large_memory_test.py
