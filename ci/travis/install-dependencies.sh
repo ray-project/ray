@@ -58,7 +58,7 @@ elif [[ "$LINT" == "1" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
   # Install Python linting tools.
   pip install -q flake8 flake8-comprehensions
-  pip install flake8-quotes==1.0.0
+  pip install flake8-quotes
 elif [[ "$LINUX_WHEELS" == "1" ]]; then
   sudo apt-get install docker
   sudo usermod -a -G docker travis
