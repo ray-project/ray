@@ -95,4 +95,11 @@ public class UniqueIdTest {
     }
   }
 
+  @Test
+  void testMurmurHash() {
+    UniqueId id = UniqueId.fromHexString("3131313131313131313132323232323232323232");
+    long remainder = Long.remainderUnsigned(UniqueIdUtil.murmurHashCode(id), 1000000000);
+    Assert.assertEquals(remainder, 787616861);
+  }
+
 }

@@ -1,9 +1,11 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import org.ray.api.Ray;
 import org.ray.api.RuntimeContext;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
+import org.ray.runtime.gcs.GcsClientImpl;
 import org.ray.runtime.task.TaskSpec;
 
 public class RuntimeContextImpl implements RuntimeContext {
@@ -36,7 +38,7 @@ public class RuntimeContextImpl implements RuntimeContext {
       return false;
     }
 
-    return ((RayNativeRuntime) runtime).actorExistsInGcs(getCurrentActorId());
+    return ((GcsClientImpl) Ray.getGcsClient()).actorExists(getCurrentActorId());
   }
 
   @Override

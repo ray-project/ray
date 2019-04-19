@@ -563,7 +563,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         # No need to add any noise on LayerNorm parameters
         for var in pnet_params:
             noise_var = tf.get_variable(
-                name=var.name.split(':')[0] + "_noise",
+                name=var.name.split(":")[0] + "_noise",
                 shape=var.shape,
                 initializer=tf.constant_initializer(.0),
                 trainable=False)

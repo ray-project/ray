@@ -245,6 +245,7 @@ class QMixPolicyGraph(PolicyGraph):
         [rew, action_mask, act, dones, obs], initial_states, seq_lens = \
             chop_into_sequences(
                 samples[SampleBatch.EPS_ID],
+                samples[SampleBatch.UNROLL_ID],
                 samples[SampleBatch.AGENT_INDEX], [
                     group_rewards, action_mask, samples[SampleBatch.ACTIONS],
                     samples[SampleBatch.DONES], obs_batch
@@ -298,7 +299,7 @@ class QMixPolicyGraph(PolicyGraph):
             mask_elems,
             "target_mean": (targets * mask).sum().item() / mask_elems,
         }
-        return {LEARNER_STATS_KEY: stats}, {}
+        return {LEARNER_STATS_KEY: stats}
 
     @override(PolicyGraph)
     def get_initial_state(self):

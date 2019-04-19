@@ -53,12 +53,12 @@ except subprocess.CalledProcessError:
     TERM_HEIGHT, TERM_WIDTH = 100, 100
 
 OPERATORS = {
-    '<': operator.lt,
-    '<=': operator.le,
-    '==': operator.eq,
-    '!=': operator.ne,
-    '>=': operator.ge,
-    '>': operator.gt,
+    "<": operator.lt,
+    "<=": operator.le,
+    "==": operator.eq,
+    "!=": operator.ne,
+    ">=": operator.ge,
+    ">": operator.gt,
 }
 
 
@@ -89,7 +89,7 @@ def print_format_output(dataframe):
 
         print_df[col] = dataframe[col]
         test_table = tabulate(print_df, headers="keys", tablefmt="psql")
-        if str(test_table).index('\n') > TERM_WIDTH:
+        if str(test_table).index("\n") > TERM_WIDTH:
             # Drop all columns beyond terminal width
             print_df.drop(col, axis=1, inplace=True)
             dropped_cols += list(dataframe.columns)[i:]
@@ -129,8 +129,8 @@ def list_trials(experiment_path,
                 sort=None,
                 output=None,
                 filter_op=None,
-                info_keys=DEFAULT_EXPERIMENT_INFO_KEYS,
-                result_keys=DEFAULT_RESULT_KEYS):
+                info_keys=None,
+                result_keys=None):
     """Lists trials in the directory subtree starting at the given path.
 
     Args:
@@ -151,6 +151,10 @@ def list_trials(experiment_path,
     checkpoint_dicts = [flatten_dict(g) for g in checkpoint_dicts]
     checkpoints_df = pd.DataFrame(checkpoint_dicts)
 
+    if not info_keys:
+        info_keys = DEFAULT_EXPERIMENT_INFO_KEYS
+    if not result_keys:
+        result_keys = DEFAULT_RESULT_KEYS
     result_keys = ["last_result:{}".format(k) for k in result_keys]
     col_keys = [
         k for k in list(info_keys) + result_keys if k in checkpoints_df
@@ -168,10 +172,10 @@ def list_trials(experiment_path,
     if "logdir" in checkpoints_df:
         # logdir often too verbose to view in table, so drop experiment_path
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
-            experiment_path, '')
+            experiment_path, "")
 
     if filter_op:
-        col, op, val = filter_op.split(' ')
+        col, op, val = filter_op.split(" ")
         col_type = checkpoints_df[col].dtype
         if is_numeric_dtype(col_type):
             val = float(val)
@@ -179,7 +183,7 @@ def list_trials(experiment_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise ValueError("Unsupported dtype for '{}': {}".format(
+            raise ValueError("Unsupported dtype for \"{}\": {}".format(
                 val, col_type))
         op = OPERATORS[op]
         filtered_index = op(checkpoints_df[col], val)
@@ -187,7 +191,7 @@ def list_trials(experiment_path,
 
     if sort:
         if sort not in checkpoints_df:
-            raise KeyError("Sort Index '{}' not in: {}".format(
+            raise KeyError("Sort Index \"{}\" not in: {}".format(
                 sort, list(checkpoints_df)))
         checkpoints_df = checkpoints_df.sort_values(by=sort)
 
@@ -208,7 +212,7 @@ def list_experiments(project_path,
                      sort=None,
                      output=None,
                      filter_op=None,
-                     info_keys=DEFAULT_PROJECT_INFO_KEYS):
+                     info_keys=None):
     """Lists experiments in the directory subtree.
 
     Args:
@@ -263,6 +267,8 @@ def list_experiments(project_path,
         sys.exit(0)
 
     info_df = pd.DataFrame(experiment_data_collection)
+    if not info_keys:
+        info_keys = DEFAULT_PROJECT_INFO_KEYS
     col_keys = [k for k in list(info_keys) if k in info_df]
     if not col_keys:
         print("None of keys {} in experiment data!".format(info_keys))
@@ -270,7 +276,7 @@ def list_experiments(project_path,
     info_df = info_df[col_keys]
 
     if filter_op:
-        col, op, val = filter_op.split(' ')
+        col, op, val = filter_op.split(" ")
         col_type = info_df[col].dtype
         if is_numeric_dtype(col_type):
             val = float(val)
@@ -278,7 +284,7 @@ def list_experiments(project_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise ValueError("Unsupported dtype for '{}': {}".format(
+            raise ValueError("Unsupported dtype for \"{}\": {}".format(
                 val, col_type))
         op = OPERATORS[op]
         filtered_index = op(info_df[col], val)
@@ -286,7 +292,7 @@ def list_experiments(project_path,
 
     if sort:
         if sort not in info_df:
-            raise KeyError("Sort Index '{}' not in: {}".format(
+            raise KeyError("Sort Index \"{}\" not in: {}".format(
                 sort, list(info_df)))
         info_df = info_df.sort_values(by=sort)
 
