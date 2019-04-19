@@ -12,8 +12,7 @@ except ImportError:
 
  class AxSearch(SuggestionAlgorithm):
     """A wrapper around Ax to provide trial suggestions.
-     Parameters:
-        optimizer (nevergrad.optimization.Optimizer): 
+
      Example:
         >>> 
     """
@@ -57,11 +56,6 @@ except ImportError:
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to Nevergrad unless early terminated or errored.
-         The result is internally negated when interacting with Nevergrad
-        so that Nevergrad Optimizers can "maximize" this value,
-        as it minimizes on default.
-        """
         ax_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
             ax.complete_trial(trial_id, raw_data=-result[self._objective_name])
