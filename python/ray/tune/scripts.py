@@ -39,15 +39,20 @@ def cli():
     default=None,
     type=str,
     help="Select columns of last result to be displayed.")
+@click.option(
+    "--limit",
+    default=None,
+    type=int,
+    help="Select number of rows to display.")
 def list_trials(experiment_path, sort, output, filter_op, columns,
-                result_columns):
+                result_columns, limit):
     """Lists trials in the directory subtree starting at the given path."""
     if columns:
         columns = columns.split(",")
     if result_columns:
         result_columns = result_columns.split(",")
     commands.list_trials(experiment_path, sort, output, filter_op, columns,
-                         result_columns)
+                         result_columns, limit)
 
 
 @cli.command()
@@ -72,11 +77,17 @@ def list_trials(experiment_path, sort, output, filter_op, columns,
     default=None,
     type=str,
     help="Select columns to be displayed.")
-def list_experiments(project_path, sort, output, filter_op, columns):
+@click.option(
+    "--limit",
+    default=None,
+    type=int,
+    help="Select number of rows to display.")
+def list_experiments(project_path, sort, output, filter_op, columns, limit):
     """Lists experiments in the directory subtree."""
     if columns:
         columns = columns.split(",")
-    commands.list_experiments(project_path, sort, output, filter_op, columns)
+    commands.list_experiments(project_path, sort, output, filter_op, columns,
+                              limit)
 
 
 @cli.command()

@@ -130,7 +130,8 @@ def list_trials(experiment_path,
                 output=None,
                 filter_op=None,
                 info_keys=None,
-                result_keys=None):
+                result_keys=None,
+                limit=None):
     """Lists trials in the directory subtree starting at the given path.
 
     Args:
@@ -142,6 +143,7 @@ def list_trials(experiment_path,
             "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
         result_keys (list): Keys of last result that are displayed.
+        limit (int): Number of rows to display.
     """
     _check_tabulate()
     experiment_state = _get_experiment_state(
@@ -191,9 +193,11 @@ def list_trials(experiment_path,
 
     if sort:
         if sort not in checkpoints_df:
-            raise KeyError("{} not in: {}".format(
-                sort, list(checkpoints_df)))
+            raise KeyError("{} not in: {}".format(sort, list(checkpoints_df)))
         checkpoints_df = checkpoints_df.sort_values(by=sort)
+
+    if limit:
+        checkpoints_df = checkpoints_df[:limit]
 
     print_format_output(checkpoints_df)
 
@@ -212,7 +216,8 @@ def list_experiments(project_path,
                      sort=None,
                      output=None,
                      filter_op=None,
-                     info_keys=None):
+                     info_keys=None,
+                     limit=None):
     """Lists experiments in the directory subtree.
 
     Args:
@@ -223,6 +228,7 @@ def list_experiments(project_path,
         filter_op (str): Filter operation in the format
             "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
+        limit (int): Number of rows to display.
     """
     _check_tabulate()
     base, experiment_folders, _ = next(os.walk(project_path))
@@ -292,9 +298,11 @@ def list_experiments(project_path,
 
     if sort:
         if sort not in info_df:
-            raise KeyError("{} not in: {}".format(
-                sort, list(info_df)))
+            raise KeyError("{} not in: {}".format(sort, list(info_df)))
         info_df = info_df.sort_values(by=sort)
+
+    if limit:
+        info_df = info_df[:limit]
 
     print_format_output(info_df)
 
