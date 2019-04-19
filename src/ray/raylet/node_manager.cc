@@ -34,31 +34,31 @@ int64_t GetExpectedTaskCounter(
   return expected_task_counter;
 };
 
-  struct ResultItem {
-    int live_actors = 0;
-    int dead_actors = 0;
-    int reconstructing_actors = 0;
-    int max_num_handles = 0;
-  };
+struct ResultItem {
+  int live_actors = 0;
+  int dead_actors = 0;
+  int reconstructing_actors = 0;
+  int max_num_handles = 0;
+};
 
-  /// A helper function to return the statistical data of actors in this node manager.
-  ResultItem GetActorStatisticalData(
-      std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration> actor_registry) {
-    ResultItem item;
-    for (auto &pair : actor_registry) {
-      if (pair.second.GetState() == ActorState::ALIVE) {
-        item.live_actors += 1;
-      } else if (pair.second.GetState() == ActorState::RECONSTRUCTING) {
-        item.reconstructing_actors += 1;
-      } else {
-        item.dead_actors += 1;
-      }
-      if (pair.second.NumHandles() > item.max_num_handles) {
-        item.max_num_handles = pair.second.NumHandles();
-      }
+/// A helper function to return the statistical data of actors in this node manager.
+ResultItem GetActorStatisticalData(
+    std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration> actor_registry) {
+  ResultItem item;
+  for (auto &pair : actor_registry) {
+    if (pair.second.GetState() == ActorState::ALIVE) {
+      item.live_actors += 1;
+    } else if (pair.second.GetState() == ActorState::RECONSTRUCTING) {
+      item.reconstructing_actors += 1;
+    } else {
+      item.dead_actors += 1;
     }
-    return item;
+    if (pair.second.NumHandles() > item.max_num_handles) {
+      item.max_num_handles = pair.second.NumHandles();
+    }
   }
+  return item;
+}
 
 }  // namespace
 
@@ -179,29 +179,28 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ClientRemoved(data);
-  };
+  auto node_manager_client_removed =
+      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+             const ClientTableDataT &data) { ClientRemoved(data); };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Subscribe to heartbeat batches from the monitor.
-  const auto &heartbeat_batch_added = [this](
-      gcs::AsyncGcsClient *client, const ClientID &id,
-      const HeartbeatBatchTableDataT &heartbeat_batch) {
-    HeartbeatBatchAdded(heartbeat_batch);
-  };
+  const auto &heartbeat_batch_added =
+      [this](gcs::AsyncGcsClient *client, const ClientID &id,
+             const HeartbeatBatchTableDataT &heartbeat_batch) {
+        HeartbeatBatchAdded(heartbeat_batch);
+      };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
       JobID::nil(), ClientID::nil(), heartbeat_batch_added,
       /*subscribe_callback=*/nullptr,
       /*done_callback=*/nullptr));
 
   // Subscribe to driver table updates.
-  const auto driver_table_handler = [this](
-      gcs::AsyncGcsClient *client, const DriverID &client_id,
-      const std::vector<DriverTableDataT> &driver_data) {
-    HandleDriverTableUpdate(client_id, driver_data);
-  };
+  const auto driver_table_handler =
+      [this](gcs::AsyncGcsClient *client, const DriverID &client_id,
+             const std::vector<DriverTableDataT> &driver_data) {
+        HandleDriverTableUpdate(client_id, driver_data);
+      };
   RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(JobID::nil(), ClientID::nil(),
                                                           driver_table_handler, nullptr));
 
@@ -2228,16 +2227,18 @@ std::string NodeManager::DebugString() const {
 
 void NodeManager::RecordMetrics() const {
   // Record available resources of this node.
-  const auto &available_resources = cluster_resource_map_.at(client_id_)
-    .GetAvailableResources().GetResourceMap();
+  const auto &available_resources =
+      cluster_resource_map_.at(client_id_).GetAvailableResources().GetResourceMap();
   for (const auto &pair : available_resources) {
-    stats::LocalAvailableResource().Record(pair.second, {{stats::ResourceNameKey, pair.first}});
+    stats::LocalAvailableResource().Record(pair.second,
+                                           {{stats::ResourceNameKey, pair.first}});
   }
   // Record total resources of this node.
-  const auto &total_resources = cluster_resource_map_.at(client_id_)
-    .GetTotalResources().GetResourceMap();
+  const auto &total_resources =
+      cluster_resource_map_.at(client_id_).GetTotalResources().GetResourceMap();
   for (const auto &pair : total_resources) {
-    stats::LocalTotalResource().Record(pair.second, {{stats::ResourceNameKey, pair.first}});
+    stats::LocalTotalResource().Record(pair.second,
+                                       {{stats::ResourceNameKey, pair.first}});
   }
 
   object_manager_.RecordMetrics();
@@ -2249,13 +2250,13 @@ void NodeManager::RecordMetrics() const {
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
   stats::ActorStats().Record(statistical_data.live_actors,
-      {{stats::ValueTypeKey, "live_actors"}});
+                             {{stats::ValueTypeKey, "live_actors"}});
   stats::ActorStats().Record(statistical_data.reconstructing_actors,
-      {{stats::ValueTypeKey, "reconstructing_actors"}});
+                             {{stats::ValueTypeKey, "reconstructing_actors"}});
   stats::ActorStats().Record(statistical_data.dead_actors,
-      {{stats::ValueTypeKey, "dead_actors"}});
+                             {{stats::ValueTypeKey, "dead_actors"}});
   stats::ActorStats().Record(statistical_data.max_num_handles,
-      {{stats::ValueTypeKey, "max_num_handles"}});
+                             {{stats::ValueTypeKey, "max_num_handles"}});
 }
 
 }  // namespace raylet
