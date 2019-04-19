@@ -74,7 +74,8 @@ def train_mnist(args, cfg, reporter):
     # input image dimensions
     img_rows, img_cols = 28, 28
 
-    x_train, y_train, x_test, y_test, input_shape = get_mnist_data(img_rows, img_cols)
+    x_train, y_train, x_test, y_test, input_shape = get_mnist_data(
+        img_rows, img_cols)
     print("x_train shape:", x_train.shape)
     print(x_train.shape[0], "train samples")
     print(x_test.shape[0], "test samples")

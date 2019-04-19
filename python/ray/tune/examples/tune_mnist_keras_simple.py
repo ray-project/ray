@@ -31,7 +31,8 @@ def train(args, cfg, reporter):
     # input image dimensions
     img_rows, img_cols = 28, 28
 
-    x_train, y_train, x_test, y_test, input_shape = get_mnist_data(img_rows, img_cols)
+    x_train, y_train, x_test, y_test, input_shape = get_mnist_data(
+        img_rows, img_cols)
 
     model = Sequential()
     model.add(
@@ -71,8 +72,7 @@ if __name__ == "__main__":
     ray.init()
 
     tune.register_trainable(
-        "TRAIN_FN",
-        lambda config, reporter: train(args, config, reporter))
+        "TRAIN_FN", lambda config, reporter: train(args, config, reporter))
     tune.run(
         "TRAIN_FN",
         name="test_simple",
