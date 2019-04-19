@@ -42,7 +42,9 @@ This document describes the process for creating new releases.
 
 6. **Download all the wheels:** Now the release is ready to begin final
    testing. The wheels are automatically uploaded to S3, even on the release
-   branch. The wheels can be found at the follow URLS:
+   branch. The wheels can be found at the follow URLS Where ``<hash>`` is 
+   the SHA from the release branch most recent commit and ``<version>`` 
+   is the version incremented in Part 1.:
 
 * ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp27-cp27mu-manylinux1_x86_64.whl``
 * ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp35-cp35m-manylinux1_x86_64.whl``
@@ -52,9 +54,6 @@ This document describes the process for creating new releases.
 * ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp35-cp35m-macosx_10_6_intel.whl``
 * ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp36-cp36m-macosx_10_6_intel.whl``
 * ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp37-cp37m-macosx_10_6_intel.whl``
-
-   Where ``<hash>`` is the SHA from the release branch most recent commit and
-   ``<version>`` is the version incremented in Part 1.
 
 7. **Final Testing:** Send a link to the wheels to the other contributors and
    core members of the Ray project. Make sure the wheels are tested on Ubuntu,
