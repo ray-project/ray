@@ -77,7 +77,7 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
         """
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
-        _, self.logit_dim = ModelCatalog.get_action_dist(
+        action_dist_cls, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
         self.model = ModelCatalog.get_torch_model(obs_space, self.logit_dim,
                                                   self.config["model"])
@@ -91,10 +91,11 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
             action_space,
             self.model,
             loss,
-            loss_inputs=[
+            [
                 "obs", "value_targets", "advantages", "actions", "logits",
                 "vf_preds"
-            ])
+            ],
+            action_dist_cls)
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
