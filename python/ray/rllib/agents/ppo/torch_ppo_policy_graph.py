@@ -10,37 +10,26 @@ import ray
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph, \
-    LearningRateSchedule
+from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
 
 class PPOLoss(nn.Module):
-    def __init__(self, policy_model, vf_loss_coeff=0.5, entropy_coeff=-0.01, 
-    	         clip_param, vf_clip_param, vf_loss_coeff, use_gae):
+    def __init__(self, policy_model, vf_loss_coeff, entropy_coeff, clip_param, vf_clip_param, use_gae):
         nn.Module.__init__(self)
         self.policy_model = policy_model
         self.vf_loss_coeff = vf_loss_coeff
         self.entropy_coeff = entropy_coeff
         self.clip_param = clip_param
         self.vf_clip_param = vf_clip_param
-        self.vf_loss_coeff = vf_loss_coeff
         self.use_gae = use_gae
 
-    def forward(self, observations, value_target, advantages, actions, logits, vf_preds):
-    	def reduce_mean_valid(t):
-    		return torch.masked_select(t, valid_mask).sum(-1).sum()
-
-    	dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
-        prev_dist = dist_cls(logits)
-
-        #current probabilities
+    def forward(self, observations, value_targets, advantages, actions, logits, vf_preds):
         curr_logits, _, values, _ = self.policy_model({"obs": observations}, [])
         curr_log_probs = F.log_softmax(curr_logits, dim=1)
         curr_probs = F.softmax(curr_logits, dim=1)
-        curr_action_log_probs = cur_log_probs.gather(1, actions.view(-1, 1))
+        curr_action_log_probs = curr_log_probs.gather(1, actions.view(-1, 1))
 
-        #previous probabilities
         prev_log_probs = F.log_softmax(logits, dim=1)
         prev_probs = F.softmax(logits, dim=1)
         prev_action_log_probs = prev_log_probs.gather(1, actions.view(-1, 1))
@@ -48,20 +37,25 @@ class PPOLoss(nn.Module):
         logp_ratio = torch.exp(curr_action_log_probs - prev_action_log_probs)
 
         curr_entropy = -(curr_log_probs * curr_probs).sum(-1).sum()
-        mean_entropy = reduce_mean_valid(curr_entropy)
+        mean_entropy = curr_entropy.sum()
 
         surrogate_loss = torch.min(
-        	advantages * logp_ratio,
-        	advantages * torch.clamp(logp_ratio, 1 - clip+param, 1 + clip_param))
-    	
-    	#mean policy loss
-    	mean_policy_loss = reduce_mean_valid(-surrogate_loss)
-    	
-    	#total loss
-    	loss = reduce_mean_valid(-surrogate_loss - 
-    							  # vf_loss_coeff * vf_loss - 
-    							  entropy_coeff * curr_entropy)
+            advantages * logp_ratio,
+            advantages * torch.clamp(logp_ratio, 1 - self.clip_param, 1 + self.clip_param))
         
+        mean_policy_loss = (-surrogate_loss).sum()
+        
+        if self.use_gae:
+            vf_loss1 = F.mse_loss(values.reshape(-1), value_targets)
+            vf_clipped = vf_preds + torch.clamp(values.reshape(-1) - value_targets, -self.vf_clip_param, self.vf_clip_param)
+            vf_loss2 = F.mse_loss(vf_clipped, value_targets)
+            vf_loss = torch.max(vf_loss1, vf_loss2)
+            loss = (-surrogate_loss + 
+                    self.vf_loss_coeff * vf_loss - 
+                    self.entropy_coeff * curr_entropy).sum() 
+        else:
+            loss = (-surrogate_loss - 
+                    self.entropy_coeff * curr_entropy).sum()
         return loss
 
 class PPOTorchPolicyGraph(TorchPolicyGraph):
@@ -69,7 +63,7 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
 
         """
         Arguments:
-            observation_space: Environment observation space specification.
+            obs_space: Environment observation space specification.
             action_space: Environment action space specification.
             config (dict): Configuration values for PPO graph.
             existing_inputs (list): Optional list of tuples that specify the
@@ -83,7 +77,7 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
                                                   self.config["model"])
         loss = PPOLoss(self.model, self.config["vf_loss_coeff"],
                        self.config["entropy_coeff"], self.config["clip_param"], 
-                       self.config["vf_clip_param"], self.config["vf_loss_coeff"], 
+                       self.config["vf_clip_param"],
                        self.config["use_gae"])
 
         TorchPolicyGraph.__init__(
@@ -96,7 +90,7 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
-        return {"vf_preds": model_out[2].numpy()}
+        return {"vf_preds": model_out[2].numpy(), "logits": model_out[0].numpy()}
 
     @override(TorchPolicyGraph)
     def optimizer(self):
@@ -112,8 +106,6 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
             last_r = 0.0
         else:
             next_state = []
-            for i in range(len(self.model.state_in)):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
             last_r = self._value(sample_batch["new_obs"][-1], *next_state)
         batch = compute_advantages(
             sample_batch,

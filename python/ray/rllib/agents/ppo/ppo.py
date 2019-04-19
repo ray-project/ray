@@ -76,7 +76,7 @@ class PPOAgent(Agent):
     def _init(self):
         self._validate_config()
         if self.config["use_pytorch"]:
-            from ray.rllib.agents.pg.torch_pg_policy_graph import \
+            from ray.rllib.agents.ppo.torch_ppo_policy_graph import \
                 PPOTorchPolicyGraph
             policy_cls = PPOTorchPolicyGraph
         else:
