@@ -57,9 +57,7 @@ if __name__ == "__main__":
         parameters=parameters,
         objective_name="neg_mean_loss",
         max_concurrent=4)
-    scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
     run(easy_objective,
         name="ax",
         search_alg=algo,
-        scheduler=scheduler,
         **config)
