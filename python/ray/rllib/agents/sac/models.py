@@ -5,7 +5,6 @@ import tensorflow_probability as tfp
 
 from .squash_bijector import SquashBijector
 
-
 SCALE_DIAG_MIN_MAX = (-20, 2)
 
 
@@ -27,10 +26,9 @@ class GaussianLatentSpacePolicy(object):
             for input_shape in input_shapes
         ]
 
-        conditions = (
-            tf.keras.layers.Concatenate(axis=-1)(self.condition_inputs)
-            if len(self.condition_inputs) > 1
-            else self.condition_inputs[0])
+        conditions = (tf.keras.layers.Concatenate(axis=-1)(
+            self.condition_inputs) if len(self.condition_inputs) > 1 else
+                      self.condition_inputs[0])
 
         out = conditions
         for units in hidden_layer_sizes:
@@ -38,9 +36,8 @@ class GaussianLatentSpacePolicy(object):
                 units, *args, activation=activation, **kwargs)(out)
 
         out = tf.keras.layers.Dense(
-            output_shape[0] * 2, *args,
-            activation=output_activation, **kwargs
-        )(out)
+            output_shape[0] * 2, *args, activation=output_activation,
+            **kwargs)(out)
 
         shift, log_scale_diag = tf.keras.layers.Lambda(
             lambda shift_and_log_scale_diag: tf.split(
@@ -50,67 +47,58 @@ class GaussianLatentSpacePolicy(object):
         )(out)
 
         log_scale_diag = tf.keras.layers.Lambda(
-            lambda log_scale_diag: tf.clip_by_value(
-                log_scale_diag, *SCALE_DIAG_MIN_MAX)
+            lambda log_scale_diag: tf.clip_by_value(log_scale_diag, *SCALE_DIAG_MIN_MAX)
         )(log_scale_diag)
 
-        batch_size = tf.keras.layers.Lambda(
-            lambda x: tf.shape(x)[0])(conditions)
+        batch_size = tf.keras.layers.Lambda(lambda x: tf.shape(x)[0])(
+            conditions)
 
         base_distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=tf.zeros(output_shape),
-            scale_diag=tf.ones(output_shape))
+            loc=tf.zeros(output_shape), scale_diag=tf.ones(output_shape))
 
         latents = tf.keras.layers.Lambda(
-            lambda batch_size: base_distribution.sample(batch_size)
-        )(batch_size)
+            lambda batch_size: base_distribution.sample(batch_size))(
+                batch_size)
 
         def raw_actions_fn(inputs):
             shift, log_scale_diag, latents = inputs
             bijector = tfp.bijectors.Affine(
-                shift=shift,
-                scale_diag=tf.exp(log_scale_diag))
+                shift=shift, scale_diag=tf.exp(log_scale_diag))
             actions = bijector.forward(latents)
             return actions
 
-        raw_actions = tf.keras.layers.Lambda(
-            raw_actions_fn
-        )((shift, log_scale_diag, latents))
+        raw_actions = tf.keras.layers.Lambda(raw_actions_fn)(
+            (shift, log_scale_diag, latents))
 
-        squash_bijector = (
-            SquashBijector()
-            if self._squash
-            else tfp.bijectors.Identity())
+        squash_bijector = (SquashBijector()
+                           if self._squash else tfp.bijectors.Identity())
 
         actions = tf.keras.layers.Lambda(
-            lambda raw_actions: squash_bijector.forward(raw_actions)
-        )(raw_actions)
+            lambda raw_actions: squash_bijector.forward(raw_actions))(
+                raw_actions)
 
         self.actions_model = tf.keras.Model(self.condition_inputs, actions)
 
         def log_pis_fn(inputs):
             shift, log_scale_diag, actions = inputs
             base_distribution = tfp.distributions.MultivariateNormalDiag(
-                loc=tf.zeros(output_shape),
-                scale_diag=tf.ones(output_shape))
+                loc=tf.zeros(output_shape), scale_diag=tf.ones(output_shape))
             bijector = tfp.bijectors.Chain((
                 squash_bijector,
                 tfp.bijectors.Affine(
-                    shift=shift,
-                    scale_diag=tf.exp(log_scale_diag)),
+                    shift=shift, scale_diag=tf.exp(log_scale_diag)),
             ))
             distribution = (
                 tfp.distributions.ConditionalTransformedDistribution(
-                    distribution=base_distribution,
-                    bijector=bijector))
+                    distribution=base_distribution, bijector=bijector))
 
             log_pis = distribution.log_prob(actions)[:, None]
             return log_pis
 
         self.actions_input = tf.keras.layers.Input(shape=output_shape)
 
-        log_pis = tf.keras.layers.Lambda(
-            log_pis_fn)([shift, log_scale_diag, self.actions_input])
+        log_pis = tf.keras.layers.Lambda(log_pis_fn)(
+            [shift, log_scale_diag, self.actions_input])
 
         self.log_pis_model = tf.keras.Model(
             (*self.condition_inputs, self.actions_input), log_pis)
@@ -167,18 +155,15 @@ def feedforward_model(input_shapes,
     ]
 
     concatenated_input = tf.keras.layers.Lambda(
-        lambda x: tf.concat(x, axis=-1)
-    )(inputs)
+        lambda x: tf.concat(x, axis=-1))(inputs)
 
     out = concatenated_input
     for units in hidden_layer_sizes:
         out = tf.keras.layers.Dense(
-            units, *args, activation=activation, **kwargs
-        )(out)
+            units, *args, activation=activation, **kwargs)(out)
 
     output = tf.keras.layers.Dense(
-        output_size, *args, activation=output_activation, **kwargs
-    )(out)
+        output_size, *args, activation=output_activation, **kwargs)(out)
 
     model = tf.keras.Model(inputs, output)
 

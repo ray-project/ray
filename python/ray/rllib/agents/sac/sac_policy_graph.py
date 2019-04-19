@@ -11,6 +11,8 @@ from gym.spaces import Box
 
 import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.evaluation import SampleBatch
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.annotations import override
 
@@ -44,11 +46,11 @@ class SACPolicyGraph(TFPolicyGraph):
         self._init_losses()
 
         self.loss_inputs = (
-            ("obs", self._observations_ph),
-            ("new_obs", self._next_observations_ph),
-            ("actions", self._actions_ph),
-            ("rewards", self._rewards_ph),
-            ("dones", self._terminals_ph),
+            (SampleBatch.CUR_OBS, self._observations_ph),
+            (SampleBatch.NEXT_OBS, self._next_observations_ph),
+            (SampleBatch.ACTIONS, self._actions_ph),
+            (SampleBatch.REWARDS, self._rewards_ph),
+            (SampleBatch.DONES, self._terminals_ph),
         )
 
         TFPolicyGraph.__init__(
@@ -67,12 +69,13 @@ class SACPolicyGraph(TFPolicyGraph):
 
         Q_mean, Q_var = tf.nn.moments(self.Q_values, axes=[0, 1])
         Q_std = tf.sqrt(Q_var)
-        actions_mean, actions_var = tf.nn.moments(self._actions_ph, axes=[0, 1])
+        actions_mean, actions_var = tf.nn.moments(
+            self._actions_ph, axes=[0, 1])
         actions_std = tf.sqrt(actions_var)
         actions_min = tf.reduce_min(self._actions_ph)
         actions_max = tf.reduce_max(self._actions_ph)
         self.diagnostics = {
-            'stats': {
+            LEARNER_STATS_KEY: {
                 'actions-avg': actions_mean,
                 'actions-std': actions_std,
                 'actions-min': actions_min,
@@ -108,8 +111,7 @@ class SACPolicyGraph(TFPolicyGraph):
         self._actions_ph = tf.placeholder(
             tf.float32, (None, *action_shape), name="actions")
 
-        self._rewards_ph = tf.placeholder(
-            tf.float32, (None, ), name="rewards")
+        self._rewards_ph = tf.placeholder(tf.float32, (None, ), name="rewards")
 
         self._terminals_ph = tf.placeholder(
             tf.bool, (None, ), name="terminals")
@@ -126,9 +128,7 @@ class SACPolicyGraph(TFPolicyGraph):
             **policy_kwargs)
 
         self.log_alpha = tf.get_variable(
-            'log_alpha',
-            dtype=tf.float32,
-            initializer=0.0)
+            'log_alpha', dtype=tf.float32, initializer=0.0)
         self.alpha = tf.exp(self.log_alpha)
 
         Q_type = self.config['Q']['type']
@@ -158,19 +158,19 @@ class SACPolicyGraph(TFPolicyGraph):
 
     def _get_Q_target(self):
         next_actions = self.policy.actions([self._next_observations_ph])
-        next_log_pis = self.policy.log_pis(
-            [self._next_observations_ph], next_actions)
+        next_log_pis = self.policy.log_pis([self._next_observations_ph],
+                                           next_actions)
 
-        next_Q_values = self.Q_target([self._next_observations_ph, next_actions])
+        next_Q_values = self.Q_target(
+            [self._next_observations_ph, next_actions])
 
         next_values = next_Q_values - self.alpha * next_log_pis
         discount = self.config['gamma']
 
         # td target
         Q_targets = (
-            self._rewards_ph[:, None]
-            + discount
-            * (1.0 - tf.to_float(self._terminals_ph[:, None])) * next_values)
+            self._rewards_ph[:, None] + discount *
+            (1.0 - tf.to_float(self._terminals_ph[:, None])) * next_values)
 
         return Q_targets
 
@@ -179,16 +179,16 @@ class SACPolicyGraph(TFPolicyGraph):
 
         assert Q_targets.shape.as_list() == [None, 1]
 
-        Q_values = self.Q_values = self.Q([self._observations_ph, self._actions_ph])
+        Q_values = self.Q_values = self.Q(
+            [self._observations_ph, self._actions_ph])
         Q_loss_weight = self.config['optimization']['Q_loss_weight']
         self.Q_loss = Q_loss_weight * tf.losses.mean_squared_error(
             labels=Q_targets, predictions=Q_values, weights=0.5)
 
     def _init_entropy_loss(self):
-        target_entropy = (
-            -np.prod(self.action_space.shape)
-            if self.config['target_entropy'] == 'auto'
-            else self.config['target_entropy'])
+        target_entropy = (-np.prod(self.action_space.shape)
+                          if self.config['target_entropy'] == 'auto' else
+                          self.config['target_entropy'])
 
         assert isinstance(target_entropy, Number)
 
@@ -196,7 +196,8 @@ class SACPolicyGraph(TFPolicyGraph):
         log_pis = self.policy.log_pis([self._observations_ph], actions)
 
         self.log_pis = log_pis
-        entropy_loss_weight = self.config['optimization']['entropy_loss_weight']
+        entropy_loss_weight = self.config['optimization'][
+            'entropy_loss_weight']
         self.entropy_loss = -1.0 * entropy_loss_weight * tf.reduce_mean(
             self.log_alpha * tf.stop_gradient(log_pis + target_entropy))
 
@@ -205,10 +206,7 @@ class SACPolicyGraph(TFPolicyGraph):
         self._init_critic_loss()
         self._init_entropy_loss()
 
-        self.total_loss = (
-            self.policy_loss
-            + self.Q_loss
-            + self.entropy_loss)
+        self.total_loss = (self.policy_loss + self.Q_loss + self.entropy_loss)
 
     @override(TFPolicyGraph)
     def optimizer(self):
@@ -226,13 +224,10 @@ class SACPolicyGraph(TFPolicyGraph):
             self.entropy_loss, var_list=self.log_alpha)
 
         grads_and_vars = (
-            policy_grads_and_vars
-            + Q_grads_and_vars
-            + entropy_grads_and_vars)
+            policy_grads_and_vars + Q_grads_and_vars + entropy_grads_and_vars)
 
-        grads_and_vars = tuple(
-            grad_and_var for grad_and_var in grads_and_vars
-            if grad_and_var is not None)
+        grads_and_vars = tuple(grad_and_var for grad_and_var in grads_and_vars
+                               if grad_and_var is not None)
 
         return grads_and_vars
 

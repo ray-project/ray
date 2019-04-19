@@ -142,7 +142,9 @@ def test_export(algo_name, failures):
 if __name__ == "__main__":
     failures = []
     for use_object_store in [False, True]:
-        for name in ["SAC", "ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG", "ARS"]:
+        for name in [
+                "SAC", "ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG", "ARS"
+        ]:
             test_ckpt_restore(use_object_store, name, failures)
 
     assert not failures, failures

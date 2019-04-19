@@ -10,13 +10,11 @@ from ray.rllib.agents.dqn import DQNAgent
 from ray.rllib.agents.sac.sac_policy_graph import SACPolicyGraph
 from ray.rllib.utils.annotations import override
 
-
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
     "train_batch_size", "learning_starts"
 ]
-
 
 # yapf: disable
 # __sphinx_doc_begin__
