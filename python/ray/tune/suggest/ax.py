@@ -39,7 +39,6 @@ class AxSearch(SuggestionAlgorithm):
         self._max_concurrent = max_concurrent
         self._parameters = [d["name"] for d in parameters]
         self._objective_name = objective_name
-        self._live_trial_mapping = {}
         self._live_index_mapping = {}
         super(AxSearch, self).__init__(**kwargs)
 
@@ -48,7 +47,6 @@ class AxSearch(SuggestionAlgorithm):
             return None
         parameters, trial_index = self._ax.get_next_trial()
         suggested_config = list(parameters.values())
-        self._live_trial_mapping[trial_id] = suggested_config
         self._live_index_mapping[trial_id] = trial_index
         return dict(zip(self._parameters, suggested_config))
 
@@ -60,11 +58,10 @@ class AxSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        ax_trial_info = self._live_trial_mapping.pop(trial_id)
         ax_trial_index = self._live_index_mapping.pop(trial_id)
         if result:
             evaluation = {self._objective_name: (-result[self._objective_name], 0.0)}
             self._ax.complete_trial(trial_index=ax_trial_index, raw_data=evaluation)
 
     def _num_live_trials(self):
-        return len(self._live_trial_mapping)
+        return len(self._live_index_mapping)
