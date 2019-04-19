@@ -191,8 +191,7 @@ def list_trials(experiment_path,
 
     if sort:
         if sort not in checkpoints_df:
-            raise KeyError("{} not in: {}".format(
-                sort, list(checkpoints_df)))
+            raise KeyError("{} not in: {}".format(sort, list(checkpoints_df)))
         checkpoints_df = checkpoints_df.sort_values(by=sort)
 
     print_format_output(checkpoints_df)
@@ -292,8 +291,7 @@ def list_experiments(project_path,
 
     if sort:
         if sort not in info_df:
-            raise KeyError("{} not in: {}".format(
-                sort, list(info_df)))
+            raise KeyError("{} not in: {}".format(sort, list(info_df)))
         info_df = info_df.sort_values(by=sort)
 
     print_format_output(info_df)

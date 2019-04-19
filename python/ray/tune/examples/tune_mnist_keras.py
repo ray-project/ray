@@ -31,21 +31,8 @@ class TuneCallback(keras.callbacks.Callback):
             timesteps_total=self.iteration, mean_accuracy=logs["acc"])
 
 
-def train_mnist(args, cfg, reporter):
-    # We set threads here to avoid contention, as Keras
-    # is heavily parallelized across multiple cores.
-    K.set_session(
-        K.tf.Session(
-            config=K.tf.ConfigProto(
-                intra_op_parallelism_threads=args.threads,
-                inter_op_parallelism_threads=args.threads)))
-    vars(args).update(cfg)
-    batch_size = 128
+def get_mnist_data(img_rows, img_cols):
     num_classes = 10
-    epochs = 12
-
-    # input image dimensions
-    img_rows, img_cols = 28, 28
 
     # the data, split between train and test sets
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -63,13 +50,34 @@ def train_mnist(args, cfg, reporter):
     x_test = x_test.astype("float32")
     x_train /= 255
     x_test /= 255
-    print("x_train shape:", x_train.shape)
-    print(x_train.shape[0], "train samples")
-    print(x_test.shape[0], "test samples")
 
     # convert class vectors to binary class matrices
     y_train = keras.utils.to_categorical(y_train, num_classes)
     y_test = keras.utils.to_categorical(y_test, num_classes)
+
+    return x_train, y_train, x_test, y_test, input_shape
+
+
+def train_mnist(args, cfg, reporter):
+    # We set threads here to avoid contention, as Keras
+    # is heavily parallelized across multiple cores.
+    K.set_session(
+        K.tf.Session(
+            config=K.tf.ConfigProto(
+                intra_op_parallelism_threads=args.threads,
+                inter_op_parallelism_threads=args.threads)))
+    vars(args).update(cfg)
+    batch_size = 128
+    num_classes = 10
+    epochs = 12
+
+    # input image dimensions
+    img_rows, img_cols = 28, 28
+
+    x_train, y_train, x_test, y_test, input_shape = get_mnist_data(img_rows, img_cols)
+    print("x_train shape:", x_train.shape)
+    print(x_train.shape[0], "train samples")
+    print(x_test.shape[0], "test samples")
 
     model = Sequential()
     model.add(
