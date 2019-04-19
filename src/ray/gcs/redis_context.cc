@@ -27,9 +27,6 @@ void ProcessCallback(int64_t callback_index, const std::string &data) {
   if (!callback_item.is_subscription) {
     // Record the redis latency for non-subscription redis operations.
     auto end_time = current_sys_time_us();
-    RAY_LOG(DEBUG) << "Record a redis latency, start time is " << callback_item.start_time
-                   << "us, end time is " << end_time << "us, and the elapsed time is "
-                   << end_time - callback_item.start_time << "us.";
     ray::stats::RedisLatency().Record(end_time - callback_item.start_time);
   }
   // Invoke the callback.
@@ -125,7 +122,7 @@ int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscri
   return num_callbacks_++;
 }
 
-RedisCallbackManager::CallbackItem RedisCallbackManager::get(int64_t callback_index) {
+RedisCallbackManager::CallbackItem &RedisCallbackManager::get(int64_t callback_index) {
   RAY_CHECK(callback_items_.find(callback_index) != callback_items_.end());
   return callback_items_[callback_index];
 }

@@ -19,8 +19,7 @@ namespace ray {
 
 namespace gcs {
 /// Every callback should take in a vector of the results from the Redis
-/// operation and return a bool indicating whether the callback is a subscription
-/// callback.
+/// operation.
 using RedisCallback = std::function<void(const std::string &)>;
 
 class RedisCallbackManager {
@@ -47,7 +46,7 @@ class RedisCallbackManager {
 
   int64_t add(const RedisCallback &function, bool is_subscription);
 
-  CallbackItem get(int64_t callback_index);
+  CallbackItem &get(int64_t callback_index);
 
   /// Remove a callback.
   void remove(int64_t callback_index);

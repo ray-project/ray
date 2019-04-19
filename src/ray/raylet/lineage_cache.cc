@@ -461,7 +461,6 @@ bool LineageCache::ContainsTask(const TaskID &task_id) const {
 
 const Lineage &LineageCache::GetLineage() const { return lineage_; }
 
-// TODO(qwang): Move records to `RecordMetrics` method.
 std::string LineageCache::DebugString() const {
   std::stringstream result;
   result << "LineageCache:";

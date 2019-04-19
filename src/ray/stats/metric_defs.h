@@ -17,11 +17,11 @@ static Gauge CurrentWorker("current_worker",
                            "1 pcs", {LanguageKey, WorkerPidKey});
 
 static Gauge CurrentDriver("current_driver",
-                           "This metric is used for report states of workers.", "1 pcs",
+                           "This metric is used for report states of drivers.", "1 pcs",
                            {LanguageKey, DriverPidKey});
 
 static Count TaskCountReceived("task_count_received",
-                               "The count that the raylet received.", "pcs", {});
+                               "Number of tasks received by raylet.", "pcs", {});
 
 static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "us",
                               {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},

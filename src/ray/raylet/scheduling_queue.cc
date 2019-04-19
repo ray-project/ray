@@ -9,7 +9,7 @@ namespace {
 
 static constexpr const char *task_state_strings[] = {
     "placeable", "waiting",    "ready",
-    "running",   "infeasible", "waiting for actor creation"};
+    "running",   "infeasible", "waiting_for_actor_creation"};
 static_assert(sizeof(task_state_strings) / sizeof(const char *) ==
                   static_cast<int>(ray::raylet::TaskState::kNumTaskQueues),
               "Must specify a TaskState name for every task queue");
@@ -420,7 +420,7 @@ void SchedulingQueue::RecordMetrics() const {
     stats::SchedulingQueueStats().Record(
         static_cast<double>(GetTaskQueue(task_state)->GetTasks().size()),
         {{stats::ValueTypeKey,
-          std::string("num_") + GetTaskStateString(task_state) + "tasks"}});
+          std::string("num_") + GetTaskStateString(task_state) + "_tasks"}});
   }
 }
 
