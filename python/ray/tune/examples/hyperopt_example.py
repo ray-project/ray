@@ -9,7 +9,7 @@ from __future__ import print_function
 import ray
 from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest import HyperOptSearch
+from ray.tune.suggest.hyperopt import HyperOptSearch
 
 
 def easy_objective(config, reporter):
@@ -36,9 +36,9 @@ if __name__ == "__main__":
     ray.init()
 
     space = {
-        'width': hp.uniform('width', 0, 20),
-        'height': hp.uniform('height', -100, 100),
-        'activation': hp.choice("activation", ["relu", "tanh"])
+        "width": hp.uniform("width", 0, 20),
+        "height": hp.uniform("height", -100, 100),
+        "activation": hp.choice("activation", ["relu", "tanh"])
     }
 
     current_best_params = [

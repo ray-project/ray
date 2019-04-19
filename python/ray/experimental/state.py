@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from collections import defaultdict
 import json
-import redis
 import sys
 import time
 
@@ -13,6 +12,7 @@ from ray.function_manager import FunctionDescriptor
 import ray.gcs_utils
 
 from ray.ray_constants import ID_SIZE
+from ray import services
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
@@ -126,8 +126,7 @@ class GlobalState(object):
         self.redis_clients = None
 
     def _initialize_global_state(self,
-                                 redis_ip_address,
-                                 redis_port,
+                                 redis_address,
                                  redis_password=None,
                                  timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
@@ -137,18 +136,15 @@ class GlobalState(object):
         been populated or we exceed a timeout.
 
         Args:
-            redis_ip_address: The IP address of the node that the Redis server
-                lives on.
-            redis_port: The port that the Redis server is listening on.
+            redis_address: The Redis address to connect.
             redis_password: The password of the redis server.
         """
-        self.redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port, password=redis_password)
-
+        self.redis_client = services.create_redis_client(
+            redis_address, redis_password)
         start_time = time.time()
 
         num_redis_shards = None
-        ip_address_ports = []
+        redis_shard_addresses = []
 
         while time.time() - start_time < timeout:
             # Attempt to get the number of Redis shards.
@@ -163,9 +159,9 @@ class GlobalState(object):
                                 "{}.".format(num_redis_shards))
 
             # Attempt to get all of the Redis shards.
-            ip_address_ports = self.redis_client.lrange(
+            redis_shard_addresses = self.redis_client.lrange(
                 "RedisShards", start=0, end=-1)
-            if len(ip_address_ports) != num_redis_shards:
+            if len(redis_shard_addresses) != num_redis_shards:
                 print("Waiting longer for RedisShards to be populated.")
                 time.sleep(1)
                 continue
@@ -177,18 +173,15 @@ class GlobalState(object):
         if time.time() - start_time >= timeout:
             raise Exception("Timed out while attempting to initialize the "
                             "global state. num_redis_shards = {}, "
-                            "ip_address_ports = {}".format(
-                                num_redis_shards, ip_address_ports))
+                            "redis_shard_addresses = {}".format(
+                                num_redis_shards, redis_shard_addresses))
 
         # Get the rest of the information.
         self.redis_clients = []
-        for ip_address_port in ip_address_ports:
-            shard_address, shard_port = ip_address_port.split(b":")
+        for shard_address in redis_shard_addresses:
             self.redis_clients.append(
-                redis.StrictRedis(
-                    host=shard_address,
-                    port=shard_port,
-                    password=redis_password))
+                services.create_redis_client(shard_address.decode(),
+                                             redis_password))
 
     def _execute_command(self, key, *args):
         """Execute a Redis command on the appropriate Redis shard based on key.
@@ -725,8 +718,7 @@ class GlobalState(object):
             actor_info[binary_to_hex(actor_id)] = {
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),
-                "local_scheduler_id": binary_to_hex(
-                    info[b"local_scheduler_id"]),
+                "raylet_id": binary_to_hex(info[b"raylet_id"]),
                 "num_gpus": int(info[b"num_gpus"]),
                 "removed": decode(info[b"removed"]) == "True"
             }

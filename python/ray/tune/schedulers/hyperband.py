@@ -73,8 +73,8 @@ class HyperBandScheduler(FIFOScheduler):
     """
 
     def __init__(self,
-                 time_attr='training_iteration',
-                 reward_attr='episode_reward_mean',
+                 time_attr="training_iteration",
+                 reward_attr="episode_reward_mean",
                  max_t=81):
         assert max_t > 0, "Max (time_attr) not valid!"
         FIFOScheduler.__init__(self)

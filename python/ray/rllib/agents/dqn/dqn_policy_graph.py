@@ -15,7 +15,8 @@ from ray.rllib.models import ModelCatalog, Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
+    LearningRateSchedule
 
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
@@ -336,7 +337,7 @@ class QValuePolicy(object):
         self.action_prob = None
 
 
-class DQNPolicyGraph(DQNPostprocessing, TFPolicyGraph):
+class DQNPolicyGraph(LearningRateSchedule, DQNPostprocessing, TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Discrete):
@@ -431,9 +432,9 @@ class DQNPolicyGraph(DQNPostprocessing, TFPolicyGraph):
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
         update_target_expr = []
-        for var, var_target in zip(
-                sorted(self.q_func_vars, key=lambda v: v.name),
-                sorted(self.target_q_func_vars, key=lambda v: v.name)):
+        assert len(self.q_func_vars) == len(self.target_q_func_vars), \
+            (self.q_func_vars, self.target_q_func_vars)
+        for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
@@ -447,6 +448,9 @@ class DQNPolicyGraph(DQNPostprocessing, TFPolicyGraph):
             (SampleBatch.DONES, self.done_mask),
             (PRIO_WEIGHTS, self.importance_weights),
         ]
+
+        LearningRateSchedule.__init__(self, self.config["lr"],
+                                      self.config["lr_schedule"])
         TFPolicyGraph.__init__(
             self,
             observation_space,
@@ -461,11 +465,14 @@ class DQNPolicyGraph(DQNPostprocessing, TFPolicyGraph):
             update_ops=q_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
 
+        self.stats_fetches = dict({
+            "cur_lr": tf.cast(self.cur_lr, tf.float64),
+        }, **self.loss.stats)
+
     @override(TFPolicyGraph)
     def optimizer(self):
         return tf.train.AdamOptimizer(
-            learning_rate=self.config["lr"],
-            epsilon=self.config["adam_epsilon"])
+            learning_rate=self.cur_lr, epsilon=self.config["adam_epsilon"])
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):
@@ -492,7 +499,7 @@ class DQNPolicyGraph(DQNPostprocessing, TFPolicyGraph):
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.loss.td_error,
-            LEARNER_STATS_KEY: self.loss.stats,
+            LEARNER_STATS_KEY: self.stats_fetches,
         }
 
     @override(PolicyGraph)
@@ -517,7 +524,7 @@ class DQNPolicyGraph(DQNPostprocessing, TFPolicyGraph):
         # No need to add any noise on LayerNorm parameters
         for var in pnet_params:
             noise_var = tf.get_variable(
-                name=var.name.split(':')[0] + "_noise",
+                name=var.name.split(":")[0] + "_noise",
                 shape=var.shape,
                 initializer=tf.constant_initializer(.0),
                 trainable=False)

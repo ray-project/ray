@@ -7,6 +7,7 @@
 #include "ray/common/common_protocol.h"
 #include "ray/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/stats/stats.h"
 
 namespace {
 
@@ -454,7 +455,7 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
-  // Extract decision for this local scheduler.
+  // Extract decision for this raylet.
   auto decision = scheduling_policy_.SpillOver(remote_resources);
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
@@ -710,7 +711,16 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
     std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+    // Clean up objects from the object store.
     object_manager_.FreeObjects(object_ids, message->local_only());
+    if (message->delete_creating_tasks()) {
+      // Clean up their creating tasks from GCS.
+      std::vector<TaskID> creating_task_ids;
+      for (const auto &object_id : object_ids) {
+        creating_task_ids.push_back(ComputeTaskId(object_id));
+      }
+      gcs_client_->raylet_task_table().Delete(JobID::nil(), creating_task_ids);
+    }
   } break;
   case protocol::MessageType::PrepareActorCheckpointRequest: {
     ProcessPrepareActorCheckpointRequest(client, message_data);
@@ -934,7 +944,7 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
       from_flatbuf<ObjectID>(*message->execution_dependencies()));
   TaskSpecification task_spec(*message->task_spec());
   Task task(task_execution_spec, task_spec);
-  // Submit the task to the local scheduler. Since the task was submitted
+  // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
   SubmitTask(task, Lineage());
 }
@@ -1153,7 +1163,7 @@ void NodeManager::ScheduleTasks(
   }
 #endif
 
-  // Extract decision for this local scheduler.
+  // Extract decision for this raylet.
   std::unordered_set<TaskID> local_task_ids;
   // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
   for (const auto &task_client_pair : policy_decision) {
@@ -1318,6 +1328,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
+  stats::TaskCountReceived().Record(1);
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Submitting task: task_id=" << task_id
@@ -1458,15 +1469,16 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
       double required_cpus = required_resources.GetNumCpus();
-      const std::unordered_map<std::string, double> cpu_resources = {
-          {kCPU_ResourceLabel, required_cpus}};
+      std::unordered_map<std::string, double> cpu_resources;
+      if (required_cpus > 0) {
+        cpu_resources[kCPU_ResourceLabel] = required_cpus;
+      }
 
       // Release the CPU resources.
       auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
       local_available_resources_.Release(cpu_resource_ids);
-      RAY_CHECK(
-          cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-              ResourceSet(cpu_resources)));
+      cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+          ResourceSet(cpu_resources));
       worker->MarkBlocked();
 
       // Try dispatching tasks since we may have released some resources.
@@ -1510,9 +1522,11 @@ void NodeManager::HandleTaskUnblocked(
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
       double required_cpus = required_resources.GetNumCpus();
-      const ResourceSet cpu_resources(
-          std::unordered_map<std::string, double>({{kCPU_ResourceLabel, required_cpus}}));
-
+      std::unordered_map<std::string, double> cpu_resources_map;
+      if (required_cpus > 0) {
+        cpu_resources_map[kCPU_ResourceLabel] = required_cpus;
+      }
+      const ResourceSet cpu_resources(cpu_resources_map);
       // Check if we can reacquire the CPU resources.
       bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
 
@@ -1522,9 +1536,8 @@ void NodeManager::HandleTaskUnblocked(
         // reacquire here may be different from the ones that the task started with.
         auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
         worker->AcquireTaskCpuResources(resource_ids);
-        RAY_CHECK(
-            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
-                cpu_resources));
+        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+            cpu_resources);
       } else {
         // In this case, we simply don't reacquire the CPU resources for the worker.
         // The worker can keep running and when the task finishes, it will simply
@@ -1616,7 +1629,7 @@ bool NodeManager::AssignTask(const Task &task) {
   auto acquired_resources =
       local_available_resources_.Acquire(spec.GetRequiredResources());
   const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
-  RAY_CHECK(cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
+  cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources());
 
   if (spec.IsActorCreationTask()) {
     // Check that we are not placing an actor creation task on a node with 0 CPUs.
@@ -1730,8 +1743,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   // Release task's resources. The worker's lifetime resources are still held.
   auto const &task_resources = worker.GetTaskResourceIds();
   local_available_resources_.Release(task_resources);
-  RAY_CHECK(cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-      task_resources.ToResourceSet()));
+  cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+      task_resources.ToResourceSet());
   worker.ResetTaskResourceIds();
 
   // If this was an actor or actor creation task, handle the actor's new state.
@@ -2023,6 +2036,9 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
 
     RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
                   << node_manager_id;
+
+    // TODO(romilb): We should probably revert the load subtraction from
+    // SchedulingPolicy::Schedule()
     // Mark the failed task as pending to let other raylets know that we still
     // have the task. TaskDependencyManager::TaskPending() is assumed to be
     // idempotent.

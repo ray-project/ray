@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import logging
 
-from ray.rllib.agents import Agent, with_common_config
+from ray.rllib.agents import Trainer, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.rllib.utils.annotations import override
@@ -65,14 +65,14 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class PPOAgent(Agent):
+class PPOTrainer(Trainer):
     """Multi-GPU optimized implementation of PPO in TensorFlow."""
 
-    _agent_name = "PPO"
+    _name = "PPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = PPOPolicyGraph
 
-    @override(Agent)
+    @override(Trainer)
     def _init(self, config, env_creator):
         self._validate_config()
         if self.config["use_pytorch"]:
@@ -87,24 +87,24 @@ class PPOAgent(Agent):
             env_creator, policy_cls, config["num_workers"])
         if config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
-                self.local_evaluator, self.remote_evaluators, {
-                    "num_sgd_iter": config["num_sgd_iter"],
-                    "train_batch_size": config["train_batch_size"],
-                })
+                self.local_evaluator,
+                self.remote_evaluators,
+                num_sgd_iter=config["num_sgd_iter"],
+                train_batch_size=config["train_batch_size"])
         else:
             self.optimizer = LocalMultiGPUOptimizer(
-                self.local_evaluator, self.remote_evaluators, {
-                    "sgd_batch_size": config["sgd_minibatch_size"],
-                    "num_sgd_iter": config["num_sgd_iter"],
-                    "num_gpus": config["num_gpus"],
-                    "sample_batch_size": config["sample_batch_size"],
-                    "num_envs_per_worker": config["num_envs_per_worker"],
-                    "train_batch_size": config["train_batch_size"],
-                    "standardize_fields": ["advantages"],
-                    "straggler_mitigation": config["straggler_mitigation"],
-                })
+                self.local_evaluator,
+                self.remote_evaluators,
+                sgd_batch_size=config["sgd_minibatch_size"],
+                num_sgd_iter=config["num_sgd_iter"],
+                num_gpus=config["num_gpus"],
+                sample_batch_size=config["sample_batch_size"],
+                num_envs_per_worker=config["num_envs_per_worker"],
+                train_batch_size=config["train_batch_size"],
+                standardize_fields=["advantages"],
+                straggler_mitigation=config["straggler_mitigation"])
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         if "observation_filter" not in self.raw_user_config:
             # TODO(ekl) remove this message after a few releases

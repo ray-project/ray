@@ -16,6 +16,7 @@ import org.ray.api.RuntimeContext;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
+import org.ray.api.gcs.GcsClient;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.BaseTaskOptions;
@@ -31,7 +32,6 @@ import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.UniqueIdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,6 +67,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected ObjectStoreProxy objectStoreProxy;
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
+  protected GcsClient gcsClient;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
@@ -205,8 +206,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public void free(List<UniqueId> objectIds, boolean localOnly) {
-    rayletClient.freePlasmaObjects(objectIds, localOnly);
+  public void free(List<UniqueId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+    rayletClient.freePlasmaObjects(objectIds, localOnly, deleteCreatingTasks);
   }
 
   private List<List<UniqueId>> splitIntoBatches(List<UniqueId> objectIds) {
@@ -317,6 +318,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return actor;
   }
 
+  @Override
+  public GcsClient getGcsClient() {
+    return gcsClient;
+  }
+
   /**
    * Create the task specification.
    *
@@ -348,11 +354,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       resources = new HashMap<>();
     } else {
       resources = new HashMap<>(taskOptions.resources);
-    }
-
-    if (!resources.containsKey(ResourceUtil.CPU_LITERAL)
-        && !resources.containsKey(ResourceUtil.CPU_LITERAL.toLowerCase())) {
-      resources.put(ResourceUtil.CPU_LITERAL, 0.0);
     }
 
     int maxActorReconstruction = 0;

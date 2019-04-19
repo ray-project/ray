@@ -47,12 +47,12 @@ class ModelCatalogTest(unittest.TestCase):
             def __init__(self):
                 self.observation_space = Tuple(
                     [Discrete(5),
-                     Box(0, 1, shape=(3, ), dtype=np.float32)])
+                     Box(0, 5, shape=(3, ), dtype=np.float32)])
 
         p1 = ModelCatalog.get_preprocessor(TupleEnv())
         self.assertEqual(p1.shape, (8, ))
         self.assertEqual(
-            list(p1.transform((0, [1, 2, 3]))),
+            list(p1.transform((0, np.array([1, 2, 3])))),
             [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
 
     def testCustomPreprocessor(self):

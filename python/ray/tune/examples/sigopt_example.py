@@ -9,7 +9,7 @@ from __future__ import print_function
 import ray
 from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest import SigOptSearch
+from ray.tune.suggest.sigopt import SigOptSearch
 
 
 def easy_objective(config, reporter):
@@ -38,19 +38,19 @@ if __name__ == "__main__":
 
     space = [
         {
-            'name': 'width',
-            'type': 'int',
-            'bounds': {
-                'min': 0,
-                'max': 20
+            "name": "width",
+            "type": "int",
+            "bounds": {
+                "min": 0,
+                "max": 20
             },
         },
         {
-            'name': 'height',
-            'type': 'int',
-            'bounds': {
-                'min': -100,
-                'max': 100
+            "name": "height",
+            "type": "int",
+            "bounds": {
+                "min": -100,
+                "max": 100
             },
         },
     ]
