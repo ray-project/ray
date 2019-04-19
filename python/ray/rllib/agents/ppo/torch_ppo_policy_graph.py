@@ -12,7 +12,6 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.explained_variance import explained_variance
 
 
 class PPOLoss(nn.Module):
@@ -36,20 +35,16 @@ class PPOLoss(nn.Module):
         curr_action_log_probs = curr_log_probs.gather(1, actions.view(-1, 1))
 
         prev_log_probs = F.log_softmax(logits, dim=1)
-        prev_probs = F.softmax(logits, dim=1)
         prev_action_log_probs = prev_log_probs.gather(1, actions.view(-1, 1))
 
         logp_ratio = torch.exp(curr_action_log_probs - prev_action_log_probs)
 
         curr_entropy = -(curr_log_probs * curr_probs).sum(-1).sum()
-        mean_entropy = curr_entropy.sum()
 
         surrogate_loss = torch.min(
             advantages * logp_ratio,
             advantages * torch.clamp(logp_ratio, 1 - self.clip_param,
                                      1 + self.clip_param))
-
-        mean_policy_loss = (-surrogate_loss).sum()
 
         if self.use_gae:
             vf_loss1 = F.mse_loss(values.reshape(-1), value_targets)
@@ -85,17 +80,11 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
                        self.config["entropy_coeff"], self.config["clip_param"],
                        self.config["vf_clip_param"], self.config["use_gae"])
 
-        TorchPolicyGraph.__init__(
-            self,
-            obs_space,
-            action_space,
-            self.model,
-            loss,
-            [
-                "obs", "value_targets", "advantages", "actions", "logits",
-                "vf_preds"
-            ],
-            action_dist_cls)
+        TorchPolicyGraph.__init__(self, obs_space, action_space, self.model,
+                                  loss, [
+                                      "obs", "value_targets", "advantages",
+                                      "actions", "logits", "vf_preds"
+                                  ], action_dist_cls)
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
