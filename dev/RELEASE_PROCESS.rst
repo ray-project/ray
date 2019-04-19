@@ -6,19 +6,63 @@ This document describes the process for creating new releases.
 1. **Increment the Python version:** Create a PR that increments the Python
    package version. See `this example`_.
 
-2. **Testing:** Before a release is cut, significant testing should be done.
+2. **Download the Travis-built wheels:** Once The wheels from this commit can be
+   downloaded from S3 to do testing, etc. The URL is structured like this:
+   ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp27-cp27mu-manylinux1_x86_64.whl``
+   where ``<hash>`` is replaced by the SHA of the commit and the ``<version>``
+   is the incremented version from the previous step.
+
+3. **Create a release branch:** This branch should also have the same SHA as the
+   previous two steps. In order to create the branch, locally checkout the SHA
+   i.e. ``git checkout <hash>``. Then checkout a new branch of the format
+   ``releases/<release_number>``. The release number must match the increment in
+   the first step. Then push that branch to the ray repo:
+   ``git push upstream releases/<release_number>``.
+
+4. **Testing:** Before a release is created, significant testing should be done.
    Run the script `ci/stress_tests/run_stress_tests.sh`_ and
    `ci/stress_tests/run_application_stress_tests.sh`_ and make sure it
-   passes. *And make sure it is testing the right version of Ray!* This will use
-   the autoscaler to start a bunch of machines and run some tests. Any new
-   stress tests should be added to this script so that they will be run
+   passes. *And make sure it is testing the wheels created in step 2!* This
+   will use the autoscaler to start a bunch of machines and run some tests.
+   Any new stress tests should be added to this script so that they will be run
    automatically for future release testing.
 
 3. **Libraries:** Make sure that the libraries (e.g., RLlib, Tune, SGD) are in a
    releasable state. TODO(rkn): These libraries should be tested automatically
    by the script above, but they aren't yet.
 
-5. **Create a GitHub release:** Create a GitHub release through the `GitHub
+5. **Resolve release-blockers:** Should any release blocking issues arise,
+   there are two ways these issues are resolved: A PR to patch the issue or a
+   revert commit that removes the breaking change from the release. In the case
+   of a PR, that PR should be created against master. Once it is merged, the
+   release master should ``git cherry-pick`` the commit to the release branch.
+   If the decision is to revert a commit that caused the release blocker, the
+   release master should ``git revert`` the commit to be reverted on the
+   release branch. Push these changes directly to the release branch.
+
+6. **Download all the wheels:** Now the release is ready to begin final
+   testing. The wheels are automatically uploaded to S3, even on the release
+   branch. The wheels can be found at the follow URLS:
+
+* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp27-cp27mu-manylinux1_x86_64.whl``
+* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp35-cp35m-manylinux1_x86_64.whl``
+* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp36-cp36m-manylinux1_x86_64.whl``
+* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp37-cp37m-manylinux1_x86_64.whl``
+* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp27-cp27m-macosx_10_6_intel.whl``
+* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp35-cp35m-macosx_10_6_intel.whl``
+* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp36-cp36m-macosx_10_6_intel.whl``
+* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp37-cp37m-macosx_10_6_intel.whl``
+
+   Where ``<hash>`` is the SHA from the release branch most recent commit and
+   ``<version>`` is the version incremented in Part 1.
+
+7. **Final Testing:** Send a link to the wheels to the other contributors and
+   core members of the Ray project. Make sure the wheels are tested on Ubuntu,
+   Mac OSX 10.12, and Mac OSX 10.13+. This testing should verify that the
+   wheels are correct and that all release blockers have been resolved. Should
+   a new release blocker be found, repeat steps 5-7.
+
+8. **Create a GitHub release:** Create a GitHub release through the `GitHub
    website`_. The release should be created at the commit from the previous
    step. This should include **release notes**. Copy the style and formatting
    used by previous releases. Use the following to get started:
@@ -28,12 +72,7 @@ This document describes the process for creating new releases.
      git pull origin master --tags
      git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
 
-6. **Python wheels:** The Python wheels will automatically be built on Travis
-   and uploaded to the ``ray-wheels`` S3 bucket. Download these wheels (e.g.,
-   using ``wget``) and install them with ``pip`` and run some simple Ray scripts
-   to verify that they work. Find `these wheels here`_.
-
-7. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
+9. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
    need to run a command like
 
@@ -59,7 +98,7 @@ This document describes the process for creating new releases.
    Do this at least for MacOS and for Linux, as well as for Python 2 and Python
    3. Also do this for different versions of MacOS.
 
-8. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
+10. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,
    **it will not be possible to modify wheels once you upload them**, so any
    mistake will require a new release. You can upload the wheels with a command
