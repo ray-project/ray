@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.memory import ray_get_and_free
 
 
 @DeveloperAPI
@@ -24,7 +25,7 @@ class FilterManager(object):
             remotes (list): Remote evaluators with filters.
             update_remote (bool): Whether to push updates to remote filters.
         """
-        remote_filters = ray.get(
+        remote_filters = ray_get_and_free(
             [r.get_filters.remote(flush_after=True) for r in remotes])
         for rf in remote_filters:
             for k in local_filters:
