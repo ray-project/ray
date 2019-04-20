@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc >= 14 && argc <= 18);
+  RAY_CHECK(argc >= 14 && argc <= 19);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
@@ -39,16 +39,19 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = (argc >= 15 ? std::string(argv[14]) : "");
   const std::string temp_dir = (argc >= 16 ? std::string(argv[15]) : "/tmp/ray");
   const std::string disable_stats_str(argc >= 17 ? std::string(argv[16]) : "false");
-  const bool disable_stats = ("true" == disable_stats_str);
+  const bool disable_stats("true" == disable_stats_str);
   const std::string stat_address =
       (argc >= 18 ? std::string(argv[17]) : "127.0.0.1:8888");
+  const std::string disable_stdout_exporter_str(argc >= 19 ? std::string(argv[18])
+                                                           : "true");
+  const bool disable_stdout_exporter("true" == disable_stdout_exporter_str);
 
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
       {ray::stats::VersionKey, "0.7.0"},
       {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(stat_address, global_tags, disable_stats);
+  ray::stats::Init(stat_address, global_tags, disable_stats, disable_stdout_exporter);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
