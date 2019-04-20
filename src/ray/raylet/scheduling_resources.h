@@ -22,6 +22,16 @@ const std::string kCPU_ResourceLabel = "CPU";
 /// \class FractionalResourceQuantity
 /// \brief Converts the resource quantities to an internal representation to
 /// avoid machine precision errors.
+
+
+
+///**************************
+/// Test to make sure new tests does not succeed on master
+///**************************
+
+
+
+
 class FractionalResourceQuantity {
  public:
   /// \brief Construct a FractionalResourceQuantity representing zero
@@ -68,6 +78,9 @@ class ResourceSet {
  public:
   /// \brief empty ResourceSet constructor.
   ResourceSet();
+
+  /// \brief Constructs ResourceSet from the specified resource map.
+  ResourceSet(const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map);
 
   /// \brief Constructs ResourceSet from the specified resource map.
   ResourceSet(const std::unordered_map<std::string, double> &resource_map);
@@ -122,11 +135,11 @@ class ResourceSet {
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other
   /// is a subset of the ResourceSet. Deletes any resource if the capacity after
-  /// subtraction is zero.
+  /// subtraction is zero. Throws error if any are negative.
   ///
   /// \param other: The resource set to subtract from the current resource set.
   /// \return Void.
-  void SubtractResourcesStrict(const ResourceSet &other);
+  void SubtractResources(const ResourceSet &other);
 
   /// Return the capacity value associated with the specified resource.
   ///
@@ -138,7 +151,7 @@ class ResourceSet {
   /// Return the number of CPUs.
   ///
   /// \return Number of CPUs.
-  double GetNumCpus() const;
+  const ResourceSet GetNumCpus() const;
 
   /// Return true if the resource set is empty. False otherwise.
   ///
@@ -146,6 +159,8 @@ class ResourceSet {
   bool IsEmpty() const;
 
   // TODO(atumanov): implement const_iterator class for the ResourceSet container.
+  // TODO(williamma12): Make sure that everywhere we use doubles we don't
+  // convert it back to FractionalResourceQuantity.
   /// \brief Return a map of the resource and size in doubles. Note, size is in
   /// regular units and does not need to be multiplied by kResourceConversionFactor.
   ///
@@ -252,7 +267,7 @@ class ResourceIds {
   /// \brief Return the total quantity of resources, ignoring the specific IDs.
   ///
   /// \return The total quantity of the resource.
-  double TotalQuantity() const;
+  FractionalResourceQuantity TotalQuantity() const;
 
   /// \brief Return a string representation of the object.
   ///

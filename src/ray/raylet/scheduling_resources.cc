@@ -19,7 +19,7 @@ FractionalResourceQuantity::FractionalResourceQuantity(double resource_quantity)
       << "Resource capacity, " << resource_quantity << ", should be nonnegative.";
 
   resource_quantity_ =
-      static_cast<int>(std::round(resource_quantity * kResourceConversionFactor));
+      static_cast<int>(resource_quantity * kResourceConversionFactor);
 }
 
 const FractionalResourceQuantity FractionalResourceQuantity::operator+(
@@ -45,8 +45,8 @@ void FractionalResourceQuantity::operator-=(const FractionalResourceQuantity &rh
 
   // Ensure that quantity is nonnegative.
   RAY_CHECK(resource_quantity_ >= 0)
-      << "Capacity of resource after subtraction is negative, " << this->ToDouble()
-      << ".";
+      << "Capacity of resource after subtraction is negative, "
+      << this->ToDouble() << ".";
 }
 
 bool FractionalResourceQuantity::operator==(const FractionalResourceQuantity &rhs) const {
@@ -80,6 +80,8 @@ double FractionalResourceQuantity::ToDouble() const {
 
 ResourceSet::ResourceSet() {}
 
+ResourceSet::ResourceSet(const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map) : resource_capacity_(resource_map) {}
+
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
     resource_capacity_[resource_pair.first] =
@@ -111,8 +113,8 @@ bool ResourceSet::IsSubset(const ResourceSet &other) const {
   // Check to make sure all keys of this are in other.
   for (const auto &resource_pair : resource_capacity_) {
     const auto &resource_name = resource_pair.first;
-    const FractionalResourceQuantity lhs_quantity = resource_pair.second;
-    FractionalResourceQuantity rhs_quantity = other.GetResource(resource_name);
+    const FractionalResourceQuantity &lhs_quantity = resource_pair.second;
+    const FractionalResourceQuantity &rhs_quantity = other.GetResource(resource_name);
     if (lhs_quantity > rhs_quantity) {
       // Resource found in rhs, but lhs capacity exceeds rhs capacity.
       return false;
@@ -135,7 +137,7 @@ bool ResourceSet::RemoveResource(const std::string &resource_name) {
   throw std::runtime_error("Method not implemented");
 }
 
-void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
+void ResourceSet::SubtractResources(const ResourceSet &other) {
   // Subtract the resources, make sure none goes below zero and delete any if new capacity
   // is zero.
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
@@ -168,8 +170,10 @@ FractionalResourceQuantity ResourceSet::GetResource(
   return capacity;
 }
 
-double ResourceSet::GetNumCpus() const {
-  return GetResource(kCPU_ResourceLabel).ToDouble();
+const ResourceSet ResourceSet::GetNumCpus() const {
+  ResourceSet cpu_resource_set;
+  cpu_resource_set.resource_capacity_[kCPU_ResourceLabel] = GetResource(kCPU_ResourceLabel);
+  return cpu_resource_set;
 }
 
 const std::string ResourceSet::ToString() const {
@@ -345,13 +349,13 @@ bool ResourceIds::TotalQuantityIsZero() const {
   return whole_ids_.empty() && fractional_ids_.empty();
 }
 
-double ResourceIds::TotalQuantity() const {
+FractionalResourceQuantity ResourceIds::TotalQuantity() const {
   FractionalResourceQuantity total_quantity =
       FractionalResourceQuantity(whole_ids_.size());
   for (auto const &fractional_pair : fractional_ids_) {
     total_quantity += fractional_pair.second;
   }
-  return total_quantity.ToDouble();
+  return total_quantity;
 }
 
 std::string ResourceIds::ToString() const {
@@ -463,7 +467,7 @@ ResourceIdSet ResourceIdSet::GetCpuResources() const {
 }
 
 ResourceSet ResourceIdSet::ToResourceSet() const {
-  std::unordered_map<std::string, double> resource_set;
+  std::unordered_map<std::string, FractionalResourceQuantity> resource_set;
   for (auto const &resource_pair : available_resources_) {
     resource_set[resource_pair.first] = resource_pair.second.TotalQuantity();
   }
@@ -556,7 +560,7 @@ void SchedulingResources::Release(const ResourceSet &resources) {
 
 // Take specified resources from SchedulingResources.
 void SchedulingResources::Acquire(const ResourceSet &resources) {
-  resources_available_.SubtractResourcesStrict(resources);
+  resources_available_.SubtractResources(resources);
 }
 
 std::string SchedulingResources::DebugString() const {
