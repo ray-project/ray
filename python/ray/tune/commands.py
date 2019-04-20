@@ -27,15 +27,9 @@ EDITOR = os.getenv("EDITOR", "vim")
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S (%A)"
 
-DEFAULT_EXPERIMENT_INFO_KEYS = (
-    "trainable_name",
-    "experiment_tag",
-    "trial_id",
-    "status",
-    "last_update_time",
-)
-
-DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS)
+DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", "experiment_tag", "trial_id",
+                                "status", "last_update_time",
+                                TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS)
 
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
@@ -130,7 +124,6 @@ def list_trials(experiment_path,
                 output=None,
                 filter_op=None,
                 info_keys=None,
-                result_keys=None,
                 limit=None,
                 desc=False):
     """Lists trials in the directory subtree starting at the given path.
@@ -143,7 +136,6 @@ def list_trials(experiment_path,
         filter_op (str): Filter operation in the format
             "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
-        result_keys (list): Keys of last result that are displayed.
         limit (int): Number of rows to display.
         desc (bool): Sort ascending vs. descending.
     """
@@ -151,18 +143,26 @@ def list_trials(experiment_path,
     experiment_state = _get_experiment_state(
         experiment_path, exit_on_fail=True)
 
-    checkpoint_dicts = experiment_state["checkpoints"]
-    checkpoint_dicts = [flatten_dict(g) for g in checkpoint_dicts]
+    checkpoints = experiment_state["checkpoints"]
+
+    # import ipdb; ipdb.set_trace()
+
+    checkpoint_dicts = []
+    for g in checkpoints:
+        config = g.pop("config")
+        config = flatten_dict(config)
+        last_result = g.pop("last_result")
+        last_result = flatten_dict(last_result)
+        g = flatten_dict(g)
+        combined_dict = {**config, **last_result, **g}
+        checkpoint_dicts.append(combined_dict)
+
     checkpoints_df = pd.DataFrame(checkpoint_dicts)
 
     if not info_keys:
         info_keys = DEFAULT_EXPERIMENT_INFO_KEYS
-    if not result_keys:
-        result_keys = DEFAULT_RESULT_KEYS
-    result_keys = ["last_result:{}".format(k) for k in result_keys]
-    col_keys = [
-        k for k in list(info_keys) + result_keys if k in checkpoints_df
-    ]
+    # result_keys = ["last_result:{}".format(k) for k in result_keys]
+    col_keys = [k for k in list(info_keys) if k in checkpoints_df]
     checkpoints_df = checkpoints_df[col_keys]
 
     if "last_update_time" in checkpoints_df:

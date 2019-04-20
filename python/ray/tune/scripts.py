@@ -33,29 +33,21 @@ def cli():
     type=str,
     help="Select columns to be displayed.")
 @click.option(
-    "--result-columns",
-    "result_columns",
-    default=None,
-    type=str,
-    help="Select columns of last result to be displayed.")
-@click.option(
     "--limit",
     default=None,
     type=int,
     help="Select number of rows to display.")
 @click.option(
     "--desc", default=False, type=bool, help="Sort ascending vs. descending.")
-def list_trials(experiment_path, sort, output, filter_op, columns,
-                result_columns, limit, desc):
+def list_trials(experiment_path, sort, output, filter_op, columns, limit,
+                desc):
     """Lists trials in the directory subtree starting at the given path."""
     if sort:
         sort = sort.split(",")
     if columns:
         columns = columns.split(",")
-    if result_columns:
-        result_columns = result_columns.split(",")
     commands.list_trials(experiment_path, sort, output, filter_op, columns,
-                         result_columns, limit, desc)
+                         limit, desc)
 
 
 @cli.command()
