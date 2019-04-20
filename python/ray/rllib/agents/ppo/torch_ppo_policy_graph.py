@@ -7,8 +7,11 @@ import torch.nn.functional as F
 from torch import nn
 
 import ray
+from ray.rllib.agents.ppo.ppo_policy_graph import BEHAVIOUR_LOGITS
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation import SampleBatch
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
 from ray.rllib.utils.annotations import override
@@ -73,24 +76,25 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
         action_dist_cls, self.logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"])
+            action_space, self.config["model"], torch=True)
         self.model = ModelCatalog.get_torch_model(obs_space, self.logit_dim,
                                                   self.config["model"])
         loss = PPOLoss(self.model, self.config["vf_loss_coeff"],
                        self.config["entropy_coeff"], self.config["clip_param"],
                        self.config["vf_clip_param"], self.config["use_gae"])
 
-        TorchPolicyGraph.__init__(self, obs_space, action_space, self.model,
-                                  loss, [
-                                      "obs", "value_targets", "advantages",
-                                      "actions", "logits", "vf_preds"
-                                  ], action_dist_cls)
+        TorchPolicyGraph.__init__(
+            self, obs_space, action_space, self.model, loss, [
+                SampleBatch.CUR_OBS, Postprocessing.VALUE_TARGETS,
+                Postprocessing.ADVANTAGES, SampleBatch.ACTIONS,
+                BEHAVIOUR_LOGITS, SampleBatch.VF_PREDS
+            ], action_dist_cls)
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
         return {
-            "vf_preds": model_out[2].numpy(),
-            "logits": model_out[0].numpy()
+            SampleBatch.VF_PREDS: model_out[2].numpy(),
+            BEHAVIOUR_LOGITS: model_out[0].numpy()
         }
 
     @override(TorchPolicyGraph)

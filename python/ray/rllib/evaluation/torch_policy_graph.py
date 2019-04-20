@@ -92,7 +92,7 @@ class TorchPolicyGraph(PolicyGraph):
             for key in self._loss_inputs:
                 loss_in.append(
                     torch.from_numpy(postprocessed_batch[key]).to(self.device))
-            loss_out = self._loss(self._model, *loss_in)
+            loss_out = self._loss(*loss_in)
             self._optimizer.zero_grad()
             loss_out.backward()
 
@@ -118,6 +118,23 @@ class TorchPolicyGraph(PolicyGraph):
                 if g is not None:
                     p.grad = torch.from_numpy(g).to(self.device)
             self._optimizer.step()
+
+    @override(PolicyGraph)
+    def learn_on_batch(self, postprocessed_batch):
+        with self.lock:
+            loss_in = []
+            for key in self._loss_inputs:
+                loss_in.append(
+                    torch.from_numpy(postprocessed_batch[key]).to(self.device))
+            loss_out = self._loss(*loss_in)
+            self._optimizer.zero_grad()
+            loss_out.backward()
+            grad_process_info = self.extra_grad_process()
+            grad_info = self.extra_grad_info()
+            grad_info.update(grad_process_info)
+            self._optimizer.step()
+
+        return {LEARNER_STATS_KEY: grad_info}
 
     @override(PolicyGraph)
     def get_weights(self):
