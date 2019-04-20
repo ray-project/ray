@@ -63,7 +63,43 @@ class PPOLoss(nn.Module):
         return loss
 
 
-class PPOTorchPolicyGraph(TorchPolicyGraph):
+class PPOPostprocessing(object):
+    """Adds the value func output and advantages field to the trajectory."""
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        completed = sample_batch["dones"][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            next_state = []
+            last_r = self._value(sample_batch["new_obs"][-1], *next_state)
+        batch = compute_advantages(
+            sample_batch,
+            last_r,
+            self.config["gamma"],
+            self.config["lambda"],
+            use_gae=self.config["use_gae"])
+        return batch
+
+    @override(TorchPolicyGraph)
+    def extra_action_out(self, model_out):
+        return {
+            SampleBatch.VF_PREDS: model_out[2].numpy(),
+            BEHAVIOUR_LOGITS: model_out[0].numpy()
+        }
+
+    def _value(self, obs):
+        with self.lock:
+            obs = torch.from_numpy(obs).float().unsqueeze(0)
+            _, _, vf, _ = self.model({"obs": obs}, [])
+            return vf.detach().numpy().squeeze()
+
+
+class PPOTorchPolicyGraph(PPOPostprocessing, TorchPolicyGraph):
     def __init__(self, obs_space, action_space, config, existing_inputs=None):
         """
         Arguments:
@@ -91,37 +127,5 @@ class PPOTorchPolicyGraph(TorchPolicyGraph):
             ], action_dist_cls)
 
     @override(TorchPolicyGraph)
-    def extra_action_out(self, model_out):
-        return {
-            SampleBatch.VF_PREDS: model_out[2].numpy(),
-            BEHAVIOUR_LOGITS: model_out[0].numpy()
-        }
-
-    @override(TorchPolicyGraph)
     def optimizer(self):
         return torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            last_r = self._value(sample_batch["new_obs"][-1], *next_state)
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            self.config["gamma"],
-            self.config["lambda"],
-            use_gae=self.config["use_gae"])
-        return batch
-
-    def _value(self, obs):
-        with self.lock:
-            obs = torch.from_numpy(obs).float().unsqueeze(0)
-            _, _, vf, _ = self.model({"obs": obs}, [])
-            return vf.detach().numpy().squeeze()
