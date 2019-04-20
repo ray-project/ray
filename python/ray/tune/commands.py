@@ -131,19 +131,21 @@ def list_trials(experiment_path,
                 filter_op=None,
                 info_keys=None,
                 result_keys=None,
-                limit=None):
+                limit=None,
+                desc=False):
     """Lists trials in the directory subtree starting at the given path.
 
     Args:
         experiment_path (str): Directory where trials are located.
             Corresponds to Experiment.local_dir/Experiment.name.
-        sort (str): Key to sort by.
+        sort (list): Keys to sort by.
         output (str): Name of file where output is saved.
         filter_op (str): Filter operation in the format
             "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
         result_keys (list): Keys of last result that are displayed.
         limit (int): Number of rows to display.
+        desc (bool): Sort ascending vs. descending.
     """
     _check_tabulate()
     experiment_state = _get_experiment_state(
@@ -194,7 +196,9 @@ def list_trials(experiment_path,
     if sort:
         if sort not in checkpoints_df:
             raise KeyError("{} not in: {}".format(sort, list(checkpoints_df)))
-        checkpoints_df = checkpoints_df.sort_values(by=sort)
+        ascending = not desc
+        checkpoints_df = checkpoints_df.sort_values(
+            by=sort, ascending=ascending)
 
     if limit:
         checkpoints_df = checkpoints_df[:limit]
@@ -223,12 +227,13 @@ def list_experiments(project_path,
     Args:
         project_path (str): Directory where experiments are located.
             Corresponds to Experiment.local_dir.
-        sort (str): Key to sort by.
+        sort (list): Keys to sort by.
         output (str): Name of file where output is saved.
         filter_op (str): Filter operation in the format
             "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
         limit (int): Number of rows to display.
+        desc (bool): Sort ascending vs. descending.
     """
     _check_tabulate()
     base, experiment_folders, _ = next(os.walk(project_path))
@@ -299,7 +304,8 @@ def list_experiments(project_path,
     if sort:
         if sort not in info_df:
             raise KeyError("{} not in: {}".format(sort, list(info_df)))
-        info_df = info_df.sort_values(by=sort)
+        ascending = not desc
+        info_df = info_df.sort_values(by=sort, ascending=ascending)
 
     if limit:
         info_df = info_df[:limit]
