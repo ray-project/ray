@@ -101,7 +101,6 @@ $PYTHON_EXECUTABLE -m pip install \
 export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-  bazel run //java:bazel_deps -- generate -r $ROOT_DIR -s java/third_party/workspace.bzl -d java/dependencies.yaml
   bazel build //java:all --verbose_failures
 fi
 

@@ -11,6 +11,7 @@ from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.utils.memory import ray_get_and_free
 
 
 class SyncBatchReplayOptimizer(PolicyOptimizer):
@@ -51,7 +52,7 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                batches = ray.get(
+                batches = ray_get_and_free(
                     [e.sample.remote() for e in self.remote_evaluators])
             else:
                 batches = [self.local_evaluator.sample()]
@@ -67,6 +68,11 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
             batches = tmp
 
             for batch in batches:
+                if batch.count > self.max_buffer_size:
+                    raise ValueError(
+                        "The size of a single sample batch exceeds the replay "
+                        "buffer size ({} > {})".format(batch.count,
+                                                       self.max_buffer_size))
                 self.replay_buffer.append(batch)
                 self.num_steps_sampled += batch.count
                 self.buffer_size += batch.count
