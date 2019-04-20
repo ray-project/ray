@@ -419,16 +419,13 @@ class Trainer(Trainable):
             # Evaluation related
             if self.config.get("evaluation_interval"):
                 # Update env_config with evaluation settings:
-                extra_config = copy.deepcopy(self.config['evaluation_config'])
-                extra_config.update(
-                    {
-                        "batch_mode": "complete_episodes",
-                        "batch_steps": 1,
-                    }
-                )
+                extra_config = copy.deepcopy(self.config["evaluation_config"])
+                extra_config.update({
+                    "batch_mode": "complete_episodes",
+                    "batch_steps": 1,
+                })
                 logger.debug(
-                    "using evaluation_config: {}".format(extra_config)
-                )
+                    "using evaluation_config: {}".format(extra_config))
                 # Make local evaluation evaluators
                 self.evaluation_ev = self.make_local_evaluator(
                     self.env_creator,

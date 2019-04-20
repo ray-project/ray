@@ -28,7 +28,6 @@ class EvalTest(unittest.TestCase):
                          [91.0, 171.0, 271.0, 271.0, 271.0, 190.0, 100.0])
 
     def testEvaluationOption(self):
-
         def env_creator(env_config):
             return gym.make("CartPole-v0")
 
@@ -44,10 +43,11 @@ class EvalTest(unittest.TestCase):
                     "evaluation_num_episodes": 2,
                     "evaluation_config": {
                         "gamma": 0.98,
-                        "env_config": {"fake_arg": True}
+                        "env_config": {
+                            "fake_arg": True
+                        }
                     },
-                }
-            )
+                })
             # Given evaluation_interval=2, r0, r2, r4 should not contain
             # evaluation metrics while r1, r3 should do.
             r0 = agent.train()
