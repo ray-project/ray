@@ -165,7 +165,6 @@ class LoadMetrics(object):
                 dynamic_resources_update[resource_name] = 0.0
         self.dynamic_resources_by_ip[ip] = dynamic_resources_update
 
-        self.dynamic_resources_by_ip[ip] = dynamic_resources
         now = time.time()
         if ip not in self.last_used_time_by_ip or \
                 static_resources != dynamic_resources:
