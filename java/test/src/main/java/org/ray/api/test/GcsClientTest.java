@@ -7,7 +7,7 @@ import org.ray.api.Ray;
 import org.ray.api.TestUtils;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.gcs.GcsClientImpl;
+import org.ray.runtime.gcs.GcsClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -31,8 +31,8 @@ public class GcsClientTest extends BaseTest {
     RayConfig config = ((AbstractRayRuntime)Ray.internal()).getRayConfig();
 
     Preconditions.checkNotNull(config);
-    GcsClientImpl gcsClientImpl = ((AbstractRayRuntime)Ray.internal()).getGcsClientImpl();
-    List<NodeInfo> allNodeInfo = gcsClientImpl.getAllNodeInfo();
+    GcsClient gcsClient = ((AbstractRayRuntime)Ray.internal()).getGcsClient();
+    List<NodeInfo> allNodeInfo = gcsClient.getAllNodeInfo();
     Assert.assertEquals(allNodeInfo.size(), 1);
     Assert.assertEquals(allNodeInfo.get(0).nodeAddress, config.nodeIp);
     Assert.assertTrue(allNodeInfo.get(0).isAlive);

@@ -172,7 +172,7 @@ public class Worker {
     lastCheckpointTimestamp = System.currentTimeMillis();
     checkpointIds = new ArrayList<>();
     List<Checkpoint> availableCheckpoints
-        = runtime.getGcsClientImpl().getCheckpointsForActor(actorId);
+        = runtime.getGcsClient().getCheckpointsForActor(actorId);
     if (availableCheckpoints.isEmpty()) {
       return;
     }

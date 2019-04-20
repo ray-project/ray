@@ -37,7 +37,7 @@ public class PlasmaFreeTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, true);
 
     final boolean result = TestUtils.waitForCondition(
-        () ->  !(((AbstractRayRuntime)Ray.internal()).getGcsClientImpl())
+        () ->  !(((AbstractRayRuntime)Ray.internal()).getGcsClient())
           .rayletTaskExistsInGcs(UniqueIdUtil.computeTaskId(helloId.getId())), 50);
     Assert.assertTrue(result);
   }

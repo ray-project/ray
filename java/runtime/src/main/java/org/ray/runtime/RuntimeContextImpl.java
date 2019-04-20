@@ -38,7 +38,7 @@ public class RuntimeContextImpl implements RuntimeContext {
       return false;
     }
 
-    return runtime.getGcsClientImpl().actorExists(getCurrentActorId());
+    return runtime.getGcsClient().actorExists(getCurrentActorId());
   }
 
   @Override
@@ -58,6 +58,6 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public List<NodeInfo> getAllNodeInfo() {
-    return runtime.getGcsClientImpl().getAllNodeInfo();
+    return runtime.getGcsClient().getAllNodeInfo();
   }
 }

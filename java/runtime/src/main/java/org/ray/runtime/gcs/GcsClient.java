@@ -21,15 +21,15 @@ import org.slf4j.LoggerFactory;
 /**
  * An implementation of GcsClient.
  */
-public class GcsClientImpl {
+public class GcsClient {
 
-  private static Logger LOGGER = LoggerFactory.getLogger(GcsClientImpl.class);
+  private static Logger LOGGER = LoggerFactory.getLogger(GcsClient.class);
 
   private RedisClient primary;
 
   private List<RedisClient> shards;
 
-  public GcsClientImpl(String redisAddress, String redisPassword) {
+  public GcsClient(String redisAddress, String redisPassword) {
     primary = new RedisClient(redisAddress, redisPassword);
     int numShards = 0;
     try {
