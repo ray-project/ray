@@ -42,11 +42,6 @@ void FractionalResourceQuantity::operator+=(const FractionalResourceQuantity &rh
 
 void FractionalResourceQuantity::operator-=(const FractionalResourceQuantity &rhs) {
   resource_quantity_ -= rhs.resource_quantity_;
-
-  // Ensure that quantity is nonnegative.
-  // RAY_CHECK(resource_quantity_ >= 0)
-  //     << "Capacity of resource after subtraction is negative, "
-  //     << this->ToDouble() << ".";
 }
 
 bool FractionalResourceQuantity::operator==(const FractionalResourceQuantity &rhs) const {
@@ -150,6 +145,8 @@ void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
       resource_capacity_.erase(resource_label);
     }
 
+
+    // Ensure that quantity is nonnegative.
     RAY_CHECK(resource_capacity_[resource_label] >= 0)
         << "Capacity of resource after subtraction is negative, "
         << resource_capacity_[resource_label].ToDouble() << ".";

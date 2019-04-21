@@ -135,12 +135,17 @@ class ResourceSet {
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other
   /// is a subset of the ResourceSet. Deletes any resource if the capacity after
-  /// subtraction is zero. Throws error if any are negative.
+  /// subtraction is zero.
   ///
   /// \param other: The resource set to subtract from the current resource set.
   /// \return Void.
   void SubtractResources(const ResourceSet &other);
 
+  /// \brief Same as SubtractResources but throws an error if the resource value
+  /// goes below zero.
+  ///
+  /// \param other: The resource set to subtract from the current resource set.
+  /// \return Void.
   void SubtractResourcesStrict(const ResourceSet &other);
 
   /// Return the capacity value associated with the specified resource.

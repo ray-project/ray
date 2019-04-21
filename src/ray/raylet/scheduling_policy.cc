@@ -49,6 +49,8 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       const auto &node_resources = client_resource_pair.second;
       ResourceSet available_node_resources =
           ResourceSet(node_resources.GetAvailableResources());
+      // We have to subtract the load resources from the available resources
+      // here to make sure that there is space for the task.
       available_node_resources.SubtractResources(node_resources.GetLoadResources());
       RAY_LOG(DEBUG) << "client_id " << node_client_id
                      << " avail: " << node_resources.GetAvailableResources().ToString()
