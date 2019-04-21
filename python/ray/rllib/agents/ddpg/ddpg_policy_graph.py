@@ -41,8 +41,6 @@ class ActorCriticLoss(object):
                  done_mask,
                  twin_q_t,
                  twin_q_tp1,
-                 actor_loss_coeff=0.1,
-                 critic_loss_coeff=1.0,
                  gamma=0.99,
                  n_step=1,
                  use_huber=False,
@@ -81,16 +79,8 @@ class ActorCriticLoss(object):
             else:
                 errors = 0.5 * tf.square(self.td_error)
 
-        self.critic_loss = critic_loss_coeff * tf.reduce_mean(
-            importance_weights * errors)
-
-        # for policy gradient, update policy net one time v.s.
-        # update critic net `policy_delay` time(s)
-        global_step = tf.train.get_or_create_global_step()
-        policy_delay_mask = tf.to_float(
-            tf.equal(tf.mod(global_step, policy_delay), 0))
-        self.actor_loss = (-1.0 * actor_loss_coeff * policy_delay_mask *
-                           tf.reduce_mean(q_tp0))
+        self.critic_loss = tf.reduce_mean(importance_weights * errors)
+        self.actor_loss = -tf.reduce_mean(q_tp0)
 
 
 class DDPGPostprocessing(object):
@@ -245,6 +235,12 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
         # create global step for counting the number of update operations
         self.global_step = tf.train.get_or_create_global_step()
+
+        # use separate optimizers for actor & critic
+        self._actor_optimizer = tf.train.AdamOptimizer(
+            learning_rate=self.config["actor_lr"])
+        self._critic_optimizer = tf.train.AdamOptimizer(
+            learning_rate=self.config["critic_lr"])
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
@@ -445,34 +441,58 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def optimizer(self):
-        return tf.train.AdamOptimizer(learning_rate=self.config["lr"])
+        # we don't use this because we have two separate optimisers
+        return None
+
+    @override(TFPolicyGraph)
+    def build_apply_op(self, optimizer, grads_and_vars):
+        # for policy gradient, update policy net one time v.s.
+        # update critic net `policy_delay` time(s)
+        global_step = tf.train.get_or_create_global_step()
+        should_apply_actor_opt = tf.equal(
+            tf.mod(global_step, self.config['policy_delay']), 0)
+        actor_op_raw = self._actor_optimizer.apply_gradients(
+            self._actor_grads_and_vars)
+        actor_op = tf.cond(should_apply_actor_opt,
+                           true_fn=lambda: actor_op_raw,
+                           false_fn=lambda: tf.no_op())
+        with tf.control_dependencies([actor_op]):
+            # increment global_step after we check whether it's time to update
+            # actor
+            actor_op_increment = tf.assign_add(global_step, 1)
+        critic_op = self._critic_optimizer.apply_gradients(
+            self._critic_grads_and_vars)
+        return tf.group(actor_op_increment, critic_op)
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):
         if self.config["grad_norm_clipping"] is not None:
             actor_grads_and_vars = _minimize_and_clip(
-                optimizer,
+                self._actor_optimizer,
                 self.loss.actor_loss,
                 var_list=self.p_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
             critic_grads_and_vars = _minimize_and_clip(
-                optimizer,
+                self._critic_optimizer,
                 self.loss.critic_loss,
                 var_list=self.q_func_vars + self.twin_q_func_vars
                 if self.config["twin_q"] else self.q_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
         else:
-            actor_grads_and_vars = optimizer.compute_gradients(
+            actor_grads_and_vars = self._actor_optimizer.compute_gradients(
                 self.loss.actor_loss, var_list=self.p_func_vars)
-            critic_grads_and_vars = optimizer.compute_gradients(
+            critic_grads_and_vars = self._critic_optimizer.compute_gradients(
                 self.loss.critic_loss,
                 var_list=self.q_func_vars + self.twin_q_func_vars
                 if self.config["twin_q"] else self.q_func_vars)
-        actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
-                                if g is not None]
-        critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
-                                 if g is not None]
-        grads_and_vars = actor_grads_and_vars + critic_grads_and_vars
+        # save these for later use in build_apply_op
+        self._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
+                                      if g is not None]
+        self._critic_grads_and_vars = [(g, v)
+                                       for (g, v) in critic_grads_and_vars
+                                       if g is not None]
+        grads_and_vars = self._actor_grads_and_vars \
+            + self._critic_grads_and_vars
         return grads_and_vars
 
     @override(TFPolicyGraph)
@@ -542,13 +562,12 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                                  q_tp0,
                                  twin_q_t=None,
                                  twin_q_tp1=None):
-        return ActorCriticLoss(
-            q_t, q_tp1, q_tp0, self.importance_weights, self.rew_t,
-            self.done_mask, twin_q_t, twin_q_tp1,
-            self.config["actor_loss_coeff"], self.config["critic_loss_coeff"],
-            self.config["gamma"], self.config["n_step"],
-            self.config["use_huber"], self.config["huber_threshold"],
-            self.config["twin_q"])
+        return ActorCriticLoss(q_t, q_tp1, q_tp0, self.importance_weights,
+                               self.rew_t, self.done_mask, twin_q_t,
+                               twin_q_tp1, self.config["gamma"],
+                               self.config["n_step"], self.config["use_huber"],
+                               self.config["huber_threshold"],
+                               self.config["twin_q"])
 
     def _build_parameter_noise(self, pnet_params):
         self.parameter_noise_sigma_val = self.config["exploration_sigma"]

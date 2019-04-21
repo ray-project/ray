@@ -1,0 +1,61 @@
+invertedpendulum-td3:
+    env: InvertedPendulum-v2
+    run: DDPG
+    stop:
+        episode_reward_mean: 9999.9
+        time_total_s: 900 # 15 minutes
+    config:
+        # === Tricks ===
+        twin_q: True
+        policy_delay: 2
+        smooth_target_policy: True
+        act_noise: 0.1
+        target_noise: 0.2
+        noise_clip: 0.5
+
+        # === Model ===
+        actor_hiddens: [64, 64]
+        critic_hiddens: [64, 64]
+        n_step: 1
+        model: {}
+        gamma: 0.99
+        env_config: {}
+
+        # === Exploration ===
+        schedule_max_timesteps: 100000
+        timesteps_per_iteration: 1000
+        exploration_fraction: 0.1
+        exploration_final_eps: 0.02
+        noise_scale: 0.1
+        exploration_theta: 0.15
+        exploration_sigma: 0.2
+        target_network_update_freq: 0
+        tau: 0.005
+
+        # === Replay buffer ===
+        buffer_size: 1000000
+        prioritized_replay: False
+        prioritized_replay_alpha: 0.6
+        prioritized_replay_beta: 0.4
+        prioritized_replay_eps: 0.000001
+        clip_rewards: False
+
+        # === Optimization ===
+        actor_lr: 0.005
+        critic_lr: 0.005
+        use_huber: False
+        l2_reg: 0.0
+        learning_starts: 1000
+        sample_batch_size: 1
+        train_batch_size: 100
+
+        # === Parallelism ===
+        num_workers: 0
+        num_gpus_per_worker: 0
+        optimizer_class: "SyncReplayOptimizer"
+        per_worker_exploration: False
+        worker_side_prioritization: False
+
+        # === Evaluation ===
+        evaluation_interval: 5
+        evaluation_num_episodes: 10
