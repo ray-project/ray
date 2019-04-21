@@ -40,6 +40,8 @@ DEFAULT_PROJECT_INFO_KEYS = (
     "last_updated",
 )
 
+UNNEST_KEYS = ("config", "last_result")
+
 try:
     TERM_HEIGHT, TERM_WIDTH = subprocess.check_output(["stty", "size"]).split()
     TERM_HEIGHT, TERM_WIDTH = int(TERM_HEIGHT), int(TERM_WIDTH)
@@ -149,12 +151,12 @@ def list_trials(experiment_path,
 
     checkpoint_dicts = []
     for g in checkpoints:
-        config = g.pop("config")
-        config = flatten_dict(config)
-        last_result = g.pop("last_result")
-        last_result = flatten_dict(last_result)
+        for key in UNNEST_KEYS:
+            if key not in g:
+                continue
+            unnest_dict = flatten_dict(g.pop(key))
+            g.update(unnest_dict)
         g = flatten_dict(g)
-        combined_dict = {**config, **last_result, **g}
         checkpoint_dicts.append(combined_dict)
 
     checkpoints_df = pd.DataFrame(checkpoint_dicts)
