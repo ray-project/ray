@@ -43,7 +43,6 @@ This document describes the process for creating new releases.
 
     .. code-block:: bash
 
-
         export RAY_HASH=...  # e.g., 618147f57fb40368448da3b2fb4fd213828fa12b
         export RAY_VERSION=...  # e.g., 0.6.6
         pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp27-cp27mu-manylinux1_x86_64.whl
