@@ -44,9 +44,9 @@ void FractionalResourceQuantity::operator-=(const FractionalResourceQuantity &rh
   resource_quantity_ -= rhs.resource_quantity_;
 
   // Ensure that quantity is nonnegative.
-  RAY_CHECK(resource_quantity_ >= 0)
-      << "Capacity of resource after subtraction is negative, "
-      << this->ToDouble() << ".";
+  // RAY_CHECK(resource_quantity_ >= 0)
+  //     << "Capacity of resource after subtraction is negative, "
+  //     << this->ToDouble() << ".";
 }
 
 bool FractionalResourceQuantity::operator==(const FractionalResourceQuantity &rhs) const {
@@ -135,6 +135,25 @@ bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
 
 bool ResourceSet::RemoveResource(const std::string &resource_name) {
   throw std::runtime_error("Method not implemented");
+}
+
+void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
+  // Subtract the resources, make sure none goes below zero and delete any if new capacity
+  // is zero.
+  for (const auto &resource_pair : other.GetResourceAmountMap()) {
+    const std::string &resource_label = resource_pair.first;
+    const FractionalResourceQuantity &resource_capacity = resource_pair.second;
+    RAY_CHECK(resource_capacity_.count(resource_label) == 1)
+        << "Attempt to acquire unknown resource: " << resource_label;
+    resource_capacity_[resource_label] -= resource_capacity;
+    if (resource_capacity_[resource_label] == 0) {
+      resource_capacity_.erase(resource_label);
+    }
+
+    RAY_CHECK(resource_capacity_[resource_label] >= 0)
+        << "Capacity of resource after subtraction is negative, "
+        << resource_capacity_[resource_label].ToDouble() << ".";
+  }
 }
 
 void ResourceSet::SubtractResources(const ResourceSet &other) {
@@ -560,7 +579,7 @@ void SchedulingResources::Release(const ResourceSet &resources) {
 
 // Take specified resources from SchedulingResources.
 void SchedulingResources::Acquire(const ResourceSet &resources) {
-  resources_available_.SubtractResources(resources);
+  resources_available_.SubtractResourcesStrict(resources);
 }
 
 std::string SchedulingResources::DebugString() const {

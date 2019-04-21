@@ -141,6 +141,8 @@ class ResourceSet {
   /// \return Void.
   void SubtractResources(const ResourceSet &other);
 
+  void SubtractResourcesStrict(const ResourceSet &other);
+
   /// Return the capacity value associated with the specified resource.
   ///
   /// \param resource_name: Resource name for which capacity is requested.
