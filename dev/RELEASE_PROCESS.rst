@@ -39,7 +39,7 @@ This document describes the process for creating new releases.
 
 6. **Download all the wheels:** Now the release is ready to begin final
    testing. The wheels are automatically uploaded to S3, even on the release
-   branch. The wheels can be found at the follow URLs:
+   branch. The wheels can ``pip install``ed from the following URLs:
 
     .. code-block:: bash
 
