@@ -157,7 +157,7 @@ def list_trials(experiment_path,
             unnest_dict = flatten_dict(g.pop(key))
             g.update(unnest_dict)
         g = flatten_dict(g)
-        checkpoint_dicts.append(combined_dict)
+        checkpoint_dicts.append(g)
 
     checkpoints_df = pd.DataFrame(checkpoint_dicts)
 
