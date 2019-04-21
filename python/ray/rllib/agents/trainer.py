@@ -21,6 +21,7 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator, \
     _validate_multiagent_config
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
@@ -91,6 +92,20 @@ COMMON_CONFIG = {
     "clip_actions": True,
     # Whether to use rllib or deepmind preprocessors by default
     "preprocessor_pref": "deepmind",
+
+    # === Evaluation ===
+    # Evaluate with every `evaluation_interval` training iterations.
+    # The evaluation stats will be reported under the "evaluation" metric key.
+    # Note that evaluation is currently not parallelized, and that for Ape-X
+    # metrics are already only reported for the lowest epsilon workers.
+    "evaluation_interval": None,
+    # Number of episodes to run per evaluation period.
+    "evaluation_num_episodes": 10,
+    # Extra arguments to pass to evaluation workers.
+    # Typical usage is to pass extra args to evaluation env creator
+    # and to disable exploration by computing deterministic actions
+    # TODO(kismuz): implement determ. actions and include relevant keys hints
+    "evaluation_config": {},
 
     # === Resources ===
     # Number of actors used for parallelism
@@ -250,7 +265,7 @@ class Trainer(Trainable):
     _allow_unknown_configs = False
     _allow_unknown_subkeys = [
         "tf_session_args", "env_config", "model", "optimizer", "multiagent",
-        "custom_resources_per_worker"
+        "custom_resources_per_worker", "evaluation_config"
     ]
 
     @PublicAPI
@@ -352,6 +367,14 @@ class Trainer(Trainable):
         if self._has_policy_optimizer():
             result["num_healthy_workers"] = len(
                 self.optimizer.remote_evaluators)
+
+        if self.config["evaluation_interval"]:
+            if self._iteration % self.config["evaluation_interval"] == 0:
+                evaluation_metrics = self._evaluate()
+                assert isinstance(evaluation_metrics, dict), \
+                    "_evaluate() needs to return a dict."
+                result.update(evaluation_metrics)
+
         return result
 
     @override(Trainable)
@@ -393,6 +416,23 @@ class Trainer(Trainable):
         with tf.Graph().as_default():
             self._init(self.config, self.env_creator)
 
+            # Evaluation related
+            if self.config.get("evaluation_interval"):
+                # Update env_config with evaluation settings:
+                extra_config = copy.deepcopy(self.config["evaluation_config"])
+                extra_config.update({
+                    "batch_mode": "complete_episodes",
+                    "batch_steps": 1,
+                })
+                logger.debug(
+                    "using evaluation_config: {}".format(extra_config))
+                # Make local evaluation evaluators
+                self.evaluation_ev = self.make_local_evaluator(
+                    self.env_creator,
+                    self._policy_graph,
+                    extra_config=extra_config)
+                self.evaluation_metrics = self._evaluate()
+
     @override(Trainable)
     def _stop(self):
         # Call stop on all evaluators to release resources
@@ -427,6 +467,30 @@ class Trainer(Trainable):
         """Subclasses should override this for custom initialization."""
 
         raise NotImplementedError
+
+    @DeveloperAPI
+    def _evaluate(self):
+        """Evaluates current policy under `evaluation_config` settings.
+
+        Note that this default implementation does not do anything beyond
+        merging evaluation_config with the normal trainer config.
+        """
+
+        if not self.config["evaluation_config"]:
+            raise ValueError(
+                "No evaluation_config specified. It doesn't make sense "
+                "to enable evaluation without specifying any config "
+                "overrides, since the results will be the "
+                "same as reported during normal policy evaluation.")
+
+        logger.info("Evaluating current policy for {} episodes".format(
+            self.config["evaluation_num_episodes"]))
+        self.evaluation_ev.restore(self.local_evaluator.save())
+        for _ in range(self.config["evaluation_num_episodes"]):
+            self.evaluation_ev.sample()
+
+        metrics = collect_metrics(self.evaluation_ev)
+        return {"evaluation": metrics}
 
     @PublicAPI
     def compute_action(self,
