@@ -6,8 +6,9 @@ This document describes the process for creating new releases.
 1. **Increment the Python version:** Create a PR that increments the Python
    package version. See `this example`_.
 
-2. **Download the Travis-built wheels:** Once The wheels from this commit can be
-   downloaded from S3 to do testing, etc. The URL is structured like this:
+2. **Download the Travis-built wheels:** Once Travis has completed the tests,
+   the wheels from this commit can be downloaded from S3 to do testing, etc.
+   The URL is structured like this:
    ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp27-cp27mu-manylinux1_x86_64.whl``
    where ``<hash>`` is replaced by the SHA of the commit and the ``<version>``
    is the incremented version from the previous step.
@@ -27,10 +28,6 @@ This document describes the process for creating new releases.
    Any new stress tests should be added to this script so that they will be run
    automatically for future release testing.
 
-3. **Libraries:** Make sure that the libraries (e.g., RLlib, Tune, SGD) are in a
-   releasable state. TODO(rkn): These libraries should be tested automatically
-   by the script above, but they aren't yet.
-
 5. **Resolve release-blockers:** Should any release blocking issues arise,
    there are two ways these issues are resolved: A PR to patch the issue or a
    revert commit that removes the breaking change from the release. In the case
@@ -42,19 +39,21 @@ This document describes the process for creating new releases.
 
 6. **Download all the wheels:** Now the release is ready to begin final
    testing. The wheels are automatically uploaded to S3, even on the release
-   branch. The wheels can be found at the follow URLS:
+   branch. The wheels can be found at the follow URLs:
 
-* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp27-cp27mu-manylinux1_x86_64.whl``
-* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp35-cp35m-manylinux1_x86_64.whl``
-* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp36-cp36m-manylinux1_x86_64.whl``
-* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp37-cp37m-manylinux1_x86_64.whl``
-* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp27-cp27m-macosx_10_6_intel.whl``
-* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp35-cp35m-macosx_10_6_intel.whl``
-* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp36-cp36m-macosx_10_6_intel.whl``
-* ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/ray-<version>-cp37-cp37m-macosx_10_6_intel.whl``
+    .. code-block:: bash
 
-   Where ``<hash>`` is the SHA from the release branch most recent commit and
-   ``<version>`` is the version incremented in Part 1.
+
+        export RAY_HASH=...  # e.g., 618147f57fb40368448da3b2fb4fd213828fa12b
+        export RAY_VERSION=...  # e.g., 0.6.6
+        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp27-cp27mu-manylinux1_x86_64.whl
+        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-manylinux1_x86_64.whl
+        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux1_x86_64.whl
+        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux1_x86_64.whl
+        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp27-cp27m-macosx_10_6_intel.whl
+        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-macosx_10_6_intel.whl
+        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_6_intel.whl
+        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_6_intel.whl
 
 7. **Final Testing:** Send a link to the wheels to the other contributors and
    core members of the Ray project. Make sure the wheels are tested on Ubuntu,
@@ -62,17 +61,7 @@ This document describes the process for creating new releases.
    wheels are correct and that all release blockers have been resolved. Should
    a new release blocker be found, repeat steps 5-7.
 
-8. **Create a GitHub release:** Create a GitHub release through the `GitHub
-   website`_. The release should be created at the commit from the previous
-   step. This should include **release notes**. Copy the style and formatting
-   used by previous releases. Use the following to get started:
-
-   .. code-block:: bash
-
-     git pull origin master --tags
-     git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
-
-9. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
+8. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
    need to run a command like
 
@@ -98,7 +87,7 @@ This document describes the process for creating new releases.
    Do this at least for MacOS and for Linux, as well as for Python 2 and Python
    3. Also do this for different versions of MacOS.
 
-10. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
+9. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,
    **it will not be possible to modify wheels once you upload them**, so any
    mistake will require a new release. You can upload the wheels with a command
@@ -116,6 +105,19 @@ This document describes the process for creating new releases.
 
    finds the correct Ray version, and successfully runs some simple scripts on
    both MacOS and Linux as well as Python 2 and Python 3.
+
+10. **Create a GitHub release:** Create a GitHub release through the `GitHub
+   website`_. The release should be created at the commit from the previous
+   step. This should include **release notes**. Copy the style and formatting
+   used by previous releases. Create a draft of the release notes containing
+   information about substantial changes/updates/bugfixes and their PR number.
+   Once you have a draft, make sure you solicit feedback from other Ray
+   developers before publishing. Use the following to get started:
+
+   .. code-block:: bash
+
+     git pull origin master --tags
+     git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
 
 .. _`documentation for building wheels`: https://github.com/ray-project/ray/blob/master/python/README-building-wheels.md
 .. _`ci/stress_tests/run_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/ci/stress_tests/run_stress_tests.sh
