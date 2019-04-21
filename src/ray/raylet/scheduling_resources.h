@@ -22,16 +22,6 @@ const std::string kCPU_ResourceLabel = "CPU";
 /// \class FractionalResourceQuantity
 /// \brief Converts the resource quantities to an internal representation to
 /// avoid machine precision errors.
-
-
-
-///**************************
-/// Test to make sure new tests does not succeed on master
-///**************************
-
-
-
-
 class FractionalResourceQuantity {
  public:
   /// \brief Construct a FractionalResourceQuantity representing zero
@@ -80,7 +70,8 @@ class ResourceSet {
   ResourceSet();
 
   /// \brief Constructs ResourceSet from the specified resource map.
-  ResourceSet(const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map);
+  ResourceSet(
+      const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map);
 
   /// \brief Constructs ResourceSet from the specified resource map.
   ResourceSet(const std::unordered_map<std::string, double> &resource_map);

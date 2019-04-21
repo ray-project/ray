@@ -873,34 +873,43 @@ def test_many_fractional_resources(shutdown_only):
 
     @ray.remote
     def f(block, accepted_resources):
-        true_resources = {resource: value[0][1] for resource, value in ray.get_resource_ids().items()}
+        true_resources = {
+            resource: value[0][1]
+            for resource, value in ray.get_resource_ids().items()
+        }
         if block:
             ray.get(g.remote())
         return true_resources == accepted_resources
 
     # Check that the resource are assigned correctly.
     for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
-        resource_set = {"CPU": int(rand1*10000)/10000}
+        resource_set = {"CPU": int(rand1 * 10000) / 10000}
         assert ray.get(f._remote([False, resource_set], num_cpus=rand1))
 
-        resource_set = {"CPU": 1, "GPU": int(rand1*10000)/10000}
+        resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
         assert ray.get(f._remote([False, resource_set], num_gpus=rand1))
 
-        resource_set = {"CPU": 1, "Custom": int(rand1*10000)/10000}
-        assert ray.get(f._remote([False, resource_set], resources={"Custom": rand1}))
-
-        resource_set = {"CPU": int(rand1*10000)/10000, "GPU": int(rand2*10000)/10000, "Custom": int(rand3*10000)/10000}
-        assert ray.get(f._remote([False, resource_set],
-                num_cpus=rand1,
-                num_gpus=rand2,
-                resources={"Custom": rand3})
-        )
+        resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
         assert ray.get(
-            f._remote([True, resource_set],
+            f._remote([False, resource_set], resources={"Custom": rand1}))
+
+        resource_set = {
+            "CPU": int(rand1 * 10000) / 10000,
+            "GPU": int(rand2 * 10000) / 10000,
+            "Custom": int(rand3 * 10000) / 10000
+        }
+        assert ray.get(
+            f._remote(
+                [False, resource_set],
                 num_cpus=rand1,
                 num_gpus=rand2,
-                resources={"Custom": rand3})
-        )
+                resources={"Custom": rand3}))
+        assert ray.get(
+            f._remote(
+                [True, resource_set],
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
 
     # Check that the available resources at the end are the same as the
     # beginning.

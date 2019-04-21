@@ -18,8 +18,7 @@ FractionalResourceQuantity::FractionalResourceQuantity(double resource_quantity)
   RAY_CHECK(resource_quantity >= 0)
       << "Resource capacity, " << resource_quantity << ", should be nonnegative.";
 
-  resource_quantity_ =
-      static_cast<int>(resource_quantity * kResourceConversionFactor);
+  resource_quantity_ = static_cast<int>(resource_quantity * kResourceConversionFactor);
 }
 
 const FractionalResourceQuantity FractionalResourceQuantity::operator+(
@@ -75,7 +74,9 @@ double FractionalResourceQuantity::ToDouble() const {
 
 ResourceSet::ResourceSet() {}
 
-ResourceSet::ResourceSet(const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map) : resource_capacity_(resource_map) {}
+ResourceSet::ResourceSet(
+    const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map)
+    : resource_capacity_(resource_map) {}
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
@@ -145,7 +146,6 @@ void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
       resource_capacity_.erase(resource_label);
     }
 
-
     // Ensure that quantity is nonnegative.
     RAY_CHECK(resource_capacity_[resource_label] >= 0)
         << "Capacity of resource after subtraction is negative, "
@@ -188,7 +188,8 @@ FractionalResourceQuantity ResourceSet::GetResource(
 
 const ResourceSet ResourceSet::GetNumCpus() const {
   ResourceSet cpu_resource_set;
-  cpu_resource_set.resource_capacity_[kCPU_ResourceLabel] = GetResource(kCPU_ResourceLabel);
+  cpu_resource_set.resource_capacity_[kCPU_ResourceLabel] =
+      GetResource(kCPU_ResourceLabel);
   return cpu_resource_set;
 }
 
