@@ -34,7 +34,7 @@ int64_t GetExpectedTaskCounter(
   return expected_task_counter;
 };
 
-struct ResultItem {
+struct ActorStats {
   int live_actors = 0;
   int dead_actors = 0;
   int reconstructing_actors = 0;
@@ -42,9 +42,9 @@ struct ResultItem {
 };
 
 /// A helper function to return the statistical data of actors in this node manager.
-ResultItem GetActorStatisticalData(
+ActorStats GetActorStatisticalData(
     std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration> actor_registry) {
-  ResultItem item;
+  ActorStats item;
   for (auto &pair : actor_registry) {
     if (pair.second.GetState() == ActorState::ALIVE) {
       item.live_actors += 1;
@@ -302,6 +302,7 @@ void NodeManager::Heartbeat() {
   if (debug_dump_period_ > 0 &&
       static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
     DumpDebugState();
+    RecordMetrics();
     last_debug_dump_at_ms_ = now_ms;
   }
 

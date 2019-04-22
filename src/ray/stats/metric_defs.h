@@ -38,8 +38,9 @@ static Gauge LocalTotalResource("local_total_resource",
 static Gauge ActorStats("actor_stats", "Stat metrics of the actors in raylet.",
                         "pcs", {ValueTypeKey});
 
-static Gauge ObjectManagerStats("object_stats", "Stat the metric values of object in raylet",
-                         "pcs", {ValueTypeKey});
+static Gauge ObjectManagerStats("object_manager_stats",
+                                "Stat the metric values of object in raylet",
+                                "pcs",  {ValueTypeKey});
 
 static Gauge LineageCacheStats("lineage_cache_stats",
                                "Stats the metric values of lineage cache.", "pcs",

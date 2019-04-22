@@ -968,16 +968,16 @@ std::string ObjectManager::DebugString() const {
 }
 
 void ObjectManager::RecordMetrics() const {
-  stats::ObjectStats().Record(local_objects_.size(),
-                              {{stats::ValueTypeKey, "num_local_objects"}});
-  stats::ObjectStats().Record(active_wait_requests_.size(),
-                              {{stats::ValueTypeKey, "num_active_wait_requests"}});
-  stats::ObjectStats().Record(unfulfilled_push_requests_.size(),
-                              {{stats::ValueTypeKey, "num_unfulfilled_push_requests"}});
-  stats::ObjectStats().Record(pull_requests_.size(),
-                              {{stats::ValueTypeKey, "num_pull_requests"}});
-  stats::ObjectStats().Record(profile_events_.size(),
-                              {{stats::ValueTypeKey, "num_profile_events"}});
+  stats::ObjectManagerStats().Record(local_objects_.size(),
+      {{stats::ValueTypeKey, "num_local_objects"}});
+  stats::ObjectManagerStats().Record(active_wait_requests_.size(),
+      {{stats::ValueTypeKey, "num_active_wait_requests"}});
+  stats::ObjectManagerStats().Record(unfulfilled_push_requests_.size(),
+      {{stats::ValueTypeKey, "num_unfulfilled_push_requests"}});
+  stats::ObjectManagerStats().Record(pull_requests_.size(),
+      {{stats::ValueTypeKey, "num_pull_requests"}});
+  stats::ObjectManagerStats().Record(profile_events_.size(),
+      {{stats::ValueTypeKey, "num_profile_events"}});
   connection_pool_.RecordMetrics();
 }
 
