@@ -202,7 +202,7 @@ table ActorTableData {
 }
 
 table ErrorTableData {
-  // The ID of the job that the error is for.
+  // The ID of the driver that the error is for.
   driver_id: string;
   // The type of the error.
   type: string;
