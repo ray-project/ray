@@ -2,15 +2,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import random
-import math
 import copy
+import itertools
 import logging
+import math
+import os
+import random
+import shutil
 
 from ray.tune.error import TuneError
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
+from ray.tune.trial import Trial, Checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +141,9 @@ class PopulationBasedTraining(FIFOScheduler):
             perturbations from `hyperparam_mutations` are applied, and should
             return `config` updated as needed. You must specify at least one of
             `hyperparam_mutations` or `custom_explore_fn`.
+        log_config (bool): Whether to log the ray config of each model to
+            local_dir at each exploit. Allows config schedule to be
+            reconstructed.
 
     Example:
         >>> pbt = PopulationBasedTraining(
@@ -161,7 +168,8 @@ class PopulationBasedTraining(FIFOScheduler):
                  perturbation_interval=60.0,
                  hyperparam_mutations={},
                  resample_probability=0.25,
-                 custom_explore_fn=None):
+                 custom_explore_fn=None,
+                 log_config=False):
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
                 "You must specify at least one of `hyperparam_mutations` or "
@@ -174,6 +182,7 @@ class PopulationBasedTraining(FIFOScheduler):
         self._resample_probability = resample_probability
         self._trial_state = {}
         self._custom_explore_fn = custom_explore_fn
+        self._log_config = log_config
 
         # Metrics
         self._num_checkpoints = 0
@@ -213,7 +222,9 @@ class PopulationBasedTraining(FIFOScheduler):
         return TrialScheduler.CONTINUE
 
     def _exploit(self, trial_executor, trial, trial_to_clone):
-        """Transfers perturbed state from trial_to_clone -> trial."""
+        """Transfers perturbed state from trial_to_clone -> trial.
+        
+        If specified, also logs the updated hyperparam state."""
 
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
@@ -228,6 +239,34 @@ class PopulationBasedTraining(FIFOScheduler):
                     "{} (score {}) -> {} (score {})".format(
                         trial_to_clone, new_state.last_score, trial,
                         trial_state.last_score))
+
+        if self._log_config:
+            trial_name, trial_to_clone_name = trial_state.orig_tag, new_state.orig_tag
+            trial_id = ''.join(itertools.takewhile(str.isdigit, trial_name))
+            trial_to_clone_id = ''.join(
+                itertools.takewhile(str.isdigit, trial_to_clone_name))
+            trial_path = os.path.join(trial.local_dir,
+                                      "policy_" + trial_id + ".txt")
+            trial_to_clone_path = os.path.join(
+                trial_to_clone.local_dir,
+                "policy_" + trial_to_clone_id + ".txt")
+            # Log tag, current iteration, and config from target and clone trials.
+            policy = [
+                trial_name, trial_to_clone_name,
+                trial.last_result[TRAINING_ITERATION],
+                trial_to_clone.last_result[TRAINING_ITERATION],
+                trial_to_clone.config, new_config
+            ]
+            # Log to global file.
+            with open(os.path.join(trial.local_dir, "global.txt"), "a+") as f:
+                f.write(str(policy) + "\n")
+            # Overwrite state in target trial from trial_to_clone.
+            if os.path.exists(trial_to_clone_path):
+                shutil.copyfile(trial_to_clone_path, trial_path)
+            # Log new exploit in target trial log.
+            with open(trial_path, "a+") as f:
+                f.write(str(policy) + "\n")
+
         new_tag = make_experiment_tag(trial_state.orig_tag, new_config,
                                       self._hyperparam_mutations)
         reset_successful = trial_executor.reset_trial(trial, new_config,
