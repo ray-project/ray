@@ -31,58 +31,47 @@ TWIN_Q_TARGET_SCOPE = "twin_target_q_func"
 PRIO_WEIGHTS = "weights"
 
 
-class ActorCriticLoss(object):
-    def __init__(self,
-                 q_t,
-                 q_tp1,
-                 q_t_det_policy,
-                 importance_weights,
-                 rewards,
-                 done_mask,
-                 twin_q_t,
-                 twin_q_tp1,
-                 gamma=0.99,
-                 n_step=1,
-                 use_huber=False,
-                 huber_threshold=1.0,
-                 twin_q=False,
-                 policy_delay=1):
+def build_actor_critic_loss(
+        q_t, q_tp1, q_t_det_policy, importance_weights, rewards, done_mask,
+        twin_q_t, twin_q_tp1, gamma=0.99, n_step=1, use_huber=False,
+        huber_threshold=1.0, twin_q=False, policy_delay=1):
 
-        q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
-        if twin_q:
-            twin_q_t_selected = tf.squeeze(
-                twin_q_t, axis=len(q_t.shape) - 1)
-            q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
+    q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
+    if twin_q:
+        twin_q_t_selected = tf.squeeze(
+            twin_q_t, axis=len(q_t.shape) - 1)
+        q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
 
-        q_tp1_best = tf.squeeze(
-            input=q_tp1, axis=len(q_tp1.shape) - 1)
-        q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
+    q_tp1_best = tf.squeeze(
+        input=q_tp1, axis=len(q_tp1.shape) - 1)
+    q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
-        # compute RHS of bellman equation
-        q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
+    # compute RHS of bellman equation
+    q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
 
-        # compute the error (potentially clipped)
-        if twin_q:
-            td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
-            twin_td_error = twin_q_t_selected - tf.stop_gradient(
-                q_t_selected_target)
-            self.td_error = td_error + twin_td_error
-            if use_huber:
-                errors = _huber_loss(td_error, huber_threshold) + _huber_loss(
-                    twin_td_error, huber_threshold)
-            else:
-                errors = 0.5 * tf.square(td_error) + 0.5 * tf.square(
-                    twin_td_error)
+    # compute the error (potentially clipped)
+    if twin_q:
+        td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
+        twin_td_error = twin_q_t_selected - tf.stop_gradient(
+            q_t_selected_target)
+        td_error = td_error + twin_td_error
+        if use_huber:
+            errors = _huber_loss(td_error, huber_threshold) + _huber_loss(
+                twin_td_error, huber_threshold)
         else:
-            self.td_error = (
-                q_t_selected - tf.stop_gradient(q_t_selected_target))
-            if use_huber:
-                errors = _huber_loss(self.td_error, huber_threshold)
-            else:
-                errors = 0.5 * tf.square(self.td_error)
+            errors = 0.5 * tf.square(td_error) + 0.5 * tf.square(
+                twin_td_error)
+    else:
+        td_error = (
+            q_t_selected - tf.stop_gradient(q_t_selected_target))
+        if use_huber:
+            errors = _huber_loss(td_error, huber_threshold)
+        else:
+            errors = 0.5 * tf.square(td_error)
 
-        self.critic_loss = tf.reduce_mean(importance_weights * errors)
-        self.actor_loss = -tf.reduce_mean(q_t_det_policy)
+    critic_loss = tf.reduce_mean(importance_weights * errors)
+    actor_loss = -tf.reduce_mean(q_t_det_policy)
+    return critic_loss, actor_loss, td_error
 
 
 class DDPGPostprocessing(object):
@@ -120,115 +109,93 @@ class DDPGPostprocessing(object):
         return _postprocess_dqn(self, sample_batch)
 
 
-class PolicyNetwork(object):
+def build_policy_network(
+        model, dim_actions, high_action, low_action, hiddens=[64, 64],
+        activation="relu", parameter_noise=False):
     """Maps an observations (i.e., state) to an action where each entry takes
     value from (0, 1) due to the sigmoid function."""
-
-    def __init__(self,
-                 model,
-                 dim_actions,
-                 high_action,
-                 low_action,
-                 hiddens=[64, 64],
-                 activation="relu",
-                 parameter_noise=False):
-        action_out = model.last_layer
-        activation = tf.nn.__dict__[activation]
-        for hidden in hiddens:
-            action_out = layers.fully_connected(
-                action_out,
-                num_outputs=hidden,
-                activation_fn=activation,
-                normalizer_fn=layers.layer_norm if parameter_noise else None)
-        # Use sigmoid layer to bound values within (0, 1)
-        # shape of sigmoid_out is [batch_size, dim_actions]
-        sigmoid_out = layers.fully_connected(
-            action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
-        # Rescale to actual env policy scale
-        self.actions = (high_action - low_action) * sigmoid_out + low_action
-        self.model = model
+    action_out = model.last_layer
+    activation = tf.nn.__dict__[activation]
+    for hidden in hiddens:
+        action_out = layers.fully_connected(
+            action_out,
+            num_outputs=hidden,
+            activation_fn=activation,
+            normalizer_fn=layers.layer_norm if parameter_noise else None)
+    # Use sigmoid layer to bound values within (0, 1)
+    # shape of sigmoid_out is [batch_size, dim_actions]
+    sigmoid_out = layers.fully_connected(
+        action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
+    # Rescale to actual env policy scale
+    actions = (high_action - low_action) * sigmoid_out + low_action
+    return actions, model
 
 
-class ActionNetwork(object):
+def build_action_network(
+        deterministic_actions, low_action, high_action, stochastic, eps,
+        is_target, exploration_ou_theta, exploration_ou_sigma,
+        exploration_noise_type, smooth_target_policy,
+        exploration_gaussian_sigma, target_noise, target_noise_clip,
+        parameter_noise):
     """Acts as a stochastic policy for inference, but a deterministic policy
     for training, thus ignoring the batch_size issue when constructing a
     stochastic action."""
 
-    def __init__(self,
-                 # shape of deterministic_actions is [None, dim_action]
-                 deterministic_actions,
-                 low_action,
-                 high_action,
-                 stochastic,
-                 eps,
-                 is_target,
-                 exploration_ou_theta,
-                 exploration_ou_sigma,
-                 exploration_noise_type,
-                 smooth_target_policy,
-                 exploration_gaussian_sigma,
-                 target_noise,
-                 target_noise_clip,
-                 parameter_noise):
+    # FIXME: this is stupid; should remove it
+    use_gaussian_noise = smooth_target_policy
 
-        # FIXME: this is stupid; should remove it
-        use_gaussian_noise = smooth_target_policy
-
-        if use_gaussian_noise:
-            if is_target:
-                # add noise to target policy to smooth it, TD3-style
-                normal_sample = tf.random_normal(
-                    tf.shape(deterministic_actions), stddev=target_noise)
-                normal_sample = tf.clip_by_value(
-                    normal_sample, -target_noise_clip, target_noise_clip)
-                stochastic_actions = tf.clip_by_value(
-                    deterministic_actions + normal_sample, low_action,
-                    high_action)
-            else:
-                # add IID Gaussian noise for exploration, TD3-style
-                normal_sample = tf.random_normal(
-                    tf.shape(deterministic_actions),
-                    stddev=exploration_gaussian_sigma)
-                stochastic_actions = tf.clip_by_value(
-                    deterministic_actions + normal_sample, low_action,
-                    high_action)
-        else:
-            # add OU noise for exploration, DDPG-style
-            exploration_sample = tf.get_variable(
-                name="ornstein_uhlenbeck",
-                dtype=tf.float32,
-                initializer=low_action.size * [.0],
-                trainable=False)
+    # shape of deterministic_actions is [None, dim_action]
+    if use_gaussian_noise:
+        if is_target:
+            # add noise to target policy to smooth it, TD3-style
             normal_sample = tf.random_normal(
-                shape=[low_action.size], mean=0.0, stddev=1.0)
-            exploration_value = tf.assign_add(
-                exploration_sample,
-                exploration_ou_theta * (.0 - exploration_sample) +
-                exploration_ou_sigma * normal_sample)
+                tf.shape(deterministic_actions), stddev=target_noise)
+            normal_sample = tf.clip_by_value(
+                normal_sample, -target_noise_clip, target_noise_clip)
             stochastic_actions = tf.clip_by_value(
-                deterministic_actions +
-                eps * (high_action - low_action) * exploration_value,
-                low_action, high_action)
+                deterministic_actions + normal_sample, low_action,
+                high_action)
+        else:
+            # add IID Gaussian noise for exploration, TD3-style
+            normal_sample = tf.random_normal(
+                tf.shape(deterministic_actions),
+                stddev=exploration_gaussian_sigma)
+            stochastic_actions = tf.clip_by_value(
+                deterministic_actions + normal_sample, low_action,
+                high_action)
+    else:
+        # add OU noise for exploration, DDPG-style
+        exploration_sample = tf.get_variable(
+            name="ornstein_uhlenbeck",
+            dtype=tf.float32,
+            initializer=low_action.size * [.0],
+            trainable=False)
+        normal_sample = tf.random_normal(
+            shape=[low_action.size], mean=0.0, stddev=1.0)
+        exploration_value = tf.assign_add(
+            exploration_sample,
+            exploration_ou_theta * (.0 - exploration_sample) +
+            exploration_ou_sigma * normal_sample)
+        stochastic_actions = tf.clip_by_value(
+            deterministic_actions +
+            eps * (high_action - low_action) * exploration_value,
+            low_action, high_action)
 
-        self.actions = tf.cond(
-            tf.logical_and(stochastic, not parameter_noise),
-            lambda: stochastic_actions, lambda: deterministic_actions)
+    actions = tf.cond(
+        tf.logical_and(stochastic, not parameter_noise),
+        lambda: stochastic_actions, lambda: deterministic_actions)
+    return actions
 
 
-class QNetwork(object):
-    def __init__(self,
-                 model,
-                 action_inputs,
-                 hiddens=[64, 64],
-                 activation="relu"):
-        q_out = tf.concat([model.last_layer, action_inputs], axis=1)
-        activation = tf.nn.__dict__[activation]
-        for hidden in hiddens:
-            q_out = layers.fully_connected(
-                q_out, num_outputs=hidden, activation_fn=activation)
-        self.value = layers.fully_connected(
-            q_out, num_outputs=1, activation_fn=None)
-        self.model = model
+def build_q_network(model, action_inputs, hiddens=[64, 64], activation="relu"):
+    q_out = tf.concat([model.last_layer, action_inputs], axis=1)
+    activation = tf.nn.__dict__[activation]
+    for hidden in hiddens:
+        q_out = layers.fully_connected(
+            q_out, num_outputs=hidden, activation_fn=activation)
+    q_values = layers.fully_connected(
+        q_out, num_outputs=1, activation_fn=None)
+    return q_values, model
 
 
 class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
@@ -373,26 +340,28 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                 twin_target_q_func_vars = _scope_vars(scope.name)
 
         if self.config["twin_q"]:
-            self.loss = self._build_actor_critic_loss(
-                q_t, q_tp1, q_t_det_policy,
-                twin_q_t=twin_q_t, twin_q_tp1=twin_q_tp1)
+            self.critic_loss, self.actor_loss, self.td_error \
+                = self._build_actor_critic_loss(
+                    q_t, q_tp1, q_t_det_policy, twin_q_t=twin_q_t,
+                    twin_q_tp1=twin_q_tp1)
         else:
-            self.loss = self._build_actor_critic_loss(
-                q_t, q_tp1, q_t_det_policy)
+            self.critic_loss, self.actor_loss, self.td_error \
+                = self._build_actor_critic_loss(
+                    q_t, q_tp1, q_t_det_policy)
 
         if config["l2_reg"] is not None:
             for var in self.policy_vars:
                 if "bias" not in var.name:
-                    self.loss.actor_loss += (
+                    self.actor_loss += (
                         config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
             for var in self.q_func_vars:
                 if "bias" not in var.name:
-                    self.loss.critic_loss += (
+                    self.critic_loss += (
                         config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
             if self.config["twin_q"]:
                 for var in self.twin_q_func_vars:
                     if "bias" not in var.name:
-                        self.loss.critic_loss += (
+                        self.critic_loss += (
                             config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
 
         # update_target_fn will be called periodically to copy Q network to
@@ -433,13 +402,13 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         input_dict = dict(self.loss_inputs)
 
         # Model self-supervised losses
-        self.loss.actor_loss = self.policy_model.custom_loss(
-            self.loss.actor_loss, input_dict)
-        self.loss.critic_loss = self.q_model.custom_loss(
-            self.loss.critic_loss, input_dict)
+        self.actor_loss = self.policy_model.custom_loss(
+            self.actor_loss, input_dict)
+        self.critic_loss = self.q_model.custom_loss(
+            self.critic_loss, input_dict)
         if self.config["twin_q"]:
-            self.loss.critic_loss = self.twin_q_model.custom_loss(
-                self.loss.critic_loss, input_dict)
+            self.critic_loss = self.twin_q_model.custom_loss(
+                self.critic_loss, input_dict)
 
         TFPolicyGraph.__init__(
             self,
@@ -448,7 +417,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=self.loss.actor_loss + self.loss.critic_loss,
+            loss=self.actor_loss + self.critic_loss,
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops + policy_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
@@ -491,20 +460,20 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         if self.config["grad_norm_clipping"] is not None:
             actor_grads_and_vars = _minimize_and_clip(
                 self._actor_optimizer,
-                self.loss.actor_loss,
+                self.actor_loss,
                 var_list=self.policy_vars,
                 clip_val=self.config["grad_norm_clipping"])
             critic_grads_and_vars = _minimize_and_clip(
                 self._critic_optimizer,
-                self.loss.critic_loss,
+                self.critic_loss,
                 var_list=self.q_func_vars + self.twin_q_func_vars
                 if self.config["twin_q"] else self.q_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
         else:
             actor_grads_and_vars = self._actor_optimizer.compute_gradients(
-                self.loss.actor_loss, var_list=self.policy_vars)
+                self.actor_loss, var_list=self.policy_vars)
             critic_grads_and_vars = self._critic_optimizer.compute_gradients(
-                self.loss.critic_loss,
+                self.critic_loss,
                 var_list=self.q_func_vars + self.twin_q_func_vars
                 if self.config["twin_q"] else self.q_func_vars)
         # save these for later use in build_apply_op
@@ -527,7 +496,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return {
-            "td_error": self.loss.td_error,
+            "td_error": self.td_error,
             LEARNER_STATS_KEY: self.stats,
         }
 
@@ -549,17 +518,17 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         self.set_epsilon(state[1])
 
     def _build_q_network(self, obs, obs_space, action_space, actions):
-        q_net = QNetwork(
+        q_values, q_model = build_q_network(
             ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
             }, obs_space, action_space, 1, self.config["model"]), actions,
             self.config["critic_hiddens"],
             self.config["critic_hidden_activation"])
-        return q_net.value, q_net.model
+        return q_values, q_model
 
     def _build_policy_network(self, obs, obs_space, action_space):
-        policy_net = PolicyNetwork(
+        actions, policy_model = build_policy_network(
             ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
@@ -568,7 +537,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
             self.config["actor_hiddens"],
             self.config["actor_hidden_activation"],
             self.config["parameter_noise"])
-        return policy_net.actions, policy_net.model
+        return actions, policy_model
 
     def _build_action_network(self, policy_values, stochastic, eps,
                               is_target=False):
@@ -579,10 +548,10 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
             "parameter_noise",
         ]
         action_opt_dict = {key: self.config[key] for key in action_opts}
-        return ActionNetwork(
+        return build_action_network(
             deterministic_actions=policy_values, low_action=self.low_action,
             high_action=self.high_action, stochastic=stochastic, eps=eps,
-            is_target=is_target, **action_opt_dict).actions
+            is_target=is_target, **action_opt_dict)
 
     def _build_actor_critic_loss(self,
                                  q_t,
@@ -590,13 +559,11 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                                  q_t_det_policy,
                                  twin_q_t=None,
                                  twin_q_tp1=None):
-        return ActorCriticLoss(q_t, q_tp1, q_t_det_policy,
-                               self.importance_weights,
-                               self.rew_t, self.done_mask, twin_q_t,
-                               twin_q_tp1, self.config["gamma"],
-                               self.config["n_step"], self.config["use_huber"],
-                               self.config["huber_threshold"],
-                               self.config["twin_q"])
+        return build_actor_critic_loss(
+            q_t, q_tp1, q_t_det_policy, self.importance_weights, self.rew_t,
+            self.done_mask, twin_q_t, twin_q_tp1, self.config["gamma"],
+            self.config["n_step"], self.config["use_huber"],
+            self.config["huber_threshold"], self.config["twin_q"])
 
     def _build_parameter_noise(self, pnet_params):
         self.parameter_noise_sigma_val = self.config["exploration_ou_sigma"]
@@ -638,7 +605,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
         td_err = self.sess.run(
-            self.loss.td_error,
+            self.td_error,
             feed_dict={
                 self.obs_t: [np.array(ob) for ob in obs_t],
                 self.act_t: act_t,
