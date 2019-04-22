@@ -17,7 +17,7 @@ static Gauge CurrentWorker("current_worker",
                            "1 pcs", {LanguageKey, WorkerPidKey});
 
 static Gauge CurrentDriver("current_driver",
-                           "This metric is used for report states of drivers.", "1 pcs",
+                           "This metric is used for reporting states of drivers.", "1 pcs",
                            {LanguageKey, DriverPidKey});
 
 static Count TaskCountReceived("task_count_received",
