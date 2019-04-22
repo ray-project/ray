@@ -28,7 +28,7 @@ static Histogram RedisLatency("redis_latency", "The latency of a Redis operation
                               {CustomKey});
 
 static Gauge LocalAvailableResource("local_available_resource",
-                                    "The available resource of this node.", "pcs",
+                                    "The available resources on this node.", "pcs",
                                     {ResourceNameKey});
 
 static Gauge LocalTotalResource("local_total_resource",
