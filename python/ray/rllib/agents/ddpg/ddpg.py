@@ -13,19 +13,21 @@ from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 DEFAULT_CONFIG = with_common_config({
     # === Twin Delayed DDPG (TD3) and Soft Actor-Critic (SAC) tricks ===
     # TD3: https://spinningup.openai.com/en/latest/algorithms/td3.html
+    # In addition to settings below, you can use "exploration_noise_type" and
+    # "exploration_gauss_act_noise" to get IID Gaussian exploration noise
+    # instead of OU exploration noise.
     # twin Q-net
     "twin_q": False,
     # delayed policy update
     "policy_delay": 1,
     # target policy smoothing
-    # this also forces the use of gaussian instead of OU noise for exploration
+    # (this also replaces OU exploration noise with IID Gaussian exploration
+    # noise, for now)
     "smooth_target_policy": False,
-    # gaussian stddev of act noise
-    "act_noise": 0.1,
-    # gaussian stddev of target noise
+    # gaussian stddev of target action noise for smoothing
     "target_noise": 0.2,
     # target noise limit (bound)
-    "noise_clip": 0.5,
+    "target_noise_clip": 0.5,
 
     # === Evaluation ===
     # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
@@ -60,16 +62,19 @@ DEFAULT_CONFIG = with_common_config({
     "exploration_fraction": 0.1,
     # Final value of random action probability
     "exploration_final_eps": 0.02,
-    # OU-noise scale
-    "noise_scale": 0.1,
-    # theta
-    "exploration_theta": 0.15,
-    # sigma
-    "exploration_sigma": 0.2,
-    # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 0,
-    # Update the target by \tau * policy + (1-\tau) * target_policy
-    "tau": 0.002,
+    # valid values: "ou" (time-correlated, like original DDPG paper),
+    # "gaussian" (IID, like TD3 paper). Currently this is ignored (FIXME); use
+    # smooth_target policy instead.
+    "exploration_noise_type": "ou",
+    # OU-noise scale (requires "exploration_noise_type" to be "ou")
+    "exploration_ou_noise_scale": 0.1,
+    # theta for OU
+    "exploration_ou_theta": 0.15,
+    # sigma for OU
+    "exploration_ou_sigma": 0.2,
+    # gaussian stddev of act noise for exploration (requires
+    # "exploration_noise_type" to be "gaussian")
+    "exploration_gaussian_sigma": 0.1,
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
     "parameter_noise": False,
@@ -94,6 +99,10 @@ DEFAULT_CONFIG = with_common_config({
     "critic_lr": 1e-3,
     # Learning rate for the actor (policy) optimizer.
     "actor_lr": 1e-3,
+    # Update the target network every `target_network_update_freq` steps.
+    "target_network_update_freq": 0,
+    # Update the target by \tau * policy + (1-\tau) * target_policy
+    "tau": 0.002,
     # If True, use huber loss instead of squared loss for critic network
     # Conventionally, no need to clip gradients if using a huber loss
     "use_huber": False,
@@ -139,7 +148,8 @@ class DDPGTrainer(DQNTrainer):
 
     @override(DQNTrainer)
     def _make_exploration_schedule(self, worker_index):
-        # Override DQN's schedule to take into account `noise_scale`
+        # Override DQN's schedule to take into account
+        # `exploration_ou_noise_scale`
         if self.config["per_worker_exploration"]:
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
@@ -148,7 +158,7 @@ class DDPGTrainer(DQNTrainer):
                     1 +
                     worker_index / float(self.config["num_workers"] - 1) * 7)
                 return ConstantSchedule(
-                    self.config["noise_scale"] * 0.4**exponent)
+                    self.config["exploration_ou_noise_scale"] * 0.4**exponent)
             else:
                 # local ev should have zero exploration so that eval rollouts
                 # run properly
@@ -157,6 +167,6 @@ class DDPGTrainer(DQNTrainer):
             return LinearSchedule(
                 schedule_timesteps=int(self.config["exploration_fraction"] *
                                        self.config["schedule_max_timesteps"]),
-                initial_p=self.config["noise_scale"] * 1.0,
-                final_p=self.config["noise_scale"] *
+                initial_p=self.config["exploration_ou_noise_scale"] * 1.0,
+                final_p=self.config["exploration_ou_noise_scale"] *
                 self.config["exploration_final_eps"])

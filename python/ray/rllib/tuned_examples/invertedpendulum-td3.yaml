@@ -9,9 +9,9 @@ invertedpendulum-td3:
         twin_q: True
         policy_delay: 2
         smooth_target_policy: True
-        act_noise: 0.1
+        exploration_gaussian_sigma: 0.1
         target_noise: 0.2
-        noise_clip: 0.5
+        target_noise_clip: 0.5
 
         # === Model ===
         actor_hiddens: [64, 64]
@@ -26,9 +26,9 @@ invertedpendulum-td3:
         timesteps_per_iteration: 1000
         exploration_fraction: 0.1
         exploration_final_eps: 0.02
-        noise_scale: 0.1
-        exploration_theta: 0.15
-        exploration_sigma: 0.2
+        exploration_ou_noise_scale: 0.1
+        exploration_ou_theta: 0.15
+        exploration_ou_sigma: 0.2
         target_network_update_freq: 0
         tau: 0.005
 
