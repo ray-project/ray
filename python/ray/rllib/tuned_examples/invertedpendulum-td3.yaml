@@ -9,7 +9,6 @@ invertedpendulum-td3:
         twin_q: True
         policy_delay: 2
         smooth_target_policy: True
-        exploration_gaussian_sigma: 0.1
         target_noise: 0.2
         target_noise_clip: 0.5
 
@@ -26,11 +25,8 @@ invertedpendulum-td3:
         timesteps_per_iteration: 1000
         exploration_fraction: 0.1
         exploration_final_eps: 0.02
-        exploration_ou_noise_scale: 0.1
-        exploration_ou_theta: 0.15
-        exploration_ou_sigma: 0.2
-        target_network_update_freq: 0
-        tau: 0.005
+        exploration_noise_type: gaussian
+        exploration_gaussian_sigma: 0.1
 
         # === Replay buffer ===
         buffer_size: 1000000
@@ -48,6 +44,8 @@ invertedpendulum-td3:
         learning_starts: 1000
         sample_batch_size: 1
         train_batch_size: 100
+        target_network_update_freq: 0
+        tau: 0.005
 
         # === Parallelism ===
         num_workers: 0

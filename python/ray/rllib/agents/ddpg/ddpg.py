@@ -154,9 +154,8 @@ class DDPGTrainer(DQNTrainer):
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
             if worker_index >= 0:
-                exponent = (
-                    1 +
-                    worker_index / float(self.config["num_workers"] - 1) * 7)
+                max_index = float(self.config["num_workers"] - 1)
+                exponent = 1 + worker_index / max_index * 7
                 return ConstantSchedule(
                     self.config["exploration_ou_noise_scale"] * 0.4**exponent)
             else:

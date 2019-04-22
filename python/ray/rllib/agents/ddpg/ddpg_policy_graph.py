@@ -131,62 +131,6 @@ def build_policy_network(
     return actions, model
 
 
-def build_action_network(
-        deterministic_actions, low_action, high_action, stochastic, eps,
-        is_target, exploration_ou_theta, exploration_ou_sigma,
-        exploration_noise_type, smooth_target_policy,
-        exploration_gaussian_sigma, target_noise, target_noise_clip,
-        parameter_noise):
-    """Acts as a stochastic policy for inference, but a deterministic policy
-    for training, thus ignoring the batch_size issue when constructing a
-    stochastic action."""
-
-    # FIXME: this is stupid; should remove it
-    use_gaussian_noise = smooth_target_policy
-
-    # shape of deterministic_actions is [None, dim_action]
-    if use_gaussian_noise:
-        if is_target:
-            # add noise to target policy to smooth it, TD3-style
-            normal_sample = tf.random_normal(
-                tf.shape(deterministic_actions), stddev=target_noise)
-            normal_sample = tf.clip_by_value(
-                normal_sample, -target_noise_clip, target_noise_clip)
-            stochastic_actions = tf.clip_by_value(
-                deterministic_actions + normal_sample, low_action,
-                high_action)
-        else:
-            # add IID Gaussian noise for exploration, TD3-style
-            normal_sample = tf.random_normal(
-                tf.shape(deterministic_actions),
-                stddev=exploration_gaussian_sigma)
-            stochastic_actions = tf.clip_by_value(
-                deterministic_actions + normal_sample, low_action,
-                high_action)
-    else:
-        # add OU noise for exploration, DDPG-style
-        exploration_sample = tf.get_variable(
-            name="ornstein_uhlenbeck",
-            dtype=tf.float32,
-            initializer=low_action.size * [.0],
-            trainable=False)
-        normal_sample = tf.random_normal(
-            shape=[low_action.size], mean=0.0, stddev=1.0)
-        exploration_value = tf.assign_add(
-            exploration_sample,
-            exploration_ou_theta * (.0 - exploration_sample) +
-            exploration_ou_sigma * normal_sample)
-        stochastic_actions = tf.clip_by_value(
-            deterministic_actions +
-            eps * (high_action - low_action) * exploration_value,
-            low_action, high_action)
-
-    actions = tf.cond(
-        tf.logical_and(stochastic, not parameter_noise),
-        lambda: stochastic_actions, lambda: deterministic_actions)
-    return actions
-
-
 def build_q_network(model, action_inputs, hiddens=[64, 64], activation="relu"):
     q_out = tf.concat([model.last_layer, action_inputs], axis=1)
     activation = tf.nn.__dict__[activation]
@@ -196,6 +140,19 @@ def build_q_network(model, action_inputs, hiddens=[64, 64], activation="relu"):
     q_values = layers.fully_connected(
         q_out, num_outputs=1, activation_fn=None)
     return q_values, model
+
+
+def smooth_target_actions_td3(
+        actions, noise_sigma, noise_clip, action_low, action_high):
+    # add noise to target policy output to smooth it, TD3-style
+    normal_sample = tf.random_normal(
+        tf.shape(actions), stddev=noise_sigma)
+    clipped_normal_sample = tf.clip_by_value(
+        normal_sample, -noise_clip, noise_clip)
+    noisy_actions = actions + clipped_normal_sample
+    clipped_noisy_actions = tf.clip_by_value(
+        noisy_actions, action_low, action_high)
+    return clipped_noisy_actions
 
 
 class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
@@ -229,12 +186,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
             shape=(None, ) + observation_space.shape,
             name="cur_obs")
 
-        # Actor (policy network). policy_values is scaled to (0,1) via a
-        # sigmoid activation; to get action values, you need to rescale using
-        # actual action bounds for the environment.
         with tf.variable_scope(POLICY_SCOPE) as scope:
-            # FIXME: this is super bizarre. Why don't we just scale things
-            # *correctly* in the policy network thing?
             policy_out, self.policy_model = self._build_policy_network(
                 self.cur_observations, observation_space, action_space)
             self.policy_vars = _scope_vars(scope.name)
@@ -248,9 +200,8 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE):
-            # FIXME: remove ActionNetwork entirely
-            self.output_actions = self._build_action_network(
-                policy_out, self.stochastic, self.eps)
+            self.output_actions = self._build_exploration_noise(
+                policy_out, self.stochastic, self.eps, action_space)
 
         if self.config["smooth_target_policy"]:
             self.reset_noise_op = tf.no_op()
@@ -274,7 +225,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         self.importance_weights = tf.placeholder(
             tf.float32, [None], name="weight")
 
-        # p network evaluation
+        # policy network evaluation
         with tf.variable_scope(POLICY_SCOPE, reuse=True) as scope:
             prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
             self.policy_t, _ = self._build_policy_network(
@@ -283,7 +234,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                 set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
                 prev_update_ops)
 
-        # target p network evaluation
+        # target policy network evaluation
         with tf.variable_scope(POLICY_TARGET_SCOPE) as scope:
             policy_tp1, _ = self._build_policy_network(
                 self.obs_tp1, observation_space, action_space)
@@ -291,16 +242,18 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE, reuse=True):
-            output_actions = self._build_action_network(
-                self.policy_t,
-                stochastic=tf.constant(value=False, dtype=tf.bool),
-                eps=.0)
-            output_actions_estimated = self._build_action_network(
-                policy_tp1,
-                stochastic=tf.constant(
-                    value=self.config["smooth_target_policy"], dtype=tf.bool),
-                eps=.0,
-                is_target=True)
+            if config["smooth_target_policy"]:
+                # TODO: verify that policy_tp1 is computed with *target*
+                # policy, not normal policy. Also make sure this is actually
+                # used in the right place (to train the Q-function, with an
+                # appropriate stop_gradient()!).
+                policy_tp1_smoothed = smooth_target_actions_td3(
+                    policy_tp1, noise_sigma=self.config["target_noise"],
+                    noise_clip=self.config["target_noise_clip"],
+                    action_low=action_space.low, action_high=action_space.high)
+            else:
+                # no smoothing, just use deterministic actions
+                policy_tp1_smoothed = policy_tp1
 
         # q network evaluation
         prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
@@ -317,7 +270,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         with tf.variable_scope(Q_SCOPE, reuse=True):
             # Q-values for current policy (no noise) in given current state
             q_t_det_policy, _ = self._build_q_network(
-                self.obs_t, observation_space, action_space, output_actions)
+                self.obs_t, observation_space, action_space, self.policy_t)
         if self.config["twin_q"]:
             with tf.variable_scope(TWIN_Q_SCOPE) as scope:
                 twin_q_t, self.twin_q_model = self._build_q_network(
@@ -330,13 +283,13 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
             q_tp1, _ = self._build_q_network(
                 self.obs_tp1, observation_space, action_space,
-                output_actions_estimated)
+                policy_tp1_smoothed)
             target_q_func_vars = _scope_vars(scope.name)
         if self.config["twin_q"]:
             with tf.variable_scope(TWIN_Q_TARGET_SCOPE) as scope:
                 twin_q_tp1, _ = self._build_q_network(
                     self.obs_tp1, observation_space, action_space,
-                    output_actions_estimated)
+                    policy_tp1_smoothed)
                 twin_target_q_func_vars = _scope_vars(scope.name)
 
         if self.config["twin_q"]:
@@ -539,19 +492,49 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
             self.config["parameter_noise"])
         return actions, policy_model
 
-    def _build_action_network(self, policy_values, stochastic, eps,
-                              is_target=False):
-        action_opts = [
-            "exploration_ou_theta", "exploration_ou_sigma",
-            "exploration_gaussian_sigma", "exploration_noise_type",
-            "smooth_target_policy", "target_noise", "target_noise_clip",
-            "parameter_noise",
-        ]
-        action_opt_dict = {key: self.config[key] for key in action_opts}
-        return build_action_network(
-            deterministic_actions=policy_values, low_action=self.low_action,
-            high_action=self.high_action, stochastic=stochastic, eps=eps,
-            is_target=is_target, **action_opt_dict)
+    def _build_exploration_noise(
+            self, deterministic_actions, should_be_stochastic, eps, action_space):
+        # FIXME: this is a stupid way of doing it; should remove
+        noise_type = self.config["exploration_noise_type"]
+
+        # shape of deterministic_actions is [None, dim_action]
+        if noise_type == "gaussian":
+            # add IID Gaussian noise for exploration, TD3-style
+            normal_sample = tf.random_normal(
+                tf.shape(deterministic_actions),
+                stddev=self.config["exploration_gaussian_sigma"])
+            stochastic_actions = tf.clip_by_value(
+                deterministic_actions + normal_sample,
+                action_space.low, action_space.high)
+        elif noise_type == "ou":
+            # add OU noise for exploration, DDPG-style
+            exploration_sample = tf.get_variable(
+                name="ornstein_uhlenbeck",
+                dtype=tf.float32,
+                initializer=action_space.low.size * [.0],
+                trainable=False)
+            normal_sample = tf.random_normal(
+                shape=[action_space.low.size], mean=0.0, stddev=1.0)
+            exploration_value = tf.assign_add(
+                exploration_sample,
+                self.config["exploration_ou_theta"] * -exploration_sample +
+                self.config["exploration_ou_sigma"] * normal_sample)
+            action_range = action_space.high - action_space.low
+            stochastic_actions = tf.clip_by_value(
+                deterministic_actions +
+                eps * action_range * exploration_value,
+                action_space.low, action_space.high)
+        else:
+            raise ValueError(
+                "Unknown noise type '%s' (try 'ou' or 'gaussian')" %
+                noise_type)
+
+        enable_stochastic = tf.logical_and(
+            should_be_stochastic, not self.config["parameter_noise"])
+        actions = tf.cond(
+            enable_stochastic, lambda: stochastic_actions,
+            lambda: deterministic_actions)
+        return actions
 
     def _build_actor_critic_loss(self,
                                  q_t,
