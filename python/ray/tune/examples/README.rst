@@ -53,6 +53,13 @@ TensorFlow Examples
    Example of tuning a TensorFlow model on MNIST using AsyncHyperBand.
 
 
+MXNet Gluon Example
+---------------------
+
+- `tune_cifar10_gluon <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_cifar10_gluon.py>`__:
+   MXNet Gluon example to use Tune with the function-based API on CIFAR-10 dataset.
+
+
 Contributed Examples
 --------------------
 
