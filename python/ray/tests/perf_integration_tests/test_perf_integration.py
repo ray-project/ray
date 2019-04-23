@@ -33,7 +33,9 @@ def warmup():
 @pytest.mark.parametrize("num_tasks", num_tasks_submitted, ids=num_tasks_ids)
 def test_task_submission(benchmark, num_tasks):
     num_cpus = 16
-    ray.init(num_cpus=num_cpus, object_store_memory=10**7, ignore_reinit_error=True)
+    ray.init(num_cpus=num_cpus,
+             object_store_memory=10**7,
+             ignore_reinit_error=True)
     # warm up the plasma store
     warmup()
     benchmark(benchmark_task_submission, num_tasks)
