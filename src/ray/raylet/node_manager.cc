@@ -153,17 +153,18 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed =
-      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-             const ClientTableDataT &data) { ClientRemoved(data); };
+  auto node_manager_client_removed = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ClientRemoved(data);
+  };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Subscribe to heartbeat batches from the monitor.
-  const auto &heartbeat_batch_added =
-      [this](gcs::AsyncGcsClient *client, const ClientID &id,
-             const HeartbeatBatchTableDataT &heartbeat_batch) {
-        HeartbeatBatchAdded(heartbeat_batch);
-      };
+  const auto &heartbeat_batch_added = [this](
+      gcs::AsyncGcsClient *client, const ClientID &id,
+      const HeartbeatBatchTableDataT &heartbeat_batch) {
+    HeartbeatBatchAdded(heartbeat_batch);
+  };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
       DriverID::nil(), ClientID::nil(), heartbeat_batch_added,
       /*subscribe_callback=*/nullptr,

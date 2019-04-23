@@ -228,12 +228,8 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   std::vector<Task> removed_tasks;
   // Try to find the tasks to remove from the queues.
   for (const auto &task_state : {
-           TaskState::PLACEABLE,
-           TaskState::WAITING,
-           TaskState::READY,
-           TaskState::RUNNING,
-           TaskState::INFEASIBLE,
-           TaskState::WAITING_FOR_ACTOR_CREATION,
+           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
+           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
        }) {
     RemoveTasksFromQueue(task_state, task_ids, &removed_tasks);
   }
@@ -247,12 +243,8 @@ Task SchedulingQueue::RemoveTask(const TaskID &task_id, TaskState *removed_task_
   std::unordered_set<TaskID> task_id_set = {task_id};
   // Try to find the task to remove in the queues.
   for (const auto &task_state : {
-           TaskState::PLACEABLE,
-           TaskState::WAITING,
-           TaskState::READY,
-           TaskState::RUNNING,
-           TaskState::INFEASIBLE,
-           TaskState::WAITING_FOR_ACTOR_CREATION,
+           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
+           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
        }) {
     RemoveTasksFromQueue(task_state, task_id_set, &removed_tasks);
     if (task_id_set.empty()) {
@@ -393,12 +385,8 @@ std::string SchedulingQueue::DebugString() const {
   std::stringstream result;
   result << "SchedulingQueue:";
   for (const auto &task_state : {
-           TaskState::PLACEABLE,
-           TaskState::WAITING,
-           TaskState::READY,
-           TaskState::RUNNING,
-           TaskState::INFEASIBLE,
-           TaskState::WAITING_FOR_ACTOR_CREATION,
+           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
+           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
        }) {
     result << "\n- num " << GetTaskStateString(task_state)
            << " tasks: " << GetTaskQueue(task_state)->GetTasks().size();

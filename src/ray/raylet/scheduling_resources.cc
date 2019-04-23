@@ -15,8 +15,8 @@ FractionalResourceQuantity::FractionalResourceQuantity(double resource_quantity)
   // We check for nonnegativeity due to the implicit conversion to
   // FractionalResourceQuantity from ints/doubles when we do logical
   // comparisons.
-  RAY_CHECK(resource_quantity >= 0)
-      << "Resource capacity, " << resource_quantity << ", should be nonnegative.";
+  RAY_CHECK(resource_quantity >= 0) << "Resource capacity, " << resource_quantity
+                                    << ", should be nonnegative.";
 
   resource_quantity_ = static_cast<int>(resource_quantity * kResourceConversionFactor);
 }
