@@ -80,6 +80,7 @@ ResourceSet::ResourceSet(
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
+    RAY_CHECK(resource_pair.second > 0);
     resource_capacity_[resource_pair.first] =
         FractionalResourceQuantity(resource_pair.second);
   }
@@ -89,6 +90,7 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (uint i = 0; i < resource_labels.size(); i++) {
+    RAY_CHECK(resource_capacity[i] > 0);
     resource_capacity_[resource_labels[i]] =
         FractionalResourceQuantity(resource_capacity[i]);
   }
@@ -133,26 +135,6 @@ bool ResourceSet::RemoveResource(const std::string &resource_name) {
   throw std::runtime_error("Method not implemented");
 }
 
-void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
-  // Subtract the resources, make sure none goes below zero and delete any if new capacity
-  // is zero.
-  for (const auto &resource_pair : other.GetResourceAmountMap()) {
-    const std::string &resource_label = resource_pair.first;
-    const FractionalResourceQuantity &resource_capacity = resource_pair.second;
-    RAY_CHECK(resource_capacity_.count(resource_label) == 1)
-        << "Attempt to acquire unknown resource: " << resource_label;
-    resource_capacity_[resource_label] -= resource_capacity;
-    if (resource_capacity_[resource_label] == 0) {
-      resource_capacity_.erase(resource_label);
-    }
-
-    // Ensure that quantity is nonnegative.
-    RAY_CHECK(resource_capacity_[resource_label] >= 0)
-        << "Capacity of resource after subtraction is negative, "
-        << resource_capacity_[resource_label].ToDouble() << ".";
-  }
-}
-
 void ResourceSet::SubtractResources(const ResourceSet &other) {
   // Subtract the resources, make sure none goes below zero and delete any if new capacity
   // is zero.
@@ -162,6 +144,28 @@ void ResourceSet::SubtractResources(const ResourceSet &other) {
     RAY_CHECK(resource_capacity_.count(resource_label) == 1)
         << "Attempt to acquire unknown resource: " << resource_label;
     resource_capacity_[resource_label] -= resource_capacity;
+    if (resource_capacity_[resource_label] < 0) {
+      resource_capacity_.erase(resource_label);
+    }
+  }
+}
+
+void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
+  // Subtract the resources, make sure none goes below zero and delete any if new capacity
+  // is zero.
+  for (const auto &resource_pair : other.GetResourceAmountMap()) {
+    const std::string &resource_label = resource_pair.first;
+    const FractionalResourceQuantity &resource_capacity = resource_pair.second;
+    RAY_CHECK(resource_capacity_.count(resource_label) == 1)
+        << "Attempt to acquire unknown resource: " << resource_label;
+    resource_capacity_[resource_label] -= resource_capacity;
+
+    // Ensure that quantity is positive. Note, we have to have the check before
+    // erasing the object to make sure that it doesn't get added back.
+    RAY_CHECK(resource_capacity_[resource_label] >= 0)
+        << "Capacity of resource after subtraction is negative, "
+        << resource_capacity_[resource_label].ToDouble() << ".";
+
     if (resource_capacity_[resource_label] == 0) {
       resource_capacity_.erase(resource_label);
     }

@@ -50,8 +50,9 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       ResourceSet available_node_resources =
           ResourceSet(node_resources.GetAvailableResources());
       // We have to subtract the current "load" because we set the current "load"
-      // to be the resources used by the ready_queue_ in
-      // NodeManager::ProcessGetTaskMessage's call to SchedulingQueue::GetResourceLoad.
+      // to be the resources used by tasks that are in the
+      // `SchedulingQueue::ready_queue_` in NodeManager::ProcessGetTaskMessage's
+      // call to SchedulingQueue::GetResourceLoad.
       available_node_resources.SubtractResources(node_resources.GetLoadResources());
       RAY_LOG(DEBUG) << "client_id " << node_client_id
                      << " avail: " << node_resources.GetAvailableResources().ToString()
