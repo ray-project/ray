@@ -171,7 +171,7 @@ int main(int argc, char *argv[]) {
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
-                     const boost::system::error_code &error, int signal_number) {
+      const boost::system::error_code &error, int signal_number) {
     auto shutdown_callback = [&server, &main_service]() {
       server.reset();
       main_service.stop();
