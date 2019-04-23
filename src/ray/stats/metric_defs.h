@@ -17,8 +17,8 @@ static Gauge CurrentWorker("current_worker",
                            "1 pcs", {LanguageKey, WorkerPidKey});
 
 static Gauge CurrentDriver("current_driver",
-                           "This metric is used for reporting states of drivers.", "1 pcs",
-                           {LanguageKey, DriverPidKey});
+                           "This metric is used for reporting states of drivers.",
+                           "1 pcs", {LanguageKey, DriverPidKey});
 
 static Count TaskCountReceived("task_count_received",
                                "Number of tasks received by raylet.", "pcs", {});
@@ -35,12 +35,12 @@ static Gauge LocalTotalResource("local_total_resource",
                                 "The total resources on this node.", "pcs",
                                 {ResourceNameKey});
 
-static Gauge ActorStats("actor_stats", "Stat metrics of the actors in raylet.",
-                        "pcs", {ValueTypeKey});
+static Gauge ActorStats("actor_stats", "Stat metrics of the actors in raylet.", "pcs",
+                        {ValueTypeKey});
 
 static Gauge ObjectManagerStats("object_manager_stats",
-                                "Stat the metric values of object in raylet",
-                                "pcs",  {ValueTypeKey});
+                                "Stat the metric values of object in raylet", "pcs",
+                                {ValueTypeKey});
 
 static Gauge LineageCacheStats("lineage_cache_stats",
                                "Stats the metric values of lineage cache.", "pcs",
