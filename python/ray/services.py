@@ -1555,7 +1555,12 @@ def start_raylet_monitor(redis_address,
     redis_password = redis_password or ""
     config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
-    command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port, config_str]
+    command = [
+        RAYLET_MONITOR_EXECUTABLE,
+        "-redis_address={}".format(gcs_ip_address),
+        "-redis_port={}".format(gcs_port),
+        "-config_list={}".format(config_str),
+    ]
     if redis_password:
         command += [redis_password]
     process_info = start_ray_process(
