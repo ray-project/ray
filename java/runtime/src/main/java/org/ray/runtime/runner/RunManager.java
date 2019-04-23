@@ -253,34 +253,20 @@ public class RunManager {
     List<String> command = ImmutableList.of(
         // The raylet executable file.
         getTempFile("/raylet").getAbsolutePath(),
-        "--raylet_socket_name",
-        rayConfig.rayletSocketName,
-        "--store_socket_name",
-        rayConfig.objectStoreSocketName,
-        "--object_manager_port",
-        "0",  // The object manager port.
-        "--node_manager_port",
-        "0",  // The node manager port.
-        "--node_ip_address",
-        rayConfig.nodeIp,
-        "--redis_address",
-        rayConfig.getRedisIp(),
-        "--redis_port",
-        rayConfig.getRedisPort().toString(),
-        "--num_initial_workers",
-        "0", // number of initial workers
-        "--maximum_startup_concurrency",
-        String.valueOf(maximumStartupConcurrency),
-        "--static_resource_list",
-        ResourceUtil.getResourcesStringFromMap(rayConfig.resources),
-        "--config_list",
-        String.join(",", rayConfig.rayletConfigParameters), // The internal config list.
-        "--python_worker_command",
-        buildPythonWorkerCommand(), // python worker command
-        "--java_worker_command",
-        buildWorkerCommandRaylet(), // java worker command
-        "--redis_password",
-        redisPasswordOption
+        String.format("-raylet_socket_name=\"%s\"", rayConfig.rayletSocketName),
+        String.format("-store_socket_name=\"%s\"", rayConfig.objectStoreSocketName),
+        String.format("-object_manager_port=%d", 0), // The object manager port.
+        String.format("-node_manager_port=%d", 0),  // The node manager port.
+        String.format("-node_ip_address=\"%s\"",rayConfig.nodeIp),
+        String.format("-redis_address=\"%s\"", rayConfig.getRedisIp()),
+        String.format("-redis_port=%d", rayConfig.getRedisPort()),
+        String.format("-num_initial_workers=%d", 0),  // number of initial workers
+        String.format("-maximum_startup_concurrency=%d", 0),
+        String.format("-static_resource_list=\"%s\"", ResourceUtil.getResourcesStringFromMap(rayConfig.resources)),
+        String.format("-config_list=\"%s\"", String.join(",", rayConfig.rayletConfigParameters)),
+        String.format("-python_worker_command=\"%s\"", buildPythonWorkerCommand()),
+        String.format("-java_worker_command=\"%s\"", buildWorkerCommandRaylet()),
+        String.format("-redis_password=\"%s\"", redisPasswordOption)
     );
 
     startProcess(command, null, "raylet");

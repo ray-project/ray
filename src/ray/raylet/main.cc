@@ -64,6 +64,8 @@ int main(int argc, char *argv[]) {
   const bool disable_stdout_exporter = FLAGS_disable_stdout_exporter;
   gflags::ShutDownCommandLineFlags();
 
+  RAY_LOG(INFO) << ">>>> config list:" << config_list;
+
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
