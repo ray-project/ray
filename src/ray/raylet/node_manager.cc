@@ -2228,7 +2228,7 @@ std::string NodeManager::DebugString() const {
 }
 
 void NodeManager::RecordMetrics() const {
-  if (StatsConfig::instance().IsStatsDisabled()) {
+  if (stats::StatsConfig::instance().IsStatsDisabled()) {
     return;
   }
 
