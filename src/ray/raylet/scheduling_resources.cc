@@ -198,24 +198,28 @@ const ResourceSet ResourceSet::GetNumCpus() const {
 }
 
 const std::string ResourceSet::ToString() const {
-  std::string return_string = "";
+  if (resource_capacity_.size() == 0) {
+    return "{}";
+  } else {
+    std::string return_string = "";
 
-  auto it = resource_capacity_.begin();
+    auto it = resource_capacity_.begin();
 
-  // Convert the first element to a string.
-  if (it != resource_capacity_.end()) {
-    double resource_amount = (it->second).ToDouble();
-    return_string += "{" + it->first + "," + std::to_string(resource_amount) + "}";
-    it++;
+    // Convert the first element to a string.
+    if (it != resource_capacity_.end()) {
+      double resource_amount = (it->second).ToDouble();
+      return_string += "{" + it->first + "," + std::to_string(resource_amount) + "}";
+      it++;
+    }
+
+    // Add the remaining elements to the string (along with a comma).
+    for (; it != resource_capacity_.end(); ++it) {
+      double resource_amount = (it->second).ToDouble();
+      return_string += ",{" + it->first + "," + std::to_string(resource_amount) + "}";
+    }
+
+    return return_string;
   }
-
-  // Add the remaining elements to the string (along with a comma).
-  for (; it != resource_capacity_.end(); ++it) {
-    double resource_amount = (it->second).ToDouble();
-    return_string += ",{" + it->first + "," + std::to_string(resource_amount) + "}";
-  }
-
-  return return_string;
 }
 
 const std::unordered_map<std::string, double> ResourceSet::GetResourceMap() const {
