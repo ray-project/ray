@@ -240,9 +240,8 @@ class NodeUpdater(object):
         self.get_caller(check_error)(
             [
                 "rsync", "-e", " ".join(["ssh"] + get_default_ssh_options(
-                    self.ssh_private_key, 120, self.ssh_control_path)),
-                "--delete", "-avz", source, "{}@{}:{}".format(
-                    self.ssh_user, self.ssh_ip, target)
+                    self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
+                source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
             ],
             stdout=redirect or sys.stdout,
             stderr=redirect or sys.stderr)
