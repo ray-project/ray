@@ -141,10 +141,10 @@ void ResourceSet::SubtractResources(const ResourceSet &other) {
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
     const std::string &resource_label = resource_pair.first;
     const FractionalResourceQuantity &resource_capacity = resource_pair.second;
-    RAY_CHECK(resource_capacity_.count(resource_label) == 1)
-        << "Attempt to acquire unknown resource: " << resource_label;
-    resource_capacity_[resource_label] -= resource_capacity;
-    if (resource_capacity_[resource_label] < 0) {
+    if (resource_capacity_.count(resource_label) == 1) {
+      resource_capacity_[resource_label] -= resource_capacity;
+    }
+    if (resource_capacity_[resource_label] <= 0) {
       resource_capacity_.erase(resource_label);
     }
   }
