@@ -24,7 +24,8 @@ DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
-DEFINE_bool(disable_stdout_exporter, true, "Whether disable the stdout exporter for stats.");
+DEFINE_bool(disable_stdout_exporter, true,
+            "Whether disable the stdout exporter for stats.");
 
 #ifndef RAYLET_TEST
 
@@ -52,7 +53,8 @@ int main(int argc, char *argv[]) {
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
-  const int maximum_startup_concurrency = static_cast<int>(FLAGS_maximum_startup_concurrency);
+  const int maximum_startup_concurrency =
+      static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
   const std::string config_list = FLAGS_config_list;
   const std::string python_worker_command = FLAGS_python_worker_command;
@@ -63,8 +65,6 @@ int main(int argc, char *argv[]) {
   const std::string stat_address = FLAGS_stat_address;
   const bool disable_stdout_exporter = FLAGS_disable_stdout_exporter;
   gflags::ShutDownCommandLineFlags();
-
-  RAY_LOG(INFO) << ">>>> config list:" << config_list;
 
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
