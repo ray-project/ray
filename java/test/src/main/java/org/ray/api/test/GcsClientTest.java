@@ -2,9 +2,9 @@ package org.ray.api.test;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
-import org.ray.api.NodeInfo;
 import org.ray.api.Ray;
 import org.ray.api.TestUtils;
+import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.gcs.GcsClient;
