@@ -21,10 +21,7 @@ invertedpendulum-td3:
         env_config: {}
 
         # === Exploration ===
-        schedule_max_timesteps: 100000
-        timesteps_per_iteration: 1000
-        exploration_fraction: 0.1
-        exploration_final_eps: 0.02
+        exploration_should_anneal: False
         exploration_noise_type: gaussian
         exploration_gaussian_sigma: 0.1
 

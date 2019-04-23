@@ -51,22 +51,26 @@ DEFAULT_CONFIG = with_common_config({
     "n_step": 1,
 
     # === Exploration ===
-    # Max num timesteps for annealing schedules. Exploration is annealed from
-    # 1.0 to exploration_fraction over this number of timesteps scaled by
-    # exploration_fraction
+    # Turns on annealing schedule for exploration noise. Exploration is
+    # annealed from 1.0 to exploration_final_eps over schedule_max_timesteps
+    # scaled by exploration_fraction. Original DDPG and TD3 papers do not
+    # anneal noise, so this is False by default.
+    "exploration_should_anneal": False,
+    # Max num timesteps for annealing schedules.
     "schedule_max_timesteps": 100000,
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
     # Fraction of entire training period over which the exploration rate is
     # annealed
     "exploration_fraction": 0.1,
-    # Final value of random action probability
-    "exploration_final_eps": 0.02,
+    # Final scaling multiplier for action noise (initial is 1.0)
+    "exploration_final_scale": 0.02,
     # valid values: "ou" (time-correlated, like original DDPG paper),
     # "gaussian" (IID, like TD3 paper). Currently this is ignored (FIXME); use
     # smooth_target policy instead.
     "exploration_noise_type": "ou",
-    # OU-noise scale (requires "exploration_noise_type" to be "ou")
+    # OU-noise scale; this can be used to scale down magnitude of OU noise
+    # before adding to actions (requires "exploration_noise_type" to be "ou")
     "exploration_ou_noise_scale": 0.1,
     # theta for OU
     "exploration_ou_theta": 0.15,
@@ -154,18 +158,20 @@ class DDPGTrainer(DQNTrainer):
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
             if worker_index >= 0:
+                # TODO: document magic constants (0.4, 7)
                 max_index = float(self.config["num_workers"] - 1)
                 exponent = 1 + worker_index / max_index * 7
-                return ConstantSchedule(
-                    self.config["exploration_ou_noise_scale"] * 0.4**exponent)
+                return ConstantSchedule(0.4**exponent)
             else:
                 # local ev should have zero exploration so that eval rollouts
                 # run properly
                 return ConstantSchedule(0.0)
-        else:
+        elif self.config["exploration_should_anneal"]:
             return LinearSchedule(
                 schedule_timesteps=int(self.config["exploration_fraction"] *
                                        self.config["schedule_max_timesteps"]),
-                initial_p=self.config["exploration_ou_noise_scale"] * 1.0,
-                final_p=self.config["exploration_ou_noise_scale"] *
-                self.config["exploration_final_eps"])
+                initial_p=1.0,
+                final_p=self.config["exploration_final_scale"])
+        else:
+            # *always* add exploration noise
+            return ConstantSchedule(1.0)

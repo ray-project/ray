@@ -94,7 +94,7 @@ class DDPGPostprocessing(object):
                 feed_dict={
                     self.cur_observations: states,
                     self.stochastic: False,
-                    self.eps: .0
+                    self.noise_scale: .0
                 })
             distance_in_action_space = np.sqrt(
                 np.mean(np.square(clean_actions - noisy_actions)))
@@ -164,7 +164,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                     action_space))
 
         self.config = config
-        self.cur_epsilon = 1.0
+        self.cur_noise_scale = 1.0
         self.dim_actions = action_space.shape[0]
         self.low_action = action_space.low
         self.high_action = action_space.high
@@ -180,7 +180,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
-        self.eps = tf.placeholder(tf.float32, (), name="eps")
+        self.noise_scale = tf.placeholder(tf.float32, (), name="noise_scale")
         self.cur_observations = tf.placeholder(
             tf.float32,
             shape=(None, ) + observation_space.shape,
@@ -201,7 +201,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE):
             self.output_actions = self._build_exploration_noise(
-                policy_out, self.stochastic, self.eps, action_space)
+                policy_out, self.stochastic, self.noise_scale, action_space)
 
         if self.config["smooth_target_policy"]:
             self.reset_noise_op = tf.no_op()
@@ -442,8 +442,10 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
     @override(TFPolicyGraph)
     def extra_compute_action_feed_dict(self):
         return {
+            # FIXME: what about turning off exploration? Isn't that a good
+            # idea?
             self.stochastic: True,
-            self.eps: self.cur_epsilon,
+            self.noise_scale: self.cur_noise_scale,
         }
 
     @override(TFPolicyGraph)
@@ -463,7 +465,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
     @override(PolicyGraph)
     def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
+        return [TFPolicyGraph.get_state(self), self.cur_noise_scale]
 
     @override(PolicyGraph)
     def set_state(self, state):
@@ -493,14 +495,13 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         return actions, policy_model
 
     def _build_exploration_noise(
-            self, deterministic_actions, should_be_stochastic, eps, action_space):
-        # FIXME: this is a stupid way of doing it; should remove
+            self, deterministic_actions, should_be_stochastic, noise_scale, action_space):
         noise_type = self.config["exploration_noise_type"]
 
         # shape of deterministic_actions is [None, dim_action]
         if noise_type == "gaussian":
             # add IID Gaussian noise for exploration, TD3-style
-            normal_sample = tf.random_normal(
+            normal_sample = noise_scale * tf.random_normal(
                 tf.shape(deterministic_actions),
                 stddev=self.config["exploration_gaussian_sigma"])
             stochastic_actions = tf.clip_by_value(
@@ -520,9 +521,10 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                 self.config["exploration_ou_theta"] * -exploration_sample +
                 self.config["exploration_ou_sigma"] * normal_sample)
             action_range = action_space.high - action_space.low
+            base_scale = self.config["exploration_ou_noise_scale"]
             stochastic_actions = tf.clip_by_value(
                 deterministic_actions +
-                eps * action_range * exploration_value,
+                noise_scale * action_range * exploration_value * base_scale,
                 action_space.low, action_space.high)
         else:
             raise ValueError(
@@ -613,4 +615,8 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
             feed_dict={self.tau: tau or self.tau_value})
 
     def set_epsilon(self, epsilon):
-        self.cur_epsilon = epsilon
+        # set_epsilon is called by optimizer to anneal exploration as
+        # necessary, and to turn it off during evaluation. The "epsilon" part
+        # is a carry-over from DQN, which uses epsilon-greedy exploration
+        # rather than adding action noise to the output of a policy network.
+        self.cur_noise_scale = epsilon
