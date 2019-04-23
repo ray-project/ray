@@ -2189,7 +2189,7 @@ def test_many_custom_resources(shutdown_only):
     ray.get(results)
 
 
-# TODO: 5 retry attempts may be too little for Travis and we may need to 
+# TODO: 5 retry attempts may be too little for Travis and we may need to
 # increase it if this test begins to be flaky on Travis.
 def test_zero_capacity_deletion_semantics(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
