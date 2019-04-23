@@ -2228,6 +2228,10 @@ std::string NodeManager::DebugString() const {
 }
 
 void NodeManager::RecordMetrics() const {
+  if (StatsConfig::instance().IsStatsDisabled()) {
+    return;
+  }
+
   // Record available resources of this node.
   const auto &available_resources =
       cluster_resource_map_.at(client_id_).GetAvailableResources().GetResourceMap();
