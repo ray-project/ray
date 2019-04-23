@@ -169,7 +169,7 @@ class PopulationBasedTraining(FIFOScheduler):
                  hyperparam_mutations={},
                  resample_probability=0.25,
                  custom_explore_fn=None,
-                 log_config=False):
+                 log_config=True):
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
                 "You must specify at least one of `hyperparam_mutations` or "
@@ -221,6 +221,36 @@ class PopulationBasedTraining(FIFOScheduler):
 
         return TrialScheduler.CONTINUE
 
+    def _log_config_on_step(self, trial_state, new_state, trial,
+                            trial_to_clone, new_config):
+        """Logs transition during exploit/exploit step.
+
+        For each step, logs: [target trial tag, clone trial tag, target trial iteration, clone trial iteration, old config, new config].
+        """
+        trial_name, trial_to_clone_name = trial_state.orig_tag, new_state.orig_tag
+        trial_id = ''.join(itertools.takewhile(str.isdigit, trial_name))
+        trial_to_clone_id = ''.join(
+            itertools.takewhile(str.isdigit, trial_to_clone_name))
+        trial_path = os.path.join(trial.local_dir,
+                                  "policy_" + trial_id + ".txt")
+        trial_to_clone_path = os.path.join(
+            trial_to_clone.local_dir, "policy_" + trial_to_clone_id + ".txt")
+        policy = [
+            trial_name, trial_to_clone_name,
+            trial.last_result[TRAINING_ITERATION],
+            trial_to_clone.last_result[TRAINING_ITERATION],
+            trial_to_clone.config, new_config
+        ]
+        # Log to global file.
+        with open(os.path.join(trial.local_dir, "global.txt"), "a+") as f:
+            f.write(str(policy) + "\n")
+        # Overwrite state in target trial from trial_to_clone.
+        if os.path.exists(trial_to_clone_path):
+            shutil.copyfile(trial_to_clone_path, trial_path)
+        # Log new exploit in target trial log.
+        with open(trial_path, "a+") as f:
+            f.write(str(policy) + "\n")
+
     def _exploit(self, trial_executor, trial, trial_to_clone):
         """Transfers perturbed state from trial_to_clone -> trial.
         
@@ -241,31 +271,8 @@ class PopulationBasedTraining(FIFOScheduler):
                         trial_state.last_score))
 
         if self._log_config:
-            trial_name, trial_to_clone_name = trial_state.orig_tag, new_state.orig_tag
-            trial_id = ''.join(itertools.takewhile(str.isdigit, trial_name))
-            trial_to_clone_id = ''.join(
-                itertools.takewhile(str.isdigit, trial_to_clone_name))
-            trial_path = os.path.join(trial.local_dir,
-                                      "policy_" + trial_id + ".txt")
-            trial_to_clone_path = os.path.join(
-                trial_to_clone.local_dir,
-                "policy_" + trial_to_clone_id + ".txt")
-            # Log tag, current iteration, and config from target and clone trials.
-            policy = [
-                trial_name, trial_to_clone_name,
-                trial.last_result[TRAINING_ITERATION],
-                trial_to_clone.last_result[TRAINING_ITERATION],
-                trial_to_clone.config, new_config
-            ]
-            # Log to global file.
-            with open(os.path.join(trial.local_dir, "global.txt"), "a+") as f:
-                f.write(str(policy) + "\n")
-            # Overwrite state in target trial from trial_to_clone.
-            if os.path.exists(trial_to_clone_path):
-                shutil.copyfile(trial_to_clone_path, trial_path)
-            # Log new exploit in target trial log.
-            with open(trial_path, "a+") as f:
-                f.write(str(policy) + "\n")
+            self._log_config_on_step(trial_state, new_state, trial,
+                                     trial_to_clone, new_config)
 
         new_tag = make_experiment_tag(trial_state.orig_tag, new_config,
                                       self._hyperparam_mutations)
