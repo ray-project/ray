@@ -15,6 +15,7 @@ cc_binary(
     deps = [
         ":ray_util",
         ":raylet_lib",
+        "@com_github_gflags_gflags//:gflags",
     ],
 )
 
@@ -145,16 +146,6 @@ cc_test(
     deps = [
         ":ray_util",
         "@boost//:asio",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "util_test",
-    srcs = ["src/ray/util/util_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
