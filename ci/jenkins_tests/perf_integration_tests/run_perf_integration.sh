@@ -9,7 +9,7 @@ pushd "$ROOT_DIR"
 
 python -m pip install pytest-benchmark
 
-pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp27-cp27mu-manylinux1_x86_64.whl
+pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev3-cp27-cp27mu-manylinux1_x86_64.whl
 python -m pytest --benchmark-autosave --benchmark-min-rounds=10 --benchmark-columns="min, max, mean" $ROOT_DIR/../../../python/ray/tests/perf_integration_tests/test_perf_integration.py
 
 pushd $ROOT_DIR/../../../python
