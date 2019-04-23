@@ -24,8 +24,8 @@ DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
-DEFINE_bool(disable_stdout_exporter, true,
-            "Whether disable the stdout exporter for stats.");
+DEFINE_bool(enable_stdout_exporter, false,
+            "Whether enable the stdout exporter for stats.");
 
 #ifndef RAYLET_TEST
 
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
   const std::string temp_dir = FLAGS_temp_dir;
   const bool disable_stats = FLAGS_disable_stats;
   const std::string stat_address = FLAGS_stat_address;
-  const bool disable_stdout_exporter = FLAGS_disable_stdout_exporter;
+  const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
   gflags::ShutDownCommandLineFlags();
 
   // Initialize stats.
@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
       {ray::stats::JobNameKey, "raylet"},
       {ray::stats::VersionKey, "0.7.0"},
       {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(stat_address, global_tags, disable_stats, disable_stdout_exporter);
+  ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
