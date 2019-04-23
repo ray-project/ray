@@ -171,11 +171,11 @@ ray::Status NodeManager::RegisterGcs() {
       /*done_callback=*/nullptr));
 
   // Subscribe to driver table updates.
-  const auto driver_table_handler =
-      [this](gcs::AsyncGcsClient *client, const DriverID &client_id,
-             const std::vector<DriverTableDataT> &driver_data) {
-        HandleDriverTableUpdate(client_id, driver_data);
-      };
+  const auto driver_table_handler = [this](
+      gcs::AsyncGcsClient *client, const DriverID &client_id,
+      const std::vector<DriverTableDataT> &driver_data) {
+    HandleDriverTableUpdate(client_id, driver_data);
+  };
   RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(
       DriverID::nil(), ClientID::nil(), driver_table_handler, nullptr));
 
