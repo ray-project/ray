@@ -584,7 +584,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def basicSetup(self, resample_prob=0.0, explore=None):
+    def basicSetup(self, resample_prob=0.0, explore=None, log_config=False):
         pbt = PopulationBasedTraining(time_attr="training_iteration",
                                       perturbation_interval=10,
                                       resample_probability=resample_prob,
@@ -593,7 +593,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                                           "float_factor": lambda: 100.0,
                                           "int_factor": lambda: 10,
                                       },
-                                      custom_explore_fn=explore)
+                                      custom_explore_fn=explore,
+                                      log_config=log_config)
         runner = _MockTrialRunner(pbt)
         for i in range(5):
             trial = _MockTrial(
@@ -889,7 +890,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 self.assertIn(policy[i]['float_factor'], [2.4, 2, 1.6])
                 self.assertIn(policy[i]['id_factor'], [3, 4, 100])
 
-        pbt, runner = self.basicSetup()
+        pbt, runner = self.basicSetup(log_config=True)
         trials = runner.get_trials()
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
