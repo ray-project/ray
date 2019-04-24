@@ -9,9 +9,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.ray.api.Checkpointable.Checkpoint;
-import org.ray.api.gcs.GcsClient;
-import org.ray.api.gcs.NodeInfo;
 import org.ray.api.id.UniqueId;
+import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.runtime.generated.ActorCheckpointIdData;
 import org.ray.runtime.generated.ClientTableData;
 import org.ray.runtime.generated.TablePrefix;
@@ -22,15 +21,15 @@ import org.slf4j.LoggerFactory;
 /**
  * An implementation of GcsClient.
  */
-public class GcsClientImpl implements GcsClient {
+public class GcsClient {
 
-  private static Logger LOGGER = LoggerFactory.getLogger(GcsClientImpl.class);
+  private static Logger LOGGER = LoggerFactory.getLogger(GcsClient.class);
 
   private RedisClient primary;
 
   private List<RedisClient> shards;
 
-  public GcsClientImpl(String redisAddress, String redisPassword) {
+  public GcsClient(String redisAddress, String redisPassword) {
     primary = new RedisClient(redisAddress, redisPassword);
     int numShards = 0;
     try {
@@ -48,7 +47,6 @@ public class GcsClientImpl implements GcsClient {
     }).collect(Collectors.toList());
   }
 
-  @Override
   public List<NodeInfo> getAllNodeInfo() {
     final String prefix = TablePrefix.name(TablePrefix.CLIENT);
     final byte[] key = ArrayUtils.addAll(prefix.getBytes(), UniqueId.NIL.getBytes());
