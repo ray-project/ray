@@ -120,7 +120,6 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_log4j12",
         "@maven//:org_testng_testng",
         "@maven//:org_apache_kafka_kafka_2_11",
-        "@maven//:org_scala_lang_scala_library",
         "@maven//:org_json_json",
         "@maven//:org_yaml_snakeyaml",
         "@maven//:redis_clients_jedis",

@@ -18,6 +18,9 @@ def gen_java_deps():
             "org.slf4j:slf4j-log4j12:1.7.25",
             "org.testng:testng:6.9.9",
             "redis.clients:jedis:2.8.0",
+            "org.apache.kafka:kafka_2.11:0.8.2.1",
+            "org.json:json:20180130",
+            "org.yaml:snakeyaml:1.23",
         ],
         repositories = [
             "https://repo1.maven.org/maven2",
