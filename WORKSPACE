@@ -32,8 +32,8 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 git_repository(
     name = "com_github_nelhage_rules_boost",
-    commit = "6d6fd834281cb8f8e758dd9ad76df86304bf1869",
-    remote = "https://github.com/nelhage/rules_boost",
+    commit = "5171b9724fbb39c5fdad37b9ca9b544e8858d8ac",
+    remote = "https://github.com/ray-project/rules_boost",
 )
 
 load("@com_github_nelhage_rules_boost//:boost/boost.bzl", "boost_deps")

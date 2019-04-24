@@ -49,9 +49,10 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       const auto &node_resources = client_resource_pair.second;
       ResourceSet available_node_resources =
           ResourceSet(node_resources.GetAvailableResources());
-      // TODO(romilb): Why do we need to subtract load from available resources?
-      // Even if we don't the code path below for choosing a dst_client_id would be
-      // similar.
+      // We have to subtract the current "load" because we set the current "load"
+      // to be the resources used by tasks that are in the
+      // `SchedulingQueue::ready_queue_` in NodeManager::ProcessGetTaskMessage's
+      // call to SchedulingQueue::GetResourceLoad.
       available_node_resources.SubtractResources(node_resources.GetLoadResources());
       RAY_LOG(DEBUG) << "client_id " << node_client_id
                      << " avail: " << node_resources.GetAvailableResources().ToString()
