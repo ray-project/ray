@@ -7,7 +7,7 @@ import ray
 
 def test_get_webui():
     addresses = ray.init(include_webui=True)
-    webui_url = addresses['webui_url']
+    webui_url = addresses["webui_url"]
     assert ray.worker.get_webui_url() == webui_url
 
     ray.shutdown()
