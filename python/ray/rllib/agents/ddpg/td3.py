@@ -14,7 +14,7 @@ TD3_DEFAULT_CONFIG = merge_dicts(
         "twin_q": True,
         "policy_delay": 2,
         "smooth_target_policy": True,
-        "target_noise: 0.2,
+        "target_noise": 0.2,
         "target_noise_clip": 0.5,
 
         # other changes & things we want to keep fixed: IID Gaussian
