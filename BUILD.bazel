@@ -253,7 +253,6 @@ cc_library(
         exclude = [
             "src/ray/util/logging_test.cc",
             "src/ray/util/signal_test.cc",
-            "src/ray/util/util_test.cc",
         ],
     ),
     hdrs = glob([
