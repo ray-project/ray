@@ -1,56 +1,22 @@
 invertedpendulum-td3:
+    # This is a TD3 with stopping conditions and network size tuned specifically
+    # for InvertedPendulum. Should be able to reach 1,000 reward (the maximum
+    # achievable) in 10,000 to 20,000 steps.
     env: InvertedPendulum-v2
-    run: DDPG
+    run: TD3
     stop:
         episode_reward_mean: 9999.9
         time_total_s: 900 # 15 minutes
+        timesteps_total: 1000000
     config:
-        # === Tricks ===
-        twin_q: True
-        policy_delay: 2
-        smooth_target_policy: True
-        target_noise: 0.2
-        target_noise_clip: 0.5
-
         # === Model ===
-        actor_hiddens: [64, 64]
-        critic_hiddens: [64, 64]
-        n_step: 1
-        model: {}
-        gamma: 0.99
-        env_config: {}
+        actor_hiddens: [32, 32]
+        critic_hiddens: [32, 32]
 
         # === Exploration ===
-        exploration_should_anneal: False
-        exploration_noise_type: gaussian
-        exploration_gaussian_sigma: 0.1
-
-        # === Replay buffer ===
-        buffer_size: 1000000
-        prioritized_replay: False
-        prioritized_replay_alpha: 0.6
-        prioritized_replay_beta: 0.4
-        prioritized_replay_eps: 0.000001
-        clip_rewards: False
-
-        # === Optimization ===
-        actor_lr: 0.005
-        critic_lr: 0.005
-        use_huber: False
-        l2_reg: 0.0
         learning_starts: 1000
-        sample_batch_size: 1
-        train_batch_size: 100
-        target_network_update_freq: 0
-        tau: 0.005
-
-        # === Parallelism ===
-        num_workers: 0
-        num_gpus_per_worker: 0
-        optimizer_class: "SyncReplayOptimizer"
-        per_worker_exploration: False
-        worker_side_prioritization: False
+        pure_exploration_steps: 1000
 
         # === Evaluation ===
-        evaluation_interval: 5
-        evaluation_num_episodes: 10
+        evaluation_interval: 1
+        evaluation_num_episodes: 5

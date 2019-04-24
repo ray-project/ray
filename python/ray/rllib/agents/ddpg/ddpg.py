@@ -66,8 +66,7 @@ DEFAULT_CONFIG = with_common_config({
     # Final scaling multiplier for action noise (initial is 1.0)
     "exploration_final_scale": 0.02,
     # valid values: "ou" (time-correlated, like original DDPG paper),
-    # "gaussian" (IID, like TD3 paper). Currently this is ignored (FIXME); use
-    # smooth_target policy instead.
+    # "gaussian" (IID, like TD3 paper)
     "exploration_noise_type": "ou",
     # OU-noise scale; this can be used to scale down magnitude of OU noise
     # before adding to actions (requires "exploration_noise_type" to be "ou")
@@ -178,7 +177,7 @@ class DDPGTrainer(DQNTrainer):
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
             if worker_index >= 0:
-                # TODO: document magic constants (0.4, 7)
+                # FIXME: what do magic constants mean? (0.4, 7)
                 max_index = float(self.config["num_workers"] - 1)
                 exponent = 1 + worker_index / max_index * 7
                 return ConstantSchedule(0.4**exponent)

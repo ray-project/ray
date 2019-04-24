@@ -247,10 +247,6 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE, reuse=True):
             if config["smooth_target_policy"]:
-                # TODO: verify that policy_tp1 is computed with *target*
-                # policy, not normal policy. Also make sure this is actually
-                # used in the right place (to train the Q-function, with an
-                # appropriate stop_gradient()!).
                 policy_tp1_smoothed = smooth_target_actions_td3(
                     policy_tp1, noise_sigma=self.config["target_noise"],
                     noise_clip=self.config["target_noise_clip"],
