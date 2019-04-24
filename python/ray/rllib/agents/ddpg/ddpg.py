@@ -82,6 +82,13 @@ DEFAULT_CONFIG = with_common_config({
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
     "parameter_noise": False,
+    # Until this many timesteps have elapsed, the agent's policy will be
+    # ignored & it will instead take uniform random actions. Can be used in
+    # conjunction with learning_starts (which controls when the first
+    # optimization step happens) to decrease dependence of exploration &
+    # optimization on initial policy parameters. Note that this will be
+    # disabled when the action noise scale is set to 0 (e.g during evaluation).
+    "pure_exploration_steps": 1000,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -129,7 +136,7 @@ DEFAULT_CONFIG = with_common_config({
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
     # to increase if your environment is particularly slow to sample, or if
-    # you"re using the Async or Ape-X optimizers.
+    # you're using the Async or Ape-X optimizers.
     "num_workers": 0,
     # Optimizer class to use.
     "optimizer_class": "SyncReplayOptimizer",
@@ -149,6 +156,19 @@ class DDPGTrainer(DQNTrainer):
     _name = "DDPG"
     _default_config = DEFAULT_CONFIG
     _policy_graph = DDPGPolicyGraph
+
+    @override(DQNTrainer)
+    def _train(self):
+        pure_expl_steps = self.config["pure_exploration_steps"]
+        if pure_expl_steps:
+            # tell workers whether they should do pure exploration
+            only_explore = self.global_timestep < pure_expl_steps
+            self.local_evaluator.foreach_trainable_policy(
+                lambda p, _: p.set_pure_exploration_phase(only_explore))
+            for e in self.remote_evaluators:
+                e.foreach_trainable_policy.remote(
+                    lambda p, _: p.set_pure_exploration_phase(only_explore))
+        return super(DDPGTrainer, self)._train()
 
     @override(DQNTrainer)
     def _make_exploration_schedule(self, worker_index):

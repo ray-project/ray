@@ -165,6 +165,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
         self.config = config
         self.cur_noise_scale = 1.0
+        self.cur_pure_exploration_phase = False
         self.dim_actions = action_space.shape[0]
         self.low_action = action_space.low
         self.high_action = action_space.high
@@ -181,6 +182,8 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
         self.noise_scale = tf.placeholder(tf.float32, (), name="noise_scale")
+        self.pure_exploration_phase = tf.placeholder(
+            tf.bool, (), name="pure_exploration_phase")
         self.cur_observations = tf.placeholder(
             tf.float32,
             shape=(None, ) + observation_space.shape,
@@ -201,7 +204,8 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE):
             self.output_actions = self._build_exploration_noise(
-                policy_out, self.stochastic, self.noise_scale, action_space)
+                policy_out, self.stochastic, self.noise_scale,
+                self.pure_exploration_phase, action_space)
 
         if self.config["smooth_target_policy"]:
             self.reset_noise_op = tf.no_op()
@@ -446,6 +450,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
             # idea?
             self.stochastic: True,
             self.noise_scale: self.cur_noise_scale,
+            self.pure_exploration_phase: self.cur_pure_exploration_phase,
         }
 
     @override(TFPolicyGraph)
@@ -465,12 +470,16 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
     @override(PolicyGraph)
     def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.cur_noise_scale]
+        return [
+            TFPolicyGraph.get_state(self), self.cur_noise_scale,
+            self.cur_pure_exploration_phase
+        ]
 
     @override(PolicyGraph)
     def set_state(self, state):
         TFPolicyGraph.set_state(self, state[0])
         self.set_epsilon(state[1])
+        self.set_pure_exploration_phase(state[2])
 
     def _build_q_network(self, obs, obs_space, action_space, actions):
         q_values, q_model = build_q_network(
@@ -495,8 +504,12 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         return actions, policy_model
 
     def _build_exploration_noise(
-            self, deterministic_actions, should_be_stochastic, noise_scale, action_space):
+            self, deterministic_actions, should_be_stochastic, noise_scale,
+            enable_pure_exploration, action_space):
         noise_type = self.config["exploration_noise_type"]
+        action_low = action_space.low
+        action_high = action_space.high
+        action_range = action_space.high - action_low
 
         # shape of deterministic_actions is [None, dim_action]
         if noise_type == "gaussian":
@@ -506,30 +519,44 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                 stddev=self.config["exploration_gaussian_sigma"])
             stochastic_actions = tf.clip_by_value(
                 deterministic_actions + normal_sample,
-                action_space.low, action_space.high)
+                action_low, action_high)
         elif noise_type == "ou":
             # add OU noise for exploration, DDPG-style
             exploration_sample = tf.get_variable(
                 name="ornstein_uhlenbeck",
                 dtype=tf.float32,
-                initializer=action_space.low.size * [.0],
+                initializer=action_low.size * [.0],
                 trainable=False)
             normal_sample = tf.random_normal(
-                shape=[action_space.low.size], mean=0.0, stddev=1.0)
+                shape=[action_low.size], mean=0.0, stddev=1.0)
             exploration_value = tf.assign_add(
                 exploration_sample,
                 self.config["exploration_ou_theta"] * -exploration_sample +
                 self.config["exploration_ou_sigma"] * normal_sample)
-            action_range = action_space.high - action_space.low
             base_scale = self.config["exploration_ou_noise_scale"]
             stochastic_actions = tf.clip_by_value(
                 deterministic_actions +
                 noise_scale * action_range * exploration_value * base_scale,
-                action_space.low, action_space.high)
+                action_low, action_high)
         else:
             raise ValueError(
                 "Unknown noise type '%s' (try 'ou' or 'gaussian')" %
                 noise_type)
+
+        # pure random exploration option
+        uniform_random_actions = tf.random.uniform(
+            tf.shape(deterministic_actions))
+        # rescale uniform random actions according to action range
+        tf_range = tf.constant(action_range[None], dtype='float32')
+        tf_low = tf.constant(action_low[None], dtype='float32')
+        uniform_random_actions = uniform_random_actions * tf_range + tf_low
+        stochastic_actions = tf.cond(
+            # need to condition on noise_scale > 0 because zeroing noise_scale
+            # is how evaluator signals no noise should be used (this is ugly
+            # and should be fixed by adding an "eval_mode" flag or something)
+            tf.logical_and(enable_pure_exploration, noise_scale > 0),
+            true_fn=lambda: uniform_random_actions,
+            false_fn=lambda: stochastic_actions)
 
         enable_stochastic = tf.logical_and(
             should_be_stochastic, not self.config["parameter_noise"])
@@ -620,3 +647,6 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         # is a carry-over from DQN, which uses epsilon-greedy exploration
         # rather than adding action noise to the output of a policy network.
         self.cur_noise_scale = epsilon
+
+    def set_pure_exploration_phase(self, pure_exploration_phase):
+        self.cur_pure_exploration_phase = pure_exploration_phase
