@@ -607,13 +607,13 @@ def _submit_tf_differentiable(actor_method, args, kwargs, num_return_vals):
         forward = True
         persistent_tape = False #TODO:(vsatish) when would we want this to be True?
         dy, dys_type = None, None
+        args = processed_args + processed_kwargs # see the note in the `differentiable_method`
+                                                 # docstring for why we do this
         result_obj_ids = actor_method._internal_remote([identifier, forward, 
                                                         persistent_tape, dy, dys_type,
                                                         kwarg_types, kwarg_dtypes, kws, 
-                                                        arg_types, arg_dtypes, 
-                                                        *(processed_args+processed_kwargs)], # see the note in the
-                                                        {}, num_return_vals)                 # `differentiable_method` docstring
-                                                                                             # for why we do this          
+                                                        arg_types, arg_dtypes]+args, 
+                                                        {}, num_return_vals)
 
         # wrap each of the `ray.ObjectID`s returned in a `TFObjectID`
         if isinstance(result_obj_ids, ray.ObjectID):
