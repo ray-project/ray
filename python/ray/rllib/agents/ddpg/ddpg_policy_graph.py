@@ -396,21 +396,21 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
     def build_apply_op(self, optimizer, grads_and_vars):
         # for policy gradient, update policy net one time v.s.
         # update critic net `policy_delay` time(s)
-        global_step = tf.train.get_or_create_global_step()
         should_apply_actor_opt = tf.equal(
-            tf.mod(global_step, self.config['policy_delay']), 0)
-        actor_op_raw = self._actor_optimizer.apply_gradients(
-            self._actor_grads_and_vars)
+            tf.mod(self.global_step, self.config['policy_delay']), 0)
+
+        def make_apply_op():
+            return self._actor_optimizer.apply_gradients(
+                self._actor_grads_and_vars)
+
         actor_op = tf.cond(should_apply_actor_opt,
-                           true_fn=lambda: actor_op_raw,
+                           true_fn=make_apply_op,
                            false_fn=lambda: tf.no_op())
-        with tf.control_dependencies([actor_op]):
-            # increment global_step after we check whether it's time to update
-            # actor
-            actor_op_increment = tf.assign_add(global_step, 1)
         critic_op = self._critic_optimizer.apply_gradients(
             self._critic_grads_and_vars)
-        return tf.group(actor_op_increment, critic_op)
+        # increment global step & apply ops
+        with tf.control_dependencies([tf.assign_add(self.global_step, 1)]):
+            return tf.group(actor_op, critic_op)
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):
@@ -637,9 +637,10 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
     # support both hard and soft sync
     def update_target(self, tau=None):
+        tau = tau or self.tau_value
         return self.sess.run(
             self.update_target_expr,
-            feed_dict={self.tau: tau or self.tau_value})
+            feed_dict={self.tau: tau})
 
     def set_epsilon(self, epsilon):
         # set_epsilon is called by optimizer to anneal exploration as
