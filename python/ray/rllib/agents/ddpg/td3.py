@@ -14,11 +14,12 @@ TD3_DEFAULT_CONFIG = merge_dicts(
         "twin_q": True,
         "policy_delay": 2,
         "smooth_target_policy": True,
-        "target_noise": 0.2,
+        "target_noise: 0.2,
         "target_noise_clip": 0.5,
 
-        # other changes: IID Gaussian exploration noise, larger actor learning
-        # rate, no l2 regularisation, no Huber loss, etc.
+        # other changes & things we want to keep fixed: IID Gaussian
+        # exploration noise, larger actor learning rate, no l2 regularisation,
+        # no Huber loss, etc.
         "exploration_should_anneal": False,
         "exploration_noise_type": "gaussian",
         "exploration_gaussian_sigma": 0.1,
@@ -41,8 +42,9 @@ TD3_DEFAULT_CONFIG = merge_dicts(
         "per_worker_exploration": False,
         "worker_side_prioritization": False,
         "buffer_size": 1000000,
-        "prioritzied_replay": False,
+        "prioritized_replay": False,
         "clip_rewards": False,
+        "use_state_preprocessor": False,
     },
 )
 

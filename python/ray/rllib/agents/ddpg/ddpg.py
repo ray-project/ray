@@ -39,13 +39,22 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_num_episodes": 10,
 
     # === Model ===
-    # Postprocess the policy network model output with these hidden layers
-    "actor_hiddens": [64, 64],
-    # Hidden layers activation of the policy network
+    # Apply a state preprocessor with spec given by the "model" config option
+    # (like other RL algorithms). This is mostly useful if you have a weird
+    # observation shape, like an image. Disabled by default.
+    "use_state_preprocessor": False,
+    # Postprocess the policy network model output with these hidden layers. If
+    # use_state_preprocessor is False, then these will be the *only* hidden
+    # layers in the network.
+    "actor_hiddens": [400, 300],
+    # Hidden layers activation of the postprocessing stage of the policy
+    # network
     "actor_hidden_activation": "relu",
-    # Postprocess the critic network model output with these hidden layers
-    "critic_hiddens": [64, 64],
-    # Hidden layers activation of the critic network
+    # Postprocess the critic network model output with these hidden layers;
+    # again, if use_state_preprocessor is True, then the state will be
+    # preprocessed by the model specified with the "model" config option first.
+    "critic_hiddens": [400, 300],
+    # Hidden layers activation of the postprocessing state of the critic.
     "critic_hidden_activation": "relu",
     # N-step Q learning
     "n_step": 1,
