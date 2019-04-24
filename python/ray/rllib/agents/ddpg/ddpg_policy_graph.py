@@ -160,12 +160,12 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         with tf.variable_scope(ACTION_SCOPE, reuse=True):
             if config["smooth_target_policy"]:
                 target_noise_clip = self.config["target_noise_clip"]
-                clipped_normal_sample = tf.clip_by_value(tf.random_normal(
-                    tf.shape(policy_tp1), stddev=self.config["target_noise"]),
+                clipped_normal_sample = tf.clip_by_value(
+                    tf.random_normal(tf.shape(policy_tp1),
+                                     stddev=self.config["target_noise"]),
                     -target_noise_clip, target_noise_clip)
                 policy_tp1_smoothed = tf.clip_by_value(
-                    policy_tp1 + clipped_normal_sample,
-                    action_space.low,
+                    policy_tp1 + clipped_normal_sample, action_space.low,
                     action_space.high)
             else:
                 # no smoothing, just use deterministic actions
@@ -401,10 +401,11 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
     def _build_q_network(self, obs, obs_space, action_space, actions):
         if self.config["use_state_preprocessor"]:
-            q_model = ModelCatalog.get_model({
-                "obs": obs,
-                "is_training": self._get_is_training_placeholder(),
-            }, obs_space, action_space, 1, self.config["model"])
+            q_model = ModelCatalog.get_model(
+                {
+                    "obs": obs,
+                    "is_training": self._get_is_training_placeholder(),
+                }, obs_space, action_space, 1, self.config["model"])
             q_out = tf.concat([q_model.last_layer, actions], axis=1)
         else:
             q_model = None
@@ -412,19 +413,22 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
         activation = getattr(tf.nn, self.config["critic_hidden_activation"])
         for hidden in self.config["critic_hiddens"]:
-            q_out = layers.fully_connected(
-                q_out, num_outputs=hidden, activation_fn=activation)
-        q_values = layers.fully_connected(
-            q_out, num_outputs=1, activation_fn=None)
+            q_out = layers.fully_connected(q_out,
+                                           num_outputs=hidden,
+                                           activation_fn=activation)
+        q_values = layers.fully_connected(q_out,
+                                          num_outputs=1,
+                                          activation_fn=None)
 
         return q_values, q_model
 
     def _build_policy_network(self, obs, obs_space, action_space):
         if self.config["use_state_preprocessor"]:
-            model = ModelCatalog.get_model({
-                "obs": obs,
-                "is_training": self._get_is_training_placeholder(),
-            }, obs_space, action_space, 1, self.config["model"])
+            model = ModelCatalog.get_model(
+                {
+                    "obs": obs,
+                    "is_training": self._get_is_training_placeholder(),
+                }, obs_space, action_space, 1, self.config["model"])
             action_out = model.last_layer
         else:
             model = None
@@ -434,13 +438,13 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         normalizer_fn = layers.layer_norm if self.config["parameter_noise"] \
             else None
         for hidden in self.config["actor_hiddens"]:
-            action_out = layers.fully_connected(
-                action_out,
-                num_outputs=hidden,
-                activation_fn=activation,
-                normalizer_fn=normalizer_fn)
-        action_out = layers.fully_connected(
-            action_out, num_outputs=self.dim_actions, activation_fn=None)
+            action_out = layers.fully_connected(action_out,
+                                                num_outputs=hidden,
+                                                activation_fn=activation,
+                                                normalizer_fn=normalizer_fn)
+        action_out = layers.fully_connected(action_out,
+                                            num_outputs=self.dim_actions,
+                                            activation_fn=None)
 
         # Use sigmoid to scale to [0,1], but also double magnitude of input to
         # emulate behaviour of tanh activation used in DDPG and TD3 papers.
@@ -529,17 +533,15 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
         q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
         if twin_q:
-            twin_q_t_selected = tf.squeeze(
-                twin_q_t, axis=len(q_t.shape) - 1)
+            twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
             q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
 
-        q_tp1_best = tf.squeeze(
-            input=q_tp1, axis=len(q_tp1.shape) - 1)
+        q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
         q_tp1_best_masked = (1.0 - self.done_mask) * q_tp1_best
 
         # compute RHS of bellman equation
-        q_t_selected_target = tf.stop_gradient(
-            self.rew_t + gamma**n_step * q_tp1_best_masked)
+        q_t_selected_target = tf.stop_gradient(self.rew_t + gamma**n_step *
+                                               q_tp1_best_masked)
 
         # compute the error (potentially clipped)
         if twin_q:
