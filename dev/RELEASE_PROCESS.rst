@@ -21,9 +21,9 @@ This document describes the process for creating new releases.
    ``git push upstream releases/<release_number>``.
 
 4. **Testing:** Before a release is created, significant testing should be done.
-   Run the script `ci/stress_tests/run_stress_tests.sh`_ and
-   `ci/stress_tests/run_application_stress_tests.sh`_ and make sure it
-   passes. *And make sure it is testing the wheels created in step 2!* This
+   Run the scripts `ci/stress_tests/run_stress_tests.sh`_ and
+   `ci/stress_tests/run_application_stress_tests.sh`_ and make sure they
+   pass. *And make sure it is testing the wheels created in step 2!* This
    will use the autoscaler to start a bunch of machines and run some tests.
    Any new stress tests should be added to this script so that they will be run
    automatically for future release testing.
