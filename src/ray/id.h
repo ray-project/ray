@@ -41,19 +41,18 @@ static_assert(std::is_standard_layout<UniqueID>::value, "UniqueID must be standa
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 
-#define DEFINE_UNIQUE_ID(type)                                                          \
-  class RAY_EXPORT type : public UniqueID {                                             \
-   public:                                                                              \
-    explicit type(const UniqueID &from) {                                               \
-      std::memcpy(&id_, from.data(), kUniqueIDSize);                                    \
-    }                                                                                   \
-    type() : UniqueID() {}                                                              \
-    static type from_random() { return type(UniqueID::from_random()); }                 \
-    static type from_binary(const std::string &binary) {                                \
-      return type(UniqueID::from_binary(binary));                                       \
-    }                                                                                   \
-    static type nil() { return type(UniqueID::nil()); }                                 \
-                                                                                        \
+#define DEFINE_UNIQUE_ID(type)                                          \
+  class RAY_EXPORT type : public UniqueID {                             \
+   public:                                                              \
+    explicit type(const UniqueID &from) {                               \
+      std::memcpy(&id_, from.data(), kUniqueIDSize);                    \
+    }                                                                   \
+    type() : UniqueID() {}                                              \
+    static type from_random() { return type(UniqueID::from_random()); } \
+    static type from_binary(const std::string &binary) {                \
+      return type(UniqueID::from_binary(binary));                       \
+    }                                                                   \
+    static type nil() { return type(UniqueID::nil()); }                 \
   };
 
 #include "id_def.h"

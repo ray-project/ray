@@ -57,9 +57,7 @@ UniqueID UniqueID::from_random() {
   return UniqueID::from_binary(data);
 }
 
-UniqueID UniqueID::from_binary(const std::string &binary) {
-  return UniqueID(binary);
-}
+UniqueID UniqueID::from_binary(const std::string &binary) { return UniqueID(binary); }
 
 const UniqueID &UniqueID::nil() {
   static const UniqueID nil_id;
