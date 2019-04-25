@@ -2555,6 +2555,22 @@ def test_logging_to_driver(shutdown_only):
     error_lines = captured["err"]
     assert len(error_lines) == 0
 
+def test_logging_to_multiple_drivers(shutdown_only):
+    file_name = os.path.abspath(__file__) + "::test_logging_to_driver"
+    command = ["python", "-m", "pytest", "-v", file_name]
+    num_procs = 10
+
+    procs = []
+    outputs = []
+
+    for idx in range(num_procs):
+        proc = subprocess.Popen(command, stdout = subprocess.PIPE)
+        procs.append(proc)
+
+    for proc in procs:
+        output, _ = proc.communicate()
+        proc.wait()
+        assert "PASSED" in str(output)
 
 def test_not_logging_to_driver(shutdown_only):
     ray.init(num_cpus=1, log_to_driver=False)
