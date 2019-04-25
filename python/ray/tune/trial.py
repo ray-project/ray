@@ -180,6 +180,24 @@ def has_trainable(trainable_name):
     return ray.tune.registry._global_registry.contains(
         ray.tune.registry.TRAINABLE_CLASS, trainable_name)
 
+def _find_newest_ckpt(ckpt_dir):
+    try:
+        full_paths = [
+            os.path.join(ckpt_dir, fname) for fname in os.listdir(ckpt_dir)
+            if fname.startswith("experiment_state") and fname.endswith(".json")]
+        with open(max(full_paths), "r") as f:
+            runner_state = json.load(f)
+        log_path = runner_state["checkpoints"][-1]["logdir"]
+        log_paths = [
+            os.path.join(log_path, ckptname, ckptname.replace('_', '-'))
+            for ckptname in os.listdir(log_path)
+            if ckptname.startswith("checkpoint")
+        ]
+        newest_ckpt_path = max(log_paths)
+        logger.info("Find newest checkpoint file {} in {}.".format(newest_ckpt_path, ckpt_dir))
+        return newest_ckpt_path
+    except:
+        return ckpt_dir
 
 class Checkpoint(object):
     """Describes a checkpoint of trial state.
@@ -316,7 +334,7 @@ class Trial(object):
             if self._cmp_greater else checkpoint_score_attr[4:]
 
         self._checkpoint = Checkpoint(
-            storage=Checkpoint.DISK, value=restore_path)
+            storage=Checkpoint.DISK, value=_find_newest_ckpt(restore_path))
         self.export_formats = export_formats
         self.status = Trial.PENDING
         self.logdir = None
