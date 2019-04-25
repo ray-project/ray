@@ -24,18 +24,26 @@ std::mt19937 RandomlySeededMersenneTwister() {
   return seeded_engine;
 }
 
+uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
+
 UniqueID::UniqueID() {
   // Set the ID to nil.
   std::fill_n(id_, kUniqueIDSize, 255);
+  hash_ = MurmurHash64A(&id_[0], kUniqueIDSize, 0);
+}
+
+UniqueID::UniqueID(const std::string &binary) {
+  std::memcpy(&id_, binary.data(), kUniqueIDSize);
+  hash_ = MurmurHash64A(&id_[0], kUniqueIDSize, 0);
 }
 
 UniqueID::UniqueID(const plasma::UniqueID &from) {
   std::memcpy(&id_, from.data(), kUniqueIDSize);
+  hash_ = MurmurHash64A(&id_[0], kUniqueIDSize, 0);
 }
 
 UniqueID UniqueID::from_random() {
-  UniqueID id;
-  uint8_t *data = id.mutable_data();
+  std::string data;
   // NOTE(pcm): The right way to do this is to have one std::mt19937 per
   // thread (using the thread_local keyword), but that's not supported on
   // older versions of macOS (see https://stackoverflow.com/a/29929949)
@@ -44,15 +52,13 @@ UniqueID UniqueID::from_random() {
   static std::mt19937 generator = RandomlySeededMersenneTwister();
   std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
   for (int i = 0; i < kUniqueIDSize; i++) {
-    data[i] = static_cast<uint8_t>(dist(generator));
+    data.push_back(static_cast<uint8_t>(dist(generator)));
   }
-  return id;
+  return UniqueID::from_binary(data);
 }
 
 UniqueID UniqueID::from_binary(const std::string &binary) {
-  UniqueID id;
-  std::memcpy(&id, binary.data(), sizeof(id));
-  return id;
+  return UniqueID(binary);
 }
 
 const UniqueID &UniqueID::nil() {
@@ -71,8 +77,6 @@ bool UniqueID::is_nil() const {
 }
 
 const uint8_t *UniqueID::data() const { return id_; }
-
-uint8_t *UniqueID::mutable_data() { return id_; }
 
 size_t UniqueID::size() const { return kUniqueIDSize; }
 
@@ -152,7 +156,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-size_t UniqueID::hash() const { return MurmurHash64A(&id_[0], kUniqueIDSize, 0); }
+size_t UniqueID::hash() const { return hash_; }
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
   if (id.is_nil()) {

@@ -109,10 +109,8 @@ flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuild
 
 template <typename ID>
 ID from_flatbuf(const flatbuffers::String &string) {
-  ID id;
-  RAY_CHECK(string.size() == sizeof(ID));
-  memcpy(id.mutable_data(), string.data(), sizeof(ID));
-  return id;
+  RAY_CHECK(string.size() == kUniqueIDSize);
+  return ID::from_binary(string.str());
 }
 
 template <typename ID>
