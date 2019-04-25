@@ -11,6 +11,7 @@ import tensorflow as tf
 
 import ray
 from ray.experimental.tf_utils import tf_differentiable
+from ray.tests.conftest import ray_start_regular
 
 
 @pytest.fixture

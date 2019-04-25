@@ -96,7 +96,7 @@ matrix:
         # - export RAY_REDIS_SERVER_VALGRIND=1
 
         # # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 python/ray/experimental/test/async_test.py
+        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 python/ray/experimental/tests/async_test.py
         - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_mini.py
         - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_array.py
         - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_multi_node_2.py
