@@ -184,14 +184,16 @@ class ActionNetwork(object):
                 normal_sample = tf.clip_by_value(normal_sample, -noise_clip,
                                                  noise_clip)
                 stochastic_actions = tf.clip_by_value(
-                    deterministic_actions + normal_sample, low_action,
-                    high_action)
+                    deterministic_actions + normal_sample,
+                    low_action * tf.ones_like(deterministic_actions),
+                    high_action * * tf.ones_like(deterministic_actions))
             else:
                 normal_sample = tf.random_normal(
                     tf.shape(deterministic_actions), stddev=act_noise)
                 stochastic_actions = tf.clip_by_value(
-                    deterministic_actions + normal_sample, low_action,
-                    high_action)
+                    deterministic_actions + normal_sample,
+                    low_action * tf.ones_like(deterministic_actions),
+                    high_action * tf.ones_like(deterministic_actions))
         else:
             exploration_sample = tf.get_variable(
                 name="ornstein_uhlenbeck",
@@ -206,7 +208,8 @@ class ActionNetwork(object):
             stochastic_actions = tf.clip_by_value(
                 deterministic_actions +
                 eps * (high_action - low_action) * exploration_value,
-                low_action, high_action)
+                low_action * tf.ones_like(deterministic_actions),
+                high_action * tf.ones_like(deterministic_actions))
 
         self.actions = tf.cond(
             tf.logical_and(stochastic, not parameter_noise),
