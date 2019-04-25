@@ -104,7 +104,7 @@ string_vec_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
 template <typename ID>
 flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
                                                     ID id) {
-  return fbb.CreateString(reinterpret_cast<const char *>(id.data()), sizeof(ID));
+  return fbb.CreateString(reinterpret_cast<const char *>(id.data()), kUniqueIDSize);
 }
 
 template <typename ID>
