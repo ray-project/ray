@@ -206,7 +206,8 @@ class LogMonitor(object):
                         lines_to_publish[0].startswith("Ray worker pid: ")):
                     file_info.worker_pid = int(
                         lines_to_publish[0].split(" ")[-1])
-                    lines_to_publish = lines_to_publish[1:]
+                    if driver_switches[0][0] == -1:
+                        driver_switches[0] = (0, driver_switches[0][1])
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
