@@ -34,6 +34,32 @@ int64_t GetExpectedTaskCounter(
   return expected_task_counter;
 };
 
+struct ActorStats {
+  int live_actors = 0;
+  int dead_actors = 0;
+  int reconstructing_actors = 0;
+  int max_num_handles = 0;
+};
+
+/// A helper function to return the statistical data of actors in this node manager.
+ActorStats GetActorStatisticalData(
+    std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration> actor_registry) {
+  ActorStats item;
+  for (auto &pair : actor_registry) {
+    if (pair.second.GetState() == ActorState::ALIVE) {
+      item.live_actors += 1;
+    } else if (pair.second.GetState() == ActorState::RECONSTRUCTING) {
+      item.reconstructing_actors += 1;
+    } else {
+      item.dead_actors += 1;
+    }
+    if (pair.second.NumHandles() > item.max_num_handles) {
+      item.max_num_handles = pair.second.NumHandles();
+    }
+  }
+  return item;
+}
+
 }  // namespace
 
 namespace ray {
@@ -276,6 +302,7 @@ void NodeManager::Heartbeat() {
   if (debug_dump_period_ > 0 &&
       static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
     DumpDebugState();
+    RecordMetrics();
     last_debug_dump_at_ms_ = now_ms;
   }
 
@@ -2151,7 +2178,7 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
       });
 }
 
-void NodeManager::DumpDebugState() {
+void NodeManager::DumpDebugState() const {
   std::fstream fs;
   fs.open(temp_dir_ + "/debug_state.txt", std::fstream::out | std::fstream::trunc);
   fs << DebugString();
@@ -2175,32 +2202,57 @@ std::string NodeManager::DebugString() const {
   result << "\n" << task_dependency_manager_.DebugString();
   result << "\n" << lineage_cache_.DebugString();
   result << "\nActorRegistry:";
-  int live_actors = 0;
-  int dead_actors = 0;
-  int reconstructing_actors = 0;
-  int max_num_handles = 0;
-  for (auto &pair : actor_registry_) {
-    if (pair.second.GetState() == ActorState::ALIVE) {
-      live_actors += 1;
-    } else if (pair.second.GetState() == ActorState::RECONSTRUCTING) {
-      reconstructing_actors += 1;
-    } else {
-      dead_actors += 1;
-    }
-    if (pair.second.NumHandles() > max_num_handles) {
-      max_num_handles = pair.second.NumHandles();
-    }
-  }
-  result << "\n- num live actors: " << live_actors;
-  result << "\n- num reconstructing actors: " << live_actors;
-  result << "\n- num dead actors: " << dead_actors;
-  result << "\n- max num handles: " << max_num_handles;
+
+  auto statistical_data = GetActorStatisticalData(actor_registry_);
+  result << "\n- num live actors: " << statistical_data.live_actors;
+  result << "\n- num reconstructing actors: " << statistical_data.reconstructing_actors;
+  result << "\n- num dead actors: " << statistical_data.dead_actors;
+  result << "\n- max num handles: " << statistical_data.max_num_handles;
+
   result << "\nRemoteConnections:";
   for (auto &pair : remote_server_connections_) {
     result << "\n" << pair.first.hex() << ": " << pair.second->DebugString();
   }
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
+}
+
+void NodeManager::RecordMetrics() const {
+  if (stats::StatsConfig::instance().IsStatsDisabled()) {
+    return;
+  }
+
+  // Record available resources of this node.
+  const auto &available_resources =
+      cluster_resource_map_.at(client_id_).GetAvailableResources().GetResourceMap();
+  for (const auto &pair : available_resources) {
+    stats::LocalAvailableResource().Record(pair.second,
+                                           {{stats::ResourceNameKey, pair.first}});
+  }
+  // Record total resources of this node.
+  const auto &total_resources =
+      cluster_resource_map_.at(client_id_).GetTotalResources().GetResourceMap();
+  for (const auto &pair : total_resources) {
+    stats::LocalTotalResource().Record(pair.second,
+                                       {{stats::ResourceNameKey, pair.first}});
+  }
+
+  object_manager_.RecordMetrics();
+  worker_pool_.RecordMetrics();
+  local_queues_.RecordMetrics();
+  reconstruction_policy_.RecordMetrics();
+  task_dependency_manager_.RecordMetrics();
+  lineage_cache_.RecordMetrics();
+
+  auto statistical_data = GetActorStatisticalData(actor_registry_);
+  stats::ActorStats().Record(statistical_data.live_actors,
+                             {{stats::ValueTypeKey, "live_actors"}});
+  stats::ActorStats().Record(statistical_data.reconstructing_actors,
+                             {{stats::ValueTypeKey, "reconstructing_actors"}});
+  stats::ActorStats().Record(statistical_data.dead_actors,
+                             {{stats::ValueTypeKey, "dead_actors"}});
+  stats::ActorStats().Record(statistical_data.max_num_handles,
+                             {{stats::ValueTypeKey, "max_num_handles"}});
 }
 
 }  // namespace raylet
