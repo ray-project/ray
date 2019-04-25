@@ -24,10 +24,10 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 ACTION_SCOPE = "action"
 POLICY_SCOPE = "policy"
 POLICY_TARGET_SCOPE = "target_policy"
-Q_SCOPE = "q_func"
-Q_TARGET_SCOPE = "target_q_func"
-TWIN_Q_SCOPE = "twin_q_func"
-TWIN_Q_TARGET_SCOPE = "twin_target_q_func"
+Q_SCOPE = "critic"
+Q_TARGET_SCOPE = "target_critic"
+TWIN_Q_SCOPE = "twin_critic"
+TWIN_Q_TARGET_SCOPE = "twin_target_critic"
 
 # Importance sampling weights for prioritized replay
 PRIO_WEIGHTS = "weights"
@@ -114,7 +114,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE):
-            self.output_actions = self._build_exploration_noise(
+            self.output_actions = self._add_exploration_noise(
                 policy_out, self.stochastic, self.noise_scale,
                 self.pure_exploration_phase, action_space)
 
@@ -458,9 +458,9 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
         return actions, model
 
-    def _build_exploration_noise(self, deterministic_actions,
-                                 should_be_stochastic, noise_scale,
-                                 enable_pure_exploration, action_space):
+    def _add_exploration_noise(self, deterministic_actions,
+                               should_be_stochastic, noise_scale,
+                               enable_pure_exploration, action_space):
         noise_type = self.config["exploration_noise_type"]
         action_low = action_space.low
         action_high = action_space.high
