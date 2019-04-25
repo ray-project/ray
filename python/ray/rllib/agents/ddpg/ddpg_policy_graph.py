@@ -21,7 +21,7 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 
-ACTION_SCOPE = "a_func"
+ACTION_SCOPE = "action"
 POLICY_SCOPE = "policy"
 POLICY_TARGET_SCOPE = "target_policy"
 Q_SCOPE = "q_func"

@@ -9,9 +9,8 @@ from ray.rllib.utils import renamed_class
 
 ApexDDPGAgent = renamed_class(ApexDDPGTrainer)
 DDPGAgent = renamed_class(DDPGTrainer)
-TD3Agent = renamed_class(TD3Trainer)
 
 __all__ = [
-    "DDPGAgent", "ApexDDPGAgent", "TD3Agent", "DDPGTrainer", "ApexDDPGTrainer",
+    "DDPGAgent", "ApexDDPGAgent", "DDPGTrainer", "ApexDDPGTrainer",
     "TD3Trainer", "DEFAULT_CONFIG"
 ]

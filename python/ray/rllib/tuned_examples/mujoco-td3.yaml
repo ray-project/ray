@@ -20,5 +20,5 @@ mujoco-td3:
         pure_exploration_steps: 10000
 
         # === Evaluation ===
-        evaluation_interval: 10
+        evaluation_interval: 5
         evaluation_num_episodes: 10
