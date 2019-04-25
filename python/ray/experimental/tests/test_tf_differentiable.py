@@ -42,7 +42,6 @@ def actors():
         def double(self, x):
             return 2 * x
 
-
         # multiple inputs, single output
         @ray.method(num_return_vals=1)
         @tf_differentiable
@@ -59,13 +58,11 @@ def actors():
         def sum_square_cube(self, x, y):
             return x**2 + y**3
 
-
         # single input, multiple outputs
         @ray.method(num_return_vals=2)
         @tf_differentiable
         def single_in_square_cube(self, x):
             return x**2, x**3
-
 
         # multiple inputs, multiple outputs
         @ray.method(num_return_vals=2)
@@ -88,7 +85,6 @@ def actors():
         def g(self, x, y, z):
             return x + y + z, x * y * z
 
-
         # kwargs
         @ray.method(num_return_vals=1)
         @tf_differentiable
@@ -99,7 +95,6 @@ def actors():
         @tf_differentiable
         def kw_power_mul(self, x, y, x_pow=2, y_mul=2):
             return x**x_pow, y * y_mul
-
 
     class DummyActor(object):
         """Regular Python version of above Ray actor."""
@@ -118,7 +113,6 @@ def actors():
         def double(self, x):
             return 2 * x
 
-
         # multiple inputs, single output
         def sum(self, *inputs):
             return sum(inputs)
@@ -129,11 +123,9 @@ def actors():
         def sum_square_cube(self, x, y):
             return x**2 + y**3
 
-
         # single input, multiple outputs
         def single_in_square_cube(self, x):
             return x**2, x**3
-
 
         # multiple inputs, multiple outputs
         def two_in_square_cube_v1(self, x, y):
@@ -147,7 +139,6 @@ def actors():
 
         def g(self, x, y, z):
             return x + y + z, x * y * z
-
 
         # kwargs
         def kw_power(self, x, n=2):
@@ -168,11 +159,12 @@ def check_tensor_outputs(out_1, out_2):
     elif isinstance(out_1, tuple) and isinstance(out_2, list):
         out_1 = list(out_1)
     else:
-        assert type(out_1) == type(out_2), "Outputs must be of the same type."    
+        assert type(out_1) == type(out_2), "Outputs must be of the same type."
 
     if isinstance(out_1, tf.Tensor):
         # vanilla tensors
-        assert np.all(out_1.numpy() == out_2.numpy()) and out_1.dtype == out_2.dtype
+        assert np.all(
+            out_1.numpy() == out_2.numpy()) and out_1.dtype == out_2.dtype
     elif out_1 is None:
         # this can happen if we are taking the gradient w.r.t an unused source
         assert out_2 is None
@@ -181,7 +173,8 @@ def check_tensor_outputs(out_1, out_2):
         for elem_1, elem_2 in zip(out_1, out_2):
             check_tensor_outputs(elem_1, elem_2)
     else:
-        raise ValueError("Unsupported comparison type '{}'".format(type(out_1)))
+        raise ValueError("Unsupported comparison type '{}'".format(
+            type(out_1)))
 
 
 # single linear
@@ -204,6 +197,7 @@ def test_single_op_single_in_single_out(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # custom op w/ single input & single output and no tensor args/kwargs
 def test_single_op_single_in_single_out_no_tensors(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -211,9 +205,11 @@ def test_single_op_single_in_single_out_no_tensors(ray_start_regular, actors):
     x = 2.0
     with tf.GradientTape() as t:
         out = x
-        with pytest.raises(RuntimeError, match="Differentiable functions must have "
-                                               "at least one TF arg/kwarg."):
+        with pytest.raises(RuntimeError,
+                           match="Differentiable functions must have "
+                           "at least one TF arg/kwarg."):
             out = ray_actor.square.remote(out)
+
 
 # custom op w/ single input & single output both preceded and followed by tf ops
 def test_single_op_single_in_single_out_tf_sandwich(ray_start_regular, actors):
@@ -238,6 +234,7 @@ def test_single_op_single_in_single_out_tf_sandwich(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # multiple custom ops w/ single input & single output
 def test_multiple_ops_single_in_single_out(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -261,8 +258,10 @@ def test_multiple_ops_single_in_single_out(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # multiple custom ops w/ single input & single output w/ ray fetches in-between
-def test_multiple_ops_single_in_single_out_inter_fetches(ray_start_regular, actors):
+def test_multiple_ops_single_in_single_out_inter_fetches(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0)
@@ -286,9 +285,11 @@ def test_multiple_ops_single_in_single_out_inter_fetches(ray_start_regular, acto
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # single non-linear
 # single custom op w/ single input & single output and resulting ObjectID reused multiple times
-def test_single_op_single_in_single_out_reuse_result(ray_start_regular, actors):
+def test_single_op_single_in_single_out_reuse_result(ray_start_regular,
+                                                     actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0)
@@ -309,8 +310,10 @@ def test_single_op_single_in_single_out_reuse_result(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # multiple custom ops w/ single input & single output with reused intermediate results
-def test_multiple_ops_single_in_single_out_reuse_inter_results(ray_start_regular, actors):
+def test_multiple_ops_single_in_single_out_reuse_inter_results(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0)
@@ -334,6 +337,7 @@ def test_multiple_ops_single_in_single_out_reuse_inter_results(ray_start_regular
 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
+
 
 def test_multiple_ops_single_in_single_out_large_v1(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -364,6 +368,7 @@ def test_multiple_ops_single_in_single_out_large_v1(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 def test_multiple_ops_single_in_single_out_large_v2(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
@@ -376,9 +381,10 @@ def test_multiple_ops_single_in_single_out_large_v2(ray_start_regular, actors):
         i_2 = ray_actor.cube.remote(i_1)
         i_3 = ray_actor.square.remote(i_1)
         i_4 = w * x * ray.get(i_2) * ray.get(i_3)
-        i_5 = ray.get(ray_actor.double.remote(i_4)) + ray.get(ray_actor.square.remote(i_3))
+        i_5 = ray.get(ray_actor.double.remote(i_4)) + ray.get(
+            ray_actor.square.remote(i_3))
         i_6 = ray_actor.double.remote(i_5 * z * y)
-        out_hat = ray.get(i_6) + w * ray.get(i_6) + x * ray.get(i_3)  
+        out_hat = ray.get(i_6) + w * ray.get(i_6) + x * ray.get(i_3)
     grad_hat = t.gradient(out_hat, [w, x, y, z])
 
     with tf.GradientTape() as t:
@@ -388,7 +394,7 @@ def test_multiple_ops_single_in_single_out_large_v2(ray_start_regular, actors):
         i_4 = w * x * i_2 * i_3
         i_5 = dummy_actor.double(i_4) + dummy_actor.square(i_3)
         i_6 = dummy_actor.double(i_5 * z * y)
-        out = i_6 + w * i_6 + x * i_3  
+        out = i_6 + w * i_6 + x * i_3
     grad = t.gradient(out, [w, x, y, z])
 
     check_tensor_outputs(out_hat, out)
@@ -415,6 +421,7 @@ def test_single_op_single_in_multiple_out(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # custom op w/ multiple inputs & single output
 def test_single_op_multiple_in_single_out(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -432,6 +439,7 @@ def test_single_op_multiple_in_single_out(ray_start_regular, actors):
 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
+
 
 # custom op w/ multiple inputs & outputs
 def test_single_op_multiple_in_multiple_out(ray_start_regular, actors):
@@ -451,9 +459,11 @@ def test_single_op_multiple_in_multiple_out(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # custom op w/ multiple inputs & outputs and unused source
 @pytest.mark.skip("Gradient w.r.t unused input is 0.0 instead of None.")
-def test_single_op_multiple_in_multiple_out_unused_source(ray_start_regular, actors):
+def test_single_op_multiple_in_multiple_out_unused_source(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0)
@@ -471,8 +481,10 @@ def test_single_op_multiple_in_multiple_out_unused_source(ray_start_regular, act
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # custom op w/ multiple inputs & outputs where one input of op is never used
-def test_single_op_multiple_in_multiple_out_unused_input(ray_start_regular, actors):
+def test_single_op_multiple_in_multiple_out_unused_input(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0)
@@ -489,8 +501,10 @@ def test_single_op_multiple_in_multiple_out_unused_input(ray_start_regular, acto
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # custom op w/ multiple inputs & outputs w/ only one ray.ObjectID fetched
-def test_single_op_multiple_in_multiple_out_single_fetch(ray_start_regular, actors):
+def test_single_op_multiple_in_multiple_out_single_fetch(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0)
@@ -509,8 +523,10 @@ def test_single_op_multiple_in_multiple_out_single_fetch(ray_start_regular, acto
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # custom op w/ multiple inputs & outputs both preceded and followed by tf ops w/ two ray.ObjectIDs fetched
-def test_single_op_multiple_in_multiple_out_tf_sandwich_double_fetch(ray_start_regular, actors):
+def test_single_op_multiple_in_multiple_out_tf_sandwich_double_fetch(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0)
@@ -522,9 +538,9 @@ def test_single_op_multiple_in_multiple_out_tf_sandwich_double_fetch(ray_start_r
         i_3 = y**2
         i_4 = ray_actor.f.remote(i_1, i_2, i_3)
         out_1, out_2 = ray.get(i_4[:2])
-        out_1*=2
-        out_2**=2
-        out_hat = [out_1, out_2] 
+        out_1 *= 2
+        out_2 **= 2
+        out_hat = [out_1, out_2]
     grad_hat = t.gradient(out_hat, [x, y, z])
 
     with tf.GradientTape() as t:
@@ -533,13 +549,14 @@ def test_single_op_multiple_in_multiple_out_tf_sandwich_double_fetch(ray_start_r
         i_3 = y**2
         i_4 = dummy_actor.f(i_1, i_2, i_3)
         out_1, out_2 = i_4[:2]
-        out_1*=2
-        out_2**=2
-        out = [out_1, out_2] 
+        out_1 *= 2
+        out_2 **= 2
+        out = [out_1, out_2]
     grad = t.gradient(out, [x])
 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
+
 
 # multiple custom ops w/ multiple inputs and outputs
 def test_multiple_ops_multiple_in_multiple_out(ray_start_regular, actors):
@@ -551,22 +568,24 @@ def test_multiple_ops_multiple_in_multiple_out(ray_start_regular, actors):
     with tf.GradientTape() as t:
         i_1, i_2, i_3, i_4, i_5 = ray_actor.f.remote(x, y, z)
         i_6, i_7 = ray_actor.g.remote(i_1, i_3, i_5)
-        i_8 = ray_actor.sum_square_cube.remote(i_6, z) 
+        i_8 = ray_actor.sum_square_cube.remote(i_6, z)
         out_hat = ray.get(i_8)
     grad_hat = t.gradient(out_hat, [x, y, z])
 
     with tf.GradientTape() as t:
         i_1, i_2, i_3, i_4, i_5 = dummy_actor.f(x, y, z)
         i_6, i_7 = dummy_actor.g(i_1, i_3, i_5)
-        i_8 = dummy_actor.sum_square_cube(i_6, z) 
+        i_8 = dummy_actor.sum_square_cube(i_6, z)
         out = i_8
     grad = t.gradient(out, [x, y, z])
 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # multiple custom ops w/ multiple inputs and outputs w/ ray fetches in-between
-def test_multiple_ops_multiple_in_multiple_out_inter_fetches(ray_start_regular, actors):
+def test_multiple_ops_multiple_in_multiple_out_inter_fetches(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0)
@@ -577,22 +596,24 @@ def test_multiple_ops_multiple_in_multiple_out_inter_fetches(ray_start_regular, 
         i_1, i_5 = ray.get(i_1), ray.get(i_5)
         i_6, i_7 = ray_actor.g.remote(i_1, i_3, i_5)
         i_6 = ray.get(i_6)
-        i_8 = ray_actor.sum_square_cube.remote(i_6, z) 
+        i_8 = ray_actor.sum_square_cube.remote(i_6, z)
         out_hat = ray.get(i_8)
     grad_hat = t.gradient(out_hat, [x, y, z])
 
     with tf.GradientTape() as t:
         i_1, i_2, i_3, i_4, i_5 = dummy_actor.f(x, y, z)
         i_6, i_7 = dummy_actor.g(i_1, i_3, i_5)
-        i_8 = dummy_actor.sum_square_cube(i_6, z) 
+        i_8 = dummy_actor.sum_square_cube(i_6, z)
         out = i_8
     grad = t.gradient(out, [x, y, z])
 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # multiple custom ops w/ multiple inputs and outputs w/ intertwined tf ops and not all ray.ObjectIDs (intermediate and final) used
-def test_multiple_ops_multiple_in_multiple_out_tf_intertwined_partial_use(ray_start_regular, actors):
+def test_multiple_ops_multiple_in_multiple_out_tf_intertwined_partial_use(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.5, dtype=tf.float64)
@@ -604,7 +625,7 @@ def test_multiple_ops_multiple_in_multiple_out_tf_intertwined_partial_use(ray_st
         i_3, i_4, i_5, i_6, i_7 = ray_actor.f.remote(x, i_1, i_2)
         i_8, i_9 = ray_actor.g.remote(i_3, i_5, i_7)
         i_8 = ray.get(i_8)**2
-        i_10, i_11 = ray_actor.two_in_square_cube_v2.remote(i_8, i_8) 
+        i_10, i_11 = ray_actor.two_in_square_cube_v2.remote(i_8, i_8)
         out_hat = ray.get(i_10)**2
     grad_hat = t.gradient(out_hat, [x, y, z])
 
@@ -614,34 +635,37 @@ def test_multiple_ops_multiple_in_multiple_out_tf_intertwined_partial_use(ray_st
         i_3, i_4, i_5, i_6, i_7 = dummy_actor.f(x, i_1, i_2)
         i_8, i_9 = dummy_actor.g(i_3, i_5, i_7)
         i_8 = i_8**2
-        i_10, i_11 = dummy_actor.two_in_square_cube_v2(i_8, i_8) 
+        i_10, i_11 = dummy_actor.two_in_square_cube_v2(i_8, i_8)
         out = i_10**2
     grad = t.gradient(out, [x, y, z])
 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
-def test_multiple_ops_multiple_in_multiple_out_large_v1(ray_start_regular, actors):
+
+def test_multiple_ops_multiple_in_multiple_out_large_v1(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0, dtype=tf.float64)
     y = tf.Variable(3.0, dtype=tf.float64)
     z = tf.Variable(4.0, dtype=tf.float64)
-     
+
     with tf.GradientTape() as t:
         i_1 = x * y * z
         i_1 = i_1 / 10.0
         i_2 = (z / 1.0) * 3.0 * ray.get(ray_actor.prod.remote(x, y, y))
         i_2 = i_2 / 10.0
         i_3 = i_2 / 3.0
-        i_4 = ray.get(ray_actor.prod.remote(*ray_actor.f.remote(i_1, i_2, i_3)))
+        i_4 = ray.get(
+            ray_actor.prod.remote(*ray_actor.f.remote(i_1, i_2, i_3)))
         i_5 = i_4 / 15.0
         i_6 = ray_actor.sum.remote(i_4)
         i_7 = ray.get(ray_actor.prod.remote(i_3, i_3, i_4, i_5, i_6))
         i_7 = i_7 / 15.0
         i_8, _ = ray_actor.g.remote(i_3, i_5, i_7)
         i_9 = ray_actor.prod.remote(i_8)
-        _, i_10 = ray_actor.two_in_square_cube_v2.remote(i_8, i_9) 
+        _, i_10 = ray_actor.two_in_square_cube_v2.remote(i_8, i_9)
         i_11 = ray.get(i_10) / 9.0
         i_12 = ray_actor.prod.remote(i_10, x)
         out_hat = ray.get(i_12)
@@ -660,7 +684,7 @@ def test_multiple_ops_multiple_in_multiple_out_large_v1(ray_start_regular, actor
         i_7 = i_7 / 15.0
         i_8, _ = dummy_actor.g(i_3, i_5, i_7)
         i_9 = dummy_actor.prod(i_8)
-        _, i_10 = dummy_actor.two_in_square_cube_v2(i_8, i_9) 
+        _, i_10 = dummy_actor.two_in_square_cube_v2(i_8, i_9)
         i_11 = i_10 / 9.0
         i_12 = dummy_actor.prod(i_10, x)
         out = i_12
@@ -669,13 +693,15 @@ def test_multiple_ops_multiple_in_multiple_out_large_v1(ray_start_regular, actor
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
-def test_multiple_ops_multiple_in_multiple_out_large_v2(ray_start_regular, actors):
+
+def test_multiple_ops_multiple_in_multiple_out_large_v2(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable([2.0, 2.0, 2.0], dtype=tf.float64)
     y = tf.Variable(3.0, dtype=tf.float64)
     z = tf.Variable([4.0, 4.0, 4.0], dtype=tf.float64)
-     
+
     with tf.GradientTape() as t:
         i_1 = x * y + z**2.0
         i_1 = i_1 / 10.0
@@ -687,7 +713,7 @@ def test_multiple_ops_multiple_in_multiple_out_large_v2(ray_start_regular, actor
         i_7 = i_7 / 8.0
         i_8, _ = ray_actor.g.remote(i_3, i_5, i_7)
         i_8 = ray.get(i_8)**2.0 / 5.0
-        _, i_9 = ray_actor.two_in_square_cube_v2.remote(i_8, i_4) 
+        _, i_9 = ray_actor.two_in_square_cube_v2.remote(i_8, i_4)
         i_9 = ray.get(i_9) / 5.0
         i_10 = ray_actor.prod.remote(i_9, x)
         out_hat = ray.get(i_10)
@@ -704,7 +730,7 @@ def test_multiple_ops_multiple_in_multiple_out_large_v2(ray_start_regular, actor
         i_7 = i_7 / 8.0
         i_8, _ = dummy_actor.g(i_3, i_5, i_7)
         i_8 = i_8**2.0 / 5.0
-        _, i_9 = dummy_actor.two_in_square_cube_v2(i_8, i_4) 
+        _, i_9 = dummy_actor.two_in_square_cube_v2(i_8, i_4)
         i_9 = i_9 / 5.0
         i_10 = dummy_actor.prod(i_9, x)
         out = i_10
@@ -734,6 +760,7 @@ def test_kwargs_single_in_single_out(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # cusotm op w/ single input & single output w/ kwarg & using default kwarg
 def test_kwargs_single_in_single_out_default(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -752,6 +779,7 @@ def test_kwargs_single_in_single_out_default(ray_start_regular, actors):
 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
+
 
 # custom op w/ single input & single output w/ kwarg & using native Python for arg & using Tensor for kwarg
 def test_kwargs_single_in_single_out_tensor_kwarg(ray_start_regular, actors):
@@ -772,8 +800,10 @@ def test_kwargs_single_in_single_out_tensor_kwarg(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # custom op w/ single input & single output w/ kwarg & using Tensor for arg & using Tensor for kwarg
-def test_kwargs_single_in_single_out_tensor_arg_tensor_kwarg(ray_start_regular, actors):
+def test_kwargs_single_in_single_out_tensor_arg_tensor_kwarg(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(5.0)
@@ -792,8 +822,10 @@ def test_kwargs_single_in_single_out_tensor_arg_tensor_kwarg(ray_start_regular, 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # custom op w/ single input & single output w/ kwarg & using output of custom op for kwarg
-def test_kwargs_single_in_single_out_tf_obj_id_kwarg(ray_start_regular, actors):
+def test_kwargs_single_in_single_out_tf_obj_id_kwarg(ray_start_regular,
+                                                     actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(5.0)
@@ -814,8 +846,10 @@ def test_kwargs_single_in_single_out_tf_obj_id_kwarg(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # custom op w/ multiple inputs and multiple outputs w/ out-of-order kwargs
-def test_kwargs_multiple_in_multiple_out_out_of_order(ray_start_regular, actors):
+def test_kwargs_multiple_in_multiple_out_out_of_order(ray_start_regular,
+                                                      actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(4.0)
@@ -834,8 +868,10 @@ def test_kwargs_multiple_in_multiple_out_out_of_order(ray_start_regular, actors)
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 # custom op w/ multiple inputs and multiple outputs w/ TensorFlow ops before and after
-def test_kwargs_multiple_in_multiple_out_tf_sandwich(ray_start_regular, actors):
+def test_kwargs_multiple_in_multiple_out_tf_sandwich(ray_start_regular,
+                                                     actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(4.0)
@@ -860,13 +896,14 @@ def test_kwargs_multiple_in_multiple_out_tf_sandwich(ray_start_regular, actors):
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
 
+
 def test_kwargs_large(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable([2.0, 2.0, 2.0], dtype=tf.float64)
     y = tf.Variable(3.0, dtype=tf.float64)
     z = tf.Variable([4.0, 4.0, 4.0], dtype=tf.float64)
-     
+
     with tf.GradientTape() as t:
         i_1 = (x * y + z**2.0) / 10.0
         i_2, i_3 = ray_actor.kw_power_mul.remote(y, i_1, x_pow=y, y_mul=y)
@@ -876,8 +913,11 @@ def test_kwargs_large(ray_start_regular, actors):
         i_7 = ray.get(i_2) / 5.0
         i_8 = ray.get(i_2) / 3.0
         i_9, _, i_10, _, i_11 = ray_actor.f.remote(i_6, i_7, i_8)
-        i_12, i_13 = ray_actor.kw_power_mul.remote(i_11, i_7, x_pow=1.0, y_mul=i_4)
-        _, i_14 = ray_actor.two_in_square_cube_v2.remote(i_8, i_12) 
+        i_12, i_13 = ray_actor.kw_power_mul.remote(i_11,
+                                                   i_7,
+                                                   x_pow=1.0,
+                                                   y_mul=i_4)
+        _, i_14 = ray_actor.two_in_square_cube_v2.remote(i_8, i_12)
         i_15 = ray.get(i_14) / 5.0
         i_16 = ray_actor.prod.remote(i_15, i_5)
         out_hat = ray.get(i_16)
@@ -893,7 +933,7 @@ def test_kwargs_large(ray_start_regular, actors):
         i_8 = i_2 / 3.0
         i_9, _, i_10, _, i_11 = dummy_actor.f(i_6, i_7, i_8)
         i_12, i_13 = dummy_actor.kw_power_mul(i_11, i_7, x_pow=1.0, y_mul=i_4)
-        _, i_14 = dummy_actor.two_in_square_cube_v2(i_8, i_12) 
+        _, i_14 = dummy_actor.two_in_square_cube_v2(i_8, i_12)
         i_15 = i_14 / 5.0
         i_16 = dummy_actor.prod(i_15, i_5)
         out = i_16
@@ -901,4 +941,3 @@ def test_kwargs_large(ray_start_regular, actors):
 
     check_tensor_outputs(out_hat, out)
     check_tensor_outputs(grad_hat, grad)
-

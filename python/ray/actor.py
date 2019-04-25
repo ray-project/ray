@@ -530,8 +530,9 @@ class ActorHandle(object):
             return getattr(worker.actors[self._ray_actor_id],
                            method_name)(*copy.deepcopy(args))
 
-        function_descriptor = FunctionDescriptor(
-            self._ray_module_name, method_name, self._ray_class_name)
+        function_descriptor = FunctionDescriptor(self._ray_module_name,
+                                                 method_name,
+                                                 self._ray_class_name)
         with self._ray_actor_lock:
             object_ids = worker.submit_task(
                 function_descriptor,
