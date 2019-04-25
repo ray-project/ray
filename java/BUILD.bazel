@@ -4,13 +4,8 @@ exports_files([
     "testng.xml",
     "checkstyle.xml",
     "checkstyle-suppressions.xml",
+    "streaming/testng.xml",
 ])
-
-java_binary(
-    name = "bazel_deps",
-    main_class = "com.github.johnynek.bazel_deps.ParseProject",
-    runtime_deps = ["@bazel_deps//jar"],
-)
 
 java_import(
     name = "all_modules",
@@ -21,25 +16,31 @@ java_import(
         "liborg_ray_ray_runtime-src.jar",
         "liborg_ray_ray_tutorial.jar",
         "liborg_ray_ray_tutorial-src.jar",
+        "liborg_ray_ray_streaming.jar",
+        "liborg_ray_ray_streaming-src.jar",
         "all_tests_deploy.jar",
         "all_tests_deploy-src.jar",
+        "streaming_tests_deploy.jar",
+        "streaming_tests_deploy-src.jar",
     ],
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
         ":org_ray_ray_tutorial",
+        ":org_ray_ray_streaming",
         ":all_tests",
+        ":streaming_tests",
     ],
 )
 
 define_java_module(
     name = "api",
     deps = [
-        "@org_slf4j_slf4j_log4j12//jar",
-        "@log4j_log4j//jar",
-        "@javax_xml_bind_jaxb_api//jar",
-        "@com_sun_xml_bind_jaxb_core//jar",
-        "@com_sun_xml_bind_jaxb_impl//jar",
+        "@maven//:org_slf4j_slf4j_log4j12",
+        "@maven//:log4j_log4j",
+        "@maven//:javax_xml_bind_jaxb_api",
+        "@maven//:com_sun_xml_bind_jaxb_core",
+        "@maven//:com_sun_xml_bind_jaxb_impl",
     ],
 )
 
@@ -55,28 +56,24 @@ define_java_module(
     test_deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@org_apache_commons_commons_lang3//jar",
-        "@com_beust_jcommander//jar",
-        "@org_testng_testng//jar",
-        "@commons_io_commons_io//jar",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:com_beust_jcommander",
+        "@maven//:org_testng_testng",
+        "@maven//:commons_io_commons_io",
     ],
     deps = [
         ":org_ray_ray_api",
         "@plasma//:org_apache_arrow_arrow_plasma",
-        "@org_slf4j_slf4j_api//jar",
-        "@com_fasterxml_jackson_core_jackson_core//jar",
-        "@org_apache_commons_commons_pool2//jar",
-        "@org_javassist_javassist//jar",
-        "@org_objenesis_objenesis//jar",
-        "@com_typesafe_config//jar",
-        "@org_apache_commons_commons_lang3//jar",
-        "@de_ruedigermoeller_fst//jar",
-        "@com_github_davidmoten_flatbuffers_java//jar",
-        "@redis_clients_jedis//jar",
-        "@commons_io_commons_io//jar",
-        "@com_google_guava_guava//jar",
-        "@org_slf4j_slf4j_log4j12//jar",
-        "@org_ow2_asm_asm//jar",
+        "@maven//:com_github_davidmoten_flatbuffers_java",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_typesafe_config",
+        "@maven//:commons_io_commons_io",
+        "@maven//:de_ruedigermoeller_fst",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_ow2_asm_asm",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_slf4j_slf4j_log4j12",
+        "@maven//:redis_clients_jedis",
     ],
 )
 
@@ -85,7 +82,7 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@com_google_guava_guava//jar",
+        "@maven//:com_google_guava_guava",
     ],
 )
 
@@ -94,12 +91,34 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@org_apache_commons_commons_lang3//jar",
-        "@org_slf4j_slf4j_api//jar",
         "@plasma//:org_apache_arrow_arrow_plasma",
-        "@org_testng_testng//jar",
-        "@com_google_guava_guava//jar",
-        "@commons_io_commons_io//jar",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_testng_testng",
+        "@maven//:com_google_guava_guava",
+        "@maven//:commons_io_commons_io",
+    ],
+)
+
+define_java_module(
+    name = "streaming",
+    deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_slf4j_slf4j_log4j12",
+    ],
+    define_test_lib = True,
+    test_deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        ":org_ray_ray_streaming",
+        "@maven//:com_beust_jcommander",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_slf4j_slf4j_log4j12",
+        "@maven//:org_testng_testng",
     ],
 )
 
@@ -111,6 +130,16 @@ java_binary(
     runtime_deps = [
         ":org_ray_ray_test",
         ":org_ray_ray_runtime_test",
+    ],
+)
+
+java_binary(
+    name = "streaming_tests",
+    main_class = "org.testng.TestNG",
+    data = ["streaming/testng.xml"],
+    args = ["java/streaming/testng.xml"],
+    runtime_deps = [
+        ":org_ray_ray_streaming_test",
     ],
 )
 

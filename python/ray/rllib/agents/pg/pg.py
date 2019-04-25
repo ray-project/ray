@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 
 from ray.rllib.optimizers import SyncSamplesOptimizer
@@ -22,36 +22,36 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class PGAgent(Agent):
+class PGTrainer(Trainer):
     """Simple policy gradient agent.
 
     This is an example agent to show how to implement algorithms in RLlib.
     In most cases, you will probably want to use the PPO agent instead.
     """
 
-    _agent_name = "PG"
+    _name = "PG"
     _default_config = DEFAULT_CONFIG
     _policy_graph = PGPolicyGraph
 
-    @override(Agent)
-    def _init(self):
-        if self.config["use_pytorch"]:
+    @override(Trainer)
+    def _init(self, config, env_creator):
+        if config["use_pytorch"]:
             from ray.rllib.agents.pg.torch_pg_policy_graph import \
                 PGTorchPolicyGraph
             policy_cls = PGTorchPolicyGraph
         else:
             policy_cls = self._policy_graph
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)
+            env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"])
+            env_creator, policy_cls, config["num_workers"])
         optimizer_config = dict(
-            self.config["optimizer"],
-            **{"train_batch_size": self.config["train_batch_size"]})
+            config["optimizer"],
+            **{"train_batch_size": config["train_batch_size"]})
         self.optimizer = SyncSamplesOptimizer(
-            self.local_evaluator, self.remote_evaluators, optimizer_config)
+            self.local_evaluator, self.remote_evaluators, **optimizer_config)
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()

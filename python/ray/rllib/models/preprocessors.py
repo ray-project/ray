@@ -12,6 +12,7 @@ from ray.rllib.utils.annotations import override, PublicAPI
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
+VALIDATION_INTERVAL = 100
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class Preprocessor(object):
         self._options = options or {}
         self.shape = self._init_shape(obs_space, options)
         self._size = int(np.product(self.shape))
+        self._i = 0
 
     @PublicAPI
     def _init_shape(self, obs_space, options):
@@ -45,6 +47,23 @@ class Preprocessor(object):
     def write(self, observation, array, offset):
         """Alternative to transform for more efficient flattening."""
         array[offset:offset + self._size] = self.transform(observation)
+
+    def check_shape(self, observation):
+        """Checks the shape of the given observation."""
+        if self._i % VALIDATION_INTERVAL == 0:
+            if type(observation) is list and isinstance(
+                    self._obs_space, gym.spaces.Box):
+                observation = np.array(observation)
+            try:
+                if not self._obs_space.contains(observation):
+                    raise ValueError(
+                        "Observation outside expected value range",
+                        self._obs_space, observation)
+            except AttributeError:
+                raise ValueError(
+                    "Observation for a Box/MultiBinary/MultiDiscrete space "
+                    "should be an np.array, not a Python list.", observation)
+        self._i += 1
 
     @property
     @PublicAPI
@@ -85,6 +104,7 @@ class GenericPixelPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation):
         """Downsamples images from (210, 160, 3) by the configured factor."""
+        self.check_shape(observation)
         scaled = observation[25:-25, :, :]
         if self._dim < 84:
             scaled = cv2.resize(scaled, (84, 84))
@@ -111,6 +131,7 @@ class AtariRamPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
+        self.check_shape(observation)
         return (observation - 128) / 128
 
 
@@ -121,10 +142,8 @@ class OneHotPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
+        self.check_shape(observation)
         arr = np.zeros(self._obs_space.n)
-        if not self._obs_space.contains(observation):
-            raise ValueError("Observation outside expected value range",
-                             self._obs_space, observation)
         arr[observation] = 1
         return arr
 
@@ -140,6 +159,7 @@ class NoPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
+        self.check_shape(observation)
         return observation
 
     @override(Preprocessor)
@@ -169,6 +189,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
+        self.check_shape(observation)
         array = np.zeros(self.shape)
         self.write(observation, array, 0)
         return array
@@ -201,6 +222,7 @@ class DictFlatteningPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
+        self.check_shape(observation)
         array = np.zeros(self.shape)
         self.write(observation, array, 0)
         return array

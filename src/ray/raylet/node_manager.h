@@ -103,6 +103,9 @@ class NodeManager {
   /// \return string.
   std::string DebugString() const;
 
+  /// Record metrics.
+  void RecordMetrics() const;
+
  private:
   /// Methods for handling clients.
 
@@ -111,6 +114,7 @@ class NodeManager {
   /// \param data Data associated with the new client.
   /// \return Void.
   void ClientAdded(const ClientTableDataT &data);
+
   /// Handler for the removal of a GCS client.
   /// \param client_data Data associated with the removed client.
   /// \return Void.
@@ -120,7 +124,7 @@ class NodeManager {
   void Heartbeat();
 
   /// Write out debug state to a file.
-  void DumpDebugState();
+  void DumpDebugState() const;
 
   /// Get profiling information from the object manager and push it to the GCS.
   ///
@@ -468,7 +472,7 @@ class NodeManager {
   WorkerPool worker_pool_;
   /// A set of queues to maintain tasks.
   SchedulingQueue local_queues_;
-  /// The scheduling policy in effect for this local scheduler.
+  /// The scheduling policy in effect for this raylet.
   SchedulingPolicy scheduling_policy_;
   /// The reconstruction policy for deciding when to re-execute a task.
   ReconstructionPolicy reconstruction_policy_;

@@ -19,7 +19,6 @@ from ray.includes.unique_ids cimport (
     CConfigID,
     CDriverID,
     CFunctionID,
-    CJobID,
     CObjectID,
     CTaskID,
     CUniqueID,

@@ -59,22 +59,22 @@ cdef class Config:
         return RayConfig.instance().connect_timeout_milliseconds()
 
     @staticmethod
-    def local_scheduler_fetch_timeout_milliseconds():
+    def raylet_fetch_timeout_milliseconds():
         return (RayConfig.instance()
-                .local_scheduler_fetch_timeout_milliseconds())
+                .raylet_fetch_timeout_milliseconds())
 
     @staticmethod
-    def local_scheduler_reconstruction_timeout_milliseconds():
+    def raylet_reconstruction_timeout_milliseconds():
         return (RayConfig.instance()
-                .local_scheduler_reconstruction_timeout_milliseconds())
+                .raylet_reconstruction_timeout_milliseconds())
 
     @staticmethod
     def max_num_to_reconstruct():
         return RayConfig.instance().max_num_to_reconstruct()
 
     @staticmethod
-    def local_scheduler_fetch_request_size():
-        return RayConfig.instance().local_scheduler_fetch_request_size()
+    def raylet_fetch_request_size():
+        return RayConfig.instance().raylet_fetch_request_size()
 
     @staticmethod
     def kill_worker_timeout_milliseconds():

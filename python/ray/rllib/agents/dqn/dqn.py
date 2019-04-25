@@ -7,7 +7,7 @@ import time
 
 from ray import tune
 from ray.rllib import optimizers
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
@@ -47,15 +47,6 @@ DEFAULT_CONFIG = with_common_config({
     "hiddens": [256],
     # N-step Q learning
     "n_step": 1,
-
-    # === Evaluation ===
-    # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
-    # The evaluation stats will be reported under the "evaluation" metric key.
-    # Note that evaluation is currently not parallelized, and that for Ape-X
-    # metrics are already only reported for the lowest epsilon workers.
-    "evaluation_interval": None,
-    # Number of episodes to run per evaluation period.
-    "evaluation_num_episodes": 10,
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
@@ -103,6 +94,8 @@ DEFAULT_CONFIG = with_common_config({
     # === Optimization ===
     # Learning rate for adam optimizer
     "lr": 5e-4,
+    # Learning rate schedule
+    "lr_schedule": None,
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
@@ -135,42 +128,42 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class DQNAgent(Agent):
+class DQNTrainer(Trainer):
     """DQN implementation in TensorFlow."""
 
-    _agent_name = "DQN"
+    _name = "DQN"
     _default_config = DEFAULT_CONFIG
     _policy_graph = DQNPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
 
-    @override(Agent)
-    def _init(self):
+    @override(Trainer)
+    def _init(self, config, env_creator):
         self._validate_config()
 
         # Update effective batch size to include n-step
-        adjusted_batch_size = max(self.config["sample_batch_size"],
-                                  self.config.get("n_step", 1))
-        self.config["sample_batch_size"] = adjusted_batch_size
+        adjusted_batch_size = max(config["sample_batch_size"],
+                                  config.get("n_step", 1))
+        config["sample_batch_size"] = adjusted_batch_size
 
         self.exploration0 = self._make_exploration_schedule(-1)
         self.explorations = [
             self._make_exploration_schedule(i)
-            for i in range(self.config["num_workers"])
+            for i in range(config["num_workers"])
         ]
 
         for k in self._optimizer_shared_configs:
-            if self._agent_name != "DQN" and k in [
+            if self._name != "DQN" and k in [
                     "schedule_max_timesteps", "beta_annealing_fraction",
                     "final_prioritized_replay_beta"
             ]:
                 # only Rainbow needs annealing prioritized_replay_beta
                 continue
-            if k not in self.config["optimizer"]:
-                self.config["optimizer"][k] = self.config[k]
+            if k not in config["optimizer"]:
+                config["optimizer"][k] = config[k]
 
-        if self.config.get("parameter_noise", False):
-            if self.config["callbacks"]["on_episode_start"]:
-                start_callback = self.config["callbacks"]["on_episode_start"]
+        if config.get("parameter_noise", False):
+            if config["callbacks"]["on_episode_start"]:
+                start_callback = config["callbacks"]["on_episode_start"]
             else:
                 start_callback = None
 
@@ -183,10 +176,10 @@ class DQNAgent(Agent):
                 if start_callback:
                     start_callback(info)
 
-            self.config["callbacks"]["on_episode_start"] = tune.function(
+            config["callbacks"]["on_episode_start"] = tune.function(
                 on_episode_start)
-            if self.config["callbacks"]["on_episode_end"]:
-                end_callback = self.config["callbacks"]["on_episode_end"]
+            if config["callbacks"]["on_episode_end"]:
+                end_callback = config["callbacks"]["on_episode_end"]
             else:
                 end_callback = None
 
@@ -200,36 +193,25 @@ class DQNAgent(Agent):
                 if end_callback:
                     end_callback(info)
 
-            self.config["callbacks"]["on_episode_end"] = tune.function(
+            config["callbacks"]["on_episode_end"] = tune.function(
                 on_episode_end)
 
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, self._policy_graph)
-
-        if self.config["evaluation_interval"]:
-            self.evaluation_ev = self.make_local_evaluator(
-                self.env_creator,
-                self._policy_graph,
-                extra_config={
-                    "batch_mode": "complete_episodes",
-                    "batch_steps": 1,
-                })
-            self.evaluation_metrics = self._evaluate()
+            env_creator, self._policy_graph)
 
         def create_remote_evaluators():
-            return self.make_remote_evaluators(self.env_creator,
-                                               self._policy_graph,
-                                               self.config["num_workers"])
+            return self.make_remote_evaluators(env_creator, self._policy_graph,
+                                               config["num_workers"])
 
-        if self.config["optimizer_class"] != "AsyncReplayOptimizer":
+        if config["optimizer_class"] != "AsyncReplayOptimizer":
             self.remote_evaluators = create_remote_evaluators()
         else:
             # Hack to workaround https://github.com/ray-project/ray/issues/2541
             self.remote_evaluators = None
 
-        self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
+        self.optimizer = getattr(optimizers, config["optimizer_class"])(
             self.local_evaluator, self.remote_evaluators,
-            self.config["optimizer"])
+            **config["optimizer"])
         # Create the remote evaluators *after* the replay actors
         if self.remote_evaluators is None:
             self.remote_evaluators = create_remote_evaluators()
@@ -238,7 +220,7 @@ class DQNAgent(Agent):
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         start_timestep = self.global_timestep
 
@@ -275,11 +257,6 @@ class DQNAgent(Agent):
                 "max_exploration": max(exp_vals),
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
-
-        if self.config["evaluation_interval"]:
-            if self.iteration % self.config["evaluation_interval"] == 0:
-                self.evaluation_metrics = self._evaluate()
-            result.update(self.evaluation_metrics)
 
         return result
 
@@ -326,7 +303,7 @@ class DQNAgent(Agent):
             final_p=self.config["exploration_final_eps"])
 
     def __getstate__(self):
-        state = Agent.__getstate__(self)
+        state = Trainer.__getstate__(self)
         state.update({
             "num_target_updates": self.num_target_updates,
             "last_target_update_ts": self.last_target_update_ts,
@@ -334,7 +311,7 @@ class DQNAgent(Agent):
         return state
 
     def __setstate__(self, state):
-        Agent.__setstate__(self, state)
+        Trainer.__setstate__(self, state)
         self.num_target_updates = state["num_target_updates"]
         self.last_target_update_ts = state["last_target_update_ts"]
 

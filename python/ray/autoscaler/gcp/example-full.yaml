@@ -14,6 +14,11 @@ max_workers: 2
 # subsequent `ray up`) this number of nodes will be started.
 initial_workers: 0
 
+# Whether or not to autoscale aggressively. If this is enabled, if at any point
+#   we would start more workers, we start at least enough to bring us to
+#   initial_workers.
+autoscaling_mode: default
+
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
@@ -62,7 +67,7 @@ head_node:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: projects/ml-images/global/images/family/tf-1-12-gpu
+          sourceImage: projects/ml-images/global/images/family/tf-1-13-gpu
 
     # Additional options can be found in in the compute docs at
     # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
@@ -85,7 +90,7 @@ worker_nodes:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: projects/ml-images/global/images/family/tf-1-12-gpu
+          sourceImage: projects/ml-images/global/images/family/tf-1-13-gpu
     # Run workers on preemtible instance by default.
     # Comment this out to use on-demand.
     scheduling:

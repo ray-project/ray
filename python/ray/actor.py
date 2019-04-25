@@ -708,9 +708,9 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
         def __ray_terminate__(self):
             worker = ray.worker.get_global_worker()
             if worker.mode != ray.LOCAL_MODE:
-                # Disconnect the worker from the local scheduler. The point of
-                # this is so that when the worker kills itself below, the local
-                # scheduler won't push an error message to the driver.
+                # Disconnect the worker from the raylet. The point of
+                # this is so that when the worker kills itself below, the
+                # raylet won't push an error message to the driver.
                 worker.raylet_client.disconnect()
                 sys.exit(0)
                 assert False, "This process should have terminated."
@@ -719,7 +719,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
             """Save a checkpoint.
 
             This task saves the current state of the actor, the current task
-            frontier according to the local scheduler, and the checkpoint index
+            frontier according to the raylet, and the checkpoint index
             (number of tasks executed so far).
             """
             worker = ray.worker.global_worker
@@ -741,26 +741,26 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
 ray.worker.global_worker.make_actor = make_actor
 
 CheckpointContext = namedtuple(
-    'CheckpointContext',
+    "CheckpointContext",
     [
         # Actor's ID.
-        'actor_id',
+        "actor_id",
         # Number of tasks executed since last checkpoint.
-        'num_tasks_since_last_checkpoint',
+        "num_tasks_since_last_checkpoint",
         # Time elapsed since last checkpoint, in milliseconds.
-        'time_elapsed_ms_since_last_checkpoint',
+        "time_elapsed_ms_since_last_checkpoint",
     ],
 )
 """A namedtuple that contains information about actor's last checkpoint."""
 
 Checkpoint = namedtuple(
-    'Checkpoint',
+    "Checkpoint",
     [
         # ID of this checkpoint.
-        'checkpoint_id',
+        "checkpoint_id",
         # The timestamp at which this checkpoint was saved,
         # represented as milliseconds elapsed since Unix epoch.
-        'timestamp',
+        "timestamp",
     ],
 )
 """A namedtuple that represents a checkpoint."""
@@ -856,7 +856,7 @@ def get_checkpoints_for_actor(actor_id):
         return []
     checkpoints = [
         Checkpoint(checkpoint_id, timestamp) for checkpoint_id, timestamp in
-        zip(checkpoint_info['CheckpointIds'], checkpoint_info['Timestamps'])
+        zip(checkpoint_info["CheckpointIds"], checkpoint_info["Timestamps"])
     ]
     return sorted(
         checkpoints,

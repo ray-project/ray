@@ -834,10 +834,9 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **arg
                    static_cast<int>(update->test_state_bitmask());
 
   bool is_nil_result;
-  REPLY_AND_RETURN_IF_NOT_OK(is_nil(&is_nil_result, update->test_scheduler_id()->str()));
+  REPLY_AND_RETURN_IF_NOT_OK(is_nil(&is_nil_result, update->test_raylet_id()->str()));
   if (!is_nil_result) {
-    do_update =
-        do_update && update->test_scheduler_id()->str() == data->scheduler_id()->str();
+    do_update = do_update && update->test_raylet_id()->str() == data->raylet_id()->str();
   }
 
   if (do_update) {

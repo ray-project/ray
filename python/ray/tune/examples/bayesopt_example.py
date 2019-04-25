@@ -9,7 +9,7 @@ from __future__ import print_function
 import ray
 from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest import BayesOptSearch
+from ray.tune.suggest.bayesopt import BayesOptSearch
 
 
 def easy_objective(config, reporter):
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    space = {'width': (0, 20), 'height': (-100, 100)}
+    space = {"width": (0, 20), "height": (-100, 100)}
 
     config = {
         "num_samples": 10 if args.smoke_test else 1000,
