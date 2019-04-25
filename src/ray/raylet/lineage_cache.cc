@@ -1,4 +1,5 @@
 #include "lineage_cache.h"
+#include "ray/stats/stats.h"
 
 #include <sstream>
 
@@ -469,6 +470,17 @@ std::string LineageCache::DebugString() const {
   result << "\n- num subscribed tasks: " << subscribed_tasks_.size();
   result << "\n- lineage size: " << lineage_.GetEntries().size();
   return result.str();
+}
+
+void LineageCache::RecordMetrics() const {
+  stats::LineageCacheStats().Record(committed_tasks_.size(),
+                                    {{stats::ValueTypeKey, "num_committed_tasks"}});
+  stats::LineageCacheStats().Record(lineage_.GetChildrenSize(),
+                                    {{stats::ValueTypeKey, "num_children"}});
+  stats::LineageCacheStats().Record(subscribed_tasks_.size(),
+                                    {{stats::ValueTypeKey, "num_subscribed_tasks"}});
+  stats::LineageCacheStats().Record(lineage_.GetEntries().size(),
+                                    {{stats::ValueTypeKey, "num_lineages"}});
 }
 
 }  // namespace raylet

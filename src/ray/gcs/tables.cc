@@ -48,7 +48,6 @@ Status Log<ID, Data>::Append(const DriverID &driver_id, const ID &id,
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -73,7 +72,6 @@ Status Log<ID, Data>::AppendAt(const DriverID &driver_id, const ID &id,
         (failure)(client_, id, *dataT);
       }
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -102,7 +100,6 @@ Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
       }
       lookup(client_, id, results);
     }
-    return true;
   };
   std::vector<uint8_t> nil;
   return GetRedisContext(id)->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
@@ -154,10 +151,8 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
         subscribe(client_, id, root->notification_mode(), results);
       }
     }
-    // We do not delete the callback after calling it since there may be
-    // more subscription messages.
-    return false;
   };
+
   subscribe_callback_index_ = 1;
   for (auto &context : shard_contexts_) {
     RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback,
@@ -230,7 +225,6 @@ Status Table<ID, Data>::Add(const DriverID &driver_id, const ID &id,
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -296,7 +290,6 @@ Status Set<ID, Data>::Add(const DriverID &driver_id, const ID &id,
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -314,7 +307,6 @@ Status Set<ID, Data>::Remove(const DriverID &driver_id, const ID &id,
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
