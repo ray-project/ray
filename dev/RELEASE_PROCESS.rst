@@ -24,9 +24,9 @@ This document describes the process for creating new releases.
 4. **Testing:** Before a release is created, significant testing should be done.
    Run the scripts `ci/stress_tests/run_stress_tests.sh`_ and
    `ci/stress_tests/run_application_stress_tests.sh`_ and make sure they
-   pass. *You MUST modify the file autoscaler config file ``<<RAY_RELEASE_HASH>>``
-   and ``<<RAY_RELEASE_VERSION>>``to test the relevant wheels from above the
-   wheels created in step 2!* This will use the autoscaler to start a bunch of
+   pass. You **MUST** modify the autoscaler config file and replace
+   ``<<RAY_RELEASE_HASH>>`` and ``<<RAY_RELEASE_VERSION>>`` with the appropriate
+   values to test the correct wheels. This will use the autoscaler to start a bunch of
    machines and run some tests. Any new stress tests should be added to this
    script so that they will be run automatically for future release testing.
 
