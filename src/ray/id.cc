@@ -216,7 +216,7 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   // Compute the final task ID from the hash.
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
-  return FinishTaskId(TaskID::from_binary(reinterpret_cast<const char *>(buff)));
+  return FinishTaskId(TaskID::from_binary(std::string(buff, buff + kUniqueIDSize)));
 }
 
 int64_t ComputeObjectIndex(const ObjectID &object_id) {
