@@ -12,9 +12,10 @@ class UniqueIdFromJByteArray {
   const ID &GetId() const { return id; }
 
   UniqueIdFromJByteArray(JNIEnv *env, const jbyteArray &bytes) {
-    uint8_t id_str[kUniqueIDSize];
-    env->GetByteArrayRegion(bytes, 0, kUniqueIDSize, reinterpret_cast<jbyte *>(id_str));
-    id = ID::from_binary(reinterpret_cast<char *>(id_str));
+    std::string id_str(kUniqueIDSize, 0);
+    env->GetByteArrayRegion(bytes, 0, kUniqueIDSize,
+                            reinterpret_cast<jbyte *>(&id_str.front()));
+    id = ID::from_binary(id_str);
   }
 
  private:
