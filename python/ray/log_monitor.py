@@ -33,6 +33,7 @@ class LogFileInfo(object):
         self.file_position = file_position
         self.file_handle = file_handle
         self.worker_pid = None
+        self.driver_id = None
 
 
 class LogMonitor(object):
@@ -170,14 +171,29 @@ class LogMonitor(object):
             assert not file_info.file_handle.closed
 
             lines_to_publish = []
+            driver_switches = []
+            if file_info.driver_id != None:
+                driver_switches.append((-1, file_info.driver_id))
+
             max_num_lines_to_read = 100
-            for _ in range(max_num_lines_to_read):
+            for idx in range(max_num_lines_to_read):
                 next_line = file_info.file_handle.readline()
                 if next_line == "":
                     break
                 if next_line[-1] == "\n":
                     next_line = next_line[:-1]
+
+                # Record when a worker switches drivers
+                if next_line.startswith("Ray driver id: "):
+                    driver_id = next_line.split(" ")[-1]
+                    driver_switches.append((idx, driver_id))
+
                 lines_to_publish.append(next_line)
+            
+            if len(driver_switches):
+                file_info.driver_id = driver_switches[-1][1]
+
+            driver_switches.append((len(lines_to_publish), -1))
 
             # Publish the lines if this is a worker process.
             filename = file_info.filename.split("/")[-1]
@@ -194,16 +210,23 @@ class LogMonitor(object):
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
+            
+            # Publish to each active / previously active driver
+            for idx in range(len(driver_switches) - 1):
+                driver_id = driver_switches[idx][1]
+                start  = driver_switches[idx][0] + 1
+                end    = driver_switches[idx + 1][0]
+                publish_to_driver = lines_to_publish[start:end]
 
-            if len(lines_to_publish) > 0 and is_worker:
-                self.redis_client.publish(
-                    ray.gcs_utils.LOG_FILE_CHANNEL,
-                    json.dumps({
-                        "ip": self.ip,
-                        "pid": file_info.worker_pid,
-                        "lines": lines_to_publish
-                    }))
-                anything_published = True
+                if len(publish_to_driver) > 0 and is_worker:
+                    self.redis_client.publish(
+                        ray.gcs_utils.LOG_FILE_CHANNEL + driver_id,
+                        json.dumps({
+                            "ip": self.ip,
+                            "pid": file_info.worker_pid,
+                            "lines": publish_to_driver
+                        }))
+                    anything_published = True
 
         return anything_published
 

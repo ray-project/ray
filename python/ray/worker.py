@@ -994,6 +994,10 @@ class Worker(object):
                 next_title = "ray_{}".format(actor.__class__.__name__)
             with profiling.profile("task", extra_data=extra_data):
                 with _changeproctitle(title, next_title):
+                    print("Ray driver id: {}".format(str(driver_id)))
+                    print("Ray driver id: {}".format(str(driver_id)), file=sys.stderr)
+                    sys.stdout.flush()
+                    sys.stderr.flush()
                     self._process_task(task, execution_info)
                 # Reset the state fields so the next task can run.
                 self.task_context.current_task_id = TaskID.nil()
@@ -1530,7 +1534,7 @@ last_task_error_raise_time = 0
 UNCAUGHT_ERROR_GRACE_PERIOD = 5
 
 
-def print_logs(redis_client, threads_stopped):
+def print_logs(redis_client, threads_stopped, driver_id):
     """Prints log messages from workers on all of the nodes.
 
     Args:
@@ -1539,7 +1543,7 @@ def print_logs(redis_client, threads_stopped):
             the thread that it should exit.
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
-    pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
+    pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL + str(driver_id))
     localhost = services.get_node_ip_address()
     try:
         # Keep track of the number of consecutive log messages that have been
@@ -1929,7 +1933,8 @@ def connect(node,
             worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",
-                args=(worker.redis_client, worker.threads_stopped))
+                args=(worker.redis_client, worker.threads_stopped, 
+                    DriverID(worker.worker_id)))
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
