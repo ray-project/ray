@@ -186,7 +186,7 @@ class ActionNetwork(object):
                 stochastic_actions = tf.clip_by_value(
                     deterministic_actions + normal_sample,
                     low_action * tf.ones_like(deterministic_actions),
-                    high_action * * tf.ones_like(deterministic_actions))
+                    high_action * tf.ones_like(deterministic_actions))
             else:
                 normal_sample = tf.random_normal(
                     tf.shape(deterministic_actions), stddev=act_noise)
