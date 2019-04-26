@@ -82,7 +82,7 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
     failure_callback_ = failure_callback;
   }
 
-  void Add(const JobID &job_id, const TaskID &task_id,
+  void Add(const DriverID &driver_id, const TaskID &task_id,
            std::shared_ptr<TaskLeaseDataT> &task_lease_data) {
     task_lease_table_[task_id] = task_lease_data;
     if (subscribed_tasks_.count(task_id) == 1) {
@@ -90,7 +90,7 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
     }
   }
 
-  Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
+  Status RequestNotifications(const DriverID &driver_id, const TaskID &task_id,
                               const ClientID &client_id) {
     subscribed_tasks_.insert(task_id);
     auto entry = task_lease_table_.find(task_id);
@@ -102,14 +102,14 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
     return ray::Status::OK();
   }
 
-  Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
+  Status CancelNotifications(const DriverID &driver_id, const TaskID &task_id,
                              const ClientID &client_id) {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
   }
 
   Status AppendAt(
-      const JobID &job_id, const TaskID &task_id,
+      const DriverID &driver_id, const TaskID &task_id,
       std::shared_ptr<TaskReconstructionDataT> &task_data,
       const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
           &success_callback,
@@ -132,7 +132,7 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
   MOCK_METHOD4(
       Append,
       ray::Status(
-          const JobID &, const TaskID &, std::shared_ptr<TaskReconstructionDataT> &,
+          const DriverID &, const TaskID &, std::shared_ptr<TaskReconstructionDataT> &,
           const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &));
 
  private:
@@ -323,7 +323,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   task_lease_data->node_manager_id = ClientID::from_random().binary();
   task_lease_data->acquired_at = current_sys_time_ms();
   task_lease_data->timeout = 2 * test_period;
-  mock_gcs_.Add(JobID::nil(), task_id, task_lease_data);
+  mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -351,7 +351,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
     task_lease_data->node_manager_id = ClientID::from_random().binary();
     task_lease_data->acquired_at = current_sys_time_ms();
     task_lease_data->timeout = reconstruction_timeout_ms_;
-    mock_gcs_.Add(JobID::nil(), task_id, task_lease_data);
+    mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
   });
   // Run the test for much longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 2);
@@ -405,7 +405,7 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   task_reconstruction_data->node_manager_id = ClientID::from_random().binary();
   task_reconstruction_data->num_reconstructions = 0;
   RAY_CHECK_OK(
-      mock_gcs_.AppendAt(JobID::nil(), task_id, task_reconstruction_data, nullptr,
+      mock_gcs_.AppendAt(DriverID::nil(), task_id, task_reconstruction_data, nullptr,
                          /*failure_callback=*/
                          [](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
                             const TaskReconstructionDataT &data) { ASSERT_TRUE(false); },

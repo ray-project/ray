@@ -19,4 +19,10 @@ static const TagKeyType LanguageKey = TagKeyType::Register("Language");
 
 static const TagKeyType WorkerPidKey = TagKeyType::Register("WorkerPid");
 
+static const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
+
+static const TagKeyType ResourceNameKey = TagKeyType::Register("ResourceName");
+
+static const TagKeyType ValueTypeKey = TagKeyType::Register("ValueType");
+
 #endif  // RAY_STATS_TAG_DEFS_H

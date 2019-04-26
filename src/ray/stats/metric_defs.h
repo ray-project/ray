@@ -12,16 +12,54 @@
 /// You can follow these examples to define your metrics.
 
 static Gauge CurrentWorker("current_worker",
-                           "This metric is used for report states of workers. "
+                           "This metric is used for reporting states of workers."
                            "Through this, we can see the worker's state on dashboard.",
-                           "1 pcs", {NodeAddressKey, LanguageKey, WorkerPidKey});
+                           "1 pcs", {LanguageKey, WorkerPidKey});
+
+static Gauge CurrentDriver("current_driver",
+                           "This metric is used for reporting states of drivers.",
+                           "1 pcs", {LanguageKey, DriverPidKey});
 
 static Count TaskCountReceived("task_count_received",
-                               "The count that the raylet received.", "pcs",
-                               {NodeAddressKey});
+                               "Number of tasks received by raylet.", "pcs", {});
 
 static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "us",
                               {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
-                              {NodeAddressKey, CustomKey});
+                              {CustomKey});
+
+static Gauge LocalAvailableResource("local_available_resource",
+                                    "The available resources on this node.", "pcs",
+                                    {ResourceNameKey});
+
+static Gauge LocalTotalResource("local_total_resource",
+                                "The total resources on this node.", "pcs",
+                                {ResourceNameKey});
+
+static Gauge ActorStats("actor_stats", "Stat metrics of the actors in raylet.", "pcs",
+                        {ValueTypeKey});
+
+static Gauge ObjectManagerStats("object_manager_stats",
+                                "Stat the metric values of object in raylet", "pcs",
+                                {ValueTypeKey});
+
+static Gauge LineageCacheStats("lineage_cache_stats",
+                               "Stats the metric values of lineage cache.", "pcs",
+                               {ValueTypeKey});
+
+static Gauge TaskDependencyManagerStats("task_dependency_manager_stats",
+                                        "Stat the metric values of task dependency.",
+                                        "pcs", {ValueTypeKey});
+
+static Gauge SchedulingQueueStats("scheduling_queue_stats",
+                                  "Stats the metric values of scheduling queue.", "pcs",
+                                  {ValueTypeKey});
+
+static Gauge ReconstructionPolicyStats(
+    "reconstruction_policy_stats", "Stats the metric values of reconstruction policy.",
+    "pcs", {ValueTypeKey});
+
+static Gauge ConnectionPoolStats("connection_pool_stats",
+                                 "Stats the connection pool metrics.", "pcs",
+                                 {ValueTypeKey});
 
 #endif  // RAY_STATS_METRIC_DEFS_H
