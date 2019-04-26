@@ -205,9 +205,10 @@ def test_single_op_single_in_single_out_no_tensors(ray_start_regular, actors):
     x = 2.0
     with tf.GradientTape() as t:
         out = x
-        with pytest.raises(RuntimeError,
-                           match="Differentiable functions must have "
-                           "at least one TF arg/kwarg."):
+        with pytest.raises(
+                RuntimeError,
+                match="Differentiable functions must have "
+                "at least one TF arg/kwarg."):
             out = ray_actor.square.remote(out)
 
 
@@ -913,10 +914,8 @@ def test_kwargs_large(ray_start_regular, actors):
         i_7 = ray.get(i_2) / 5.0
         i_8 = ray.get(i_2) / 3.0
         i_9, _, i_10, _, i_11 = ray_actor.f.remote(i_6, i_7, i_8)
-        i_12, i_13 = ray_actor.kw_power_mul.remote(i_11,
-                                                   i_7,
-                                                   x_pow=1.0,
-                                                   y_mul=i_4)
+        i_12, i_13 = ray_actor.kw_power_mul.remote(
+            i_11, i_7, x_pow=1.0, y_mul=i_4)
         _, i_14 = ray_actor.two_in_square_cube_v2.remote(i_8, i_12)
         i_15 = ray.get(i_14) / 5.0
         i_16 = ray_actor.prod.remote(i_15, i_5)

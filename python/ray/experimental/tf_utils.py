@@ -100,9 +100,10 @@ class TensorFlowVariables(object):
 
         # Create new placeholders to put in custom weights.
         for k, var in self.variables.items():
-            self.placeholders[k] = tf.placeholder(var.value().dtype,
-                                                  var.get_shape().as_list(),
-                                                  name="Placeholder_" + k)
+            self.placeholders[k] = tf.placeholder(
+                var.value().dtype,
+                var.get_shape().as_list(),
+                name="Placeholder_" + k)
             self.assignment_nodes[k] = var.assign(self.placeholders[k])
 
     def set_session(self, sess):
@@ -157,8 +158,9 @@ class TensorFlowVariables(object):
         placeholders = [
             self.placeholders[k] for k, v in self.variables.items()
         ]
-        self.sess.run(list(self.assignment_nodes.values()),
-                      feed_dict=dict(zip(placeholders, arrays)))
+        self.sess.run(
+            list(self.assignment_nodes.values()),
+            feed_dict=dict(zip(placeholders, arrays)))
 
     def get_weights(self):
         """Returns a dictionary containing the weights of the network.
@@ -193,12 +195,13 @@ class TensorFlowVariables(object):
                              "defined in the same TensorFlow graph. To fix "
                              "this, place each network definition in its own "
                              "tf.Graph.")
-        self.sess.run(assign_list,
-                      feed_dict={
-                          self.placeholders[name]: value
-                          for (name, value) in new_weights.items()
-                          if name in self.placeholders
-                      })
+        self.sess.run(
+            assign_list,
+            feed_dict={
+                self.placeholders[name]: value
+                for (name, value) in new_weights.items()
+                if name in self.placeholders
+            })
 
 
 def _differentiable_forward(self, identifier, method, persistent_tape, args,
@@ -264,9 +267,8 @@ def _differentiable_forward(self, identifier, method, persistent_tape, args,
             tf_inputs.append(processed_args[-1])
         elif arg_type == "tf_const":
             processed_args.append(tf.constant(arg, dtype=arg_dtype))
-            tf_tensor_inputs.append(
-                processed_args[-1]
-            )  # `tf.constant` is `tf.Tensor` under the hood
+            tf_tensor_inputs.append(processed_args[
+                -1])  # `tf.constant` is `tf.Tensor` under the hood
             tf_inputs.append(processed_args[-1])
         elif arg_type == "native":
             processed_args.append(arg)
@@ -306,8 +308,8 @@ def _differentiable_forward(self, identifier, method, persistent_tape, args,
     # process the results
     if isinstance(results, (list, tuple)):
         processed_results = [
-            result.numpy() if isinstance(result,
-                                         (tf.Tensor, tf.Variable)) else result
+            result.numpy()
+            if isinstance(result, (tf.Tensor, tf.Variable)) else result
             for result in results
         ]
     else:
@@ -448,10 +450,9 @@ def tf_differentiable(method):
                     kwargs, kwarg_types, kwarg_dtypes))
 
             # execute the forward pass
-            return _differentiable_forward(self, identifier, method,
-                                           persistent_tape, args, arg_types,
-                                           arg_dtypes, kwargs, kws,
-                                           kwarg_types, kwarg_dtypes)
+            return _differentiable_forward(
+                self, identifier, method, persistent_tape, args, arg_types,
+                arg_dtypes, kwargs, kws, kwarg_types, kwarg_dtypes)
         else:
             assert kwarg_types is None and kwarg_dtypes is None and kws is None, (
                 "During backwards pass, kwarg_types, kwarg_dtypes, "
