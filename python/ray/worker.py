@@ -310,8 +310,8 @@ class Worker(object):
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
-                    register_custom_serializer(
-                        type(e.example_object), use_dict=True)
+                    register_custom_serializer(type(e.example_object),
+                                               use_dict=True)
                     warning_message = ("WARNING: Serializing objects of type "
                                        "{} by expanding them as dictionaries "
                                        "of their fields. This behavior may "
@@ -324,8 +324,8 @@ class Worker(object):
                     # We also handle generic exceptions here because
                     # cloudpickle can fail with many different types of errors.
                     try:
-                        register_custom_serializer(
-                            type(e.example_object), use_pickle=True)
+                        register_custom_serializer(type(e.example_object),
+                                                   use_pickle=True)
                         warning_message = ("WARNING: Falling back to "
                                            "serializing objects of type {} by "
                                            "using pickle. This may be "
@@ -333,10 +333,9 @@ class Worker(object):
                                                type(e.example_object)))
                         logger.warning(warning_message)
                     except serialization.CloudPickleError:
-                        register_custom_serializer(
-                            type(e.example_object),
-                            use_pickle=True,
-                            local=True)
+                        register_custom_serializer(type(e.example_object),
+                                                   use_pickle=True,
+                                                   local=True)
                         warning_message = ("WARNING: Pickling the class {} "
                                            "failed, so we are using pickle "
                                            "and only registering the class "
@@ -380,17 +379,17 @@ class Worker(object):
             # should return an error code to the caller instead of printing a
             # message.
             logger.info(
-                "The object with ID {} already exists in the object store."
-                .format(object_id))
+                "The object with ID {} already exists in the object store.".
+                format(object_id))
         except TypeError:
             # This error can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need these extra
             # fallbacks here to start from the beginning. Hopefully the object
             # could have a `__reduce__` method.
             register_custom_serializer(type(value), use_pickle=True)
-            warning_message = ("WARNING: Serializing the class {} failed, "
-                               "so are are falling back to cloudpickle."
-                               .format(type(value)))
+            warning_message = (
+                "WARNING: Serializing the class {} failed, "
+                "so are are falling back to cloudpickle.".format(type(value)))
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
@@ -898,8 +897,9 @@ class Worker(object):
             task_exception = task.actor_id().is_nil()
             traceback_str = ray.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
-            self._handle_process_task_failure(
-                function_descriptor, return_object_ids, e, traceback_str)
+            self._handle_process_task_failure(function_descriptor,
+                                              return_object_ids, e,
+                                              traceback_str)
             return
         finally:
             self._current_task = None
@@ -928,11 +928,10 @@ class Worker(object):
         ]
         self._store_outputs_in_object_store(return_object_ids, failure_objects)
         # Log the error message.
-        ray.utils.push_error_to_driver(
-            self,
-            ray_constants.TASK_PUSH_ERROR,
-            str(failure_object),
-            driver_id=self.task_driver_id)
+        ray.utils.push_error_to_driver(self,
+                                       ray_constants.TASK_PUSH_ERROR,
+                                       str(failure_object),
+                                       driver_id=self.task_driver_id)
         # Mark the actor init as failed
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
@@ -995,7 +994,8 @@ class Worker(object):
             with profiling.profile("task", extra_data=extra_data):
                 with _changeproctitle(title, next_title):
                     print("Ray driver id: {}".format(str(driver_id)))
-                    print("Ray driver id: {}".format(str(driver_id)), file=sys.stderr)
+                    print("Ray driver id: {}".format(str(driver_id)),
+                          file=sys.stderr)
                     sys.stdout.flush()
                     sys.stderr.flush()
                     self._process_task(task, execution_info)
@@ -1163,10 +1163,11 @@ def _initialize_serialization(driver_id, worker=global_worker):
     pyarrow.register_torch_serialization_handlers(serialization_context)
 
     for id_type in ray._raylet._ID_TYPES:
-        serialization_context.register_type(
-            id_type,
-            "{}.{}".format(id_type.__module__, id_type.__name__),
-            pickle=True)
+        serialization_context.register_type(id_type,
+                                            "{}.{}".format(
+                                                id_type.__module__,
+                                                id_type.__name__),
+                                            pickle=True)
 
     def actor_handle_serializer(obj):
         return obj._serialization_helper(True)
@@ -1198,27 +1199,24 @@ def _initialize_serialization(driver_id, worker=global_worker):
             class_id=error_cls.__module__ + ". " + error_cls.__name__,
         )
     # Tell Ray to serialize lambdas with pickle.
-    register_custom_serializer(
-        type(lambda: 0),
-        use_pickle=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="lambda")
+    register_custom_serializer(type(lambda: 0),
+                               use_pickle=True,
+                               local=True,
+                               driver_id=driver_id,
+                               class_id="lambda")
     # Tell Ray to serialize types with pickle.
-    register_custom_serializer(
-        type(int),
-        use_pickle=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="type")
+    register_custom_serializer(type(int),
+                               use_pickle=True,
+                               local=True,
+                               driver_id=driver_id,
+                               class_id="type")
     # Tell Ray to serialize FunctionSignatures as dictionaries. This is
     # used when passing around actor handles.
-    register_custom_serializer(
-        ray.signature.FunctionSignature,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.signature.FunctionSignature")
+    register_custom_serializer(ray.signature.FunctionSignature,
+                               use_dict=True,
+                               local=True,
+                               driver_id=driver_id,
+                               class_id="ray.signature.FunctionSignature")
 
 
 def init(redis_address=None,
@@ -1401,8 +1399,9 @@ def init(redis_address=None,
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler.
-        _global_node = ray.node.Node(
-            head=True, shutdown_at_exit=False, ray_params=ray_params)
+        _global_node = ray.node.Node(head=True,
+                                     shutdown_at_exit=False,
+                                     ray_params=ray_params)
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
@@ -1450,15 +1449,16 @@ def init(redis_address=None,
             object_id_seed=object_id_seed,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local)
-        _global_node = ray.node.Node(
-            ray_params, head=False, shutdown_at_exit=False, connect_only=True)
+        _global_node = ray.node.Node(ray_params,
+                                     head=False,
+                                     shutdown_at_exit=False,
+                                     connect_only=True)
 
-    connect(
-        _global_node,
-        mode=driver_mode,
-        log_to_driver=log_to_driver,
-        worker=global_worker,
-        driver_id=driver_id)
+    connect(_global_node,
+            mode=driver_mode,
+            log_to_driver=log_to_driver,
+            worker=global_worker,
+            driver_id=driver_id)
 
     for hook in _post_init_hooks:
         hook()
@@ -1566,9 +1566,11 @@ def print_logs(redis_client, threads_stopped, driver_id):
             data = json.loads(ray.utils.decode(msg["data"]))
             if data["ip"] == localhost:
                 for line in data["lines"]:
-                    print("{}{}(pid={}){} {}".format(
-                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
-                        colorama.Style.RESET_ALL, line))
+                    print("{}{}(pid={}){} {}".format(colorama.Style.DIM,
+                                                     colorama.Fore.CYAN,
+                                                     data["pid"],
+                                                     colorama.Style.RESET_ALL,
+                                                     line))
             else:
                 for line in data["lines"]:
                     print("{}{}(pid={}, ip={}){} {}".format(
@@ -1781,8 +1783,8 @@ def connect(node,
     worker.lock = threading.Lock()
 
     # Create an object for interfacing with the global state.
-    global_state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
+    global_state._initialize_global_state(node.redis_address,
+                                          redis_password=node.redis_password)
 
     # Register the worker with Redis.
     if mode == SCRIPT_MODE:
@@ -1933,8 +1935,8 @@ def connect(node,
             worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",
-                args=(worker.redis_client, worker.threads_stopped, 
-                    DriverID(worker.worker_id)))
+                args=(worker.redis_client, worker.threads_stopped,
+                      DriverID(worker.worker_id)))
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
@@ -1950,10 +1952,10 @@ def connect(node,
         # are the same.
         script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
         current_directory = os.path.abspath(os.path.curdir)
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, script_directory))
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, current_directory))
+        worker.run_function_on_all_workers(lambda worker_info: sys.path.insert(
+            1, script_directory))
+        worker.run_function_on_all_workers(lambda worker_info: sys.path.insert(
+            1, current_directory))
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
         # run may set the Python path, which is needed to import a module used
@@ -2146,12 +2148,11 @@ def register_custom_serializer(cls,
 
         serialization_context = worker_info[
             "worker"].get_serialization_context(driver_id)
-        serialization_context.register_type(
-            cls,
-            class_id,
-            pickle=use_pickle,
-            custom_serializer=serializer,
-            custom_deserializer=deserializer)
+        serialization_context.register_type(cls,
+                                            class_id,
+                                            pickle=use_pickle,
+                                            custom_serializer=serializer,
+                                            custom_deserializer=deserializer)
 
     if not local:
         worker.run_function_on_all_workers(register_class_for_serialization)
@@ -2310,8 +2311,8 @@ def wait(object_ids, num_returns=1, timeout=None):
         if len(object_ids) != len(set(object_ids)):
             raise Exception("Wait requires a list of unique object IDs.")
         if num_returns <= 0:
-            raise Exception(
-                "Invalid number of objects to return %d." % num_returns)
+            raise Exception("Invalid number of objects to return %d." %
+                            num_returns)
         if num_returns > len(object_ids):
             raise Exception("num_returns cannot be greater than the number "
                             "of objects provided to ray.wait.")
@@ -2358,9 +2359,11 @@ def make_decorator(num_return_vals=None,
                 raise Exception("The keyword 'max_reconstructions' is not "
                                 "allowed for remote functions.")
 
-            return ray.remote_function.RemoteFunction(
-                function_or_class, num_cpus, num_gpus, resources,
-                num_return_vals, max_calls)
+            return ray.remote_function.RemoteFunction(function_or_class,
+                                                      num_cpus, num_gpus,
+                                                      resources,
+                                                      num_return_vals,
+                                                      max_calls)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -2470,11 +2473,10 @@ def remote(*args, **kwargs):
     max_calls = kwargs.get("max_calls")
     max_reconstructions = kwargs.get("max_reconstructions")
 
-    return make_decorator(
-        num_return_vals=num_return_vals,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        resources=resources,
-        max_calls=max_calls,
-        max_reconstructions=max_reconstructions,
-        worker=worker)
+    return make_decorator(num_return_vals=num_return_vals,
+                          num_cpus=num_cpus,
+                          num_gpus=num_gpus,
+                          resources=resources,
+                          max_calls=max_calls,
+                          max_reconstructions=max_reconstructions,
+                          worker=worker)
