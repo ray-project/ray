@@ -116,7 +116,7 @@ class ModelSupportedSpaces(unittest.TestCase):
         check_support("APPO", {"num_gpus": 0, "vtrace": False}, stats)
         check_support(
             "DDPG", {
-                "noise_scale": 100.0,
+                "exploration_ou_noise_scale": 100.0,
                 "timesteps_per_iteration": 1
             },
             stats,
