@@ -111,6 +111,7 @@ class RayParams(object):
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
+                 enable_profile=False,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -143,6 +144,7 @@ class RayParams(object):
         self.include_java = include_java
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
+        self.enable_profile = enable_profile
         self._internal_config = _internal_config
         self._check_usage()
 

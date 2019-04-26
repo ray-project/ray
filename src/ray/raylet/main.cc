@@ -26,6 +26,7 @@ DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
 DEFINE_bool(enable_stdout_exporter, false,
             "Whether enable the stdout exporter for stats.");
+DEFINE_bool(enable_profile, false, "Whether we enable the profile.");
 
 #ifndef RAYLET_TEST
 
@@ -64,6 +65,7 @@ int main(int argc, char *argv[]) {
   const bool disable_stats = FLAGS_disable_stats;
   const std::string stat_address = FLAGS_stat_address;
   const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
+  const bool enable_profile = FLAGS_enable_profile;
   gflags::ShutDownCommandLineFlags();
 
   // Initialize stats.
@@ -88,6 +90,7 @@ int main(int argc, char *argv[]) {
     // TODO(rkn): The line below could throw an exception. What should we do about this?
     raylet_config[config_name] = std::stoi(config_value);
   }
+  raylet_config["enable_profile"] = enable_profile ? 1 : 0;
 
   RayConfig::instance().initialize(raylet_config);
 

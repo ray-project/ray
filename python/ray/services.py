@@ -1076,7 +1076,8 @@ def start_raylet(redis_address,
                  config=None,
                  include_java=False,
                  java_worker_options=None,
-                 load_code_from_local=False):
+                 load_code_from_local=False,
+                 enable_profile=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1109,6 +1110,8 @@ def start_raylet(redis_address,
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (str): The command options for Java worker.
+        load_code_from_local (bool): Whether load code from local.
+        enable_profile (bool): Whether enable profile for raylet.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1192,6 +1195,7 @@ def start_raylet(redis_address,
         "--java_worker_command={}".format(java_worker_command),
         "--redis_password={}".format(redis_password or ""),
         "--temp_dir={}".format(temp_dir),
+        "--enable_profile={}".format(str(enable_profile).lower()),
     ]
     process_info = start_ray_process(
         command,

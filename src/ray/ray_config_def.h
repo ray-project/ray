@@ -151,3 +151,8 @@ RAY_CONFIG(uint32_t, num_actor_checkpoints_to_keep, 20);
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000);
+
+//TODO(qwang): We should re-type `int` to `bool` after
+// https://github.com/ray-project/ray/pull/4701 merging.
+/// Whether we should enable profile. 0 means false and 1 means true.
+RAY_CONFIG(int, enable_profile, 0);

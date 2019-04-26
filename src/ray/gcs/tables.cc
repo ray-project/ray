@@ -339,6 +339,10 @@ std::string ErrorTable::DebugString() const {
 }
 
 Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
+  if (RayConfig::instance().enable_profile() != 1) {
+    return Status::OK();
+  }
+
   auto data = std::make_shared<ProfileTableDataT>();
   // There is some room for optimization here because the Append function will just
   // call "Pack" and undo the "UnPack".
