@@ -864,6 +864,71 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
+def test_many_fractional_resources(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
+
+    @ray.remote
+    def g():
+        return 1
+
+    @ray.remote
+    def f(block, accepted_resources):
+        true_resources = {
+            resource: value[0][1]
+            for resource, value in ray.get_resource_ids().items()
+        }
+        if block:
+            ray.get(g.remote())
+        return true_resources == accepted_resources
+
+    # Check that the resource are assigned correctly.
+    result_ids = []
+    for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
+        resource_set = {"CPU": int(rand1 * 10000) / 10000}
+        result_ids.append(f._remote([False, resource_set], num_cpus=rand1))
+
+        resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
+        result_ids.append(f._remote([False, resource_set], num_gpus=rand1))
+
+        resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
+        result_ids.append(
+            f._remote([False, resource_set], resources={"Custom": rand1}))
+
+        resource_set = {
+            "CPU": int(rand1 * 10000) / 10000,
+            "GPU": int(rand2 * 10000) / 10000,
+            "Custom": int(rand3 * 10000) / 10000
+        }
+        result_ids.append(
+            f._remote(
+                [False, resource_set],
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
+        result_ids.append(
+            f._remote(
+                [True, resource_set],
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
+    assert all(ray.get(result_ids))
+
+    # Check that the available resources at the end are the same as the
+    # beginning.
+    stop_time = time.time() + 10
+    correct_available_resources = False
+    while time.time() < stop_time:
+        if ray.global_state.available_resources() == {
+                "CPU": 2.0,
+                "GPU": 2.0,
+                "Custom": 2.0,
+        }:
+            correct_available_resources = True
+            break
+    if not correct_available_resources:
+        assert False, "Did not get correct available resources."
+
+
 def test_get_multiple(ray_start_regular):
     object_ids = [ray.put(i) for i in range(10)]
     assert ray.get(object_ids) == list(range(10))
@@ -2126,20 +2191,24 @@ def test_many_custom_resources(shutdown_only):
     ray.get(results)
 
 
+# TODO: 5 retry attempts may be too little for Travis and we may need to
+# increase it if this test begins to be flaky on Travis.
 def test_zero_capacity_deletion_semantics(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
 
     def test():
         resources = ray.global_state.available_resources()
+        MAX_RETRY_ATTEMPTS = 5
         retry_count = 0
 
-        while resources and retry_count < 5:
+        while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
             resources = ray.global_state.available_resources()
             retry_count += 1
 
-        if retry_count >= 5:
-            raise RuntimeError("Resources were available even after retries.")
+        if retry_count >= MAX_RETRY_ATTEMPTS:
+            raise RuntimeError(
+                "Resources were available even after five retries.")
 
         return resources
 
