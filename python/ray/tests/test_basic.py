@@ -2567,7 +2567,7 @@ def test_logging_to_driver(shutdown_only):
 def test_logging_to_multiple_drivers(shutdown_only):
     file_name = os.path.abspath(__file__) + "::test_logging_to_driver"
     command = ["python", "-m", "pytest", "-v", file_name]
-    num_procs = 10
+    num_procs = 20
 
     procs = []
     outputs = []
