@@ -2536,16 +2536,19 @@ class CaptureOutputAndError(object):
 def test_logging_to_driver(shutdown_only):
     ray.init(num_cpus=1, log_to_driver=True)
 
+    bound_l = 1
+    bound_h = 9
+
     # Randomize output
-    j = random.randint(0, 10)
+    j = random.randint(bound_l, bound_h)
 
     @ray.remote
     def f(j):
         # It's important to make sure that these print statements occur even
         # without calling sys.stdout.flush() and sys.stderr.flush().
-        for i in range(j * 100, (j + 1) * 100):
-            print(i)
-            print(100 + i, file=sys.stderr)
+        for i in range(j * 100, (j + 1) * 100 - 50):
+            print(-i)
+            print(-(50 + i), file=sys.stderr)
 
     captured = {}
     with CaptureOutputAndError(captured):
@@ -2553,8 +2556,11 @@ def test_logging_to_driver(shutdown_only):
         time.sleep(1)
 
     output_lines = captured["out"]
-    for i in range(j * 100, (j+2) * 100):
-        assert str(i) in output_lines
+    for i in range(bound_l * 100, (bound_h + 1) * 100):
+        if i >= j * 100 and i < (j+1) * 100:
+            assert str(-i) in output_lines
+        else:
+            assert str(-i) not in output_lines
     error_lines = captured["err"]
     assert len(error_lines) == 0
 
