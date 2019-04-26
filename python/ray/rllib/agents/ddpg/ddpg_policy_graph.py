@@ -48,12 +48,14 @@ class DDPGPostprocessing(object):
                     [SampleBatch.CUR_OBS, SampleBatch.ACTIONS])
             ]
             self.sess.run(self.remove_noise_op)
-            clean_actions = self.sess.run(self.output_actions,
-                                          feed_dict={
-                                              self.cur_observations: states,
-                                              self.stochastic: False,
-                                              self.noise_scale: .0
-                                          })
+            clean_actions = self.sess.run(
+                self.output_actions,
+                feed_dict={
+                    self.cur_observations: states,
+                    self.stochastic: False,
+                    self.noise_scale: .0,
+                    self.pure_exploration_phase: False,
+                })
             distance_in_action_space = np.sqrt(
                 np.mean(np.square(clean_actions - noisy_actions)))
             self.pi_distance = distance_in_action_space
@@ -467,54 +469,61 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         action_range = action_space.high - action_low
 
         def compute_stochastic_actions():
-            # shape of deterministic_actions is [None, dim_action]
-            if noise_type == "gaussian":
-                # add IID Gaussian noise for exploration, TD3-style
-                normal_sample = noise_scale * tf.random_normal(
-                    tf.shape(deterministic_actions),
-                    stddev=self.config["exploration_gaussian_sigma"])
-                stochastic_actions = tf.clip_by_value(
-                    deterministic_actions + normal_sample, action_low,
-                    action_high)
-            elif noise_type == "ou":
-                # add OU noise for exploration, DDPG-style
-                zero_acts = action_low.size * [.0]
-                exploration_sample = tf.get_variable(name="ornstein_uhlenbeck",
-                                                     dtype=tf.float32,
-                                                     initializer=zero_acts,
-                                                     trainable=False)
-                normal_sample = tf.random_normal(shape=[action_low.size],
-                                                 mean=0.0,
-                                                 stddev=1.0)
-                exploration_value = tf.assign_add(
-                    exploration_sample,
-                    self.config["exploration_ou_theta"] * -exploration_sample +
-                    self.config["exploration_ou_sigma"] * normal_sample)
-                base_scale = self.config["exploration_ou_noise_scale"]
-                full_noise_scale = noise_scale * base_scale * exploration_value
-                stochastic_actions = tf.clip_by_value(
-                    deterministic_actions + full_noise_scale * action_range,
-                    action_low, action_high)
-            else:
-                raise ValueError(
-                    "Unknown noise type '%s' (try 'ou' or 'gaussian')" %
-                    noise_type)
+            def make_noisy_actions():
+                # shape of deterministic_actions is [None, dim_action]
+                if noise_type == "gaussian":
+                    # add IID Gaussian noise for exploration, TD3-style
+                    normal_sample = noise_scale * tf.random_normal(
+                        tf.shape(deterministic_actions),
+                        stddev=self.config["exploration_gaussian_sigma"])
+                    stochastic_actions = tf.clip_by_value(
+                        deterministic_actions + normal_sample, action_low,
+                        action_high)
+                elif noise_type == "ou":
+                    # add OU noise for exploration, DDPG-style
+                    zero_acts = action_low.size * [.0]
+                    exploration_sample = tf.get_variable(
+                        name="ornstein_uhlenbeck", dtype=tf.float32,
+                        initializer=zero_acts, trainable=False)
+                    normal_sample = tf.random_normal(
+                        shape=[action_low.size], mean=0.0, stddev=1.0)
+                    ou_new = self.config["exploration_ou_theta"] \
+                        * -exploration_sample \
+                        + self.config["exploration_ou_sigma"] * normal_sample
+                    exploration_value = tf.assign_add(
+                        exploration_sample,
+                        ou_new)
+                    base_scale = self.config["exploration_ou_noise_scale"]
+                    noise = noise_scale * base_scale \
+                        * exploration_value * action_range
+                    stochastic_actions = tf.clip_by_value(
+                        deterministic_actions + noise,
+                        action_low, action_high)
+                else:
+                    raise ValueError(
+                        "Unknown noise type '%s' (try 'ou' or 'gaussian')" %
+                        noise_type)
+                return stochastic_actions
 
-            # pure random exploration option
-            uniform_random_actions = tf.random.uniform(
-                tf.shape(deterministic_actions))
-            # rescale uniform random actions according to action range
-            tf_range = tf.constant(action_range[None], dtype="float32")
-            tf_low = tf.constant(action_low[None], dtype="float32")
-            uniform_random_actions = uniform_random_actions * tf_range + tf_low
+            def make_uniform_random_actions():
+                # pure random exploration option
+                uniform_random_actions = tf.random.uniform(
+                    tf.shape(deterministic_actions))
+                # rescale uniform random actions according to action range
+                tf_range = tf.constant(action_range[None], dtype="float32")
+                tf_low = tf.constant(action_low[None], dtype="float32")
+                uniform_random_actions = uniform_random_actions * tf_range \
+                    + tf_low
+                return uniform_random_actions
+
             stochastic_actions = tf.cond(
                 # need to condition on noise_scale > 0 because zeroing
                 # noise_scale is how evaluator signals no noise should be used
                 # (this is ugly and should be fixed by adding an "eval_mode"
                 # config flag or something)
                 tf.logical_and(enable_pure_exploration, noise_scale > 0),
-                true_fn=lambda: uniform_random_actions,
-                false_fn=lambda: stochastic_actions)
+                true_fn=make_uniform_random_actions,
+                false_fn=make_noisy_actions)
             return stochastic_actions
 
         enable_stochastic = tf.logical_and(should_be_stochastic,
