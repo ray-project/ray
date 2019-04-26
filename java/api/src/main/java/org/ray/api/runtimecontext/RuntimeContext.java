@@ -1,5 +1,6 @@
-package org.ray.api;
+package org.ray.api.runtimecontext;
 
+import java.util.List;
 import org.ray.api.id.UniqueId;
 
 /**
@@ -43,4 +44,9 @@ public interface RuntimeContext {
    * Return true if Ray is running in single-process mode, false if Ray is running in cluster mode.
    */
   boolean isSingleProcess();
+
+  /**
+   * Get all node information in Ray cluster.
+   */
+  List<NodeInfo> getAllNodeInfo();
 }

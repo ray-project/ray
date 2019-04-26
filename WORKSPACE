@@ -1,9 +1,22 @@
 workspace(name = "com_github_ray_project_ray")
 
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
-load("//java:repo.bzl", "java_repositories")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-java_repositories()
+RULES_JVM_EXTERNAL_TAG = "1.2"
+
+RULES_JVM_EXTERNAL_SHA = "e5c68b87f750309a79f59c2b69ead5c3221ffa54ff9496306937bfa1c9c8c86b"
+
+http_archive(
+    name = "rules_jvm_external",
+    sha256 = RULES_JVM_EXTERNAL_SHA,
+    strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
+    url = "https://github.com/bazelbuild/rules_jvm_external/archive/%s.zip" % RULES_JVM_EXTERNAL_TAG,
+)
+
+load("//java:dependencies.bzl", "gen_java_deps")
+
+gen_java_deps()
 
 git_repository(
     name = "com_github_checkstyle_java",
@@ -11,12 +24,16 @@ git_repository(
     remote = "https://github.com/ruifangChen/checkstyle_java",
 )
 
+load("@com_github_checkstyle_java//:repo.bzl", "checkstyle_deps")
+
+checkstyle_deps()
+
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 git_repository(
     name = "com_github_nelhage_rules_boost",
-    commit = "6d6fd834281cb8f8e758dd9ad76df86304bf1869",
-    remote = "https://github.com/nelhage/rules_boost",
+    commit = "5171b9724fbb39c5fdad37b9ca9b544e8858d8ac",
+    remote = "https://github.com/ray-project/rules_boost",
 )
 
 load("@com_github_nelhage_rules_boost//:boost/boost.bzl", "boost_deps")

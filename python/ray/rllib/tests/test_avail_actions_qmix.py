@@ -2,12 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 from gym.spaces import Tuple, Discrete, Dict, Box
 
 import ray
 from ray.tune import register_env
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.agents.qmix import QMixAgent
+from ray.rllib.agents.qmix import QMixTrainer
 
 
 class AvailActionsTestEnv(MultiAgentEnv):
@@ -20,7 +21,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
     def __init__(self, env_config):
         self.state = None
         self.avail = env_config["avail_action"]
-        self.action_mask = [0] * 10
+        self.action_mask = np.array([0] * 10)
         self.action_mask[env_config["avail_action"]] = 1
 
     def reset(self):
@@ -55,7 +56,7 @@ if __name__ == "__main__":
             grouping, obs_space=obs_space, act_space=act_space))
 
     ray.init()
-    agent = QMixAgent(
+    agent = QMixTrainer(
         env="action_mask_test",
         config={
             "num_envs_per_worker": 5,  # test with vectorization on

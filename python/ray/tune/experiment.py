@@ -71,6 +71,8 @@ class Experiment(object):
                  sync_function=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
+                 keep_checkpoints_num=None,
+                 checkpoint_score_attr=None,
                  export_formats=None,
                  max_failures=3,
                  restore=None,
@@ -102,6 +104,8 @@ class Experiment(object):
             "sync_function": sync_function,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
+            "keep_checkpoints_num": keep_checkpoints_num,
+            "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
             "max_failures": max_failures,
             "restore": restore

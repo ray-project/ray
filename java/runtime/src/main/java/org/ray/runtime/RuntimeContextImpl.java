@@ -1,8 +1,10 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import org.ray.api.RuntimeContext;
+import java.util.List;
 import org.ray.api.id.UniqueId;
+import org.ray.api.runtimecontext.NodeInfo;
+import org.ray.api.runtimecontext.RuntimeContext;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.task.TaskSpec;
 
@@ -36,7 +38,7 @@ public class RuntimeContextImpl implements RuntimeContext {
       return false;
     }
 
-    return ((RayNativeRuntime) runtime).actorExistsInGcs(getCurrentActorId());
+    return runtime.getGcsClient().actorExists(getCurrentActorId());
   }
 
   @Override
@@ -54,4 +56,8 @@ public class RuntimeContextImpl implements RuntimeContext {
     return RunMode.SINGLE_PROCESS == runtime.getRayConfig().runMode;
   }
 
+  @Override
+  public List<NodeInfo> getAllNodeInfo() {
+    return runtime.getGcsClient().getAllNodeInfo();
+  }
 }

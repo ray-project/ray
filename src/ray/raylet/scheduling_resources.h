@@ -12,14 +12,53 @@ namespace ray {
 
 namespace raylet {
 
+/// Conversion factor that is the amount in internal units is equivalent to
+/// one actual resource. Multiply to convert from actual to interal and
+/// divide to convert from internal to actual.
+constexpr double kResourceConversionFactor = 10000;
+
 const std::string kCPU_ResourceLabel = "CPU";
 
-/// Resource availability status reports whether the resource requirement is
-/// (1) infeasible, (2) feasible but currently unavailable, or (3) available.
-enum class ResourceAvailabilityStatus : int {
-  kInfeasible,            ///< Cannot ever satisfy resource requirements.
-  kResourcesUnavailable,  ///< Feasible, but not currently available.
-  kFeasible               ///< Feasible and currently available.
+/// \class FractionalResourceQuantity
+/// \brief Converts the resource quantities to an internal representation to
+/// avoid machine precision errors.
+class FractionalResourceQuantity {
+ public:
+  /// \brief Construct a FractionalResourceQuantity representing zero
+  /// resources. This constructor is used by std::unordered_map when we try
+  /// to add a new FractionalResourceQuantity in ResourceSets.
+  FractionalResourceQuantity();
+
+  /// \brief Construct a FractionalResourceQuantity representing
+  /// resource_quantity.
+  FractionalResourceQuantity(double resource_quantity);
+
+  /// \brief Addition of FractionalResourceQuantity.
+  const FractionalResourceQuantity operator+(const FractionalResourceQuantity &rhs) const;
+
+  /// \brief Subtraction of FractionalResourceQuantity.
+  const FractionalResourceQuantity operator-(const FractionalResourceQuantity &rhs) const;
+
+  /// \brief Addition and assignment of FractionalResourceQuantity.
+  void operator+=(const FractionalResourceQuantity &rhs);
+
+  /// \brief Subtraction and assignment of FractionalResourceQuantity.
+  void operator-=(const FractionalResourceQuantity &rhs);
+
+  bool operator==(const FractionalResourceQuantity &rhs) const;
+  bool operator!=(const FractionalResourceQuantity &rhs) const;
+  bool operator<(const FractionalResourceQuantity &rhs) const;
+  bool operator>(const FractionalResourceQuantity &rhs) const;
+  bool operator<=(const FractionalResourceQuantity &rhs) const;
+  bool operator>=(const FractionalResourceQuantity &rhs) const;
+
+  /// \brief Return actual resource amount as a double.
+  double ToDouble() const;
+
+ private:
+  /// The resource quantity represented as 1/kResourceConversionFactor-th of a
+  /// unit.
+  int resource_quantity_;
 };
 
 /// \class ResourceSet
@@ -29,6 +68,10 @@ class ResourceSet {
  public:
   /// \brief empty ResourceSet constructor.
   ResourceSet();
+
+  /// \brief Constructs ResourceSet from the specified resource map.
+  ResourceSet(
+      const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map);
 
   /// \brief Constructs ResourceSet from the specified resource map.
   ResourceSet(const std::unordered_map<std::string, double> &resource_map);
@@ -67,25 +110,11 @@ class ResourceSet {
   /// False otherwise.
   bool IsSuperset(const ResourceSet &other) const;
 
-  /// \brief Add a new resource to the resource set.
-  ///
-  /// \param resource_name: name/label of the resource to add.
-  /// \param capacity: numeric capacity value for the resource to add.
-  /// \return True, if the resource was successfully added. False otherwise.
-  bool AddResource(const std::string &resource_name, double capacity);
-
   /// \brief Remove the specified resource from the resource set.
   ///
   /// \param resource_name: name/label of the resource to remove.
   /// \return True, if the resource was successfully removed. False otherwise.
   bool RemoveResource(const std::string &resource_name);
-
-  /// \brief Add a set of resources to the current set of resources only if the resource
-  /// labels match.
-  ///
-  /// \param other: The other resource set to add.
-  /// \return True if the resource set was added successfully. False otherwise.
-  bool AddResourcesStrict(const ResourceSet &other);
 
   /// \brief Aggregate resources from the other set into this set, adding any missing
   /// resource labels to this set.
@@ -94,26 +123,33 @@ class ResourceSet {
   /// \return Void.
   void AddResources(const ResourceSet &other);
 
-  /// \brief Subtract a set of resources from the current set of resources, only if
-  /// resource labels match.
+  /// \brief Subtract a set of resources from the current set of resources and
+  /// check that the post-subtraction result nonnegative. Assumes other
+  /// is a subset of the ResourceSet. Deletes any resource if the capacity after
+  /// subtraction is zero.
   ///
   /// \param other: The resource set to subtract from the current resource set.
-  /// \return True if the resource set was subtracted successfully.
-  /// False otherwise.
-  bool SubtractResourcesStrict(const ResourceSet &other);
+  /// \return Void.
+  void SubtractResources(const ResourceSet &other);
+
+  /// \brief Same as SubtractResources but throws an error if the resource value
+  /// goes below zero.
+  ///
+  /// \param other: The resource set to subtract from the current resource set.
+  /// \return Void.
+  void SubtractResourcesStrict(const ResourceSet &other);
 
   /// Return the capacity value associated with the specified resource.
   ///
   /// \param resource_name: Resource name for which capacity is requested.
-  /// \param[out] value: Resource capacity value.
-  /// \return True if the resource capacity value was successfully retrieved.
-  /// False otherwise.
-  bool GetResource(const std::string &resource_name, double *value) const;
+  /// \return The capacity value associated with the specified resource, zero if resource
+  /// does not exist.
+  FractionalResourceQuantity GetResource(const std::string &resource_name) const;
 
   /// Return the number of CPUs.
   ///
   /// \return Number of CPUs.
-  double GetNumCpus() const;
+  const ResourceSet GetNumCpus() const;
 
   /// Return true if the resource set is empty. False otherwise.
   ///
@@ -121,13 +157,26 @@ class ResourceSet {
   bool IsEmpty() const;
 
   // TODO(atumanov): implement const_iterator class for the ResourceSet container.
-  const std::unordered_map<std::string, double> &GetResourceMap() const;
+  // TODO(williamma12): Make sure that everywhere we use doubles we don't
+  // convert it back to FractionalResourceQuantity.
+  /// \brief Return a map of the resource and size in doubles. Note, size is in
+  /// regular units and does not need to be multiplied by kResourceConversionFactor.
+  ///
+  /// \return map of resource in string to size in double.
+  const std::unordered_map<std::string, double> GetResourceMap() const;
+
+  /// \brief Return a map of the resource and size in FractionalResourceQuantity. Note,
+  /// size is in kResourceConversionFactor of a unit.
+  ///
+  /// \return map of resource in string to size in FractionalResourceQuantity.
+  const std::unordered_map<std::string, FractionalResourceQuantity>
+      &GetResourceAmountMap() const;
 
   const std::string ToString() const;
 
  private:
   /// Resource capacity map.
-  std::unordered_map<std::string, double> resource_capacity_;
+  std::unordered_map<std::string, FractionalResourceQuantity> resource_capacity_;
 };
 
 /// \class ResourceIds
@@ -155,14 +204,16 @@ class ResourceIds {
   /// \brief Constructs ResourceIds with a given set of fractional IDs.
   ///
   /// \param fractional_ids: A vector of the resource IDs that are partially available.
-  explicit ResourceIds(const std::vector<std::pair<int64_t, double>> &fractional_ids);
+  explicit ResourceIds(
+      const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &fractional_ids);
 
   /// \brief Constructs ResourceIds with a given set of whole IDs and fractional IDs.
   ///
   /// \param whole_ids: A vector of the resource IDs that are completely available.
   /// \param fractional_ids: A vector of the resource IDs that are partially available.
-  ResourceIds(const std::vector<int64_t> &whole_ids,
-              const std::vector<std::pair<int64_t, double>> &fractional_ids);
+  ResourceIds(
+      const std::vector<int64_t> &whole_ids,
+      const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &fractional_ids);
 
   /// \brief Check if we have at least the requested amount.
   ///
@@ -174,14 +225,14 @@ class ResourceIds {
   ///
   /// \param resource_quantity Either a whole number or a fraction less than 1.
   /// \return True if there we have enough of the resource.
-  bool Contains(double resource_quantity) const;
+  bool Contains(FractionalResourceQuantity resource_quantity) const;
 
   /// \brief Acquire the requested amount of the resource.
   ///
   /// \param resource_quantity The amount to acquire. Either a whole number or a
   /// fraction less than 1.
   /// \return A ResourceIds representing the specific acquired IDs.
-  ResourceIds Acquire(double resource_quantity);
+  ResourceIds Acquire(FractionalResourceQuantity resource_quantity);
 
   /// \brief Return some resource IDs.
   ///
@@ -203,12 +254,18 @@ class ResourceIds {
   /// \brief Return just the fractional IDs.
   ///
   /// \return The fractional IDs.
-  const std::vector<std::pair<int64_t, double>> &FractionalIds() const;
+  const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &FractionalIds()
+      const;
+
+  /// \brief Check if ResourceIds has any resources.
+  ///
+  /// \return True if there are no whole or fractional resources. False otherwise.
+  bool TotalQuantityIsZero() const;
 
   /// \brief Return the total quantity of resources, ignoring the specific IDs.
   ///
   /// \return The total quantity of the resource.
-  double TotalQuantity() const;
+  FractionalResourceQuantity TotalQuantity() const;
 
   /// \brief Return a string representation of the object.
   ///
@@ -226,7 +283,7 @@ class ResourceIds {
   std::vector<int64_t> whole_ids_;
   /// A vector of pairs of resource ID and a fraction of that ID (the fraction
   /// is at least zero and strictly less than 1).
-  std::vector<std::pair<int64_t, double>> fractional_ids_;
+  std::vector<std::pair<int64_t, FractionalResourceQuantity>> fractional_ids_;
 };
 
 /// \class ResourceIdSet
@@ -329,13 +386,6 @@ class SchedulingResources {
   /// \brief SchedulingResources destructor.
   ~SchedulingResources();
 
-  /// \brief Check if the specified resource request can be satisfied.
-  ///
-  /// \param set: The set of resources representing the resource request.
-  /// \return Availability status that specifies if the requested resource set
-  /// is feasible, infeasible, or feasible but unavailable.
-  ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &set) const;
-
   /// \brief Request the set and capacity of resources currently available.
   ///
   /// \return Immutable set of resources with currently available capacity.
@@ -363,16 +413,14 @@ class SchedulingResources {
   /// \brief Release the amount of resources specified.
   ///
   /// \param resources: the amount of resources to be released.
-  /// \return True if resources were successfully released. False otherwise.
-  bool Release(const ResourceSet &resources);
+  /// \return Void.
+  void Release(const ResourceSet &resources);
 
   /// \brief Acquire the amount of resources specified.
   ///
   /// \param resources: the amount of resources to be acquired.
-  /// \return True if resources were acquired without oversubscription. If this
-  /// returns false, then the resources were still acquired, but we are now at
-  /// negative resources.
-  bool Acquire(const ResourceSet &resources);
+  /// \return Void.
+  void Acquire(const ResourceSet &resources);
 
   /// Returns debug string for class.
   ///
@@ -404,6 +452,6 @@ struct hash<ray::raylet::ResourceSet> {
     return seed;
   }
 };
-}
+}  // namespace std
 
 #endif  // RAY_RAYLET_SCHEDULING_RESOURCES_H

@@ -51,7 +51,7 @@ setup_commands:
     # - git clone https://github.com/ray-project/ray || true
     # - cd ray/python; git checkout master; git pull; pip install -e . --verbose
     # Install nightly Ray wheels.
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp36-cp36m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/<<RAY_RELEASE_HASH>>/ray-<<RAY_RELEASE_VERSION>>-cp36-cp36m-manylinux1_x86_64.whl
     - pip install ray[rllib] ray[debug] tensorflow
     - pip install -U dask  # fix error importing lz4
 

@@ -187,6 +187,9 @@ class ObjectManager : public ObjectManagerInterface {
   /// \return string.
   std::string DebugString() const;
 
+  /// Record metrics.
+  void RecordMetrics() const;
+
  private:
   friend class TestObjectManager;
 
