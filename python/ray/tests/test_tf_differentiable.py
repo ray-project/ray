@@ -11,7 +11,6 @@ import tensorflow as tf
 
 import ray
 from ray.experimental.tf_utils import tf_differentiable
-from ray.tests.conftest import ray_start_regular
 
 
 @pytest.fixture
@@ -151,9 +150,10 @@ def actors():
 
 
 def check_tensor_outputs(out_1, out_2):
-    """ Verifies that two outputs consisting of TF eager tensors are equivalent. """
+    """Verifies that two outputs consisting of TF eager
+       tensors are equivalent."""
 
-    #TODO(vsatish): Output correct list vs. tuple struct.
+    # TODO(vsatish): Output correct list vs. tuple struct.
     if isinstance(out_1, list) and isinstance(out_2, tuple):
         out_2 = list(out_2)
     elif isinstance(out_1, tuple) and isinstance(out_2, list):
@@ -178,6 +178,8 @@ def check_tensor_outputs(out_1, out_2):
 
 
 # single linear
+
+
 # custom op w/ single input & single output
 def test_single_op_single_in_single_out(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -203,7 +205,7 @@ def test_single_op_single_in_single_out_no_tensors(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = 2.0
-    with tf.GradientTape() as t:
+    with tf.GradientTape() as _:
         out = x
         with pytest.raises(
                 RuntimeError,
@@ -212,7 +214,8 @@ def test_single_op_single_in_single_out_no_tensors(ray_start_regular, actors):
             out = ray_actor.square.remote(out)
 
 
-# custom op w/ single input & single output both preceded and followed by tf ops
+# custom op w/ single input & single output both preceded and
+# followed by tf ops
 def test_single_op_single_in_single_out_tf_sandwich(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
@@ -288,7 +291,10 @@ def test_multiple_ops_single_in_single_out_inter_fetches(
 
 
 # single non-linear
-# single custom op w/ single input & single output and resulting ObjectID reused multiple times
+
+
+# single custom op w/ single input & single output and
+# resulting ObjectID reused multiple times
 def test_single_op_single_in_single_out_reuse_result(ray_start_regular,
                                                      actors):
     ray_actor, dummy_actor = actors
@@ -312,7 +318,8 @@ def test_single_op_single_in_single_out_reuse_result(ray_start_regular,
     check_tensor_outputs(grad_hat, grad)
 
 
-# multiple custom ops w/ single input & single output with reused intermediate results
+# multiple custom ops w/ single input & single output with reused
+# intermediate results
 def test_multiple_ops_single_in_single_out_reuse_inter_results(
         ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -403,6 +410,8 @@ def test_multiple_ops_single_in_single_out_large_v2(ray_start_regular, actors):
 
 
 # multiple inputs/outputs
+
+
 # custom op w/ single input & multiple outputs
 def test_single_op_single_in_multiple_out(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -525,7 +534,8 @@ def test_single_op_multiple_in_multiple_out_single_fetch(
     check_tensor_outputs(grad_hat, grad)
 
 
-# custom op w/ multiple inputs & outputs both preceded and followed by tf ops w/ two ray.ObjectIDs fetched
+# custom op w/ multiple inputs & outputs both preceded and
+# followed by tf ops w/ two ray.ObjectIDs fetched
 def test_single_op_multiple_in_multiple_out_tf_sandwich_double_fetch(
         ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -612,7 +622,8 @@ def test_multiple_ops_multiple_in_multiple_out_inter_fetches(
     check_tensor_outputs(grad_hat, grad)
 
 
-# multiple custom ops w/ multiple inputs and outputs w/ intertwined tf ops and not all ray.ObjectIDs (intermediate and final) used
+# multiple custom ops w/ multiple inputs and outputs w/ intertwined tf
+# ops and not all ray.ObjectIDs (intermediate and final) used
 def test_multiple_ops_multiple_in_multiple_out_tf_intertwined_partial_use(
         ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -667,9 +678,8 @@ def test_multiple_ops_multiple_in_multiple_out_large_v1(
         i_8, _ = ray_actor.g.remote(i_3, i_5, i_7)
         i_9 = ray_actor.prod.remote(i_8)
         _, i_10 = ray_actor.two_in_square_cube_v2.remote(i_8, i_9)
-        i_11 = ray.get(i_10) / 9.0
-        i_12 = ray_actor.prod.remote(i_10, x)
-        out_hat = ray.get(i_12)
+        i_11 = ray_actor.prod.remote(i_10, x)
+        out_hat = ray.get(i_11)
     grad_hat = t.gradient(out_hat, [x, y, z])
 
     with tf.GradientTape() as t:
@@ -686,9 +696,8 @@ def test_multiple_ops_multiple_in_multiple_out_large_v1(
         i_8, _ = dummy_actor.g(i_3, i_5, i_7)
         i_9 = dummy_actor.prod(i_8)
         _, i_10 = dummy_actor.two_in_square_cube_v2(i_8, i_9)
-        i_11 = i_10 / 9.0
-        i_12 = dummy_actor.prod(i_10, x)
-        out = i_12
+        i_11 = dummy_actor.prod(i_10, x)
+        out = i_11
     grad = t.gradient(out, [x, y, z])
 
     check_tensor_outputs(out_hat, out)
@@ -742,6 +751,8 @@ def test_multiple_ops_multiple_in_multiple_out_large_v2(
 
 
 # kwargs
+
+
 # custom op w/ single input & single output w/ kwarg
 def test_kwargs_single_in_single_out(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -782,7 +793,8 @@ def test_kwargs_single_in_single_out_default(ray_start_regular, actors):
     check_tensor_outputs(grad_hat, grad)
 
 
-# custom op w/ single input & single output w/ kwarg & using native Python for arg & using Tensor for kwarg
+# custom op w/ single input & single output w/ kwarg & using native
+# Python for arg & using Tensor for kwarg
 def test_kwargs_single_in_single_out_tensor_kwarg(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
@@ -802,7 +814,8 @@ def test_kwargs_single_in_single_out_tensor_kwarg(ray_start_regular, actors):
     check_tensor_outputs(grad_hat, grad)
 
 
-# custom op w/ single input & single output w/ kwarg & using Tensor for arg & using Tensor for kwarg
+# custom op w/ single input & single output w/ kwarg & using Tensor
+# for arg & using Tensor for kwarg
 def test_kwargs_single_in_single_out_tensor_arg_tensor_kwarg(
         ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -824,7 +837,8 @@ def test_kwargs_single_in_single_out_tensor_arg_tensor_kwarg(
     check_tensor_outputs(grad_hat, grad)
 
 
-# custom op w/ single input & single output w/ kwarg & using output of custom op for kwarg
+# custom op w/ single input & single output w/ kwarg & using
+# output of custom op for kwarg
 def test_kwargs_single_in_single_out_tf_obj_id_kwarg(ray_start_regular,
                                                      actors):
     ray_actor, dummy_actor = actors
@@ -870,7 +884,8 @@ def test_kwargs_multiple_in_multiple_out_out_of_order(ray_start_regular,
     check_tensor_outputs(grad_hat, grad)
 
 
-# custom op w/ multiple inputs and multiple outputs w/ TensorFlow ops before and after
+# custom op w/ multiple inputs and multiple outputs w/ TensorFlow
+# ops before and after
 def test_kwargs_multiple_in_multiple_out_tf_sandwich(ray_start_regular,
                                                      actors):
     ray_actor, dummy_actor = actors

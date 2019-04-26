@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import deque, OrderedDict
-import logging
 import numpy as np
 import pickle
 
@@ -211,41 +210,46 @@ def _differentiable_forward(self, identifier, method, persistent_tape, args,
 
     Args:
         self (ray.Actor): The ray Actor invoking this method.
-        identifier (str): The unique byte-string used to associate this forward pass
-                          with the corresponding backward pass.
+        identifier (str): The unique byte-string used to associate this
+                          forward pass with the corresponding backward pass.
         method (function): The Python method to invoke.
         persistent_tape (bool): Use a persistent gradient tape.
         args (list): The args for the actor method.
         arg_types (list): The types of args.
         arg_dtypes (list): The data types of args.
         kws (list): The keywords for the kwargs of the actor method.
-        kwargs (list): The kwargs (w/o the keywords) for the actor method. 
+        kwargs (list): The kwargs (w/o the keywords) for the actor method.
                        Must be ordered relative to `kws`.
         kwarg_types (list): The types of kwargs.
         kwarg_dtypes (list): The data types of kwargs.
 
     Note:
-        Both `kwarg_types` and `arg_types` are not language-syntactic types, but
-        are manually chosen for ease of book-keeping for conversion pre/post 
-        serialization. Transport is done only with scalar Python `float`s or `np.ndarray`s. 
-        The types currently supported and their syntactic equivalents are:
+        Both `kwarg_types` and `arg_types` are not language-syntactic
+        types, but are manually chosen for ease of book-keeping for
+        conversion pre/post serialization. Transport is done only with
+        scalar Python `float`s or `np.ndarray`s. The types currently
+        supported and their syntactic equivalents are:
 
-            - 'tf_const': Instance of `tf.Tensor` or `TFObjectID`. Note 
-                          that `tf.constant` is converted to `tf.Tensor` under the hood 
-                          and all intermediates involving `tf.Tensor` and/or `tf.Variable`
-                          are implicitly `tf.Tensor`.
-            - 'tf_var':   Instance of `tf.Variable`. Variables have different properties than 
-                          tensors.
+            - 'tf_const': Instance of `tf.Tensor` or `TFObjectID`. Note
+                          that `tf.constant` is converted to `tf.Tensor`
+                          under the hood and all intermediates involving
+                          `tf.Tensor` and/or `tf.Variable` are implicitly
+                          `tf.Tensor`.
+            - 'tf_var':   Instance of `tf.Variable`. Variables have different
+                          properties than tensors.
             - 'native':   Native Python type.
 
-        We need `kwarg_dtypes` and `arg_dtypes` because Numpy scalars are converted to
-        native Python `float`s during serialization and thus must be casted back.
+        We need `kwarg_dtypes` and `arg_dtypes` because Numpy scalars
+        are converted to native Python `float`s during serialization
+        and thus must be casted back.
 
 
-        We have separate `kwargs` and `kws` because the 'args' of the traditional `kwargs` are 
-        actually passed into the remote actor method like normal args and we use `kws` to 
-        maintain the keyword mapping. We can't use a dict because then any `TFObjectID` 
-        or `ObjectID` instances won't be fetched before invoking the remote actor method.
+        We have separate `kwargs` and `kws` because the 'args' of the
+        traditional `kwargs` are actually passed into the remote actor
+        method like normal args and we use `kws` to maintain the keyword
+        mapping. We can't use a dict because then any `TFObjectID`
+        or `ObjectID` instances won't be fetched before invoking the
+        remote actor method.
 
     Returns:
         list: Result of invoking actor method on `kwargs` and `args`.
@@ -325,18 +329,20 @@ def _differentiable_backward(self, identifier, persistent_tape, dys,
 
     Args:
         self (ray.Actor): The ray Actor invoking this method.
-        identifier (str): The unique byte-string used to associate this backward pass
-                          with the corresponding forward pass.
-        persistent_tape (bool): Whether or not to delete the gradient tape after using it.
+        identifier (str): The unique byte-string used to associate
+                          this backward pass with the corresponding
+                          forward pass.
+        persistent_tape (bool): Whether or not to delete the gradient
+                                tape after using it.
         dys (list): The partial downstream gradients.
         dys_dtypes (list): The data types of the dys.
 
     Note:
-        We need `dys_dtypes` for the same reason as the forward pass. Please 
+        We need `dys_dtypes` for the same reason as the forward pass. Please
         see the docstring of `_differentiable_forward` for more details.
 
     Returns:
-        list: The gradients for the actor method.    
+        list: The gradients for the actor method.
     """
 
     # fetch the cached TF state
@@ -390,7 +396,7 @@ def tf_differentiable(method):
 
         Args:
             self (ray.Actor): The ray Actor invoking this method.
-            identifier (str): The unique byte-string used to associate the 
+            identifier (str): The unique byte-string used to associate the
                               forward and backward passes of this invocation.
             forward_pass (bool): Executing the forward pass.
             persistent_tape (bool): Use a persistent tf.GradientTape.
@@ -404,19 +410,24 @@ def tf_differentiable(method):
             args: The combined args and kwargs.
 
         Note:
-            When `forward_pass` is `True`, `dys` and `dys_dtype` should be None.
-            When `forward_pass` is `False`, `kwarg_types`, `kwarg_dtypes`, `kws`,
-            `arg_types` and `arg_dtypes` should be None. No `args` should be provided.
+            When `forward_pass` is `True`, `dys` and `dys_dtype`
+            should be None.
+            When `forward_pass` is `False`, `kwarg_types`, `kwarg_dtypes`,
+            `kws`, `arg_types` and `arg_dtypes` should be None. No `args`
+            should be provided.
 
-            Keyword arguments should be appended to the end of `args`. We choose to pass in 
-            `kwargs` like this because if we use a dict then any `TFObjectID` 
-            or `ObjectID` instances won't be fetched before invoking the remote actor method.
+            Keyword arguments should be appended to the end of `args`.
+            We choose to pass in `kwargs` like this because if we use
+            a dict then any `TFObjectID` or `ObjectID` instances won't
+            be fetched before invoking the remote actor method.
 
-            See the docstrings for `_differentiable_forward` and `_differentiable_backward`
-            for more details on the forward and backward passes. 
+            See the docstrings for `_differentiable_forward` and
+            `_differentiable_backward` for more details on the forward
+            and backward passes.
 
         Returns:
-            Result of invoking actor method on forward pass and gradients on backward pass. 
+            Result of invoking actor method on forward pass and gradients
+            on backward pass.
         """
         if not tf.executing_eagerly():
             raise RuntimeError("Tensorflow Eager execution must "
@@ -454,11 +465,13 @@ def tf_differentiable(method):
                 self, identifier, method, persistent_tape, args, arg_types,
                 arg_dtypes, kwargs, kws, kwarg_types, kwarg_dtypes)
         else:
-            assert kwarg_types is None and kwarg_dtypes is None and kws is None, (
-                "During backwards pass, kwarg_types, kwarg_dtypes, "
-                "and kws must be None but are: "
-                "{}, {}, and {}, respectively.".format(kwarg_types,
-                                                       kwarg_dtypes, kws))
+            assert kwarg_types is None and \
+                   kwarg_dtypes is None and \
+                   kws is None, (
+                     "During backwards pass, kwarg_types, "
+                     "kwarg_dtypes, and kws must be None but are: "
+                     "{}, {}, and {}, respectively.".format(kwarg_types,
+                                                            kwarg_dtypes, kws))
 
             # execute the backward pass
             return _differentiable_backward(self, identifier, persistent_tape,
@@ -474,14 +487,16 @@ class TFObjectID(ray.ObjectID):
     """ObjectID wrapper for TensorFlow tensor.
 
     Attributes:
-        graph_tensor (tf.Tensor): A dummy tensor used to link the local TF graph.
+        graph_tensor (tf.Tensor): A dummy tensor used to
+                                  link the local TF graph.
     """
 
     def __init__(self, object_id, graph_tensor):
         """
         Args:
             object_id (ray.ObjectID): The ObjectID to wrap.
-            graph_tensor (tf.Tensor): A dummy tensor used to link the local TF graph.
+            graph_tensor (tf.Tensor): A dummy tensor used to
+                                      link the local TF graph.
         """
         ray.ObjectID.__init__(self, object_id.binary())
         self.graph_tensor = graph_tensor
@@ -517,8 +532,8 @@ def _submit_tf_differentiable(actor_method, args, kwargs, num_return_vals):
     # process args
     arg_types = []
     arg_dtypes = []
-    return_dtype = None  # the dtype of the result should be the same dtype of all the
-    # TF arguments
+    return_dtype = None  # the dtype of the result should
+    # be the same dtype of all the TF arguments
     processed_args = []
     for arg in args:
         if isinstance(arg, TFObjectID):
@@ -593,35 +608,41 @@ def _submit_tf_differentiable(actor_method, args, kwargs, num_return_vals):
     @tf.custom_gradient
     def submit_op(*tf_inputs):
         """Invokes the forward pass of the remote actor method.
-        
-        This becomes an operation in our local TF graph representing the 
+
+        This becomes an operation in our local TF graph representing the
         remote actor method invocation.
 
         Args:
-            tf_inputs (tf.Tensor or tf.Variable): The TF inputs to the actor method.
+            tf_inputs (tf.Tensor or tf.Variable): The TF inputs to
+                                                  the actor method.
 
         Note:
             The `tf_inputs` argument is not actually passed to the *remote*
             actor method. Instead, it is used to link the local TF graph
             and a processed version (`processed_args`/`processed_kwargs`)
-            actually is passed to the remote method.       
+            actually is passed to the remote method.
 
         Returns:
-            list, function: A list of output `tf.Tensor`s and a gradient function.
+            list, function: A list of output `tf.Tensor`s
+                            and a gradient function.
 
         Note:
-            The outputs returned here are the `graph_tensor` attributes of the `TFObjectID`s returned
-            from the remote actor method invocation. They are merely to link the local TF graph and are
-            never used in any actual computation.
+            The outputs returned here are the `graph_tensor`
+            attributes of the `TFObjectID`s returned from the
+            remote actor method invocation. They are merely to
+            link the local TF graph and are never used in any
+            actual computation.
         """
 
-        # invoke the forward pass of the remote actor method with the processed inputs
+        # invoke the forward pass of the remote actor method
+        # with the processed inputs
         identifier = np.random.bytes(20)
         forward = True
-        persistent_tape = False  #TODO:(vsatish) when would we want this to be True?
+        persistent_tape = False  # TODO:(vsatish) when
+        # would we want this to be True?
         dy, dys_type = None, None
-        args = processed_args + processed_kwargs  # see the note in the `differentiable_method`
-        # docstring for why we do this
+        args = processed_args + processed_kwargs  # see the note
+        # in the `differentiable_method` docstring for why we do this
         result_obj_ids = actor_method._internal_remote([
             identifier, forward, persistent_tape, dy, dys_type, kwarg_types,
             kwarg_dtypes, kws, arg_types, arg_dtypes
@@ -635,7 +656,8 @@ def _submit_tf_differentiable(actor_method, args, kwargs, num_return_vals):
             result_tf_obj_ids.append(TFObjectID(obj_id, graph_tensor))
 
         def grad(*dys):
-            """Invokes the backwards pass of the remote actor method for gradient computation.
+            """Invokes the backwards pass of the remote actor
+               method for gradient computation.
 
             Args:
                 dys (list): The partial downstream gradients.
@@ -646,7 +668,8 @@ def _submit_tf_differentiable(actor_method, args, kwargs, num_return_vals):
             # process the partial dys
             dys = [dy.numpy() for dy in dys]
 
-            # invoke the backward pass of the remote actor method with the processed dys
+            # invoke the backward pass of the remote actor
+            # method with the processed dys
             forward = False
             dys_dtype = return_dtype
             kwarg_types, kwarg_dtypes, kws = None, None, None
@@ -677,8 +700,8 @@ def _submit_tf_differentiable(actor_method, args, kwargs, num_return_vals):
     results = submit_op(*tf_inputs)
 
     # manually connect the local TF graph
-    #TODO(vsatish): Figure out why the graph is disconnected without this
-    #or find a cleaner way to do this.
+    # TODO(vsatish): Figure out why the graph is disconnected without this
+    # or find a cleaner way to do this.
     for tf_obj_id, graph_tensor in zip(result_tf_obj_ids, results):
         tf_obj_id.graph_tensor = graph_tensor
 
@@ -712,18 +735,21 @@ def _post_process_get(tf_object_ids, results):
     def get_op(*graph_tensors):
         """Post-process the results.
 
-        This becomes an operation in our local TF graph representing the call to `ray.get`.
+        This becomes an operation in our local TF graph representing
+        the call to `ray.get`.
 
         Args:
-            graph_tensors (list): The `graph_tensor` attributes of the TFObjectIDs in 
-                                  `ray.get`.
+            graph_tensors (list): The `graph_tensor` attributes of
+                                  the TFObjectIDs in `ray.get`.
 
         Note:
-            `graph_tensors` is used solely to link the local TF graph and is never used in 
-            any computation. The actual results are in `results` that we close over. 
+            `graph_tensors` is used solely to link the local TF graph
+            and is never used in any computation. The actual results
+            are in `results` that we close over.
 
         Returns:
-            list: A list of `tf.Tensor`s representing the post-processed results.
+            list: A list of `tf.Tensor`s representing the post-processed
+                  results.
 
         """
 
@@ -736,8 +762,8 @@ def _post_process_get(tf_object_ids, results):
         def grad(*dys):
             """Backwards pass of `ray.get` for gradient computation.
 
-            Right now this does nothing, but in the future it can be used to start the 
-            backwards pass of the actor method in advance.
+            Right now this does nothing, but in the future it can be
+            used to start the backwards pass of the actor method in advance.
 
             Args:
                 dys (list): The partial downstream gradients.
