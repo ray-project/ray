@@ -193,9 +193,6 @@ void ResourceSet::AddResourcesCapacityConstrained(const ResourceSet &other,
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
     const std::string &to_add_resource_label = resource_pair.first;
     FractionalResourceQuantity to_add_resource_capacity = resource_pair.second;
-    RAY_CHECK(to_add_resource_capacity > 0) << "Trying to add nonpositive resource "
-                                            << to_add_resource_label << ", capacity"
-                                            << to_add_resource_capacity.ToDouble();
     if (total_resource_map.count(to_add_resource_label) != 0) {
       // If resource exists in total map, add to the local capacity map.
       // If the new capacity will be greater the total capacity, set the new capacity to
