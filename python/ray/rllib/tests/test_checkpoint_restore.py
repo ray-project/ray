@@ -40,6 +40,7 @@ CONFIGS = {
         },
     },
     "DDPG": {
+        "pure_exploration_steps": 0,
         "exploration_ou_noise_scale": 0.0,
         "timesteps_per_iteration": 100
     },
