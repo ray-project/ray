@@ -234,9 +234,10 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_to_clone_id = "".join(
             itertools.takewhile(str.isdigit, trial_to_clone_name))
         trial_path = os.path.join(trial.local_dir,
-                                  "policy_" + trial_id + ".txt")
+                                  "pbt_policy_" + trial_id + ".txt")
         trial_to_clone_path = os.path.join(
-            trial_to_clone.local_dir, "policy_" + trial_to_clone_id + ".txt")
+            trial_to_clone.local_dir,
+            "pbt_policy_" + trial_to_clone_id + ".txt")
         policy = [
             trial_name, trial_to_clone_name,
             trial.last_result[TRAINING_ITERATION],
@@ -244,7 +245,7 @@ class PopulationBasedTraining(FIFOScheduler):
             trial_to_clone.config, new_config
         ]
         # Log to global file.
-        with open(os.path.join(trial.local_dir, "global.txt"), "a+") as f:
+        with open(os.path.join(trial.local_dir, "pbt_global.txt"), "a+") as f:
             f.write(str(policy) + "\n")
         # Overwrite state in target trial from trial_to_clone.
         if os.path.exists(trial_to_clone_path):
