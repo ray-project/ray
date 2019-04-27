@@ -116,7 +116,7 @@ class ResourceSet {
   /// \param capacity: numeric capacity value for the resource to add.
   /// \return True, if the resource was successfully added. False otherwise.
   void AddOrUpdateResource(const std::string &resource_name,
-                           FractionalResourceQuantity capacity);
+                           const FractionalResourceQuantity &capacity);
 
   /// \brief Delete a resource from the resource set.
   ///
@@ -256,14 +256,14 @@ class ResourceIds {
   ///
   /// \param resource_quantity Either a whole number or a fraction less than 1.
   /// \return True if there we have enough of the resource.
-  bool Contains(FractionalResourceQuantity resource_quantity) const;
+  bool Contains(const FractionalResourceQuantity &resource_quantity) const;
 
   /// \brief Acquire the requested amount of the resource.
   ///
   /// \param resource_quantity The amount to acquire. Either a whole number or a
   /// fraction less than 1.
   /// \return A ResourceIds representing the specific acquired IDs.
-  ResourceIds Acquire(FractionalResourceQuantity resource_quantity);
+  ResourceIds Acquire(const FractionalResourceQuantity &resource_quantity);
 
   /// \brief Return some resource IDs.
   ///

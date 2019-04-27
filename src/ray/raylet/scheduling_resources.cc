@@ -132,7 +132,7 @@ bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
 }
 
 void ResourceSet::AddOrUpdateResource(const std::string &resource_name,
-                                      FractionalResourceQuantity capacity) {
+                                      const FractionalResourceQuantity &capacity) {
   if (capacity > 0) {
     resource_capacity_[resource_name] = capacity;
   }
@@ -192,12 +192,12 @@ void ResourceSet::AddResourcesCapacityConstrained(const ResourceSet &other,
       total_resources.GetResourceAmountMap();
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
     const std::string &to_add_resource_label = resource_pair.first;
-    FractionalResourceQuantity to_add_resource_capacity = resource_pair.second;
+    const FractionalResourceQuantity &to_add_resource_capacity = resource_pair.second;
     if (total_resource_map.count(to_add_resource_label) != 0) {
       // If resource exists in total map, add to the local capacity map.
       // If the new capacity will be greater the total capacity, set the new capacity to
       // total capacity (capping to the total)
-      FractionalResourceQuantity total_capacity =
+      const FractionalResourceQuantity &total_capacity =
           total_resource_map.at(to_add_resource_label);
       resource_capacity_[to_add_resource_label] =
           std::min(resource_capacity_[to_add_resource_label] + to_add_resource_capacity,
@@ -227,7 +227,7 @@ FractionalResourceQuantity ResourceSet::GetResource(
   if (resource_capacity_.count(resource_name) == 0) {
     return 0;
   }
-  const FractionalResourceQuantity capacity = resource_capacity_.at(resource_name);
+  const FractionalResourceQuantity &capacity = resource_capacity_.at(resource_name);
   return capacity;
 }
 
@@ -282,10 +282,10 @@ ResourceSet ResourceSet::FindUpdatedResources(
   ResourceSet updated_resource_set;
   for (const auto &resource_pair : new_resource_set.GetResourceAmountMap()) {
     const std::string &resource_label = resource_pair.first;
-    FractionalResourceQuantity new_resource_capacity = resource_pair.second;
+    const FractionalResourceQuantity &new_resource_capacity = resource_pair.second;
     if (resource_capacity_.count(resource_label) == 1) {
       // Resource exists, check if updated
-      FractionalResourceQuantity old_resource_capacity =
+      const FractionalResourceQuantity &old_resource_capacity =
           resource_capacity_.at(resource_label);
       if (old_resource_capacity != new_resource_capacity) {
         updated_resource_set.AddOrUpdateResource(resource_label, new_resource_capacity);
@@ -305,7 +305,7 @@ ResourceSet ResourceSet::FindDeletedResources(
   auto &new_resource_map = new_resource_set.GetResourceAmountMap();
   for (const auto &resource_pair : resource_capacity_) {
     const std::string &resource_label = resource_pair.first;
-    FractionalResourceQuantity old_resource_capacity = resource_pair.second;
+    const FractionalResourceQuantity &old_resource_capacity = resource_pair.second;
     if (new_resource_map.count(resource_label) != 1) {
       // Resource does not exist, add to return set
       deleted_resource_set.AddOrUpdateResource(resource_label, old_resource_capacity);
@@ -345,7 +345,7 @@ ResourceIds::ResourceIds(
       total_capacity_(TotalQuantity()),
       decrement_backlog_(0) {}
 
-bool ResourceIds::Contains(FractionalResourceQuantity resource_quantity) const {
+bool ResourceIds::Contains(const FractionalResourceQuantity &resource_quantity) const {
   if (resource_quantity >= 1) {
     double whole_quantity = resource_quantity.ToDouble();
     RAY_CHECK(IsWhole(whole_quantity));
@@ -364,7 +364,7 @@ bool ResourceIds::Contains(FractionalResourceQuantity resource_quantity) const {
   }
 }
 
-ResourceIds ResourceIds::Acquire(FractionalResourceQuantity resource_quantity) {
+ResourceIds ResourceIds::Acquire(const FractionalResourceQuantity &resource_quantity) {
   if (resource_quantity >= 1) {
     // Handle the whole case.
     double whole_quantity = resource_quantity.ToDouble();
@@ -405,7 +405,7 @@ ResourceIds ResourceIds::Acquire(FractionalResourceQuantity resource_quantity) {
     auto return_pair = std::make_pair(whole_id, resource_quantity);
     // We cannot make use of the implicit conversion because ints have no
     // operator-(const FractionalResourceQuantity&) function.
-    FractionalResourceQuantity remaining_amount =
+    const FractionalResourceQuantity remaining_amount =
         FractionalResourceQuantity(1) - resource_quantity;
     fractional_ids_.push_back(std::make_pair(whole_id, remaining_amount));
     return ResourceIds({return_pair});
@@ -574,7 +574,7 @@ ResourceIdSet::ResourceIdSet(
 bool ResourceIdSet::Contains(const ResourceSet &resource_set) const {
   for (auto const &resource_pair : resource_set.GetResourceAmountMap()) {
     auto const &resource_name = resource_pair.first;
-    FractionalResourceQuantity resource_quantity = resource_pair.second;
+    const FractionalResourceQuantity &resource_quantity = resource_pair.second;
 
     auto it = available_resources_.find(resource_name);
     if (it == available_resources_.end()) {
@@ -593,7 +593,7 @@ ResourceIdSet ResourceIdSet::Acquire(const ResourceSet &resource_set) {
 
   for (auto const &resource_pair : resource_set.GetResourceAmountMap()) {
     auto const &resource_name = resource_pair.first;
-    FractionalResourceQuantity resource_quantity = resource_pair.second;
+    const FractionalResourceQuantity &resource_quantity = resource_pair.second;
 
     auto it = available_resources_.find(resource_name);
     RAY_CHECK(it != available_resources_.end());
@@ -779,13 +779,13 @@ void SchedulingResources::Acquire(const ResourceSet &resources) {
 
 void SchedulingResources::UpdateResource(const std::string &resource_name,
                                          int64_t capacity) {
-  FractionalResourceQuantity new_capacity = FractionalResourceQuantity(capacity);
-  FractionalResourceQuantity current_capacity =
+  const FractionalResourceQuantity new_capacity = FractionalResourceQuantity(capacity);
+  const FractionalResourceQuantity &current_capacity =
       resources_total_.GetResource(resource_name);
   if (current_capacity > 0) {
     // If the resource exists, add to total and available resources
-    FractionalResourceQuantity capacity_difference = new_capacity - current_capacity;
-    FractionalResourceQuantity current_available_capacity =
+    const FractionalResourceQuantity capacity_difference = new_capacity - current_capacity;
+    const FractionalResourceQuantity &current_available_capacity =
         resources_available_.GetResource(resource_name);
     FractionalResourceQuantity new_available_capacity =
         current_available_capacity + capacity_difference;
