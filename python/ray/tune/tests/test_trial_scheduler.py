@@ -570,13 +570,13 @@ class HyperbandSuite(unittest.TestCase):
 
     def testFilterNoneBracket(self):
         sched, runner = self.schedulerSetup(100, 20)
-        # `sched" should contains None brackets
+        # "sched" should contains None brackets
         non_brackets = [
             b for hyperband in sched._hyperbands for b in hyperband
             if b is None
         ]
         self.assertTrue(non_brackets)
-        # Make sure `choose_trial_to_run" still works
+        # Make sure "choose_trial_to_run" still works
         trial = sched.choose_trial_to_run(runner)
         self.assertIsNotNone(trial)
 
@@ -634,7 +634,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
 
-        # no checkpoint: haven"t hit next perturbation interval yet
+        # no checkpoint: haven't hit next perturbation interval yet
         self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(15, 200)),
@@ -665,7 +665,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
 
-        # no perturbation: haven"t hit next perturbation interval
+        # no perturbation: haven't hit next perturbation interval
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(15, -100)),
             TrialScheduler.CONTINUE)
@@ -673,7 +673,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertTrue("@perturbed" not in trials[0].experiment_tag)
         self.assertEqual(pbt._num_perturbations, 0)
 
-        # perturb since it"s lower quantile
+        # perturb since it's lower quantile
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
             TrialScheduler.CONTINUE)
