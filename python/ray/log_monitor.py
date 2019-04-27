@@ -33,7 +33,8 @@ class LogFileInfo(object):
         self.file_position = file_position
         self.file_handle = file_handle
         self.worker_pid = None
-        self.driver_id = None
+        # the most recent driver to print to the log file
+        self.current_driver_id = None
 
 
 class LogMonitor(object):
@@ -171,8 +172,8 @@ class LogMonitor(object):
 
             lines_to_publish = []
             driver_switches = []
-            if file_info.driver_id != None:
-                driver_switches.append((-1, file_info.driver_id))
+            if file_info.current_driver_id != None:
+                driver_switches.append((-1, file_info.current_driver_id))
 
             max_num_lines_to_read = 100
             for idx in range(max_num_lines_to_read):
@@ -190,7 +191,7 @@ class LogMonitor(object):
                 lines_to_publish.append(next_line)
 
             if len(driver_switches):
-                file_info.driver_id = driver_switches[-1][1]
+                file_info.current_driver_id = driver_switches[-1][1]
 
             driver_switches.append((len(lines_to_publish), -1))
 
