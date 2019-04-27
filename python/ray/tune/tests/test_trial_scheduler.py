@@ -917,7 +917,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt.on_trial_result(runner, trials[0], result(15, -100))
         pbt.on_trial_result(runner, trials[0], result(20, -100))
         pbt.on_trial_result(runner, trials[2], result(20, 40))
-        log_files = ["global.txt", "policy_0.txt", "policy_2.txt"]
+        log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_2.txt"]
         for log_file in log_files:
             self.assertTrue(os.path.exists(os.path.join(tmpdir, log_file)))
             raw_policy = open(os.path.join(tmpdir, log_file), "rb").readlines()
