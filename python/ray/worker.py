@@ -1102,7 +1102,7 @@ def get_webui_url():
     """
     if _global_node is None:
         raise Exception("Ray has not been initialized/connected.")
-    return _global_node.get_webui_url
+    return _global_node.webui_url
 
 
 global_worker = Worker()
