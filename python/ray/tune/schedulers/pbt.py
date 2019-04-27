@@ -225,11 +225,13 @@ class PopulationBasedTraining(FIFOScheduler):
                             trial_to_clone, new_config):
         """Logs transition during exploit/exploit step.
 
-        For each step, logs: [target trial tag, clone trial tag, target trial iteration, clone trial iteration, old config, new config].
+        For each step, logs: [target trial tag, clone trial tag, target trial
+        iteration, clone trial iteration, old config, new config].
         """
-        trial_name, trial_to_clone_name = trial_state.orig_tag, new_state.orig_tag
-        trial_id = ''.join(itertools.takewhile(str.isdigit, trial_name))
-        trial_to_clone_id = ''.join(
+        trial_name, trial_to_clone_name = (trial_state.orig_tag,
+                                           new_state.orig_tag)
+        trial_id = "".join(itertools.takewhile(str.isdigit, trial_name))
+        trial_to_clone_id = "".join(
             itertools.takewhile(str.isdigit, trial_to_clone_name))
         trial_path = os.path.join(trial.local_dir,
                                   "policy_" + trial_id + ".txt")
@@ -253,7 +255,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def _exploit(self, trial_executor, trial, trial_to_clone):
         """Transfers perturbed state from trial_to_clone -> trial.
-        
+
         If specified, also logs the updated hyperparam state."""
 
         trial_state = self._trial_state[trial]
