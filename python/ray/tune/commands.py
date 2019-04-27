@@ -147,8 +147,6 @@ def list_trials(experiment_path,
 
     checkpoints = experiment_state["checkpoints"]
 
-    # import ipdb; ipdb.set_trace()
-
     checkpoint_dicts = []
     for g in checkpoints:
         for key in UNNEST_KEYS:
