@@ -5,6 +5,7 @@ from __future__ import print_function
 import copy
 import itertools
 import logging
+import json
 import math
 import os
 import random
@@ -246,13 +247,13 @@ class PopulationBasedTraining(FIFOScheduler):
         ]
         # Log to global file.
         with open(os.path.join(trial.local_dir, "pbt_global.txt"), "a+") as f:
-            f.write(str(policy) + "\n")
+            f.write(json.dumps(policy) + "\n")
         # Overwrite state in target trial from trial_to_clone.
         if os.path.exists(trial_to_clone_path):
             shutil.copyfile(trial_to_clone_path, trial_path)
         # Log new exploit in target trial log.
         with open(trial_path, "a+") as f:
-            f.write(str(policy) + "\n")
+            f.write(json.dumps(policy) + "\n")
 
     def _exploit(self, trial_executor, trial, trial_to_clone):
         """Transfers perturbed state from trial_to_clone -> trial.

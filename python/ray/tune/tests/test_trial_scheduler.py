@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ast
 import os
+import json
 import random
 import unittest
 import numpy as np
@@ -920,9 +920,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_2.txt"]
         for log_file in log_files:
             self.assertTrue(os.path.exists(os.path.join(tmpdir, log_file)))
-            raw_policy = open(os.path.join(tmpdir, log_file), "rb").readlines()
+            raw_policy = open(os.path.join(tmpdir, log_file), "r").readlines()
             for line in raw_policy:
-                check_policy(ast.literal_eval(line))
+                check_policy(json.loads(line))
         shutil.rmtree(tmpdir)
 
     def testPostprocessingHook(self):
