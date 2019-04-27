@@ -784,7 +784,8 @@ void SchedulingResources::UpdateResource(const std::string &resource_name,
       resources_total_.GetResource(resource_name);
   if (current_capacity > 0) {
     // If the resource exists, add to total and available resources
-    const FractionalResourceQuantity capacity_difference = new_capacity - current_capacity;
+    const FractionalResourceQuantity capacity_difference =
+        new_capacity - current_capacity;
     const FractionalResourceQuantity &current_available_capacity =
         resources_available_.GetResource(resource_name);
     FractionalResourceQuantity new_available_capacity =
