@@ -161,7 +161,6 @@ def list_trials(experiment_path,
 
     if not info_keys:
         info_keys = DEFAULT_EXPERIMENT_INFO_KEYS
-    # result_keys = ["last_result:{}".format(k) for k in result_keys]
     col_keys = [k for k in list(info_keys) if k in checkpoints_df]
     checkpoints_df = checkpoints_df[col_keys]
 
