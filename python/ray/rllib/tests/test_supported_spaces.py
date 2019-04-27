@@ -208,11 +208,10 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "sgd_minibatch_size": 1,
             })
         check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
-        check_support_multiagent(
-            "DDPG", {
-                "timesteps_per_iteration": 1,
-                "use_state_preprocessor": True,
-            })
+        check_support_multiagent("DDPG", {
+            "timesteps_per_iteration": 1,
+            "use_state_preprocessor": True,
+        })
 
 
 if __name__ == "__main__":
