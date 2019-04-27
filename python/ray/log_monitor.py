@@ -98,10 +98,11 @@ class LogMonitor(object):
             if full_path not in self.log_filenames:
                 self.log_filenames.add(full_path)
                 self.closed_file_infos.append(
-                    LogFileInfo(filename=full_path,
-                                size_when_last_opened=0,
-                                file_position=0,
-                                file_handle=None))
+                    LogFileInfo(
+                        filename=full_path,
+                        size_when_last_opened=0,
+                        file_position=0,
+                        file_handle=None))
                 logger.info("Beginning to track file {}".format(log_filename))
 
     def open_closed_files(self):
@@ -248,29 +249,34 @@ class LogMonitor(object):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=("Parse Redis server for the "
-                                                  "log monitor to connect "
-                                                  "to."))
-    parser.add_argument("--redis-address",
-                        required=True,
-                        type=str,
-                        help="The address to use for Redis.")
-    parser.add_argument("--redis-password",
-                        required=False,
-                        type=str,
-                        default=None,
-                        help="the password to use for Redis")
-    parser.add_argument("--logging-level",
-                        required=False,
-                        type=str,
-                        default=ray_constants.LOGGER_LEVEL,
-                        choices=ray_constants.LOGGER_LEVEL_CHOICES,
-                        help=ray_constants.LOGGER_LEVEL_HELP)
-    parser.add_argument("--logging-format",
-                        required=False,
-                        type=str,
-                        default=ray_constants.LOGGER_FORMAT,
-                        help=ray_constants.LOGGER_FORMAT_HELP)
+    parser = argparse.ArgumentParser(
+        description=("Parse Redis server for the "
+                     "log monitor to connect "
+                     "to."))
+    parser.add_argument(
+        "--redis-address",
+        required=True,
+        type=str,
+        help="The address to use for Redis.")
+    parser.add_argument(
+        "--redis-password",
+        required=False,
+        type=str,
+        default=None,
+        help="the password to use for Redis")
+    parser.add_argument(
+        "--logging-level",
+        required=False,
+        type=str,
+        default=ray_constants.LOGGER_LEVEL,
+        choices=ray_constants.LOGGER_LEVEL_CHOICES,
+        help=ray_constants.LOGGER_LEVEL_HELP)
+    parser.add_argument(
+        "--logging-format",
+        required=False,
+        type=str,
+        default=ray_constants.LOGGER_FORMAT,
+        help=ray_constants.LOGGER_FORMAT_HELP)
     parser.add_argument(
         "--logs-dir",
         required=True,
@@ -280,9 +286,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
-    log_monitor = LogMonitor(args.logs_dir,
-                             args.redis_address,
-                             redis_password=args.redis_password)
+    log_monitor = LogMonitor(
+        args.logs_dir, args.redis_address, redis_password=args.redis_password)
 
     try:
         log_monitor.run()

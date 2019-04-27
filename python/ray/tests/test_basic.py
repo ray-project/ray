@@ -75,10 +75,12 @@ def test_simple_serialization(ray_start_regular):
     if sys.version_info < (3, 0):
         primitive_objects.append(long(0))  # noqa: E501,F821
 
-    composite_objects = ([[obj] for obj in primitive_objects] +
-                         [(obj, ) for obj in primitive_objects] + [{
-                             (): obj
-                         } for obj in primitive_objects])
+    composite_objects = (
+        [[obj]
+         for obj in primitive_objects] + [(obj, )
+                                          for obj in primitive_objects] + [{
+                                              (): obj
+                                          } for obj in primitive_objects])
 
     @ray.remote
     def f(x):
@@ -116,9 +118,8 @@ def test_complex_serialization(ray_start_regular):
         elif hasattr(obj1, "__dict__") and hasattr(obj2, "__dict__"):
             special_keys = ["_pytype_"]
             assert (set(list(obj1.__dict__.keys()) + special_keys) == set(
-                list(obj2.__dict__.keys()) +
-                special_keys)), ("Objects {} and {} are different.".format(
-                    obj1, obj2))
+                list(obj2.__dict__.keys()) + special_keys)), (
+                    "Objects {} and {} are different.".format(obj1, obj2))
             for key in obj1.__dict__.keys():
                 if key not in special_keys:
                     assert_equal(obj1.__dict__[key], obj2.__dict__[key])
@@ -288,8 +289,8 @@ def test_complex_serialization(ray_start_regular):
             Foo(123): Foo(456)
         }])
 
-    RAY_TEST_OBJECTS = (BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS +
-                        DICT_OBJECTS)
+    RAY_TEST_OBJECTS = (
+        BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS)
 
     @ray.remote
     def f(x):
@@ -416,9 +417,8 @@ def test_custom_serializers(ray_start_regular):
     def custom_deserializer(serialized_obj):
         return serialized_obj, "string2"
 
-    ray.register_custom_serializer(Foo,
-                                   serializer=custom_serializer,
-                                   deserializer=custom_deserializer)
+    ray.register_custom_serializer(
+        Foo, serializer=custom_serializer, deserializer=custom_deserializer)
 
     assert ray.get(ray.put(Foo())) == ((3, "string1", Foo.__name__), "string2")
 
@@ -426,9 +426,8 @@ def test_custom_serializers(ray_start_regular):
         def __init__(self):
             self.x = 3
 
-    ray.register_custom_serializer(Bar,
-                                   serializer=custom_serializer,
-                                   deserializer=custom_deserializer)
+    ray.register_custom_serializer(
+        Bar, serializer=custom_serializer, deserializer=custom_deserializer)
 
     @ray.remote
     def f():
@@ -442,11 +441,12 @@ def test_serialization_final_fallback(ray_start_regular):
     # This test will only run when "catboost" is installed.
     from catboost import CatBoostClassifier
 
-    model = CatBoostClassifier(iterations=2,
-                               depth=2,
-                               learning_rate=1,
-                               loss_function="Logloss",
-                               logging_level="Verbose")
+    model = CatBoostClassifier(
+        iterations=2,
+        depth=2,
+        learning_rate=1,
+        loss_function="Logloss",
+        logging_level="Verbose")
 
     reconstructed_model = ray.get(ray.put(model))
     assert set(model.get_params().items()) == set(
@@ -853,17 +853,14 @@ def test_submit_api(shutdown_only):
         def method(self):
             pass
 
-    a = Actor._remote(args=[0],
-                      kwargs={"y": 1},
-                      num_gpus=1,
-                      resources={"Custom": 1})
+    a = Actor._remote(
+        args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
 
     a2 = Actor2._remote()
     ray.get(a2.method._remote())
 
-    id1, id2, id3, id4 = a.method._remote(args=["test"],
-                                          kwargs={"b": 2},
-                                          num_return_vals=4)
+    id1, id2, id3, id4 = a.method._remote(
+        args=["test"], kwargs={"b": 2}, num_return_vals=4)
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
@@ -903,15 +900,17 @@ def test_many_fractional_resources(shutdown_only):
             "Custom": int(rand3 * 10000) / 10000
         }
         result_ids.append(
-            f._remote([False, resource_set],
-                      num_cpus=rand1,
-                      num_gpus=rand2,
-                      resources={"Custom": rand3}))
+            f._remote(
+                [False, resource_set],
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
         result_ids.append(
-            f._remote([True, resource_set],
-                      num_cpus=rand1,
-                      num_gpus=rand2,
-                      resources={"Custom": rand3}))
+            f._remote(
+                [True, resource_set],
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
     assert all(ray.get(result_ids))
 
     # Check that the available resources at the end are the same as the
@@ -1142,8 +1141,9 @@ def test_running_function_on_all_workers(ray_start_regular):
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
-        with ray.profile("custom_event",
-                         extra_data={"name": "custom name"}) as ray_prof:
+        with ray.profile(
+                "custom_event",
+                extra_data={"name": "custom name"}) as ray_prof:
             ray_prof.set_attribute("key", "value")
 
     ray.put(1)
@@ -1451,8 +1451,9 @@ def test_multithreading(ray_start_2_cpus):
         def spawn(self):
             wait_objects = [echo.remote(i, delay_ms=10) for i in range(10)]
             self.threads = [
-                threading.Thread(target=self.background_thread,
-                                 args=(wait_objects, )) for _ in range(20)
+                threading.Thread(
+                    target=self.background_thread, args=(wait_objects, ))
+                for _ in range(20)
             ]
             [thread.start() for thread in self.threads]
 
@@ -1480,9 +1481,10 @@ def test_free_objects_multi_node(ray_start_cluster):
     cluster = ray_start_cluster
     config = json.dumps({"object_manager_repeated_push_delay_ms": 1000})
     for i in range(3):
-        cluster.add_node(num_cpus=1,
-                         resources={"Custom{}".format(i): 1},
-                         _internal_config=config)
+        cluster.add_node(
+            num_cpus=1,
+            resources={"Custom{}".format(i): 1},
+            _internal_config=config)
     ray.init(redis_address=cluster.redis_address)
 
     class RawActor(object):
@@ -1508,9 +1510,10 @@ def test_free_objects_multi_node(ray_start_cluster):
         assert ray.get(a) != ray.get(b)
         assert ray.get(a) != ray.get(c)
         assert ray.get(c) != ray.get(b)
-        ray.internal.free([a, b, c],
-                          local_only=local_only,
-                          delete_creating_tasks=delete_creating_tasks)
+        ray.internal.free(
+            [a, b, c],
+            local_only=local_only,
+            delete_creating_tasks=delete_creating_tasks)
         # Wait for the objects to be deleted.
         time.sleep(0.1)
         return (a, b, c)
@@ -1587,9 +1590,8 @@ def test_local_mode(shutdown_only):
     # first list and the remaining values as the second list
     num_returns = 5
     object_ids = [ray.put(i) for i in range(20)]
-    ready, remaining = ray.wait(object_ids,
-                                num_returns=num_returns,
-                                timeout=None)
+    ready, remaining = ray.wait(
+        object_ids, num_returns=num_returns, timeout=None)
     assert ready == object_ids[:num_returns]
     assert remaining == object_ids[num_returns:]
 
@@ -2100,16 +2102,16 @@ def test_custom_resources(ray_start_cluster):
 
 def test_two_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=3,
-                     resources={
-                         "CustomResource1": 1,
-                         "CustomResource2": 2
-                     })
-    cluster.add_node(num_cpus=3,
-                     resources={
-                         "CustomResource1": 3,
-                         "CustomResource2": 4
-                     })
+    cluster.add_node(
+        num_cpus=3, resources={
+            "CustomResource1": 1,
+            "CustomResource2": 2
+        })
+    cluster.add_node(
+        num_cpus=3, resources={
+            "CustomResource1": 3,
+            "CustomResource2": 4
+        })
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote(resources={"CustomResource1": 1})
@@ -2210,9 +2212,8 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
         return resources
 
-    function = ray.remote(num_cpus=2,
-                          num_gpus=1,
-                          resources={"test_resource": 1})(test)
+    function = ray.remote(
+        num_cpus=2, num_gpus=1, resources={"test_resource": 1})(test)
     cluster_resources = ray.get(function.remote())
 
     # All cluster resources should be utilized and
@@ -2391,8 +2392,9 @@ def wait_for_num_objects(num_objects, timeout=10):
     raise Exception("Timed out while waiting for global state.")
 
 
-@pytest.mark.skipif(os.environ.get("RAY_USE_NEW_GCS") == "on",
-                    reason="New GCS API doesn't have a Python API yet.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
+    reason="New GCS API doesn't have a Python API yet.")
 def test_global_state_api(shutdown_only):
     with pytest.raises(Exception):
         ray.global_state.object_table()
@@ -2603,8 +2605,9 @@ def test_not_logging_to_driver(shutdown_only):
     assert len(error_lines) == 0
 
 
-@pytest.mark.skipif(os.environ.get("RAY_USE_NEW_GCS") == "on",
-                    reason="New GCS API doesn't have a Python API yet.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
+    reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
     ray.init(num_cpus=num_workers)
@@ -2740,8 +2743,9 @@ def test_duplicate_error_messages(shutdown_only):
                       error_data)
 
 
-@pytest.mark.skipif(os.getenv("TRAVIS") is None,
-                    reason="This test should only be run on Travis.")
+@pytest.mark.skipif(
+    os.getenv("TRAVIS") is None,
+    reason="This test should only be run on Travis.")
 def test_ray_stack(ray_start_2_cpus):
     def unique_name_1():
         time.sleep(1000)
@@ -2897,8 +2901,8 @@ def test_shutdown_disconnect_global_state():
     assert str(e.value).endswith("ray.init has been called.")
 
 
-@pytest.mark.parametrize("ray_start_object_store_memory", [10**8],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_object_store_memory", [10**8], indirect=True)
 def test_redis_lru_with_set(ray_start_object_store_memory):
     x = np.zeros(8 * 10**7, dtype=np.uint8)
     x_id = ray.put(x)
