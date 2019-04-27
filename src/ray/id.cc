@@ -43,7 +43,7 @@ UniqueID::UniqueID(const plasma::UniqueID &from) {
 }
 
 UniqueID UniqueID::from_random() {
-  std::string data;
+  std::string data(kUniqueIDSize, 0);
   // NOTE(pcm): The right way to do this is to have one std::mt19937 per
   // thread (using the thread_local keyword), but that's not supported on
   // older versions of macOS (see https://stackoverflow.com/a/29929949)
@@ -52,7 +52,7 @@ UniqueID UniqueID::from_random() {
   static std::mt19937 generator = RandomlySeededMersenneTwister();
   std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
   for (int i = 0; i < kUniqueIDSize; i++) {
-    data.push_back(static_cast<uint8_t>(dist(generator)));
+    data[i] = static_cast<uint8_t>(dist(generator));
   }
   return UniqueID::from_binary(data);
 }
@@ -76,7 +76,7 @@ bool UniqueID::is_nil() const {
 
 const uint8_t *UniqueID::data() const { return id_; }
 
-size_t UniqueID::size() const { return kUniqueIDSize; }
+size_t UniqueID::size() { return kUniqueIDSize; }
 
 std::string UniqueID::binary() const {
   return std::string(reinterpret_cast<const char *>(id_), kUniqueIDSize);

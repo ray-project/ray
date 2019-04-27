@@ -12,8 +12,8 @@ class UniqueIdFromJByteArray {
   const ID &GetId() const { return id; }
 
   UniqueIdFromJByteArray(JNIEnv *env, const jbyteArray &bytes) {
-    std::string id_str(kUniqueIDSize, 0);
-    env->GetByteArrayRegion(bytes, 0, kUniqueIDSize,
+    std::string id_str(ID::size(), 0);
+    env->GetByteArrayRegion(bytes, 0, ID::size(),
                             reinterpret_cast<jbyte *>(&id_str.front()));
     id = ID::from_binary(id_str);
   }
@@ -231,11 +231,11 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(
 
   TaskID task_id =
       ray::GenerateTaskId(driver_id.GetId(), parent_task_id.GetId(), parent_task_counter);
-  jbyteArray result = env->NewByteArray(kUniqueIDSize);
+  jbyteArray result = env->NewByteArray(task_id.size());
   if (nullptr == result) {
     return nullptr;
   }
-  env->SetByteArrayRegion(result, 0, kUniqueIDSize,
+  env->SetByteArrayRegion(result, 0, task_id.size(),
                           reinterpret_cast<const jbyte *>(task_id.data()));
 
   return result;
