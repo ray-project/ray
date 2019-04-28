@@ -20,6 +20,9 @@
 
 using MessageType = ray::protocol::MessageType;
 
+// TODO(ekl) implement the actor transport factory
+ray::raylet::ActorTransport *GetActorTransport(RayletClient *client) { return nullptr; }
+
 // TODO(rkn): The io methods below should be removed.
 int connect_ipc_sock(const std::string &socket_pathname) {
   struct sockaddr_un socket_address;
@@ -220,6 +223,8 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
   auto status = conn_->WriteMessage(MessageType::RegisterClientRequest, &fbb);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
+
+  transport_ = std::unique_ptr<ray::raylet::ActorTransport>(GetActorTransport(this));
 }
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,

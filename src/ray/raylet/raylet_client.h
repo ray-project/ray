@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/raylet/actor_transport.h"
 #include "ray/raylet/task_spec.h"
 #include "ray/status.h"
 
@@ -73,6 +74,8 @@ class RayletClient {
                bool is_worker, const DriverID &driver_id, const Language &language);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
+
+  ray::raylet::ActorTransport *GetTransport() { return transport_.get(); }
 
   /// Submit a task using the raylet code path.
   ///
@@ -187,6 +190,8 @@ class RayletClient {
   ResourceMappingType resource_ids_;
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
+  /// The strategy used for handling actor calls.
+  std::unique_ptr<ray::raylet::ActorTransport> transport_;
 };
 
 #endif

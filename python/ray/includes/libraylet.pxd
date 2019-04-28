@@ -49,6 +49,7 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
                       c_bool is_worker, const CDriverID &driver_id,
                       const CLanguage &language)
         CRayStatus Disconnect()
+        CActorTransport* GetTransport()
         CRayStatus SubmitTask(
             const c_vector[CObjectID] &execution_dependencies,
             const CTaskSpecification &task_spec)
@@ -77,3 +78,16 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
         CDriverID GetDriverID() const
         c_bool IsWorker() const
         const ResourceMappingType &GetResourceIDs() const
+
+
+cdef extern from "ray/raylet/actor_transport.h" nogil:
+    cdef cppclass CInlineResult "InlineResult":
+        c_bool IsInline()
+        int inline_len
+        c_string inline_data
+
+    cdef cppclass CActorTransport "ActorTransport":
+        void SubmitTask(unique_ptr[CTaskSpecification] task_spec)
+        c_vector[CInlineResult] GetResults(c_vector[CObjectID] obj_ids)
+        c_vector[CTaskSpecification] GetTasksToExecute()
+        void SendResults(c_vector[CInlineResult] results)

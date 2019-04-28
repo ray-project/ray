@@ -23,6 +23,7 @@ from ray.includes.common cimport (
     LANGUAGE_PYTHON,
 )
 from ray.includes.libraylet cimport (
+    CActorTransport,
     CRayletClient,
     GCSProfileEventT,
     GCSProfileTableDataT,
@@ -214,6 +215,15 @@ cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
     return out
 
 
+cdef class ActorTransport:
+    def __init__(self, client):
+        self.client = client
+
+    def submit_task(self, Task task_spec):
+        cdef CActorTransport* transport = self.client.get().GetTransport()
+        transport.SubmitTask(task_spec.task_spec.get()[0])
+
+
 cdef class RayletClient:
     cdef unique_ptr[CRayletClient] client
 
@@ -227,6 +237,7 @@ cdef class RayletClient:
         self.client.reset(new CRayletClient(
             raylet_socket.encode("ascii"), client_id.native(), is_worker,
             driver_id.native(), LANGUAGE_PYTHON))
+        self.transport = ActorTransport(self.client)
 
     def disconnect(self):
         check_status(self.client.get().Disconnect())
