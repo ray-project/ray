@@ -4,7 +4,7 @@ load("@com_github_jupp0r_prometheus_cpp//:repositories.bzl", "prometheus_cpp_rep
 load("@com_github_ray_project_ray//bazel:python_configure.bzl", "python_configure")
 load("@com_github_checkstyle_java//:repo.bzl", "checkstyle_deps")
 
-def ray_repositories():
+def ray_deps_build_all():
   gen_java_deps()
   checkstyle_deps()
   boost_deps()
