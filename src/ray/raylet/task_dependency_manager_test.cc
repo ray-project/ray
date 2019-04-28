@@ -29,7 +29,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskLeaseData> {
  public:
   MOCK_METHOD4(
       Add,
-      ray::Status(const JobID &job_id, const TaskID &task_id,
+      ray::Status(const DriverID &driver_id, const TaskID &task_id,
                   std::shared_ptr<TaskLeaseDataT> &task_data,
                   const gcs::TableInterface<TaskID, TaskLeaseData>::WriteCallback &done));
 };

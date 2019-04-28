@@ -22,7 +22,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     notification_callback_ = notification_callback;
   }
 
-  Status Add(const JobID &job_id, const TaskID &task_id,
+  Status Add(const DriverID &driver_id, const TaskID &task_id,
              std::shared_ptr<protocol::TaskT> &task_data,
              const gcs::TableInterface<TaskID, protocol::Task>::WriteCallback &done) {
     task_table_[task_id] = task_data;
@@ -43,10 +43,10 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
         notification_callback_(client, task_id, data);
       }
     };
-    return Add(JobID::nil(), task_id, task_data, callback);
+    return Add(DriverID::nil(), task_id, task_data, callback);
   }
 
-  Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
+  Status RequestNotifications(const DriverID &driver_id, const TaskID &task_id,
                               const ClientID &client_id) {
     subscribed_tasks_.insert(task_id);
     if (task_table_.count(task_id) == 1) {
@@ -56,7 +56,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     return ray::Status::OK();
   }
 
-  Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
+  Status CancelNotifications(const DriverID &driver_id, const TaskID &task_id,
                              const ClientID &client_id) {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();

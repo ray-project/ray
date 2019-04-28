@@ -1102,7 +1102,7 @@ def get_webui_url():
     """
     if _global_node is None:
         raise Exception("Ray has not been initialized/connected.")
-    return _global_node.get_webui_url
+    return _global_node.webui_url
 
 
 global_worker = Worker()
@@ -1142,8 +1142,8 @@ def error_info():
     """Return information about failed tasks."""
     worker = global_worker
     worker.check_connected()
-    return (global_state.error_messages(job_id=worker.task_driver_id) +
-            global_state.error_messages(job_id=DriverID.nil()))
+    return (global_state.error_messages(driver_id=worker.task_driver_id) +
+            global_state.error_messages(driver_id=DriverID.nil()))
 
 
 def _initialize_serialization(driver_id, worker=global_worker):
@@ -1288,8 +1288,9 @@ def init(redis_address=None,
         node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
-            same job in order to generate the object IDs in a consistent
-            manner. However, the same ID should not be used for different jobs.
+            same driver in order to generate the object IDs in a consistent
+            manner. However, the same ID should not be used for different
+            drivers.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
         ignore_reinit_error: True if we should suppress errors from calling
@@ -1663,8 +1664,8 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             assert gcs_entry.EntriesLength() == 1
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entry.Entries(0), 0)
-            job_id = error_data.JobId()
-            if job_id not in [
+            driver_id = error_data.DriverId()
+            if driver_id not in [
                     worker.task_driver_id.binary(),
                     DriverID.nil().binary()
             ]:

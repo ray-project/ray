@@ -31,7 +31,7 @@ def get_default_ssh_options(private_key, connect_timeout, ssh_control_path):
         ("StrictHostKeyChecking", "no"),
         ("ControlMaster", "auto"),
         ("ControlPath", "{}/%C".format(ssh_control_path)),
-        ("ControlPersist", "5m"),
+        ("ControlPersist", "10s"),
     ]
 
     return ["-i", private_key] + [
@@ -240,9 +240,8 @@ class NodeUpdater(object):
         self.get_caller(check_error)(
             [
                 "rsync", "-e", " ".join(["ssh"] + get_default_ssh_options(
-                    self.ssh_private_key, 120, self.ssh_control_path)),
-                "--delete", "-avz", source, "{}@{}:{}".format(
-                    self.ssh_user, self.ssh_ip, target)
+                    self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
+                source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
             ],
             stdout=redirect or sys.stdout,
             stderr=redirect or sys.stderr)

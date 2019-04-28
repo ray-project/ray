@@ -15,13 +15,14 @@ mountaincarcontinuous-ddpg:
         env_config: {}
 
         # === Exploration ===
+        exploration_should_anneal: True
         schedule_max_timesteps: 100000
         timesteps_per_iteration: 1000
         exploration_fraction: 0.4
-        exploration_final_eps: 0.02
-        noise_scale: 0.75
-        exploration_theta: 0.15
-        exploration_sigma: 0.2
+        exploration_final_scale: 0.02
+        exploration_ou_noise_scale: 0.75
+        exploration_ou_theta: 0.15
+        exploration_ou_sigma: 0.2
         target_network_update_freq: 0
         tau: 0.01
 
@@ -34,9 +35,8 @@ mountaincarcontinuous-ddpg:
         clip_rewards: False
 
         # === Optimization ===
-        lr: 0.001
-        actor_loss_coeff: 0.1
-        critic_loss_coeff: 1.0
+        actor_lr: 0.001
+        critic_lr: 0.001
         use_huber: False
         huber_threshold: 1.0
         l2_reg: 0.00001
@@ -50,3 +50,7 @@ mountaincarcontinuous-ddpg:
         optimizer_class: "SyncReplayOptimizer"
         per_worker_exploration: False
         worker_side_prioritization: False
+
+        # === Evaluation ===
+        evaluation_interval: 5
+        evaluation_num_episodes: 10

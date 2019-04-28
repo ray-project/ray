@@ -19,6 +19,7 @@
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager_client_connection.h"
+#include "ray/stats/stats.h"
 
 namespace asio = boost::asio;
 
@@ -94,6 +95,9 @@ class ConnectionPool {
   ///
   /// \return string.
   std::string DebugString() const;
+
+  /// Record metrics.
+  void RecordMetrics() const;
 
   /// This object cannot be copied for thread-safety.
   RAY_DISALLOW_COPY_AND_ASSIGN(ConnectionPool);
