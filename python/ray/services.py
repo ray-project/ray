@@ -508,7 +508,8 @@ def start_redis(node_ip_address,
                 password=None,
                 use_credis=None,
                 redis_max_memory=None,
-                include_java=False):
+                include_java=False,
+                external_gcs_addresses=None):
     """Start the Redis global state store.
 
     Args:
@@ -539,6 +540,8 @@ def start_redis(node_ip_address,
             capped at 10GB but can be set higher.
         include_java (bool): If True, the raylet backend can also support
             Java worker.
+        external_gcs_addresses (str): The external redis address list.
+            The 1st one is the primary shard, the rests are the other shards.
 
     Returns:
         A tuple of the address for the primary Redis shard, a list of
@@ -572,38 +575,50 @@ def start_redis(node_ip_address,
             "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
             "supports 1-node chain for that shard only.")
 
-    if use_credis:
-        redis_executable = CREDIS_EXECUTABLE
-        # TODO(suquark): We need credis here because some symbols need to be
-        # imported from credis dynamically through dlopen when Ray is built
-        # with RAY_USE_NEW_GCS=on. We should remove them later for the primary
-        # shard.
-        # See src/ray/gcs/redis_module/ray_redis_module.cc
-        redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
-    else:
-        redis_executable = REDIS_EXECUTABLE
-        redis_modules = [REDIS_MODULE]
+    if external_gcs_addresses is None:
+        if use_credis:
+            redis_executable = CREDIS_EXECUTABLE
+            # TODO(suquark): We need credis here because some symbols need to be
+            # imported from credis dynamically through dlopen when Ray is built
+            # with RAY_USE_NEW_GCS=on. We should remove them later for the primary
+            # shard.
+            # See src/ray/gcs/redis_module/ray_redis_module.cc
+            redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
+        else:
+            redis_executable = REDIS_EXECUTABLE
+            redis_modules = [REDIS_MODULE]
 
-    redis_stdout_file, redis_stderr_file = redirect_files[0]
-    # Start the primary Redis shard.
-    port, p = _start_redis_instance(
-        redis_executable,
-        modules=redis_modules,
-        port=port,
-        password=password,
-        redis_max_clients=redis_max_clients,
-        # Below we use None to indicate no limit on the memory of the
-        # primary Redis shard.
-        redis_max_memory=None,
-        stdout_file=redis_stdout_file,
-        stderr_file=redis_stderr_file)
-    processes.append(p)
-    redis_address = address(node_ip_address, port)
+        redis_stdout_file, redis_stderr_file = redirect_files[0]
+        # Start the primary Redis shard.
+        port, p = _start_redis_instance(
+            redis_executable,
+            modules=redis_modules,
+            port=port,
+            password=password,
+            redis_max_clients=redis_max_clients,
+            # Below we use None to indicate no limit on the memory of the
+            # primary Redis shard.
+            redis_max_memory=None,
+            stdout_file=redis_stdout_file,
+            stderr_file=redis_stderr_file)
+        processes.append(p)
+        redis_address = address(node_ip_address, port)
+        primary_redis_client = redis.StrictRedis(
+            host=node_ip_address, port=port, password=password)
+    else:
+        redis_address = external_gcs_addresses[0]
+        print("primary_redis_address:", redis_address)
+        [primary_redis_ip, port] = redis_address.split(':')
+        port = int(port)
+        primary_redis_client = redis.StrictRedis(
+            host=primary_redis_ip, port=port, password=password)
+        # TODO(yuhong): use flushall(asynchronous=True), if python redis is
+        # updated to a newer version.
+        logger.info("Do the redis flushing.")
+        primary_redis_client.execute_command('FLUSHALL ASYNC')
 
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
-    primary_redis_client = redis.StrictRedis(
-        host=node_ip_address, port=port, password=password)
     primary_redis_client.set("NumRedisShards", str(num_redis_shards))
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
@@ -637,28 +652,31 @@ def start_redis(node_ip_address,
     redis_shards = []
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
-        if use_credis:
-            redis_executable = CREDIS_EXECUTABLE
-            # It is important to load the credis module BEFORE the ray module,
-            # as the latter contains an extern declaration that the former
-            # supplies.
-            redis_modules = [CREDIS_MEMBER_MODULE, REDIS_MODULE]
+        if external_gcs_addresses is None:
+            if use_credis:
+                redis_executable = CREDIS_EXECUTABLE
+                # It is important to load the credis module BEFORE the ray module,
+                # as the latter contains an extern declaration that the former
+                # supplies.
+                redis_modules = [CREDIS_MEMBER_MODULE, REDIS_MODULE]
+            else:
+                redis_executable = REDIS_EXECUTABLE
+                redis_modules = [REDIS_MODULE]
+
+            redis_shard_port, p = _start_redis_instance(
+                redis_executable,
+                modules=redis_modules,
+                port=redis_shard_ports[i],
+                password=password,
+                redis_max_clients=redis_max_clients,
+                redis_max_memory=redis_max_memory,
+                stdout_file=redis_stdout_file,
+                stderr_file=redis_stderr_file)
+            processes.append(p)
+            shard_address = address(node_ip_address, redis_shard_port)
         else:
-            redis_executable = REDIS_EXECUTABLE
-            redis_modules = [REDIS_MODULE]
+            shard_address = external_gcs_addresses[i + 1]
 
-        redis_shard_port, p = _start_redis_instance(
-            redis_executable,
-            modules=redis_modules,
-            port=redis_shard_ports[i],
-            password=password,
-            redis_max_clients=redis_max_clients,
-            redis_max_memory=redis_max_memory,
-            stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file)
-        processes.append(p)
-
-        shard_address = address(node_ip_address, redis_shard_port)
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
         primary_redis_client.rpush("RedisShards", shard_address)

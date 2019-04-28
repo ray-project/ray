@@ -215,6 +215,11 @@ def cli(logging_level, logging_format):
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
+@click.option(
+    "--external-gcs-addresses",
+    default=None,
+    help=("Specify the external GCS addresses separated by comma. The 1st "
+          "one is the primary shard, the rests are the other shards."))
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
@@ -222,7 +227,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           block, plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, internal_config):
+          java_worker_options, load_code_from_local, external_gcs_addresses,
+          internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -276,11 +282,32 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                                 "number of ports provided must equal "
                                 "--num-redis-shards (which is 1 if not "
                                 "provided)")
+            if external_gcs_addresses is not None:
+                raise Exception("If --external-gcs-addresses is provided, "
+                                "--redis-shard-ports should not be proved.")
 
         if redis_address is not None:
             raise Exception("If --head is passed in, a Redis server will be "
                             "started, so a Redis address should not be "
                             "provided.")
+        if external_gcs_addresses is not None:
+            external_gcs_addresses = external_gcs_addresses.split(",")
+            if num_redis_shards is not None:
+                num_redis_shards = int(num_redis_shards)
+                if len(external_gcs_addresses) != num_redis_shards + 1:
+                    raise Exception("The length of --external-gcs-addresses "
+                                    "should be --num-redis-shards + 1")
+            else:
+                # If num_redis_shards is None, it will be changed to 1 later.
+                if len(external_gcs_addresses) == 1:
+                    # Extend the redis shard as two if only one external shard
+                    # specified. That is to say the external redis will be
+                    # primary shard and shard 1 at the same time.
+                    external_gcs_addresses = external_gcs_addresses * 2
+                elif len(external_gcs_addresses) != 2:
+                    raise Exception(
+                        "The length of --external-gcs-addresses "
+                        "should be --num-redis-shards + 1 (default: 2)")
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
@@ -295,6 +322,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redis_max_clients=redis_max_clients,
             autoscaling_config=autoscaling_config,
             include_java=False,
+            external_gcs_addresses=external_gcs_addresses,
         )
 
         node = ray.node.Node(ray_params, head=True, shutdown_at_exit=False)
@@ -340,6 +368,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if include_java is not None:
             raise ValueError("--include-java should only be set for the head "
                              "node.")
+        if external_gcs_addresses is not None:
+            raise Exception("If --head is not passed in, "
+                            "--external-gcs-addresses is not allowed")
 
         redis_ip_address, redis_port = redis_address.split(":")
 

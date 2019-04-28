@@ -340,18 +340,21 @@ class Node(object):
         for i in range(self._ray_params.num_redis_shards):
             redis_log_files.append(self.new_log_files("redis-shard_" + str(i)))
 
-        (self._redis_address, redis_shards,
-         process_infos) = ray.services.start_redis(
-             self._node_ip_address,
-             redis_log_files,
-             port=self._ray_params.redis_port,
-             redis_shard_ports=self._ray_params.redis_shard_ports,
-             num_redis_shards=self._ray_params.num_redis_shards,
-             redis_max_clients=self._ray_params.redis_max_clients,
-             redirect_worker_output=True,
-             password=self._ray_params.redis_password,
-             include_java=self._ray_params.include_java,
-             redis_max_memory=self._ray_params.redis_max_memory)
+        (
+            self._redis_address, redis_shards, process_infos
+        ) = ray.services.start_redis(
+            self._node_ip_address,
+            redis_log_files,
+            port=self._ray_params.redis_port,
+            redis_shard_ports=self._ray_params.redis_shard_ports,
+            num_redis_shards=self._ray_params.num_redis_shards,
+            redis_max_clients=self._ray_params.redis_max_clients,
+            redirect_worker_output=True,
+            password=self._ray_params.redis_password,
+            include_java=self._ray_params.include_java,
+            redis_max_memory=self._ray_params.redis_max_memory,
+            external_gcs_addresses=self._ray_params.external_gcs_addresses,
+        )
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
