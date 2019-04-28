@@ -12,6 +12,20 @@ def ray_deps_setup():
         strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
         url = "https://github.com/bazelbuild/rules_jvm_external/archive/%s.zip" % RULES_JVM_EXTERNAL_TAG,
     )
+
+    http_archive(
+        name = "bazel_common",
+        strip_prefix = "bazel-common-f1115e0f777f08c3cdb115526c4e663005bec69b",
+        url = "http://aivolvo.cn-hangzhou.oss.jiuzhou.cloud.aliyun-inc.com/raylib/bazel-common/bazel-common-f1115e0f777f08c3cdb115526c4e663005bec69b.zip",
+    )
+  
+    BAZEL_SKYLIB_TAG = "0.6.0"
+
+    http_archive(
+        name = "bazel_skylib",
+        strip_prefix = "bazel-skylib-%s" % BAZEL_SKYLIB_TAG,
+        url = "http://aivolvo.cn-hangzhou.oss.jiuzhou.cloud.aliyun-inc.com/raylib/bazel-skylib/bazel-skylib-%s.tar.gz" % BAZEL_SKYLIB_TAG,
+    )
    
     git_repository(
         name = "com_github_checkstyle_java",
