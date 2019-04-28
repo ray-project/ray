@@ -16,15 +16,15 @@ def ray_deps_setup():
     http_archive(
         name = "bazel_common",
         strip_prefix = "bazel-common-f1115e0f777f08c3cdb115526c4e663005bec69b",
-        url = "http://aivolvo.cn-hangzhou.oss.jiuzhou.cloud.aliyun-inc.com/raylib/bazel-common/bazel-common-f1115e0f777f08c3cdb115526c4e663005bec69b.zip",
+        url = "https://github.com/google/bazel-common/archive/f1115e0f777f08c3cdb115526c4e663005bec69b.zip",
     )
-  
+ 
     BAZEL_SKYLIB_TAG = "0.6.0"
 
     http_archive(
         name = "bazel_skylib",
         strip_prefix = "bazel-skylib-%s" % BAZEL_SKYLIB_TAG,
-        url = "http://aivolvo.cn-hangzhou.oss.jiuzhou.cloud.aliyun-inc.com/raylib/bazel-skylib/bazel-skylib-%s.tar.gz" % BAZEL_SKYLIB_TAG,
+        url = "https://github.com/bazelbuild/bazel-skylib/archive/%s.tar.gz" % BAZEL_SKYLIB_TAG,
     )
    
     git_repository(
