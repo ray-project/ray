@@ -2533,55 +2533,48 @@ class CaptureOutputAndError(object):
         self.captured_output_and_error["err"] = self.error_buffer.getvalue()
 
 
+logging_driver_script = """
+ray.init(num_cpus=1, log_to_driver=True)
+
+start = {}
+
+@ray.remote
+def f():
+    # It's important to make sure that these print statements occur even
+    # without calling sys.stdout.flush() and sys.stderr.flush().
+    for i in range(start * 100):
+        print(i)
+        print(100 + i, file=sys.stderr)
+
+captured = dict()
+with CaptureOutputAndError(captured):
+    ray.get(f.remote())
+    time.sleep(1)
+
+output_lines = captured["out"]
+for i in range(start * 100 + 100):
+    assert str(i) in output_lines
+error_lines = captured["err"]
+assert len(error_lines) == 0
+
+print("success")
+"""
+
 def test_logging_to_driver(shutdown_only):
-    ray.init(num_cpus=1, log_to_driver=True)
+    driver_script = logging_driver_script.format(1)
+    out = run_string_as_driver(driver_script)
 
-    bound_l = 1
-    bound_h = 9
-
-    # Randomize output
-    j = random.randint(bound_l, bound_h)
-
-    @ray.remote
-    def f(j):
-        # It's important to make sure that these print statements occur even
-        # without calling sys.stdout.flush() and sys.stderr.flush().
-        for i in range(j * 100, (j + 1) * 100 - 50):
-            print(-i)
-            print(-(50 + i), file=sys.stderr)
-
-    captured = {}
-    with CaptureOutputAndError(captured):
-        ray.get(f.remote(j))
-        time.sleep(1)
-
-    output_lines = captured["out"]
-    for i in range(bound_l * 100, (bound_h + 1) * 100):
-        if i >= j * 100 and i < (j + 1) * 100:
-            assert str(-i) in output_lines
-        else:
-            assert str(-i) not in output_lines
-    error_lines = captured["err"]
-    assert len(error_lines) == 0
-
+    assert "success" in out
 
 def test_logging_to_multiple_drivers(shutdown_only):
-    file_name = os.path.abspath(__file__) + "::test_logging_to_driver"
-    command = ["python", "-m", "pytest", "-v", file_name]
-    num_procs = 20
+    num_drivers = 3
 
-    procs = []
-    outputs = []
+    for i in range(num_drivers):
+        driver_script = logging_driver_script.format(i * 2 + 1)
+        out = run_string_as_driver(driver_script)
 
-    for idx in range(num_procs):
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE)
-        procs.append(proc)
-
-    for proc in procs:
-        output, _ = proc.communicate()
-        proc.wait()
-        assert "PASSED" in str(output)
-
+        assert "success" in out
+        
 
 def test_not_logging_to_driver(shutdown_only):
     ray.init(num_cpus=1, log_to_driver=False)

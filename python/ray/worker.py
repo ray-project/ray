@@ -950,10 +950,6 @@ class Worker(object):
             task.function_descriptor_list())
         driver_id = task.driver_id()
 
-        # Check if the active driver has changed
-        previous_driver_id = self.task_driver_id
-        same_driver = (driver_id == previous_driver_id)
-
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
         if not task.actor_creation_id().is_nil():
@@ -991,7 +987,7 @@ class Worker(object):
             next_title = "ray_{}".format(actor.__class__.__name__)
         with profiling.profile("task", extra_data=extra_data):
             with _changeproctitle(title, next_title):
-                if not same_driver:
+                if self.task_driver_id != task.driver_id():
                     print("Ray driver id: {}".format(str(driver_id)))
                     print(
                         "Ray driver id: {}".format(str(driver_id)),
