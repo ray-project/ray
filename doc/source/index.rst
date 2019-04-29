@@ -84,9 +84,9 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    tune-schedulers.rst
    tune-searchalg.rst
    tune-package-ref.rst
-   tune-contrib.rst
    tune-design.rst
    tune-examples.rst
+   tune-contrib.rst
 
 .. toctree::
    :maxdepth: 1
