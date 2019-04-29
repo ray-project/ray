@@ -6,39 +6,67 @@ of Tune.
 
 .. image:: images/tune-arch.png
 
+The blue boxes refer to internal components, and green boxes are public-facing.
+Please refer to the package reference for `user facing APIs <tune-package-ref.html>`__.
 
 Main Components
 ---------------
 
 Tune has a couple main components.
 
-TrialRunner: This is the main driver of the training loop. This component
-uses the TrialScheduler to ..., queries the SearchAlgorithm for new
-configurations to evaluate, and executes checkpointing if ``checkpoint_freq``
-is set, along with automatic Trial restarting in case of trial failures (if ``max_failures`` is set).
+TrialRunner
+~~~~~~~~~~~
+This is the main driver of the training loop. This component
+uses the TrialScheduler to prioritize and execute trials,
+queries the SearchAlgorithm for new
+configurations to evaluate, and handles the fault tolerance logic.
 
+**Fault Tolerance**: The TrialRunner executes checkpointing if ``checkpoint_freq``
+is set, along with automatic trial restarting in case of trial failures (if ``max_failures`` is set).
+For example, if a node is lost while a trial (specifically, the corresponding
+Trainable of the trial) is still executing on that node and checkpointing
+is enabled, the trial will then be reverted to a ``"PENDING"`` state and resumed
+from the last available checkpoint when it is run.
 The TrialRunner is also in charge of checkpointing the entire experiment execution state
 upon each loop iteration. This allows users to restart their experiment
 in case of machine failure.
 
-Trial objects: This is an internal data structure that contains metadata about each training run. Each Trial
+Trial objects
+~~~~~~~~~~~~~
+This is an internal data structure that contains metadata about each training run. Each Trial
 object is mapped one-to-one with a Trainable but are not themselves
 distributed/remote. Trial objects transition among
-the following states: "PENDING", "RUNNING", "PAUSED", "ERRORED", and
-"TERMINATED".
+the following states: ``"PENDING"``, ``"RUNNING"``, ``"PAUSED"``, ``"ERRORED"``, and
+``"TERMINATED"``.
 
-TrialExecutor: The TrialExecutor is a component that interacts with
-the underlying execution framework. By default, the TrialExecutor uses
+TrialExecutor
+~~~~~~~~~~~~~
+The TrialExecutor is a component that interacts with the underlying execution framework.
+It also manages resources to ensure the cluster isn't overloaded. By default, the TrialExecutor uses Ray to execute trials.
 
-SearchAlg: The SearchAlgorithm is a user-provided object
+SearchAlg
+~~~~~~~~~
+The SearchAlgorithm is a user-provided object
 that is used for querying new hyperparameter configurations to evaluate.
 
-TrialScheduler: This component
+SearchAlgorithms will be notified every time a trial finishes
+executing one training step (of ``train()``), every time a trial
+errors, and every time a trial completes.
 
-Trainables: These are user-provided objects that are used for
+TrialScheduler
+~~~~~~~~~~~~~~
+TrialSchedulers operate over a set of possible trials to run,
+prioritizing trial execution given available cluster resources.
+
+TrialSchedulers are given the ability to kill or pause trials,
+and also are given the ability to reorder/prioritize incoming trials.
+
+Trainables
+~~~~~~~~~~
+
+These are user-provided objects that are used for
 the training process. If a class is provided, it is expected to conform to the
 Trainable interface. If a function is provided. it is wrapped into a
 Trainable class, and the function itself is executed on a separate thread.
 
-
-
+Trainables will execute one step of ``train()`` before notifying the TrialRunner.
