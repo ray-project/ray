@@ -337,8 +337,8 @@ class Trial(object):
         self.checkpoint_score_attr = checkpoint_score_attr \
             if self._cmp_greater else checkpoint_score_attr[4:]
 
-        self._checkpoint = Checkpoint(storage=Checkpoint.DISK,
-                                      value=_find_newest_ckpt(restore_path))
+        self._checkpoint = Checkpoint(
+            storage=Checkpoint.DISK, value=_find_newest_ckpt(restore_path))
         self.export_formats = export_formats
         self.status = Trial.PENDING
         self.logdir = None
