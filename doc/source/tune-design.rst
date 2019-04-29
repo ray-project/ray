@@ -7,7 +7,6 @@ of Tune.
 .. image:: images/tune-arch.png
 
 
-
 Main Components
 ---------------
 

@@ -1,7 +1,7 @@
 Contributing to Tune
 ====================
 
-We welcome all forms of contributions to Tune, including and not limited to:
+We welcome (and encourage!) all forms of contributions to Tune, including and not limited to:
 
 - Code reviewing of patches and PRs.
 - Pushing patches
@@ -15,48 +15,97 @@ We welcome all forms of contributions to Tune, including and not limited to:
 Setting up a development environment
 ------------------------------------
 
-You can develop Tune locally without needing to compile Ray by using the `setup-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script.
-This sets up links between the ``tune`` dir in your git repo and the one bundled with the ``ray`` package.
-When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://ray.readthedocs.io/en/latest/installation.html>`__ installed.)
+If you have Ray installed via pip (``pip install -U ray``), you can develop Tune locally without needing to compile Ray.
 
 
-Your first contribution
------------------------
-
-
-Take a look at TODO(rliaw) for new issues to work on.
-
-
-Forking
--------
-You will need your own fork to work on the code. Go to the ray project page and hit the Fork button. You will want to clone your fork to your machine:
+First, you will need your own fork to work on the code. Press the Fork button on the `ray project page <https://github.com/ray-project/ray/>`__.
+Then, clone the project to your machine and connect your repository to the upstream (main project) ray repository.
 
 .. code-block:: shell
 
-    git clone https://github.com/your-user-name/ray.git ray-yourname
-    cd ray-yourname
+    git clone https://github.com/your-user-name/ray.git [path to ray directory]
+    cd [path to ray directory]
     git remote add upstream https://github.com/ray-project/ray.git
 
 
-This creates the directory pandas-yourname and connects your repository to the upstream (main project) pandas repository.
+Then, run RAY_DIRECTORY/python/ray/setup-dev.py `(also here on Github) <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script.
+This sets up links between the ``tune`` dir (among other directories) in your local repo and the one bundled with the ``ray`` package.
+
+When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://ray.readthedocs.io/en/latest/installation.html>`__ installed.)
 
 
+What can I work on?
+-------------------
 
-Submitting a Pull Request
--------------------------
+We use Github to track issues, feature requests, and bugs. Take a look at the
+ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ and `"help wanted" <https://github.com/ray-project/ray/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22>`__ for a place to start. Look for issues with "[tune]" in the title.
 
+.. note::
+
+  If raising a new issue or PR related to Tune, be sure to include "[tune]" in the title.
+
+For project organization, Tune maintains a relatively up-to-date organization of
+issues on the `Tune Github Project Board <https://github.com/ray-project/ray/projects/4>`__.
+Here, you can track and identify how issues are organized.
+
+
+Submitting and Merging a Contribution
+-------------------------------------
+
+There are a couple steps to merge a contribution.
+
+1. First rebase your development branch on the most recent version of master.
+
+   .. code:: bash
+
+     git remote add upstream https://github.com/ray-project/ray.git
+     git fetch upstream
+     git rebase upstream/master
+
+2. Make sure all existing tests `pass <tune-contrib.html#testing>`__.
+3. If introducing a new feature or patching a bug, be sure to add new test cases
+   in the relevant file in `tune/tests/`.
+4. Document the code. Public functions need to be documented, and remember to provide an usage example if applicable.
+5. Request code reviews from other contributors and address their comments. One fast way to get reviews is
+   to help review others' code so that they return the favor. You should aim to improve the code as much as
+   possible before the review. We highly value patches that can get in without extensive reviews.
+6. The patch can be merged after the reviewers approve the pull request.
 
 
 
 Testing
 -------
 
-Even though we have hooks to run unit tests automatically for each pull request, It’s always recommended to run unit tests locally beforehand to reduce reviewers’ burden and speedup review process.
+Even though we have hooks to run unit tests automatically for each pull request,
+we recommend you to run unit tests locally beforehand to reduce reviewers’
+burden and speedup review process.
 
+
+.. code-block:: shell
+
+    pytest ray/python/ray/tune/tests/
+
+Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
+
+We also have tests for code formatting and linting that need to pass before merge.
+You can run the following locally:
+
+.. code-block:: shell
+
+    ray/scripts/format.sh
 
 
 Becoming a Reviewer
 -------------------
 
-Reviewers are individuals who actively contributed to the project and are willing to participate in the code review of new contributions. We identify reviewers from active contributors. The committers should explicitly solicit reviews from reviewers. High-quality code reviews prevent technical debt for long-term and are crucial to the success of the project. A pull request to the project has to be reviewed by at least one reviewer in order to be merged.
+We identify reviewers from active contributors. Reviewers are individuals who
+not only actively contribute to the project and are also willing
+to participate in the code review of new contributions.
+A pull request to the project has to be reviewed by at least one reviewer in order to be merged.
+There is currently no formal process, but active contributors to Tune will be
+solicited by current reviewers.
 
+
+.. note::
+
+    These tips are based off of the TVM `contributor guide <https://github.com/dmlc/tvm>`__.
