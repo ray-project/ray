@@ -203,128 +203,364 @@ class TensorFlowVariables(object):
             })
 
 
-def _differentiable_forward(self, identifier, method, persistent_tape, args,
-                            arg_types, arg_dtypes, kwargs, kws, kwarg_types,
-                            kwarg_dtypes):
+class ValType:
+    """Enum to hold types of packed values for reconstruction after
+       serialization.
+    """
+    TF_VAR = "tf_variable" # `tf.Variable`
+    TF_TEN = "tf_tensor" # `tf.Tensor`; note that `tf.constant`
+                         # is `tf.Tensor` under the hood.
+    TF_OBJ_ID = "tf_object_id" # Placeholder for un-fetched results
+                               # whose real type is undetermined.
+    OTHER = "other" # Bucket to hold others. 
+
+    # We need to handle these in a special manner because Ray will 
+    # convert scalar NumPy values to native Python `float`s during 
+    # transport, losing the original dtype.
+    TF_VAR_SC = "tf_variable_scalar" # `tf.Variable` scalar.
+    TF_TEN_SC = "tf_tensor_scalar" # `tf.Tensor` scalar.
+    NP_SC = "np_scalar" # NumPy scalar.
+
+
+def _pack(val):
+    """Packs a value so that it can be serialized and reconstructed.
+    
+    Args:
+        val (): The value to pack.
+
+    Returns:
+        tuple: `(packed, ptype)` where `ptype` is one of the types
+            defined in `ValType` and `packed` is the value prepared for 
+            serialization.
+    """
+    packed = None
+    ptype = None   
+    if isinstance(val, TFObjectID):
+        # This is a placeholder for a value returned from a differentiable
+        # remote actor method because we won't know the actual type until it is
+        # fetched. When it is fetched, we will get a tuple 
+        # `(packed, ptype)` that can be reconstructed by calling 
+        # `_unpack`.
+        packed = val
+        ptype = ValType.TF_OBJ_ID
+    elif isinstance(val, (tf.Variable, tf.Tensor)):
+        # These will be converted to their NumPy equivalent for serialization.
+        packed = val.numpy()
+        scalar = False
+        if np.isscalar(packed):
+            scalar = True
+            packed = np.array([packed])
+
+        # We take special care for NumPy scalars because they will not be 
+        # transported correctly, but instead converted to a native Python 
+        # `float` by Ray. To circumvent this, we transport them as 1d arrays
+        # and unpack them accordingly. 
+        if isinstance(val, tf.Variable) and scalar:
+            ptype = ValType.TF_VAR_SC
+        elif isinstance(val, tf.Variable):
+            ptype = ValType.TF_VAR
+        elif isinstance(val, tf.Tensor) and scalar:
+            ptype = ValType.TF_TEN_SC
+        elif isinstance(val, tf.Tensor):
+            ptype = ValType.TF_TEN
+    elif type(val).__module__ == np.__name__ and np.isscalar(val):
+        # These are handled similar to above.
+        packed = np.array([val])
+        ptype = ValType.NP_SC
+    else:
+        # We will assume these are serializable. If not, Ray will throw
+        # an exception down the road
+        packed = val
+        ptype = ValType.OTHER
+    return packed, ptype
+
+
+def _unpack(packed, ptype):
+    """Reconstruct a packed value.
+
+    Args:
+        packed (): The packed value.
+        ptype (ValType): The type before packing.
+
+    Note:
+        See `_pack` for more detials.
+
+    Returns:
+        : The unpacked value.
+    """
+    if ptype == ValType.TF_VAR:
+        return tf.Variable(packed)
+    elif ptype == ValType.TF_TEN:
+        return tf.constant(packed)
+    elif ptype == ValType.TF_VAR_SC:
+        return tf.Variable(packed[0])
+    elif ptype == ValType.TF_TEN_SC:
+        return tf.constant(packed[0])
+    elif ptype == ValType.OTHER:
+        return packed
+    else:
+        raise ValueError("Invalid type to unpack: {}".format(ptype))
+
+
+def _pack_many(vals):
+    """Packs a batch of values for serialization and reconstruction.
+
+    Iteratively applies `_pack`.
+
+    Args:
+        vals (list): The values to pack.
+
+    Returns:
+        tuple: `(packed, types)` where `packed` is a list of the packed values
+            and `types` is a list of the corresponding `ValType`s for
+            reconstruction
+    """
+    return tuple(zip(*list(map(_pack, vals))))
+
+def _unpack_many(packed, ptypes):
+    """Reconstructs a batch of packed values.
+
+    Iteratively applies `_unpack`.
+
+    Args:
+        packed (list): The packed values.
+        ptypes (list): The corresponding `ValType`s.
+
+    Returns:
+        list: The reconstructed values. 
+    """
+    return list(map(lambda x: _unpack(*x), zip(packed, ptypes))) 
+
+
+def _pack_args(args, kwargs):
+    """Packs arguments for serialization and reconstruction on the
+       remote actor.
+    
+    Args:
+        args (list): The arguments.
+        kwargs (dict): The keyword arguments.
+
+    Returns:
+        tuple: A tuple of packed arguments and metadata,
+            `(packed_args, arg_ptypes,
+              packed_kwargs, kwarg_ptypes, kws,
+              tf_args)` where:
+
+            - `packed_args`: The packed arguments.
+            - `arg_ptypes`: A corresponding list of `ValType`s for 
+                reconstruction.
+            - `packed_kwargs`: The packed *arguments only* of the keyword
+                arguments. 
+            - `kwarg_ptypes`:  A corresponding list of `ValType`s for 
+                reconstruction.
+            - `kws`: A list of *only the keywords* of the keyword arguments.
+            - `tf_args`: A list of all the arguments and keyword arguments
+                that are `tf.Variable` or `tf.Tensor`. It will be used solely
+                to connect the local TF graph and never be used in an actual
+                computation.
+          
+        The reason we split the keyword arguments into arguments and keywords is
+        that if we were to serialize and send a `dict` to the remote actor,
+        the `ray.ObjectID`s would not get fetched before the actor method
+        computation. By splitting it up, we can transport the arguments as
+        if they were normal arguments and stitch them with the keywords inside
+        the actor method.
+    """
+    tf_args = [] # These are all the arguments and keyword arguments
+                 # that are `tf.Variable` or `tf.Tensor`. It will be used solely
+                 # to connect the local TF graph and never be used in an actual
+                 # computation.
+
+    # Pack args.
+    packed_args = []
+    arg_ptypes = []
+    for arg in args:
+        if isinstance(arg, TFObjectID):
+            tf_args.append(arg.graph_tensor)
+        elif isinstance(arg, (tf.Variable, tf.Tensor)):
+            tf_args.append(arg)
+
+        packed_arg, arg_ptype = _pack(arg)
+        packed_args.append(packed_arg)
+        arg_ptypes.append(arg_ptype)
+
+    # Pack kwargs.
+    kws = []
+    packed_kwargs = []
+    kwarg_ptypes = []
+    for kw, arg in kwargs.items():
+        kws.append(kw)
+        if isinstance(arg, TFObjectID):
+            tf_args.append(arg.graph_tensor)
+        elif isinstance(arg, (tf.Variable, tf.Tensor)):
+            tf_args.append(arg)
+
+        packed_arg, arg_ptype = _pack(arg)
+        packed_kwargs.append(packed_arg)
+        kwarg_ptypes.append(arg_ptype)
+
+    return (packed_args, arg_ptypes,
+            packed_kwargs, kwarg_ptypes, kws,
+            tf_args)
+
+
+def _unpack_args(packed_args, arg_ptypes,
+                 packed_kwargs, kwarg_ptypes, kws):
+    """Reconstruct the packed arguments on the driver.
+    
+    Args:
+        packed_args (list): The packed arguments.
+        arg_ptypes (list): The corresponding `ValType`s for reconstruction.
+        packed_kwargs (list): The packed arguments *(w/o the keywords)* of
+            the keyword arguments. Must be ordered relative to `kws`.
+        kwarg_ptypes (list): The corresponding `ValType`s for reconstruction.
+        kws (list): The keywords for the keyword arguments of the actor method.
+            Must match up with `packed_kwargs`.
+
+        For a more detailed explanation of these, see 
+        the docstring of `_pack_args`.
+
+    Returns:
+        tuple: A tuple of unpacked arguments consisting of
+            `(args, kwargs, tf_args, tf_tensor_args)` where:
+        
+            - `args`: The unpacked arguments.
+            - `kwargs`: The unpacked keyword arguments as a `dict`.
+            - `tf_args`: The arguments and keyword arguments that are either 
+                `tf.Variable` or `tf.Tensor`. This will be used for the 
+                backwards pass.
+            - `tf_tensor_args`: The arguments and keyword arguments that are
+                `tf.Tensor`. They must be explicitly watched by the 
+                `tf.GradientTape` during the forward pass in order to take a 
+                gradient w.r.t them during the backward pass.
+    """
+    tf_args = [] # The arguments and keyword arguments that are either 
+                 # `tf.Variable` or `tf.Tensor`. This will be used for the 
+                 # backwards pass.    
+
+    tf_tensor_args = [] # The arguments and keyword arguments that are
+                        # `tf.Tensor`. They must be explicitly watched by the 
+                        # `tf.GradientTape` during the forward pass in order 
+                        # to take a gradient w.r.t them during the backward 
+                        # pass.    
+
+    # Unpack the args.
+    args = []
+    for packed_arg, arg_ptype in zip(packed_args, arg_ptypes):
+        if arg_ptype == ValType.TF_OBJ_ID:
+            packed_arg, arg_ptype = packed_arg # These are specially packed like this
+                                               # because we won't know the actual type
+                                               # until it is fetched.
+        args.append(_unpack(packed_arg, arg_ptype))
+        if arg_ptype in (ValType.TF_TEN, ValType.TF_TEN_SC):
+            tf_args.append(args[-1])
+            tf_tensor_args.append(args[-1])
+        elif arg_ptype in (ValType.TF_VAR, ValType.TF_VAR_SC):
+            tf_args.append(args[-1])
+
+    # Unpack the kwargs.
+    kwargs = {}
+    for packed_arg, arg_ptype, kw in zip(packed_kwargs, kwarg_ptypes, kws):
+        if arg_ptype == ValType.TF_OBJ_ID:
+            packed_arg, arg_ptype = packed_arg # These are specially packed like this
+                                               # because we won't know the actual type
+                                               # until it is fetched.
+        kwargs[kw] = _unpack(packed_arg, arg_ptype)
+        if arg_ptype in (ValType.TF_TEN, ValType.TF_TEN_SC):
+            tf_args.append(kwargs[kw])
+            tf_tensor_args.append(kwargs[kw])
+        elif arg_ptype in (ValType.TF_VAR, ValType.TF_VAR_SC):
+            tf_args.append(kwargs[kw])
+
+    return (args, kwargs, 
+            tf_args, tf_tensor_args)
+
+
+def _pack_pairwise(vals):
+    """Pack the values in a pair-wise fashion for serialization and 
+       reconstruction on the driver.
+
+    This is handy for when we want to build a list of elements `(packed, ptype)`
+    instead of building two lists of `packed` and `ptypes`. The former plays
+    well with the results and gradients returned from the remote actor method
+    because we don't have to change the number of return values to accomodate
+    and extra one for `ptypes`.
+
+    Args:
+        vals (list): The values to pack.
+    
+    Returns:
+        list: A list of `(packed, ptype)`. See `_pack` for 
+            more details.
+    """
+    packed, ptypes = _pack_many(vals)
+
+    pairwise_packed = list(zip(packed, ptypes))
+    return pairwise_packed
+
+
+def _differentiable_forward(self, identifier, method, persistent_tape, 
+                            packed_args, arg_ptypes, 
+                            packed_kwargs, kwarg_ptypes, kws):
     """Forward pass of Tensorflow differentiable actor method.
 
     Args:
         self (ray.Actor): The ray Actor invoking this method.
         identifier (str): The unique byte-string used to associate this
-                          forward pass with the corresponding backward pass.
-        method (function): The Python method to invoke.
-        persistent_tape (bool): Use a persistent gradient tape.
-        args (list): The args for the actor method.
-        arg_types (list): The types of args.
-        arg_dtypes (list): The data types of args.
-        kws (list): The keywords for the kwargs of the actor method.
-        kwargs (list): The kwargs (w/o the keywords) for the actor method.
-                       Must be ordered relative to `kws`.
-        kwarg_types (list): The types of kwargs.
-        kwarg_dtypes (list): The data types of kwargs.
+            forward pass with the corresponding backward pass.
+        method (function): The Python method to internally invoke.
+        persistent_tape (bool): Use a persistent `tf.GradientTape`.
+        packed_args (list): The packed arguments for the actor method.
+        arg_ptypes (list): The corresponding `ValType`s for reconstruction.
+        packed_kwargs (list): The packed arguments *(w/o the keywords)* of
+            the keyword arguments for the actor method. Must be ordered 
+            relative to `kws`.
+        kwarg_ptypes (list): The corresponding `ValType`s for reconstruction.
+        kws (list): The keywords for the keyword arguments of the actor method.
+            Must match up with `packed_kwargs`.
 
     Note:
-        Both `kwarg_types` and `arg_types` are not language-syntactic
-        types, but are manually chosen for ease of book-keeping for
-        conversion pre/post serialization. Transport is done only with
-        scalar Python `float`s or `np.ndarray`s. The types currently
-        supported and their syntactic equivalents are:
-
-            - 'tf_const': Instance of `tf.Tensor` or `TFObjectID`. Note
-                          that `tf.constant` is converted to `tf.Tensor`
-                          under the hood and all intermediates involving
-                          `tf.Tensor` and/or `tf.Variable` are implicitly
-                          `tf.Tensor`.
-            - 'tf_var':   Instance of `tf.Variable`. Variables have different
-                          properties than tensors.
-            - 'native':   Native Python type.
-
-        We need `kwarg_dtypes` and `arg_dtypes` because Numpy scalars
-        are converted to native Python `float`s during serialization
-        and thus must be casted back.
-
-
-        We have separate `kwargs` and `kws` because the 'args' of the
-        traditional `kwargs` are actually passed into the remote actor
-        method like normal args and we use `kws` to maintain the keyword
-        mapping. We can't use a dict because then any `TFObjectID`
-        or `ObjectID` instances won't be fetched before invoking the
-        remote actor method.
+        See `_pack_args` for details on `packed_*` and `*_ptypes` and why we 
+        split the keyword arguments into the keywords and arguments.
 
     Returns:
-        list: Result of invoking actor method on `kwargs` and `args`.
+        list: The packed result of invoking the actor method on the unpacked 
+            arguments and keyword arguments. See `_pack_pairwise` for more
+            details.
     """
-
-    tf_inputs = []  # these are the inputs that are either `tf.Variable`
-    # or `tf.Tensor`, where inputs = args + kwargs; they
-    # will only be used in the backwards pass
-
-    tf_tensor_inputs = []  # these are the inputs that are `tf.Tensor`, which
-    # must be explicitly watched under the scope of the gradient tape
-    # in order to take a gradient w.r.t them
-
-    # process the args
-    processed_args = []
-    for arg_type, arg_dtype, arg in zip(arg_types, arg_dtypes, args):
-        if arg_type == "tf_var":
-            processed_args.append(tf.Variable(arg, dtype=arg_dtype))
-            tf_inputs.append(processed_args[-1])
-        elif arg_type == "tf_const":
-            processed_args.append(tf.constant(arg, dtype=arg_dtype))
-            tf_tensor_inputs.append(processed_args[
-                -1])  # `tf.constant` is `tf.Tensor` under the hood
-            tf_inputs.append(processed_args[-1])
-        elif arg_type == "native":
-            processed_args.append(arg)
-        else:
-            raise ValueError("Invalid argument type: {}".format(arg_type))
-
-    # process the kwargs
-    processed_kwargs = {}
-    for arg_type, arg_dtype, arg, kw in zip(kwarg_types, kwarg_dtypes, kwargs,
-                                            kws):
-        if arg_type == "tf_var":
-            processed_kwargs[kw] = tf.Variable(arg, dtype=arg_dtype)
-            tf_inputs.append(processed_kwargs[kw])
-        elif arg_type == "tf_const":
-            processed_kwargs[kw] = tf.constant(arg, dtype=arg_dtype)
-            tf_tensor_inputs.append(processed_kwargs[kw])
-            tf_inputs.append(processed_kwargs[kw])
-        elif arg_type == "native":
-            processed_kwargs[kw] = arg
-        else:
-            raise ValueError(
-                "Invalid keyword argument type: {}".format(arg_type))
-
-    # invoke actor method
+    # Unpack arguments.
+    (args, kwargs, tf_args, tf_tensor_args) = _unpack_args(packed_args, arg_ptypes,
+                                                           packed_kwargs, kwarg_ptypes, kws)
+ 
+    # Invoke actor method.
     with tf.GradientTape(persistent=persistent_tape) as tape:
-        # watch all of the `tf.Tensor` inputs
-        for tensor in tf_tensor_inputs:
+        # watch all of the `tf.Tensor` args
+        for tensor in tf_tensor_args:
             tape.watch(tensor)
 
-        results = method(self, *processed_args, **processed_kwargs)
+        results = method(self, *args, **kwargs)
 
-    # cache the TF state for backward pass
+    if not isinstance(results, tuple):
+        results = [results]
+#TODO: FIX THIS!!!
+#    elif self.__ray_num_return_vals__ == 1:
+#        results = [results]
+
+    # Cache the TF state for backward pass.
     if not hasattr(self, "__ray_tf_info__"):
         self.__ray_tf_info__ = {}
-    self.__ray_tf_info__[identifier] = (tape, tf_inputs, results)
+    self.__ray_tf_info__[identifier] = (tape, tf_args, results)
 
-    # process the results
-    if isinstance(results, (list, tuple)):
-        processed_results = [
-            result.numpy()
-            if isinstance(result, (tf.Tensor, tf.Variable)) else result
-            for result in results
-        ]
-    else:
-        processed_results = results.numpy() if isinstance(
-            results, (tf.Tensor, tf.Variable)) else results
+    # Pack the results.
+    packed_results = _pack_pairwise(results)
+    if len(packed_results) == 1:
+        packed_results = packed_results[0]
 
-    return processed_results
+    return packed_results
 
 
-def _differentiable_backward(self, identifier, persistent_tape, dys,
-                             dys_dtype):
+def _differentiable_backward(self, identifier, persistent_tape, 
+                             packed_dys, dys_ptypes):
     """Backward pass of Tensorflow differentiable actor method.
 
     Args:
@@ -332,50 +568,48 @@ def _differentiable_backward(self, identifier, persistent_tape, dys,
         identifier (str): The unique byte-string used to associate
                           this backward pass with the corresponding
                           forward pass.
-        persistent_tape (bool): Whether or not to delete the gradient
+        persistent_tape (bool): Whether or not to delete the `tf.GradientTape`
                                 tape after using it.
-        dys (list): The partial downstream gradients.
-        dys_dtypes (list): The data types of the dys.
+        packed_dys (list): The packed partial downstream gradients.
+        dys_ptypes (list): The corresponding `ValType`s for reconstruction.
 
     Note:
-        We need `dys_dtypes` for the same reason as the forward pass. Please
-        see the docstring of `_differentiable_forward` for more details.
+        See `_pack_many` for details on `packed_dys` and `dys_ptypes`
 
     Returns:
-        list: The gradients for the actor method.
+        list: The packed gradients. See `_pack_pairwise` for more details.
     """
+    # Unpack the dys.
+    dys = _unpack_many(packed_dys, dys_ptypes)
 
-    # fetch the cached TF state
+    # Fetch the cached TF state.
     tape, inputs, results = self.__ray_tf_info__[identifier]
 
-    # process the partial downstream gradients
-    if not isinstance(results, (list, tuple)):
-        results = [results]
-    dys_processed = []
-    for dy, result in zip(dys, results):
-        if isinstance(dy, np.floating) and dy == 0.0:
-            # this is needed because TF inserts 0.0 for results that
-            # are not used downstream regardless of the proper shape
-            dys_processed.append(
-                tf.constant(np.zeros_like(result), dtype=dys_dtype))
-        else:
-            dys_processed.append(tf.constant(dy, dtype=dys_dtype))
-    dys = dys_processed
+    # Prune the cached results and dys so that we only have the TF results
+    # and the corresponding dys.
+    tf_results = []
+    pruned_dys = []
+    for result, dy in zip(results, dys):
+        if isinstance(result, (tf.Tensor, tf.Variable)):
+            tf_results.append(result)
+            if isinstance(dy, (tf.Tensor, tf.Variable)) and np.isscalar(dy.numpy()) and dy.numpy() == 0.0:
+                # This is needed because TF inserts `0.0` for results that
+                # are not used downstream regardless of the proper shape.
+                pruned_dys.append(tf.constant(np.zeros_like(result), dtype=result.dtype)) # We don't use `dy.dtype` b/c TF will default to tf.float32, which might not be correct.
+            else:
+                pruned_dys.append(dy)
 
-    # get the gradients
-    grads = tape.gradient(results, inputs, output_gradients=dys)
+    # Compute gradients.
+    grads = tape.gradient(tf_results, inputs, output_gradients=pruned_dys)
 
     if not persistent_tape:
-        # we can no longer use the tape
+        # We can no longer use the tape.
         del self.__ray_tf_info__[identifier]
 
-    # process the gradients
-    grads = [grad.numpy() if grad is not None else grad
-             for grad in grads]  # a gradient can be None if we are
-    # taking the gradient w.r.t an unused source
-    grads = grads[0] if len(grads) == 1 else grads
+    # Pack the gradients.
+    packed_grads = _pack_pairwise(grads)
 
-    return grads
+    return packed_grads
 
 
 def tf_differentiable(method):
@@ -390,8 +624,8 @@ def tf_differentiable(method):
     """
 
     def differentiable_method(self, identifier, forward_pass, persistent_tape,
-                              dys, dys_dtype, kwarg_types, kwarg_dtypes, kws,
-                              arg_types, arg_dtypes, *args):
+                              packed_dys, dys_ptypes, kwarg_ptypes, kws,
+                              arg_ptypes, *packed_args):
         """TensorFlow differentiable actor method wrapper.
 
         Args:
@@ -400,34 +634,34 @@ def tf_differentiable(method):
                               forward and backward passes of this invocation.
             forward_pass (bool): Executing the forward pass.
             persistent_tape (bool): Use a persistent tf.GradientTape.
-            dys (list): The partial downstream gradients.
-            dys_dtype (list): The data types of the dys.
-            kwarg_types (list): The types of kwargs.
-            kwarg_dtypes (list): The data types of kwargs.
-            kws (list): The keywords for the kwargs of the actor method.
-            arg_types (list): The types of args.
-            arg_dtypes (list): The data types of args.
-            args: The combined args and kwargs.
+            packed_dys (list): The packed partial downstream gradients.
+            dys_ptypes (list): The corresponding `ValType`s for reconstruction.
+            kwarg_ptypes (list): The `ValType`s for the keyword arguments 
+                for reconstruction.
+            kws (list): The keywords for the keyword arguments.
+            arg_ptypes (list): The `ValType`s for the arguments 
+                for reconstruction.
+            packed_args: The combined packed args *and kwargs*.
 
         Note:
-            When `forward_pass` is `True`, `dys` and `dys_dtype`
-            should be None.
-            When `forward_pass` is `False`, `kwarg_types`, `kwarg_dtypes`,
-            `kws`, `arg_types` and `arg_dtypes` should be None. No `args`
+            When `forward_pass` is `True`, `dys` and `dys_ptypes`
+            should be `None`.
+            When `forward_pass` is `False`, `kwarg_ptypes`,
+            `kws`, and `arg_ptypes` should be `None`. No `packed_args`
             should be provided.
 
-            Keyword arguments should be appended to the end of `args`.
-            We choose to pass in `kwargs` like this because if we use
-            a dict then any `TFObjectID` or `ObjectID` instances won't
-            be fetched before invoking the remote actor method.
+            The packed arguments *(w/o the keywords)* of the keyword arguments 
+            should be appended to the end of `packed_args`. See the note in the
+            docstring for `pack_args` for why we do this.
 
             See the docstrings for `_differentiable_forward` and
             `_differentiable_backward` for more details on the forward
             and backward passes.
 
         Returns:
-            Result of invoking actor method on forward pass and gradients
-            on backward pass.
+            list: Packed result of invoking actor method on forward pass 
+                and gradients on backward pass. See `_pack_pairwise` for more
+                details.
         """
         if not tf.executing_eagerly():
             raise RuntimeError("Tensorflow Eager execution must "
@@ -435,60 +669,64 @@ def tf_differentiable(method):
                                "functions.")
 
         if forward_pass:
-            assert dys is None and dys_dtype is None, (
-                "During forward pass, dys and dys_dtype "
+            assert packed_dys is None and dys_ptypes is None, (
+                "During forward pass, dys and dys_ptypes "
                 "must be None but are: {} and {}, respectively.".format(
-                    dys, dys_dtype))
+                    packed_dys, dys_ptypes))
 
-            # we pass in kwargs as args because we want them
+            # We pass in kwargs as args because we want them
             # to be fetched before evaluation on the remote Actor, which
-            # won't happen if they are passed through a dict
+            # won't happen if they are passed through a `dict`.
             if len(kws) > 0:
-                kwargs = args[-len(kws):]
-                args = args[:-len(kws)]
+                packed_kwargs = packed_args[-len(kws):]
+                packed_args = packed_args[:-len(kws)]
             else:
-                kwargs = {}
+                packed_kwargs = {}
 
-            # validate args and kwargs
-            assert len(args) == len(arg_types) == len(arg_dtypes), (
-                "Must have same number of arguments,"
-                "types, and dtypes:\n{}\n{}\n{}".format(
-                    args, arg_types, arg_dtypes))
+            # Validate args and kwargs.
+            assert len(packed_args) == len(arg_ptypes), (
+                "Must have same number of arguments"
+                "and types:\n{}\n{}".format(
+                    packed_args, arg_ptypes))
 
-            assert len(kwargs) == len(kwarg_types) == len(kwarg_dtypes), (
-                "Must have same number of keyword arguments,"
-                "types, and dtypes:\n{}\n{}\n{}".format(
-                    kwargs, kwarg_types, kwarg_dtypes))
+            assert len(packed_kwargs) == len(kwarg_ptypes), (
+                "Must have same number of keyword arguments"
+                "and types:\n{}\n{}".format(
+                    packed_kwargs, kwarg_ptypes))
 
-            # execute the forward pass
+            # Execute the forward pass.
             return _differentiable_forward(
-                self, identifier, method, persistent_tape, args, arg_types,
-                arg_dtypes, kwargs, kws, kwarg_types, kwarg_dtypes)
+                self, identifier, method, persistent_tape, packed_args, arg_ptypes,
+                packed_kwargs, kwarg_ptypes, kws)
         else:
-            assert kwarg_types is None and \
-                   kwarg_dtypes is None and \
+            assert len(packed_args) == 0, ("During backwards pass, no " 
+                                           "packed_args must be provided "
+                                           "but packed_args is {}.".format(packed_args))
+            assert arg_ptypes is None and \
+                   kwarg_ptypes is None and \
                    kws is None, (
-                     "During backwards pass, kwarg_types, "
-                     "kwarg_dtypes, and kws must be None but are: "
-                     "{}, {}, and {}, respectively.".format(kwarg_types,
-                                                            kwarg_dtypes, kws))
+                     "During backwards pass, arg_ptypes, "
+                     "kwarg_ptypes, and kws must be None but are: "
+                     "{}, {}, and {}, respectively.".format(arg_ptypes,
+                                                            kwarg_ptypes, kws))
 
-            # execute the backward pass
+            # Execute the backward pass.
             return _differentiable_backward(self, identifier, persistent_tape,
-                                            dys, dys_dtype)
+                                            packed_dys, dys_ptypes)
 
-    # tag method metadata for ray
+    # Tag method metadata for Ray.
     differentiable_method.__ray_tf_differentiable__ = True
 
     return differentiable_method
 
 
 class TFObjectID(ray.ObjectID):
-    """ObjectID wrapper for TensorFlow tensor.
+    """ObjectID wrapper for un-fetched results whose real type is 
+       undetermined. Contains extra metadata to link driver TF graph.
 
     Attributes:
         graph_tensor (tf.Tensor): A dummy tensor used to
-                                  link the local TF graph.
+                                  link the driver TF graph.
     """
 
     def __init__(self, object_id, graph_tensor):
@@ -496,7 +734,7 @@ class TFObjectID(ray.ObjectID):
         Args:
             object_id (ray.ObjectID): The ObjectID to wrap.
             graph_tensor (tf.Tensor): A dummy tensor used to
-                                      link the local TF graph.
+                                      link the driver TF graph.
         """
         ray.ObjectID.__init__(self, object_id.binary())
         self.graph_tensor = graph_tensor
@@ -505,122 +743,47 @@ class TFObjectID(ray.ObjectID):
 def _submit_tf_differentiable(actor_method, args, kwargs, num_return_vals):
     """Invoke TensorFlow differentiable actor method.
 
-    This will add a new op to the local TF graph representing the remote actor
+    This will add a new op to the driver TF graph representing the remote actor
     method invocation.
 
     Args:
         actor_method (ray.ActorMethod): The actor method to call.
-        args (list): The args.
-        kwargs (dict): The kwargs.
+        args (list): The arguments.
+        kwargs (dict): The keyword arguments.
         num_return_vals (int): The numer of return values.
 
     Returns:
-        TFObjectID or list of TFObjectID: The returned tensor ObjectIDs.
+        TFObjectID or list of TFObjectID: The un-fetched results.
     """
-
     if not tf.executing_eagerly():
         raise RuntimeError("Tensorflow Eager execution must "
                            "be enabled for differentiable "
                            "functions.")
 
-    tf_inputs = []  # these are the inputs that are either `tf.Variable` or
-    # `tf.Tensor`, where inputs = args + kwargs; they will
-    # be used solely to connect the local TF graph and will
-    # never be used in an actual computation-that will be done
-    # using `processed_args` and `processed_kwargs`
-
-    # process args
-    arg_types = []
-    arg_dtypes = []
-    return_dtype = None  # the dtype of the result should
-    # be the same dtype of all the TF arguments
-    processed_args = []
-    for arg in args:
-        if isinstance(arg, TFObjectID):
-            tf_inputs.append(arg.graph_tensor)
-            processed_args.append(arg)
-
-            arg_types.append("tf_const")
-            arg_dtypes.append(arg.graph_tensor.numpy().dtype)
-            return_dtype = arg_dtypes[-1]
-        elif isinstance(arg, (tf.Variable, tf.Tensor)):
-            tf_inputs.append(arg)
-            processed_args.append(arg.numpy())
-
-            if isinstance(arg, tf.Variable):
-                arg_type = "tf_var"
-            elif isinstance(arg, tf.Tensor):
-                arg_type = "tf_const"
-            arg_types.append(arg_type)
-            arg_dtypes.append(arg.numpy().dtype)
-            return_dtype = arg_dtypes[-1]
-        elif isinstance(arg, ray.ObjectID):
-            processed_args.append(arg)
-            arg_types.append("native")
-            arg_dtypes.append(ray.ObjectID)
-        else:
-            processed_args.append(arg)
-            arg_types.append("native")
-            arg_dtypes.append(type(arg))
-
-    # process kwargs
-    kwarg_types = []
-    kwarg_dtypes = []
-    processed_kwargs = []
-    kws = []
-    for kw, arg in kwargs.items():
-        kws.append(kw)
-        if isinstance(arg, TFObjectID):
-            tf_inputs.append(arg.graph_tensor)
-            processed_kwargs.append(arg)
-
-            kwarg_types.append("tf_const")
-            kwarg_dtypes.append(arg.graph_tensor.numpy().dtype)
-            return_dtype = kwarg_dtypes[-1]
-        elif isinstance(arg, (tf.Variable, tf.Tensor)):
-            tf_inputs.append(arg)
-            processed_kwargs.append(arg.numpy())
-
-            if isinstance(arg, tf.Variable):
-                arg_type = "tf_var"
-            elif isinstance(arg, (tf.Tensor)):
-                arg_type = "tf_const"
-            kwarg_types.append(arg_type)
-            kwarg_dtypes.append(arg.numpy().dtype)
-            return_dtype = kwarg_dtypes[-1]
-        elif isinstance(arg, ray.ObjectID):
-            processed_kwargs.append(arg)
-            kwarg_types.append("native")
-            kwarg_dtypes.append(ray.ObjectID)
-        else:
-            processed_kwargs.append(arg)
-            kwarg_types.append("native")
-            kwarg_dtypes.append(type(arg))
-
-    if return_dtype is None:
-        # this assumption makes sense because otherwise the method
-        # should not use `@tf_differentiable`
-        raise RuntimeError("Differentiable functions must have "
-                           "at least one TF arg/kwarg.")
+    # Pack the arguments for serialization and reconstruction on the remote 
+    # Actor
+    (packed_args, arg_ptypes,
+     packed_kwargs, kwarg_ptypes, kws,
+     tf_args) = _pack_args(args, kwargs)
 
     result_tf_obj_ids = []
 
     @tf.custom_gradient
-    def submit_op(*tf_inputs):
+    def submit_op(*tf_args):
         """Invokes the forward pass of the remote actor method.
 
-        This becomes an operation in our local TF graph representing the
+        This becomes an operation in the driver TF graph representing the
         remote actor method invocation.
 
         Args:
-            tf_inputs (tf.Tensor or tf.Variable): The TF inputs to
+            tf_args (tf.Tensor or tf.Variable): The TF arguments to
                                                   the actor method.
 
         Note:
-            The `tf_inputs` argument is not actually passed to the *remote*
-            actor method. Instead, it is used to link the local TF graph
-            and a processed version (`processed_args`/`processed_kwargs`)
-            actually is passed to the remote method.
+            The `tf_args` argument is not actually passed to the remote
+            actor method. Instead, it is used to link the driver TF graph
+            and a the packed versions (`packed_args`/`packed_kwargs`)
+            are actually passed to the remote method.
 
         Returns:
             list, function: A list of output `tf.Tensor`s
@@ -630,29 +793,27 @@ def _submit_tf_differentiable(actor_method, args, kwargs, num_return_vals):
             The outputs returned here are the `graph_tensor`
             attributes of the `TFObjectID`s returned from the
             remote actor method invocation. They are merely to
-            link the local TF graph and are never used in any
+            link the driver TF graph and are never used in any
             actual computation.
         """
-
-        # invoke the forward pass of the remote actor method
-        # with the processed inputs
+        # Invoke the forward pass of the remote actor method
+        # with the packed inputs.
         identifier = np.random.bytes(20)
         forward = True
-        persistent_tape = False  # TODO:(vsatish) when
-        # would we want this to be True?
-        dy, dys_type = None, None
-        args = processed_args + processed_kwargs  # see the note
-        # in the `differentiable_method` docstring for why we do this
+        persistent_tape = False
+        dys, dys_ptypes = None, None
+        combined_packed_args = packed_args + packed_kwargs # See the note
+        # in the `differentiable_method` docstring for why we do this.
         result_obj_ids = actor_method._internal_remote([
-            identifier, forward, persistent_tape, dy, dys_type, kwarg_types,
-            kwarg_dtypes, kws, arg_types, arg_dtypes
-        ] + args, {}, num_return_vals)
+            identifier, forward, persistent_tape, dys, dys_ptypes, kwarg_ptypes,
+            kws, arg_ptypes
+        ] + combined_packed_args, {}, num_return_vals)
 
-        # wrap each of the `ray.ObjectID`s returned in a `TFObjectID`
+        # Wrap each of the `ray.ObjectID`s returned in a `TFObjectID`.
         if isinstance(result_obj_ids, ray.ObjectID):
             result_obj_ids = [result_obj_ids]
         for obj_id in result_obj_ids:
-            graph_tensor = tf.constant(1.0, dtype=return_dtype)
+            graph_tensor = tf.constant(1.0)
             result_tf_obj_ids.append(TFObjectID(obj_id, graph_tensor))
 
         def grad(*dys):
@@ -665,41 +826,36 @@ def _submit_tf_differentiable(actor_method, args, kwargs, num_return_vals):
             Returns:
                 list: The gradients.
             """
-            # process the partial dys
-            dys = [dy.numpy() for dy in dys]
-
-            # invoke the backward pass of the remote actor
-            # method with the processed dys
+            # Invoke the backward pass of the remote actor
+            # method with the packed `dys`.
             forward = False
-            dys_dtype = return_dtype
-            kwarg_types, kwarg_dtypes, kws = None, None, None
-            arg_types, arg_dtypes = None, None
+            kwarg_ptypes, kws = None, None
+            arg_ptypes = None
             num_return_vals = len(
-                tf_inputs)  # the number of returned gradients is actually
-            # the number of TF inputs
+                tf_args)  # The number of returned gradients is
+            # the number of TF arguments.
+            packed_dys, dy_ptypes = _pack_many(dys)
             grad_ids = actor_method._internal_remote([
-                identifier, forward, persistent_tape, dys, dys_dtype,
-                kwarg_types, kwarg_dtypes, kws, arg_types, arg_dtypes
+                identifier, forward, persistent_tape, packed_dys, dy_ptypes,
+                kwarg_ptypes, kws, arg_ptypes,
             ], {}, num_return_vals)
-
-            # fetch the resulting gradients and block
-            if isinstance(grad_ids, ray.ObjectID):
-                grad_ids = [grad_ids]
+            
+            # Fetch the resulting gradients.
             grads = ray.get(grad_ids)
 
-            return [
-                tf.constant(grad, dtype=return_dtype)
-                if grad is not None else grad for grad in grads
-            ]
+            # Unpack the gradients.
+            grads_unpacked = _unpack_many(*zip(*grads))
 
-        # extract the dummy `graph_tensor`s used to link the local TF graph
+            return grads_unpacked
+
+        # Extract the dummy `graph_tensor`s used to link the driver TF graph.
         results = [tf_obj_id.graph_tensor for tf_obj_id in result_tf_obj_ids]
 
         return results, grad
 
-    results = submit_op(*tf_inputs)
+    results = submit_op(*tf_args)
 
-    # manually connect the local TF graph
+    # Manually connect the local TF graph.
     # TODO(vsatish): Figure out why the graph is disconnected without this
     # or find a cleaner way to do this.
     for tf_obj_id, graph_tensor in zip(result_tf_obj_ids, results):
@@ -712,53 +868,61 @@ def _submit_tf_differentiable(actor_method, args, kwargs, num_return_vals):
 def _post_process_get(tf_object_ids, results):
     """Post-process the `TFObjectID` results from ray.get().
 
-    Right now all it does is wrap the fetched values in `tf.Tensor`s.
+    Right now all it does is unpack the fetched results.
 
     Args:
-        tf_object_ids (list): The list of `TFObjectID`s.
+        tf_object_ids (list): The `TFObjectID`s.
         results (list): The corresponding fetched values.
 
     Returns:
-        list: A list of `tf.Tensor`s representing the post-processed values.
+        list: The unpacked results.
     """
     if not tf.executing_eagerly():
         raise RuntimeError("Tensorflow Eager execution must "
                            "be enabled for differentiable "
                            "functions.")
 
-    graph_tensors = [tf_obj_id.graph_tensor for tf_obj_id in tf_object_ids
-                     ]  # these are the `graph_tensor`s from the
-    # `TFObjectID`s that are solely to link the local
-    # TF graph and are never used in a computation
+    # Unpack the results.
+    unpacked_results = _unpack_many(*zip(*results)) 
+
+    # We want to link only the TF results to the `get_op` below. Thus, we must
+    # split the unpacked results into the TF results and everything else.
+    graph_tensors = [] # Only for TF results.
+    unpacked_tf_results = []
+    unpacked_tf_result_ind = [] # We will need this to stitch everything back together later.
+    unpacked_tf_result_var_ind = [] # We need this because the `get_op` implicitly converts all its returned values to `tf.Tensor` when it might actually be `tf.Variable`. We solve this by explicitly casting these back. 
+    unpacked_other_results = []
+    for idx, (tf_obj_id, unpacked_result, (_, result_ptype)) in enumerate(zip(tf_object_ids, unpacked_results, results)):
+        if result_ptype in [ValType.TF_VAR, ValType.TF_TEN, ValType.TF_VAR_SC, ValType.TF_TEN_SC]:
+            graph_tensors.append(tf_obj_id.graph_tensor)
+            unpacked_tf_results.append(unpacked_result)
+            unpacked_tf_result_ind.append(idx)
+            if result_ptype in [ValType.TF_VAR, ValType.TF_VAR_SC]:
+                unpacked_tf_result_var_ind.append(idx)
+        else:
+            unpacked_other_results.append(unpacked_result)
 
     @tf.custom_gradient
     def get_op(*graph_tensors):
         """Post-process the results.
 
-        This becomes an operation in our local TF graph representing
-        the call to `ray.get`.
+        This becomes an operation in our driver TF graph representing
+        the call to `ray.get`. It doesn't really do anything because the actual
+        post-processing is done in the enclosing function.
 
         Args:
             graph_tensors (list): The `graph_tensor` attributes of
                                   the TFObjectIDs in `ray.get`.
 
         Note:
-            `graph_tensors` is used solely to link the local TF graph
+            `graph_tensors` is used solely to link the driver TF graph
             and is never used in any computation. The actual results
-            are in `results` that we close over.
+            are in `unpacked_tf_results` that we close over.
 
         Returns:
             list: A list of `tf.Tensor`s representing the post-processed
                   results.
-
         """
-
-        # convert the results to tensors
-        result_tensors = [
-            tf.constant(result, dtype=tensor.dtype)
-            for result, tensor in zip(results, graph_tensors)
-        ]
-
         def grad(*dys):
             """Backwards pass of `ray.get` for gradient computation.
 
@@ -773,6 +937,17 @@ def _post_process_get(tf_object_ids, results):
             """
             return dys
 
-        return result_tensors, grad
+        return unpacked_tf_results, grad
 
-    return get_op(*graph_tensors)
+    unpacked_tf_results = get_op(*graph_tensors)
+
+    # Stitch the TF and non-TF results back together.
+    unpacked_results_stitched_together = []
+    for i in range(len(unpacked_results)):
+        if i in unpacked_tf_result_var_ind:
+            unpacked_results_stitched_together.append(tf.Variable(unpacked_tf_results.pop(0)))
+        elif i in unpacked_tf_result_ind:
+            unpacked_results_stitched_together.append(unpacked_tf_results.pop(0))
+        else:
+            unpacked_results_stitched_together.append(unpacked_other_results.pop(0))
+    return unpacked_results_stitched_together
