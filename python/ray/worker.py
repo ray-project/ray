@@ -234,9 +234,14 @@ class Worker(object):
         Returns:
             The serialization context of the given driver.
         """
-        if driver_id not in self.serialization_context_map:
-            _initialize_serialization(driver_id)
-        return self.serialization_context_map[driver_id]
+        # This function needs to be proctected by a lock, because it will be
+        # called by`register_class_for_serialization`, as well as the import
+        # thread, from different threads. Also, this function will recursively
+        # call itself, so we use RLock here.
+        with self.lock:
+            if driver_id not in self.serialization_context_map:
+                _initialize_serialization(driver_id)
+            return self.serialization_context_map[driver_id]
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -428,11 +433,7 @@ class Worker(object):
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it
                 # so that the import thread can acquire it.
-                if self.mode == WORKER_MODE:
-                    self.lock.release()
                 time.sleep(0.01)
-                if self.mode == WORKER_MODE:
-                    self.lock.acquire()
 
                 if time.time() - start_time > error_timeout:
                     warning_message = ("This worker or driver is waiting to "
@@ -972,52 +973,44 @@ class Worker(object):
             driver_id, function_descriptor)
 
         # Execute the task.
-        # TODO(rkn): Consider acquiring this lock with a timeout and pushing a
-        # warning to the user if we are waiting too long to acquire the lock
-        # because that may indicate that the system is hanging, and it'd be
-        # good to know where the system is hanging.
-        with self.lock:
-            function_name = execution_info.function_name
-            extra_data = {
-                "name": function_name,
-                "task_id": task.task_id().hex()
-            }
-            if task.actor_id().is_nil():
-                if task.actor_creation_id().is_nil():
-                    title = "ray_worker:{}()".format(function_name)
-                    next_title = "ray_worker"
-                else:
-                    actor = self.actors[task.actor_creation_id()]
-                    title = "ray_{}:{}()".format(actor.__class__.__name__,
-                                                 function_name)
-                    next_title = "ray_{}".format(actor.__class__.__name__)
+        function_name = execution_info.function_name
+        extra_data = {"name": function_name, "task_id": task.task_id().hex()}
+        if task.actor_id().is_nil():
+            if task.actor_creation_id().is_nil():
+                title = "ray_worker:{}()".format(function_name)
+                next_title = "ray_worker"
             else:
-                actor = self.actors[task.actor_id()]
+                actor = self.actors[task.actor_creation_id()]
                 title = "ray_{}:{}()".format(actor.__class__.__name__,
                                              function_name)
                 next_title = "ray_{}".format(actor.__class__.__name__)
-            with profiling.profile("task", extra_data=extra_data):
-                with _changeproctitle(title, next_title):
-                    if not same_driver:
-                        print("Ray driver id: {}".format(str(driver_id)))
-                        print(
-                            "Ray driver id: {}".format(str(driver_id)),
-                            file=sys.stderr)
-                        sys.stdout.flush()
-                        sys.stderr.flush()
-                    self._process_task(task, execution_info)
-                # Reset the state fields so the next task can run.
-                self.task_context.current_task_id = TaskID.nil()
-                self.task_context.task_index = 0
-                self.task_context.put_index = 1
-                if self.actor_id.is_nil():
-                    # Don't need to reset task_driver_id if the worker is an
-                    # actor. Because the following tasks should all have the
-                    # same driver id.
-                    self.task_driver_id = DriverID.nil()
-                    # Reset signal counters so that the next task can get
-                    # all past signals.
-                    ray_signal.reset()
+        else:
+            actor = self.actors[task.actor_id()]
+            title = "ray_{}:{}()".format(actor.__class__.__name__,
+                                         function_name)
+            next_title = "ray_{}".format(actor.__class__.__name__)
+        with profiling.profile("task", extra_data=extra_data):
+            with _changeproctitle(title, next_title):
+                if not same_driver:
+                    print("Ray driver id: {}".format(str(driver_id)))
+                    print(
+                        "Ray driver id: {}".format(str(driver_id)),
+                        file=sys.stderr)
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                self._process_task(task, execution_info)
+            # Reset the state fields so the next task can run.
+            self.task_context.current_task_id = TaskID.nil()
+            self.task_context.task_index = 0
+            self.task_context.put_index = 1
+            if self.actor_id.is_nil():
+                # Don't need to reset task_driver_id if the worker is an
+                # actor. Because the following tasks should all have the
+                # same driver id.
+                self.task_driver_id = DriverID.nil()
+                # Reset signal counters so that the next task can get
+                # all past signals.
+                ray_signal.reset()
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
@@ -1656,10 +1649,9 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     try:
         # Get the exports that occurred before the call to subscribe.
-        with worker.lock:
-            error_messages = global_state.error_messages(worker.task_driver_id)
-            for error_message in error_messages:
-                logger.error(error_message)
+        error_messages = global_state.error_messages(worker.task_driver_id)
+        for error_message in error_messages:
+            logger.error(error_message)
 
         while True:
             # Exit if we received a signal that we should stop.
@@ -1785,7 +1777,7 @@ def connect(node,
                 traceback_str,
                 driver_id=None)
 
-    worker.lock = threading.Lock()
+    worker.lock = threading.RLock()
 
     # Create an object for interfacing with the global state.
     global_state._initialize_global_state(
