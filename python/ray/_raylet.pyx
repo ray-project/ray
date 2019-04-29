@@ -216,8 +216,10 @@ cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
 
 
 cdef class ActorTransport:
-    def __init__(self, client):
-        self.client = client
+    cdef unique_ptr[CRayletClient] client
+
+    def __cinit__(self, CRayletClient* client):
+        self.client.reset(client)
 
     def submit_task(self, Task task_spec):
         cdef CActorTransport* transport = self.client.get().GetTransport()
