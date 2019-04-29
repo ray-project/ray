@@ -537,15 +537,16 @@ def _differentiable_forward(self, identifier, method, persistent_tape,
 
         results = method(self, *args, **kwargs)
 
-    num_return_vals = getattr(getattr(self, method.__name__), "__ray_num_return_vals__", 1)
+    num_return_vals = getattr(
+        getattr(self, method.__name__), "__ray_num_return_vals__", 1)
     if not isinstance(results, tuple):
         results = [results]
     elif num_return_vals == 1:
-        # We need this case to distinguish between a single returned tuple 
+        # We need this case to distinguish between a single returned tuple
         # such as `(1, 2, 3)`, which should be passed to `_pack_pairwise` as
-        # `[(1, 2, 3)]` so that we treat it as a single value to pack, 
+        # `[(1, 2, 3)]` so that we treat it as a single value to pack,
         # and a tuple of 3 different return values, which should
-        # be passed as `(1, 2, 3)` so that we know to pack each of the 3 
+        # be passed as `(1, 2, 3)` so that we know to pack each of the 3
         # values separately.
         results = [results]
 
@@ -710,10 +711,10 @@ def tf_differentiable(method):
                 "but packed_args is {}.".format(packed_args))
             assert (arg_ptypes is None and kwarg_ptypes is None
                     and kws is None), (
-                "During backwards pass, arg_ptypes, "
-                "kwarg_ptypes, and kws must be None but are: "
-                "{}, {}, and {}, respectively.".format(arg_ptypes,
-                                                       kwarg_ptypes, kws))
+                        "During backwards pass, arg_ptypes, "
+                        "kwarg_ptypes, and kws must be None but are: "
+                        "{}, {}, and {}, respectively.".format(
+                            arg_ptypes, kwarg_ptypes, kws))
 
             # Execute the backward pass.
             return _differentiable_backward(self, identifier, persistent_tape,

@@ -1139,8 +1139,7 @@ def test_grad_identity_v1(ray_start_regular, actors):
     "This will cause us to try to use a `tf.Variable` as a target, "
     "which is not supported. The reason this happens is because of how "
     "we take intermediate gradients for each function and not one end-to-end "
-    "gradient (which is what the correct TF implementation does)."
-)
+    "gradient (which is what the correct TF implementation does).")
 def test_grad_identity_v2(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
