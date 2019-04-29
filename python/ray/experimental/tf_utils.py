@@ -203,7 +203,7 @@ class TensorFlowVariables(object):
             })
 
 
-class ValType:
+class ValType(object):
     """Enum to hold types of packed values for reconstruction after
        serialization.
     """
@@ -537,11 +537,17 @@ def _differentiable_forward(self, identifier, method, persistent_tape,
 
         results = method(self, *args, **kwargs)
 
+    num_return_vals = getattr(getattr(self, method.__name__), "__ray_num_return_vals__", 1)
     if not isinstance(results, tuple):
         results = [results]
-    # TODO: FIX THIS!!!
-    #    elif self.__ray_num_return_vals__ == 1:
-    #        results = [results]
+    elif num_return_vals == 1:
+        # We need this case to distinguish between a single returned tuple 
+        # such as `(1, 2, 3)`, which should be passed to `_pack_pairwise` as
+        # `[(1, 2, 3)]` so that we treat it as a single value to pack, 
+        # and a tuple of 3 different return values, which should
+        # be passed as `(1, 2, 3)` so that we know to pack each of the 3 
+        # values separately.
+        results = [results]
 
     # Cache the TF state for backward pass.
     if not hasattr(self, "__ray_tf_info__"):

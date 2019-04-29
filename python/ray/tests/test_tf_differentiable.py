@@ -26,7 +26,6 @@ def actors():
             tf.enable_eager_execution()
 
         # "identity" functions
-        @ray.method(num_return_vals=1)
         @tf_differentiable
         def identity(self, x):
             return x
@@ -42,33 +41,27 @@ def actors():
             return i_4, i_4, i_5, i_1, i_1, i_3, i_4, i_2
 
         # single input, single output
-        @ray.method(num_return_vals=1)
         @tf_differentiable
         def square(self, x):
             return x**2
 
-        @ray.method(num_return_vals=1)
         @tf_differentiable
         def cube(self, x):
             return x**3
 
-        @ray.method(num_return_vals=1)
         @tf_differentiable
         def double(self, x):
             return 2 * x
 
         # multiple inputs, single output
-        @ray.method(num_return_vals=1)
         @tf_differentiable
         def sum(self, *inputs):
             return sum(inputs)
 
-        @ray.method(num_return_vals=1)
         @tf_differentiable
         def prod(self, *inputs):
             return reduce(operator.mul, inputs)
 
-        @ray.method(num_return_vals=1)
         @tf_differentiable
         def sum_square_cube(self, x, y):
             return x**2 + y**3
@@ -101,7 +94,6 @@ def actors():
             return x + y + z, x * y * z
 
         # kwargs
-        @ray.method(num_return_vals=1)
         @tf_differentiable
         def kw_power(self, x, n=2):
             return x**n
