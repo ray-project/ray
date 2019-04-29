@@ -199,31 +199,33 @@ def check_outputs(out_1, out_2):
         # recursively compare the elements
         for key, value in out_1.items():
             assert key in out_2.keys()
-            check_outputs(value, out_2[key])      
+            check_outputs(value, out_2[key])
     else:
         # everything else
-        assert out_1 == out_2       
+        assert out_1 == out_2
 
 
 # Test that decorated function behaves like a normal Python function.
+
 
 # Test behaviour with native Python args.
 def test_func_behav_simple(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = [1, 2, 3]
-    
+
     out_hat = ray.get(ray_actor.identity.remote(x))
     out = dummy_actor.identity(x)
 
     check_outputs(out_hat, out)
+
 
 # Test behaviour with heterogenous TF + native Python args.
 def test_func_behav_complex(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     i_1 = tf.Variable(2.0, dtype=tf.float64)
-    i_2 = [{"e": [-1, 2, 3]}, {"a": 2}, (1,)]
+    i_2 = [{"e": [-1, 2, 3]}, {"a": 2}, (1, )]
     i_3 = tf.constant([5.0, 6.0, -7.0], dtype=tf.float32)
     i_4 = [1, 2, i_2]
     i_5 = {"a": 5, "b": [6, 7, 8]}
@@ -233,21 +235,25 @@ def test_func_behav_complex(ray_start_regular, actors):
 
     check_outputs(out_hat, out)
 
+
 # Test behaviour with heterogenous TF + native Python args and kwargs.
 def test_func_behav_complex_kwargs(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     i_1 = tf.Variable(2.0, dtype=tf.float64)
-    i_2 = [{"e": [-1, 2, 3]}, {"a": 2}, (1,)]
+    i_2 = [{"e": [-1, 2, 3]}, {"a": 2}, (1, )]
     i_3 = tf.constant([5.0, 6.0, -7.0], dtype=tf.float32)
     i_4 = {"a": 5, "b": [6, 7, 8]}
 
-    out_hat = ray.get(ray_actor.identity_mixed_kw.remote(i_1, i_2, i_3=i_3, i_4=i_4))
+    out_hat = ray.get(
+        ray_actor.identity_mixed_kw.remote(i_1, i_2, i_3=i_3, i_4=i_4))
     out = dummy_actor.identity_mixed_kw(i_1, i_2, i_3=i_3, i_4=i_4)
 
     check_outputs(out_hat, out)
 
+
 # Gradient/output correctness tests.
+
 
 # Single input/output w/ linear computation graph
 # custom op w/ single input & single output.
@@ -268,6 +274,7 @@ def test_single_op_single_in_single_out(ray_start_regular, actors):
 
     check_outputs(out_hat, out)
     check_outputs(grad_hat, grad)
+
 
 # Custom op w/ single input & single output both preceded and
 # followed by TF ops.
@@ -317,7 +324,8 @@ def test_multiple_ops_single_in_single_out(ray_start_regular, actors):
     check_outputs(out_hat, out)
     check_outputs(grad_hat, grad)
 
-# Multiple custom ops w/ single input & single output 
+
+# Multiple custom ops w/ single input & single output
 # w/ ray fetches in-between.
 def test_multiple_ops_single_in_single_out_inter_fetches(
         ray_start_regular, actors):
@@ -346,6 +354,7 @@ def test_multiple_ops_single_in_single_out_inter_fetches(
 
 
 # Single input/output w/ non-linear computation graph
+
 
 # single custom op w/ single input & single output and
 # resulting `ray.ObjectID` reused multiple times.
@@ -465,6 +474,7 @@ def test_multiple_ops_single_in_single_out_large_v2(ray_start_regular, actors):
 
 # Multiple inputs/outputs
 
+
 # custom op w/ single input & multiple outputs.
 def test_single_op_single_in_multiple_out(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
@@ -522,9 +532,11 @@ def test_single_op_multiple_in_multiple_out(ray_start_regular, actors):
     check_outputs(out_hat, out)
     check_outputs(grad_hat, grad)
 
-# Custom op w/ multiple inputs & outputs and heterogenous 
+
+# Custom op w/ multiple inputs & outputs and heterogenous
 # input and output dtypes.
-def test_single_op_multiple_in_multiple_out_hetero_dtype(ray_start_regular, actors):
+def test_single_op_multiple_in_multiple_out_hetero_dtype(
+        ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0, dtype=tf.float32)
@@ -540,6 +552,7 @@ def test_single_op_multiple_in_multiple_out_hetero_dtype(ray_start_regular, acto
 
     check_outputs(out_hat, out)
     check_outputs(grad_hat, grad)
+
 
 # Custom op w/ multiple inputs & outputs and unused source.
 @pytest.mark.skip("Gradient w.r.t unused input is 0.0 instead of None.")
@@ -692,6 +705,7 @@ def test_multiple_ops_multiple_in_multiple_out_inter_fetches(
     check_outputs(out_hat, out)
     check_outputs(grad_hat, grad)
 
+
 # Multiple custom ops w/ multiple inputs and outputs w/ intertwined TF
 # ops and not all ray.ObjectIDs (intermediate and final) used.
 def test_multiple_ops_multiple_in_multiple_out_tf_intertwined_partial_use(
@@ -723,6 +737,7 @@ def test_multiple_ops_multiple_in_multiple_out_tf_intertwined_partial_use(
 
     check_outputs(out_hat, out)
     check_outputs(grad_hat, grad)
+
 
 def test_multiple_ops_multiple_in_multiple_out_large_v1(
         ray_start_regular, actors):
@@ -1025,29 +1040,31 @@ def test_kwargs_large(ray_start_regular, actors):
     check_outputs(out_hat, out)
     check_outputs(grad_hat, grad)
 
+
 # Test computation graph with native Python types mixed in.
+
 
 def test_grad_mixed_args_v1(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     i_1 = tf.Variable(2.0)
-    i_2 = [{"e": [-1, 2, 3]}, {"a": 2}, (1,)]
+    i_2 = [{"e": [-1, 2, 3]}, {"a": 2}, (1, )]
     i_3 = tf.constant([5.0, 6.0, -7.0])
     i_4 = [1, 2, i_2]
     i_5 = {"a": 5, "b": [6, 7, 8]}
 
     with tf.GradientTape() as t:
-        in_1 = 2 * i_1
-        in_2 = in_1 + i_3
-        _, _, _, in_3, _, in_4, in_5, in_6 = ray.get(ray_actor.identity_mixed.remote(in_1, i_2, in_1, i_4, i_5))
+        in_1 = 2 * i_1 + i_3
+        _, _, _, in_3, _, in_4, in_5, in_6 = ray.get(
+            ray_actor.identity_mixed.remote(in_1, i_2, in_1, i_4, i_5))
         in_7 = 2 * ray.get(ray_actor.prod.remote(in_3, in_4, in_6[0]["e"][0]))
         out_hat = [in_7, in_5, in_6]
     grad_hat = t.gradient(out_hat[0], [i_1, i_3])
 
     with tf.GradientTape() as t:
-        in_1 = 2 * i_1
-        in_2 = in_1 + i_3
-        _, _, _, in_3, _, in_4, in_5, in_6 = dummy_actor.identity_mixed(in_1, i_2, in_1, i_4, i_5)
+        in_1 = 2 * i_1 + i_3
+        _, _, _, in_3, _, in_4, in_5, in_6 = dummy_actor.identity_mixed(
+            in_1, i_2, in_1, i_4, i_5)
         in_7 = 2 * dummy_actor.prod(in_3, in_4, in_6[0]["e"][0])
         out = [in_7, in_5, in_6]
     grad = t.gradient(out[0], [i_1, i_3])
@@ -1055,41 +1072,44 @@ def test_grad_mixed_args_v1(ray_start_regular, actors):
     check_outputs(out_hat, out)
     check_outputs(grad_hat, grad)
 
+
 def test_grad_mixed_args_v2(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     i_1 = tf.Variable(2.0)
-    i_2 = [{"e": [-1, 2, 3]}, {"a": 2}, (1,)]
+    i_2 = [{"e": [-1, 2, 3]}, {"a": 2}, (1, )]
     i_3 = tf.constant([5.0, 6.0, -7.0])
     i_4 = [1, 2, i_2]
     i_5 = {"a": 5, "b": [6, 7, 8]}
 
     with tf.GradientTape() as t:
-        in_1 = 2 * i_1
-        in_2 = in_1 + i_3
-        _, _, _, in_3, _, in_4, in_5, in_6 = ray_actor.identity_mixed.remote(in_1, i_2, in_1, i_4, i_5)
+        in_1 = 2 * i_1 + i_3
+        _, _, _, in_3, _, in_4, in_5, in_6 = ray_actor.identity_mixed.remote(
+            in_1, i_2, in_1, i_4, i_5)
         in_7 = ray.get(in_6)
         in_8 = ray_actor.prod.remote(in_3, in_4, in_7[0]["e"][0])
         in_9 = ray.get(ray_actor.double.remote(in_5))
         if in_9[1] > 1:
-            in_10, _ = ray.get(ray_actor.two_in_square_cube_v2.remote(in_3, i_3))
+            in_10, _ = ray.get(
+                ray_actor.two_in_square_cube_v2.remote(in_3, in_8))
         else:
-            _, in_10 = ray.get(ray_actor.two_in_square_cube_v1.remote(in_3, i_3))
+            _, in_10 = ray.get(
+                ray_actor.two_in_square_cube_v1.remote(in_3, in_8))
         in_11 = ray.get(in_6)
         out_hat = [in_10, in_9, in_11]
     grad_hat = t.gradient(out_hat[0], [i_1, i_3])
 
     with tf.GradientTape() as t:
-        in_1 = 2 * i_1
-        in_2 = in_1 + i_3
-        _, _, _, in_3, _, in_4, in_5, in_6 = dummy_actor.identity_mixed(in_1, i_2, in_1, i_4, i_5)
+        in_1 = 2 * i_1 + i_3
+        _, _, _, in_3, _, in_4, in_5, in_6 = dummy_actor.identity_mixed(
+            in_1, i_2, in_1, i_4, i_5)
         in_7 = in_6
         in_8 = dummy_actor.prod(in_3, in_4, in_7[0]["e"][0])
         in_9 = dummy_actor.double(in_5)
         if in_9[1] > 1:
-            in_10, _ = dummy_actor.two_in_square_cube_v2(in_3, i_3)
+            in_10, _ = dummy_actor.two_in_square_cube_v2(in_3, in_8)
         else:
-            _, in_10 = dummy_actor.two_in_square_cube_v1(in_3, i_3)
+            _, in_10 = dummy_actor.two_in_square_cube_v1(in_3, in_8)
         in_11 = in_6
         out = [in_10, in_9, in_11]
     grad = t.gradient(out[0], [i_1, i_3])
@@ -1098,16 +1118,17 @@ def test_grad_mixed_args_v2(ray_start_regular, actors):
     check_outputs(grad_hat, grad)
 
 
-# Test gradient through identity function. 
-# This is an interesting case to consider because our gradient targets 
+# Test gradient through identity function.
+# This is an interesting case to consider because our gradient targets
 # in the backward pass can now be `tf.Variable`s.
+
 
 @pytest.mark.skip("Not sure why backwards pass doesn't get called.")
 def test_grad_identity_v1(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = tf.Variable(2.0)
-    
+
     with tf.GradientTape() as t:
         out_hat = ray.get(ray_actor.identity.remote(x))
         out_hat = 1.0 * out_hat
@@ -1121,7 +1142,13 @@ def test_grad_identity_v1(ray_start_regular, actors):
     check_outputs(out_hat, out)
     check_outputs(grad_hat, grad)
 
-@pytest.mark.skip("This will cause us to try to use a `tf.Variable` as a target, which is not supported. The reason this happens is because of how we take intermediate gradients for each function and not one end-to-end gradient (which is what the correct TF implementation does).")
+
+@pytest.mark.skip(
+    "This will cause us to try to use a `tf.Variable` as a target, "
+    "which is not supported. The reason this happens is because of how "
+    "we take intermediate gradients for each function and not one end-to-end "
+    "gradient (which is what the correct TF implementation does)."
+)
 def test_grad_identity_v2(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
@@ -1132,7 +1159,8 @@ def test_grad_identity_v2(ray_start_regular, actors):
     i_5 = 1.0
 
     with tf.GradientTape() as t:
-        out_hat = ray.get(ray_actor.identity_mixed.remote(i_1, i_2, i_3, i_4, i_5))[5]
+        out_hat = ray.get(
+            ray_actor.identity_mixed.remote(i_1, i_2, i_3, i_4, i_5))[5]
     grad_hat = t.gradient(out_hat, [i_1, i_3])
 
     with tf.GradientTape() as t:
