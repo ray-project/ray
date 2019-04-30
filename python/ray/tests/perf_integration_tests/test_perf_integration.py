@@ -17,7 +17,9 @@ def dummy_task(val):
 
 
 def benchmark_task_submission(num_tasks):
-    ray.get([dummy_task.remote(i) for i in range(num_tasks)])
+    total_tasks = 100000
+    for _ in range(total_tasks/num_tasks):
+        ray.get([dummy_task.remote(i) for i in range(num_tasks)])
 
 
 def warmup():
