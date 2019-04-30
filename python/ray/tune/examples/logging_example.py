@@ -60,12 +60,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
+    ray.init(redis_address="localhost:6379")
     exp = Experiment(
         name="hyperband_test",
         run=MyTrainableClass,
         num_samples=1,
         trial_name_creator=tune.function(trial_str_creator),
+        upload_dir="s3://richardresults/test/",
         loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={

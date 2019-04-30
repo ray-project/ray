@@ -18,7 +18,6 @@ from six import string_types
 
 import ray
 from ray.tune import TuneError
-from ray.tune.log_sync import validate_sync_function
 from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -255,7 +254,6 @@ class Trial(object):
                  checkpoint_at_end=False,
                  export_formats=None,
                  restore_path=None,
-                 upload_dir=None,
                  trial_name_creator=None,
                  loggers=None,
                  sync_function=None,
@@ -276,10 +274,8 @@ class Trial(object):
             resources
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
-        self.upload_dir = upload_dir
         self.loggers = loggers
         self.sync_function = sync_function
-        validate_sync_function(sync_function)
         self.verbose = True
         self.max_failures = max_failures
 
@@ -348,10 +344,10 @@ class Trial(object):
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 
+            # TODO(rliaw): A better check to make sure no upload dir is used?
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,
-                upload_uri=self.upload_dir,
                 loggers=self.loggers,
                 sync_function=self.sync_function)
 

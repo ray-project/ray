@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import click
 import collections
 from datetime import datetime
 import json
@@ -84,7 +85,7 @@ class TrialRunner(object):
                 Trial objects.
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
-            metadata_checkpoint_dir (str): Path where
+            local_checkpoint_dir (str): Path where
                 global checkpoints are stored and restored from.
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
@@ -121,6 +122,11 @@ class TrialRunner(object):
         self._trials = []
         self._stop_queue = []
         self._local_checkpoint_dir = local_checkpoint_dir
+
+        # TODO(rliaw): This may fail
+        if not os.path.exists(self._local_checkpoint_dir):
+            os.makedirs(self._local_checkpoint_dir)
+
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_syncer(local_checkpoint_dir, remote_checkpoint_dir,
                                   sync_function)
@@ -132,7 +138,7 @@ class TrialRunner(object):
                 self._resume()
                 logger.info("Resuming trial.")
                 self._resumed = True
-            except Exception as e:
+            except Exception:
                 logger.exception(
                     "Runner restore failed. Restarting experiment.")
         else:
@@ -155,11 +161,11 @@ class TrialRunner(object):
                 raise ValueError("Called resume when no checkpoint exists "
                                  "in local directory.")
             elif resume_type == "PROMPT":
-                if confirm("Resume from local directory?"):
+                if click.confirm("Resume from local directory?"):
                     return True
 
         if resume_type in ["REMOTE", "PROMPT"]:
-            if resume_type == "PROMPT" and not confirm(
+            if resume_type == "PROMPT" and not click.confirm(
                     "Try downloading from remote directory?"):
                 return False
             if not self._remote_checkpoint_dir:
@@ -189,34 +195,31 @@ class TrialRunner(object):
             logger.info("TrialRunner resumed, ignoring new add_experiment.")
 
     def checkpoint(self):
-        """Saves execution state to `self._metadata_checkpoint_dir`.
+        """Saves execution state to `self._local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
         is instantiated.
         """
-        if not self._metadata_checkpoint_dir:
+        if not self._local_checkpoint_dir:
             return
 
-        # TODO(rliaw): This may fail
-        if not os.path.exists(self.metadata_checkpoint_dir):
-            os.makedirs(self.metadata_checkpoint_dir)
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
             "runner_data": self.__getstate__(),
             "timestamp": time.time()
         }
-        tmp_file_name = os.path.join(self.metadata_checkpoint_dir,
+        tmp_file_name = os.path.join(self._local_checkpoint_dir,
                                      ".tmp_checkpoint")
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2)
 
         os.rename(
             tmp_file_name,
-            os.path.join(self.metadata_checkpoint_dir,
+            os.path.join(self._local_checkpoint_dir,
                          TrialRunner.CKPT_FILE_TMPL.format(self._session_str)))
         self._syncer.sync_up_if_needed()
-        return self.metadata_checkpoint_dir
+        return self._local_checkpoint_dir
 
     def _resume(self):
         """Resumes all checkpointed trials from previous run.

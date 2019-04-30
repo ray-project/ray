@@ -13,7 +13,7 @@ import numbers
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
-from ray.tune.log_sync import get_syncer
+from ray.tune.log_sync import get_log_syncer
 from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
     TIMESTEPS_TOTAL
 
@@ -33,13 +33,11 @@ class Logger(object):
     Arguments:
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
-        upload_uri (str): Optional URI where the logdir is sync'ed to.
     """
 
-    def __init__(self, config, logdir, upload_uri=None):
+    def __init__(self, config, logdir):
         self.config = config
         self.logdir = logdir
-        self.uri = upload_uri
         self._init()
 
     def _init(self):
@@ -183,24 +181,16 @@ DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TFLogger)
 class UnifiedLogger(Logger):
     """Unified result logger for TensorBoard, rllab/viskit, plain json.
 
-    This class also periodically syncs output to the given upload uri.
-
     Arguments:
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
-        upload_uri (str): Optional URI where the logdir is sync'ed to.
         loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
             and JSON loggers.
         sync_function (func|str): Optional function for syncer to run.
             See ray/python/ray/tune/log_sync.py
     """
 
-    def __init__(self,
-                 config,
-                 logdir,
-                 upload_uri=None,
-                 loggers=None,
-                 sync_function=None):
+    def __init__(self, config, logdir, loggers=None, sync_function=None):
         if loggers is None:
             self._logger_cls_list = DEFAULT_LOGGERS
         else:
@@ -208,18 +198,18 @@ class UnifiedLogger(Logger):
         self._sync_function = sync_function
         self._log_syncer = None
 
-        Logger.__init__(self, config, logdir, upload_uri)
+        Logger.__init__(self, config, logdir)
 
     def _init(self):
         self._loggers = []
         for cls in self._logger_cls_list:
             try:
-                self._loggers.append(cls(self.config, self.logdir, self.uri))
+                self._loggers.append(cls(self.config, self.logdir))
             except Exception:
                 logger.warning("Could not instantiate {} - skipping.".format(
                     str(cls)))
-        self._log_syncer = get_syncer(
-            self.logdir, self.uri, sync_function=self._sync_function)
+        self._log_syncer = get_log_syncer(
+            self.logdir, sync_function=self._sync_function)
 
     def on_result(self, result):
         for _logger in self._loggers:

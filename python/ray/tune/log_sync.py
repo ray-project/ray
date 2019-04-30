@@ -5,10 +5,6 @@ from __future__ import print_function
 import distutils.spawn
 import logging
 import os
-import subprocess
-import tempfile
-import time
-import types
 
 try:  # py3
     from shlex import quote
@@ -16,10 +12,9 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
+from ray.tune.syncer import CommandSyncer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
-from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.suggest.variant_generator import function as tune_function
 
 logger = logging.getLogger(__name__)
 _log_sync_warned = False
@@ -60,7 +55,7 @@ class LogSyncer(CommandSyncer):
     """
 
     def __init__(self, *args, **kwargs):
-        super(_LogSyncer, self).__init__(*args, **kwargs)
+        super(LogSyncer, self).__init__(*args, **kwargs)
 
         # Resolve sync_function into template or function
         self.local_ip = ray.services.get_node_ip_address()
@@ -92,8 +87,9 @@ class LogSyncer(CommandSyncer):
         if not distutils.spawn.find_executable("rsync"):
             logger.error("Log sync requires rsync to be installed.")
             return
+        global _log_sync_warned
         ssh_key = get_ssh_key()
-        if ssh_pass is None:
+        if ssh_key is None:
             if not _log_sync_warned:
                 logger.error("Log sync requires cluster to be setup with "
                              "`ray up`.")
@@ -107,6 +103,7 @@ class LogSyncer(CommandSyncer):
     @property
     def remote_path(self):
         ssh_user = get_ssh_user()
+        global _log_sync_warned
         if ssh_user is None:
             if not _log_sync_warned:
                 logger.error("Log sync requires cluster to be setup with "

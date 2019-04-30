@@ -38,7 +38,9 @@ def _make_scheduler(args):
 def _find_checkpoint_dir(base_path, experiment_name):
     # TODO(rliaw): Make sure the checkpoint_dir is resolved earlier.
     # Right now it is resolved somewhere far down the trial generation process
-    return os.path.join(base_path, experiment_name)
+    if base_path:
+        return os.path.join(base_path, experiment_name)
+
 
 
 def _should_resume(checkpoint_dir, resume):
@@ -197,16 +199,19 @@ def run(run_or_experiment,
     experiment = run_or_experiment
     if not isinstance(run_or_experiment, Experiment):
         run_identifier = Experiment._register_if_needed(run_or_experiment)
-        experiment = Experiment(
-            name, run_identifier, stop, config, resources_per_trial,
-            num_samples, local_dir, upload_dir, trial_name_creator, loggers,
-            sync_function, checkpoint_freq, checkpoint_at_end, export_formats,
-            max_failures, restore)
+        experiment = Experiment(name, run_identifier, stop, config,
+                                resources_per_trial, num_samples, local_dir,
+                                trial_name_creator, loggers, sync_function,
+                                checkpoint_freq, checkpoint_at_end,
+                                export_formats, max_failures, restore)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 
-    local_checkpoint_dir = _find_checkpoint_dir(local_dir, experiment.name)
-    remote_checkpoint_dir = _find_checkpoint_dir(upload_dir, experiment.name)
+    local_checkpoint_dir = _find_checkpoint_dir(
+        experiment.spec["local_dir"], experiment.name)
+    # TODO(rliaw): what happens if upload_dir fails?
+    remote_checkpoint_dir = _find_checkpoint_dir(
+        experiment.spec["upload_dir"], experiment.name)
 
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),
