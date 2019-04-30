@@ -2187,10 +2187,8 @@ def get(object_ids):
             object_ids = [object_ids]
 
         if not isinstance(object_ids, list):
-           raise ValueError(
-                "'object_ids' must either by an object ID "
-                "or a list of object IDs."
-            )
+           raise ValueError("'object_ids' must either by an object ID "
+                             "or a list of object IDs.")
 
         global last_task_error_raise_time
         values = worker.get_object(object_ids)
