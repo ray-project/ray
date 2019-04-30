@@ -431,7 +431,8 @@ class ActorHandle(object):
         _ray_method_signatures: The signatures of the actor methods.
         _ray_method_num_return_vals: The default number of return values for
             each method.
-        _ray_is_tf_differentiable: Whether or not each actor method is differentiable. TODO: @Vishal refactor this
+        _ray_is_tf_differentiable: Whether or not each actor method is
+            differentiable. TODO: @Vishal refactor this
         _ray_class_name: The name of the actor class.
         _ray_actor_forks: The number of times this handle has been forked.
         _ray_actor_creation_dummy_object_id: The dummy object ID from the actor
