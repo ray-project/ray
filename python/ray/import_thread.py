@@ -124,8 +124,11 @@ class ImportThread(object):
             return
 
         try:
-            # Deserialize the function.
-            function = pickle.loads(serialized_function)
+            # FunctionActorManager may call pickle.loads at the same time.
+            # Importing the same module in different threads causes deadlock.
+            with self.worker.function_actor_manager.lock:
+                # Deserialize the function.
+                function = pickle.loads(serialized_function)
             # Run the function.
             function({"worker": self.worker})
         except Exception:
