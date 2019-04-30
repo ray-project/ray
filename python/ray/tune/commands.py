@@ -220,7 +220,8 @@ def list_experiments(project_path,
                      output=None,
                      filter_op=None,
                      info_keys=None,
-                     limit=None):
+                     limit=None,
+                     desc=False):
     """Lists experiments in the directory subtree.
 
     Args:
