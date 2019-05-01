@@ -4,46 +4,39 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tempfile
 import unittest
+import glob
 
 import ray
 from ray import tune
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib import _register_all
 from ray.tune.registry import register_trainable
 from ray.tune.trial import has_trainable
 
 
 class TuneRestoreTest(unittest.TestCase):
     def setUp(self):
-        self.algo = "PG"
-
-        register_trainable(self.algo, get_agent_class(self.algo))
-        self.assertTrue(has_trainable(self.algo))
-
         ray.init(num_cpus=1, num_gpus=0, local_mode=True)
+        _register_all()
+        tmpdir = tempfile.mkdtemp()
+        test_name = "TuneRestoreTest"
         tune.run(
-            self.algo,
-            name="TuneRestoreTest",
+            "PG",
+            name=test_name,
             stop={"training_iteration": 1},
             checkpoint_freq=1,
+            local_dir=tmpdir,
             config={
                 "env": "CartPole-v0",
             },
         )
 
-        logdir = os.path.expanduser("~/ray_results/TuneRestoreTest/")
-        expdir = None
-        for i in os.listdir(logdir):
-            if i.startswith(self.algo) and os.path.isdir(
-                    os.path.join(logdir, i)):
-                expdir = os.path.join(logdir, i)
-                break
-        # /user/../ray_results/TuneRestoreTest
+        logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
         self.logdir = logdir
-        # /user/../ray_results/TuneRestoreTest/PG_CartPole_codes
-        self.expdir = expdir
-        self.checkpoint_path = os.path.join(self.expdir,
-                                            "checkpoint_1/checkpoint-1")
+        self.checkpoint_path = glob.glob(os.path.join(logdir,
+            "**/checkpoint_1/checkpoint-1"), recursive=True)[0]
+
 
     def tearDown(self):
         import shutil
@@ -51,13 +44,11 @@ class TuneRestoreTest(unittest.TestCase):
         ray.shutdown()
 
     def testCheckpointPath(self):
-        self.assertIsNotNone(self.expdir)
         self.assertTrue(os.path.isfile(self.checkpoint_path))
 
     def testTuneRestore(self):
-        self.assertTrue(has_trainable(self.algo))
         tune.run(
-            self.algo,
+            "PG",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},  # train one more iteration.
             checkpoint_freq=1,
