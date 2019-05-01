@@ -13,7 +13,7 @@ from ray.rllib.agents.registry import get_agent_class
 from ray.tune.registry import register_trainable
 
 
-class TuneRelavtieLocalDirTest(unittest.TestCase):
+class TuneRelativeLocalDirTest(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         self.algo = 'PG'
