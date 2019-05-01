@@ -60,3 +60,5 @@ Contributed Examples
    A contributed example of tuning a Keras model on CIFAR10 with the PopulationBasedTraining scheduler.
 - `genetic_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/genetic_example.py>`__:
    Optimizing the michalewicz function using the contributed GeneticSearch search algorithm with AsyncHyperBandScheduler.
+- `finetune_caltech256_gluon <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/finetune_caltech256_gluon.py>`__:
+   Finetuning/Transfer learning example of pretrained resnet-50 model on Caltech-256 dataset with MXNet Gluon.
