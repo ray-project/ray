@@ -77,7 +77,7 @@ def test_dynamic_res_infeasible_rescheduling(ray_start_regular):
 
 
 def test_dynamic_res_updation_clientid(ray_start_cluster):
-    # This test updates the resource capacity on a node
+    # This test does a simple resource capacity update
     cluster = ray_start_cluster
 
     res_name = "test_res"
@@ -111,7 +111,7 @@ def test_dynamic_res_updation_clientid(ray_start_cluster):
 
 
 def test_dynamic_res_creation_clientid(ray_start_cluster):
-    # This test creates a resource on a specific client
+    # Creates a resource on a specific client and verifies creation.
     cluster = ray_start_cluster
 
     res_name = "test_res"
@@ -333,9 +333,8 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
     # Launch the task with resource requirement of 1, thus the new available capacity becomes 4
     task = wait_func._remote(
         args=[WAIT_OBJECT_ID_STR], resources={res_name: 1})
-    time.sleep(
-        0.2
-    )  # Sleep to make sure the wait_func is launched before updating resource
+    # Sleep to make sure the wait_func is launched before updating resource
+    time.sleep(0.2)
 
     # Update the resource capacity
     ray.get(set_res.remote(res_name, updated_capacity, target_clientid))
@@ -403,9 +402,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     # Launch the task with resource requirement of 4, thus the new available capacity becomes 1
     task = wait_func._remote(
         args=[WAIT_OBJECT_ID_STR], resources={res_name: 4})
-    time.sleep(
-        0.2
-    )  # Sleep to make sure the wait_func is launched before updating resource
+    time.sleep(0.2)  # Sleep to make sure the wait_func is launched before updating resource
 
     # Decrease the resource capacity
     ray.get(set_res.remote(res_name, updated_capacity, target_clientid))
@@ -477,9 +474,7 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     # Launch the task with resource requirement of 1, thus the new available capacity becomes 4
     task = wait_func._remote(
         args=[WAIT_OBJECT_ID_STR], resources={res_name: 1})
-    time.sleep(
-        0.2
-    )  # Sleep to make sure the wait_func is launched before updating resource
+    time.sleep(0.2)  # Sleep to make sure the wait_func is launched before updating resource
 
     # Delete the resource
     ray.get(delete_res.remote(res_name, target_clientid))
@@ -533,64 +528,3 @@ def test_dynamic_res_creation_stress(ray_start_cluster):
     resources = ray.global_state.cluster_resources()
     for i in range(0, NUM_RES_TO_CREATE):
         assert str(i) in resources
-
-
-def test_dynamic_res_deletion_with_actor(ray_start_cluster):
-    # todo(romilb): Fix this test to be more efficient instead of sleeps.
-    # This makes sure the resource is actually deleted and the actor retains the resources after a resource has been deleted
-    cluster = ray_start_cluster
-
-    res_name = "test_res"
-    res_capacity = 5.0
-    num_nodes = 5
-
-    for i in range(num_nodes):
-        cluster.add_node()
-
-    ray.init(redis_address=cluster.redis_address)
-    clientids = [
-        client['ClientID'] for client in ray.global_state.client_table()
-    ]
-
-    @ray.remote(resources={res_name: 1})
-    class myactor(object):
-        def __init__(self):
-            pass
-
-        def foo(self, sleep_duration=3):
-            print("Available res: {}".format(ray.get_resource_ids()))
-            time.sleep(sleep_duration)
-            return 1
-
-    @ray.remote
-    def delete_res(resource_name, res_client_id):
-        ray.experimental.set_resource(resource_name, 0, client_id=res_client_id)
-
-    @ray.remote
-    def set_res(resource_name, resource_capacity, res_client_id):
-        ray.experimental.set_resource(
-            resource_name, resource_capacity, client_id=res_client_id)
-
-    # Create the resource on node1
-    target_clientid = clientids[1]
-    ray.get(set_res.remote(res_name, res_capacity, target_clientid))
-    assert ray.global_state.cluster_resources()[res_name] == res_capacity
-
-    # Launch the actor
-    actor = myactor.remote()
-    oid = actor.foo.remote()
-
-    # Delete the resource
-    ray.get(delete_res.remote(res_name, target_clientid))
-    time.sleep(1)
-    print(ray.global_state.cluster_resources())
-    print(ray.global_state.available_resources())
-    assert res_name not in ray.global_state.cluster_resources()
-
-    result = ray.get(oid)
-
-    # Try running again - it should run
-    result = ray.get(actor.foo.remote())
-    assert res_name not in ray.global_state.cluster_resources()
-
-    assert result == 1  # The task did not complete because it's infeasible
