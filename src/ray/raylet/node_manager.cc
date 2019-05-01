@@ -820,8 +820,8 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::SubmitTask: {
     ProcessSubmitTaskMessage(message_data);
   } break;
-  case protocol::MessageType::CreateResourceRequest: {
-    ProcessCreateResourceRequest(client, message_data);
+  case protocol::MessageType::SetResourceRequest: {
+    ProcessSetResourceRequest(client, message_data);
   } break;
   case protocol::MessageType::FetchOrReconstruct: {
     ProcessFetchOrReconstructMessage(client, message_data);
@@ -1277,10 +1277,10 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
   node_manager_client.ProcessMessages();
 }
 
-void NodeManager::ProcessCreateResourceRequest(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
-  // Read the CreateResource message
-  auto message = flatbuffers::GetRoot<protocol::CreateResourceRequest>(message_data);
+void NodeManager::ProcessSetResourceRequest(
+  const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  // Read the SetResource message
+  auto message = flatbuffers::GetRoot<protocol::SetResourceRequest>(message_data);
 
   auto const &resource_name = string_from_flatbuf(*message->resource_name());
   double const &capacity = message->capacity();

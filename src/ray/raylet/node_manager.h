@@ -428,11 +428,11 @@ class NodeManager {
   /// \param task The task that just finished.
   void UpdateActorFrontier(const Task &task);
 
-  /// Process client message of CreateResourceRequest
+  /// Process client message of SetResourceRequest
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessCreateResourceRequest(const std::shared_ptr<LocalClientConnection> &client,
+  void ProcessSetResourceRequest(const std::shared_ptr<LocalClientConnection> &client,
                                     const uint8_t *message_data);
 
   /// Handle the case where an actor is disconnected, determine whether this
