@@ -202,16 +202,25 @@ class TrainMNIST(Trainable):
     def _save(self, checkpoint_dir):
         prefix = self.saver.save(
             self.sess, checkpoint_dir + "/save", global_step=self.iterations)
-        return {"prefix": os.path.relpath(prefix, checkpoint_dir)}
+        print("Savin", prefix)
+        return prefix
 
-    def _restore(self, ckpt_data):
-        prefix = ckpt_data["prefix"]
-        checkpoint_dir = ckpt_data["__restore_dir__"]
-        return self.saver.restore(self.sess, os.path.join(checkpoint_dir, prefix))
+    def _restore(self, prefix):
+        tf.reset_default_graph()
+        return self.saver.restore(
+            self.sess, prefix)
 
 
 # !!! Example of using the ray.tune Python API !!!
 if __name__ == "__main__":
+    # import ipdb; ipdb.set_trace()
+
+    # x = TrainMNIST({"activation": "relu", "learning_rate": 1e-4})
+    # # x.train()
+    # # path = x.save()
+
+    # x.restore("/Users/rliaw/ray_results/2019-05-01_15-17-43g0kbbye_/checkpoint_1/save-1")
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
@@ -224,27 +233,30 @@ if __name__ == "__main__":
         "config": {
             "learning_rate": sample_from(
                 lambda spec: 10**np.random.uniform(-5, -3)),
-            "activation": grid_search(["relu", "elu", "tanh"]),
+            "activation": "relu",
         },
         "num_samples": 10,
     }
 
     if args.smoke_test:
         mnist_spec["stop"]["training_iteration"] = 20
-        mnist_spec["num_samples"] = 2
+        mnist_spec["num_samples"] = 1
 
-    ray.init(local_mode=True)
+    ray.init(num_cpus=1, local_mode=False)
+    # hyperband = HyperBandScheduler(
+    #     time_attr="training_iteration", reward_attr="mean_accuracy", max_t=10)
 
-    pbt = tune.schedulers.PopulationBasedTraining(
-        time_attr="training_iteration",
-        reward_attr="mean_accuracy",
-        perturbation_interval=1,
-        hyperparam_mutations={"learning_rate": lambda: 10**np.random.uniform(-5,-2)},
-        resample_probability=0.25
-    )
+    from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+
+    class FrequentPausesScheduler(FIFOScheduler):
+        def on_trial_result(self, trial_runner, trial, result):
+            if result["training_iteration"] % 2 == 0:
+                return TrialScheduler.PAUSE
+            return TrialScheduler.CONTINUE
+
 
     tune.run(
         TrainMNIST,
         name="mnist_hyperband_test",
-        scheduler=hyperband,
+        scheduler=FrequentPausesScheduler(),
         **mnist_spec)

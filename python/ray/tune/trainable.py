@@ -308,7 +308,7 @@ class Trainable(object):
         if len(data_dict) > 10e6:  # getting pretty large
             logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
         out.write(data_dict)
-
+        import ipdb; ipdb.set_trace()
         shutil.rmtree(tmpdir)
         return out.getvalue()
 
@@ -320,7 +320,7 @@ class Trainable(object):
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
         """
-
+        import ipdb; ipdb.set_trace()
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
