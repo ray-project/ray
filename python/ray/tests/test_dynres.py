@@ -66,8 +66,7 @@ def test_dynamic_res_infeasible_rescheduling(ray_start_regular):
 
     task = f._remote(
         args=[], resources={res_name: res_capacity})  # This is infeasible
-    ray.get(set_res.remote(res_name,
-                              res_capacity))  # Now should be feasible
+    ray.get(set_res.remote(res_name, res_capacity))  # Now should be feasible
 
     available_res = ray.global_state.available_resources()
     assert available_res[res_name] == res_capacity
@@ -193,7 +192,8 @@ def test_dynamic_res_deletion_clientid(ray_start_cluster):
     # Launch the delete task
     @ray.remote
     def delete_res(resource_name, res_client_id):
-        ray.experimental.set_resource(resource_name, 0, client_id=res_client_id)
+        ray.experimental.set_resource(
+            resource_name, 0, client_id=res_client_id)
 
     ray.get(delete_res.remote(res_name, target_clientid))
 
@@ -262,7 +262,8 @@ def test_dynamic_res_deletion_scheduler_consistency(ray_start_cluster):
 
     @ray.remote
     def delete_res(resource_name, res_client_id):
-        ray.experimental.set_resource(resource_name, 0, client_id=res_client_id)
+        ray.experimental.set_resource(
+            resource_name, 0, client_id=res_client_id)
 
     @ray.remote
     def set_res(resource_name, resource_capacity, res_client_id):
@@ -402,7 +403,9 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     # Launch the task with resource requirement of 4, thus the new available capacity becomes 1
     task = wait_func._remote(
         args=[WAIT_OBJECT_ID_STR], resources={res_name: 4})
-    time.sleep(0.2)  # Sleep to make sure the wait_func is launched before updating resource
+    time.sleep(
+        0.2
+    )  # Sleep to make sure the wait_func is launched before updating resource
 
     # Decrease the resource capacity
     ray.get(set_res.remote(res_name, updated_capacity, target_clientid))
@@ -452,7 +455,8 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
 
     @ray.remote
     def delete_res(resource_name, res_client_id):
-        ray.experimental.set_resource(resource_name, 0, client_id=res_client_id)
+        ray.experimental.set_resource(
+            resource_name, 0, client_id=res_client_id)
 
     # Create the resource on node 1
     ray.get(set_res.remote(res_name, res_capacity, target_clientid))
@@ -474,7 +478,9 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     # Launch the task with resource requirement of 1, thus the new available capacity becomes 4
     task = wait_func._remote(
         args=[WAIT_OBJECT_ID_STR], resources={res_name: 1})
-    time.sleep(0.2)  # Sleep to make sure the wait_func is launched before updating resource
+    time.sleep(
+        0.2
+    )  # Sleep to make sure the wait_func is launched before updating resource
 
     # Delete the resource
     ray.get(delete_res.remote(res_name, target_clientid))
@@ -517,7 +523,8 @@ def test_dynamic_res_creation_stress(ray_start_cluster):
 
     @ray.remote
     def delete_res(resource_name, res_client_id):
-        ray.experimental.set_resource(resource_name, 0, client_id=res_client_id)
+        ray.experimental.set_resource(
+            resource_name, 0, client_id=res_client_id)
 
     results = [
         set_res.remote(str(i), res_capacity, target_clientid)

@@ -86,12 +86,12 @@ def parse_client_table(redis_client):
                 for res in resources:
                     res_map.pop(res, None)
             elif client.EntryType() == EntryType.DELETION:
-                pass    # Do nothing with the resmap if client deletion
+                pass  # Do nothing with the resmap if client deletion
             else:
-                raise RuntimeError("Unexpected EntryType {}".format(client.EntryType()))
+                raise RuntimeError("Unexpected EntryType {}".format(
+                    client.EntryType()))
             node_info[client_id]["Resources"] = res_map
-            node_info[client_id]["EntryType"] = client.EntryType(
-            )
+            node_info[client_id]["EntryType"] = client.EntryType()
     # NOTE: We return the list comprehension below instead of simply doing
     # 'list(node_info.values())' in order to have the nodes appear in the order
     # that they joined the cluster. Python dictionaries do not preserve
