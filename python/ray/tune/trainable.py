@@ -241,7 +241,7 @@ class Trainable(object):
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
             if (not checkpoint.startswith(checkpoint_dir)
-                or checkpoint == checkpoint_dir):
+                    or checkpoint == checkpoint_dir):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
@@ -328,10 +328,16 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
-        logger.info("Restored from checkpoint: {}".format(self._experiment_id, checkpoint_path))
-        logger.info(
-            "Current state after restoring: done iterations {}, done timesteps {}, passed time {}, done episodes {}".format(
-                self._iteration, self._timesteps_total, self._time_total, self._episodes_total))
+        logger.info("Restored from checkpoint: {}".format(
+            self._experiment_id, checkpoint_path))
+        state = {
+            "iter": self._iteration,
+            "ts": self._timesteps_total,
+            "time": self._time_total,
+            "eps": self._episodes_total
+        }
+        logger.info("Current state after restoring:" + ", ".join(
+            "{}: {}".format(k, v) for k, v in state.items()))
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.

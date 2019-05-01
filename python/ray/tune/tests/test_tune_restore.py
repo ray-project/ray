@@ -15,7 +15,7 @@ from ray.tune.trial import has_trainable
 
 class TuneRestoreTest(unittest.TestCase):
     def setUp(self):
-        self.algo = 'PG'
+        self.algo = "PG"
 
         register_trainable(self.algo, get_agent_class(self.algo))
         self.assertTrue(has_trainable(self.algo))
@@ -34,12 +34,16 @@ class TuneRestoreTest(unittest.TestCase):
         logdir = os.path.expanduser("~/ray_results/TuneRestoreTest/")
         expdir = None
         for i in os.listdir(logdir):
-            if i.startswith(self.algo) and os.path.isdir(os.path.join(logdir, i)):
+            if i.startswith(self.algo) and os.path.isdir(
+                    os.path.join(logdir, i)):
                 expdir = os.path.join(logdir, i)
                 break
-        self.logdir = logdir  # should like: /user/../ray_results/TuneRestoreTest
-        self.expdir = expdir  # should like: /user/../ray_results/TuneRestoreTest/PG_CartPole_codes
-        self.checkpoint_path = os.path.join(self.expdir, "checkpoint_1/checkpoint-1")
+        # /user/../ray_results/TuneRestoreTest
+        self.logdir = logdir
+        # /user/../ray_results/TuneRestoreTest/PG_CartPole_codes
+        self.expdir = expdir
+        self.checkpoint_path = os.path.join(self.expdir,
+                                            "checkpoint_1/checkpoint-1")
 
     def tearDown(self):
         import shutil
