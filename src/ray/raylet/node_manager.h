@@ -433,7 +433,7 @@ class NodeManager {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessSetResourceRequest(const std::shared_ptr<LocalClientConnection> &client,
-                                    const uint8_t *message_data);
+                                 const uint8_t *message_data);
 
   /// Handle the case where an actor is disconnected, determine whether this
   /// actor needs to be reconstructed and then update actor table.

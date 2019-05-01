@@ -171,7 +171,7 @@ class RayletClient {
   /// \param client_Id ClientID where the resource is to be set
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
-                             const ray::ClientID &client_Id);
+                          const ray::ClientID &client_Id);
 
   Language GetLanguage() const { return language_; }
 

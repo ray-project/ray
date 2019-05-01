@@ -384,7 +384,8 @@ void ClientTable::RegisterResourceCreateUpdatedCallback(
   resource_createupdated_callback_ = callback;
   // Call the callback for any clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && (entry.second.entry_type == EntryType::RES_CREATEUPDATE)) {
+    if (!entry.first.is_nil() &&
+        (entry.second.entry_type == EntryType::RES_CREATEUPDATE)) {
       resource_createupdated_callback_(client_, entry.first, entry.second);
     }
   }
@@ -416,7 +417,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
     bool was_not_deleted = (entry->second.entry_type != EntryType::DELETION);
     bool is_deleted = (data.entry_type == EntryType::DELETION);
     bool is_res_modified = ((data.entry_type == EntryType::RES_CREATEUPDATE) ||
-                       (data.entry_type == EntryType::RES_DELETE));
+                            (data.entry_type == EntryType::RES_DELETE));
     is_notif_new = (was_not_deleted && (is_deleted || is_res_modified));
     // Once a client with a given ID has been removed, it should never be added
     // again. If the entry was in the cache and the client was deleted, check
@@ -460,18 +461,20 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
         auto index = std::distance(cache_data.resources_total_label.begin(),
                                    existing_resource_label);
         // Resource already exists, set capacity if updation call..
-        if (data.entry_type == EntryType::RES_CREATEUPDATE){
+        if (data.entry_type == EntryType::RES_CREATEUPDATE) {
           cache_data.resources_total_capacity[index] = capacity;
         }
         // .. delete if deletion call.
-        else if(data.entry_type == EntryType::RES_DELETE){
-          cache_data.resources_total_label.erase(cache_data.resources_total_label.begin() +
-                                                 index);
-          cache_data.resources_total_capacity.erase(cache_data.resources_total_capacity.begin() + index);
+        else if (data.entry_type == EntryType::RES_DELETE) {
+          cache_data.resources_total_label.erase(
+              cache_data.resources_total_label.begin() + index);
+          cache_data.resources_total_capacity.erase(
+              cache_data.resources_total_capacity.begin() + index);
         }
       } else {
-        // Resource does not exist, create resource and add capacity if it was a resource create call.
-        if (data.entry_type == EntryType::RES_CREATEUPDATE){
+        // Resource does not exist, create resource and add capacity if it was a resource
+        // create call.
+        if (data.entry_type == EntryType::RES_CREATEUPDATE) {
           cache_data.resources_total_label.push_back(resource_name);
           cache_data.resources_total_capacity.push_back(capacity);
         }

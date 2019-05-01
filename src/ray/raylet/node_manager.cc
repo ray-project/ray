@@ -1278,13 +1278,13 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
 }
 
 void NodeManager::ProcessSetResourceRequest(
-  const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   // Read the SetResource message
   auto message = flatbuffers::GetRoot<protocol::SetResourceRequest>(message_data);
 
   auto const &resource_name = string_from_flatbuf(*message->resource_name());
   double const &capacity = message->capacity();
-  bool is_deletion = capacity==0;
+  bool is_deletion = capacity == 0;
 
   ClientID client_id = from_flatbuf<ClientID>(*message->client_id());
 
@@ -1293,12 +1293,13 @@ void NodeManager::ProcessSetResourceRequest(
     client_id = gcs_client_->client_table().GetLocalClientId();
   }
 
-  if (is_deletion && cluster_resource_map_[client_id].GetTotalResources().GetResourceMap().count(
+  if (is_deletion &&
+      cluster_resource_map_[client_id].GetTotalResources().GetResourceMap().count(
           resource_name) == 0) {
     // Resource does not exist in the cluster resource map, thus nothing to delete.
     // Return..
-    RAY_LOG(INFO) << "[ProcessDeleteResourceRequest] Trying to delete resource " << resource_name
-                  << ", but it does not exist. Doing nothing..";
+    RAY_LOG(INFO) << "[ProcessDeleteResourceRequest] Trying to delete resource "
+                  << resource_name << ", but it does not exist. Doing nothing..";
     return;
   }
 
@@ -1311,9 +1312,9 @@ void NodeManager::ProcessSetResourceRequest(
   data.resources_total_label = std::vector<std::string>{resource_name};
   data.resources_total_capacity = std::vector<double>{capacity};
   // Set the correct flag for entry_type
-  if (is_deletion){
+  if (is_deletion) {
     data.entry_type = EntryType::RES_DELETE;
-  } else{
+  } else {
     data.entry_type = EntryType::RES_CREATEUPDATE;
   }
 
