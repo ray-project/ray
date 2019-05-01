@@ -1,10 +1,8 @@
 import numpy as np
-import argparse
 import keras
 from keras.datasets import mnist
 from keras.models import Sequential
-from keras.layers import (
-    Dense, Dropout, Flatten, Conv2D, MaxPooling2D)
+from keras.layers import (Dense, Dropout, Flatten, Conv2D, MaxPooling2D)
 
 from ray.tune.examples.utils import (TuneKerasCallback, get_mnist_data,
                                      set_keras_threads)
@@ -19,8 +17,10 @@ def train_mnist(config, reporter):
     x_train, y_train, x_test, y_test, input_shape = get_mnist_data()
 
     model = Sequential()
-    model.add(Conv2D(
-        32, kernel_size=(3, 3), activation="relu", input_shape=input_shape))
+    model.add(
+        Conv2D(
+            32, kernel_size=(3, 3), activation="relu",
+            input_shape=input_shape))
     model.add(Conv2D(64, (3, 3), activation="relu"))
     model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Dropout(0.5))
@@ -62,11 +62,17 @@ if __name__ == "__main__":
         train_mnist,
         name="exp",
         scheduler=sched,
-        stop={"mean_accuracy": 0.99, "timesteps_total": 300},
+        stop={
+            "mean_accuracy": 0.99,
+            "timesteps_total": 300
+        },
         num_samples=10,
-        resources_per_trial={"cpu": args.threads,"gpu": 0},
+        resources_per_trial={
+            "cpu": 2
+            "gpu": 0
+        },
         config={
-            "threads": args.threads,
+            "threads": 2
             "lr": tune.sample_from(lambda spec: np.random.uniform(0.001, 0.1)),
             "momentum": tune.sample_from(
                 lambda spec: np.random.uniform(0.1, 0.9)),
