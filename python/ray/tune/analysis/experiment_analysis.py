@@ -69,7 +69,7 @@ class ExperimentAnalysis():
     def trial_dataframe(self, trial_id):
         """Returns a pandas.DataFrame constructed from one trial."""
         df = self.dataframe()
-        return df.loc[df['trial_id'] == trial_id]
+        return df.loc[df["trial_id"] == trial_id]
 
     def get_best_trainable(self, metric):
         """Returns the best Trainable based on the experiment metric."""
@@ -82,11 +82,11 @@ class ExperimentAnalysis():
     def _get_best_trial(self, metric):
         """Retrieve the best trial based on the experiment metric."""
         return max(
-            self._checkpoints, key=lambda d: d['last_result'].get(metric, 0))
+            self._checkpoints, key=lambda d: d["last_result"].get(metric, 0))
 
     def _get_sorted_trials(self, metric):
         """Retrive trials in sorted order based on the experiment metric."""
         return sorted(
             self._checkpoints,
-            key=lambda d: d['last_result'].get(metric, 0),
+            key=lambda d: d["last_result"].get(metric, 0),
             reverse=True)
