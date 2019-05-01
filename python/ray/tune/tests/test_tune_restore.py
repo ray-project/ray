@@ -11,8 +11,6 @@ import glob
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune.registry import register_trainable
-from ray.tune.trial import has_trainable
 
 
 class TuneRestoreTest(unittest.TestCase):
@@ -34,9 +32,9 @@ class TuneRestoreTest(unittest.TestCase):
 
         logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
         self.logdir = logdir
-        self.checkpoint_path = glob.glob(os.path.join(logdir,
-            "**/checkpoint_1/checkpoint-1"), recursive=True)[0]
-
+        self.checkpoint_path = glob.glob(
+            os.path.join(logdir, "**/checkpoint_1/checkpoint-1"),
+            recursive=True)[0]
 
     def tearDown(self):
         import shutil
