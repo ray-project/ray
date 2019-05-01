@@ -261,7 +261,8 @@ class Trainable(object):
             raise ValueError(
                 "`_save` must return a dict or string type: {}".format(
                     str(type(checkpoint))))
-        with open(checkpoint_path + ".tune_metadata", "wb") as f:
+        metadata_path = os.path.join(checkpoint_path, ".tune_metadata")
+        with open(metadata_path, "wb") as f:
             pickle.dump({
                 "experiment_id": self._experiment_id,
                 "iteration": self._iteration,
@@ -312,7 +313,8 @@ class Trainable(object):
         This method restores additional metadata saved with the checkpoint.
         """
 
-        with open(checkpoint_path + ".tune_metadata", "rb") as f:
+        metadata_path = os.path.join(checkpoint_path, ".tune_metadata")
+        with open(metadata_path, "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
