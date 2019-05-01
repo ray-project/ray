@@ -268,6 +268,8 @@ class Trial(object):
         # Trial config
         self.trainable_name = trainable_name
         self.config = config or {}
+        raise ValueError(
+            "TODO(hartikainen): this needs to be expanded way later.")
         self.local_dir = os.path.expanduser(local_dir)
         self.experiment_tag = experiment_tag
         self.resources = (

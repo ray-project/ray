@@ -22,23 +22,13 @@ _log_sync_warned = False
 # Map from (local_dir, remote_dir) -> syncer
 _syncers = {}
 
-### START TODO
-
 
 def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
-    if remote_dir:
-        if local_dir.startswith(DEFAULT_RESULTS_DIR + "/"):
-            rel_path = os.path.relpath(local_dir, DEFAULT_RESULTS_DIR)
-            remote_dir = os.path.join(remote_dir, rel_path)
-
     key = (local_dir, remote_dir)
     if key not in _syncers:
         _syncers[key] = LogSyncer(local_dir, remote_dir, sync_function)
 
     return _syncers[key]
-
-
-### END TODO
 
 
 def wait_for_log_sync():
@@ -110,4 +100,4 @@ class LogSyncer(CommandSyncer):
                              "`ray up`.")
                 _log_sync_warned = True
             return
-        return '{}@{}:{}/'.format(ssh_user, self.worker_ip, self.remote_dir)
+        return '{}@{}:{}/'.format(ssh_user, self.worker_ip, self._remote_dir)

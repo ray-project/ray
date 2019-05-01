@@ -96,7 +96,6 @@ class Experiment(object):
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
             "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
-            "upload_dir": upload_dir or "",  # argparse converts None to "null"
             "trial_name_creator": trial_name_creator,
             "loggers": loggers,
             "sync_function": sync_function,
@@ -107,6 +106,7 @@ class Experiment(object):
             "restore": restore
         }
 
+        self.upload_dir = upload_dir or ""  # argparse converts None to "null"
         self.name = name or run_identifier
         self.spec = spec
 

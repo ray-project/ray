@@ -96,7 +96,7 @@ class BaseSyncer(object):
 
 
 class CommandSyncer(BaseSyncer):
-    def __init__(self, local_dir, remote_dir, sync_cmd_tmpl=None):
+    def __init__(self, local_dir, remote_dir, sync_cmd_tmpl):
         """
         Arguments:
             local_dir (str): Directory to sync.
@@ -105,8 +105,9 @@ class CommandSyncer(BaseSyncer):
                 for syncer to run and needs to include replacement fields
                 '{local_dir}' and '{remote_dir}'.
         """
-        validate_sync_string(sync_cmd_tmpl)
         super(CommandSyncer, self).__init__(local_dir, remote_dir)
+        if sync_cmd_tmpl is not None:
+            validate_sync_string(sync_cmd_tmpl)
         self.sync_cmd_tmpl = sync_cmd_tmpl
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync", dir=self.local_dir, suffix=".log", delete=False)
@@ -122,6 +123,8 @@ class CommandSyncer(BaseSyncer):
                 return
 
         sync_template = self.get_remote_sync_template()
+        if sync_template is None:
+            return
         final_cmd = sync_template.format(
             source=quote(source), target=quote(target))
         logger.debug("Running sync: {}".format(final_cmd))

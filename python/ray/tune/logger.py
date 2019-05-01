@@ -209,24 +209,26 @@ class UnifiedLogger(Logger):
                 logger.warning("Could not instantiate {} - skipping.".format(
                     str(cls)))
         self._log_syncer = get_log_syncer(
-            self.logdir, sync_function=self._sync_function)
+            self.logdir,
+            remote_dir=self.logdir,
+            sync_function=self._sync_function)
 
     def on_result(self, result):
         for _logger in self._loggers:
             _logger.on_result(result)
         self._log_syncer.set_worker_ip(result.get(NODE_IP))
-        self._log_syncer.sync_if_needed()
+        self._log_syncer.sync_down_if_needed()
 
     def close(self):
         for _logger in self._loggers:
             _logger.close()
-        self._log_syncer.sync_down(force=False)
+        self._log_syncer.sync_down()
         self._log_syncer.close()
 
     def flush(self):
         for _logger in self._loggers:
             _logger.flush()
-        self._log_syncer.sync_down(force=False)
+        self._log_syncer.sync_down()
 
     def sync_results_to_new_location(self, worker_ip):
         """Sends the current log directory to the remote node.

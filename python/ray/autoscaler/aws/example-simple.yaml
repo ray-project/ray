@@ -1,0 +1,60 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: jenkins
+
+# The maximum number of workers nodes to launch in addition to the head
+# node. This takes precedence over min_workers. min_workers default to 0.
+min_workers: 1
+max_workers: 1
+
+# docker:
+#     image: tensorflow/tensorflow:1.5.0-py3
+#     container_name: ray_docker
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    InstanceType: m5.xlarge
+    ImageId: ami-0b294f219d14e6a82
+    InstanceMarketOptions:
+        MarketType: spot
+        SpotOptions:
+            MaxPrice: "1.0"
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 150
+
+worker_nodes:
+    InstanceType: m5.xlarge
+    ImageId: ami-0b294f219d14e6a82
+    InstanceMarketOptions:
+        MarketType: spot
+        SpotOptions:
+            MaxPrice: "1.0"
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 150
+
+setup_commands:
+    - pip install -U ray
+    - cd ray_edits/rllib; python setup-rllib-dev.py --yes
+
+
+file_mounts: {
+  "~/ray_edits/": /Users/kristian/github/hartikainen/ray/python/ray/
+}
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands: []
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []

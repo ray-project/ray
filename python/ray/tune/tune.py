@@ -211,7 +211,7 @@ def run(run_or_experiment,
         experiment.spec["local_dir"], experiment.name)
     # TODO(rliaw): what happens if upload_dir fails?
     remote_checkpoint_dir = _find_checkpoint_dir(
-        experiment.spec["upload_dir"], experiment.name)
+        experiment.upload_dir, experiment.name)
 
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),

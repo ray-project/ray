@@ -639,6 +639,7 @@ class TrialRunner(object):
                 "_search_alg",
                 "_scheduler_alg",
                 "trial_executor",
+                "_syncer",
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)
