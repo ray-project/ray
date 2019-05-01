@@ -4,11 +4,11 @@ Contributing to Tune
 We welcome (and encourage!) all forms of contributions to Tune, including and not limited to:
 
 - Code reviewing of patches and PRs.
-- Pushing patches
-- Documentation and examples
+- Pushing patches.
+- Documentation and examples.
 - Community participation in forums and issues.
-- Code readability and code comments to improve readability
-- Test cases to make the codebase more robust
+- Code readability and code comments to improve readability.
+- Test cases to make the codebase more robust.
 - Tutorials, blog posts, talks that promote the project.
 
 
@@ -18,17 +18,17 @@ Setting up a development environment
 If you have Ray installed via pip (``pip install -U ray``), you can develop Tune locally without needing to compile Ray.
 
 
-First, you will need your own fork to work on the code. Press the Fork button on the `ray project page <https://github.com/ray-project/ray/>`__.
+First, you will need your own [fork](https://help.github.com/en/articles/fork-a-repo) to work on the code. Press the Fork button on the `ray project page <https://github.com/ray-project/ray/>`__.
 Then, clone the project to your machine and connect your repository to the upstream (main project) ray repository.
 
 .. code-block:: shell
 
-    git clone https://github.com/your-user-name/ray.git [path to ray directory]
+    git clone https://github.com/[your username]/ray.git [path to ray directory]
     cd [path to ray directory]
     git remote add upstream https://github.com/ray-project/ray.git
 
 
-Then, run RAY_DIRECTORY/python/ray/setup-dev.py `(also here on Github) <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script.
+Then, run `[path to ray directory]/python/ray/setup-dev.py` `(also here on Github) <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script.
 This sets up links between the ``tune`` dir (among other directories) in your local repo and the one bundled with the ``ray`` package.
 
 When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://ray.readthedocs.io/en/latest/installation.html>`__ installed.)
@@ -42,7 +42,7 @@ ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8
 
 .. note::
 
-  If raising a new issue or PR related to Tune, be sure to include "[tune]" in the title.
+  If raising a new issue or PR related to Tune, be sure to include "[tune]" in the beginning of the title.
 
 For project organization, Tune maintains a relatively up-to-date organization of
 issues on the `Tune Github Project Board <https://github.com/ray-project/ray/projects/4>`__.

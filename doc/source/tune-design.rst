@@ -7,12 +7,12 @@ of Tune.
 .. image:: images/tune-arch.png
 
 The blue boxes refer to internal components, and green boxes are public-facing.
-Please refer to the package reference for `user facing APIs <tune-package-ref.html>`__.
+Please refer to the package reference for `user-facing APIs <tune-package-ref.html>`__.
 
 Main Components
 ---------------
 
-Tune has a couple main components.
+Tune's main components consist of TrialRunner, Trial objects, TrialExecutor, SearchAlg, TrialScheduler, and Trainable.
 
 TrialRunner
 ~~~~~~~~~~~
@@ -34,7 +34,7 @@ in case of machine failure.
 Trial objects
 ~~~~~~~~~~~~~
 This is an internal data structure that contains metadata about each training run. Each Trial
-object is mapped one-to-one with a Trainable but are not themselves
+object is mapped one-to-one with a Trainable object but are not themselves
 distributed/remote. Trial objects transition among
 the following states: ``"PENDING"``, ``"RUNNING"``, ``"PAUSED"``, ``"ERRORED"``, and
 ``"TERMINATED"``.
