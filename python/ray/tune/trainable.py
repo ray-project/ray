@@ -236,10 +236,10 @@ class Trainable(object):
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
                         checkpoint_dir, checkpoint))
-            if not os.path.exists(checkpoint):
-                raise ValueError(
-                    "The returned checkpoint path does not exist: {}".format(
-                        checkpoint))
+            # if not os.path.exists(checkpoint):
+            #     raise ValueError(
+            #         "The returned checkpoint path does not exist: {}".format(
+            #             checkpoint))
             checkpoint_path = checkpoint
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
@@ -270,7 +270,7 @@ class Trainable(object):
         """
 
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
-        checkpoint_prefix = self.save(tmpdir)
+        checkpoint_path = self.save(tmpdir)
 
         data = {}
         # base_dir = os.path.dirname(checkpoint_prefix)
@@ -290,7 +290,8 @@ class Trainable(object):
 
         out = io.BytesIO()
         data_dict = pickle.dumps({
-            "checkpoint_name": os.path.relpath(checkpoint_prefix, tmpdir),
+            "savedir": tmpdir,
+            "checkpoint_path": checkpoint_path,
             "data": data,
         })
         if len(data_dict) > 10e6:  # getting pretty large
@@ -320,7 +321,6 @@ class Trainable(object):
         if saved_as_dict:
             with open(checkpoint_path, "rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)
-                checkpoint_dict["__restore_dir__"] = checkpoint_path
             self._restore(checkpoint_dict)
         else:
             self._restore(checkpoint_path)
@@ -337,8 +337,12 @@ class Trainable(object):
 
         info = pickle.loads(obj)
         data = info["data"]
-        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
-        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
+        tmpdir = info["savedir"]
+        if not os.path.exists(tmpdir):
+            # We recreate the same file.
+            os.makedirs(tmpdir)
+
+        checkpoint_path = info["checkpoint_path"]
 
         for relpath_name, file_contents in data.items():
             path = os.path.join(tmpdir, relpath_name)
