@@ -97,7 +97,7 @@ class Experiment(object):
             "config": config or {},
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
+            "local_dir": os.path.abspath(os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)),
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
             "trial_name_creator": trial_name_creator,
             "loggers": loggers,
