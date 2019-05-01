@@ -6,13 +6,13 @@ import os
 import pickle
 import numpy as np
 
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 
 
-class _MockAgent(Agent):
-    """Mock agent for use in tests"""
+class _MockTrainer(Trainer):
+    """Mock trainer for use in tests"""
 
-    _agent_name = "MockAgent"
+    _name = "MockTrainer"
     _default_config = with_common_config({
         "mock_error": False,
         "persistent_error": False,
@@ -36,12 +36,12 @@ class _MockAgent(Agent):
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "mock_agent.pkl")
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             pickle.dump(self.info, f)
         return path
 
     def _restore(self, checkpoint_path):
-        with open(checkpoint_path, 'rb') as f:
+        with open(checkpoint_path, "rb") as f:
             info = pickle.load(f)
         self.info = info
         self.restored = True
@@ -57,12 +57,12 @@ class _MockAgent(Agent):
         return self.info
 
 
-class _SigmoidFakeData(_MockAgent):
-    """Agent that returns sigmoid learning curves.
+class _SigmoidFakeData(_MockTrainer):
+    """Trainer that returns sigmoid learning curves.
 
     This can be helpful for evaluating early stopping algorithms."""
 
-    _agent_name = "SigmoidFakeData"
+    _name = "SigmoidFakeData"
     _default_config = with_common_config({
         "width": 100,
         "height": 100,
@@ -84,9 +84,9 @@ class _SigmoidFakeData(_MockAgent):
             info={})
 
 
-class _ParameterTuningAgent(_MockAgent):
+class _ParameterTuningTrainer(_MockTrainer):
 
-    _agent_name = "ParameterTuningAgent"
+    _name = "ParameterTuningTrainer"
     _default_config = with_common_config({
         "reward_amt": 10,
         "dummy_param": 10,
@@ -108,8 +108,8 @@ class _ParameterTuningAgent(_MockAgent):
 def _agent_import_failed(trace):
     """Returns dummy agent class for if PyTorch etc. is not installed."""
 
-    class _AgentImportFailed(Agent):
-        _agent_name = "AgentImportFailed"
+    class _AgentImportFailed(Trainer):
+        _name = "AgentImportFailed"
         _default_config = with_common_config({})
 
         def _setup(self, config):

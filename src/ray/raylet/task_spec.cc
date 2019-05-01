@@ -56,6 +56,10 @@ TaskSpecification::TaskSpecification(const std::string &string) {
   AssignSpecification(reinterpret_cast<const uint8_t *>(string.data()), string.size());
 }
 
+TaskSpecification::TaskSpecification(const uint8_t *spec, size_t spec_size) {
+  AssignSpecification(spec, spec_size);
+}
+
 TaskSpecification::TaskSpecification(
     const DriverID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
@@ -197,13 +201,6 @@ const uint8_t *TaskSpecification::ArgVal(int64_t arg_index) const {
 size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return message->args()->Get(arg_index)->data()->size();
-}
-
-double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
-  RAY_CHECK(required_resources_.GetResourceMap().empty() == false);
-  auto it = required_resources_.GetResourceMap().find(resource_name);
-  RAY_CHECK(it != required_resources_.GetResourceMap().end());
-  return it->second;
 }
 
 const ResourceSet TaskSpecification::GetRequiredResources() const {

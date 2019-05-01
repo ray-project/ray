@@ -864,6 +864,71 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
+def test_many_fractional_resources(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
+
+    @ray.remote
+    def g():
+        return 1
+
+    @ray.remote
+    def f(block, accepted_resources):
+        true_resources = {
+            resource: value[0][1]
+            for resource, value in ray.get_resource_ids().items()
+        }
+        if block:
+            ray.get(g.remote())
+        return true_resources == accepted_resources
+
+    # Check that the resource are assigned correctly.
+    result_ids = []
+    for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
+        resource_set = {"CPU": int(rand1 * 10000) / 10000}
+        result_ids.append(f._remote([False, resource_set], num_cpus=rand1))
+
+        resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
+        result_ids.append(f._remote([False, resource_set], num_gpus=rand1))
+
+        resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
+        result_ids.append(
+            f._remote([False, resource_set], resources={"Custom": rand1}))
+
+        resource_set = {
+            "CPU": int(rand1 * 10000) / 10000,
+            "GPU": int(rand2 * 10000) / 10000,
+            "Custom": int(rand3 * 10000) / 10000
+        }
+        result_ids.append(
+            f._remote(
+                [False, resource_set],
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
+        result_ids.append(
+            f._remote(
+                [True, resource_set],
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
+    assert all(ray.get(result_ids))
+
+    # Check that the available resources at the end are the same as the
+    # beginning.
+    stop_time = time.time() + 10
+    correct_available_resources = False
+    while time.time() < stop_time:
+        if ray.global_state.available_resources() == {
+                "CPU": 2.0,
+                "GPU": 2.0,
+                "Custom": 2.0,
+        }:
+            correct_available_resources = True
+            break
+    if not correct_available_resources:
+        assert False, "Did not get correct available resources."
+
+
 def test_get_multiple(ray_start_regular):
     object_ids = [ray.put(i) for i in range(10)]
     assert ray.get(object_ids) == list(range(10))
@@ -1439,13 +1504,16 @@ def test_free_objects_multi_node(ray_start_cluster):
         assert len(l2) == 0
         return (a, b, c)
 
-    def run_one_test(actors, local_only):
+    def run_one_test(actors, local_only, delete_creating_tasks):
         (a, b, c) = create(actors)
         # The three objects should be generated on different object stores.
         assert ray.get(a) != ray.get(b)
         assert ray.get(a) != ray.get(c)
         assert ray.get(c) != ray.get(b)
-        ray.internal.free([a, b, c], local_only=local_only)
+        ray.internal.free(
+            [a, b, c],
+            local_only=local_only,
+            delete_creating_tasks=delete_creating_tasks)
         # Wait for the objects to be deleted.
         time.sleep(0.1)
         return (a, b, c)
@@ -1456,13 +1524,13 @@ def test_free_objects_multi_node(ray_start_cluster):
         ActorOnNode2.remote()
     ]
     # Case 1: run this local_only=False. All 3 objects will be deleted.
-    (a, b, c) = run_one_test(actors, False)
+    (a, b, c) = run_one_test(actors, False, False)
     (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=1)
     # All the objects are deleted.
     assert len(l1) == 0
     assert len(l2) == 3
     # Case 2: run this local_only=True. Only 1 object will be deleted.
-    (a, b, c) = run_one_test(actors, True)
+    (a, b, c) = run_one_test(actors, True, False)
     (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=3)
     # One object is deleted and 2 objects are not.
     assert len(l1) == 2
@@ -1471,6 +1539,17 @@ def test_free_objects_multi_node(ray_start_cluster):
     local_return = ray.worker.global_worker.plasma_client.store_socket_name
     for object_id in l1:
         assert ray.get(object_id) != local_return
+
+    # Case3: These cases test the deleting creating tasks for the object.
+    (a, b, c) = run_one_test(actors, False, False)
+    task_table = ray.global_state.task_table()
+    for obj in [a, b, c]:
+        assert ray._raylet.compute_task_id(obj).hex() in task_table
+
+    (a, b, c) = run_one_test(actors, False, True)
+    task_table = ray.global_state.task_table()
+    for obj in [a, b, c]:
+        assert ray._raylet.compute_task_id(obj).hex() not in task_table
 
 
 def test_local_mode(shutdown_only):
@@ -1934,15 +2013,15 @@ def test_multiple_raylets(ray_start_cluster):
     store_names = []
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"]["GPU"] == 0
+        if client["Resources"].get("GPU", 0) == 0
     ]
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"]["GPU"] == 5
+        if client["Resources"].get("GPU", 0) == 5
     ]
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
-        if client["Resources"]["GPU"] == 1
+        if client["Resources"].get("GPU", 0) == 1
     ]
     assert len(store_names) == 3
 
@@ -2110,6 +2189,36 @@ def test_many_custom_resources(shutdown_only):
         results.append(remote_function.remote())
 
     ray.get(results)
+
+
+# TODO: 5 retry attempts may be too little for Travis and we may need to
+# increase it if this test begins to be flaky on Travis.
+def test_zero_capacity_deletion_semantics(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
+
+    def test():
+        resources = ray.global_state.available_resources()
+        MAX_RETRY_ATTEMPTS = 5
+        retry_count = 0
+
+        while resources and retry_count < MAX_RETRY_ATTEMPTS:
+            time.sleep(0.1)
+            resources = ray.global_state.available_resources()
+            retry_count += 1
+
+        if retry_count >= MAX_RETRY_ATTEMPTS:
+            raise RuntimeError(
+                "Resources were available even after five retries.")
+
+        return resources
+
+    function = ray.remote(
+        num_cpus=2, num_gpus=1, resources={"test_resource": 1})(test)
+    cluster_resources = ray.get(function.remote())
+
+    # All cluster resources should be utilized and
+    # cluster_resources must be empty
+    assert cluster_resources == {}
 
 
 @pytest.fixture
@@ -2678,7 +2787,7 @@ def test_raylet_is_robust_to_random_messages(ray_start_regular):
     # Try to bring down the node manager:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((node_manager_address, node_manager_port))
-    s.send(1000 * b'asdf')
+    s.send(1000 * b"asdf")
 
     @ray.remote
     def f():

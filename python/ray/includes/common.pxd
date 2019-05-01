@@ -119,9 +119,8 @@ cdef extern from "ray/raylet/scheduling_resources.h" \
         c_bool IsEqual(const ResourceSet &other) const
         c_bool IsSubset(const ResourceSet &other) const
         c_bool IsSuperset(const ResourceSet &other) const
-        c_bool AddResource(const c_string &resource_name, double capacity)
+        c_bool AddOrUpdateResource(const c_string &resource_name, double capacity)
         c_bool RemoveResource(const c_string &resource_name)
-        c_bool AddResourcesStrict(const ResourceSet &other)
         void AddResources(const ResourceSet &other)
         c_bool SubtractResourcesStrict(const ResourceSet &other)
         c_bool GetResource(const c_string &resource_name, double *value) const

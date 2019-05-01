@@ -67,7 +67,7 @@ class ContinuousSpace(ParameterSpace):
     certain distribution such as linear.
     """
 
-    LINEAR = 'linear'
+    LINEAR = "linear"
 
     # TODO: logspace
 

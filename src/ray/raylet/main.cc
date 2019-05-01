@@ -5,6 +5,28 @@
 #include "ray/stats/stats.h"
 #include "ray/status.h"
 
+#include "gflags/gflags.h"
+
+DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
+DEFINE_string(store_socket_name, "", "The socket name of object store.");
+DEFINE_int32(object_manager_port, -1, "The port of object manager.");
+DEFINE_int32(node_manager_port, -1, "The port of node manager.");
+DEFINE_string(node_ip_address, "", "The ip address of this node.");
+DEFINE_string(redis_address, "", "The ip address of redis server.");
+DEFINE_int32(redis_port, -1, "The port of redis server.");
+DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
+DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
+DEFINE_string(static_resource_list, "", "The static resource list of this node.");
+DEFINE_string(config_list, "", "The raylet config list of this node.");
+DEFINE_string(python_worker_command, "", "Python worker command.");
+DEFINE_string(java_worker_command, "", "Java worker command.");
+DEFINE_string(redis_password, "", "The password of redis.");
+DEFINE_string(temp_dir, "", "Temporary directory.");
+DEFINE_bool(disable_stats, false, "Whether disable the stats.");
+DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
+DEFINE_bool(enable_stdout_exporter, false,
+            "Whether enable the stdout exporter for stats.");
+
 #ifndef RAYLET_TEST
 
 /// A helper function that parse the worker command string into a vector of arguments.
@@ -21,34 +43,35 @@ int main(int argc, char *argv[]) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc >= 14 && argc <= 18);
 
-  const std::string raylet_socket_name = std::string(argv[1]);
-  const std::string store_socket_name = std::string(argv[2]);
-  int object_manager_port = std::stoi(argv[3]);
-  int node_manager_port = std::stoi(argv[4]);
-  const std::string node_ip_address = std::string(argv[5]);
-  const std::string redis_address = std::string(argv[6]);
-  int redis_port = std::stoi(argv[7]);
-  int num_initial_workers = std::stoi(argv[8]);
-  int maximum_startup_concurrency = std::stoi(argv[9]);
-  const std::string static_resource_list = std::string(argv[10]);
-  const std::string config_list = std::string(argv[11]);
-  const std::string python_worker_command = std::string(argv[12]);
-  const std::string java_worker_command = std::string(argv[13]);
-  const std::string redis_password = (argc >= 15 ? std::string(argv[14]) : "");
-  const std::string temp_dir = (argc >= 16 ? std::string(argv[15]) : "/tmp/ray");
-  const std::string disable_stats_str(argc >= 17 ? std::string(argv[16]) : "false");
-  const bool disable_stats = ("true" == disable_stats_str);
-  const std::string stat_address =
-      (argc >= 18 ? std::string(argv[17]) : "127.0.0.1:8888");
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  const std::string raylet_socket_name = FLAGS_raylet_socket_name;
+  const std::string store_socket_name = FLAGS_store_socket_name;
+  const int object_manager_port = static_cast<int>(FLAGS_object_manager_port);
+  const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
+  const std::string node_ip_address = FLAGS_node_ip_address;
+  const std::string redis_address = FLAGS_redis_address;
+  const int redis_port = static_cast<int>(FLAGS_redis_port);
+  const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
+  const int maximum_startup_concurrency =
+      static_cast<int>(FLAGS_maximum_startup_concurrency);
+  const std::string static_resource_list = FLAGS_static_resource_list;
+  const std::string config_list = FLAGS_config_list;
+  const std::string python_worker_command = FLAGS_python_worker_command;
+  const std::string java_worker_command = FLAGS_java_worker_command;
+  const std::string redis_password = FLAGS_redis_password;
+  const std::string temp_dir = FLAGS_temp_dir;
+  const bool disable_stats = FLAGS_disable_stats;
+  const std::string stat_address = FLAGS_stat_address;
+  const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
+  gflags::ShutDownCommandLineFlags();
 
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
       {ray::stats::VersionKey, "0.7.0"},
       {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(stat_address, global_tags, disable_stats);
+  ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;

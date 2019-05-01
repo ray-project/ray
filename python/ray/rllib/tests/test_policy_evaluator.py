@@ -10,13 +10,13 @@ import unittest
 from collections import Counter
 
 import ray
-from ray.rllib.agents.pg import PGAgent
-from ray.rllib.agents.a3c import A2CAgent
+from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.env.vector_env import VectorEnv
 from ray.tune.registry import register_env
 
@@ -155,22 +155,19 @@ class TestPolicyEvaluator(unittest.TestCase):
                          to_prev(batch["actions"]))
         self.assertGreater(batch["advantages"][0], 1)
 
-    # 11/23/18: Samples per second 8501.125113727468
-    def testBaselinePerformance(self):
+    def testBatchIds(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_graph=MockPolicyGraph,
-            batch_steps=100)
-        start = time.time()
-        count = 0
-        while time.time() - start < 1:
-            count += ev.sample().count
-        print()
-        print("Samples per second {}".format(count / (time.time() - start)))
-        print()
+            policy_graph=MockPolicyGraph)
+        batch1 = ev.sample()
+        batch2 = ev.sample()
+        self.assertEqual(len(set(batch1["unroll_id"])), 1)
+        self.assertEqual(len(set(batch2["unroll_id"])), 1)
+        self.assertEqual(
+            len(set(SampleBatch.concat(batch1, batch2)["unroll_id"])), 2)
 
     def testGlobalVarsUpdate(self):
-        agent = A2CAgent(
+        agent = A2CTrainer(
             env="CartPole-v0",
             config={
                 "lr_schedule": [[0, 0.1], [400, 0.000001]],
@@ -182,12 +179,12 @@ class TestPolicyEvaluator(unittest.TestCase):
 
     def testNoStepOnInit(self):
         register_env("fail", lambda _: FailOnStepEnv())
-        pg = PGAgent(env="fail", config={"num_workers": 1})
+        pg = PGTrainer(env="fail", config={"num_workers": 1})
         self.assertRaises(Exception, lambda: pg.train())
 
     def testCallbacks(self):
         counts = Counter()
-        pg = PGAgent(
+        pg = PGTrainer(
             env="CartPole-v0", config={
                 "num_workers": 0,
                 "sample_batch_size": 50,
@@ -211,7 +208,7 @@ class TestPolicyEvaluator(unittest.TestCase):
 
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
-        pg = PGAgent(
+        pg = PGTrainer(
             env="test",
             config={
                 "num_workers": 2,

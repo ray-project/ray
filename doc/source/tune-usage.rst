@@ -465,7 +465,7 @@ Tune CLI (Experimental)
 
 Here are a few examples of command line calls.
 
-- ``tune list-trials``: List tabular information about trials within an experiment. Empty columns will be dropped by default. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--output`` flag to write the trial information to a specific file (CSV or Pickle).
+- ``tune list-trials``: List tabular information about trials within an experiment. Empty columns will be dropped by default. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--output`` flag to write the trial information to a specific file (CSV or Pickle). Add the ``--columns`` and ``--result-columns`` flags to select specific columns to display.
 
 .. code-block:: bash
 
@@ -494,7 +494,7 @@ Here are a few examples of command line calls.
     Dropped columns: ['status', 'last_update_time']
     Please increase your terminal size to view remaining columns.
 
-- ``tune list-experiments``: List tabular information about experiments within a project. Empty columns will be dropped by default. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--output`` flag to write the trial information to a specific file (CSV or Pickle).
+- ``tune list-experiments``: List tabular information about experiments within a project. Empty columns will be dropped by default. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--output`` flag to write the trial information to a specific file (CSV or Pickle). Add the ``--columns`` flag to select specific columns to display.
 
 .. code-block:: bash
 

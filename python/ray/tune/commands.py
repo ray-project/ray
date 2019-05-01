@@ -26,15 +26,9 @@ EDITOR = os.getenv("EDITOR", "vim")
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S (%A)"
 
-DEFAULT_EXPERIMENT_INFO_KEYS = (
-    "trainable_name",
-    "experiment_tag",
-    "trial_id",
-    "status",
-    "last_update_time",
-)
-
-DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS)
+DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", "experiment_tag", "trial_id",
+                                "status", "last_update_time",
+                                TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS)
 
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
@@ -45,6 +39,8 @@ DEFAULT_PROJECT_INFO_KEYS = (
     "last_updated",
 )
 
+UNNEST_KEYS = ("config", "last_result")
+
 try:
     TERM_HEIGHT, TERM_WIDTH = subprocess.check_output(["stty", "size"]).split()
     TERM_HEIGHT, TERM_WIDTH = int(TERM_HEIGHT), int(TERM_WIDTH)
@@ -52,12 +48,12 @@ except subprocess.CalledProcessError:
     TERM_HEIGHT, TERM_WIDTH = 100, 100
 
 OPERATORS = {
-    '<': operator.lt,
-    '<=': operator.le,
-    '==': operator.eq,
-    '!=': operator.ne,
-    '>=': operator.ge,
-    '>': operator.gt,
+    "<": operator.lt,
+    "<=": operator.le,
+    "==": operator.eq,
+    "!=": operator.ne,
+    ">=": operator.ge,
+    ">": operator.gt,
 }
 
 
@@ -88,7 +84,7 @@ def print_format_output(dataframe):
 
         print_df[col] = dataframe[col]
         test_table = tabulate(print_df, headers="keys", tablefmt="psql")
-        if str(test_table).index('\n') > TERM_WIDTH:
+        if str(test_table).index("\n") > TERM_WIDTH:
             # Drop all columns beyond terminal width
             print_df.drop(col, axis=1, inplace=True)
             dropped_cols += list(dataframe.columns)[i:]
@@ -111,21 +107,35 @@ def list_trials(experiment_path,
                 sort=None,
                 output=None,
                 filter_op=None,
-                info_keys=DEFAULT_EXPERIMENT_INFO_KEYS,
-                result_keys=DEFAULT_RESULT_KEYS):
+                info_keys=None,
+                limit=None,
+                desc=False):
     """Lists trials in the directory subtree starting at the given path.
 
     Args:
         experiment_path (str): Directory where trials are located.
             Corresponds to Experiment.local_dir/Experiment.name.
-        sort (str): Key to sort by.
+        sort (list): Keys to sort by.
         output (str): Name of file where output is saved.
         filter_op (str): Filter operation in the format
             "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
-        result_keys (list): Keys of last result that are displayed.
+        limit (int): Number of rows to display.
+        desc (bool): Sort ascending vs. descending.
     """
     _check_tabulate()
+
+    checkpoints = experiment_state["checkpoints"]
+
+    checkpoint_dicts = []
+    for g in checkpoints:
+        for key in UNNEST_KEYS:
+            if key not in g:
+                continue
+            unnest_dict = flatten_dict(g.pop(key))
+            g.update(unnest_dict)
+        g = flatten_dict(g)
+        checkpoint_dicts.append(g)
 
     try:
         checkpoints_df = ExperimentAnalysis(experiment_path).dataframe()
@@ -133,10 +143,9 @@ def list_trials(experiment_path,
         print("No experiment state found!")
         sys.exit(0)
 
-    result_keys = ["last_result:{}".format(k) for k in result_keys]
-    col_keys = [
-        k for k in list(info_keys) + result_keys if k in checkpoints_df
-    ]
+    if not info_keys:
+        info_keys = DEFAULT_EXPERIMENT_INFO_KEYS
+    col_keys = [k for k in list(info_keys) if k in checkpoints_df]
     checkpoints_df = checkpoints_df[col_keys]
 
     if "last_update_time" in checkpoints_df:
@@ -150,10 +159,10 @@ def list_trials(experiment_path,
     if "logdir" in checkpoints_df:
         # logdir often too verbose to view in table, so drop experiment_path
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
-            experiment_path, '')
+            experiment_path, "")
 
     if filter_op:
-        col, op, val = filter_op.split(' ')
+        col, op, val = filter_op.split(" ")
         col_type = checkpoints_df[col].dtype
         if is_numeric_dtype(col_type):
             val = float(val)
@@ -161,7 +170,7 @@ def list_trials(experiment_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise ValueError("Unsupported dtype for '{}': {}".format(
+            raise ValueError("Unsupported dtype for {}: {}".format(
                 val, col_type))
         op = OPERATORS[op]
         filtered_index = op(checkpoints_df[col], val)
@@ -169,9 +178,13 @@ def list_trials(experiment_path,
 
     if sort:
         if sort not in checkpoints_df:
-            raise KeyError("Sort Index '{}' not in: {}".format(
-                sort, list(checkpoints_df)))
-        checkpoints_df = checkpoints_df.sort_values(by=sort)
+            raise KeyError("{} not in: {}".format(sort, list(checkpoints_df)))
+        ascending = not desc
+        checkpoints_df = checkpoints_df.sort_values(
+            by=sort, ascending=ascending)
+
+    if limit:
+        checkpoints_df = checkpoints_df[:limit]
 
     print_format_output(checkpoints_df)
 
@@ -190,17 +203,21 @@ def list_experiments(project_path,
                      sort=None,
                      output=None,
                      filter_op=None,
-                     info_keys=DEFAULT_PROJECT_INFO_KEYS):
+                     info_keys=None,
+                     limit=None,
+                     desc=False):
     """Lists experiments in the directory subtree.
 
     Args:
         project_path (str): Directory where experiments are located.
             Corresponds to Experiment.local_dir.
-        sort (str): Key to sort by.
+        sort (list): Keys to sort by.
         output (str): Name of file where output is saved.
         filter_op (str): Filter operation in the format
             "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
+        limit (int): Number of rows to display.
+        desc (bool): Sort ascending vs. descending.
     """
     _check_tabulate()
     base, experiment_folders, _ = next(os.walk(project_path))
@@ -247,6 +264,8 @@ def list_experiments(project_path,
         sys.exit(0)
 
     info_df = pd.DataFrame(experiment_data_collection)
+    if not info_keys:
+        info_keys = DEFAULT_PROJECT_INFO_KEYS
     col_keys = [k for k in list(info_keys) if k in info_df]
     if not col_keys:
         print("None of keys {} in experiment data!".format(info_keys))
@@ -254,7 +273,7 @@ def list_experiments(project_path,
     info_df = info_df[col_keys]
 
     if filter_op:
-        col, op, val = filter_op.split(' ')
+        col, op, val = filter_op.split(" ")
         col_type = info_df[col].dtype
         if is_numeric_dtype(col_type):
             val = float(val)
@@ -262,7 +281,7 @@ def list_experiments(project_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise ValueError("Unsupported dtype for '{}': {}".format(
+            raise ValueError("Unsupported dtype for {}: {}".format(
                 val, col_type))
         op = OPERATORS[op]
         filtered_index = op(info_df[col], val)
@@ -270,9 +289,12 @@ def list_experiments(project_path,
 
     if sort:
         if sort not in info_df:
-            raise KeyError("Sort Index '{}' not in: {}".format(
-                sort, list(info_df)))
-        info_df = info_df.sort_values(by=sort)
+            raise KeyError("{} not in: {}".format(sort, list(info_df)))
+        ascending = not desc
+        info_df = info_df.sort_values(by=sort, ascending=ascending)
+
+    if limit:
+        info_df = info_df[:limit]
 
     print_format_output(info_df)
 

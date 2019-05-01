@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from collections import defaultdict
 import json
-import redis
 import sys
 import time
 
@@ -13,6 +12,7 @@ from ray.function_manager import FunctionDescriptor
 import ray.gcs_utils
 
 from ray.ray_constants import ID_SIZE
+from ray import services
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
@@ -126,8 +126,7 @@ class GlobalState(object):
         self.redis_clients = None
 
     def _initialize_global_state(self,
-                                 redis_ip_address,
-                                 redis_port,
+                                 redis_address,
                                  redis_password=None,
                                  timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
@@ -137,18 +136,15 @@ class GlobalState(object):
         been populated or we exceed a timeout.
 
         Args:
-            redis_ip_address: The IP address of the node that the Redis server
-                lives on.
-            redis_port: The port that the Redis server is listening on.
+            redis_address: The Redis address to connect.
             redis_password: The password of the redis server.
         """
-        self.redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port, password=redis_password)
-
+        self.redis_client = services.create_redis_client(
+            redis_address, redis_password)
         start_time = time.time()
 
         num_redis_shards = None
-        ip_address_ports = []
+        redis_shard_addresses = []
 
         while time.time() - start_time < timeout:
             # Attempt to get the number of Redis shards.
@@ -163,9 +159,9 @@ class GlobalState(object):
                                 "{}.".format(num_redis_shards))
 
             # Attempt to get all of the Redis shards.
-            ip_address_ports = self.redis_client.lrange(
+            redis_shard_addresses = self.redis_client.lrange(
                 "RedisShards", start=0, end=-1)
-            if len(ip_address_ports) != num_redis_shards:
+            if len(redis_shard_addresses) != num_redis_shards:
                 print("Waiting longer for RedisShards to be populated.")
                 time.sleep(1)
                 continue
@@ -177,18 +173,15 @@ class GlobalState(object):
         if time.time() - start_time >= timeout:
             raise Exception("Timed out while attempting to initialize the "
                             "global state. num_redis_shards = {}, "
-                            "ip_address_ports = {}".format(
-                                num_redis_shards, ip_address_ports))
+                            "redis_shard_addresses = {}".format(
+                                num_redis_shards, redis_shard_addresses))
 
         # Get the rest of the information.
         self.redis_clients = []
-        for ip_address_port in ip_address_ports:
-            shard_address, shard_port = ip_address_port.split(b":")
+        for shard_address in redis_shard_addresses:
             self.redis_clients.append(
-                redis.StrictRedis(
-                    host=shard_address,
-                    port=shard_port,
-                    password=redis_password))
+                services.create_redis_client(shard_address.decode(),
+                                             redis_password))
 
     def _execute_command(self, key, *args):
         """Execute a Redis command on the appropriate Redis shard based on key.
@@ -847,19 +840,19 @@ class GlobalState(object):
 
         return dict(total_available_resources)
 
-    def _error_messages(self, job_id):
-        """Get the error messages for a specific job.
+    def _error_messages(self, driver_id):
+        """Get the error messages for a specific driver.
 
         Args:
-            job_id: The ID of the job to get the errors for.
+            driver_id: The ID of the driver to get the errors for.
 
         Returns:
-            A list of the error messages for this job.
+            A list of the error messages for this driver.
         """
-        assert isinstance(job_id, ray.DriverID)
+        assert isinstance(driver_id, ray.DriverID)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
-            job_id.binary())
+            driver_id.binary())
 
         # If there are no errors, return early.
         if message is None:
@@ -871,7 +864,7 @@ class GlobalState(object):
         for i in range(gcs_entries.EntriesLength()):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
-            assert job_id.binary() == error_data.JobId()
+            assert driver_id.binary() == error_data.DriverId()
             error_message = {
                 "type": decode(error_data.Type()),
                 "message": decode(error_data.ErrorMessage()),
@@ -880,31 +873,32 @@ class GlobalState(object):
             error_messages.append(error_message)
         return error_messages
 
-    def error_messages(self, job_id=None):
-        """Get the error messages for all jobs or a specific job.
+    def error_messages(self, driver_id=None):
+        """Get the error messages for all drivers or a specific driver.
 
         Args:
-            job_id: The specific job to get the errors for. If this is None,
-                then this method retrieves the errors for all jobs.
+            driver_id: The specific driver to get the errors for. If this is
+                None, then this method retrieves the errors for all drivers.
 
         Returns:
-            A dictionary mapping job ID to a list of the error messages for
-                that job.
+            A dictionary mapping driver ID to a list of the error messages for
+                that driver.
         """
-        if job_id is not None:
-            assert isinstance(job_id, ray.DriverID)
-            return self._error_messages(job_id)
+        if driver_id is not None:
+            assert isinstance(driver_id, ray.DriverID)
+            return self._error_messages(driver_id)
 
         error_table_keys = self.redis_client.keys(
             ray.gcs_utils.TablePrefix_ERROR_INFO_string + "*")
-        job_ids = [
+        driver_ids = [
             key[len(ray.gcs_utils.TablePrefix_ERROR_INFO_string):]
             for key in error_table_keys
         ]
 
         return {
-            binary_to_hex(job_id): self._error_messages(ray.DriverID(job_id))
-            for job_id in job_ids
+            binary_to_hex(driver_id): self._error_messages(
+                ray.DriverID(driver_id))
+            for driver_id in driver_ids
         }
 
     def actor_checkpoint_info(self, actor_id):

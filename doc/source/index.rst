@@ -93,8 +93,8 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    rllib.rst
    rllib-training.rst
    rllib-env.rst
-   rllib-algorithms.rst
    rllib-models.rst
+   rllib-algorithms.rst
    rllib-offline.rst
    rllib-dev.rst
    rllib-concepts.rst

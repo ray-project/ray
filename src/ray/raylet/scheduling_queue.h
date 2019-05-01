@@ -294,6 +294,9 @@ class SchedulingQueue {
   /// \return string.
   std::string DebugString() const;
 
+  /// Record metrics.
+  void RecordMetrics() const;
+
  private:
   /// Get the task queue in the given state. The requested task state must
   /// correspond to one of the task queues (has value <
