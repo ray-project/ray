@@ -23,10 +23,18 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "tensorflow/tensorflow:1.12.0-gpu-py3"
+    image: "tensorflow/tensorflow:1.13.1-gpu-py3"
     container_name: "ray-nvidia-docker-test" # e.g. ray_docker
     run_options:
       - --runtime=nvidia
+
+    # # Example of running a GPU head with CPU workers
+    # head_image: "tensorflow/tensorflow:1.13.1-gpu-py3"
+    # head_run_options:
+    #     - --runtime=nvidia
+
+    # worker_image: "ubuntu:18.04"
+    # worker_run_options: []
 
 
 # The autoscaler will scale up the cluster to this target fraction of resource
@@ -44,7 +52,7 @@ provider:
     type: gcp
     region: us-west1
     availability_zone: us-west1-b
-    project_id: <project_id> # Globally unique project id
+    project_id: null # Globally unique project id
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -68,7 +76,7 @@ head_node:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: projects/deeplearning-platform-release/global/images/family/tf-latest-gpu
+          sourceImage: projects/deeplearning-platform-release/global/images/family/tf-1-13-cu100
     guestAccelerators:
       - acceleratorType: projects/<project_id>/zones/us-west1-b/acceleratorTypes/nvidia-tesla-k80
         acceleratorCount: 1
@@ -91,7 +99,7 @@ worker_nodes:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: projects/deeplearning-platform-release/global/images/family/tf-latest-gpu
+          sourceImage: projects/deeplearning-platform-release/global/images/family/tf-1-13-cu100
     guestAccelerators:
       - acceleratorType: projects/<project_id>/zones/us-west1-b/acceleratorTypes/nvidia-tesla-k80
         acceleratorCount: 1

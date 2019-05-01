@@ -708,12 +708,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
         def __ray_terminate__(self):
             worker = ray.worker.get_global_worker()
             if worker.mode != ray.LOCAL_MODE:
-                # Disconnect the worker from the raylet. The point of
-                # this is so that when the worker kills itself below, the
-                # raylet won't push an error message to the driver.
-                worker.raylet_client.disconnect()
-                sys.exit(0)
-                assert False, "This process should have terminated."
+                ray.actor.exit_actor()
 
         def __ray_checkpoint__(self):
             """Save a checkpoint.
@@ -736,6 +731,30 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
 
     return ActorClass(Class, class_id, max_reconstructions, num_cpus, num_gpus,
                       resources)
+
+
+def exit_actor():
+    """Intentionally exit the current actor.
+
+    This function is used to disconnect an actor and exit the worker.
+
+    Raises:
+        Exception: An exception is raised if this is a driver or this
+            worker is not an actor.
+    """
+    worker = ray.worker.global_worker
+    if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
+        # Disconnect the worker from the raylet. The point of
+        # this is so that when the worker kills itself below, the
+        # raylet won't push an error message to the driver.
+        worker.raylet_client.disconnect()
+        ray.disconnect()
+        # Disconnect global state from GCS.
+        ray.global_state.disconnect()
+        sys.exit(0)
+        assert False, "This process should have terminated."
+    else:
+        raise Exception("exit_actor called on a non-actor worker.")
 
 
 ray.worker.global_worker.make_actor = make_actor
