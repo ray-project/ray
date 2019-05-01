@@ -70,6 +70,10 @@ public class RedisClient {
 
   }
 
+  public byte[] get(byte[] key) {
+    return get(key, null);
+  }
+
   public byte[] get(byte[] key, byte[] field) {
     try (Jedis jedis = jedisPool.getResource()) {
       if (field == null) {
@@ -80,7 +84,12 @@ public class RedisClient {
     }
   }
 
-  public List<String> lrange(String key, long start, long end) {
+  /**
+   * Return the specified elements of the list stored at the specified key.
+   *
+   * @return Multi bulk reply, specifically a list of elements in the specified range.
+   */
+  public List<byte[]> lrange(byte[] key, long start, long end) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.lrange(key, start, end);
     }

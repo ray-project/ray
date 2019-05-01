@@ -9,7 +9,7 @@ from __future__ import print_function
 import ray
 from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest import NevergradSearch
+from ray.tune.suggest.nevergrad import NevergradSearch
 
 
 def easy_objective(config, reporter):
@@ -42,9 +42,18 @@ if __name__ == "__main__":
             "timesteps_total": 100
         }
     }
-    optimizer = optimizerlib.OnePlusOne(dimension=2)
+    instrumentation = 2
+    parameter_names = ["height", "width"]
+    # With nevergrad v0.2.0+ the following is also possible:
+    # from nevergrad import instrumentation as inst
+    # instrumentation = inst.Instrumentation(
+    #     height=inst.var.Array(1).bounded(0, 200).asfloat(),
+    #     width=inst.var.OrderedDiscrete([0, 10, 20, 30, 40, 50]))
+    # parameter_names = None  # names are provided by the instrumentation
+    optimizer = optimizerlib.OnePlusOne(instrumentation)
     algo = NevergradSearch(
-        optimizer, ["height", "width"],
+        optimizer,
+        parameter_names,
         max_concurrent=4,
         reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")

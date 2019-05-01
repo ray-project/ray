@@ -4,12 +4,12 @@ import java.util.List;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
-import org.ray.api.RuntimeContext;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
+import org.ray.api.runtimecontext.RuntimeContext;
 
 /**
  * Base interface of a Ray runtime.
@@ -61,8 +61,9 @@ public interface RayRuntime {
    *
    * @param objectIds The object ids to free.
    * @param localOnly Whether only free objects for local object store or not.
+   * @param deleteCreatingTasks Whether also delete objects' creating tasks from GCS.
    */
-  void free(List<UniqueId> objectIds, boolean localOnly);
+  void free(List<UniqueId> objectIds, boolean localOnly, boolean deleteCreatingTasks);
 
   /**
    * Invoke a remote function.

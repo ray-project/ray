@@ -9,6 +9,7 @@ import json
 import logging
 import sys
 import time
+import threading
 import traceback
 from collections import (
     namedtuple,
@@ -300,6 +301,7 @@ class FunctionActorManager(object):
         # these types.
         self.imported_actor_classes = set()
         self._loaded_actor_classes = {}
+        self.lock = threading.Lock()
 
     def increase_task_counter(self, driver_id, function_descriptor):
         function_id = function_descriptor.function_id
@@ -407,41 +409,48 @@ class FunctionActorManager(object):
         def f():
             raise Exception("This function was not imported properly.")
 
-        self._function_execution_info[driver_id][function_id] = (
-            FunctionExecutionInfo(
-                function=f, function_name=function_name, max_calls=max_calls))
-        self._num_task_executions[driver_id][function_id] = 0
-
-        try:
-            function = pickle.loads(serialized_function)
-        except Exception:
-            # If an exception was thrown when the remote function was imported,
-            # we record the traceback and notify the scheduler of the failure.
-            traceback_str = format_error_message(traceback.format_exc())
-            # Log the error message.
-            push_error_to_driver(
-                self._worker,
-                ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                "Failed to unpickle the remote function '{}' with function ID "
-                "{}. Traceback:\n{}".format(function_name, function_id.hex(),
-                                            traceback_str),
-                driver_id=driver_id)
-        else:
-            # The below line is necessary. Because in the driver process,
-            # if the function is defined in the file where the python script
-            # was started from, its module is `__main__`.
-            # However in the worker process, the `__main__` module is a
-            # different module, which is `default_worker.py`
-            function.__module__ = module
+        # This function is called by ImportThread. This operation needs to be
+        # atomic. Otherwise, there is race condition. Another thread may use
+        # the temporary function above before the real function is ready.
+        with self.lock:
             self._function_execution_info[driver_id][function_id] = (
                 FunctionExecutionInfo(
-                    function=function,
+                    function=f,
                     function_name=function_name,
                     max_calls=max_calls))
-            # Add the function to the function table.
-            self._worker.redis_client.rpush(
-                b"FunctionTable:" + function_id.binary(),
-                self._worker.worker_id)
+            self._num_task_executions[driver_id][function_id] = 0
+
+            try:
+                function = pickle.loads(serialized_function)
+            except Exception:
+                # If an exception was thrown when the remote function was
+                # imported, we record the traceback and notify the scheduler
+                # of the failure.
+                traceback_str = format_error_message(traceback.format_exc())
+                # Log the error message.
+                push_error_to_driver(
+                    self._worker,
+                    ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
+                    "Failed to unpickle the remote function '{}' with "
+                    "function ID {}. Traceback:\n{}".format(
+                        function_name, function_id.hex(), traceback_str),
+                    driver_id=driver_id)
+            else:
+                # The below line is necessary. Because in the driver process,
+                # if the function is defined in the file where the python
+                # script was started from, its module is `__main__`.
+                # However in the worker process, the `__main__` module is a
+                # different module, which is `default_worker.py`
+                function.__module__ = module
+                self._function_execution_info[driver_id][function_id] = (
+                    FunctionExecutionInfo(
+                        function=function,
+                        function_name=function_name,
+                        max_calls=max_calls))
+                # Add the function to the function table.
+                self._worker.redis_client.rpush(
+                    b"FunctionTable:" + function_id.binary(),
+                    self._worker.worker_id)
 
     def get_execution_info(self, driver_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
@@ -526,7 +535,7 @@ class FunctionActorManager(object):
         # Only send the warning once.
         warning_sent = False
         while True:
-            with self._worker.lock:
+            with self.lock:
                 if (self._worker.actor_id.is_nil()
                         and (function_descriptor.function_id in
                              self._function_execution_info[driver_id])):
@@ -534,18 +543,18 @@ class FunctionActorManager(object):
                 elif not self._worker.actor_id.is_nil() and (
                         self._worker.actor_id in self._worker.actors):
                     break
-                if time.time() - start_time > timeout:
-                    warning_message = ("This worker was asked to execute a "
-                                       "function that it does not have "
-                                       "registered. You may have to restart "
-                                       "Ray.")
-                    if not warning_sent:
-                        ray.utils.push_error_to_driver(
-                            self._worker,
-                            ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
-                            warning_message,
-                            driver_id=driver_id)
-                    warning_sent = True
+            if time.time() - start_time > timeout:
+                warning_message = ("This worker was asked to execute a "
+                                   "function that it does not have "
+                                   "registered. You may have to restart "
+                                   "Ray.")
+                if not warning_sent:
+                    ray.utils.push_error_to_driver(
+                        self._worker,
+                        ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
+                        warning_message,
+                        driver_id=driver_id)
+                warning_sent = True
             time.sleep(0.001)
 
     def _publish_actor_class_to_key(self, key, actor_class_info):
@@ -716,7 +725,7 @@ class FunctionActorManager(object):
 
         actor_class = None
         try:
-            with self._worker.lock:
+            with self.lock:
                 actor_class = pickle.loads(pickled_class)
         except Exception:
             logger.exception(

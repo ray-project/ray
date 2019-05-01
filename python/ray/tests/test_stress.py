@@ -133,7 +133,7 @@ def test_submitting_many_actors_to_one(ray_start_sharded):
             return ray.get(self.actor.ping.remote())
 
     a = Actor.remote()
-    workers = [Worker.remote(a) for _ in range(100)]
+    workers = [Worker.remote(a) for _ in range(10)]
     for _ in range(10):
         out = ray.get([w.ping.remote() for w in workers])
         assert out == [None for _ in workers]
@@ -196,7 +196,7 @@ def test_wait(ray_start_combination):
 def ray_start_reconstruction(request):
     num_nodes = request.param
 
-    plasma_store_memory = int(0.5 * 10**9)
+    plasma_store_memory = int(0.1 * 10**9)
 
     cluster = Cluster(
         initialize_head=True,

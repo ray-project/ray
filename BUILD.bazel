@@ -15,6 +15,7 @@ cc_binary(
     deps = [
         ":ray_util",
         ":raylet_lib",
+        "@com_github_gflags_gflags//:gflags",
     ],
 )
 

@@ -4,7 +4,9 @@ from __future__ import print_function
 
 import os
 import pytest
+import subprocess
 import sys
+import time
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -37,9 +39,8 @@ def start_ray():
     ray.shutdown()
 
 
-def test_ls(start_ray, tmpdir):
-    """This test captures output of list_trials."""
-    experiment_name = "test_ls"
+def test_time(start_ray, tmpdir):
+    experiment_name = "test_time"
     experiment_path = os.path.join(str(tmpdir), experiment_name)
     num_samples = 2
     tune.run_experiments({
@@ -52,11 +53,39 @@ def test_ls(start_ray, tmpdir):
             "local_dir": str(tmpdir)
         }
     })
+    times = []
+    for i in range(5):
+        start = time.time()
+        subprocess.check_call(["tune", "ls", experiment_path])
+        times += [time.time() - start]
 
+    assert sum(times) / len(times) < 2.0, "CLI is taking too long!"
+
+
+def test_ls(start_ray, tmpdir):
+    """This test captures output of list_trials."""
+    experiment_name = "test_ls"
+    experiment_path = os.path.join(str(tmpdir), experiment_name)
+    num_samples = 3
+    tune.run_experiments({
+        experiment_name: {
+            "run": "__fake",
+            "stop": {
+                "training_iteration": 1
+            },
+            "num_samples": num_samples,
+            "local_dir": str(tmpdir)
+        }
+    })
+
+    columns = ["status", "episode_reward_mean", "training_iteration"]
+    limit = 2
     with Capturing() as output:
-        commands.list_trials(experiment_path, info_keys=("status", ))
+        commands.list_trials(experiment_path, info_keys=columns, limit=limit)
     lines = output.captured
-    assert sum("TERMINATED" in line for line in lines) == num_samples
+    assert all(col in lines[1] for col in columns)
+    assert lines[1].count("|") == len(columns) + 1
+    assert len(lines) == 3 + limit + 1
 
     with Capturing() as output:
         commands.list_trials(
@@ -65,6 +94,7 @@ def test_ls(start_ray, tmpdir):
             filter_op="status == TERMINATED")
     lines = output.captured
     assert sum("TERMINATED" in line for line in lines) == num_samples
+    assert len(lines) == 3 + num_samples + 1
 
 
 def test_lsx(start_ray, tmpdir):
@@ -84,10 +114,14 @@ def test_lsx(start_ray, tmpdir):
             }
         })
 
+    limit = 2
     with Capturing() as output:
-        commands.list_experiments(project_path, info_keys=("total_trials", ))
+        commands.list_experiments(
+            project_path, info_keys=("total_trials", ), limit=limit)
     lines = output.captured
-    assert sum("1" in line for line in lines) >= num_experiments
+    assert "total_trials" in lines[1]
+    assert lines[1].count("|") == 2
+    assert len(lines) == 3 + limit + 1
 
     with Capturing() as output:
         commands.list_experiments(
