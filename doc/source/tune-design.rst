@@ -16,6 +16,7 @@ Tune's main components consist of TrialRunner, Trial objects, TrialExecutor, Sea
 
 TrialRunner
 ~~~~~~~~~~~
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_runner.py>`__]
 This is the main driver of the training loop. This component
 uses the TrialScheduler to prioritize and execute trials,
 queries the SearchAlgorithm for new
@@ -33,6 +34,7 @@ in case of machine failure.
 
 Trial objects
 ~~~~~~~~~~~~~
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__]
 This is an internal data structure that contains metadata about each training run. Each Trial
 object is mapped one-to-one with a Trainable object but are not themselves
 distributed/remote. Trial objects transition among
@@ -41,12 +43,13 @@ the following states: ``"PENDING"``, ``"RUNNING"``, ``"PAUSED"``, ``"ERRORED"``,
 
 TrialExecutor
 ~~~~~~~~~~~~~
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_executor.py>`__]
 The TrialExecutor is a component that interacts with the underlying execution framework.
 It also manages resources to ensure the cluster isn't overloaded. By default, the TrialExecutor uses Ray to execute trials.
 
 SearchAlg
 ~~~~~~~~~
-The SearchAlgorithm is a user-provided object
+[`source code <https://github.com/ray-project/ray/tree/master/python/ray/tune/suggest>`__] The SearchAlgorithm is a user-provided object
 that is used for querying new hyperparameter configurations to evaluate.
 
 SearchAlgorithms will be notified every time a trial finishes
@@ -55,7 +58,7 @@ errors, and every time a trial completes.
 
 TrialScheduler
 ~~~~~~~~~~~~~~
-TrialSchedulers operate over a set of possible trials to run,
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/schedulers>`__] TrialSchedulers operate over a set of possible trials to run,
 prioritizing trial execution given available cluster resources.
 
 TrialSchedulers are given the ability to kill or pause trials,
@@ -63,7 +66,7 @@ and also are given the ability to reorder/prioritize incoming trials.
 
 Trainables
 ~~~~~~~~~~
-
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trainable.py>`__]
 These are user-provided objects that are used for
 the training process. If a class is provided, it is expected to conform to the
 Trainable interface. If a function is provided. it is wrapped into a
