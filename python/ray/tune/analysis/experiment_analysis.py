@@ -54,10 +54,6 @@ class ExperimentAnalysis():
         flattened_checkpoints = [flatten_dict(c) for c in self._checkpoints]
         return pd.DataFrame(flattened_checkpoints)
 
-    def _checkpoints(self):
-        """Returns a dictionary of the trials."""
-        return self._checkpoints
-
     def stats(self):
         """Returns a dictionary of the statistics of the experiment."""
         return self._experiment_state.get("stats")
@@ -77,7 +73,7 @@ class ExperimentAnalysis():
 
     def get_best_config(self, metric):
         """Retrieve the best config from the best trial."""
-        return self.get_best_trial(metric)["config"]
+        return self._get_best_trial(metric)["config"]
 
     def _get_best_trial(self, metric):
         """Retrieve the best trial based on the experiment metric."""
