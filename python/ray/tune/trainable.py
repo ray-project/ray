@@ -297,7 +297,6 @@ class Trainable(object):
         if len(data_dict) > 10e6:  # getting pretty large
             logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
         out.write(data_dict)
-        import ipdb; ipdb.set_trace()
         shutil.rmtree(tmpdir)
         return out.getvalue()
 
