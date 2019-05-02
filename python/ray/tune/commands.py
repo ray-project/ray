@@ -13,7 +13,7 @@ import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from ray.tune.result import TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS
 from ray.tune.trial import Trial
-from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune import TuneError
 try:
     from tabulate import tabulate
