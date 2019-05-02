@@ -2576,3 +2576,34 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 2
     assert error_message1 in errors[1]["message"]
+
+
+def test_decorated_method(ray_start_regular):
+    def method_invocation_decorator(f):
+        def new_f_invocation(args, kwargs):
+            # Split one argument into two. Return th kwargs without passing
+            # them into the actor.
+            return f([args[0], args[0]], {}), kwargs
+
+        return new_f_invocation
+
+    def method_execution_decorator(f):
+        def new_f_execution(self, b, c):
+            # Turn two arguments into one.
+            return f(self, b + c)
+
+        new_f_execution.__ray_method_decorator__ = method_invocation_decorator
+        return new_f_execution
+
+    @ray.remote
+    class Actor(object):
+        @method_execution_decorator
+        def decorated_method(self, x):
+            return x + 1
+
+    a = Actor.remote()
+
+    object_id, extra = a.decorated_method.remote(3, kwarg=3)
+    assert isinstance(object_id, ray.ObjectID)
+    assert extra == {"kwarg": 3}
+    assert ray.get(object_id) == 7  # 2 * 3 + 1

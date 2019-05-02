@@ -113,6 +113,11 @@ class ActorMethod(object):
         self._actor = actor
         self._method_name = method_name
         self._num_return_vals = num_return_vals
+        # This is a decorator that is used to wrap the function invocation (as
+        # opposed to the function execution). The decorator must return a
+        # function that takes in two arguments ("args" and "kwargs"). In most
+        # cases, it should call the function that was passed into the decorator
+        # and return the resulting ObjectIDs.
         self._decorator = decorator
 
     def __call__(self, *args, **kwargs):
