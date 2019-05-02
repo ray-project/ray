@@ -330,6 +330,15 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
+        logger.info("Restored from checkpoint: {}".format(checkpoint_path))
+        state = {
+            "iter": self._iteration,
+            "ts": self._timesteps_total,
+            "time": self._time_total,
+            "eps": self._episodes_total
+        }
+        logger.info("Current state after restoring:" + ", ".join(
+            "{}: {}".format(k, v) for k, v in state.items()))
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
