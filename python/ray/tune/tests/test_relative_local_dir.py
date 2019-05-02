@@ -9,31 +9,29 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.agents.registry import get_agent_class
-from ray.tune.registry import register_trainable
+from ray.rllib import _register_all
 
 
 class TuneRelativeLocalDirTest(unittest.TestCase):
     @classmethod
     def setUpClass(self):
-        self.algo = 'PG'
-        register_trainable(self.algo, get_agent_class(self.algo))
         self.current_dir = os.path.abspath(".")
         ray.init(num_cpus=1, num_gpus=0, local_mode=True)
+        _register_all()
 
     @classmethod
     def tearDownClass(self):
         ray.shutdown()
 
     def tearDown(self):
-        os.chdir(self.current_dir)
+        os.chdir(self.current_dir) # Turn the current_dir back
 
     def testDottedRelativePath(self):
         local_dir = "test_dotted_relative_local_dir"
         local_dir = os.path.join(self.current_dir, local_dir)
 
         tune.run(
-            self.algo,
+            "PG",
             name="TuneDottedRelativeLocalDirTest",
             stop={"training_iteration": 1},
             checkpoint_freq=1,
@@ -47,13 +45,13 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(expdir))
         trial_dir = None
         for i in os.listdir(expdir):
-            if i.startswith(self.algo) and os.path.isdir(
+            if i.startswith("PG") and os.path.isdir(
                     os.path.join(expdir, i)):
                 trial_dir = os.path.join(expdir, i)
                 break
         self.assertTrue(
             os.path.isfile(
-                os.path.join(trial_dir, 'checkpoint_1/checkpoint-1')))
+                os.path.join(trial_dir, "checkpoint_1/checkpoint-1")))
         shutil.rmtree(local_dir)
 
     def testRelativePath(self):
@@ -61,7 +59,7 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         local_dir = os.path.join(self.current_dir, local_dir)
 
         tune.run(
-            self.algo,
+            "PG",
             name="TuneRelativeLocalDirTest",
             stop={"training_iteration": 1},
             checkpoint_freq=1,
@@ -75,12 +73,12 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(expdir))
 
         for i in os.listdir(expdir):
-            if i.startswith(self.algo) and os.path.isdir(
+            if i.startswith("PG") and os.path.isdir(
                     os.path.join(expdir, i)):
                 expdir = os.path.join(expdir, i)
                 break
         self.assertTrue(
-            os.path.isfile(os.path.join(expdir, 'checkpoint_1/checkpoint-1')))
+            os.path.isfile(os.path.join(expdir, "checkpoint_1/checkpoint-1")))
         shutil.rmtree(local_dir)
 
     def testAbsolutePath(self):
@@ -88,7 +86,7 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         local_dir = os.path.expanduser(local_dir)
 
         tune.run(
-            self.algo,
+            "PG",
             name="TuneAbsoluteLocalDirTest",
             stop={"training_iteration": 1},
             checkpoint_freq=1,
@@ -102,12 +100,12 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(expdir))
 
         for i in os.listdir(expdir):
-            if i.startswith(self.algo) \
+            if i.startswith("PG") \
                     and os.path.isdir(os.path.join(expdir, i)):
                 expdir = os.path.join(expdir, i)
                 break
         self.assertTrue(
-            os.path.isfile(os.path.join(expdir, 'checkpoint_1/checkpoint-1')))
+            os.path.isfile(os.path.join(expdir, "checkpoint_1/checkpoint-1")))
         shutil.rmtree(local_dir)
 
     def testTildeAbsolutePath(self):
@@ -115,7 +113,7 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         local_dir = os.path.expanduser(local_dir)
 
         tune.run(
-            self.algo,
+            "PG",
             name="TildeAbsolutePath",
             stop={"training_iteration": 1},
             checkpoint_freq=1,
@@ -129,12 +127,12 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(expdir))
 
         for i in os.listdir(expdir):
-            if i.startswith(self.algo) and os.path.isdir(
+            if i.startswith("PG") and os.path.isdir(
                     os.path.join(expdir, i)):
                 expdir = os.path.join(expdir, i)
                 break
         self.assertTrue(
-            os.path.isfile(os.path.join(expdir, 'checkpoint_1/checkpoint-1')))
+            os.path.isfile(os.path.join(expdir, "checkpoint_1/checkpoint-1")))
         shutil.rmtree(local_dir)
 
 
