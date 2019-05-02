@@ -38,7 +38,7 @@ PYTHON_EXECUTABLE=""
 BUILD_DIR=""
 
 # Parse options
-while [[ $# > 0 ]]; do
+while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
     -h|--help)
@@ -76,18 +76,23 @@ while [[ $# > 0 ]]; do
 done
 
 if [[ -z  "$PYTHON_EXECUTABLE" ]]; then
-  PYTHON_EXECUTABLE=`which python`
+  PYTHON_EXECUTABLE=$(which python)
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
+# Find the bazel executable. The script ci/travis/install-bazel.sh doesn't
+# always put the bazel executable on the PATH.
+BAZEL_EXECUTABLE=$(PATH="$PATH:$HOME/.bazel/bin" which bazel)
+echo "Using Bazel executable $BAZEL_EXECUTABLE."
+
 RAY_BUILD_PYTHON=$RAY_BUILD_PYTHON \
 RAY_BUILD_JAVA=$RAY_BUILD_JAVA \
-bash $ROOT_DIR/setup_thirdparty.sh $PYTHON_EXECUTABLE
+bash "$ROOT_DIR/setup_thirdparty.sh" "$PYTHON_EXECUTABLE"
 
 # Now we build everything.
 BUILD_DIR="$ROOT_DIR/build/"
 if [ ! -d "${BUILD_DIR}" ]; then
-mkdir -p ${BUILD_DIR}
+mkdir -p "${BUILD_DIR}"
 fi
 
 pushd "$BUILD_DIR"
@@ -96,16 +101,16 @@ pushd "$BUILD_DIR"
 # generated from https://github.com/ray-project/arrow-build from
 # the commit listed in the command.
 $PYTHON_EXECUTABLE -m pip install \
-    --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
+    --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.12.0.RAY \
     --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/ca1fa51f0901f5a4298f0e4faea00f24e5dd7bb7/index.html
 export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-  bazel build //java:all --verbose_failures
+  $BAZEL_EXECUTABLE build //java:all --verbose_failures
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-  bazel build //:ray_pkg --verbose_failures
+  $BAZEL_EXECUTABLE build //:ray_pkg --verbose_failures
 fi
 
 popd
