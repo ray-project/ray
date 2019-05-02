@@ -122,3 +122,20 @@ def test_raylet_tempfiles():
     socket_files = set(os.listdir(node.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
+
+
+def test_tempdir_privilege():
+    os.chmod("/tmp/ray", 0o000)
+    ray.init(num_cpus=1)
+    session_dir = ray.worker._global_node.get_session_dir_path()
+    assert os.path.exists(session_dir), "Specified socket path not found."
+    ray.shutdown()
+
+
+def test_session_dir_uniqueness():
+    session_dirs = set()
+    for _ in range(50):
+        ray.init(num_cpus=1)
+        session_dirs.add(ray.worker._global_node.get_session_dir_path)
+        ray.shutdown()
+    assert len(session_dirs) == 50
