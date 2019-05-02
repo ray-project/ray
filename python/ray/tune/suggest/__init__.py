@@ -4,9 +4,7 @@ from ray.tune.suggest.suggestion import SuggestionAlgorithm
 from ray.tune.suggest.variant_generator import grid_search
 
 __all__ = [
-    "SearchAlgorithm",
-    "BasicVariantGenerator",
-    "SuggestionAlgorithm",
+    "SearchAlgorithm", "BasicVariantGenerator", "SuggestionAlgorithm",
     "grid_search"
 ]
 

@@ -154,7 +154,6 @@ if __name__ == "__main__":
     datasets.MNIST("~/data", train=True, download=True)
     args = parser.parse_args()
 
-    import numpy as np
     import ray
     from ray import tune
     from ray.tune.schedulers import AsyncHyperBandScheduler
