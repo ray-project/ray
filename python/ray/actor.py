@@ -109,10 +109,11 @@ def method(*args, **kwargs):
 # Create objects to wrap method invocations. This is done so that we can
 # invoke methods with actor.method.remote() instead of actor.method().
 class ActorMethod(object):
-    def __init__(self, actor, method_name, num_return_vals):
+    def __init__(self, actor, method_name, num_return_vals, decorator=None):
         self._actor = actor
         self._method_name = method_name
         self._num_return_vals = num_return_vals
+        self._decorator = decorator
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actor methods cannot be called directly. Instead "
@@ -131,11 +132,18 @@ class ActorMethod(object):
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
-        return self._actor._actor_method_call(
-            self._method_name,
-            args=args,
-            kwargs=kwargs,
-            num_return_vals=num_return_vals)
+        def invocation(args, kwargs):
+            return self._actor._actor_method_call(
+                self._method_name,
+                args=args,
+                kwargs=kwargs,
+                num_return_vals=num_return_vals)
+
+        # Apply the decorator if there is one.
+        if self._decorator is not None:
+            invocation = self._decorator(invocation)
+
+        return invocation(args, kwargs)
 
 
 class ActorClass(object):
@@ -196,6 +204,7 @@ class ActorClass(object):
         # Extract the signatures of each of the methods. This will be used
         # to catch some errors if the methods are called with inappropriate
         # arguments.
+        self._method_decorators = {}
         self._method_signatures = {}
         self._actor_method_num_return_vals = {}
         for method_name, method in self._actor_methods:
@@ -213,6 +222,10 @@ class ActorClass(object):
             else:
                 self._actor_method_num_return_vals[method_name] = (
                     ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
+
+            if hasattr(method, "__ray_method_decorator__"):
+                self._method_decorators[method_name] = (
+                    method.__ray_method_decorator__)
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actors methods cannot be instantiated directly. "
@@ -337,9 +350,9 @@ class ActorClass(object):
 
         actor_handle = ActorHandle(
             actor_id, self._modified_class.__module__, self._class_name,
-            actor_cursor, self._actor_method_names, self._method_signatures,
-            self._actor_method_num_return_vals, actor_cursor, actor_method_cpu,
-            worker.task_driver_id)
+            actor_cursor, self._actor_method_names, self._method_decorators,
+            self._method_signatures, self._actor_method_num_return_vals,
+            actor_cursor, actor_method_cpu, worker.task_driver_id)
         # We increment the actor counter by 1 to account for the actor creation
         # task.
         actor_handle._ray_actor_counter += 1
@@ -381,6 +394,10 @@ class ActorHandle(object):
         _ray_actor_counter: The number of actor method invocations that we've
             called so far.
         _ray_actor_method_names: The names of the actor methods.
+        _ray_method_decorators: Optional decorators for the function
+            invocation. This can be used to change the behavior on the
+            invocation side, whereas a regular decorator can be used to change
+            the behavior on the execution side.
         _ray_method_signatures: The signatures of the actor methods.
         _ray_method_num_return_vals: The default number of return values for
             each method.
@@ -407,6 +424,7 @@ class ActorHandle(object):
                  class_name,
                  actor_cursor,
                  actor_method_names,
+                 method_decorators,
                  method_signatures,
                  method_num_return_vals,
                  actor_creation_dummy_object_id,
@@ -428,6 +446,7 @@ class ActorHandle(object):
         self._ray_actor_cursor = actor_cursor
         self._ray_actor_counter = 0
         self._ray_actor_method_names = actor_method_names
+        self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
         self._ray_method_num_return_vals = method_num_return_vals
         self._ray_class_name = class_name
@@ -530,8 +549,11 @@ class ActorHandle(object):
                 # this was causing cyclic references which were prevent
                 # object deallocation from behaving in a predictable
                 # manner.
-                return ActorMethod(self, attr,
-                                   self._ray_method_num_return_vals[attr])
+                return ActorMethod(
+                    self,
+                    attr,
+                    self._ray_method_num_return_vals[attr],
+                    decorator=self._ray_method_decorators.get(attr))
         except AttributeError:
             pass
 
@@ -600,6 +622,7 @@ class ActorHandle(object):
             "class_name": self._ray_class_name,
             "actor_cursor": self._ray_actor_cursor,
             "actor_method_names": self._ray_actor_method_names,
+            "method_decorators": self._ray_method_decorators,
             "method_signatures": self._ray_method_signatures,
             "method_num_return_vals": self._ray_method_num_return_vals,
             # Actors in local mode don't have dummy objects.
@@ -662,6 +685,7 @@ class ActorHandle(object):
             state["class_name"],
             state["actor_cursor"],
             state["actor_method_names"],
+            state["method_decorators"],
             state["method_signatures"],
             state["method_num_return_vals"],
             state["actor_creation_dummy_object_id"],
