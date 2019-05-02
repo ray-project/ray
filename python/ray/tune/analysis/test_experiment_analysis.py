@@ -22,7 +22,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.test_dir = "~/analysis_test"
         self.test_name = "analysis_exp"
         self.num_samples = 10
-        self.metric = "episode_reward_mean" 
+        self.metric = "episode_reward_mean"
         self.test_path = os.path.join(self.test_dir, self.test_name)
         self.run_test_exp()
 
@@ -51,7 +51,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
                 "config": {
                     "width": sample_from(
                         lambda spec: 10 + int(90 * random.random())),
-                    "height": sample_from(lambda spec: int(100 * random.random())),
+                    "height": sample_from(
+                        lambda spec: int(100 * random.random())),
                 },
             })
 
