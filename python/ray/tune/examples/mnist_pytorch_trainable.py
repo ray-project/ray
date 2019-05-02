@@ -193,9 +193,7 @@ if __name__ == "__main__":
             "checkpoint_at_end": True,
             "config": {
                 "args": args,
-                "lr": tune.sample_from(
-                    lambda spec: np.random.uniform(0.001, 0.1)),
-                "momentum": tune.sample_from(
-                    lambda spec: np.random.uniform(0.1, 0.9)),
+                "lr": tune.uniform(0.001, 0.1),
+                "momentum": tune.uniform(0.1, 0.9),
             }
         })
