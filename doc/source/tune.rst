@@ -27,7 +27,7 @@ Features
 
 *  Mix and match different hyperparameter optimization approaches - such as using `HyperOpt with HyperBand`_ or `Nevergrad with HyperBand`_.
 
-*  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `parallel coordinates (Plot.ly) <https://plot.ly/python/parallel-coordinates-plot/>`__, and `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__.
+*  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__ and `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__.
 
 *  Scale to running on a large distributed cluster without changing your code.
 
