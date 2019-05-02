@@ -72,11 +72,11 @@ if __name__ == "__main__":
         },
         num_samples=10,
         resources_per_trial={
-            "cpu": 2
+            "cpu": 2,
             "gpu": 0
         },
         config={
-            "threads": 2
+            "threads": 2,
             "lr": tune.sample_from(lambda spec: np.random.uniform(0.001, 0.1)),
             "momentum": tune.sample_from(
                 lambda spec: np.random.uniform(0.1, 0.9)),
