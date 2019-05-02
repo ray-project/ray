@@ -27,9 +27,15 @@ EDITOR = os.getenv("EDITOR", "vim")
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S (%A)"
 
-DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", "experiment_tag", "trial_id",
-                                "status", "last_update_time",
-                                TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS)
+DEFAULT_EXPERIMENT_INFO_KEYS = (
+    "trainable_name",
+    "experiment_tag",
+    "trial_id",
+    "status",
+    "last_update_time",
+)
+
+DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS)
 
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
@@ -39,8 +45,6 @@ DEFAULT_PROJECT_INFO_KEYS = (
     "error_trials",
     "last_updated",
 )
-
-UNNEST_KEYS = ("config", "last_result")
 
 try:
     TERM_HEIGHT, TERM_WIDTH = subprocess.check_output(["stty", "size"]).split()
@@ -126,42 +130,35 @@ def list_trials(experiment_path,
                 output=None,
                 filter_op=None,
                 info_keys=None,
-                limit=None,
-                desc=False):
+                result_keys=None):
     """Lists trials in the directory subtree starting at the given path.
 
     Args:
         experiment_path (str): Directory where trials are located.
             Corresponds to Experiment.local_dir/Experiment.name.
-        sort (list): Keys to sort by.
+        sort (str): Key to sort by.
         output (str): Name of file where output is saved.
         filter_op (str): Filter operation in the format
             "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
-        limit (int): Number of rows to display.
-        desc (bool): Sort ascending vs. descending.
+        result_keys (list): Keys of last result that are displayed.
     """
     _check_tabulate()
     experiment_state = _get_experiment_state(
         experiment_path, exit_on_fail=True)
 
-    checkpoints = experiment_state["checkpoints"]
-
-    checkpoint_dicts = []
-    for g in checkpoints:
-        for key in UNNEST_KEYS:
-            if key not in g:
-                continue
-            unnest_dict = flatten_dict(g.pop(key))
-            g.update(unnest_dict)
-        g = flatten_dict(g)
-        checkpoint_dicts.append(g)
-
+    checkpoint_dicts = experiment_state["checkpoints"]
+    checkpoint_dicts = [flatten_dict(g) for g in checkpoint_dicts]
     checkpoints_df = pd.DataFrame(checkpoint_dicts)
 
     if not info_keys:
         info_keys = DEFAULT_EXPERIMENT_INFO_KEYS
-    col_keys = [k for k in list(info_keys) if k in checkpoints_df]
+    if not result_keys:
+        result_keys = DEFAULT_RESULT_KEYS
+    result_keys = ["last_result:{}".format(k) for k in result_keys]
+    col_keys = [
+        k for k in list(info_keys) + result_keys if k in checkpoints_df
+    ]
     checkpoints_df = checkpoints_df[col_keys]
 
     if "last_update_time" in checkpoints_df:
@@ -186,7 +183,7 @@ def list_trials(experiment_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise ValueError("Unsupported dtype for {}: {}".format(
+            raise ValueError("Unsupported dtype for \"{}\": {}".format(
                 val, col_type))
         op = OPERATORS[op]
         filtered_index = op(checkpoints_df[col], val)
@@ -194,13 +191,9 @@ def list_trials(experiment_path,
 
     if sort:
         if sort not in checkpoints_df:
-            raise KeyError("{} not in: {}".format(sort, list(checkpoints_df)))
-        ascending = not desc
-        checkpoints_df = checkpoints_df.sort_values(
-            by=sort, ascending=ascending)
-
-    if limit:
-        checkpoints_df = checkpoints_df[:limit]
+            raise KeyError("Sort Index \"{}\" not in: {}".format(
+                sort, list(checkpoints_df)))
+        checkpoints_df = checkpoints_df.sort_values(by=sort)
 
     print_format_output(checkpoints_df)
 
@@ -219,21 +212,17 @@ def list_experiments(project_path,
                      sort=None,
                      output=None,
                      filter_op=None,
-                     info_keys=None,
-                     limit=None,
-                     desc=False):
+                     info_keys=None):
     """Lists experiments in the directory subtree.
 
     Args:
         project_path (str): Directory where experiments are located.
             Corresponds to Experiment.local_dir.
-        sort (list): Keys to sort by.
+        sort (str): Key to sort by.
         output (str): Name of file where output is saved.
         filter_op (str): Filter operation in the format
             "<column> <operator> <value>".
         info_keys (list): Keys that are displayed.
-        limit (int): Number of rows to display.
-        desc (bool): Sort ascending vs. descending.
     """
     _check_tabulate()
     base, experiment_folders, _ = next(os.walk(project_path))
@@ -295,7 +284,7 @@ def list_experiments(project_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise ValueError("Unsupported dtype for {}: {}".format(
+            raise ValueError("Unsupported dtype for \"{}\": {}".format(
                 val, col_type))
         op = OPERATORS[op]
         filtered_index = op(info_df[col], val)
@@ -303,12 +292,9 @@ def list_experiments(project_path,
 
     if sort:
         if sort not in info_df:
-            raise KeyError("{} not in: {}".format(sort, list(info_df)))
-        ascending = not desc
-        info_df = info_df.sort_values(by=sort, ascending=ascending)
-
-    if limit:
-        info_df = info_df[:limit]
+            raise KeyError("Sort Index \"{}\" not in: {}".format(
+                sort, list(info_df)))
+        info_df = info_df.sort_values(by=sort)
 
     print_format_output(info_df)
 

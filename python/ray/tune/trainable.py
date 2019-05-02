@@ -2,16 +2,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from datetime import datetime
+
 import copy
 import io
 import logging
 import os
 import pickle
+from six import string_types
 import shutil
 import tempfile
 import time
 import uuid
-from datetime import datetime
 
 import ray
 from ray.tune.logger import UnifiedLogger
@@ -20,7 +22,6 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
                              TRAINING_ITERATION, RESULT_DUPLICATE)
 from ray.tune.trial import Resources
-from six import string_types
 
 logger = logging.getLogger(__name__)
 
@@ -310,6 +311,7 @@ class Trainable(object):
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
         """
+
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
