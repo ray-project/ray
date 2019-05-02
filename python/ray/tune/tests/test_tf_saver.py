@@ -6,6 +6,7 @@ import numpy as np
 import unittest
 
 import ray
+from ray import tune
 from ray.tune import sample_from
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.examples.tune_mnist_ray_hyperband import TrainMNIST

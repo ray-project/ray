@@ -27,7 +27,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import os
 import time
 
 import ray
@@ -234,7 +233,6 @@ if __name__ == "__main__":
     ray.init()
     hyperband = HyperBandScheduler(
         time_attr="training_iteration", reward_attr="mean_accuracy", max_t=10)
-
 
     tune.run(
         TrainMNIST,

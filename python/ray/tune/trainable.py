@@ -242,7 +242,7 @@ class Trainable(object):
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
             if (not (checkpoint.startswith(checkpoint_dir)
-                    or checkpoint == checkpoint_dir)):
+                     or checkpoint == checkpoint_dir)):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
