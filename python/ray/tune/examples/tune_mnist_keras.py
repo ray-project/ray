@@ -50,6 +50,11 @@ def train_mnist(config, reporter):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    args, _ = parser.parse_known_args()
+
     import ray
     from ray import tune
     from ray.tune.schedulers import AsyncHyperBandScheduler
@@ -68,7 +73,7 @@ if __name__ == "__main__":
         scheduler=sched,
         stop={
             "mean_accuracy": 0.99,
-            "timesteps_total": 300
+            "training_iteration": 5 if args.smoke_test else 300
         },
         num_samples=10,
         resources_per_trial={
