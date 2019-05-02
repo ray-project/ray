@@ -247,10 +247,6 @@ class Trainable(object):
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
                         checkpoint_dir, checkpoint))
-            # if not os.path.exists(checkpoint):
-            #     raise ValueError(
-            #         "The returned checkpoint path does not exist: {}".format(
-            #             checkpoint))
             checkpoint_path = checkpoint
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
@@ -283,21 +279,14 @@ class Trainable(object):
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
 
+        # Save all files in subtree.
         data = {}
-        # base_dir = os.path.dirname(checkpoint_prefix)
         for basedir, _, file_names in os.walk(tmpdir):
             for file_name in file_names:
                 path = os.path.join(basedir, file_name)
 
                 with open(path, "rb") as f:
                     data[os.path.relpath(path, tmpdir)] = f.read()
-
-
-        # for path in os.listdir(base_dir):
-        #     path = os.path.join(base_dir, path)
-        #     if path.startswith(checkpoint_prefix):
-        #         with open(path, "rb") as f:
-        #             data[os.path.basename(path)] = f.read()
 
         out = io.BytesIO()
         data_dict = pickle.dumps({
@@ -320,7 +309,6 @@ class Trainable(object):
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
         """
-        import ipdb; ipdb.set_trace()
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
@@ -350,7 +338,7 @@ class Trainable(object):
         data = info["data"]
         tmpdir = info["savedir"]
         if not os.path.exists(tmpdir):
-            # We recreate the same file.
+            # We recreate the same subtree and path.
             os.makedirs(tmpdir)
 
         checkpoint_path = info["checkpoint_path"]
