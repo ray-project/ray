@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import glob
 import json
 import logging
@@ -20,13 +21,17 @@ UNNEST_KEYS = ("config", "last_result")
 def unnest_checkpoints(checkpoints):
     checkpoint_dicts = []
     for g in checkpoints:
+        checkpoint = copy.deepcopy(g)
         for key in UNNEST_KEYS:
-            if key not in g:
+            if key not in checkpoint:
                 continue
-            unnest_dict = flatten_dict(g.pop(key))
-            g.update(unnest_dict)
-        g = flatten_dict(g)
-        checkpoint_dicts.append(g)
+            try:
+                unnest_dict = flatten_dict(checkpoint.pop(key))
+                checkpoint.update(unnest_dict)
+            except Exception:
+                logger.debug("Failed to flatten dict.")
+        checkpoint = flatten_dict(checkpoint)
+        checkpoint_dicts.append(checkpoint)
     return checkpoint_dicts
 
 
@@ -59,12 +64,12 @@ class ExperimentAnalysis():
 
         if "checkpoints" not in self._experiment_state:
             raise TuneError("Experiment state invalid; no checkpoints found.")
-        self._checkpoints = unnest_checkpoints(
-            self._experiment_state["checkpoints"])
+        self._checkpoints = self._experiment_state["checkpoints"]
+        self._scrubbed_checkpoints = unnest_checkpoints(self._checkpoints)
 
     def dataframe(self):
         """Returns a pandas.DataFrame object constructed from the trials."""
-        return pd.DataFrame(self._checkpoints)
+        return pd.DataFrame(self._scrubbed_checkpoints)
 
     def stats(self):
         """Returns a dictionary of the statistics of the experiment."""
@@ -75,13 +80,13 @@ class ExperimentAnalysis():
         return self._experiment_state.get("runner_data")
 
     def trial_dataframe(self, trial_id):
-        """Returns a pandas.DataFrame constructed from one trial.
-
-        TODO:
-            This should read the entire progress.csv of the trial.
-        """
-        df = self.dataframe()
-        return df.loc[df["trial_id"] == trial_id]
+        """Returns a pandas.DataFrame constructed from one trial."""
+        for checkpoint in self._checkpoints:
+            if checkpoint["trial_id"] == trial_id:
+                logdir = checkpoint["logdir"]
+                progress = max(glob.glob(os.path.join(logdir, "progress.csv")))
+                return pd.read_csv(progress)
+        raise ValueError("Trial id {} not found".format(trial_id))
 
     def get_best_trainable(self, metric):
         """Returns the best Trainable based on the experiment metric."""

@@ -9,9 +9,9 @@ import random
 import os
 import pandas as pd
 
-from experiment_analysis import ExperimentAnalysis
 import ray
 from ray.tune import run, sample_from, Trainable
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
