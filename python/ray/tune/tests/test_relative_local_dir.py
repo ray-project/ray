@@ -107,7 +107,7 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         local_dir = "~/test_tilde_absolute_local_dir"
         local_dir = os.path.expanduser(local_dir)
 
-        tune.run('PG',
+        tune.run("PG",
                  name="TildeAbsolutePath",
                  stop={"training_iteration": 1},
                  checkpoint_freq=1,
