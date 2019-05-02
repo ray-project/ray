@@ -2892,3 +2892,13 @@ def test_redis_lru_with_set(ray_start_object_store_memory):
 
     # Now evict the object from the object store.
     ray.put(x)  # This should not crash.
+
+
+def test_get_postprocess(ray_start_regular):
+    def get_postprocessor(object_ids, values):
+        return [value for value in values if value > 0]
+
+    ray.worker.global_worker._post_get_hooks.append(get_postprocessor)
+
+    assert ray.get(
+        [ray.put(i) for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
