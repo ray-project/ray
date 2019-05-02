@@ -327,10 +327,23 @@ The following fields will automatically show up on the console output, if provid
     Example_0:  TERMINATED [pid=68248], 179 s, 2 iter, 60000 ts, 94 rew
 
 
-Logging and Visualizing Results
--------------------------------
+Logging, Analyzing, and Visualizing Results
+-------------------------------------------
 
-All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node. The log records are compatible with a number of visualization tools:
+All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node. 
+
+Tune provides an ExperimentAnalysis object for analyzing results which can be used by providing the directory path as follows:
+
+.. code-block:: python
+
+    from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
+
+    ea = ExperimentAnalysis("~/ray_results/my_experiment")
+    trials_dataframe = ea.dataframe()
+    best_trainable = ea.get_best_trainable("my_experiment_metric")
+    ...
+
+You can check out `experiment_analysis.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/analysis/experiment_analysis.py>`__ for more interesting analysis operations.
 
 To visualize learning in tensorboard, install TensorFlow:
 
