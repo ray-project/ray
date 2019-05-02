@@ -15,7 +15,7 @@ from ray.rllib import _register_all
 
 class TuneRestoreTest(unittest.TestCase):
     def setUp(self):
-        self.curdir = os.path.abspath('.')
+        self.curdir = os.path.abspath(".")
         ray.init(num_cpus=1, num_gpus=0, local_mode=True)
         _register_all()
         tmpdir = tempfile.mkdtemp()
