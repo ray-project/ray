@@ -330,18 +330,16 @@ The following fields will automatically show up on the console output, if provid
 Logging, Analyzing, and Visualizing Results
 -------------------------------------------
 
-All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node. 
+All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
 
-Tune provides an ExperimentAnalysis object for analyzing results which can be used by providing the directory path as follows:
+Tune provides an ``ExperimentAnalysis`` object for analyzing results which can be used by providing the directory path as follows:
 
 .. code-block:: python
 
-    from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
+    from ray.tune.analysis import ExperimentAnalysis
 
     ea = ExperimentAnalysis("~/ray_results/my_experiment")
     trials_dataframe = ea.dataframe()
-    best_trainable = ea.get_best_trainable("my_experiment_metric")
-    ...
 
 You can check out `experiment_analysis.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/analysis/experiment_analysis.py>`__ for more interesting analysis operations.
 
