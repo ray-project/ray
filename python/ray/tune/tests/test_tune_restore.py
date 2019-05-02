@@ -3,13 +3,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import glob
 import os
 import tempfile
 import unittest
 
 import ray
 from ray import tune
+from ray.tune.util import recursive_fnmatch
 from ray.rllib import _register_all
 
 
@@ -33,9 +33,7 @@ class TuneRestoreTest(unittest.TestCase):
 
         logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
         self.logdir = logdir
-        self.checkpoint_path = glob.glob(
-            os.path.join(logdir, "**/checkpoint_1/checkpoint-1"),
-            recursive=True)[0]
+        self.checkpoint_path = recursive_fnmatch(logdir, "checkpoint-1")[0]
 
     def tearDown(self):
         import shutil
