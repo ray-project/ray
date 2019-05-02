@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import numpy as np
 import keras
 from keras.datasets import mnist
@@ -10,6 +11,11 @@ from keras.layers import (Dense, Dropout, Flatten, Conv2D, MaxPooling2D)
 
 from ray.tune.examples.utils import (TuneKerasCallback, get_mnist_data,
                                      set_keras_threads)
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--smoke-test", action="store_true", help="Finish quickly for testing")
+args, _ = parser.parse_known_args()
 
 
 def train_mnist(config, reporter):
@@ -50,11 +56,6 @@ def train_mnist(config, reporter):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
-    args, _ = parser.parse_known_args()
-
     import ray
     from ray import tune
     from ray.tune.schedulers import AsyncHyperBandScheduler
