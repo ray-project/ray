@@ -35,7 +35,7 @@ def unnest_checkpoints(checkpoints):
     return checkpoint_dicts
 
 
-class ExperimentAnalysis():
+class ExperimentAnalysis(object):
     """Analyze results from a Tune experiment.
 
     Parameters:
