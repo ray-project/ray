@@ -3,20 +3,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import os
-import shutil
 import tempfile
 import unittest
 
 import ray
 from ray import tune
-from ray.tune.util import recursive_fnmatch
 from ray.rllib import _register_all
 
 
 class TuneRestoreTest(unittest.TestCase):
     def setUp(self):
+        self.curdir = os.path.abspath('.')
         ray.init(num_cpus=1, num_gpus=0, local_mode=True)
+        _register_all()
         tmpdir = tempfile.mkdtemp()
         test_name = "TuneRestoreTest"
         tune.run(
@@ -32,12 +33,15 @@ class TuneRestoreTest(unittest.TestCase):
 
         logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
         self.logdir = logdir
-        self.checkpoint_path = recursive_fnmatch(logdir, "checkpoint-1")[0]
+        self.checkpoint_path = glob.glob(
+            os.path.join(logdir, "**/checkpoint_1/checkpoint-1"),
+            recursive=True)[0]
 
     def tearDown(self):
+        import shutil
         shutil.rmtree(self.logdir)
         ray.shutdown()
-        _register_all()
+        os.chdir(self.curdir)
 
     def testTuneRestore(self):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
