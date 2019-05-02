@@ -10,7 +10,7 @@ import os
 import pandas as pd
 
 import ray
-from ray.tune import run, sample_from, Trainable
+from ray.tune import run, sample_from
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 from ray.tune.schedulers import AsyncHyperBandScheduler
@@ -73,9 +73,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertEqual(trial_df.shape[0], 1)
 
     def testBestTrainable(self):
-        best_trainable = self.ea.get_best_trainable(self.metric)
+        best_trainable = self.ea.get_best_trainable(self.metric,
+                                                    MyTrainableClass)
 
-        self.assertTrue(isinstance(best_trainable, Trainable))
+        self.assertTrue(isinstance(best_trainable, MyTrainableClass))
 
     def testBestConfig(self):
         best_config = self.ea.get_best_config(self.metric)

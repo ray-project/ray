@@ -11,7 +11,6 @@ import pandas as pd
 
 from ray.tune.error import TuneError
 from ray.tune.util import flatten_dict
-from ray.tune.trainable import Trainable
 
 logger = logging.getLogger(__name__)
 
@@ -88,9 +87,9 @@ class ExperimentAnalysis(object):
                 return pd.read_csv(progress)
         raise ValueError("Trial id {} not found".format(trial_id))
 
-    def get_best_trainable(self, metric):
+    def get_best_trainable(self, metric, trainable_cls):
         """Returns the best Trainable based on the experiment metric."""
-        return Trainable(config=self.get_best_config(metric))
+        return trainable_cls(config=self.get_best_config(metric))
 
     def get_best_config(self, metric):
         """Retrieve the best config from the best trial."""
