@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import glob
-import json
 import logging
 import os
 import sys
@@ -13,7 +11,6 @@ from datetime import datetime
 
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
-from ray.tune.util import flatten_dict
 from ray.tune.result import TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS
 from ray.tune.trial import Trial
 from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
@@ -41,8 +38,6 @@ DEFAULT_PROJECT_INFO_KEYS = (
     "error_trials",
     "last_updated",
 )
-
-UNNEST_KEYS = ("config", "last_result")
 
 try:
     TERM_HEIGHT, TERM_WIDTH = subprocess.check_output(["stty", "size"]).split()
@@ -106,23 +101,6 @@ def print_format_output(dataframe):
     return table, dropped_cols, empty_cols
 
 
-def _get_experiment_state(experiment_path, exit_on_fail=False):
-    experiment_path = os.path.expanduser(experiment_path)
-    experiment_state_paths = glob.glob(
-        os.path.join(experiment_path, "experiment_state*.json"))
-    if not experiment_state_paths:
-        if exit_on_fail:
-            print("No experiment state found!")
-            sys.exit(0)
-        else:
-            return
-    experiment_filename = max(list(experiment_state_paths))
-
-    with open(experiment_filename) as f:
-        experiment_state = json.load(f)
-    return experiment_state
-
-
 def list_trials(experiment_path,
                 sort=None,
                 output=None,
@@ -144,20 +122,6 @@ def list_trials(experiment_path,
         desc (bool): Sort ascending vs. descending.
     """
     _check_tabulate()
-    experiment_state = _get_experiment_state(
-        experiment_path, exit_on_fail=True)
-
-    checkpoints = experiment_state["checkpoints"]
-
-    checkpoint_dicts = []
-    for g in checkpoints:
-        for key in UNNEST_KEYS:
-            if key not in g:
-                continue
-            unnest_dict = flatten_dict(g.pop(key))
-            g.update(unnest_dict)
-        g = flatten_dict(g)
-        checkpoint_dicts.append(g)
 
     try:
         checkpoints_df = ExperimentAnalysis(experiment_path).dataframe()

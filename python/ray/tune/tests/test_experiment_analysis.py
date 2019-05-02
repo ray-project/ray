@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import unittest
 import shutil
+import tempfile
 import random
 import os
 import pandas as pd
@@ -17,9 +18,9 @@ from ray.tune.schedulers import AsyncHyperBandScheduler
 
 class ExperimentAnalysisSuite(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(local_mode=True)
 
-        self.test_dir = "~/analysis_test"
+        self.test_dir = tempfile.mkdtemp()
         self.test_name = "analysis_exp"
         self.num_samples = 10
         self.metric = "episode_reward_mean"
@@ -29,7 +30,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.ea = ExperimentAnalysis(self.test_path)
 
     def tearDown(self):
-        self.remove_test_exp()
+        shutil.rmtree(self.test_dir, ignore_errors=True)
         ray.shutdown()
 
     def run_test_exp(self):
@@ -55,9 +56,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
                         lambda spec: int(100 * random.random())),
                 },
             })
-
-    def remove_test_exp(self):
-        shutil.rmtree(os.path.expanduser(self.test_dir), ignore_errors=True)
 
     def testDataframe(self):
         df = self.ea.dataframe()

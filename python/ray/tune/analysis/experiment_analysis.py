@@ -2,15 +2,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import json
 import logging
 import os
 import pandas as pd
 
+from ray.tune.error import TuneError
 from ray.tune.util import flatten_dict
 from ray.tune.trainable import Trainable
 
 logger = logging.getLogger(__name__)
+
+UNNEST_KEYS = ("config", "last_result")
+
+
+def unnest_checkpoints(checkpoints):
+    checkpoint_dicts = []
+    for g in checkpoints:
+        for key in UNNEST_KEYS:
+            if key not in g:
+                continue
+            unnest_dict = flatten_dict(g.pop(key))
+            g.update(unnest_dict)
+        g = flatten_dict(g)
+        checkpoint_dicts.append(g)
+    return checkpoint_dicts
 
 
 class ExperimentAnalysis():
@@ -29,30 +46,25 @@ class ExperimentAnalysis():
     def __init__(self, experiment_path):
         experiment_path = os.path.expanduser(experiment_path)
         if not os.path.isdir(experiment_path):
-            raise ValueError(
+            raise TuneError(
                 "{} is not a valid directory.".format(experiment_path))
-        (self._experiment_dir, self._experiment_trials,
-         experiment_state_paths) = next(os.walk(experiment_path))
-        if len(self._experiment_trials) == 0:
-            raise ValueError("This is not a valid directory"
-                             "because it has zero trial directories.")
-        if len(experiment_state_paths) == 0:
-            raise ValueError("This is not a valid directory"
-                             "because it has no experiment state JSON file.")
+        experiment_state_paths = glob.glob(
+            os.path.join(experiment_path, "experiment_state*.json"))
+        if not experiment_state_paths:
+            raise TuneError("No experiment state found!")
         experiment_filename = max(
             list(experiment_state_paths))  # if more than one, pick latest
         with open(os.path.join(experiment_path, experiment_filename)) as f:
             self._experiment_state = json.load(f)
 
         if "checkpoints" not in self._experiment_state:
-            raise ValueError("The experiment state JSON file is not valid"
-                             "because it must have checkpoints.")
-        self._checkpoints = self._experiment_state["checkpoints"]
+            raise TuneError("Experiment state invalid; no checkpoints found.")
+        self._checkpoints = unnest_checkpoints(
+            self._experiment_state["checkpoints"])
 
     def dataframe(self):
         """Returns a pandas.DataFrame object constructed from the trials."""
-        flattened_checkpoints = [flatten_dict(c) for c in self._checkpoints]
-        return pd.DataFrame(flattened_checkpoints)
+        return pd.DataFrame(self._checkpoints)
 
     def stats(self):
         """Returns a dictionary of the statistics of the experiment."""
@@ -63,7 +75,11 @@ class ExperimentAnalysis():
         return self._experiment_state.get("runner_data")
 
     def trial_dataframe(self, trial_id):
-        """Returns a pandas.DataFrame constructed from one trial."""
+        """Returns a pandas.DataFrame constructed from one trial.
+
+        TODO:
+            This should read the entire progress.csv of the trial.
+        """
         df = self.dataframe()
         return df.loc[df["trial_id"] == trial_id]
 
