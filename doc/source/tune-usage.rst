@@ -121,13 +121,13 @@ Restoring or Resuming Previous Experiments
 Restoring and resuming are useful features allowing you to restore and continue previous experiments.
 
 The ``resume=True`` argument passing into ``tune.run`` enables you to continue an uncompleted experiment until the stop criterion is matched.
-You can set ``resume='prompt'`` and specify an experiment's name, so that ray will automatically detect uncompleted experiment with the same experiment name and continue it.
+You can set ``resume='prompt'`` and specify an experiment's name so that ray will automatically detect uncompleted experiment with the same experiment name and continue it.
 
 Note that whatever modifications on the experiment setting will be ignored when resuming from previous experiments.
-For example, if previous experiment has reached it's termination, then resuming it with a new stop criterion makes no effect: the new experiment will terminate immediately after initialization.
-To change the setting, you need to use ``restore`` argument and specify a checkpoint file. By doing this you can change whatever experiments' configuration such as the experiment's name, the training iteration or so.
+For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion makes no effect: the new experiment will terminate immediately after initialization.
+To change the setting, you need to use ``restore`` argument and specify a checkpoint file. By doing this, you can change whatever experiments' configuration such as the experiment's name, the training iteration or so.
 
-It's important to set ``checkpoint_freq=<int>`` or ``checkpoint_at_end=True`` in the previous experiment, otherwise the checkpoint files would not generated!
+It's important to set ``checkpoint_freq=<int>`` or ``checkpoint_at_end=True`` in the previous experiment; otherwise, the checkpoint files would not be generated!
 Note that a checkpoint file typically has path likes ``~/ray_results/exp_name/trial_name/checkpoint_1/checkpoint-1``.
 
 .. code-block:: python
