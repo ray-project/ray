@@ -2206,19 +2206,8 @@ def get(object_ids):
         return values
 
         # post process
-        tf_indices = [
-            i for i, object_id in enumerate(object_ids)
-            if object_id.__class__.__name__ == "TFObjectID"
-        ]
-        if len(tf_indices) > 0:
-            import ray.experimental.tf_utils as tf_utils
-            processed_results = tf_utils._post_process_get(
-                [object_ids[i] for i in tf_indices],
-                [values[i] for i in tf_indices],
-            )
-            assert len(processed_results) == len(tf_indices)
-            for index, result in zip(tf_indices, processed_results):
-                values[index] = result
+        for post_processor in worker._post_get_hooks:
+            values = post_processor(object_ids, values)
 
         if is_individual_id:
             values = values[0]

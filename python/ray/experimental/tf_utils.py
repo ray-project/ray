@@ -974,3 +974,38 @@ def _post_process_get(tf_object_ids, results):
             unpacked_results_stitched_together.append(
                 unpacked_other_results.pop(0))
     return unpacked_results_stitched_together
+
+
+def _post_process_raw_get(object_ids, values):
+    """Post process the TensorFlow values returned by ray.get.
+
+    This ignores the non-TensorFlow objects and passes the rest into
+    _post_process_get.
+
+    Args:
+        object_ids: The object IDs that were passed into ray.get.
+        values: The values that would be returned from ray.get without this
+            post processor.
+
+    Returns:
+        The same list as values, but the values corresponding to TFObjectIDs
+            are replaced with tensors.
+    """
+    tf_indices = [
+        i for i, object_id in enumerate(object_ids)
+        if isinstance(object_id, TFObjectID)
+    ]
+    if len(tf_indices) > 0:
+        processed_results = _post_process_get(
+            [object_ids[i] for i in tf_indices],
+            [values[i] for i in tf_indices],
+        )
+        assert len(processed_results) == len(tf_indices)
+        for index, result in zip(tf_indices, processed_results):
+            values[index] = result
+
+    return values
+
+
+if _post_process_raw_get not in ray.worker.global_worker._post_get_hooks:
+    ray.worker.global_worker._post_get_hooks.append(_post_process_raw_get)

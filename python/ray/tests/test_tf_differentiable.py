@@ -200,8 +200,8 @@ def check_outputs(out_1, out_2):
 # Test that decorated function behaves like a normal Python function.
 
 
-# Test behaviour with native Python args.
-def test_func_behav_simple(ray_start_regular, actors):
+# Test behavior with native Python args.
+def test_func_behavior_simple(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     x = [1, 2, 3]
@@ -212,8 +212,8 @@ def test_func_behav_simple(ray_start_regular, actors):
     check_outputs(out_hat, out)
 
 
-# Test behaviour with heterogenous TF + native Python args.
-def test_func_behav_complex(ray_start_regular, actors):
+# Test behavior with heterogenous TF + native Python args.
+def test_func_behavior_complex(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     i_1 = tf.Variable(2.0, dtype=tf.float64)
@@ -228,8 +228,8 @@ def test_func_behav_complex(ray_start_regular, actors):
     check_outputs(out_hat, out)
 
 
-# Test behaviour with heterogenous TF + native Python args and kwargs.
-def test_func_behav_complex_kwargs(ray_start_regular, actors):
+# Test behavior with heterogenous TF + native Python args and kwargs.
+def test_func_behavior_complex_kwargs(ray_start_regular, actors):
     ray_actor, dummy_actor = actors
 
     i_1 = tf.Variable(2.0, dtype=tf.float64)
