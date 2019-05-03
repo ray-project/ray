@@ -62,7 +62,7 @@ For Ubuntu, run the following commands:
 .. code-block:: bash
 
   sudo apt-get update
-  sudo apt-get install -y build-essential curl unzip psmisc python # we install python here because python2 is required to build the webui
+  sudo apt-get install -y build-essential curl unzip psmisc
 
   # If you are not using Anaconda, you need the following.
   sudo apt-get install python-dev  # For Python 2.
