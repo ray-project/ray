@@ -2894,6 +2894,25 @@ def test_redis_lru_with_set(ray_start_object_store_memory):
     ray.put(x)  # This should not crash.
 
 
+def test_decorated_function(ray_start_regular):
+    def function_invocation_decorator(f):
+        def new_f(args, kwargs):
+            # Reverse the arguments.
+            return f(args[::-1], {"d": 5}), kwargs
+
+        return new_f
+
+    def f(a, b, c, d=None):
+        return a, b, c, d
+
+    f.__ray_invocation_decorator__ = function_invocation_decorator
+    f = ray.remote(f)
+
+    result_id, kwargs = f.remote(1, 2, 3, d=4)
+    assert kwargs == {"d": 4}
+    assert ray.get(result_id) == (3, 2, 1, 5)
+
+
 def test_get_postprocess(ray_start_regular):
     def get_postprocessor(object_ids, values):
         return [value for value in values if value > 0]

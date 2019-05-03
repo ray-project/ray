@@ -192,8 +192,8 @@ class ActorClass(object):
         _actor_methods: The actor methods.
         _method_decorators: Optional decorators that should be applied to the
             method invocation function before invoking the actor methods. These
-            can be set by attaching the attribute "__ray_method_decorator__" to
-            the actor method.
+            can be set by attaching the attribute
+            "__ray_invocation_decorator__" to the actor method.
         _method_signatures: The signatures of the methods.
         _actor_method_names: The names of the actor methods.
         _actor_method_num_return_vals: The default number of return values for
@@ -252,9 +252,9 @@ class ActorClass(object):
                 self._actor_method_num_return_vals[method_name] = (
                     ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
 
-            if hasattr(method, "__ray_method_decorator__"):
+            if hasattr(method, "__ray_invocation_decorator__"):
                 self._method_decorators[method_name] = (
-                    method.__ray_method_decorator__)
+                    method.__ray_invocation_decorator__)
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actors methods cannot be instantiated directly. "

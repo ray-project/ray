@@ -2592,7 +2592,8 @@ def test_decorated_method(ray_start_regular):
             # Turn two arguments into one.
             return f(self, b + c)
 
-        new_f_execution.__ray_method_decorator__ = method_invocation_decorator
+        new_f_execution.__ray_invocation_decorator__ = (
+            method_invocation_decorator)
         return new_f_execution
 
     @ray.remote
