@@ -131,14 +131,14 @@ class SACPolicyGraph(TFPolicyGraph):
         self.alpha = tf.exp(self.log_alpha)
 
         Q_type = self.config['Q']['type']
-        # TODO(hartikainen): implement twin q
         assert Q_type == 'FeedforwardQ', Q_type
         Q_kwargs = self.config['Q']['kwargs']
-        self.Q = feedforward_model(
+
+        self.Qs = [feedforward_model(
             input_shapes=(observation_space.shape, action_space.shape),
             output_size=1,
-            **Q_kwargs)
-        self.Q_target = tf.keras.models.clone_model(self.Q)
+            **Q_kwargs) for _ in range(2)]
+        self.Q_targets = [tf.keras.models.clone_model(self.Qs[i]) for i in range(len(self.Qs))]
 
     def _init_actor_loss(self):
         actions = self.policy.actions([self._observations_ph])
@@ -146,40 +146,40 @@ class SACPolicyGraph(TFPolicyGraph):
 
         assert log_pis.shape.as_list() == [None, 1]
 
-        Q_log_targets = self.Q([self._observations_ph, actions])
+        Qs = tf.stack([Q([self._observations_ph, actions]) for Q in self.Qs])
+        q_min = tf.reduce_min(Qs, axis=0)
 
-        policy_kl_losses = self.alpha * log_pis - Q_log_targets
+        policy_kl_losses = self.alpha * log_pis - q_min
 
         assert policy_kl_losses.shape.as_list() == [None, 1]
 
         policy_loss_weight = self.config['optimization']['policy_loss_weight']
         self.policy_loss = policy_loss_weight * tf.reduce_mean(policy_kl_losses)
 
-    def _get_Q_target(self):
+    def _get_Q_targets(self):
         next_actions = self.policy.actions([self._next_observations_ph])
         next_log_pis = self.policy.log_pis([self._next_observations_ph],
                                            next_actions)
 
-        next_Q_values = self.Q_target(
-            [self._next_observations_ph, next_actions])
+        next_Q_values = tf.stack([Q_target(
+            [self._next_observations_ph, next_actions]) for Q_target in self.Q_targets])
 
-        next_values = next_Q_values - self.alpha * next_log_pis
+        next_values = next_Q_values - self.alpha * next_log_pis[None]
         discount = self.config['gamma']
 
         # td target
-        Q_targets = (
-            self._rewards_ph[:, None] + discount *
-            (1.0 - tf.to_float(self._terminals_ph[:, None])) * next_values)
-
-        return Q_targets
+        return (
+            self._rewards_ph[None, :, None] + discount *
+            (1.0 - tf.to_float(self._terminals_ph[None, :, None])) * next_values)
 
     def _init_critic_loss(self):
-        Q_targets = tf.stop_gradient(self._get_Q_target())
+        Q_targets = tf.stop_gradient(self._get_Q_targets())
 
-        assert Q_targets.shape.as_list() == [None, 1]
+        assert Q_targets.shape.as_list() == [2, None, 1]
 
-        Q_values = self.Q_values = self.Q(
-            [self._observations_ph, self._actions_ph])
+        Q_values = self.Q_values = tf.stack([Q(
+            [self._observations_ph, self._actions_ph]) for Q in self.Qs])
+
         Q_loss_weight = self.config['optimization']['Q_loss_weight']
         self.Q_loss = Q_loss_weight * tf.losses.mean_squared_error(
             labels=Q_targets, predictions=Q_values, weights=0.5)
@@ -215,10 +215,12 @@ class SACPolicyGraph(TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):
+        Q_vars = sum((Q.trainable_variables for Q in self.Qs), [])
+
         policy_grads_and_vars = optimizer.compute_gradients(
             loss, var_list=self.policy.trainable_variables)
         Q_grads_and_vars = optimizer.compute_gradients(
-            loss, var_list=self.Q.trainable_variables)
+            loss, var_list=Q_vars)
         entropy_grads_and_vars = optimizer.compute_gradients(
             loss, var_list=self.log_alpha)
 
@@ -236,9 +238,11 @@ class SACPolicyGraph(TFPolicyGraph):
     def update_target(self, tau=None):
         tau = tau or self.config["tau"]
 
-        source_params = self.Q.get_weights()
-        target_params = self.Q_target.get_weights()
-        self.Q_target.set_weights([
-            tau * source + (1.0 - tau) * target
-            for source, target in zip(source_params, target_params)
-        ])
+        for Q, Q_target in zip(self.Qs, self.Q_targets):
+            source_params = Q.get_weights()
+            target_params = Q_target.get_weights()
+            Q_target.set_weights([
+                tau * source + (1.0 - tau) * target
+                for source, target in zip(source_params, target_params)
+            ])
+

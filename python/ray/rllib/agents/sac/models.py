@@ -156,7 +156,5 @@ def feedforward_model(input_shapes,
     output = tf.keras.layers.Dense(
         output_size, *args, activation=output_activation, **kwargs)(out)
 
-    model = tf.keras.Model(inputs, output)
-
-    return model
+    return tf.keras.Model(inputs, output)
 
