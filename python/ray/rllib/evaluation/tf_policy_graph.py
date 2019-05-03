@@ -283,7 +283,7 @@ class TFPolicyGraph(PolicyGraph):
 
         # specify global_step for TD3 which needs to count the num updates
         return optimizer.apply_gradients(
-            self._grads_and_vars,
+            grads_and_vars,
             global_step=tf.train.get_or_create_global_step())
 
     @DeveloperAPI

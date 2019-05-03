@@ -67,7 +67,7 @@ class SACPolicyGraph(TFPolicyGraph):
 
         self.session.run(tf.global_variables_initializer())
 
-        Q_mean, Q_var = tf.nn.moments(self.Q_values, axes=[0, 1])
+        Q_mean, Q_var = tf.nn.moments(self.Q_values, axes=[0, 1, 2])
         Q_std = tf.sqrt(Q_var)
         actions_mean, actions_var = tf.nn.moments(
             self._actions_ph, axes=[0, 1])
@@ -94,7 +94,9 @@ class SACPolicyGraph(TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
-        return self.diagnostics
+        fetches = self.diagnostics.copy()
+        fetches['td_error'] = self.td_error
+        return fetches
 
     def _init_placeholders(self, observation_space, action_space):
         observation_shape = observation_space.shape
@@ -181,6 +183,8 @@ class SACPolicyGraph(TFPolicyGraph):
             [self._observations_ph, self._actions_ph]) for Q in self.Qs])
 
         Q_loss_weight = self.config['optimization']['Q_loss_weight']
+        self.td_error = tf.reduce_mean(tf.abs(Q_targets - Q_values), axis=0)
+
         self.Q_loss = Q_loss_weight * tf.losses.mean_squared_error(
             labels=Q_targets, predictions=Q_values, weights=0.5)
 
