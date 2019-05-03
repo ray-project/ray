@@ -7,6 +7,7 @@ from __future__ import print_function
 
 import ray
 from ray.tune import run
+from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.ax import AxSearch
 
 import numpy as np
@@ -61,7 +62,7 @@ if __name__ == "__main__":
     ray.init()
 
     config = {
-        "num_samples": 10 if args.smoke_test else 25,
+        "num_samples": 10 if args.smoke_test else 100,
         "config": {
             "iterations": 100,
         },
@@ -112,6 +113,7 @@ if __name__ == "__main__":
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
         outcome_names=["l2norm"],
     )
+    scheduler = AsyncHyperBandScheduler(reward_attr="hartmann6")
     run(easy_objective,
         name="ax",
         search_alg=algo,
