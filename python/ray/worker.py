@@ -783,17 +783,21 @@ class Worker(object):
                 created one of the arguments failed.
         """
         arguments = []
+        object_ids = []
         for (i, arg) in enumerate(serialized_args):
             if isinstance(arg, ObjectID):
-                # get the object from the local object store
-                argument = self.get_object([arg])[0]
-                if isinstance(argument, RayError):
-                    raise argument
+                object_ids.append(arg)
             else:
                 # pass the argument by value
-                argument = arg
+                arguments.append(arg)
 
-            arguments.append(argument)
+        # get the objects from the local object store
+        values = self.get_object(object_ids)
+        for i, value in enumerate(values):
+            if isinstance(value, RayTaskError):
+                raise RayGetError(object_ids[i], value)
+
+        arguments.extend(values)
         return arguments
 
     def _store_outputs_in_object_store(self, object_ids, outputs):
