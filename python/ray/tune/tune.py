@@ -189,23 +189,22 @@ def run(run_or_experiment,
     """
     experiment = run_or_experiment
     if not isinstance(run_or_experiment, Experiment):
-        experiment = Experiment(
-            name=name,
-            run=run_or_experiment,
-            stop=stop,
-            config=config,
-            resources_per_trial=resources_per_trial,
-            num_samples=num_samples,
-            local_dir=local_dir,
-            upload_dir=upload_dir,
-            trial_name_creator=trial_name_creator,
-            loggers=loggers,
-            sync_function=sync_function,
-            checkpoint_freq=checkpoint_freq,
-            checkpoint_at_end=checkpoint_at_end,
-            export_formats=export_formats,
-            max_failures=max_failures,
-            restore=restore)
+        experiment = Experiment(name=name,
+                                run=run_or_experiment,
+                                stop=stop,
+                                config=config,
+                                resources_per_trial=resources_per_trial,
+                                num_samples=num_samples,
+                                local_dir=local_dir,
+                                upload_dir=upload_dir,
+                                trial_name_creator=trial_name_creator,
+                                loggers=loggers,
+                                sync_function=sync_function,
+                                checkpoint_freq=checkpoint_freq,
+                                checkpoint_at_end=checkpoint_at_end,
+                                export_formats=export_formats,
+                                max_failures=max_failures,
+                                restore=restore)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 
@@ -228,16 +227,15 @@ def run(run_or_experiment,
 
         search_alg.add_configurations([experiment])
 
-        runner = TrialRunner(
-            search_alg,
-            scheduler=scheduler,
-            metadata_checkpoint_dir=checkpoint_dir,
-            launch_web_server=with_server,
-            server_port=server_port,
-            verbose=bool(verbose > 1),
-            queue_trials=queue_trials,
-            reuse_actors=reuse_actors,
-            trial_executor=trial_executor)
+        runner = TrialRunner(search_alg,
+                             scheduler=scheduler,
+                             metadata_checkpoint_dir=checkpoint_dir,
+                             launch_web_server=with_server,
+                             server_port=server_port,
+                             verbose=bool(verbose > 1),
+                             queue_trials=queue_trials,
+                             reuse_actors=reuse_actors,
+                             trial_executor=trial_executor)
 
     if verbose:
         print(runner.debug_string(max_debug=99999))
@@ -309,16 +307,15 @@ def run_experiments(experiments,
 
     trials = []
     for exp in experiments:
-        trials += run(
-            exp,
-            search_alg=search_alg,
-            scheduler=scheduler,
-            with_server=with_server,
-            server_port=server_port,
-            verbose=verbose,
-            resume=resume,
-            queue_trials=queue_trials,
-            reuse_actors=reuse_actors,
-            trial_executor=trial_executor,
-            raise_on_failed_trial=raise_on_failed_trial)
+        trials += run(exp,
+                      search_alg=search_alg,
+                      scheduler=scheduler,
+                      with_server=with_server,
+                      server_port=server_port,
+                      verbose=verbose,
+                      resume=resume,
+                      queue_trials=queue_trials,
+                      reuse_actors=reuse_actors,
+                      trial_executor=trial_executor,
+                      raise_on_failed_trial=raise_on_failed_trial)
     return trials
