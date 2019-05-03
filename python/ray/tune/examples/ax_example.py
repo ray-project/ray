@@ -58,7 +58,7 @@ if __name__ == "__main__":
     ray.init()
 
     config = {
-        "num_samples": 10 if args.smoke_test else 100,
+        "num_samples": 10 if args.smoke_test else 50,
         "config": {
             "iterations": 100,
         },
