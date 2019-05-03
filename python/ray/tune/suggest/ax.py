@@ -26,12 +26,12 @@ class AxSearch(SuggestionAlgorithm):
         assert type(max_concurrent) is int and max_concurrent > 0
         self._ax = ax_client.AxClient(enforce_sequential_optimization=False)
         self._ax.create_experiment(
-                name="ax",
-                parameters=parameters,
-                objective_name=objective_name,
-                minimize=minimize,
-                parameter_constraints=parameter_constraints,
-                outcome_constraints=outcome_constraints,
+            name="ax",
+            parameters=parameters,
+            objective_name=objective_name,
+            minimize=minimize,
+            parameter_constraints=parameter_constraints,
+            outcome_constraints=outcome_constraints,
         )
         self._max_concurrent = max_concurrent
         self._parameters = [d["name"] for d in parameters]
@@ -59,9 +59,10 @@ class AxSearch(SuggestionAlgorithm):
         ax_trial_index = self._live_index_mapping.pop(trial_id)
         if result:
             metric_dict = {
-                self._objective_name: (result[self._objective_name], 0.0)}
+                self._objective_name: (result[self._objective_name], 0.0)
+            }
             metric_dict.update(
-                dict([(on, (result[on], 0.0)) for on in self._outcome_names]))
+                {on:(result[on], 0.0) for on in self._outcome_names}
             self._ax.complete_trial(
                 trial_index=ax_trial_index, raw_data=metric_dict)
 
