@@ -5,8 +5,8 @@ from __future__ import print_function
 import time
 
 from ray.rllib import optimizers
-from ray.rllib.agents.agent import Agent, with_common_config
-from ray.rllib.agents.dqn import DQNAgent
+from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.sac.sac_policy_graph import SACPolicyGraph
 from ray.rllib.utils.annotations import override
 
@@ -140,7 +140,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class SACAgent(DQNAgent):
+class SACTrainer(DQNTrainer):
     """Soft Actor-Critic implementation in TensorFlow."""
     _agent_name = "SAC"
     _default_config = DEFAULT_CONFIG
@@ -161,3 +161,4 @@ class SACAgent(DQNAgent):
         Agent.__setstate__(self, state)
         self.num_target_updates = state["num_target_updates"]
         self.last_target_update_ts = state["last_target_update_ts"]
+

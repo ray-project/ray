@@ -16,7 +16,7 @@ def _import_appo():
 
 def _import_sac():
     from ray.rllib.agents import sac
-    return sac.SACAgent
+    return sac.SACTrainer
 
 
 def _import_qmix():
