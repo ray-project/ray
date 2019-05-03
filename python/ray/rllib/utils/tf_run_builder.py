@@ -47,8 +47,9 @@ class TFRunBuilder(object):
                 self._executed = run_timeline(
                     self.session, self.fetches, self.debug_name,
                     self.feed_dict, os.environ.get("TF_TIMELINE_DIR"))
-            except Exception as ex:
-                logger.info(ex)
+            except Exception:
+                logger.exception("Error fetching: {}, feed_dict={}".format(
+                    self.fetches, self.feed_dict))
                 raise ValueError("Error fetching: {}, feed_dict={}".format(
                     self.fetches, self.feed_dict))
         if isinstance(to_fetch, int):

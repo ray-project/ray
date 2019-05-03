@@ -103,6 +103,9 @@ class NodeManager {
   /// \return string.
   std::string DebugString() const;
 
+  /// Record metrics.
+  void RecordMetrics() const;
+
  private:
   /// Methods for handling clients.
 
@@ -121,7 +124,7 @@ class NodeManager {
   void Heartbeat();
 
   /// Write out debug state to a file.
-  void DumpDebugState();
+  void DumpDebugState() const;
 
   /// Get profiling information from the object manager and push it to the GCS.
   ///

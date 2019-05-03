@@ -39,13 +39,17 @@ application! The most common reasons are the following.
 
 - **Multi-threaded libraries:** Are all of your tasks attempting to use all of
   the cores on the machine? If so, they are likely to experience contention and
-  prevent your application from achieving a speedup. You can diagnose this by
-  opening ``top`` while your application is running. If one process is using
-  most of the CPUs, and the others are using a small amount, this may be the
-  problem. This is very common with some versions of ``numpy``, and in that case
-  can usually be setting an environment variable like ``MKL_NUM_THREADS`` (or
-  the equivalent depending on your installation) to ``1``.
+  prevent your application from achieving a speedup. This is very common with 
+  some versions of ``numpy``, and in that case can usually be setting an 
+  environment variable like ``MKL_NUM_THREADS`` (or the equivalent depending 
+  on your installation) to ``1``.
 
+  For many - but not all - libraries, you can diagnose this by opening ``top`` 
+  while your application is running. If one process is using most of the CPUs, 
+  and the others are using a small amount, this may be the problem. The most
+  common exception is PyTorch, which will appear to be using all the cores 
+  despite needing ``torch.set_num_threads(1)`` to be called to avoid contention.
+  
 If you are still experiencing a slowdown, but none of the above problems apply,
 we'd really like to know! Please create a `GitHub issue`_ and consider
 submitting a minimal code example that demonstrates the problem.

@@ -2,13 +2,14 @@
 
 #include <sstream>
 
+#include "ray/stats/stats.h"
 #include "ray/status.h"
 
 namespace {
 
 static constexpr const char *task_state_strings[] = {
     "placeable", "waiting",    "ready",
-    "running",   "infeasible", "waiting for actor creation"};
+    "running",   "infeasible", "waiting_for_actor_creation"};
 static_assert(sizeof(task_state_strings) / sizeof(const char *) ==
                   static_cast<int>(ray::raylet::TaskState::kNumTaskQueues),
               "Must specify a TaskState name for every task queue");
@@ -393,6 +394,18 @@ std::string SchedulingQueue::DebugString() const {
   }
   result << "\n- num tasks blocked: " << blocked_task_ids_.size();
   return result.str();
+}
+
+void SchedulingQueue::RecordMetrics() const {
+  for (const auto &task_state : {
+           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
+           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
+       }) {
+    stats::SchedulingQueueStats().Record(
+        static_cast<double>(GetTaskQueue(task_state)->GetTasks().size()),
+        {{stats::ValueTypeKey,
+          std::string("num_") + GetTaskStateString(task_state) + "_tasks"}});
+  }
 }
 
 }  // namespace raylet
