@@ -112,7 +112,7 @@ class Monitor(object):
         for j in range(message.BatchLength()):
             heartbeat_message = message.Batch(j)
 
-            num_resources = heartbeat_message.ResourcesAvailableLabelLength()
+            num_resources = heartbeat_message.ResourcesTotalLabelLength()
             static_resources = {}
             dynamic_resources = {}
             for i in range(num_resources):
