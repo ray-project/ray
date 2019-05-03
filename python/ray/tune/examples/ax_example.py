@@ -7,10 +7,10 @@ from __future__ import print_function
 
 import ray
 from ray.tune import run
-from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.ax import AxSearch
 
 import numpy as np
+
 
 def hartmann6(x):
     alpha = np.array([1.0, 1.2, 3.0, 3.2])
@@ -37,6 +37,7 @@ def hartmann6(x):
             t += A[j, k] * ((x[k] - P[j, k]) ** 2)
         y -= alpha_j * np.exp(-t)
     return y
+
 
 def easy_objective(config, reporter):
     import time
@@ -68,12 +69,12 @@ if __name__ == "__main__":
             "timesteps_total": 100
         }
     }
-    parameters=[
+    parameters = [
         {
             "name": "x1",
             "type": "range",
             "bounds": [0.0, 1.0],
-            "value_type": "float",  # Optional, defaults to inference from type of "bounds".
+            "value_type": "float",  # Optional, defaults to "bounds".
             "log_scale": False,  # Optional, defaults to False.
         },
         {
@@ -105,7 +106,7 @@ if __name__ == "__main__":
     algo = AxSearch(
         parameters=parameters,
         objective_name="hartmann6",
-        max_concurrent=1,
+        max_concurrent=4,
         minimize=True,  # Optional, defaults to False.
         parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
         outcome_constraints=["l2norm <= 1.25"],  # Optional.

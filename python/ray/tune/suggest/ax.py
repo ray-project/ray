@@ -11,23 +11,20 @@ from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 
 class AxSearch(SuggestionAlgorithm):
-    """A wrapper around Ax to provide trial suggestions.
-    Example:
-        >>> 
-    """
+    """A wrapper around Ax to provide trial suggestions."""
 
     def __init__(self,
-               parameters,
-               objective_name,
-               max_concurrent=10,
-               minimize=False,
-               parameter_constraints=[],
-               outcome_constraints=[],
-               outcome_names=[],
-               **kwargs):
+                 parameters,
+                 objective_name,
+                 max_concurrent=10,
+                 minimize=False,
+                 parameter_constraints=[],
+                 outcome_constraints=[],
+                 outcome_names=[],
+                 **kwargs):
         assert ax_client is not None, "Ax must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
-        self._ax = ax_client.AxClient()
+        self._ax = ax_client.AxClient(enforce_sequential_optimization=False)
         self._ax.create_experiment(
                 name="ax",
                 parameters=parameters,
@@ -45,7 +42,7 @@ class AxSearch(SuggestionAlgorithm):
 
     def _suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
-                return None
+            return None
         parameters, trial_index = self._ax.get_next_trial()
         suggested_config = list(parameters.values())
         self._live_index_mapping[trial_id] = trial_index
@@ -55,15 +52,18 @@ class AxSearch(SuggestionAlgorithm):
         pass
 
     def on_trial_complete(self,
-                        trial_id,
-                        result=None,
-                        error=False,
-                        early_terminated=False):
+                          trial_id,
+                          result=None,
+                          error=False,
+                          early_terminated=False):
         ax_trial_index = self._live_index_mapping.pop(trial_id)
         if result:
-            metric_dict = {self._objective_name: (result[self._objective_name], 0.0)}
-            metric_dict.update(dict([(on, (result[on], 0.0)) for on in self._outcome_names]))
-            self._ax.complete_trial(trial_index=ax_trial_index, raw_data=metric_dict)
+            metric_dict = {
+                self._objective_name: (result[self._objective_name], 0.0)}
+            metric_dict.update(
+                dict([(on, (result[on], 0.0)) for on in self._outcome_names]))
+            self._ax.complete_trial(
+                trial_index=ax_trial_index, raw_data=metric_dict)
 
     def _num_live_trials(self):
         return len(self._live_index_mapping)
