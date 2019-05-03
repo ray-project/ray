@@ -85,8 +85,9 @@ class Experiment(object):
         if repeat:
             _raise_deprecation_note("repeat", "num_samples", soft=False)
         if trial_resources:
-            _raise_deprecation_note(
-                "trial_resources", "resources_per_trial", soft=False)
+            _raise_deprecation_note("trial_resources",
+                                    "resources_per_trial",
+                                    soft=False)
         if custom_loggers:
             _raise_deprecation_note("custom_loggers", "loggers", soft=False)
 

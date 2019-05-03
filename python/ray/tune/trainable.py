@@ -73,8 +73,8 @@ class Trainable(object):
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
-            self.logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+            self.logdir = tempfile.mkdtemp(prefix=logdir_prefix,
+                                           dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(self.config, self.logdir, None)
 
         self._iteration = 0
@@ -192,19 +192,18 @@ class Trainable(object):
             result.setdefault("neg_mean_loss", -result["mean_loss"])
 
         now = datetime.today()
-        result.update(
-            experiment_id=self._experiment_id,
-            date=now.strftime("%Y-%m-%d_%H-%M-%S"),
-            timestamp=int(time.mktime(now.timetuple())),
-            time_this_iter_s=time_this_iter,
-            time_total_s=self._time_total,
-            pid=os.getpid(),
-            hostname=os.uname()[1],
-            node_ip=self._local_ip,
-            config=self.config,
-            time_since_restore=self._time_since_restore,
-            timesteps_since_restore=self._timesteps_since_restore,
-            iterations_since_restore=self._iterations_since_restore)
+        result.update(experiment_id=self._experiment_id,
+                      date=now.strftime("%Y-%m-%d_%H-%M-%S"),
+                      timestamp=int(time.mktime(now.timetuple())),
+                      time_this_iter_s=time_this_iter,
+                      time_total_s=self._time_total,
+                      pid=os.getpid(),
+                      hostname=os.uname()[1],
+                      node_ip=self._local_ip,
+                      config=self.config,
+                      time_since_restore=self._time_since_restore,
+                      timesteps_since_restore=self._timesteps_since_restore,
+                      iterations_since_restore=self._iterations_since_restore)
 
         self._log_result(result)
 
@@ -262,14 +261,15 @@ class Trainable(object):
                 "`_save` must return a dict or string type: {}".format(
                     str(type(checkpoint))))
         with open(checkpoint_path + ".tune_metadata", "wb") as f:
-            pickle.dump({
-                "experiment_id": self._experiment_id,
-                "iteration": self._iteration,
-                "timesteps_total": self._timesteps_total,
-                "time_total": self._time_total,
-                "episodes_total": self._episodes_total,
-                "saved_as_dict": saved_as_dict
-            }, f)
+            pickle.dump(
+                {
+                    "experiment_id": self._experiment_id,
+                    "iteration": self._iteration,
+                    "timesteps_total": self._timesteps_total,
+                    "time_total": self._time_total,
+                    "episodes_total": self._episodes_total,
+                    "saved_as_dict": saved_as_dict
+                }, f)
         return checkpoint_path
 
     def save_to_object(self):
@@ -337,8 +337,8 @@ class Trainable(object):
             "time": self._time_total,
             "eps": self._episodes_total
         }
-        logger.info("Current state after restoring:" + ", ".join(
-            "{}: {}".format(k, v) for k, v in state.items()))
+        logger.info("Current state after restoring:" +
+                    ", ".join("{}: {}".format(k, v) for k, v in state.items()))
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
