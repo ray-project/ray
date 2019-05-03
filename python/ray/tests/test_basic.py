@@ -28,6 +28,7 @@ import pytest
 import ray
 import ray.tests.cluster_utils
 import ray.tests.utils
+from ray.tests.utils import CaptureOutputAndError
 from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)
@@ -2492,48 +2493,12 @@ def test_global_state_api(shutdown_only):
     assert object_table[result_id] == object_table_entry
 
 
-# TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
-# should use those, but they seem to conflict with Ray's use of faulthandler.
-class CaptureOutputAndError(object):
-    """Capture stdout and stderr of some span.
-
-    This can be used as follows.
-
-        captured = {}
-        with CaptureOutputAndError(captured):
-            # Do stuff.
-        # Access captured["out"] and captured["err"].
-    """
-
-    def __init__(self, captured_output_and_error):
-        if sys.version_info >= (3, 0):
-            import io
-            self.output_buffer = io.StringIO()
-            self.error_buffer = io.StringIO()
-        else:
-            import cStringIO
-            self.output_buffer = cStringIO.StringIO()
-            self.error_buffer = cStringIO.StringIO()
-        self.captured_output_and_error = captured_output_and_error
-
-    def __enter__(self):
-        sys.stdout.flush()
-        sys.stderr.flush()
-        self.old_stdout = sys.stdout
-        self.old_stderr = sys.stderr
-        sys.stdout = self.output_buffer
-        sys.stderr = self.error_buffer
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        sys.stdout.flush()
-        sys.stderr.flush()
-        sys.stdout = self.old_stdout
-        sys.stderr = self.old_stderr
-        self.captured_output_and_error["out"] = self.output_buffer.getvalue()
-        self.captured_output_and_error["err"] = self.error_buffer.getvalue()
-
-
 logging_driver_script = """
+import ray
+from ray.tests.utils import CaptureOutputAndError
+import sys
+import time
+
 ray.init(num_cpus=1, log_to_driver=True)
 
 start = {}
@@ -2562,18 +2527,26 @@ print("success")
 
 def test_logging_to_driver(shutdown_only):
     driver_script = logging_driver_script.format(1)
-    out = run_string_as_driver(driver_script)
+    out = ray.tests.utils.run_string_as_driver(driver_script)
 
     assert "success" in out
 
 def test_logging_to_multiple_drivers(shutdown_only):
-    num_drivers = 3
+    num_drivers = 10
+    procs = [None] * num_drivers
 
     for i in range(num_drivers):
         driver_script = logging_driver_script.format(i * 2 + 1)
-        out = run_string_as_driver(driver_script)
+        procs[i] = ray.tests.utils.run_string_as_driver_nonblocking(driver_script)
 
-        assert "success" in out
+    for i in range(num_drivers):
+        try:
+            out, _ = procs[i].communicate(timeout=15)
+        except:
+            procs[i].kill()
+            raise Exception("Logging process timed out")
+
+        assert "success" in str(out)
         
 
 def test_not_logging_to_driver(shutdown_only):
