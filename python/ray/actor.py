@@ -109,6 +109,26 @@ def method(*args, **kwargs):
 # Create objects to wrap method invocations. This is done so that we can
 # invoke methods with actor.method.remote() instead of actor.method().
 class ActorMethod(object):
+    """A class used to invoke an actor method.
+
+    Note: This class is instantiated only while the actor method is being
+    invoked (so that it doesn't keep a reference to the actor handle and
+    prevent it from going out of scope).
+
+    Attributes:
+        _actor: A handle to the actor.
+        _method_name: The name of the actor method.
+        _num_return_vals: The default number of return values that the method
+            invocation should return.
+        _decorator: An optional decorator that should be applied to the actor
+            method invocation (as opposed to the actor method execution) before
+            invoking the method. The decorator must return a function that
+            takes in two arguments ("args" and "kwargs"). In most cases, it
+            should call the function that was passed into the decorator and
+            return the resulting ObjectIDs. For an example, see
+            "test_decorated_method" in "python/ray/tests/test_actor.py".
+    """
+
     def __init__(self, actor, method_name, num_return_vals, decorator=None):
         self._actor = actor
         self._method_name = method_name
@@ -170,6 +190,10 @@ class ActorClass(object):
         _exported: True if the actor class has been exported and false
             otherwise.
         _actor_methods: The actor methods.
+        _method_decorators: Optional decorators that should be applied to the
+            method invocation function before invoking the actor methods. These
+            can be set by attaching the attribute "__ray_method_decorator__" to
+            the actor method.
         _method_signatures: The signatures of the methods.
         _actor_method_names: The names of the actor methods.
         _actor_method_num_return_vals: The default number of return values for
