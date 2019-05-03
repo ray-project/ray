@@ -269,7 +269,7 @@ class ModelCatalog(object):
             return _global_registry.get(RLLIB_MODEL, model)
 
         if isinstance(obs_space, gym.spaces.Box):
-            obs_rank = obs_space.shape - 1
+            obs_rank = len(obs_space.shape) - 1
         else:
             obs_rank = 1
 
@@ -405,19 +405,31 @@ class _KerasModelWrapper(tf.keras.layers.Layer):
         self.action_space = act_space
         self.num_outputs = num_outputs
         self.options = options
-        tf.keras.layers.Layer.__init__(self)
+        super(_KerasModelWrapper, self).__init__()
 
     def build(self, input_shape):
-        def f(input_dict):
-            return self.model_cls(input_dict, self.observation_space,
-                                  self.action_space, self.num_outputs,
-                                  self.options).outputs
+        self.template_fn = tf.make_template("keras_model_wrapper", self._make_template_fn,
+                create_scope_now_=True, custom_getter_=self._variable_getter)
+        super(_KerasModelWrapper, self).build(input_shape)
 
-        self.rllib_model = tf.keras.layers.Lambda(f)
-        tf.keras.layers.Layer.build(input_shape)
-
-    def call(self, input_dict):
-        return self.rllib_model(input_dict)
+    def call(self, input_tensor):
+        return self.template_fn(input_tensor)
 
     def compute_output_shape(self, input_shape):
         return (input_shape[0], self.num_outputs)
+
+    def _make_template_fn(self, input_tensor):
+        return self.model_cls({'obs': input_tensor}, self.observation_space,
+                self.action_space, self.num_outputs,
+                self.options).outputs
+
+    def _variable_getter(self, getter, name, *args, **kwargs):
+        variable = getter(name, *args, **kwargs)
+        if variable not in self.variables:
+            if variable.trainable:
+                self._trainable_weights.append(variable)
+            else:
+                self._non_trainable_weights.append(variable)
+        return variable
+
+

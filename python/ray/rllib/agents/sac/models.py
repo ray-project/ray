@@ -2,11 +2,11 @@ from collections import OrderedDict
 
 import tensorflow as tf
 import tensorflow_probability as tfp
+from ray.rllib.models import ModelCatalog
 
 from .squash_bijector import SquashBijector
 
 SCALE_DIAG_MIN_MAX = (-20, 2)
-
 
 class GaussianLatentSpacePolicy(object):
     def __init__(self,
@@ -34,7 +34,7 @@ class GaussianLatentSpacePolicy(object):
                       self.condition_inputs[0])
 
         out = ModelCatalog.get_model_as_keras_layer(
-            obs_space, action_space, output_shape[0] * 20, model_options)
+                observation_space, action_space, output_shape[0] * 2, model_options)(conditions)
 
         shift, log_scale_diag = tf.keras.layers.Lambda(
             lambda shift_and_log_scale_diag: tf.split(
@@ -47,22 +47,18 @@ class GaussianLatentSpacePolicy(object):
             lambda log_scale_diag: tf.clip_by_value(log_scale_diag, *SCALE_DIAG_MIN_MAX)
         )(log_scale_diag)
 
-        batch_size = tf.keras.layers.Lambda(lambda x: tf.shape(x)[0])(
-            conditions)
-
         base_distribution = tfp.distributions.MultivariateNormalDiag(
             loc=tf.zeros(output_shape), scale_diag=tf.ones(output_shape))
 
         latents = tf.keras.layers.Lambda(
-            lambda batch_size: base_distribution.sample(batch_size))(
-                batch_size)
+            lambda x: base_distribution.sample(tf.shape(x)[0]))(
+                conditions)
 
         def raw_actions_fn(inputs):
             shift, log_scale_diag, latents = inputs
             bijector = tfp.bijectors.Affine(
                 shift=shift, scale_diag=tf.exp(log_scale_diag))
-            actions = bijector.forward(latents)
-            return actions
+            return bijector.forward(latents)
 
         raw_actions = tf.keras.layers.Lambda(raw_actions_fn)(
             (shift, log_scale_diag, latents))
@@ -70,9 +66,7 @@ class GaussianLatentSpacePolicy(object):
         squash_bijector = (SquashBijector()
                            if self._squash else tfp.bijectors.Identity())
 
-        actions = tf.keras.layers.Lambda(
-            lambda raw_actions: squash_bijector.forward(raw_actions))(
-                raw_actions)
+        actions = tf.keras.layers.Lambda(lambda x: squash_bijector.forward(x))(raw_actions)
 
         self.actions_model = tf.keras.Model(self.condition_inputs, actions)
 
@@ -165,3 +159,4 @@ def feedforward_model(input_shapes,
     model = tf.keras.Model(inputs, output)
 
     return model
+

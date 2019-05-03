@@ -60,7 +60,7 @@ class SACPolicyGraph(TFPolicyGraph):
             self.session,
             obs_input=self._observations_ph,
             action_sampler=self.policy.actions([self._observations_ph]),
-            loss=self.total_loss,
+            loss=self.loss,
             loss_inputs=self.loss_inputs,
             # TODO(hartikainen): what is this for?
             update_ops=None)
@@ -205,7 +205,7 @@ class SACPolicyGraph(TFPolicyGraph):
         self._init_critic_loss()
         self._init_entropy_loss()
 
-        self.total_loss = (self.policy_loss + self.Q_loss + self.entropy_loss)
+        self.loss = (self.policy_loss + self.Q_loss + self.entropy_loss)
 
     @override(TFPolicyGraph)
     def optimizer(self):
@@ -214,13 +214,13 @@ class SACPolicyGraph(TFPolicyGraph):
         return optimizer
 
     @override(TFPolicyGraph)
-    def gradients(self, optimizer):
+    def gradients(self, optimizer, loss):
         policy_grads_and_vars = optimizer.compute_gradients(
-            self.policy_loss, var_list=self.policy.trainable_variables)
+            loss, var_list=self.policy.trainable_variables)
         Q_grads_and_vars = optimizer.compute_gradients(
-            self.Q_loss, var_list=self.Q.trainable_variables)
+            loss, var_list=self.Q.trainable_variables)
         entropy_grads_and_vars = optimizer.compute_gradients(
-            self.entropy_loss, var_list=self.log_alpha)
+            loss, var_list=self.log_alpha)
 
         grads_and_vars = (
             policy_grads_and_vars + Q_grads_and_vars + entropy_grads_and_vars)
