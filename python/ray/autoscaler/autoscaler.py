@@ -158,7 +158,10 @@ class LoadMetrics(object):
 
     def update(self, ip, static_resources, dynamic_resources):
         self.static_resources_by_ip[ip] = static_resources
-        # TODO(romilb): This is a hotfix to make autoscaler work with #4555
+        # We are not guaranteed to have a corresponding dynamic resource for
+        # every static resource because dynamic resources are based on the
+        # available resources in the heartbeat, which does not exist if it is
+        # zero. Thus, we have to update dynamic resources here.
         dynamic_resources_update = dynamic_resources.copy()
         for resource_name, capacity in static_resources.items():
             if resource_name not in dynamic_resources_update:
