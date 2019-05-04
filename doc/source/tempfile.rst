@@ -9,10 +9,10 @@ Ray session
 
 First we introduce the concept of a Ray session.
 
-A Ray session represents the whole state of all tasks, processes and resources
-managed by Ray. A session is created by executing ``ray start`` command or
-call ``ray.init()`` in a Python script and ended by executing ``ray stop``
-or call ``ray.shutdown()``.
+A Ray session represents all tasks, processes, and resources managed by Ray. A
+session is created by executing the ``ray start`` command or by calling
+``ray.init()``, and it is terminated by executing ``ray stop`` or calling
+``ray.shutdown()``.
 
 Each Ray session will have a unique name. By default, the name is
 ``session_{timestamp}_{pid}``. The format of ``timestamp`` is
