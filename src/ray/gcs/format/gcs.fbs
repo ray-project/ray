@@ -151,11 +151,11 @@ enum SchedulingState:int {
 table TaskTableData {
   // The state of the task.
   scheduling_state: SchedulingState;
-  // A local scheduler ID.
-  scheduler_id: string;
+  // A raylet ID.
+  raylet_id: string;
   // A string of bytes representing the task's TaskExecutionDependencies.
   execution_dependencies: string;
-  // The number of times the task was spilled back by local schedulers.
+  // The number of times the task was spilled back by raylets.
   spillback_count: long;
   // A string of bytes representing the task specification.
   task_info: string;
@@ -164,7 +164,7 @@ table TaskTableData {
 }
 
 table TaskTableTestAndUpdate {
-  test_scheduler_id: string;
+  test_raylet_id: string;
   test_state_bitmask: SchedulingState;
   update_state: SchedulingState;
 }
@@ -202,8 +202,8 @@ table ActorTableData {
 }
 
 table ErrorTableData {
-  // The ID of the job that the error is for.
-  job_id: string;
+  // The ID of the driver that the error is for.
+  driver_id: string;
   // The type of the error.
   type: string;
   // The error message.

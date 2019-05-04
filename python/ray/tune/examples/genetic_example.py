@@ -17,7 +17,7 @@ def michalewicz_function(config, reporter):
     """f(x) = -sum{sin(xi) * [sin(i*xi^2 / pi)]^(2m)}"""
     import numpy as np
     x = np.array(
-        [config['x1'], config['x2'], config['x3'], config['x4'], config['x5']])
+        [config["x1"], config["x2"], config["x3"], config["x4"], config["x5"]])
     sin_x = np.sin(x)
     z = (np.arange(1, 6) / np.pi * (x * x))
     sin_z = np.power(np.sin(z), 20)  # let m = 20
@@ -37,11 +37,11 @@ if __name__ == "__main__":
     ray.init()
 
     space = SearchSpace({
-        ContinuousSpace('x1', 0, 4, 100),
-        ContinuousSpace('x2', -2, 2, 100),
-        ContinuousSpace('x3', 1, 5, 100),
-        ContinuousSpace('x4', -3, 3, 100),
-        DiscreteSpace('x5', [-1, 0, 1, 2, 3]),
+        ContinuousSpace("x1", 0, 4, 100),
+        ContinuousSpace("x2", -2, 2, 100),
+        ContinuousSpace("x3", 1, 5, 100),
+        ContinuousSpace("x4", -3, 3, 100),
+        DiscreteSpace("x5", [-1, 0, 1, 2, 3]),
     })
 
     config = {"stop": {"training_iteration": 100}}

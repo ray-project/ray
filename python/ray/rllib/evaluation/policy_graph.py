@@ -163,14 +163,15 @@ class PolicyGraph(object):
 
         Returns:
             grad_info: dictionary of extra metadata from compute_gradients().
-            apply_info: dictionary of extra metadata from apply_gradients().
 
         Examples:
             >>> batch = ev.sample()
             >>> ev.learn_on_batch(samples)
         """
 
-        return self.compute_apply(samples)
+        grads, grad_info = self.compute_gradients(samples)
+        self.apply_gradients(grads)
+        return grad_info
 
     @DeveloperAPI
     def compute_gradients(self, postprocessed_batch):
@@ -189,19 +190,8 @@ class PolicyGraph(object):
         """Applies previously computed gradients.
 
         Either this or learn_on_batch() must be implemented by subclasses.
-
-        Returns:
-            info (dict): Extra policy-specific values
         """
         raise NotImplementedError
-
-    @DeveloperAPI
-    def compute_apply(self, samples):
-        """Deprecated: override learn_on_batch instead."""
-
-        grads, grad_info = self.compute_gradients(samples)
-        apply_info = self.apply_gradients(grads)
-        return grad_info, apply_info
 
     @DeveloperAPI
     def get_weights(self):

@@ -25,30 +25,35 @@ class TaskPool(object):
         self._tasks[obj_id] = worker
         self._objects[obj_id] = all_obj_ids
 
-    def completed(self):
+    def completed(self, blocking_wait=False):
         pending = list(self._tasks)
         if pending:
-            ready, _ = ray.wait(
-                pending, num_returns=len(pending), timeout=0.01)
+            ready, _ = ray.wait(pending, num_returns=len(pending), timeout=0)
+            if not ready and blocking_wait:
+                ready, _ = ray.wait(pending, num_returns=1, timeout=10.0)
             for obj_id in ready:
                 yield (self._tasks.pop(obj_id), self._objects.pop(obj_id))
 
-    def completed_prefetch(self):
+    def completed_prefetch(self, blocking_wait=False, max_yield=999):
         """Similar to completed but only returns once the object is local.
 
         Assumes obj_id only is one id."""
 
-        for worker, obj_id in self.completed():
+        for worker, obj_id in self.completed(blocking_wait=blocking_wait):
             plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.binary())
             (ray.worker.global_worker.raylet_client.fetch_or_reconstruct(
                 [obj_id], True))
             self._fetching.append((worker, obj_id))
 
         remaining = []
+        num_yielded = 0
         for worker, obj_id in self._fetching:
             plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.binary())
-            if ray.worker.global_worker.plasma_client.contains(plasma_id):
+            if (num_yielded < max_yield
+                    and ray.worker.global_worker.plasma_client.contains(
+                        plasma_id)):
                 yield (worker, obj_id)
+                num_yielded += 1
             else:
                 remaining.append((worker, obj_id))
         self._fetching = remaining
@@ -92,8 +97,10 @@ def split_colocated(actors):
 
 def try_create_colocated(cls, args, count):
     actors = [cls.remote(*args) for _ in range(count)]
-    local, _ = split_colocated(actors)
+    local, rest = split_colocated(actors)
     logger.info("Got {} colocated actors of {}".format(len(local), count))
+    for a in rest:
+        a.__ray_terminate__.remote()
     return local
 
 
@@ -107,4 +114,6 @@ def create_colocated(cls, args, count):
         i += 1
     if len(ok) < count:
         raise Exception("Unable to create enough colocated actors, abort.")
+    for a in ok[count:]:
+        a.__ray_terminate__.remote()
     return ok[:count]

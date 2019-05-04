@@ -23,6 +23,7 @@ from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.actors import TaskPool, create_colocated
+from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
@@ -46,20 +47,22 @@ class AsyncReplayOptimizer(PolicyOptimizer):
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
-    @override(PolicyOptimizer)
-    def _init(self,
-              learning_starts=1000,
-              buffer_size=10000,
-              prioritized_replay=True,
-              prioritized_replay_alpha=0.6,
-              prioritized_replay_beta=0.4,
-              prioritized_replay_eps=1e-6,
-              train_batch_size=512,
-              sample_batch_size=50,
-              num_replay_buffer_shards=1,
-              max_weight_sync_delay=400,
-              debug=False,
-              batch_replay=False):
+    def __init__(self,
+                 local_evaluator,
+                 remote_evaluators,
+                 learning_starts=1000,
+                 buffer_size=10000,
+                 prioritized_replay=True,
+                 prioritized_replay_alpha=0.6,
+                 prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6,
+                 train_batch_size=512,
+                 sample_batch_size=50,
+                 num_replay_buffer_shards=1,
+                 max_weight_sync_delay=400,
+                 debug=False,
+                 batch_replay=False):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
 
         self.debug = debug
         self.batch_replay = batch_replay
@@ -141,7 +144,8 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
     @override(PolicyOptimizer)
     def stats(self):
-        replay_stats = ray.get(self.replay_actors[0].stats.remote(self.debug))
+        replay_stats = ray_get_and_free(self.replay_actors[0].stats.remote(
+            self.debug))
         timing = {
             "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
             for k in self.timers
@@ -186,7 +190,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
         with self.timers["sample_processing"]:
             completed = list(self.sample_tasks.completed())
-            counts = ray.get([c[1][1] for c in completed])
+            counts = ray_get_and_free([c[1][1] for c in completed])
             for i, (ev, (sample_batch, count)) in enumerate(completed):
                 sample_timesteps += counts[i]
 
@@ -218,7 +222,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                     self.num_samples_dropped += 1
                 else:
                     with self.timers["get_samples"]:
-                        samples = ray.get(replay)
+                        samples = ray_get_and_free(replay)
                     # Defensive copy against plasma crashes, see #2610 #3452
                     self.learner.inqueue.put((ra, samples and samples.copy()))
 

@@ -6,6 +6,7 @@ from __future__ import print_function
 
 import os
 import shutil
+import gym
 import numpy as np
 import ray
 
@@ -39,7 +40,8 @@ CONFIGS = {
         },
     },
     "DDPG": {
-        "noise_scale": 0.0,
+        "pure_exploration_steps": 0,
+        "exploration_ou_noise_scale": 0.0,
         "timesteps_per_iteration": 100
     },
     "PPO": {
@@ -63,9 +65,11 @@ def test_ckpt_restore(use_object_store, alg_name, failures):
     if "DDPG" in alg_name:
         alg1 = cls(config=CONFIGS[name], env="Pendulum-v0")
         alg2 = cls(config=CONFIGS[name], env="Pendulum-v0")
+        env = gym.make("Pendulum-v0")
     else:
         alg1 = cls(config=CONFIGS[name], env="CartPole-v0")
         alg2 = cls(config=CONFIGS[name], env="CartPole-v0")
+        env = gym.make("CartPole-v0")
 
     for _ in range(3):
         res = alg1.train()
@@ -79,9 +83,15 @@ def test_ckpt_restore(use_object_store, alg_name, failures):
 
     for _ in range(10):
         if "DDPG" in alg_name:
-            obs = np.random.uniform(size=3)
+            obs = np.clip(
+                np.random.uniform(size=3),
+                env.observation_space.low,
+                env.observation_space.high)
         else:
-            obs = np.random.uniform(size=4)
+            obs = np.clip(
+                np.random.uniform(size=4),
+                env.observation_space.low,
+                env.observation_space.high)
         a1 = get_mean_action(alg1, obs)
         a2 = get_mean_action(alg2, obs)
         print("Checking computed actions", alg1, obs, a1, a2)

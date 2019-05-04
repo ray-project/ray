@@ -50,7 +50,7 @@ This algorithm requires `setting a search space and defining a utility function 
 
 An example of this can be found in `bayesopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bayesopt_example.py>`__.
 
-.. autoclass:: ray.tune.suggest.BayesOptSearch
+.. autoclass:: ray.tune.suggest.bayesopt.BayesOptSearch
     :show-inheritance:
     :noindex:
 
@@ -73,7 +73,7 @@ This algorithm requires using the `HyperOpt search space specification <https://
 
 An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
 
-.. autoclass:: ray.tune.suggest.HyperOptSearch
+.. autoclass:: ray.tune.suggest.hyperopt.HyperOptSearch
     :show-inheritance:
     :noindex:
 
@@ -102,7 +102,7 @@ This algorithm requires using the `SigOpt experiment and space specification <ht
 
 An example of this can be found in `sigopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/sigopt_example.py>`__.
 
-.. autoclass:: ray.tune.suggest.SigOptSearch
+.. autoclass:: ray.tune.suggest.sigopt.SigOptSearch
     :show-inheritance:
     :noindex:
 
@@ -127,7 +127,7 @@ This algorithm requires using an optimizer provided by ``nevergrad``, of which t
 
 An example of this can be found in `nevergrad_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py>`__.
 
-.. autoclass:: ray.tune.suggest.NevergradSearch
+.. autoclass:: ray.tune.suggest.nevergrad.NevergradSearch
     :show-inheritance:
     :noindex:
 
@@ -151,7 +151,7 @@ This algorithm requires using the `Scikit-Optimize ask and tell interface <https
 
 An example of this can be found in `skopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/skopt_example.py>`__.
 
-.. autoclass:: ray.tune.suggest.SkOptSearch
+.. autoclass:: ray.tune.suggest.skopt.SkOptSearch
     :show-inheritance:
     :noindex:
 
