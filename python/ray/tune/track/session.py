@@ -1,8 +1,6 @@
 import os
 import uuid
 from datetime import datetime
-from .autodetect import (git_repo, dfl_local_dir, git_hash, invocation,
-                         git_pretty)
 from .constants import METADATA_FOLDER, RESULT_SUFFIX
 
 from ray.tune.logger import UnifiedLogger, Logger
@@ -18,11 +16,6 @@ class _ReporterHook(Logger):
 
 class _TrackedState():
     def __init__(self):
-        git_repo_or_none = git_repo()
-        self.git_repo = git_repo_or_none or "unknown"
-        self.git_hash = git_hash()
-        self.git_pretty = git_pretty()
-        self.invocation = invocation()
         self.start_time = datetime.now().isoformat()
 
 
