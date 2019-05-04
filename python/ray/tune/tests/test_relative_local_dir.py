@@ -30,14 +30,15 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         local_dir = "test_dotted_relative_local_dir"
         local_dir = os.path.join(self.current_dir, local_dir)
 
-        tune.run("PG",
-                 name="TuneDottedRelativeLocalDirTest",
-                 stop={"training_iteration": 1},
-                 checkpoint_freq=1,
-                 local_dir="./test_dotted_relative_local_dir",
-                 config={
-                     "env": "CartPole-v0",
-                 })
+        tune.run(
+            "PG",
+            name="TuneDottedRelativeLocalDirTest",
+            stop={"training_iteration": 1},
+            checkpoint_freq=1,
+            local_dir="./test_dotted_relative_local_dir",
+            config={
+                "env": "CartPole-v0",
+            })
 
         self.assertTrue(os.path.isdir(local_dir))
         expdir = os.path.join(local_dir, "TuneDottedRelativeLocalDirTest")
@@ -48,22 +49,23 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
                 trial_dir = os.path.join(expdir, i)
                 break
         self.assertTrue(
-            os.path.isfile(os.path.join(trial_dir,
-                                        "checkpoint_1/checkpoint-1")))
+            os.path.isfile(
+                os.path.join(trial_dir, "checkpoint_1/checkpoint-1")))
         shutil.rmtree(local_dir)
 
     def testRelativePath(self):
         local_dir = "test_relative_local_dir"
         local_dir = os.path.join(self.current_dir, local_dir)
 
-        tune.run("PG",
-                 name="TuneRelativeLocalDirTest",
-                 stop={"training_iteration": 1},
-                 checkpoint_freq=1,
-                 local_dir="test_relative_local_dir",
-                 config={
-                     "env": "CartPole-v0",
-                 })
+        tune.run(
+            "PG",
+            name="TuneRelativeLocalDirTest",
+            stop={"training_iteration": 1},
+            checkpoint_freq=1,
+            local_dir="test_relative_local_dir",
+            config={
+                "env": "CartPole-v0",
+            })
 
         self.assertTrue(os.path.isdir(local_dir))
         expdir = os.path.join(local_dir, "TuneRelativeLocalDirTest")
@@ -81,14 +83,15 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         local_dir = "~/test_tilde_absolute_local_dir"
         local_dir = os.path.expanduser(local_dir)
 
-        tune.run("PG",
-                 name="TuneAbsoluteLocalDirTest",
-                 stop={"training_iteration": 1},
-                 checkpoint_freq=1,
-                 local_dir=local_dir,
-                 config={
-                     "env": "CartPole-v0",
-                 })
+        tune.run(
+            "PG",
+            name="TuneAbsoluteLocalDirTest",
+            stop={"training_iteration": 1},
+            checkpoint_freq=1,
+            local_dir=local_dir,
+            config={
+                "env": "CartPole-v0",
+            })
 
         self.assertTrue(os.path.isdir(local_dir))
         expdir = os.path.join(local_dir, "TuneAbsoluteLocalDirTest")
@@ -107,14 +110,15 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         local_dir = "~/test_tilde_absolute_local_dir"
         local_dir = os.path.expanduser(local_dir)
 
-        tune.run("PG",
-                 name="TildeAbsolutePath",
-                 stop={"training_iteration": 1},
-                 checkpoint_freq=1,
-                 local_dir="~/test_tilde_absolute_local_dir",
-                 config={
-                     "env": "CartPole-v0",
-                 })
+        tune.run(
+            "PG",
+            name="TildeAbsolutePath",
+            stop={"training_iteration": 1},
+            checkpoint_freq=1,
+            local_dir="~/test_tilde_absolute_local_dir",
+            config={
+                "env": "CartPole-v0",
+            })
 
         self.assertTrue(os.path.isdir(local_dir))
         expdir = os.path.join(local_dir, "TildeAbsolutePath")
