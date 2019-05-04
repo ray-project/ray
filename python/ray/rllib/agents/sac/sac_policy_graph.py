@@ -149,7 +149,7 @@ class SACPolicyGraph(TFPolicyGraph):
         assert log_pis.shape.as_list() == [None, 1]
 
         Qs = tf.stack([Q([self._observations_ph, actions]) for Q in self.Qs])
-        q_min = tf.reduce_min(Qs, axis=0)
+        Q_min = tf.reduce_min(Qs, axis=0)
 
         policy_kl_losses = self.alpha * log_pis - q_min
 
