@@ -37,6 +37,12 @@ ray.tune.suggest
     :private-members:
     :show-inheritance:
 
+ray.tune.analysis
+-----------------
+
+.. autoclass:: ray.tune.analysis.ExperimentAnalysis
+    :members:
+
 
 ray.tune.logger
 ---------------

@@ -159,6 +159,9 @@ class Worker(object):
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
         self._current_task = None
+        # Functions to run to process the values returned by ray.get. Each
+        # postprocessor must take two arguments ("object_ids", and "values").
+        self._post_get_hooks = []
 
     @property
     def connected(self):
@@ -1467,7 +1470,7 @@ def init(redis_address=None,
     return _global_node.address_info
 
 
-# Functions to run as callback after a successful ray init
+# Functions to run as callback after a successful ray init.
 _post_init_hooks = []
 
 
@@ -1505,7 +1508,10 @@ def shutdown(exiting_interpreter=False):
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
 
+    # TODO(rkn): Instead of manually reseting some of the worker fields, we
+    # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
+    global_worker._post_get_hooks = []
 
 
 atexit.register(shutdown, True)
@@ -2188,23 +2194,29 @@ def get(object_ids):
             # In LOCAL_MODE, ray.get is the identity operation (the input will
             # actually be a value not an objectid).
             return object_ids
+
+        is_individual_id = isinstance(object_ids, ray.ObjectID)
+        if is_individual_id:
+            object_ids = [object_ids]
+
+        if not isinstance(object_ids, list):
+            raise ValueError("'object_ids' must either by an object ID "
+                             "or a list of object IDs.")
+
         global last_task_error_raise_time
-        if isinstance(object_ids, list):
-            values = worker.get_object(object_ids)
-            for i, value in enumerate(values):
-                if isinstance(value, RayError):
-                    last_task_error_raise_time = time.time()
-                    raise value
-            return values
-        else:
-            value = worker.get_object([object_ids])[0]
+        values = worker.get_object(object_ids)
+        for i, value in enumerate(values):
             if isinstance(value, RayError):
-                # If the result is a RayError, then the task that created
-                # this object failed, and we should propagate the error message
-                # here.
                 last_task_error_raise_time = time.time()
                 raise value
-            return value
+
+        # Run post processors.
+        for post_processor in worker._post_get_hooks:
+            values = post_processor(object_ids, values)
+
+        if is_individual_id:
+            values = values[0]
+        return values
 
 
 def put(value):
