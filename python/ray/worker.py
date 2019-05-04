@@ -2205,14 +2205,6 @@ def get(object_ids):
             values = values[0]
         return values
 
-        # post process
-        for post_processor in worker._post_get_hooks:
-            values = post_processor(object_ids, values)
-
-        if is_individual_id:
-            values = values[0]
-        return values
-
 
 def put(value):
     """Store an object in the object store.

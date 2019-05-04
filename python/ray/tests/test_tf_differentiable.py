@@ -22,10 +22,15 @@ def actors():
         """Ray Actor with TF differentiable functions."""
 
         def __init__(self):
-            # enable eager execution
+            # Enable eager execution.
             tf.enable_eager_execution()
 
-        # "identity" functions
+        # Returns nested TF value (unsupported for now).
+        @tf_differentiable
+        def nested_tf_return(self):
+            return {"a": [tf.constant(1.0)]}
+
+        # "Identity" functions.
         @tf_differentiable
         def identity(self, x):
             return x
@@ -40,7 +45,13 @@ def actors():
         def identity_mixed_kw(self, i_1, i_2, i_3=5, i_4=2, i_5=3):
             return i_4, i_4, i_5, i_1, i_1, i_3, i_4, i_2
 
-        # single input, single output
+        # No inputs.
+        @ray.method(num_return_vals=2)
+        @tf_differentiable
+        def return_5(self):
+            return 5.0, tf.constant(5.0)
+
+        # Single input, single output.
         @tf_differentiable
         def square(self, x):
             return x**2
@@ -53,7 +64,7 @@ def actors():
         def double(self, x):
             return 2 * x
 
-        # multiple inputs, single output
+        # Multiple inputs, single output.
         @tf_differentiable
         def sum(self, *inputs):
             return sum(inputs)
@@ -66,13 +77,13 @@ def actors():
         def sum_square_cube(self, x, y):
             return x**2 + y**3
 
-        # single input, multiple outputs
+        # Single input, multiple outputs.
         @ray.method(num_return_vals=2)
         @tf_differentiable
         def single_in_square_cube(self, x):
             return x**2, x**3
 
-        # multiple inputs, multiple outputs
+        # Multiple inputs, multiple outputs.
         @ray.method(num_return_vals=2)
         @tf_differentiable
         def two_in_square_cube_v1(self, x, y):
@@ -93,7 +104,7 @@ def actors():
         def g(self, x, y, z):
             return x + y + z, x * y * z
 
-        # kwargs
+        # Kwargs.
         @tf_differentiable
         def kw_power(self, x, n=2):
             return x**n
@@ -107,10 +118,10 @@ def actors():
         """Regular Python version of above Ray actor."""
 
         def __init__(self):
-            # enable eager execution
+            # Enable eager execution.
             tf.enable_eager_execution()
 
-        # "identity" functions
+        # "Identity" functions.
         def identity(self, x):
             return x
 
@@ -120,7 +131,7 @@ def actors():
         def identity_mixed_kw(self, i_1, i_2, i_3=5, i_4=2, i_5=3):
             return i_4, i_4, i_5, i_1, i_1, i_3, i_4, i_2
 
-        # single input, single output
+        # Single input, single output.
         def square(self, x):
             return x**2
 
@@ -130,7 +141,11 @@ def actors():
         def double(self, x):
             return 2 * x
 
-        # multiple inputs, single output
+        # No inputs.
+        def return_5(self):
+            return 5.0, tf.constant(5.0)
+
+        # Multiple inputs, single output.
         def sum(self, *inputs):
             return sum(inputs)
 
@@ -140,11 +155,11 @@ def actors():
         def sum_square_cube(self, x, y):
             return x**2 + y**3
 
-        # single input, multiple outputs
+        # Single input, multiple outputs.
         def single_in_square_cube(self, x):
             return x**2, x**3
 
-        # multiple inputs, multiple outputs
+        # Multiple inputs, multiple outputs.
         def two_in_square_cube_v1(self, x, y):
             return x**2, y**3
 
@@ -157,7 +172,7 @@ def actors():
         def g(self, x, y, z):
             return x + y + z, x * y * z
 
-        # kwargs
+        # Kwargs.
         def kw_power(self, x, n=2):
             return x**n
 
@@ -169,9 +184,14 @@ def actors():
 
 def check_outputs(out_1, out_2):
     """Verifies that two outputs (that may contain TF eager
-       tensors) are equivalent."""
+       tensors) are equivalent.
 
-    # this is needed because `ray.get` returns a list
+    Args:
+        out_1 (obj): The first output to compare.
+        out_2 (obj): The second output to compare.
+    """
+
+    # This is needed because `ray.get` returns a list.
     if isinstance(out_1, list) and isinstance(out_2, tuple):
         out_2 = list(out_2)
     elif isinstance(out_1, tuple) and isinstance(out_2, list):
@@ -180,24 +200,62 @@ def check_outputs(out_1, out_2):
         assert type(out_1) == type(out_2)
 
     if isinstance(out_1, (tf.Tensor, tf.Variable)):
-        # TF tensor or variable
+        # `tf.Tensor` or `tf.Variable`.
         assert out_1.dtype == out_2.dtype
         assert np.all(out_1.numpy() == out_2.numpy())
-    elif isinstance(out_1, (list, tuple)):
-        # recursively compare the elements
+    elif isinstance(out_1, (list, tuple, set)):
+        # Recursively compare the elements.
         for elem_1, elem_2 in zip(out_1, out_2):
             check_outputs(elem_1, elem_2)
     elif isinstance(out_1, dict):
-        # recursively compare the elements
+        # Recursively compare the elements.
         for key, value in out_1.items():
             assert key in out_2.keys()
             check_outputs(value, out_2[key])
     else:
-        # everything else
+        # Everything else.
         assert out_1 == out_2
 
 
+# Test input validation.
+# Test nested TF arg.
+def test_nested_tf_arg(ray_start_regular, actors):
+    ray_actor, dummy_actor = actors
+
+    x = tf.Variable(4.0)
+    nested = [0.0, {"a": [-7, (x, )]}]
+
+    with pytest.raises(
+            ValueError,
+            match="Cannot have nested TF values in arguments or return values."
+    ):
+        ray.get(ray_actor.identity.remote(nested))
+
+
+# Test nested TF return value.
+def test_nested_tf_return(ray_start_regular, actors):
+    ray_actor, dummy_actor = actors
+
+    # Because this error happens in the remote task, it comes wrapped in
+    # `ray.exceptions.RayTaskError`.
+    with pytest.raises(
+            ray.exceptions.RayTaskError,
+            match=("ValueError: Cannot have nested TF "
+                   "values in arguments or return values.")):
+        ray.get(ray_actor.nested_tf_return.remote())
+
+
 # Test that decorated function behaves like a normal Python function.
+
+
+# Test behavior with no args.
+def test_func_behavior_no_args(ray_start_regular, actors):
+    ray_actor, dummy_actor = actors
+
+    out_hat = ray.get(ray_actor.return_5.remote())
+    out = dummy_actor.return_5()
+
+    check_outputs(out_hat, out)
 
 
 # Test behavior with native Python args.
