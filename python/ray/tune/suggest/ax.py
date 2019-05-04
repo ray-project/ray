@@ -62,7 +62,7 @@ class AxSearch(SuggestionAlgorithm):
                 self._objective_name: (result[self._objective_name], 0.0)
             }
             metric_dict.update(
-                {on:(result[on], 0.0) 
+                {on: (result[on], 0.0)
                  for on in self._outcome_names})
             self._ax.complete_trial(
                 trial_index=ax_trial_index, raw_data=metric_dict)
