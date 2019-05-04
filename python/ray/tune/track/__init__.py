@@ -1,8 +1,6 @@
-import pickle
-
 from ray.tune.track.session import TrackSession
 
-_trial = None
+_session = None
 
 
 def init(log_dir=None,
@@ -15,13 +13,13 @@ def init(log_dir=None,
     Initializes the global trial context for this process.
     This creates a TrackSession object and the corresponding hooks for logging.
     """
-    global _trial  # pylint: disable=global-statement
-    if _trial:
+    global _session  # pylint: disable=global-statement
+    if _session:
         # TODO: would be nice to stack crawl at creation time to report
         # where that initial trial was created, and that creation line
         # info is helpful to keep around anyway.
         raise ValueError("A trial already exists in the current context")
-    local_trial = TrackSession(
+    local_session = TrackSession(
         log_dir=log_dir,
         upload_dir=upload_dir,
         sync_period=sync_period,
@@ -29,45 +27,24 @@ def init(log_dir=None,
         param_map=param_map,
         init_logging=True)
     # try:
-    _trial = local_trial
-    _trial.start()
+    _session = local_session
+    _session.start()
 
 
 def shutdown():
     """
     Cleans up the trial and removes it from the global context.
     """
-    global _trial  # pylint: disable=global-statement
-    if not _trial:
+    global _session  # pylint: disable=global-statement
+    if not _session:
         raise ValueError("Tried to stop trial, but no trial exists")
-    _trial.close()
-    _trial = None
+    _session.close()
+    _session = None
 
 
-def save(obj, obj_name, iteration=None, save_fn=pickle.dump, **kwargs):
-    """ Applies TrackSession.save to the trial in the current context """
-    return _trial.save(
-        obj=obj,
-        obj_name=obj_name,
-        iteration=iteration,
-        save_fn=save_fn,
-        **kwargs)
-
-
-def metric(*, iteration=None, **kwargs):
+def metric(iteration=None, **kwargs):
     """Applies TrackSession.metric to the trial in the current context."""
-    return _trial.metric(iteration=iteration, **kwargs)
+    return _session.metric(iteration=iteration, **kwargs)
 
 
-def load(obj_name, iteration=None, load_fn=pickle.load, **kwargs):
-    """Applies TrackSession.load to the trial in the current context."""
-    return _trial.load(
-        obj_name=obj_name, iteration=iteration, load_fn=load_fn, **kwargs)
-
-
-def trial_dir():
-    """Retrieves the trial directory for the trial in the current context."""
-    return _trial.trial_dir()
-
-
-__all__ = ["TrackSession", "trial", "metric", "save", "load", "trial_dir"]
+__all__ = ["TrackSession", "trial", "metric", "trial_dir"]

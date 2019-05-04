@@ -1,8 +1,8 @@
 import os
 import uuid
 from datetime import datetime
-from .constants import METADATA_FOLDER, RESULT_SUFFIX
 
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.logger import UnifiedLogger, Logger
 
 
@@ -56,14 +56,13 @@ class TrackSession(object):
 
         base_dir = os.path.expanduser(log_dir)
         self.base_dir = base_dir
-        self.data_dir = os.path.join(base_dir, METADATA_FOLDER)
+        self.artifact_dir = os.path.join(base_dir, self.trial_id)
         self.trial_id = str(uuid.uuid1().hex[:10])
         if trial_prefix:
             self.trial_id = "_".join([trial_prefix, self.trial_id])
 
         self._sync_period = sync_period
-        self.artifact_dir = os.path.join(base_dir, self.trial_id)
-        os.makedirs(self.artifact_dir, exist_ok=True)
+
         self.upload_dir = upload_dir
         self.param_map = param_map or {}
 
@@ -82,7 +81,7 @@ class TrackSession(object):
             self._hooks += [
                 UnifiedLogger(
                     self.param_map,
-                    self.data_dir,
+                    self.base_dir,
                     self.upload_dir,
                     filename_prefix=self.trial_id + "_")
             ]
@@ -101,9 +100,6 @@ class TrackSession(object):
         """
         metrics_dict = metrics.copy()
         metrics_dict.update({"trial_id": self.trial_id})
-        # if iteration is not None:
-        #     self.param_map["max_iteration"] = max(
-        #         self.param_map["max_iteration"], iteration)
         for hook in self._hooks:
             hook.on_result(metrics_dict)
 
@@ -114,40 +110,6 @@ class TrackSession(object):
         base, file_extension = os.path.splittext(fname)
         result = base + "_" + str(iteration) + file_extension
         return result
-
-    def save(self, result, result_name, save_fn, iteration=None, **kwargs):
-        """
-        Persists a result to disk as an artifact. These results will be
-        synchronized with the driver periodically through ray.
-
-        Arguments:
-            result (object): the python object to persist to disk.
-            result_fname (str): base filename for the object, e.g. "model.ckpt"
-            save_fn (function): function to save out the object. called as
-                                "save_fn(obj, fname, **kwargs)"
-            iteration (int): the current iteration of the trial. If not
-                             specified, overrides the previously saved file.
-                             otherwise, creates a new object for each iter.
-        """
-        fname = self._get_fname(result_name, iteration=iteration)
-        return save_fn(result, fname, **kwargs)
-
-    def load(self, result_name, load_fn, iteration=None, **kwargs):
-        """
-        Loads the persisted object of the given type for the corresponding
-        iteration.
-
-        Arguments:
-            result_name (str): base filename for the object as supplied to
-                               TrackSession.save
-            load_fn (function): function to load the object from disk. called
-                               as "load_fn(fname, **kwargs)"
-           iteration (int): iteration of trial to load from. If not specified,
-                            track will load the most recent file.
-
-        """
-        fname = self._get_fname(result_name, iteration=iteration)
-        return load_fn(fname, **kwargs)
 
     def trial_dir(self):
         """returns the local file path to the trial's artifact directory"""
@@ -160,6 +122,3 @@ class TrackSession(object):
 
         for hook in self._hooks:
             hook.close()
-
-    def get_result_filename(self):
-        return os.path.join(self.data_dir, self.trial_id + "_" + RESULT_SUFFIX)
