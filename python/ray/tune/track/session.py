@@ -2,7 +2,7 @@ import os
 import uuid
 from datetime import datetime
 
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.result import DEFAULT_RESULTS_DIR, TRAINING_ITERATION
 from ray.tune.logger import UnifiedLogger, Logger
 
 
@@ -31,9 +31,6 @@ class TrackSession(object):
     The upload directory may be None (in which case no upload is performed),
     or an S3 directory or a GCS directory.
 
-    init_logging will automatically set up a logger at the debug level,
-    along with handlers to print logs to stdout and to a persistent store.
-
     Arguments:
         log_dir (str): base log directory in which the results for all trials
                        are stored. if not specified, uses autodetect.dfl_local_dir()
@@ -56,10 +53,12 @@ class TrackSession(object):
 
         base_dir = os.path.expanduser(log_dir)
         self.base_dir = base_dir
-        self.artifact_dir = os.path.join(base_dir, self.trial_id)
         self.trial_id = str(uuid.uuid1().hex[:10])
         if trial_prefix:
             self.trial_id = "_".join([trial_prefix, self.trial_id])
+
+        self.artifact_dir = os.path.join(base_dir, self.trial_id)
+        os.makedirs(self.artifact_dir, exist_ok=True)
 
         self._sync_period = sync_period
 
@@ -68,23 +67,21 @@ class TrackSession(object):
 
         # misc metadata to save as well
         self.param_map["trial_id"] = self.trial_id
-        self.param_map["max_iteration"] = -1
+        self.param_map[TRAINING_ITERATION] = -1
         self.param_map["trial_completed"] = False
 
     def start(self, reporter=None):
-        for path in [self.base_dir, self.data_dir, self.artifact_dir]:
+        for path in [self.base_dir, self.artifact_dir]:
             if not os.path.exists(path):
                 os.makedirs(path)
 
         self._hooks = []
         if not reporter:
-            self._hooks += [
-                UnifiedLogger(
-                    self.param_map,
-                    self.base_dir,
-                    self.upload_dir,
-                    filename_prefix=self.trial_id + "_")
-            ]
+            self._logger = UnifiedLogger(
+                self.param_map,
+                self.artifact_dir,
+                self.upload_dir)
+            self._hooks += [self._logger]
         else:
             self._hooks += [_ReporterHook(reporter)]
 
@@ -100,13 +97,22 @@ class TrackSession(object):
         """
         metrics_dict = metrics.copy()
         metrics_dict.update({"trial_id": self.trial_id})
+
+        if iteration is not None:
+            max_iter = max(iteration, self.param_map[TRAINING_ITERATION])
+        else:
+            max_iter = self.param_map[TRAINING_ITERATION]
+
+        self.param_map[TRAINING_ITERATION] = max_iter
+        metrics_dict[TRAINING_ITERATION] = max_iter
+
         for hook in self._hooks:
             hook.on_result(metrics_dict)
 
     def _get_fname(self, result_name, iteration=None):
         fname = os.path.join(self.artifact_dir, result_name)
         if iteration is None:
-            iteration = self.param_map["max_iteration"]
+            iteration = self.param_map[TRAINING_ITERATION]
         base, file_extension = os.path.splittext(fname)
         result = base + "_" + str(iteration) + file_extension
         return result
