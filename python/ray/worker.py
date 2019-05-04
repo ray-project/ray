@@ -148,6 +148,9 @@ class Worker(object):
         # Identity of the driver that this worker is processing.
         # It is a DriverID.
         self.task_driver_id = DriverID.nil()
+        # Identity of the previous driver that this worker was processing.
+        # It is a DriverID.
+        self.previous_driver_id = DriverID.nil()
         self._task_context = threading.local()
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
@@ -949,7 +952,6 @@ class Worker(object):
         function_descriptor = FunctionDescriptor.from_bytes_list(
             task.function_descriptor_list())
         driver_id = task.driver_id()
-        previous_driver_id = self.task_driver_id
 
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
@@ -989,13 +991,14 @@ class Worker(object):
         with profiling.profile("task", extra_data=extra_data):
             with _changeproctitle(title, next_title):
                 # Print new driver to stdout/err if it has changed
-                if previous_driver_id != driver_id:
+                if self.previous_driver_id != driver_id:
                     print("Ray driver id: {}".format(str(driver_id)))
                     print(
                         "Ray driver id: {}".format(str(driver_id)),
                         file=sys.stderr)
                     sys.stdout.flush()
                     sys.stderr.flush()
+                self.previous_driver_id = driver_id
                 self._process_task(task, execution_info)
             # Reset the state fields so the next task can run.
             self.task_context.current_task_id = TaskID.nil()
