@@ -140,14 +140,12 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   // no ordering guarantee between notifications.
   return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
-      [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids,
-             bool created) {
+      [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids) {
         std::vector<ClientID> clients_to_request;
         bool restart_timer;
         pull_manager_.NewObjectLocations(object_id, client_ids, &clients_to_request,
                                          &restart_timer);
         for (const ClientID &client_id : clients_to_request) {
-          RAY_LOG(INFO) << client_id;
           SendPullRequest(object_id, client_id);
         }
         if (restart_timer) {
@@ -213,7 +211,7 @@ void ObjectManager::RestartPullTimer(const ObjectID &object_id) {
       std::vector<ClientID> clients_to_request;
       bool abort_creation;
       bool restart_timer;
-      pull_manager_.TimerExpired(object_id, &clients_to_request, &abort_creation,
+      pull_manager_.TimerExpired(UniqueID::nil(), object_id, &clients_to_request, &abort_creation,
                                  &restart_timer);
       if (abort_creation) {
         AbortObjectCreation(object_id);
@@ -495,7 +493,7 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
   pull_manager_.CancelPullObject(object_id, &clients_to_cancel,
                                  &unsubscribe_from_locations);
   for (const ClientID &client_id : clients_to_cancel) {
-    SendCancelPullRequest(UniqueID::UniqueID.nil(), object_id, client_id);
+    SendCancelPullRequest(UniqueID::nil(), object_id, client_id);
   }
 
   if (unsubscribe_from_locations) {
@@ -810,7 +808,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   pull_manager_.ReceivePushRequest(push_id, object_id, client_id, chunk_index, num_chunks,
                                    &clients_to_cancel, &start_timer);
   for (const ClientID &client_id : clients_to_cancel) {
-    SendCancelPullRequest(UniqueID::UniqueID.nil(), object_id, client_id);
+    SendCancelPullRequest(UniqueID::nil(), object_id, client_id);
   }
   if (start_timer) {
     RestartPullTimer(object_id);
@@ -820,7 +818,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
                          chunk_index, conn]() {
     double start_time = current_sys_time_seconds();
 
-    auto status = ExecuteReceiveObject(client_id, object_id, push_id, data_size,
+    auto status = ExecuteReceiveObject(client_id, object_id, data_size,
                                        metadata_size, chunk_index, *conn);
     double end_time = current_sys_time_seconds();
     // Notify the main thread that we have finished receiving the object.
@@ -865,12 +863,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     mutable_vec.resize(buffer_length);
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(mutable_vec, buffer_length));
-    boost::system::error_code ec;
-    conn.ReadBuffer(buffer, ec);
-    if (ec.value() != boost::system::errc::success) {
-      RAY_LOG(ERROR) << boost_to_ray_status(ec).ToString();
-    }
-    return_status = ray::Status::IOError("Failed to create chunk.");
+    status = conn.ReadBuffer(buffer);
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
 

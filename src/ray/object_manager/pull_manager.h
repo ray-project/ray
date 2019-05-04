@@ -281,11 +281,11 @@ class PullManager {
   int64_t total_failed_chunk_reads_;
   /// The client ID of the object manager that this pull manager is part of.
   ClientID client_id_;
-  /// This is a map from push ID that we are pulling to the information
+  /// This is a map from object ID that we are pulling to the information
   /// associated with that pull. NOTE: We use unique_ptr<PullInfo> instead of
   /// PullInfo because the PullInfo object uses the "this" pointer and so cannot
   /// be moved around.
-  std::unordered_map<UniqueID, PullInfo> pulls_;
+  std::unordered_map<ObjectID, std::unique_ptr<PullInfo>> pulls_;
   /// A random number generator.
   std::mt19937_64 gen_;
 };
