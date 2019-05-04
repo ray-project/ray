@@ -65,12 +65,13 @@ There are a couple steps to merge a contribution.
 2. Make sure all existing tests `pass <tune-contrib.html#testing>`__.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
    in the relevant file in `tune/tests/`.
-4. Document the code. Public functions need to be documented, and remember to provide an usage example if applicable.
+4. Document the code. Public functions need to be documented, and remember to provide an usage
+   example if applicable.
 5. Request code reviews from other contributors and address their comments. One fast way to get reviews is
    to help review others' code so that they return the favor. You should aim to improve the code as much as
    possible before the review. We highly value patches that can get in without extensive reviews.
-6. The patch can be merged after the reviewers approve the pull request.
-
+6. Reviewers will merge and approve the pull request; be sure to ping them if
+   the pull request is getting stale.
 
 
 Testing
@@ -88,7 +89,7 @@ burden and speedup review process.
 Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
 
 We also have tests for code formatting and linting that need to pass before merge.
-You can run the following locally:
+Install `yapf==0.23, flake8, flake8-quotes`. You can run the following locally:
 
 .. code-block:: shell
 
