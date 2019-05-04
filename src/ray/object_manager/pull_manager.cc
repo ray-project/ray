@@ -46,18 +46,18 @@ void PullManager::ReceivePushRequest(const UniqueID &push_id, const ObjectID &ob
     *start_timer = true;
     RAY_LOG(INFO) << object_id;
     auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, std::unique_ptr<PullInfo>(new PullInfo(false))));
+        object_id, PullInfo(false)));
 
     RAY_CHECK(insertion_it.second);
     it = insertion_it.first;
 
-    auto &pull_info = *it->second;
+    auto pull_info = it->second;
     RAY_CHECK(!pull_info.required);
     pull_info.push_id = push_id;
     pull_info.client_receiving_from = client_id;
     pull_info.InitializeChunksIfNecessary(num_chunks);
   } else {
-    auto &pull_info = *it->second;
+    auto pull_info = it->second;
     if (pull_info.client_receiving_from.is_nil()) {
       pull_info.push_id = push_id;
       pull_info.client_receiving_from = client_id;
@@ -79,7 +79,7 @@ void PullManager::ReceivePushRequest(const UniqueID &push_id, const ObjectID &ob
     }
   }
 
-  auto &pull_info = *it->second;
+  auto pull_info = it->second;
   RAY_CHECK(pull_info.num_in_progress_chunk_ids >= 0);
   pull_info.num_in_progress_chunk_ids++;
 }
@@ -98,7 +98,7 @@ void PullManager::NewObjectLocations(
     return;
   }
 
-  auto &pull_info = *it->second;
+  auto pull_info = it->second;
   pull_info.clients_with_object = clients_with_object;
 
   if (!pull_info.required) {
@@ -134,20 +134,23 @@ void PullManager::PullObject(const ObjectID &object_id, bool *subscribe_to_locat
 
   if (it == pulls_.end()) {
     *start_timer = true;
+
+    RAY_LOG(INFO) << object_id;
+
     auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, std::unique_ptr<PullInfo>(new PullInfo(true))));
+        object_id, PullInfo(true)));
     it = insertion_it.first;
-    auto &pull_info = *it->second;
+    auto pull_info = it->second;
     RAY_CHECK(pull_info.required);
     RAY_CHECK(pull_info.push_id.is_nil());
     RAY_CHECK(pull_info.client_receiving_from.is_nil());
   } else {
-    auto &pull_info = *it->second;
+    auto pull_info = it->second;
 
     if (!pull_info.required) {
       // In this case, we are already receiving the object, but it was not
       // required before.
-      auto &pull_info = *it->second;
+      auto pull_info = it->second;
       RAY_CHECK(!pull_info.push_id.is_nil());
       RAY_CHECK(!pull_info.client_receiving_from.is_nil());
       pull_info.required = true;
@@ -174,7 +177,7 @@ void PullManager::CancelPullObject(const ObjectID &object_id,
     return;
   }
 
-  auto &pull_info = *it->second;
+  auto pull_info = it->second;
   if (!pull_info.required) {
     // This object already was not required, so this cancel message contains no
     // new information.
@@ -207,7 +210,7 @@ void PullManager::ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &ob
   ++total_successful_chunk_reads_;
   auto it = pulls_.find(object_id);
   RAY_CHECK(it != pulls_.end());
-  auto &pull_info = *it->second;
+  auto pull_info = it->second;
 
   pull_info.num_in_progress_chunk_ids--;
   RAY_CHECK(pull_info.num_in_progress_chunk_ids >= 0);
@@ -232,7 +235,7 @@ void PullManager::ChunkReadFailed(const UniqueID &push_id, const ObjectID &objec
   ++total_failed_chunk_reads_;
   auto it = pulls_.find(object_id);
   RAY_CHECK(it != pulls_.end());
-  auto &pull_info = *it->second;
+  auto pull_info = it->second;
 
   pull_info.num_in_progress_chunk_ids--;
   RAY_CHECK(pull_info.num_in_progress_chunk_ids >= 0);
@@ -259,8 +262,15 @@ void PullManager::TimerExpired(const UniqueID &push_id, const ObjectID &object_i
                                std::vector<ClientID> *clients_to_request,
                                bool *abort_creation, bool *restart_timer) {
   auto it = pulls_.find(object_id);
+
+  RAY_LOG(INFO) << pulls_.size();
+  for (auto const &pair : pulls_) {
+    RAY_LOG(INFO) << pair.first;
+  }
+  RAY_CHECK(it != pulls_.end()) << object_id;
+
   RAY_CHECK(it != pulls_.end());
-  auto &pull_info = *it->second;
+  auto pull_info = it->second;
 
   *clients_to_request = std::vector<ClientID>();
   if (!pull_info.client_receiving_from.is_nil()) {
