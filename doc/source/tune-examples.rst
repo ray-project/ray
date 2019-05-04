@@ -30,7 +30,7 @@ Keras Examples
 --------------
 
 - `tune_mnist_keras <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_keras.py>`__:
-   Converts the Keras MNIST example to use Tune with the function-based API and a Keras callback. Also shows how to easily convert something relying on argparse to use Tune.
+   Converts the Keras MNIST example to use Tune with the function-based API and a Keras callback.
 
 
 PyTorch Examples

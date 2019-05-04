@@ -327,10 +327,21 @@ The following fields will automatically show up on the console output, if provid
     Example_0:  TERMINATED [pid=68248], 179 s, 2 iter, 60000 ts, 94 rew
 
 
-Logging and Visualizing Results
--------------------------------
+Logging, Analyzing, and Visualizing Results
+-------------------------------------------
 
-All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node. The log records are compatible with a number of visualization tools:
+All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
+
+Tune provides an ``ExperimentAnalysis`` object for analyzing results which can be used by providing the directory path as follows:
+
+.. code-block:: python
+
+    from ray.tune.analysis import ExperimentAnalysis
+
+    ea = ExperimentAnalysis("~/ray_results/my_experiment")
+    trials_dataframe = ea.dataframe()
+
+You can check out `experiment_analysis.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/analysis/experiment_analysis.py>`__ for more interesting analysis operations.
 
 To visualize learning in tensorboard, install TensorFlow:
 
@@ -355,14 +366,6 @@ To use rllab's VisKit (you may have to install some dependencies), run:
 
 .. image:: ray-tune-viskit.png
 
-Finally, to view the results with a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__, open `ParallelCoordinatesVisualization.ipynb <https://github.com/ray-project/ray/blob/master/python/ray/tune/ParallelCoordinatesVisualization.ipynb>`__ as follows and run its cells:
-
-.. code-block:: bash
-
-    $ cd $RAY_HOME/python/ray/tune
-    $ jupyter-notebook ParallelCoordinatesVisualization.ipynb
-
-.. image:: ray-tune-parcoords.png
 
 Custom Loggers
 ~~~~~~~~~~~~~~
@@ -465,11 +468,11 @@ Tune CLI (Experimental)
 
 Here are a few examples of command line calls.
 
-- ``tune list-trials``: List tabular information about trials within an experiment. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``.
+- ``tune list-trials``: List tabular information about trials within an experiment. Empty columns will be dropped by default. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--output`` flag to write the trial information to a specific file (CSV or Pickle). Add the ``--columns`` and ``--result-columns`` flags to select specific columns to display.
 
 .. code-block:: bash
 
-    $ tune list-trials [EXPERIMENT_DIR]
+    $ tune list-trials [EXPERIMENT_DIR] --output note.csv
 
     +------------------+-----------------------+------------+
     | trainable_name   | experiment_tag        | trial_id   |
@@ -481,6 +484,8 @@ Here are a few examples of command line calls.
     | MyTrainableClass | 4_height=90,width=69  | ae4e02fb   |
     +------------------+-----------------------+------------+
     Dropped columns: ['status', 'last_update_time']
+    Please increase your terminal size to view remaining columns.
+    Output saved at: note.csv
 
     $ tune list-trials [EXPERIMENT_DIR] --filter "trial_id == 7b99a28a"
 
@@ -490,12 +495,13 @@ Here are a few examples of command line calls.
     | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
     +------------------+-----------------------+------------+
     Dropped columns: ['status', 'last_update_time']
+    Please increase your terminal size to view remaining columns.
 
-- ``tune list-experiments``: List tabular information about experiments within a project. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``.
+- ``tune list-experiments``: List tabular information about experiments within a project. Empty columns will be dropped by default. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--output`` flag to write the trial information to a specific file (CSV or Pickle). Add the ``--columns`` flag to select specific columns to display.
 
 .. code-block:: bash
 
-    $ tune list-experiments [PROJECT_DIR]
+    $ tune list-experiments [PROJECT_DIR] --output note.csv
 
     +----------------------+----------------+------------------+---------------------+
     | name                 |   total_trials |   running_trials |   terminated_trials |
@@ -505,6 +511,8 @@ Here are a few examples of command line calls.
     | hyperband_test       |              1 |                0 |                   1 |
     +----------------------+----------------+------------------+---------------------+
     Dropped columns: ['error_trials', 'last_updated']
+    Please increase your terminal size to view remaining columns.
+    Output saved at: note.csv
 
     $ tune list-experiments [PROJECT_DIR] --filter "total_trials <= 1" --sort name
 
@@ -515,6 +523,7 @@ Here are a few examples of command line calls.
     | test                 |              1 |                0 |                   0 |
     +----------------------+----------------+------------------+---------------------+
     Dropped columns: ['error_trials', 'last_updated']
+    Please increase your terminal size to view remaining columns.
 
 
 Further Questions or Issues?

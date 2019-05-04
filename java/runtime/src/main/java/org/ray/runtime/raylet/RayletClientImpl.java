@@ -38,7 +38,7 @@ public class RayletClientImpl implements RayletClient {
   );
 
   /**
-   * The pointer to c++'s local scheduler client.
+   * The pointer to c++'s raylet client.
    */
   private long client = 0;
 
@@ -123,9 +123,10 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly) {
+  public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly,
+                                boolean deleteCreatingTasks) {
     byte[][] objectIdsArray = UniqueIdUtil.getIdBytes(objectIds);
-    nativeFreePlasmaObjects(client, objectIdsArray, localOnly);
+    nativeFreePlasmaObjects(client, objectIdsArray, localOnly, deleteCreatingTasks);
   }
 
   @Override
@@ -350,7 +351,7 @@ public class RayletClientImpl implements RayletClient {
       int taskIndex);
 
   private static native void nativeFreePlasmaObjects(long conn, byte[][] objectIds,
-      boolean localOnly) throws RayException;
+      boolean localOnly, boolean deleteCreatingTasks) throws RayException;
 
   private static native byte[] nativePrepareCheckpoint(long conn, byte[] actorId);
 

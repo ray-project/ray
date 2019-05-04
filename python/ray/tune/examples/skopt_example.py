@@ -9,7 +9,7 @@ from __future__ import print_function
 import ray
 from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest import SkOptSearch
+from ray.tune.suggest.skopt import SkOptSearch
 
 
 def easy_objective(config, reporter):

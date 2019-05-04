@@ -5,19 +5,15 @@ from __future__ import print_function
 import numpy as np
 import copy
 import logging
+try:
+    hyperopt_logger = logging.getLogger("hyperopt")
+    hyperopt_logger.setLevel(logging.WARNING)
+    import hyperopt as hpo
+except ImportError:
+    hpo = None
 
 from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
-
-hpo = None
-
-
-def _import_hyperopt():
-    global hpo
-    hyperopt_logger = logging.getLogger("hyperopt")
-    hyperopt_logger.setLevel(logging.WARNING)
-    import hyperopt
-    hpo = hyperopt
 
 
 class HyperOptSearch(SuggestionAlgorithm):
@@ -66,7 +62,6 @@ class HyperOptSearch(SuggestionAlgorithm):
                  reward_attr="episode_reward_mean",
                  points_to_evaluate=None,
                  **kwargs):
-        _import_hyperopt()
         assert hpo is not None, "HyperOpt must be installed!"
         from hyperopt.fmin import generate_trials_to_calculate
         assert type(max_concurrent) is int and max_concurrent > 0
@@ -125,8 +120,8 @@ class HyperOptSearch(SuggestionAlgorithm):
         if ho_trial is None:
             return
         now = hpo.utils.coarse_utcnow()
-        ho_trial['book_time'] = now
-        ho_trial['refresh_time'] = now
+        ho_trial["book_time"] = now
+        ho_trial["refresh_time"] = now
 
     def on_trial_complete(self,
                           trial_id,
@@ -141,17 +136,17 @@ class HyperOptSearch(SuggestionAlgorithm):
         ho_trial = self._get_hyperopt_trial(trial_id)
         if ho_trial is None:
             return
-        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
+        ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
         if error:
-            ho_trial['state'] = hpo.base.JOB_STATE_ERROR
-            ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
+            ho_trial["state"] = hpo.base.JOB_STATE_ERROR
+            ho_trial["misc"]["error"] = (str(TuneError), "Tune Error")
         elif early_terminated:
-            ho_trial['state'] = hpo.base.JOB_STATE_ERROR
-            ho_trial['misc']['error'] = (str(TuneError), "Tune Removed")
+            ho_trial["state"] = hpo.base.JOB_STATE_ERROR
+            ho_trial["misc"]["error"] = (str(TuneError), "Tune Removed")
         else:
-            ho_trial['state'] = hpo.base.JOB_STATE_DONE
+            ho_trial["state"] = hpo.base.JOB_STATE_DONE
             hp_result = self._to_hyperopt_result(result)
-            ho_trial['result'] = hp_result
+            ho_trial["result"] = hp_result
         self._hpopt_trials.refresh()
         del self._live_trial_mapping[trial_id]
 

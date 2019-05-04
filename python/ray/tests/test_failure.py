@@ -278,7 +278,7 @@ def test_incorrect_method_calls(ray_start_regular):
 def test_worker_raising_exception(ray_start_regular):
     @ray.remote
     def f():
-        ray.worker.global_worker._get_next_task_from_local_scheduler = None
+        ray.worker.global_worker._get_next_task_from_raylet = None
 
     # Running this task should cause the worker to raise an exception after
     # the task has successfully completed.
@@ -702,7 +702,7 @@ def test_connect_with_disconnected_node(shutdown_only):
     # This node is killed by SIGTERM, ray_monitor will not mark it again.
     removing_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(removing_node, allow_graceful=True)
-    with pytest.raises(Exception, match=('Timing out of wait.')):
+    with pytest.raises(Exception, match=("Timing out of wait.")):
         wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 3, timeout=2)
     # There is no connection error to a dead node.
     info = relevant_errors(ray_constants.RAYLET_CONNECTION_ERROR)

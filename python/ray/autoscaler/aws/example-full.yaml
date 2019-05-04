@@ -14,6 +14,11 @@ max_workers: 2
 # subsequent `ray up`) this number of nodes will be started.
 initial_workers: 0
 
+# Whether or not to autoscale aggressively. If this is enabled, if at any point
+#   we would start more workers, we start at least enough to bring us to
+#   initial_workers.
+autoscaling_mode: default
+
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
@@ -21,6 +26,14 @@ docker:
     image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
     container_name: "" # e.g. ray_docker
     run_options: []  # Extra options to pass into "docker run"
+
+    # Example of running a GPU head with CPU workers
+    # head_image: "tensorflow/tensorflow:1.13.1-py3"
+    # head_run_options:
+    #     - --runtime=nvidia
+
+    # worker_image: "ubuntu:18.04"
+    # worker_run_options: []
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
@@ -61,7 +74,7 @@ head_node:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 50
+              VolumeSize: 100
 
     # Additional options in the boto docs.
 

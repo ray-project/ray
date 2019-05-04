@@ -5,9 +5,12 @@ from __future__ import print_function
 import logging
 import sys
 import time
+import inspect
 import threading
 from six.moves import queue
 
+
+from ray.tune import track
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
 from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
@@ -244,6 +247,10 @@ class FunctionRunner(Trainable):
 
 
 def wrap_function(train_func):
+
+    function_args = inspect.getargspec(train_func).args
+    use_track = ("reporter" not in  function_args and len(function_args) == 1)
+
     class WrappedFunc(FunctionRunner):
         def _trainable_func(self, config, reporter):
             output = train_func(config, reporter)
@@ -253,4 +260,13 @@ def wrap_function(train_func):
             reporter(**{RESULT_DUPLICATE: True})
             return output
 
-    return WrappedFunc
+    class WrappedTrackFunc(FunctionRunner):
+        def _trainable_func(self, config, reporter):
+            # TODO: logdir will need different handling in local_mode
+            track.init(tune_reporter=reporter, log_dir=os.getcwd())
+            output = train_func(config)
+            reporter(**{RESULT_DUPLICATE: True})
+            track.shutdown()
+            return output
+
+    return WrappedTrackFunc if use_track else WrappedFunc

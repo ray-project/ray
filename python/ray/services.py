@@ -77,20 +77,6 @@ def address(ip_address, port):
     return ip_address + ":" + str(port)
 
 
-def get_ip_address(address):
-    assert type(address) == str, "Address must be a string"
-    ip_address = address.split(":")[0]
-    return ip_address
-
-
-def get_port(address):
-    try:
-        port = int(address.split(":")[1])
-    except Exception:
-        raise Exception("Unable to parse port from address {}".format(address))
-    return port
-
-
 def new_port():
     return random.randint(10000, 65535)
 
@@ -105,6 +91,64 @@ def include_java_from_redis(redis_client):
         True if this cluster backend enables Java worker.
     """
     return redis_client.get("INCLUDE_JAVA") == b"1"
+
+
+def get_address_info_from_redis_helper(redis_address,
+                                       node_ip_address,
+                                       redis_password=None):
+    redis_ip_address, redis_port = redis_address.split(":")
+    # For this command to work, some other client (on the same machine as
+    # Redis) must have run "CONFIG SET protected-mode no".
+    redis_client = create_redis_client(redis_address, password=redis_password)
+
+    client_table = ray.experimental.state.parse_client_table(redis_client)
+    if len(client_table) == 0:
+        raise Exception(
+            "Redis has started but no raylets have registered yet.")
+
+    relevant_client = None
+    for client_info in client_table:
+        client_node_ip_address = client_info["NodeManagerAddress"]
+        if (client_node_ip_address == node_ip_address
+                or (client_node_ip_address == "127.0.0.1"
+                    and redis_ip_address == get_node_ip_address())):
+            relevant_client = client_info
+            break
+    if relevant_client is None:
+        raise Exception(
+            "Redis has started but no raylets have registered yet.")
+
+    return {
+        "object_store_address": relevant_client["ObjectStoreSocketName"],
+        "raylet_socket_name": relevant_client["RayletSocketName"],
+    }
+
+
+def get_address_info_from_redis(redis_address,
+                                node_ip_address,
+                                num_retries=5,
+                                redis_password=None):
+    counter = 0
+    while True:
+        try:
+            return get_address_info_from_redis_helper(
+                redis_address, node_ip_address, redis_password=redis_password)
+        except Exception:
+            if counter == num_retries:
+                raise
+            # Some of the information may not be in Redis yet, so wait a little
+            # bit.
+            logger.warning(
+                "Some processes that the driver needs to connect to have "
+                "not registered with Redis, so retrying. Have you run "
+                "'ray start' on this node?")
+            time.sleep(1)
+        counter += 1
+
+
+def get_webui_url_from_redis(redis_client):
+    webui_url = redis_client.hmget("webui", "url")[0]
+    return ray.utils.decode(webui_url) if webui_url is not None else None
 
 
 def remaining_processes_alive():
@@ -176,6 +220,8 @@ def get_node_ip_address(address="8.8.8.8:53"):
                 node_ip_address = socket.gethostbyname(host_name)
             except Exception:
                 pass
+    finally:
+        s.close()
 
     return node_ip_address
 
@@ -970,11 +1016,11 @@ def check_and_update_resources(num_cpus, num_gpus, resources):
     # See if CUDA_VISIBLE_DEVICES has already been set.
     gpu_ids = ray.utils.get_cuda_visible_devices()
 
-    # Check that the number of GPUs that the local scheduler wants doesn't
+    # Check that the number of GPUs that the raylet wants doesn't
     # excede the amount allowed by CUDA_VISIBLE_DEVICES.
     if ("GPU" in resources and gpu_ids is not None
             and resources["GPU"] > len(gpu_ids)):
-        raise Exception("Attempting to start local scheduler with {} GPUs, "
+        raise Exception("Attempting to start raylet with {} GPUs, "
                         "but CUDA_VISIBLE_DEVICES contains {}.".format(
                             resources["GPU"], gpu_ids))
 
@@ -985,14 +1031,25 @@ def check_and_update_resources(num_cpus, num_gpus, resources):
         if gpu_ids is not None:
             resources["GPU"] = min(resources["GPU"], len(gpu_ids))
 
+    resources = {
+        resource_label: resource_quantity
+        for resource_label, resource_quantity in resources.items()
+        if resource_quantity != 0
+    }
+
     # Check types.
     for _, resource_quantity in resources.items():
         assert (isinstance(resource_quantity, int)
                 or isinstance(resource_quantity, float))
         if (isinstance(resource_quantity, float)
                 and not resource_quantity.is_integer()):
-            raise ValueError("Resource quantities must all be whole numbers.")
-
+            raise ValueError(
+                "Resource quantities must all be whole numbers. Received {}.".
+                format(resources))
+        if resource_quantity < 0:
+            raise ValueError(
+                "Resource quantities must be nonnegative. Received {}.".format(
+                    resources))
         if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
             raise ValueError("Resource quantities must be at most {}.".format(
                 ray_constants.MAX_RESOURCE_QUANTITY))
@@ -1069,8 +1126,9 @@ def start_raylet(redis_address,
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
+    num_cpus_static = static_resources.get("CPU", 0)
     maximum_startup_concurrency = max(
-        1, min(multiprocessing.cpu_count(), static_resources["CPU"]))
+        1, min(multiprocessing.cpu_count(), num_cpus_static))
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join(
@@ -1119,21 +1177,21 @@ def start_raylet(redis_address,
 
     command = [
         RAYLET_EXECUTABLE,
-        raylet_name,
-        plasma_store_name,
-        str(object_manager_port),
-        str(node_manager_port),
-        node_ip_address,
-        gcs_ip_address,
-        gcs_port,
-        str(num_initial_workers),
-        str(maximum_startup_concurrency),
-        resource_argument,
-        config_str,
-        start_worker_command,
-        java_worker_command,
-        redis_password or "",
-        temp_dir,
+        "--raylet_socket_name={}".format(raylet_name),
+        "--store_socket_name={}".format(plasma_store_name),
+        "--object_manager_port={}".format(object_manager_port),
+        "--node_manager_port={}".format(node_manager_port),
+        "--node_ip_address={}".format(node_ip_address),
+        "--redis_address={}".format(gcs_ip_address),
+        "--redis_port={}".format(gcs_port),
+        "--num_initial_workers={}".format(num_initial_workers),
+        "--maximum_startup_concurrency={}".format(maximum_startup_concurrency),
+        "--static_resource_list={}".format(resource_argument),
+        "--config_list={}".format(config_str),
+        "--python_worker_command={}".format(start_worker_command),
+        "--java_worker_command={}".format(java_worker_command),
+        "--redis_password={}".format(redis_password or ""),
+        "--temp_dir={}".format(temp_dir),
     ]
     process_info = start_ray_process(
         command,
@@ -1497,7 +1555,12 @@ def start_raylet_monitor(redis_address,
     redis_password = redis_password or ""
     config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
-    command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port, config_str]
+    command = [
+        RAYLET_MONITOR_EXECUTABLE,
+        "--redis_address={}".format(gcs_ip_address),
+        "--redis_port={}".format(gcs_port),
+        "--config_list={}".format(config_str),
+    ]
     if redis_password:
         command += [redis_password]
     process_info = start_ray_process(

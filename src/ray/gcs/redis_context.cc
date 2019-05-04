@@ -4,6 +4,9 @@
 
 #include <sstream>
 
+#include "ray/stats/stats.h"
+#include "ray/util/util.h"
+
 extern "C" {
 #include "ray/thirdparty/hiredis/adapters/ae.h"
 #include "ray/thirdparty/hiredis/async.h"
@@ -18,13 +21,21 @@ namespace {
 /// A helper function to call the callback and delete it from the callback
 /// manager if necessary.
 void ProcessCallback(int64_t callback_index, const std::string &data) {
-  if (callback_index >= 0) {
-    bool delete_callback =
-        ray::gcs::RedisCallbackManager::instance().get(callback_index)(data);
-    // Delete the callback if necessary.
-    if (delete_callback) {
-      ray::gcs::RedisCallbackManager::instance().remove(callback_index);
-    }
+  RAY_CHECK(callback_index >= 0) << "The callback index must be greater than 0, "
+                                 << "but it actually is " << callback_index;
+  auto callback_item = ray::gcs::RedisCallbackManager::instance().get(callback_index);
+  if (!callback_item.is_subscription) {
+    // Record the redis latency for non-subscription redis operations.
+    auto end_time = current_sys_time_us();
+    ray::stats::RedisLatency().Record(end_time - callback_item.start_time);
+  }
+  // Invoke the callback.
+  if (callback_item.callback != nullptr) {
+    callback_item.callback(data);
+  }
+  if (!callback_item.is_subscription) {
+    // Delete the callback if it's not a subscription callback.
+    ray::gcs::RedisCallbackManager::instance().remove(callback_index);
   }
 }
 
@@ -104,18 +115,20 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
   ProcessCallback(callback_index, data);
 }
 
-int64_t RedisCallbackManager::add(const RedisCallback &function) {
-  callbacks_.emplace(num_callbacks_, function);
+int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscription) {
+  auto start_time = current_sys_time_us();
+  callback_items_.emplace(num_callbacks_,
+                          CallbackItem(function, is_subscription, start_time));
   return num_callbacks_++;
 }
 
-RedisCallback &RedisCallbackManager::get(int64_t callback_index) {
-  RAY_CHECK(callbacks_.find(callback_index) != callbacks_.end());
-  return callbacks_[callback_index];
+RedisCallbackManager::CallbackItem &RedisCallbackManager::get(int64_t callback_index) {
+  RAY_CHECK(callback_items_.find(callback_index) != callback_items_.end());
+  return callback_items_[callback_index];
 }
 
 void RedisCallbackManager::remove(int64_t callback_index) {
-  callbacks_.erase(callback_index);
+  callback_items_.erase(callback_index);
 }
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY)                     \
@@ -217,8 +230,7 @@ Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
                               const uint8_t *data, int64_t length,
                               const TablePrefix prefix, const TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
-  int64_t callback_index =
-      redisCallback != nullptr ? RedisCallbackManager::instance().add(redisCallback) : -1;
+  int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, false);
   if (length > 0) {
     if (log_length >= 0) {
       std::string redis_command = command + " %d %d %b %b %d";
@@ -278,7 +290,7 @@ Status RedisContext::SubscribeAsync(const ClientID &client_id,
   RAY_CHECK(pubsub_channel != TablePubsub::NO_PUBLISH)
       << "Client requested subscribe on a table that does not support pubsub";
 
-  int64_t callback_index = RedisCallbackManager::instance().add(redisCallback);
+  int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, true);
   RAY_CHECK(out_callback_index != nullptr);
   *out_callback_index = callback_index;
   int status = 0;
