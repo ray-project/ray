@@ -2525,11 +2525,13 @@ assert len(error_lines) == 0
 print("success")
 """
 
+
 def test_logging_to_driver(shutdown_only):
     driver_script = logging_driver_script.format(1)
     out = ray.tests.utils.run_string_as_driver(driver_script)
 
     assert "success" in out
+
 
 def test_logging_to_multiple_drivers(shutdown_only):
     num_drivers = 10
@@ -2537,7 +2539,8 @@ def test_logging_to_multiple_drivers(shutdown_only):
 
     for i in range(num_drivers):
         driver_script = logging_driver_script.format(i * 2 + 1)
-        procs[i] = ray.tests.utils.run_string_as_driver_nonblocking(driver_script)
+        procs[i] = ray.tests.utils.run_string_as_driver_nonblocking(
+            driver_script)
 
     for i in range(num_drivers):
         try:
@@ -2547,7 +2550,7 @@ def test_logging_to_multiple_drivers(shutdown_only):
             raise Exception("Logging process timed out")
 
         assert "success" in str(out)
-        
+
 
 def test_not_logging_to_driver(shutdown_only):
     ray.init(num_cpus=1, log_to_driver=False)

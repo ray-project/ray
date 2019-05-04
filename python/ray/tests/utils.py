@@ -95,6 +95,7 @@ def wait_for_errors(error_type, num_errors, timeout=10):
         time.sleep(0.1)
     raise Exception("Timing out of wait.")
 
+
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
 # should use those, but they seem to conflict with Ray's use of faulthandler.
 class CaptureOutputAndError(object):
@@ -134,4 +135,3 @@ class CaptureOutputAndError(object):
         sys.stderr = self.old_stderr
         self.captured_output_and_error["out"] = self.output_buffer.getvalue()
         self.captured_output_and_error["err"] = self.error_buffer.getvalue()
-
