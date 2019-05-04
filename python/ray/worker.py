@@ -1496,7 +1496,10 @@ def shutdown(exiting_interpreter=False):
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
 
+    # TODO(rkn): Instead of manually reseting some of the worker fields, we
+    # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
+    global_worker._post_get_hooks = []
 
 
 atexit.register(shutdown, True)
