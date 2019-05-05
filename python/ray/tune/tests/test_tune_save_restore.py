@@ -48,11 +48,10 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         ray.shutdown()
 
     def _get_trial_dir(self, experiment_dir):
-        trial_dirname = next((
-            child_dir for child_dir in os.listdir(experiment_dir)
-            if (os.path.isdir(os.path.join(experiment_dir, child_dir))
-                and child_dir.startswith(self.MockTrainable._name))
-        ))
+        trial_dirname = next(
+            (child_dir for child_dir in os.listdir(experiment_dir)
+             if (os.path.isdir(os.path.join(experiment_dir, child_dir))
+                 and child_dir.startswith(self.MockTrainable._name))))
 
         trial_absolute_dir = os.path.join(experiment_dir, trial_dirname)
 
