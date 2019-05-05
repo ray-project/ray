@@ -90,6 +90,10 @@ class Experiment(object):
         if custom_loggers:
             _raise_deprecation_note("custom_loggers", "loggers", soft=False)
 
+        print("Look at here! We change restore: {} to {}!".format(
+            restore,
+            os.path.abspath(os.path.expanduser(restore)) if restore else None))
+
         run_identifier = Experiment._register_if_needed(run)
         spec = {
             "run": run_identifier,
@@ -109,7 +113,8 @@ class Experiment(object):
             "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
             "max_failures": max_failures,
-            "restore": restore
+            "restore": os.path.abspath(os.path.expanduser(restore))
+            if restore else None
         }
 
         self.name = name or run_identifier
