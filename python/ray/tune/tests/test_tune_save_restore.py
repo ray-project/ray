@@ -5,20 +5,23 @@ from __future__ import print_function
 
 import os
 import shutil
+import tempfile
 import unittest
 
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune.util import recursive_fnmatch
 
 
-class TuneRelativeLocalDirTest(unittest.TestCase):
+class SerialTuneRelativeLocalDirTest(unittest.TestCase):
+    local_mode = True
+
     @classmethod
     def setUpClass(self):
+        print("Hi! The local mode:", self.local_mode)
         self.current_dir = os.path.abspath(".")
-        ray.init(num_cpus=1, num_gpus=0, local_mode=True)
-        # _register_all()
+        ray.init(num_cpus=1, num_gpus=0, local_mode=self.local_mode)
+        _register_all()
 
     @classmethod
     def tearDownClass(self):
@@ -40,7 +43,7 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
     def _train(self, exp_name, local_dir, absolute_local_dir):
         self.absolute_local_dir = absolute_local_dir
 
-        tune.run(
+        trial, = tune.run(
             "PG",
             name=exp_name,
             stop={"training_iteration": 1},
@@ -53,6 +56,10 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
 
         exp_dir = os.path.join(absolute_local_dir, exp_name)
         _, abs_trial_dir = self._get_trial_dir(exp_dir)
+
+        self.assertIsNone(trial.error_file)
+        self.assertEqual(trial.local_dir, exp_dir)
+        self.assertEqual(trial.logdir, abs_trial_dir)
 
         self.assertTrue(os.path.isdir(absolute_local_dir), absolute_local_dir)
         self.assertTrue(os.path.isdir(exp_dir))
@@ -68,24 +75,27 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
 
         checkpoint_path = os.path.join(
             local_dir, exp_name, trial_name,
-            "checkpoint_1/checkpoint-1")  # Relative!
+            "checkpoint_1/checkpoint-1")  # Relative checkpoint path
 
-        # The file tune would found.
+        # The file tune would found. The absolute checkpoint path
         tune_found_file = os.path.abspath(os.path.expanduser(checkpoint_path))
         self.assertTrue(
             os.path.isfile(tune_found_file),
             "{} is not exist!".format(tune_found_file))
 
-        tune.run(
+        trial, = tune.run(
             "PG",
             name=exp_name,
             stop={"training_iteration": 2},  # train one more iteration.
             checkpoint_freq=1,
             restore=checkpoint_path,  # Restore the checkpoint
+            max_failures=0,
             config={
                 "env": "CartPole-v0",
+                "log_level": "FATAL"
             },
         )
+        self.assertIsNone(trial.error_file)
 
     def testDottedRelativePath(self):
         local_dir = "./test_dotted_relative_local_dir"
@@ -114,6 +124,16 @@ class TuneRelativeLocalDirTest(unittest.TestCase):
         exp_name = "AbsolutePath"
         self._train(exp_name, local_dir, local_dir)
         self._restore(exp_name, local_dir, local_dir)
+
+    def testTempfile(self):
+        local_dir = tempfile.mkdtemp()
+        exp_name = "Tempfile"
+        self._train(exp_name, local_dir, local_dir)
+        self._restore(exp_name, local_dir, local_dir)
+
+
+class ParallelTuneRelativeLocalDirTest(SerialTuneRelativeLocalDirTest):
+    local_mode = False
 
 
 if __name__ == "__main__":

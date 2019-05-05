@@ -90,10 +90,6 @@ class Experiment(object):
         if custom_loggers:
             _raise_deprecation_note("custom_loggers", "loggers", soft=False)
 
-        print("Look at here! We change restore: {} to {}!".format(
-            restore,
-            os.path.abspath(os.path.expanduser(restore)) if restore else None))
-
         run_identifier = Experiment._register_if_needed(run)
         spec = {
             "run": run_identifier,
