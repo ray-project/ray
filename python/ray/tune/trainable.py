@@ -335,7 +335,7 @@ class Trainable(object):
             "_iteration": self._iteration,
             "_timesteps_total": self._timesteps_total,
             "_time_total": self._time_total,
-            "_episodes_tota": self._episodes_total
+            "_episodes_total": self._episodes_total,
         }
         logger.info("Current state after restoring: {}".format(state))
 
