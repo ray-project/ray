@@ -20,21 +20,11 @@ OPTIMIZER_SHARED_CONFIGS = [
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
-    "policy": {
-        "type": "GaussianLatentSpacePolicy",
-        "kwargs": {
-            "hidden_layer_sizes": (256, 256),
-            "activation": "relu",
-            "output_activation": "linear",
-        }
-    },
+    "policy": "GaussianLatentSpacePolicy",
     "Q": {
-        "type": "FeedforwardQ",
-        "kwargs": {
-            "hidden_layer_sizes": (256, 256),
-            "activation": "relu",
-            "output_activation": "linear",
-        }
+        "fcnet_hiddens": (256, 256),
+        "fcnet_activation": "relu",
+        "squash_to_range": False
     },
 
     # === Evaluation ===

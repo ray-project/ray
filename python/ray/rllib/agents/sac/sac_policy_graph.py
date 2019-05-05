@@ -15,9 +15,11 @@ from ray.rllib.evaluation import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.annotations import override
+from ray.rllib.models import ModelCatalog
 
-from .models import GaussianLatentSpacePolicy, feedforward_model
+from .models import GaussianLatentSpacePolicy, q_network_model
 
+PRIO_WEIGHTS = "weights"
 
 class SACPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
@@ -59,7 +61,7 @@ class SACPolicyGraph(TFPolicyGraph):
             action_space,
             self.session,
             obs_input=self._observations_ph,
-            action_sampler=self.policy.actions([self._observations_ph]),
+            action_sampler=self.policy.actions(self._observations_ph),
             loss=self.loss,
             loss_inputs=self.loss_inputs,
             # TODO(hartikainen): what is this for?
@@ -120,31 +122,24 @@ class SACPolicyGraph(TFPolicyGraph):
 
     def _init_models(self, observation_space, action_space):
         """Initialize models for value-functions and policy."""
-        policy_type = self.config['policy']['type']
-        assert policy_type == 'GaussianLatentSpacePolicy', policy_type
-        policy_kwargs = self.config['policy']['kwargs']
+        assert self.config['policy'] == 'GaussianLatentSpacePolicy', self.config['policy']
 
         self.policy = GaussianLatentSpacePolicy(
-            observation_space, action_space, self.config["model"],
-            **policy_kwargs)
+            observation_space, action_space, self.config["model"])
 
         self.log_alpha = tf.get_variable(
             'log_alpha', dtype=tf.float32, initializer=0.0)
         self.alpha = tf.exp(self.log_alpha)
 
-        Q_type = self.config['Q']['type']
-        assert Q_type == 'FeedforwardQ', Q_type
-        Q_kwargs = self.config['Q']['kwargs']
+        q_options = self.config['Q']
 
-        self.Qs = [feedforward_model(
-            input_shapes=(observation_space.shape, action_space.shape),
-            output_size=1,
-            **Q_kwargs) for _ in range(2)]
+        self.Qs = [q_network_model(observation_space, action_space, q_options)
+                for _ in range(2)]
         self.Q_targets = [tf.keras.models.clone_model(self.Qs[i]) for i in range(len(self.Qs))]
 
     def _init_actor_loss(self):
-        actions = self.policy.actions([self._observations_ph])
-        log_pis = self.policy.log_pis([self._observations_ph], actions)
+        actions = self.policy.actions(self._observations_ph)
+        log_pis = self.policy.log_pis(self._observations_ph, actions)
 
         assert log_pis.shape.as_list() == [None, 1]
 
@@ -159,8 +154,8 @@ class SACPolicyGraph(TFPolicyGraph):
         self.policy_loss = policy_loss_weight * tf.reduce_mean(policy_kl_losses)
 
     def _get_Q_targets(self):
-        next_actions = self.policy.actions([self._next_observations_ph])
-        next_log_pis = self.policy.log_pis([self._next_observations_ph],
+        next_actions = self.policy.actions(self._next_observations_ph)
+        next_log_pis = self.policy.log_pis(self._next_observations_ph,
                                            next_actions)
 
         next_Q_values = tf.stack([Q_target(
@@ -183,7 +178,7 @@ class SACPolicyGraph(TFPolicyGraph):
             [self._observations_ph, self._actions_ph]) for Q in self.Qs])
 
         Q_loss_weight = self.config['optimization']['Q_loss_weight']
-        self.td_error = tf.reduce_mean(tf.abs(Q_targets - Q_values), axis=0)
+        self.td_error = tf.reduce_mean(Q_targets - Q_values, axis=0)
 
         self.Q_loss = Q_loss_weight * tf.losses.mean_squared_error(
             labels=Q_targets, predictions=Q_values, weights=0.5)
@@ -195,8 +190,8 @@ class SACPolicyGraph(TFPolicyGraph):
 
         assert isinstance(target_entropy, Number)
 
-        actions = self.policy.actions([self._observations_ph])
-        log_pis = self.policy.log_pis([self._observations_ph], actions)
+        actions = self.policy.actions(self._observations_ph)
+        log_pis = self.policy.log_pis(self._observations_ph, actions)
 
         self.log_pis = log_pis
         entropy_loss_weight = self.config['optimization'][
@@ -213,9 +208,8 @@ class SACPolicyGraph(TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def optimizer(self):
-        optimizer = tf.train.AdamOptimizer(
+        return tf.train.AdamOptimizer(
             learning_rate=self.config['optimization']["learning_rate"])
-        return optimizer
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):

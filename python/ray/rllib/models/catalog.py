@@ -195,7 +195,7 @@ class ModelCatalog(object):
 
     @staticmethod
     @DeveloperAPI
-    def get_model_as_keras_layer(obs_space, action_space, num_outputs,
+    def get_model_as_keras_layer(obs_space, action_space, num_outputs, input_names,
                                  options):
         """Returns a RLlib model as a Keras layer.
 
@@ -204,7 +204,7 @@ class ModelCatalog(object):
         return _KerasModelWrapper(
             ModelCatalog._get_model_cls(obs_space, action_space, num_outputs,
                                         options), obs_space, action_space,
-            num_outputs, options)
+            num_outputs, input_names, options)
 
     @staticmethod
     @DeveloperAPI
@@ -399,27 +399,38 @@ class ModelCatalog(object):
 
 
 class _KerasModelWrapper(tf.keras.layers.Layer):
-    def __init__(self, model_cls, obs_space, act_space, num_outputs, options):
+    def __init__(self, model_cls, obs_space, act_space, num_outputs, input_names, options, **kwargs):
         self.model_cls = model_cls
         self.observation_space = obs_space
         self.action_space = act_space
         self.num_outputs = num_outputs
+        self.input_names = input_names
         self.options = options
-        super(_KerasModelWrapper, self).__init__()
+        super(_KerasModelWrapper, self).__init__(**kwargs)
 
     def build(self, input_shape):
         self.template_fn = tf.make_template("keras_model_wrapper", self._make_template_fn,
                 create_scope_now_=True, custom_getter_=self._variable_getter)
         super(_KerasModelWrapper, self).build(input_shape)
 
-    def call(self, input_tensor):
-        return self.template_fn(input_tensor)
+    def call(self, inputs):
+        return self.template_fn(inputs)
 
     def compute_output_shape(self, input_shape):
         return (input_shape[0], self.num_outputs)
 
-    def _make_template_fn(self, input_tensor):
-        return self.model_cls({'obs': input_tensor}, self.observation_space,
+    def get_config(self):
+        config = super(_KerasModelWrapper, self).get_config()
+        config.update(dict(model_cls=self.model_cls,
+            obs_space=self.observation_space,
+            act_space=self.action_space,
+            num_outputs=self.num_outputs,
+            input_names=self.input_names,
+            options=self.options))
+        return config
+
+    def _make_template_fn(self, inputs):
+        return self.model_cls(self._to_dict_input(inputs), self.observation_space,
                 self.action_space, self.num_outputs,
                 self.options).outputs
 
@@ -431,5 +442,13 @@ class _KerasModelWrapper(tf.keras.layers.Layer):
             else:
                 self._non_trainable_weights.append(variable)
         return variable
+
+    def _to_dict_input(self, inputs):
+        if not isinstance(inputs, list):
+            inputs = [inputs]
+        out = {}
+        for i, input_name in enumerate(self.input_names):
+            out[input_name] = inputs[i]
+        return out
 
 
