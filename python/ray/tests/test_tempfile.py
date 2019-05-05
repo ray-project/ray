@@ -39,11 +39,23 @@ def test_conn_cluster():
 
 
 def test_tempdir():
+    shutil.rmtree("/tmp/ray", ignore_errors=True)
     ray.init(temp_dir="/tmp/i_am_a_temp_dir")
     assert os.path.exists(
         "/tmp/i_am_a_temp_dir"), "Specified temp dir not found."
+    assert not os.path.exists("/tmp/ray"), "Default temp dir should not exist."
     ray.shutdown()
     shutil.rmtree("/tmp/i_am_a_temp_dir", ignore_errors=True)
+
+
+def test_tempdir_commandline():
+    shutil.rmtree("/tmp/ray", ignore_errors=True)
+    os.system("ray start --head --temp-dir=/tmp/i_am_a_temp_dir2")
+    assert os.path.exists(
+        "/tmp/i_am_a_temp_dir2"), "Specified temp dir not found."
+    assert not os.path.exists("/tmp/ray"), "Default temp dir should not exist."
+    os.system("ray stop")
+    shutil.rmtree("/tmp/i_am_a_temp_dir2", ignore_errors=True)
 
 
 def test_raylet_socket_name():
@@ -134,8 +146,8 @@ def test_tempdir_privilege():
 
 def test_session_dir_uniqueness():
     session_dirs = set()
-    for _ in range(50):
+    for _ in range(3):
         ray.init(num_cpus=1)
         session_dirs.add(ray.worker._global_node.get_session_dir_path)
         ray.shutdown()
-    assert len(session_dirs) == 50
+    assert len(session_dirs) == 3
