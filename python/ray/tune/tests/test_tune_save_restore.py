@@ -18,7 +18,6 @@ from ray.tune import Trainable
 class SerialTuneRelativeLocalDirTest(unittest.TestCase):
     local_mode = True
     prefix = "Serial"
-    current_dir = os.path.abspath(".")
 
     class MockTrainable(Trainable):
         _name = "MockTrainable"
@@ -42,12 +41,13 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             self.state.update(extra_data)
 
     def setUp(self):
-        os.chdir(self.current_dir)  # Turn the current_dir back
         ray.init(num_cpus=1, num_gpus=0, local_mode=self.local_mode)
 
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # Fix potential registered trainables missing.
+
+        # Without this line, test_tune_server.testAddTrial would fail.
+        _register_all()
 
     def _get_trial_dir(self, absoulte_exp_dir):
         trial_dirname = next(
@@ -110,46 +110,45 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
                 "log_level": "DEBUG"
             })
         self.assertIsNone(trial.error_file)
-        shutil.rmtree(absolute_local_dir, ignore_errors=True)
 
     def testDottedRelativePath(self):
         local_dir = "./test_dotted_relative_local_dir"
         exp_name = self.prefix + "DottedRelativeLocalDir"
         absolute_local_dir = os.path.abspath(local_dir)
         self._train(exp_name, local_dir, absolute_local_dir)
-        os.chdir(self.current_dir)
         self._restore(exp_name, local_dir, absolute_local_dir)
+        shutil.rmtree(absolute_local_dir, ignore_errors=True)
 
     def testRelativePath(self):
         local_dir = "test_relative_local_dir"
         exp_name = self.prefix + "RelativePath"
         absolute_local_dir = os.path.abspath(local_dir)
         self._train(exp_name, local_dir, absolute_local_dir)
-        os.chdir(self.current_dir)
         self._restore(exp_name, local_dir, absolute_local_dir)
+        shutil.rmtree(absolute_local_dir, ignore_errors=True)
 
     def testTildeAbsolutePath(self):
         local_dir = "~/test_tilde_absolute_local_dir"
         exp_name = self.prefix + "TildeAbsolutePath"
         absolute_local_dir = os.path.expanduser(local_dir)
         self._train(exp_name, local_dir, absolute_local_dir)
-        os.chdir(self.current_dir)
         self._restore(exp_name, local_dir, absolute_local_dir)
+        shutil.rmtree(absolute_local_dir, ignore_errors=True)
 
     def testAbsolutePath(self):
         local_dir = "~/test_absolute_local_dir"
         local_dir = os.path.expanduser(local_dir)
         exp_name = self.prefix + "AbsolutePath"
         self._train(exp_name, local_dir, local_dir)
-        os.chdir(self.current_dir)
         self._restore(exp_name, local_dir, local_dir)
+        shutil.rmtree(local_dir, ignore_errors=True)
 
     def testTempfile(self):
         local_dir = tempfile.mkdtemp()
         exp_name = self.prefix + "Tempfile"
         self._train(exp_name, local_dir, local_dir)
-        os.chdir(self.current_dir)
         self._restore(exp_name, local_dir, local_dir)
+        shutil.rmtree(local_dir, ignore_errors=True)
 
 
 class ParallelTuneRelativeLocalDirTest(SerialTuneRelativeLocalDirTest):
