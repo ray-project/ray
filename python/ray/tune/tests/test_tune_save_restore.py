@@ -11,6 +11,7 @@ import unittest
 
 import ray
 from ray import tune
+from ray.rllib import _register_all
 from ray.tune import Trainable
 
 
@@ -46,6 +47,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
+        _register_all()  # Fix potential registered trainables missing.
 
     def _get_trial_dir(self, experiment_dir):
         trial_dirname = next(
@@ -93,10 +95,10 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             "checkpoint_1/checkpoint-1")  # Relative checkpoint path
 
         # The file tune would find. The absolute checkpoint path.
-        tune_found_file = os.path.abspath(os.path.expanduser(checkpoint_path))
+        tune_find_file = os.path.abspath(os.path.expanduser(checkpoint_path))
         self.assertTrue(
-            os.path.isfile(tune_found_file),
-            "{} is not exist!".format(tune_found_file))
+            os.path.isfile(tune_find_file),
+            "{} is not exist!".format(tune_find_file))
 
         trial, = tune.run(
             self.MockTrainable,
