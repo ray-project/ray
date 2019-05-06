@@ -46,6 +46,7 @@ class SACPolicyGraph(TFPolicyGraph):
         self._init_placeholders(observation_space, action_space)
         self._init_models(observation_space, action_space)
         self._init_losses()
+        self._init_target_update()
 
         self.loss_inputs = (
             (SampleBatch.CUR_OBS, self._observations_ph),
@@ -119,6 +120,8 @@ class SACPolicyGraph(TFPolicyGraph):
 
         self._terminals_ph = tf.placeholder(
             tf.bool, (None, ), name="terminals")
+
+        self._tau_ph = tf.placeholder_with_default(self.config['tau'], (), name="tau")
 
     def _init_models(self, observation_space, action_space):
         """Initialize models for value-functions and policy."""
@@ -233,14 +236,19 @@ class SACPolicyGraph(TFPolicyGraph):
     def set_epsilon(self, epsilon):
         return
 
-    def update_target(self, tau=None):
-        tau = tau or self.config["tau"]
-
+    def _init_target_update(self):
+        ops = []
+        tau = self._tau_ph
         for Q, Q_target in zip(self.Qs, self.Q_targets):
-            source_params = Q.get_weights()
-            target_params = Q_target.get_weights()
-            Q_target.set_weights([
-                tau * source + (1.0 - tau) * target
-                for source, target in zip(source_params, target_params)
-            ])
+            for source, target in zip(Q.variables, Q_target.variables):
+                op = target.assign(tau * source + (1.0 - tau) * target)
+                ops.append(op)
+        self._update_target_op = tf.group(ops)
+
+    def update_target(self, tau=None):
+        self.session.run(self._update_target_op, {
+            self._tau_ph: tau or self.config['tau']
+            })
+
+
 
