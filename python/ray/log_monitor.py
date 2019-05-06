@@ -103,7 +103,7 @@ class LogMonitor(object):
                         size_when_last_opened=0,
                         file_position=0,
                         file_handle=None))
-                logger.info("Beginning to track file {}".format(log_filename))
+                logger.info("Beginning to track file %s", log_filename)
 
     def open_closed_files(self):
         """Open some closed files if they may have new lines.
@@ -131,8 +131,8 @@ class LogMonitor(object):
             except (IOError, OSError) as e:
                 # Catch "file not found" errors.
                 if e.errno == errno.ENOENT:
-                    logger.warning("Warning: The file {} was not "
-                                   "found.".format(file_info.filename))
+                    logger.warning("Warning: The file %s was not found.",
+                                   file_info.filename)
                     self.log_filenames.remove(file_info.filename)
                     continue
                 raise e
@@ -144,8 +144,8 @@ class LogMonitor(object):
                     f = open(file_info.filename, "r")
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
-                        logger.warning("Warning: The file {} was not "
-                                       "found.".format(file_info.filename))
+                        logger.warning("Warning: The file %s was not found.",
+                                       file_info.filename)
                         self.log_filenames.remove(file_info.filename)
                         continue
                     else:
@@ -173,7 +173,7 @@ class LogMonitor(object):
 
             lines_to_publish = []
             driver_switches = []
-            if file_info.current_driver_id != None:
+            if file_info.current_driver_id is not None:
                 driver_switches.append((-1, file_info.current_driver_id))
 
             max_num_lines_to_read = 100
@@ -184,10 +184,17 @@ class LogMonitor(object):
                 if next_line[-1] == "\n":
                     next_line = next_line[:-1]
 
-                # Record when a worker switches drivers
+                # Record when a worker starts executing a task from a drver
+                # different from the driver for the previous task executed by
+                # the worker.
                 if next_line.startswith("Ray driver id: "):
                     driver_id = next_line.split(" ")[-1]
                     driver_switches.append((idx, driver_id))
+                    if len(driver_id) != 2 * ray_constants.ID_SIZE:
+                        logger.warning(
+                            "The driver ID %s does not have the right length. "
+                            "The log file %s may have been corrupted.",
+                            driver_id, file_info.filename)
 
                 lines_to_publish.append(next_line)
 
