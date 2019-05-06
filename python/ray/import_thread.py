@@ -56,11 +56,10 @@ class ImportThread(object):
 
         try:
             # Get the exports that occurred before the call to subscribe.
-            with self.worker.lock:
-                export_keys = self.redis_client.lrange("Exports", 0, -1)
-                for key in export_keys:
-                    num_imported += 1
-                    self._process_key(key)
+            export_keys = self.redis_client.lrange("Exports", 0, -1)
+            for key in export_keys:
+                num_imported += 1
+                self._process_key(key)
 
             while True:
                 # Exit if we received a signal that we should stop.
@@ -72,16 +71,15 @@ class ImportThread(object):
                     self.threads_stopped.wait(timeout=0.01)
                     continue
 
-                with self.worker.lock:
-                    if msg["type"] == "subscribe":
-                        continue
-                    assert msg["data"] == b"rpush"
-                    num_imports = self.redis_client.llen("Exports")
-                    assert num_imports >= num_imported
-                    for i in range(num_imported, num_imports):
-                        num_imported += 1
-                        key = self.redis_client.lindex("Exports", i)
-                        self._process_key(key)
+                if msg["type"] == "subscribe":
+                    continue
+                assert msg["data"] == b"rpush"
+                num_imports = self.redis_client.llen("Exports")
+                assert num_imports >= num_imported
+                for i in range(num_imported, num_imports):
+                    num_imported += 1
+                    key = self.redis_client.lindex("Exports", i)
+                    self._process_key(key)
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
             import_pubsub_client.close()
@@ -126,8 +124,11 @@ class ImportThread(object):
             return
 
         try:
-            # Deserialize the function.
-            function = pickle.loads(serialized_function)
+            # FunctionActorManager may call pickle.loads at the same time.
+            # Importing the same module in different threads causes deadlock.
+            with self.worker.function_actor_manager.lock:
+                # Deserialize the function.
+                function = pickle.loads(serialized_function)
             # Run the function.
             function({"worker": self.worker})
         except Exception:

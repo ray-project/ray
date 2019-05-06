@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.WorkerMode;
-import org.ray.runtime.gcs.GcsClientImpl;
+import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClientImpl;
@@ -92,7 +92,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager.startRayProcesses(true);
     }
 
-    gcsClient = new GcsClientImpl(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+    gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
     objectStoreProxy = new ObjectStoreProxy(this, rayConfig.objectStoreSocketName);

@@ -5,7 +5,6 @@
 // NOTE: This file should NOT be included in any file other than id.h.
 
 DEFINE_UNIQUE_ID(TaskID);
-DEFINE_UNIQUE_ID(JobID);
 DEFINE_UNIQUE_ID(ObjectID);
 DEFINE_UNIQUE_ID(FunctionID);
 DEFINE_UNIQUE_ID(ActorClassID);

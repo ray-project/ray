@@ -19,9 +19,8 @@ namespace ray {
 
 namespace gcs {
 /// Every callback should take in a vector of the results from the Redis
-/// operation and return a bool indicating whether the callback should be
-/// deleted once called.
-using RedisCallback = std::function<bool(const std::string &)>;
+/// operation.
+using RedisCallback = std::function<void(const std::string &)>;
 
 class RedisCallbackManager {
  public:
@@ -30,9 +29,24 @@ class RedisCallbackManager {
     return instance;
   }
 
-  int64_t add(const RedisCallback &function);
+  struct CallbackItem {
+    CallbackItem() = default;
 
-  RedisCallback &get(int64_t callback_index);
+    CallbackItem(const RedisCallback &callback, bool is_subscription,
+                 int64_t start_time) {
+      this->callback = callback;
+      this->is_subscription = is_subscription;
+      this->start_time = start_time;
+    }
+
+    RedisCallback callback;
+    bool is_subscription;
+    int64_t start_time;
+  };
+
+  int64_t add(const RedisCallback &function, bool is_subscription);
+
+  CallbackItem &get(int64_t callback_index);
 
   /// Remove a callback.
   void remove(int64_t callback_index);
@@ -43,7 +57,7 @@ class RedisCallbackManager {
   ~RedisCallbackManager() {}
 
   int64_t num_callbacks_ = 0;
-  std::unordered_map<int64_t, RedisCallback> callbacks_;
+  std::unordered_map<int64_t, CallbackItem> callback_items_;
 };
 
 class RedisContext {

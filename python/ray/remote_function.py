@@ -35,6 +35,13 @@ class RemoteFunction(object):
             of this remote function.
         _max_calls: The number of times a worker can execute this function
             before executing.
+        _decorator: An optional decorator that should be applied to the remote
+            function invocation (as opposed to the function execution) before
+            invoking the function. The decorator must return a function that
+            takes in two arguments ("args" and "kwargs"). In most cases, it
+            should call the function that was passed into the decorator and
+            return the resulting ObjectIDs. For an example, see
+            "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
     """
 
@@ -52,6 +59,8 @@ class RemoteFunction(object):
                                  num_return_vals is None else num_return_vals)
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
                            if max_calls is None else max_calls)
+        self._decorator = getattr(function, "__ray_invocation_decorator__",
+                                  None)
 
         ray.signature.check_signature_supported(self._function)
         self._function_signature = ray.signature.extract_signature(
@@ -108,8 +117,6 @@ class RemoteFunction(object):
 
         kwargs = {} if kwargs is None else kwargs
         args = [] if args is None else args
-        args = ray.signature.extend_args(self._function_signature, args,
-                                         kwargs)
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
@@ -117,19 +124,29 @@ class RemoteFunction(object):
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._resources, num_cpus,
             num_gpus, resources)
-        if worker.mode == ray.worker.LOCAL_MODE:
-            # In LOCAL_MODE, remote calls simply execute the function.
-            # We copy the arguments to prevent the function call from
-            # mutating them and to match the usual behavior of
-            # immutable remote objects.
-            result = self._function(*copy.deepcopy(args))
-            return result
-        object_ids = worker.submit_task(
-            self._function_descriptor,
-            args,
-            num_return_vals=num_return_vals,
-            resources=resources)
-        if len(object_ids) == 1:
-            return object_ids[0]
-        elif len(object_ids) > 1:
-            return object_ids
+
+        def invocation(args, kwargs):
+            args = ray.signature.extend_args(self._function_signature, args,
+                                             kwargs)
+
+            if worker.mode == ray.worker.LOCAL_MODE:
+                # In LOCAL_MODE, remote calls simply execute the function.
+                # We copy the arguments to prevent the function call from
+                # mutating them and to match the usual behavior of
+                # immutable remote objects.
+                result = self._function(*copy.deepcopy(args))
+                return result
+            object_ids = worker.submit_task(
+                self._function_descriptor,
+                args,
+                num_return_vals=num_return_vals,
+                resources=resources)
+            if len(object_ids) == 1:
+                return object_ids[0]
+            elif len(object_ids) > 1:
+                return object_ids
+
+        if self._decorator is not None:
+            invocation = self._decorator(invocation)
+
+        return invocation(args, kwargs)

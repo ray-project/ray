@@ -4,10 +4,10 @@ import com.google.common.base.Preconditions;
 import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.TestUtils;
-import org.ray.api.gcs.GcsClient;
-import org.ray.api.gcs.NodeInfo;
+import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.config.RayConfig;
+import org.ray.runtime.gcs.GcsClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -31,7 +31,7 @@ public class GcsClientTest extends BaseTest {
     RayConfig config = ((AbstractRayRuntime)Ray.internal()).getRayConfig();
 
     Preconditions.checkNotNull(config);
-    GcsClient gcsClient = Ray.getGcsClient();
+    GcsClient gcsClient = ((AbstractRayRuntime)Ray.internal()).getGcsClient();
     List<NodeInfo> allNodeInfo = gcsClient.getAllNodeInfo();
     Assert.assertEquals(allNodeInfo.size(), 1);
     Assert.assertEquals(allNodeInfo.get(0).nodeAddress, config.nodeIp);

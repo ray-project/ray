@@ -14,7 +14,6 @@ using ray::ActorCheckpointID;
 using ray::ActorID;
 using ray::ClientID;
 using ray::DriverID;
-using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::UniqueID;
@@ -173,7 +172,7 @@ class RayletClient {
 
   ClientID GetClientID() const { return client_id_; }
 
-  JobID GetDriverID() const { return driver_id_; }
+  DriverID GetDriverID() const { return driver_id_; }
 
   bool IsWorker() const { return is_worker_; }
 
@@ -182,7 +181,7 @@ class RayletClient {
  private:
   const ClientID client_id_;
   const bool is_worker_;
-  const JobID driver_id_;
+  const DriverID driver_id_;
   const Language language_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

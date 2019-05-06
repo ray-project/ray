@@ -840,19 +840,19 @@ class GlobalState(object):
 
         return dict(total_available_resources)
 
-    def _error_messages(self, job_id):
-        """Get the error messages for a specific job.
+    def _error_messages(self, driver_id):
+        """Get the error messages for a specific driver.
 
         Args:
-            job_id: The ID of the job to get the errors for.
+            driver_id: The ID of the driver to get the errors for.
 
         Returns:
-            A list of the error messages for this job.
+            A list of the error messages for this driver.
         """
-        assert isinstance(job_id, ray.DriverID)
+        assert isinstance(driver_id, ray.DriverID)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
-            job_id.binary())
+            driver_id.binary())
 
         # If there are no errors, return early.
         if message is None:
@@ -864,7 +864,7 @@ class GlobalState(object):
         for i in range(gcs_entries.EntriesLength()):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
-            assert job_id.binary() == error_data.JobId()
+            assert driver_id.binary() == error_data.DriverId()
             error_message = {
                 "type": decode(error_data.Type()),
                 "message": decode(error_data.ErrorMessage()),
@@ -873,31 +873,32 @@ class GlobalState(object):
             error_messages.append(error_message)
         return error_messages
 
-    def error_messages(self, job_id=None):
-        """Get the error messages for all jobs or a specific job.
+    def error_messages(self, driver_id=None):
+        """Get the error messages for all drivers or a specific driver.
 
         Args:
-            job_id: The specific job to get the errors for. If this is None,
-                then this method retrieves the errors for all jobs.
+            driver_id: The specific driver to get the errors for. If this is
+                None, then this method retrieves the errors for all drivers.
 
         Returns:
-            A dictionary mapping job ID to a list of the error messages for
-                that job.
+            A dictionary mapping driver ID to a list of the error messages for
+                that driver.
         """
-        if job_id is not None:
-            assert isinstance(job_id, ray.DriverID)
-            return self._error_messages(job_id)
+        if driver_id is not None:
+            assert isinstance(driver_id, ray.DriverID)
+            return self._error_messages(driver_id)
 
         error_table_keys = self.redis_client.keys(
             ray.gcs_utils.TablePrefix_ERROR_INFO_string + "*")
-        job_ids = [
+        driver_ids = [
             key[len(ray.gcs_utils.TablePrefix_ERROR_INFO_string):]
             for key in error_table_keys
         ]
 
         return {
-            binary_to_hex(job_id): self._error_messages(ray.DriverID(job_id))
-            for job_id in job_ids
+            binary_to_hex(driver_id): self._error_messages(
+                ray.DriverID(driver_id))
+            for driver_id in driver_ids
         }
 
     def actor_checkpoint_info(self, actor_id):

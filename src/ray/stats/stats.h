@@ -23,7 +23,7 @@ namespace stats {
 
 /// Initialize stats.
 static void Init(const std::string &address, const TagsType &global_tags,
-                 bool disable_stats = false, bool disable_stdout_exporter = true) {
+                 bool disable_stats = false, bool enable_stdout_exporter = false) {
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
@@ -36,7 +36,7 @@ static void Init(const std::string &address, const TagsType &global_tags,
   static auto exporter =
       std::make_shared<opencensus::exporters::stats::PrometheusExporter>();
 
-  if (!disable_stdout_exporter) {
+  if (enable_stdout_exporter) {
     // Enable stdout exporter by default.
     opencensus::exporters::stats::StdoutExporter::Register();
   }
