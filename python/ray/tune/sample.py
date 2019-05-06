@@ -53,19 +53,19 @@ class function(object):
 
 def uniform(*args, **kwargs):
     """A wrapper around np.random.uniform."""
-    return sample_from(np.random.uniform(*args, **kwargs))
+    return sample_from(lambda _: np.random.uniform(*args, **kwargs))
 
 
 def choice(*args, **kwargs):
     """A wrapper around np.random.choice."""
-    return sample_from(np.random.choice(*args, **kwargs))
+    return sample_from(lambda _: np.random.choice(*args, **kwargs))
 
 
 def randint(*args, **kwargs):
     """A wrapper around np.random.randint."""
-    return sample_from(np.random.randint(*args, **kwargs))
+    return sample_from(lambda _: np.random.randint(*args, **kwargs))
 
 
 def randn(*args, **kwargs):
     """A wrapper around np.random.randn."""
-    return sample_from(np.random.randn(*args, **kwargs))
+    return sample_from(lambda _: np.random.randn(*args, **kwargs))
