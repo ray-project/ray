@@ -33,7 +33,7 @@ class LogFileInfo(object):
         self.file_position = file_position
         self.file_handle = file_handle
         self.worker_pid = None
-        # the most recent driver to print to the log file
+        # The ID of the driver for the last task that was run on this worker.
         self.current_driver_id = None
 
 
