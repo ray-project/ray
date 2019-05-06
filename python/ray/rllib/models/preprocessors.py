@@ -73,7 +73,11 @@ class Preprocessor(object):
     @property
     @PublicAPI
     def observation_space(self):
-        obs_space = gym.spaces.Box(-1.0, 1.0, self.shape, dtype=np.float32)
+        obs_space = gym.spaces.Box(
+            np.finfo(np.float32).min,
+            np.finfo(np.float32).max,
+            self.shape,
+            dtype=np.float32)
         # Stash the unwrapped space so that we can unwrap dict and tuple spaces
         # automatically in model.py
         if (isinstance(self, TupleFlatteningPreprocessor)
