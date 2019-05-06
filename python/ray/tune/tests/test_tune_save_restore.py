@@ -49,13 +49,13 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         ray.shutdown()
         _register_all()  # Fix potential registered trainables missing.
 
-    def _get_trial_dir(self, experiment_dir):
+    def _get_trial_dir(self, absoulte_exp_dir):
         trial_dirname = next(
-            (child_dir for child_dir in os.listdir(experiment_dir)
-             if (os.path.isdir(os.path.join(experiment_dir, child_dir))
+            (child_dir for child_dir in os.listdir(absoulte_exp_dir)
+             if (os.path.isdir(os.path.join(absoulte_exp_dir, child_dir))
                  and child_dir.startswith(self.MockTrainable._name))))
 
-        trial_absolute_dir = os.path.join(experiment_dir, trial_dirname)
+        trial_absolute_dir = os.path.join(absoulte_exp_dir, trial_dirname)
 
         return trial_dirname, trial_absolute_dir
 
