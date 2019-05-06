@@ -38,9 +38,8 @@ class ActorTransport {
   /// of the
   /// task to enable batching.
   ///
-  /// \param task_spec A pointer to the task. Ownership is transferred to the transport
-  /// class.
-  virtual void SubmitTask(std::unique_ptr<TaskSpecification> task_spec) = 0;
+  /// \param task_spec Task spec.
+  virtual void SubmitTask(const TaskSpecification& task_spec) = 0;
 
   /// Retrieve the results of tasks executed with SendTask(). This call blocks until the
   /// results
@@ -80,7 +79,7 @@ class DummyTransport : ActorTransport {
 
   ~DummyTransport() {}
 
-  void SubmitTask(std::unique_ptr<TaskSpecification> task_spec) override {}
+  void SubmitTask(const TaskSpecification &task_spec) override {}
 
   std::vector<InlineResult> GetResults(std::vector<ObjectID> ids) override {
     std::vector<InlineResult> results;

@@ -81,13 +81,13 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
 
 
 cdef extern from "ray/raylet/actor_transport.h" nogil:
-    cdef cppclass CInlineResult "InlineResult":
+    cdef cppclass CInlineResult "ray::raylet::InlineResult":
         c_bool IsInline()
         int inline_len
         c_string inline_data
 
-    cdef cppclass CActorTransport "ActorTransport":
-        void SubmitTask(unique_ptr[CTaskSpecification] task_spec)
+    cdef cppclass CActorTransport "ray::raylet::ActorTransport":
+        void SubmitTask(const CTaskSpecification &task_spec)
         c_vector[CInlineResult] GetResults(c_vector[CObjectID] obj_ids)
         c_vector[CTaskSpecification] GetTasksToExecute()
         void SendResults(c_vector[CInlineResult] results)
