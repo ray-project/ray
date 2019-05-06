@@ -94,6 +94,7 @@ class QMixLoss(nn.Module):
         if self.double_q:
             # Get actions that maximise live Q (for double q-learning)
             ignore_action = (action_mask == 0) & (mask == 1).unsqueeze(-1)
+            mac_out = mac_out.clone()  # issue 4742
             mac_out[ignore_action] = -np.inf
             cur_max_actions = mac_out.max(dim=3, keepdim=True)[1]
             target_max_qvals = th.gather(target_mac_out, 3,
