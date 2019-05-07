@@ -75,6 +75,7 @@ class AxSearch(SuggestionAlgorithm):
         self._objective_name = objective_name
         self._outcome_names = outcome_names
         self._live_index_mapping = {}
+
         super(AxSearch, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
@@ -105,8 +106,8 @@ class AxSearch(SuggestionAlgorithm):
             metric_dict.update(
                 {on: (result[on], 0.0)
                  for on in self._outcome_names})
-            self._ax.complete_trial(trial_index=ax_trial_index,
-                                    raw_data=metric_dict)
+            self._ax.complete_trial(
+                trial_index=ax_trial_index, raw_data=metric_dict)
 
     def _num_live_trials(self):
         return len(self._live_index_mapping)

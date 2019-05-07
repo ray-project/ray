@@ -41,9 +41,10 @@ def easy_objective(config, reporter):
     time.sleep(0.2)
     for i in range(config["iterations"]):
         x = np.array([config.get(f"x{i+1}") for i in range(6)])
-        reporter(timesteps_total=i,
-                 hartmann6=hartmann6(x),
-                 l2norm=np.sqrt((x**2).sum()))
+        reporter(
+            timesteps_total=i,
+            hartmann6=hartmann6(x),
+            l2norm=np.sqrt((x**2).sum()))
         time.sleep(0.02)
 
 
@@ -51,14 +52,13 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--smoke-test",
-                        action="store_true",
-                        help="Finish quickly for testing")
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     ray.init()
 
     config = {
-        "num_samples": 10 if args.smoke_test else 50,
+        "num_samples": 10 if args.smoke_test else 100,
         "config": {
             "iterations": 100,
         },
