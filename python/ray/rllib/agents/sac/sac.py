@@ -6,7 +6,7 @@ import time
 
 from ray.rllib import optimizers
 from ray.rllib.agents.trainer import Trainer, with_common_config
-from ray.rllib.agents.dqn import DQNTrainer
+from ray.rllib.agents.dqn.dqn import OffPolicyCriticTrainer
 from ray.rllib.agents.sac.sac_policy_graph import SACPolicyGraph
 from ray.rllib.utils.annotations import override
 
@@ -27,35 +27,23 @@ DEFAULT_CONFIG = with_common_config({
         "squash_to_range": False
     },
 
+    "model": {
+        "fcnet_activation": "relu",
+        "fcnet_hiddens": (256, 256)
+    },
+
+    "n_step": 3,
+
     # === Evaluation ===
-    # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
     # The evaluation stats will be reported under the "evaluation" metric key.
-    # Note that evaluation is currently not parallelized, and that for Ape-X
-    # metrics are already only reported for the lowest epsilon workers.
     "evaluation_interval": None,
     # Number of episodes to run per evaluation period.
     "evaluation_num_episodes": 1,
 
     # === Exploration ===
-    # Max num timesteps for annealing schedules. Exploration is annealed from
-    # 1.0 to exploration_fraction over this number of timesteps scaled by
-    # exploration_fraction
-    "schedule_max_timesteps": 100000,
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
-    # Fraction of entire training period over which the exploration rate is
-    # annealed
-    "exploration_fraction": 0.0,
-    # Final value of random action probability
-    "exploration_final_eps": 0.00,
-    # Whether to use a distribution of epsilons across workers for exploration.
-    "per_worker_exploration": False,
 
-    # Number of env steps to optimize for before returning
-    # Epochs in softlearning code
-    "timesteps_per_iteration": 1000,
-    # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 1,
     # Update the target by \tau * policy + (1-\tau) * target_policy
     "tau": 5e-3,
 
@@ -130,25 +118,50 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class SACTrainer(DQNTrainer):
+class SACTrainer(OffPolicyCriticTrainer):
     """Soft Actor-Critic implementation in TensorFlow."""
     _agent_name = "SAC"
     _default_config = DEFAULT_CONFIG
     _policy_graph = SACPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
 
+    @property
+    @override(Trainer)
+    def _name(self):
+        return "SAC"
+
+    @override(Trainer)
+    def _train(self):
+        start_timestep = self.global_timestep
+
+        # Do optimization steps
+        start = time.time()
+        while (self.global_timestep - start_timestep <
+               self.config["timesteps_per_iteration"]
+               ) or time.time() - start < self.config["min_iter_time_s"]:
+            self.optimizer.step()
+
+            result = self.collect_metrics(
+                selected_evaluators=self.remote_evaluators[
+                    -len(self.remote_evaluators) // 3:])
+        else:
+            result = self.collect_metrics()
+
+        result.update(timesteps_this_iter=self.global_timestep - start_timestep)
+
+        if self.config["evaluation_interval"]:
+            if self.iteration % self.config["evaluation_interval"] == 0:
+                self.evaluation_metrics = self._evaluate()
+            result.update(self.evaluation_metrics)
+
+        return result
+
     def __getstate__(self):
         raise NotImplementedError("TODO(hartikainen): Check this.")
-        state = Agent.__getstate__(self)
-        state.update({
-            "num_target_updates": self.num_target_updates,
-            "last_target_update_ts": self.last_target_update_ts,
-        })
-        return state
 
     def __setstate__(self, state):
         raise NotImplementedError("TODO(hartikainen): Check this.")
-        Agent.__setstate__(self, state)
-        self.num_target_updates = state["num_target_updates"]
-        self.last_target_update_ts = state["last_target_update_ts"]
+
+    def _validate_config(self):
+        pass
 

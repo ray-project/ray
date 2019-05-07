@@ -125,7 +125,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
                 "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
                 "update_time_ms": round(1000 * self.update_weights_timer.mean,
                                         3),
-                "opt_peak_throughput": round(self.grad_timer.mean_throughput,
+                "opt_mean_throughput": round(self.grad_timer.mean_throughput,
                                              3),
                 "opt_samples": round(self.grad_timer.mean_units_processed, 3),
                 "learner": self.learner_stats,
@@ -175,3 +175,4 @@ class SyncReplayOptimizer(PolicyOptimizer):
                     "batch_indexes": batch_indexes
                 })
         return MultiAgentBatch(samples, self.train_batch_size)
+

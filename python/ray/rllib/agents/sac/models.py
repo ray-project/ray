@@ -117,6 +117,10 @@ class GaussianLatentSpacePolicy(object):
         """
         return OrderedDict({})
 
+    @property
+    def variables(self):
+        return self.actions_model.variables
+
 
 def q_network_model(observation_space,
                     action_space,

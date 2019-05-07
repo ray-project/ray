@@ -135,9 +135,8 @@ class TFPolicyGraph(PolicyGraph):
             (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
             if g is not None
         ]
-        self._grads = [g for (g, v) in self._grads_and_vars]
-        self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-            self._loss, self._sess)
+        self._grads = [g for (g, _) in self._grads_and_vars]
+        self._variables = ray.experimental.tf_utils.TensorFlowVariables(self._loss, self._sess)
 
         # gather update ops for any batch norm layers
         if update_ops:
