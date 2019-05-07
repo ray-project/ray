@@ -11,7 +11,42 @@ from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 
 class AxSearch(SuggestionAlgorithm):
-    """A wrapper around Ax to provide trial suggestions."""
+    """A wrapper around Ax to provide trial suggestions.
+
+    Requires Ax to be installed.
+    Ax is an open source tool from Facebook for configuring and
+    optimizing experiments. More information can be found in https://ax.dev/.
+
+    Parameters:
+        parameters (list[dict]): Parameters in the experiment search space.
+            Required elements in the dictionaries are: "name" (name of
+            this parameter, string), "type" (type of the parameter: "range",
+            "fixed", or "choice", string), "bounds" for range parameters
+            (list of two values, lower bound first), "values" for choice
+            parameters (list of values), and "value" for fixed parameters
+            (single value).
+        objective_name (str): Name of the metric used as objective in this
+            experiment. This metric must be present in `raw_data` argument
+            to `log_data`.
+        max_concurrent (int): Number of maximum concurrent trials. Defaults
+            to 10.
+        minimize (bool): Whether this experiment represents a minimization
+            problem.
+        parameter_constraints (list[str]): Parameter constraints, such as
+            "x3 >= x4" or "x3 + x4 >= 2".
+        outcome_constraints (list[str]): Outcome constraints of form
+            "metric_name >= bound", like "m1 <= 3."
+        outcome_names (list[str]): Names of outcome constraints, must
+            equal number of outcome_constraints
+
+    Example:
+        >>> parameters = [
+        >>>     {"name": "x1", "type": "range", "bounds": [0.0, 1.0]},
+        >>>     {"name": "x2", "type": "range", "bounds": [0.0, 1.0]},
+        >>> ]
+        >>> algo = AxSearch(parameters=parameters,
+        >>>     objective_name="hartmann6", max_concurrent=4)
+    """
 
     def __init__(self,
                  parameters,
@@ -24,6 +59,8 @@ class AxSearch(SuggestionAlgorithm):
                  **kwargs):
         assert ax_client is not None, "Ax must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
+        assert len(outcome_names) == len(outcome_constraints), \
+            "Include an outcome name for each outcome constraint"
         self._ax = ax_client.AxClient(enforce_sequential_optimization=False)
         self._ax.create_experiment(
             name="ax",
@@ -56,6 +93,10 @@ class AxSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
+        """Pass data back to Ax
+
+        Data of form key value dictionary of metric names and values.
+        """
         ax_trial_index = self._live_index_mapping.pop(trial_id)
         if result:
             metric_dict = {
