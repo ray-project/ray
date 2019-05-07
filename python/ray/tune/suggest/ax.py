@@ -98,7 +98,7 @@ class AxSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Pass data back to Ax
+        """Pass data back to Ax.
 
         Data of form key value dictionary of metric names and values.
         """
