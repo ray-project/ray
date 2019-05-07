@@ -38,7 +38,9 @@ class AxSearch(SuggestionAlgorithm):
         outcome_constraints (list[str]): Outcome constraints of form
             "metric_name >= bound", like "m1 <= 3."
         outcome_names (list[str]): Names of outcome constraints, must
-            equal number of outcome_constraints.
+            equal number of outcome_constraints. This metric must be
+            present in the dict reported/returned by the Trainable.
+
 
     Example:
         >>> parameters = [
