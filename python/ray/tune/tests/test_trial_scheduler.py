@@ -886,8 +886,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
     def testLogConfig(self):
         def check_policy(policy):
-            self.assertIsInstance(policy[0], str)
-            self.assertIsInstance(policy[1], str)
             self.assertIsInstance(policy[2], int)
             self.assertIsInstance(policy[3], int)
             self.assertIn(policy[0], ["0tag", "2tag", "3tag", "4tag"])
