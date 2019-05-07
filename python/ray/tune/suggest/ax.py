@@ -27,17 +27,18 @@ class AxSearch(SuggestionAlgorithm):
             (single value).
         objective_name (str): Name of the metric used as objective in this
             experiment. This metric must be present in `raw_data` argument
-            to `log_data`.
+            to `log_data`. This metric must also be present in the dict
+            reported/returned by the Trainable.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
         minimize (bool): Whether this experiment represents a minimization
-            problem.
+            problem. Defaults to False.
         parameter_constraints (list[str]): Parameter constraints, such as
             "x3 >= x4" or "x3 + x4 >= 2".
         outcome_constraints (list[str]): Outcome constraints of form
             "metric_name >= bound", like "m1 <= 3."
         outcome_names (list[str]): Names of outcome constraints, must
-            equal number of outcome_constraints
+            equal number of outcome_constraints.
 
     Example:
         >>> parameters = [
@@ -53,27 +54,30 @@ class AxSearch(SuggestionAlgorithm):
                  objective_name,
                  max_concurrent=10,
                  minimize=False,
-                 parameter_constraints=[],
-                 outcome_constraints=[],
-                 outcome_names=[],
+                 parameter_constraints=None,
+                 outcome_constraints=None,
+                 outcome_names=None,
                  **kwargs):
         assert ax_client is not None, "Ax must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
-        assert len(outcome_names) == len(outcome_constraints), \
-            "Include an outcome name for each outcome constraint"
+        assert outcome_constraints is None and outcome_names is None or type(
+            outcome_names) is list and type(
+                outcome_constraints) is list and len(outcome_names) == len(
+                    outcome_constraints
+                ), "Include an outcome name for each outcome constraint"
         self._ax = ax_client.AxClient(enforce_sequential_optimization=False)
         self._ax.create_experiment(
             name="ax",
             parameters=parameters,
             objective_name=objective_name,
             minimize=minimize,
-            parameter_constraints=parameter_constraints,
-            outcome_constraints=outcome_constraints,
+            parameter_constraints=parameter_constraints or [],
+            outcome_constraints=outcome_constraints or [],
         )
         self._max_concurrent = max_concurrent
         self._parameters = [d["name"] for d in parameters]
         self._objective_name = objective_name
-        self._outcome_names = outcome_names
+        self._outcome_names = outcome_names or []
         self._live_index_mapping = {}
 
         super(AxSearch, self).__init__(**kwargs)

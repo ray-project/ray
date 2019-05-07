@@ -6,12 +6,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 import ray
 from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.ax import AxSearch
-
-import numpy as np
 
 
 def hartmann6(x):
