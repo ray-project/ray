@@ -1,5 +1,6 @@
-"""This test checks that AxSearchs is functional.
- It also checks that it is usable with a separate scheduler.
+"""This test checks that AxSearch is functional.
+
+It also checks that it is usable with a separate scheduler.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -58,7 +59,7 @@ if __name__ == "__main__":
     ray.init()
 
     config = {
-        "num_samples": 10 if args.smoke_test else 100,
+        "num_samples": 10 if args.smoke_test else 50,
         "config": {
             "iterations": 100,
         },
