@@ -247,6 +247,18 @@ cdef class RayletClient:
     def disconnect(self):
         check_status(self.client.get().Disconnect())
 
+    def fast_submit_task(self, Task task):
+        pass  # self.transport.submit_task(task) TODO
+
+    def fast_get_results(self, ids):
+        pass  # self.transport.get_results(ids) TODO
+
+    def fast_send_results(self, results):
+        pass  # self.transport.send_results(ids) TODO
+
+    def fast_get_tasks_to_execute(self):
+        pass  # self.transport.get_tasks_to_execute() TODO
+
     def submit_task(self, Task task_spec):
         check_status(self.client.get().SubmitTask(
             task_spec.execution_dependencies.get()[0],
