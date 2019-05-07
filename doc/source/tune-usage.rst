@@ -121,10 +121,8 @@ Restoring or Resuming Previous Experiments
 Restoring and resuming are useful features allowing you to restore and continue previous experiments.
 
 The ``resume=True`` argument passing into ``tune.run`` enables you to continue an uncompleted experiment until the stop criterion is matched.
-You can set ``resume='prompt'`` and specify an experiment's name so that ray will automatically detect uncompleted experiment with the same experiment name and continue it.
+You can set ``resume='prompt'`` and specify an experiment's name so that ray will automatically detect uncompleted experiment with the same experiment name and continue it. See `Trainable class <tune-usage.html#recovering-from-failures-experimental>` for more details.
 
-Note that whatever modifications on the experiment setting will be ignored when resuming from previous experiments.
-For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion makes no effect: the new experiment will terminate immediately after initialization.
 To change the setting, you need to use ``restore`` argument and specify a checkpoint file. By doing this, you can change whatever experiments' configuration such as the experiment's name, the training iteration or so.
 
 It's important to set ``checkpoint_freq=<int>`` or ``checkpoint_at_end=True`` in the previous experiment; otherwise, the checkpoint files would not be generated!
@@ -260,7 +258,31 @@ If your trainable function / class creates further Ray actors or tasks that also
 Trial Checkpointing
 ~~~~~~~~~~~~~~~~~~~
 
-To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. Implementing this interface is required to support resource multiplexing in  Trial Schedulers such as HyperBand and PBT.
+For Ray-provided algorithm, such as RLlib Reinforcement Learning Agents, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=N`` and ``max_failures=M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+
+.. code-block:: python
+   :emphasize-lines: 3,4
+
+    tune.run(
+        ray_trainable,
+        checkpoint_freq=10,
+        max_failures=5,
+    )
+
+The checkpoint_freq may not coincide with the exact end of an experiment. If you want a checkpoint to be created at the end
+of a trial, you can additionally set the ``checkpoint_at_end`` to True. An example is shown below:
+
+.. code-block:: python
+   :emphasize-lines: 5
+
+    tune.run(
+        ray_trainable,
+        checkpoint_freq=10,
+        checkpoint_at_end=True,
+        max_failures=5,
+    )
+
+To enable checkpointing for your own `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller), the easiest way to do is to subclass the pre-defined ``Trainable`` class and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. Implementing this interface is required to support resource multiplexing in  Trial Schedulers such as HyperBand and PBT.
 
 For TensorFlow model training, this would look something like this `(full tensorflow example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
 
@@ -285,29 +307,7 @@ For TensorFlow model training, this would look something like this `(full tensor
             return self.saver.restore(self.sess, path)
 
 
-Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=N`` and ``max_failures=M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
-
-.. code-block:: python
-   :emphasize-lines: 4,5
-
-    tune.run(
-        my_trainable,
-        checkpoint_freq=10,
-        max_failures=5,
-    )
-
-The checkpoint_freq may not coincide with the exact end of an experiment. If you want a checkpoint to be created at the end
-of a trial, you can additionally set the checkpoint_at_end to True. An example is shown below:
-
-.. code-block:: python
-   :emphasize-lines: 5
-
-    tune.run(
-        my_trainable,
-        checkpoint_freq=10,
-        checkpoint_at_end=True,
-        max_failures=5,
-    )
+The checkpoint will be saved at file whose path looks like ``local_dir/exp_name/trial_name/checkpoint_x/checkpoint-x``, wherein the x is the number of iterations so far when the checkpoint is saved. To restore the checkpoint, see `Restoring or Resuming Previous Experiments <tune-usage.html#restoring-or-resuming-previous-experiments>`__ .
 
 
 Recovering From Failures (Experimental)
@@ -315,7 +315,7 @@ Recovering From Failures (Experimental)
 
 Tune automatically persists the progress of your experiments, so if an experiment crashes or is otherwise cancelled, it can be resumed with ``resume=True``. The default setting of ``resume=False`` creates a new experiment, and ``resume="prompt"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
 
-Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
+Note that trials will be restored to their last checkpoint. **If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.**
 
 E.g.:
 
@@ -329,7 +329,8 @@ E.g.:
     )
 
 
-Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored.
+Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. **Importantly, any changes to the experiment specification upon resume will be ignored.** For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion makes no effect: the new experiment will terminate immediately after initialization.
+If you want to change the configuration, such as training more iterations, you can restore the checkpoint by setting ``restore=<path-to-checkpoint>``. In this case, the resume argument is not helpful and you should not use it. The `section above <tune-usage.html#restoring-or-resuming-previous-experiments>`__ provides example usages of both ``resume`` and ``restore``.
 
 This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be preserved. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
 
