@@ -308,8 +308,8 @@ class QMixPolicyGraph(PolicyGraph):
             "grad_norm": grad_norm
             if isinstance(grad_norm, float) else grad_norm.item(),
             "td_error_abs": masked_td_error.abs().sum().item() / mask_elems,
-            "q_taken_mean": (
-                chosen_action_qvals * mask).sum().item() / mask_elems,
+            "q_taken_mean": (chosen_action_qvals * mask).sum().item() /
+            mask_elems,
             "target_mean": (targets * mask).sum().item() / mask_elems,
         }
         return {LEARNER_STATS_KEY: stats}
