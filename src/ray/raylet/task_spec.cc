@@ -203,13 +203,6 @@ size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
   return message->args()->Get(arg_index)->data()->size();
 }
 
-double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
-  RAY_CHECK(required_resources_.GetResourceMap().empty() == false);
-  auto it = required_resources_.GetResourceMap().find(resource_name);
-  RAY_CHECK(it != required_resources_.GetResourceMap().end());
-  return it->second;
-}
-
 const ResourceSet TaskSpecification::GetRequiredResources() const {
   return required_resources_;
 }

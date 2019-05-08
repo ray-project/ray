@@ -67,7 +67,7 @@ head_node:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: projects/ml-images/global/images/family/tf-1-13-gpu
+          sourceImage: projects/deeplearning-platform-release/global/images/family/tf-1-13-cpu
 
     # Additional options can be found in in the compute docs at
     # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
@@ -90,7 +90,7 @@ worker_nodes:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: projects/ml-images/global/images/family/tf-1-13-gpu
+          sourceImage: projects/deeplearning-platform-release/global/images/family/tf-1-13-cpu
     # Run workers on preemtible instance by default.
     # Comment this out to use on-demand.
     scheduling:

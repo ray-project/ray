@@ -253,20 +253,21 @@ public class RunManager {
     List<String> command = ImmutableList.of(
         // The raylet executable file.
         getTempFile("/raylet").getAbsolutePath(),
-        rayConfig.rayletSocketName,
-        rayConfig.objectStoreSocketName,
-        "0",  // The object manager port.
-        "0",  // The node manager port.
-        rayConfig.nodeIp,
-        rayConfig.getRedisIp(),
-        rayConfig.getRedisPort().toString(),
-        "0", // number of initial workers
-        String.valueOf(maximumStartupConcurrency),
-        ResourceUtil.getResourcesStringFromMap(rayConfig.resources),
-        String.join(",", rayConfig.rayletConfigParameters), // The internal config list.
-        buildPythonWorkerCommand(), // python worker command
-        buildWorkerCommandRaylet(), // java worker command
-        redisPasswordOption
+        String.format("--raylet_socket_name=%s", rayConfig.rayletSocketName),
+        String.format("--store_socket_name=%s", rayConfig.objectStoreSocketName),
+        String.format("--object_manager_port=%d", 0), // The object manager port.
+        String.format("--node_manager_port=%d", 0),  // The node manager port.
+        String.format("--node_ip_address=%s",rayConfig.nodeIp),
+        String.format("--redis_address=%s", rayConfig.getRedisIp()),
+        String.format("--redis_port=%d", rayConfig.getRedisPort()),
+        String.format("--num_initial_workers=%d", 0),  // number of initial workers
+        String.format("--maximum_startup_concurrency=%d", maximumStartupConcurrency),
+        String.format("--static_resource_list=%s",
+            ResourceUtil.getResourcesStringFromMap(rayConfig.resources)),
+        String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
+        String.format("--python_worker_command=%s", buildPythonWorkerCommand()),
+        String.format("--java_worker_command=%s", buildWorkerCommandRaylet()),
+        String.format("--redis_password=%s", redisPasswordOption)
     );
 
     startProcess(command, null, "raylet");

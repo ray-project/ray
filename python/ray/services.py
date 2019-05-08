@@ -1177,21 +1177,21 @@ def start_raylet(redis_address,
 
     command = [
         RAYLET_EXECUTABLE,
-        raylet_name,
-        plasma_store_name,
-        str(object_manager_port),
-        str(node_manager_port),
-        node_ip_address,
-        gcs_ip_address,
-        gcs_port,
-        str(num_initial_workers),
-        str(maximum_startup_concurrency),
-        resource_argument,
-        config_str,
-        start_worker_command,
-        java_worker_command,
-        redis_password or "",
-        temp_dir,
+        "--raylet_socket_name={}".format(raylet_name),
+        "--store_socket_name={}".format(plasma_store_name),
+        "--object_manager_port={}".format(object_manager_port),
+        "--node_manager_port={}".format(node_manager_port),
+        "--node_ip_address={}".format(node_ip_address),
+        "--redis_address={}".format(gcs_ip_address),
+        "--redis_port={}".format(gcs_port),
+        "--num_initial_workers={}".format(num_initial_workers),
+        "--maximum_startup_concurrency={}".format(maximum_startup_concurrency),
+        "--static_resource_list={}".format(resource_argument),
+        "--config_list={}".format(config_str),
+        "--python_worker_command={}".format(start_worker_command),
+        "--java_worker_command={}".format(java_worker_command),
+        "--redis_password={}".format(redis_password or ""),
+        "--temp_dir={}".format(temp_dir),
     ]
     process_info = start_ray_process(
         command,
@@ -1555,7 +1555,12 @@ def start_raylet_monitor(redis_address,
     redis_password = redis_password or ""
     config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
-    command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port, config_str]
+    command = [
+        RAYLET_MONITOR_EXECUTABLE,
+        "--redis_address={}".format(gcs_ip_address),
+        "--redis_port={}".format(gcs_port),
+        "--config_list={}".format(config_str),
+    ]
     if redis_password:
         command += [redis_password]
     process_info = start_ray_process(

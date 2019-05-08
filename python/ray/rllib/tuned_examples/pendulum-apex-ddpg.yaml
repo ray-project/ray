@@ -11,3 +11,5 @@ pendulum-apex-ddpg:
         n_step: 1
         target_network_update_freq: 50000
         tau: 1.0
+        evaluation_interval: 5
+        evaluation_num_episodes: 10

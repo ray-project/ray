@@ -38,9 +38,9 @@ enum class CommandType { kRegular, kChain };
 template <typename ID>
 class PubsubInterface {
  public:
-  virtual Status RequestNotifications(const JobID &job_id, const ID &id,
+  virtual Status RequestNotifications(const DriverID &driver_id, const ID &id,
                                       const ClientID &client_id) = 0;
-  virtual Status CancelNotifications(const JobID &job_id, const ID &id,
+  virtual Status CancelNotifications(const DriverID &driver_id, const ID &id,
                                      const ClientID &client_id) = 0;
   virtual ~PubsubInterface(){};
 };
@@ -51,9 +51,9 @@ class LogInterface {
   using DataT = typename Data::NativeTableType;
   using WriteCallback =
       std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
-  virtual Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
-                        const WriteCallback &done) = 0;
-  virtual Status AppendAt(const JobID &job_id, const ID &task_id,
+  virtual Status Append(const DriverID &driver_id, const ID &id,
+                        std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
+  virtual Status AppendAt(const DriverID &driver_id, const ID &task_id,
                           std::shared_ptr<DataT> &data, const WriteCallback &done,
                           const WriteCallback &failure, int log_length) = 0;
   virtual ~LogInterface(){};
@@ -104,20 +104,20 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
 
   /// Append a log entry to a key.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data that is added to the GCS.
   /// \param data Data to append to the log. TODO(rkn): This can be made const,
   /// right?
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Append(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
                 const WriteCallback &done);
 
   /// Append a log entry to a key if and only if the log has the given number
   /// of entries.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data that is added to the GCS.
   /// \param data Data to append to the log.
   /// \param done Callback that is called if the data was appended to the log.
@@ -126,25 +126,25 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param log_length The number of entries that the log must have for the
   /// append to succeed.
   /// \return Status
-  Status AppendAt(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status AppendAt(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
                   const WriteCallback &done, const WriteCallback &failure,
                   int log_length);
 
   /// Lookup the log values at a key asynchronously.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data that is looked up in the GCS.
   /// \param lookup Callback that is called after lookup. If the callback is
   /// called with an empty vector, then there was no data at the key.
   /// \return Status
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup);
+  Status Lookup(const DriverID &driver_id, const ID &id, const Callback &lookup);
 
   /// Subscribe to any Append operations to this table. The caller may choose
   /// to subscribe to all Appends, or to subscribe only to keys that it
   /// requests notifications for. This may only be called once per Log
   /// instance.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param client_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
   /// messages for the given client will be received. In the latter
@@ -155,7 +155,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
                    const Callback &subscribe, const SubscriptionCallback &done);
 
   /// Request notifications about a key in this table.
@@ -167,37 +167,37 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// notifications can be requested, the caller must first call `Subscribe`,
   /// with the same `client_id`.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the key to request notifications for.
   /// \param client_id The client who is requesting notifications. Before
   /// notifications can be requested, a call to `Subscribe` to this
   /// table with the same `client_id` must complete successfully.
   /// \return Status
-  Status RequestNotifications(const JobID &job_id, const ID &id,
+  Status RequestNotifications(const DriverID &driver_id, const ID &id,
                               const ClientID &client_id);
 
   /// Cancel notifications about a key in this table.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the key to request notifications for.
   /// \param client_id The client who originally requested notifications.
   /// \return Status
-  Status CancelNotifications(const JobID &job_id, const ID &id,
+  Status CancelNotifications(const DriverID &driver_id, const ID &id,
                              const ClientID &client_id);
 
   /// Delete an entire key from redis.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data to delete from the GCS.
   /// \return Void.
-  void Delete(const JobID &job_id, const ID &id);
+  void Delete(const DriverID &driver_id, const ID &id);
 
   /// Delete several keys from redis.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param ids The vector of IDs to delete from the GCS.
   /// \return Void.
-  void Delete(const JobID &job_id, const std::vector<ID> &ids);
+  void Delete(const DriverID &driver_id, const std::vector<ID> &ids);
 
   /// Returns debug string for class.
   ///
@@ -217,7 +217,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// an additional parameter notification_mode in NotificationCallback. Therefore this
   /// function supports notifications of remove operations.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param client_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
   /// messages for the given client will be received. In the latter
@@ -228,7 +228,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done);
 
@@ -261,8 +261,8 @@ class TableInterface {
  public:
   using DataT = typename Data::NativeTableType;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<DataT> &data,
-                     const WriteCallback &done) = 0;
+  virtual Status Add(const DriverID &driver_id, const ID &task_id,
+                     std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
   virtual ~TableInterface(){};
 };
 
@@ -299,32 +299,32 @@ class Table : private Log<ID, Data>,
 
   /// Add an entry to the table. This overwrites any existing data at the key.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data that is added to the GCS.
   /// \param data Data that is added to the GCS.
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Add(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
              const WriteCallback &done);
 
   /// Lookup an entry asynchronously.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data that is looked up in the GCS.
   /// \param lookup Callback that is called after lookup if there was data the
   /// key.
   /// \param failure Callback that is called after lookup if there was no data
   /// at the key.
   /// \return Status
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
+  Status Lookup(const DriverID &driver_id, const ID &id, const Callback &lookup,
                 const FailureCallback &failure);
 
   /// Subscribe to any Add operations to this table. The caller may choose to
   /// subscribe to all Adds, or to subscribe only to keys that it requests
   /// notifications for. This may only be called once per Table instance.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param client_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
   /// messages for the given client will be received. In the latter
@@ -337,14 +337,16 @@ class Table : private Log<ID, Data>,
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
                    const Callback &subscribe, const FailureCallback &failure,
                    const SubscriptionCallback &done);
 
-  void Delete(const JobID &job_id, const ID &id) { Log<ID, Data>::Delete(job_id, id); }
+  void Delete(const DriverID &driver_id, const ID &id) {
+    Log<ID, Data>::Delete(driver_id, id);
+  }
 
-  void Delete(const JobID &job_id, const std::vector<ID> &ids) {
-    Log<ID, Data>::Delete(job_id, ids);
+  void Delete(const DriverID &driver_id, const std::vector<ID> &ids) {
+    Log<ID, Data>::Delete(driver_id, ids);
   }
 
   /// Returns debug string for class.
@@ -369,10 +371,10 @@ class SetInterface {
  public:
   using DataT = typename Data::NativeTableType;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
-                     const WriteCallback &done) = 0;
-  virtual Status Remove(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
-                        const WriteCallback &done) = 0;
+  virtual Status Add(const DriverID &driver_id, const ID &id,
+                     std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
+  virtual Status Remove(const DriverID &driver_id, const ID &id,
+                        std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
   virtual ~SetInterface(){};
 };
 
@@ -406,30 +408,30 @@ class Set : private Log<ID, Data>,
 
   /// Add an entry to the set.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data that is added to the GCS.
   /// \param data Data to add to the set.
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Add(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
              const WriteCallback &done);
 
   /// Remove an entry from the set.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data that is removed from the GCS.
   /// \param data Data to remove from the set.
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Remove(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Remove(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
                 const WriteCallback &done);
 
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done) {
-    return Log<ID, Data>::Subscribe(job_id, client_id, subscribe, done);
+    return Log<ID, Data>::Subscribe(driver_id, client_id, subscribe, done);
   }
 
   /// Returns debug string for class.
@@ -547,9 +549,9 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
     prefix_ = TablePrefix::TASK_LEASE;
   }
 
-  Status Add(const JobID &job_id, const TaskID &id, std::shared_ptr<TaskLeaseDataT> &data,
-             const WriteCallback &done) override {
-    RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(job_id, id, data, done)));
+  Status Add(const DriverID &driver_id, const TaskID &id,
+             std::shared_ptr<TaskLeaseDataT> &data, const WriteCallback &done) override {
+    RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(driver_id, id, data, done)));
     // Mark the entry for expiration in Redis. It's okay if this command fails
     // since the lease entry itself contains the expiration period. In the
     // worst case, if the command fails, then a client that looks up the lease
@@ -584,11 +586,11 @@ class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
   /// Add a checkpoint id to an actor, and remove a previous checkpoint if the
   /// total number of checkpoints in GCS exceeds the max allowed value.
   ///
-  /// \param job_id The ID of the job (= driver).
+  /// \param driver_id The ID of the job (= driver).
   /// \param actor_id ID of the actor.
   /// \param checkpoint_id ID of the checkpoint.
   /// \return Status.
-  Status AddCheckpointId(const JobID &job_id, const ActorID &actor_id,
+  Status AddCheckpointId(const DriverID &driver_id, const ActorID &actor_id,
                          const ActorCheckpointID &checkpoint_id);
 };
 
@@ -627,7 +629,7 @@ class ErrorTable : private Log<DriverID, ErrorTableData> {
   /// duplicate messages currently cause failures (the GCS doesn't allow it). A
   /// natural way to do this is to have finer-grained time stamps.
   ///
-  /// \param job_id The ID of the job that generated the error. If the error
+  /// \param driver_id The ID of the job that generated the error. If the error
   /// should be pushed to all jobs, then this should be nil.
   /// \param type The type of the error.
   /// \param error_message The error message to push.

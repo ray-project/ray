@@ -1,5 +1,7 @@
 #include "task_dependency_manager.h"
 
+#include "ray/stats/stats.h"
+
 namespace ray {
 
 namespace raylet {
@@ -263,7 +265,7 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
   task_lease_data->node_manager_id = client_id_.hex();
   task_lease_data->acquired_at = current_sys_time_ms();
   task_lease_data->timeout = it->second.lease_period;
-  RAY_CHECK_OK(task_lease_table_.Add(JobID::nil(), task_id, task_lease_data, nullptr));
+  RAY_CHECK_OK(task_lease_table_.Add(DriverID::nil(), task_id, task_lease_data, nullptr));
 
   auto period = boost::posix_time::milliseconds(it->second.lease_period / 2);
   it->second.lease_timer->expires_from_now(period);
@@ -345,6 +347,19 @@ std::string TaskDependencyManager::DebugString() const {
   result << "\n- local objects map size: " << local_objects_.size();
   result << "\n- pending tasks map size: " << pending_tasks_.size();
   return result.str();
+}
+
+void TaskDependencyManager::RecordMetrics() const {
+  stats::TaskDependencyManagerStats().Record(
+      task_dependencies_.size(), {{stats::ValueTypeKey, "num_task_dependencies"}});
+  stats::TaskDependencyManagerStats().Record(
+      required_tasks_.size(), {{stats::ValueTypeKey, "num_required_tasks"}});
+  stats::TaskDependencyManagerStats().Record(
+      required_objects_.size(), {{stats::ValueTypeKey, "num_required_objects"}});
+  stats::TaskDependencyManagerStats().Record(
+      local_objects_.size(), {{stats::ValueTypeKey, "num_local_objects"}});
+  stats::TaskDependencyManagerStats().Record(
+      pending_tasks_.size(), {{stats::ValueTypeKey, "num_pending_tasks"}});
 }
 
 }  // namespace raylet

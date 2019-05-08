@@ -123,6 +123,9 @@ class WorkerPool {
   /// \return string.
   std::string DebugString() const;
 
+  /// Record metrics.
+  void RecordMetrics() const;
+
   /// Generate a warning about the number of workers that have registered or
   /// started if appropriate.
   ///

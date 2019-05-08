@@ -116,8 +116,9 @@ class ModelSupportedSpaces(unittest.TestCase):
         check_support("APPO", {"num_gpus": 0, "vtrace": False}, stats)
         check_support(
             "DDPG", {
-                "noise_scale": 100.0,
-                "timesteps_per_iteration": 1
+                "exploration_ou_noise_scale": 100.0,
+                "timesteps_per_iteration": 1,
+                "use_state_preprocessor": True,
             },
             stats,
             check_bounds=True)
@@ -188,6 +189,7 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "min_iter_time_s": 1,
                 "learning_starts": 1000,
                 "target_network_update_freq": 100,
+                "use_state_preprocessor": True,
             })
         check_support_multiagent("IMPALA", {"num_gpus": 0})
         check_support_multiagent("DQN", {"timesteps_per_iteration": 1})
@@ -206,7 +208,10 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "sgd_minibatch_size": 1,
             })
         check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
-        check_support_multiagent("DDPG", {"timesteps_per_iteration": 1})
+        check_support_multiagent("DDPG", {
+            "timesteps_per_iteration": 1,
+            "use_state_preprocessor": True,
+        })
 
 
 if __name__ == "__main__":

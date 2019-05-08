@@ -17,7 +17,7 @@ def do_link(package, force=False):
     package_home = os.path.abspath(
         os.path.join(ray.__file__, "../{}".format(package)))
     local_home = os.path.abspath(
-        os.path.join(__file__, "../../{}".format(package)))
+        os.path.join(__file__, "../{}".format(package)))
     assert os.path.isdir(package_home), package_home
     assert os.path.isdir(local_home), local_home
     if not force and not click.confirm(
