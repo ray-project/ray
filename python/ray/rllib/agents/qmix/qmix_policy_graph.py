@@ -46,7 +46,7 @@ class QMixLoss(nn.Module):
         self.double_q = double_q
         self.gamma = gamma
 
-    def forward(self, rewards, actions, terminated, mask, 
+    def forward(self, rewards, actions, terminated, mask,
                 obs, next_obs, action_mask, next_action_mask):
         """Forward pass of the loss.
 
@@ -82,7 +82,8 @@ class QMixLoss(nn.Module):
             for s in self.target_model.state_init()
         ]
         for t in range(T):
-            target_q, target_h = _mac(self.target_model, next_obs[:, t], target_h)
+            target_q, target_h = _mac(self.target_model,
+                                      next_obs[:, t], target_h)
             target_mac_out.append(target_q)
         target_mac_out = th.stack(target_mac_out, dim=1)  # Concat across time
 
@@ -101,8 +102,9 @@ class QMixLoss(nn.Module):
         else:
             target_max_qvals = target_mac_out.max(dim=3)[0]
 
-        assert target_max_qvals.min().item() != -np.inf, "target_max_qvals contains a masked action; \
-                                                          there may be a state with no valid actions."
+        assert target_max_qvals.min().item() != -np.inf, \
+            "target_max_qvals contains a masked action; \
+            there may be a state with no valid actions."
 
         # Mix
         if self.mixer is not None:
@@ -249,13 +251,15 @@ class QMixPolicyGraph(PolicyGraph):
         group_rewards = self._get_group_rewards(samples[SampleBatch.INFOS])
 
         # These will be padded to shape [B * T, ...]
-        [rew, action_mask, next_action_mask, act, dones, obs, next_obs], initial_states, seq_lens = \
+        [rew, action_mask, next_action_mask, act, dones, obs, next_obs], \
+            initial_states, seq_lens = \
             chop_into_sequences(
                 samples[SampleBatch.EPS_ID],
                 samples[SampleBatch.UNROLL_ID],
                 samples[SampleBatch.AGENT_INDEX], [
-                    group_rewards, action_mask, next_action_mask, samples[SampleBatch.ACTIONS],
-                    samples[SampleBatch.DONES], obs_batch, next_obs_batch
+                    group_rewards, action_mask, next_action_mask,
+                    samples[SampleBatch.ACTIONS], samples[SampleBatch.DONES],
+                    obs_batch, next_obs_batch
                 ],
                 [samples["state_in_{}".format(k)]
                  for k in range(len(self.get_initial_state()))],
@@ -273,7 +277,7 @@ class QMixPolicyGraph(PolicyGraph):
                                        self.obs_size]).float()
         action_mask = to_batches(action_mask)
         next_obs = to_batches(next_obs).reshape([B, T, self.n_agents,
-                                       self.obs_size]).float()
+                                                 self.obs_size]).float()
         next_action_mask = to_batches(next_action_mask)
 
         # TODO(ekl) this treats group termination as individual termination
@@ -287,7 +291,7 @@ class QMixPolicyGraph(PolicyGraph):
 
         # Compute loss
         loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
-            self.loss(rewards, actions, terminated, mask, obs, \
+            self.loss(rewards, actions, terminated, mask, obs,
                       next_obs, action_mask, next_action_mask)
 
         # Optimise
