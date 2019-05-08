@@ -2,39 +2,25 @@ from collections import OrderedDict
 
 import tensorflow as tf
 import tensorflow_probability as tfp
+from ray.rllib.models import ModelCatalog
 
 from .squash_bijector import SquashBijector
 
 SCALE_DIAG_MIN_MAX = (-20, 2)
-
 
 class GaussianLatentSpacePolicy(object):
     def __init__(self,
                  observation_space,
                  action_space,
                  model_options,
-                 hidden_layer_sizes,
-                 squash=True,
-                 activation='relu',
-                 output_activation='linear',
-                 name=None,
-                 *args,
-                 **kwargs):
+                 squash=True):
         self._squash = squash
 
-        input_shapes = (observation_space.shape, )
         output_shape = action_space.shape
-        self.condition_inputs = [
-            tf.keras.layers.Input(shape=input_shape)
-            for input_shape in input_shapes
-        ]
-
-        conditions = (tf.keras.layers.Concatenate(axis=-1)(
-            self.condition_inputs) if len(self.condition_inputs) > 1 else
-                      self.condition_inputs[0])
+        self.input = tf.keras.layers.Input(shape=observation_space.shape, name='obs')
 
         out = ModelCatalog.get_model_as_keras_layer(
-            obs_space, action_space, output_shape[0] * 20, model_options)
+                observation_space, action_space, output_shape[0] * 2, ['obs'], model_options)(self.input)
 
         shift, log_scale_diag = tf.keras.layers.Lambda(
             lambda shift_and_log_scale_diag: tf.split(
@@ -47,22 +33,18 @@ class GaussianLatentSpacePolicy(object):
             lambda log_scale_diag: tf.clip_by_value(log_scale_diag, *SCALE_DIAG_MIN_MAX)
         )(log_scale_diag)
 
-        batch_size = tf.keras.layers.Lambda(lambda x: tf.shape(x)[0])(
-            conditions)
-
         base_distribution = tfp.distributions.MultivariateNormalDiag(
             loc=tf.zeros(output_shape), scale_diag=tf.ones(output_shape))
 
         latents = tf.keras.layers.Lambda(
-            lambda batch_size: base_distribution.sample(batch_size))(
-                batch_size)
+            lambda x: base_distribution.sample(tf.shape(x)[0]))(
+                self.input)
 
         def raw_actions_fn(inputs):
             shift, log_scale_diag, latents = inputs
             bijector = tfp.bijectors.Affine(
                 shift=shift, scale_diag=tf.exp(log_scale_diag))
-            actions = bijector.forward(latents)
-            return actions
+            return bijector.forward(latents)
 
         raw_actions = tf.keras.layers.Lambda(raw_actions_fn)(
             (shift, log_scale_diag, latents))
@@ -70,11 +52,9 @@ class GaussianLatentSpacePolicy(object):
         squash_bijector = (SquashBijector()
                            if self._squash else tfp.bijectors.Identity())
 
-        actions = tf.keras.layers.Lambda(
-            lambda raw_actions: squash_bijector.forward(raw_actions))(
-                raw_actions)
+        actions = tf.keras.layers.Lambda(lambda x: squash_bijector.forward(x))(raw_actions)
 
-        self.actions_model = tf.keras.Model(self.condition_inputs, actions)
+        self.actions_model = tf.keras.Model(self.input, actions)
 
         def log_pis_fn(inputs):
             shift, log_scale_diag, actions = inputs
@@ -92,13 +72,13 @@ class GaussianLatentSpacePolicy(object):
             log_pis = distribution.log_prob(actions)[:, None]
             return log_pis
 
-        self.actions_input = tf.keras.layers.Input(shape=output_shape)
+        self.actions_input = tf.keras.layers.Input(shape=output_shape, name='action')
 
         log_pis = tf.keras.layers.Lambda(log_pis_fn)(
             [shift, log_scale_diag, self.actions_input])
 
         self.log_pis_model = tf.keras.Model(
-            (*self.condition_inputs, self.actions_input), log_pis)
+            (self.input, self.actions_input), log_pis)
 
         # self.diagnostics_model = tf.keras.Model(
         #     self.condition_inputs,
@@ -111,17 +91,17 @@ class GaussianLatentSpacePolicy(object):
     def reset(self):
         pass
 
-    def actions(self, conditions):
-        return self.actions_model(conditions)
+    def actions(self, obs):
+        return self.actions_model(obs)
 
-    def log_pis(self, conditions, actions):
-        return self.log_pis_model([*conditions, actions])
+    def log_pis(self, obs, actions):
+        return self.log_pis_model([obs, actions])
 
-    def actions_np(self, conditions):
-        return self.actions_model.predict(conditions)
+    def actions_np(self, obs):
+        return self.actions_model.predict(obs)
 
     def log_pis_np(self, conditions, actions):
-        return self.log_pis_model.predict([*conditions, actions])
+        return self.log_pis_model.predict([conditions, actions])
 
     def get_weights(self, *args, **kwargs):
         return self.actions_model.get_weights(*args, **kwargs)
@@ -137,31 +117,26 @@ class GaussianLatentSpacePolicy(object):
         """
         return OrderedDict({})
 
+    @property
+    def variables(self):
+        return self.actions_model.variables
 
-def feedforward_model(input_shapes,
-                      hidden_layer_sizes,
-                      output_size,
-                      activation='relu',
-                      output_activation='linear',
-                      name=None,
-                      *args,
-                      **kwargs):
-    inputs = [
-        tf.keras.layers.Input(shape=input_shape)
-        for input_shape in input_shapes
-    ]
 
-    concatenated_input = tf.keras.layers.Lambda(
-        lambda x: tf.concat(x, axis=-1))(inputs)
+def q_network_model(observation_space,
+                    action_space,
+                    model_options):
+    obs = tf.keras.layers.Input(shape=observation_space.shape, name='obs')
+    action = tf.keras.layers.Input(shape=action_space.shape, name='action')
 
-    out = concatenated_input
-    for units in hidden_layer_sizes:
-        out = tf.keras.layers.Dense(
-            units, *args, activation=activation, **kwargs)(out)
+    if model_options.get('custom_model'):
+        out = ModelCatalog.get_model_as_keras_layer(
+                observation_space, action_space, 1, ['obs', 'action'],
+                model_options)([obs, action])
+    else:
+        concatenated = tf.keras.layers.Concatenate(axis=-1)([obs, action])
+        out = ModelCatalog.get_model_as_keras_layer(
+                observation_space, action_space, 1, ['obs'],
+                model_options)(concatenated)
 
-    output = tf.keras.layers.Dense(
-        output_size, *args, activation=output_activation, **kwargs)(out)
+    return tf.keras.Model([obs, action], out)
 
-    model = tf.keras.Model(inputs, output)
-
-    return model

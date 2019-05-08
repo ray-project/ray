@@ -136,29 +136,14 @@ DEFAULT_CONFIG = with_common_config({
 # __sphinx_doc_end__
 # yapf: enable
 
-
-class DQNTrainer(Trainer):
-    """DQN implementation in TensorFlow."""
-
-    _name = "DQN"
-    _default_config = DEFAULT_CONFIG
-    _policy_graph = DQNPolicyGraph
-    _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
-
+class OffPolicyCriticTrainer(Trainer):
     @override(Trainer)
     def _init(self, config, env_creator):
         self._validate_config()
-
         # Update effective batch size to include n-step
         adjusted_batch_size = max(config["sample_batch_size"],
                                   config.get("n_step", 1))
         config["sample_batch_size"] = adjusted_batch_size
-
-        self.exploration0 = self._make_exploration_schedule(-1)
-        self.explorations = [
-            self._make_exploration_schedule(i)
-            for i in range(config["num_workers"])
-        ]
 
         for k in self._optimizer_shared_configs:
             if self._name != "DQN" and k in [
@@ -169,6 +154,66 @@ class DQNTrainer(Trainer):
                 continue
             if k not in config["optimizer"]:
                 config["optimizer"][k] = config[k]
+
+        self.local_evaluator = self.make_local_evaluator(
+            env_creator, self._policy_graph)
+
+        if config["evaluation_interval"]:
+            self.evaluation_ev = self.make_local_evaluator(
+                env_creator,
+                self._policy_graph,
+                extra_config={
+                    "batch_mode": "complete_episodes",
+                    "batch_steps": 1,
+                })
+            self.evaluation_metrics = self._evaluate()
+
+        def create_remote_evaluators():
+            return self.make_remote_evaluators(env_creator, self._policy_graph,
+                                               config["num_workers"])
+
+        if config["optimizer_class"] != "AsyncReplayOptimizer":
+            self.remote_evaluators = create_remote_evaluators()
+        else:
+            # Hack to workaround https://github.com/ray-project/ray/issues/2541
+            self.remote_evaluators = None
+
+        self.optimizer = getattr(optimizers, config["optimizer_class"])(
+            self.local_evaluator, self.remote_evaluators,
+            **config["optimizer"])
+        # Create the remote evaluators *after* the replay actors
+        if self.remote_evaluators is None:
+            self.remote_evaluators = create_remote_evaluators()
+            self.optimizer._set_evaluators(self.remote_evaluators)
+
+    @property
+    def global_timestep(self):
+        return self.optimizer.num_steps_sampled
+
+    def _evaluate(self):
+        logger.info("Evaluating current policy for {} episodes".format(
+            self.config["evaluation_num_episodes"]))
+        self.evaluation_ev.restore(self.local_evaluator.save())
+        self.evaluation_ev.foreach_policy(lambda p, _: p.set_epsilon(0))
+        for _ in range(self.config["evaluation_num_episodes"]):
+            self.evaluation_ev.sample()
+        metrics = collect_metrics(self.evaluation_ev)
+        return {"evaluation": metrics}
+
+class DQNTrainer(OffPolicyCriticTrainer):
+    """DQN implementation in TensorFlow."""
+
+    _name = "DQN"
+    _default_config = DEFAULT_CONFIG
+    _policy_graph = DQNPolicyGraph
+    _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
+
+    @override(OffPolicyCriticTrainer)
+    def _init(self, config, env_creator):
+        super(DQNTrainer, self)._init(config, env_creator)
+
+        self.exploration0 = self._make_exploration_schedule(-1)
+        self.explorations = self._make_exploration_schedules()
 
         if config.get("parameter_noise", False):
             if config["callbacks"]["on_episode_start"]:
@@ -204,54 +249,26 @@ class DQNTrainer(Trainer):
 
             config["callbacks"]["on_episode_end"] = tune.function(
                 on_episode_end)
-
-        self.local_evaluator = self.make_local_evaluator(
-            env_creator, self._policy_graph)
-
-        if config["evaluation_interval"]:
-            self.evaluation_ev = self.make_local_evaluator(
-                env_creator,
-                self._policy_graph,
-                extra_config={
-                    "batch_mode": "complete_episodes",
-                    "batch_steps": 1,
-                })
-            self.evaluation_metrics = self._evaluate()
-
-        def create_remote_evaluators():
-            return self.make_remote_evaluators(env_creator, self._policy_graph,
-                                               config["num_workers"])
-
-        if config["optimizer_class"] != "AsyncReplayOptimizer":
-            self.remote_evaluators = create_remote_evaluators()
-        else:
-            # Hack to workaround https://github.com/ray-project/ray/issues/2541
-            self.remote_evaluators = None
-
-        self.optimizer = getattr(optimizers, config["optimizer_class"])(
-            self.local_evaluator, self.remote_evaluators,
-            **config["optimizer"])
-        # Create the remote evaluators *after* the replay actors
-        if self.remote_evaluators is None:
-            self.remote_evaluators = create_remote_evaluators()
-            self.optimizer._set_evaluators(self.remote_evaluators)
-
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
-    @override(Trainer)
-    def _train(self):
-        start_timestep = self.global_timestep
-
+    def _update_exploration(self):
         # Update worker explorations
         exp_vals = [self.exploration0.value(self.global_timestep)]
         self.local_evaluator.foreach_trainable_policy(
             lambda p, _: p.set_epsilon(exp_vals[0]))
-        for i, e in enumerate(self.remote_evaluators):
-            exp_val = self.explorations[i].value(self.global_timestep)
-            e.foreach_trainable_policy.remote(
+        for schedule, evaluator in zip(self.explorations, self.remote_evaluators):
+            exp_val = schedule.value(self.global_timestep)
+            evaluator.foreach_trainable_policy.remote(
                 lambda p, _: p.set_epsilon(exp_val))
             exp_vals.append(exp_val)
+        return exp_vals
+
+    @override(OffPolicyCriticTrainer)
+    def _train(self):
+        start_timestep = self.global_timestep
+
+        exp_vals = self._update_exploration()
 
         # Do optimization steps
         start = time.time()
@@ -261,7 +278,7 @@ class DQNTrainer(Trainer):
             self.optimizer.step()
             self.update_target_if_needed()
 
-        if self.config["per_worker_exploration"]:
+        if self.config.get("per_worker_exploration", False):
             # Only collect metrics from the third of workers with lowest eps
             result = self.collect_metrics(
                 selected_evaluators=self.remote_evaluators[
@@ -287,29 +304,15 @@ class DQNTrainer(Trainer):
     def update_target_if_needed(self):
         time_since_last_update = (
             self.global_timestep - self.last_target_update_ts)
-        if time_since_last_update > self.config["target_network_update_freq"]:
+        if time_since_last_update >= self.config["target_network_update_freq"]:
             self.local_evaluator.foreach_trainable_policy(
                 lambda p, _: p.update_target())
             self.last_target_update_ts = self.global_timestep
             self.num_target_updates += 1
 
-    @property
-    def global_timestep(self):
-        return self.optimizer.num_steps_sampled
-
-    def _evaluate(self):
-        logger.info("Evaluating current policy for {} episodes".format(
-            self.config["evaluation_num_episodes"]))
-        self.evaluation_ev.restore(self.local_evaluator.save())
-        self.evaluation_ev.foreach_policy(lambda p, _: p.set_epsilon(0))
-        for _ in range(self.config["evaluation_num_episodes"]):
-            self.evaluation_ev.sample()
-        metrics = collect_metrics(self.evaluation_ev)
-        return {"evaluation": metrics}
-
     def _make_exploration_schedule(self, worker_index):
         # Use either a different `eps` per worker, or a linear schedule.
-        if self.config["per_worker_exploration"]:
+        if self.config.get("per_worker_exploration", False):
             assert self.config["num_workers"] > 1, (
                 "This requires multiple workers")
             if worker_index >= 0:
@@ -321,11 +324,18 @@ class DQNTrainer(Trainer):
                 # local ev should have zero exploration so that eval rollouts
                 # run properly
                 return ConstantSchedule(0.0)
-        return LinearSchedule(
-            schedule_timesteps=int(self.config["exploration_fraction"] *
-                                   self.config["schedule_max_timesteps"]),
-            initial_p=1.0,
-            final_p=self.config["exploration_final_eps"])
+        if self.config.get("exploration_fraction") is not None:
+            return LinearSchedule(
+                schedule_timesteps=int(self.config["exploration_fraction"] *
+                                       self.config["schedule_max_timesteps"]),
+                initial_p=1.0,
+                final_p=self.config["exploration_final_eps"])
+
+    def _make_exploration_schedules(self):
+        schedules = []
+        for i in range(self.config["num_workers"]):
+            schedules.append(self._make_exploration_schedule(i))
+        return schedules
 
     def __getstate__(self):
         state = Trainer.__getstate__(self)
@@ -350,3 +360,4 @@ class DQNTrainer(Trainer):
                 raise ValueError(
                     "Exploration with parameter space noise and noisy network "
                     "cannot be used at the same time.")
+
