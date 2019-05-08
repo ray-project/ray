@@ -37,9 +37,6 @@ class AxSearch(SuggestionAlgorithm):
             "x3 >= x4" or "x3 + x4 >= 2".
         outcome_constraints (list[str]): Outcome constraints of form
             "metric_name >= bound", like "m1 <= 3."
-        outcome_names (list[str]): Names of outcome constraints, must
-            equal number of outcome_constraints. This metric must be
-            present in the dict reported/returned by the Trainable.
 
 
     Example:
@@ -58,15 +55,9 @@ class AxSearch(SuggestionAlgorithm):
                  minimize=False,
                  parameter_constraints=None,
                  outcome_constraints=None,
-                 outcome_names=None,
                  **kwargs):
         assert ax_client is not None, "Ax must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
-        assert outcome_constraints is None and outcome_names is None or type(
-            outcome_names) is list and type(
-                outcome_constraints) is list and len(outcome_names) == len(
-                    outcome_constraints
-                ), "Include an outcome name for each outcome constraint"
         self._ax = ax_client.AxClient(enforce_sequential_optimization=False)
         self._ax.create_experiment(
             name="ax",
@@ -79,7 +70,6 @@ class AxSearch(SuggestionAlgorithm):
         self._max_concurrent = max_concurrent
         self._parameters = [d["name"] for d in parameters]
         self._objective_name = objective_name
-        self._outcome_names = outcome_names or []
         self._live_index_mapping = {}
 
         super(AxSearch, self).__init__(**kwargs)
@@ -109,11 +99,13 @@ class AxSearch(SuggestionAlgorithm):
             metric_dict = {
                 self._objective_name: (result[self._objective_name], 0.0)
             }
-            metric_dict.update(
-                {on: (result[on], 0.0)
-                 for on in self._outcome_names})
-            self._ax.complete_trial(
-                trial_index=ax_trial_index, raw_data=metric_dict)
+            outcome_names = [
+                oc.metric.name for oc in
+                self._ax.experiment.optimization_config.outcome_constraints
+            ]
+            metric_dict.update({on: (result[on], 0.0) for on in outcome_names})
+            self._ax.complete_trial(trial_index=ax_trial_index,
+                                    raw_data=metric_dict)
 
     def _num_live_trials(self):
         return len(self._live_index_mapping)
