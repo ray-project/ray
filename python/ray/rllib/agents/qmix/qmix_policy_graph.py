@@ -46,8 +46,8 @@ class QMixLoss(nn.Module):
         self.double_q = double_q
         self.gamma = gamma
 
-    def forward(self, rewards, actions, terminated, mask,
-                obs, next_obs, action_mask, next_action_mask):
+    def forward(self, rewards, actions, terminated, mask, obs, next_obs,
+                action_mask, next_action_mask):
         """Forward pass of the loss.
 
         Arguments:
@@ -82,8 +82,8 @@ class QMixLoss(nn.Module):
             for s in self.target_model.state_init()
         ]
         for t in range(T):
-            target_q, target_h = _mac(self.target_model,
-                                      next_obs[:, t], target_h)
+            target_q, target_h = _mac(self.target_model, next_obs[:, t],
+                                      target_h)
             target_mac_out.append(target_q)
         target_mac_out = th.stack(target_mac_out, dim=1)  # Concat across time
 
@@ -277,8 +277,8 @@ class QMixPolicyGraph(PolicyGraph):
         obs = to_batches(obs).reshape([B, T, self.n_agents,
                                        self.obs_size]).float()
         action_mask = to_batches(action_mask)
-        next_obs = to_batches(next_obs).reshape([B, T, self.n_agents,
-                                                 self.obs_size]).float()
+        next_obs = to_batches(next_obs).reshape(
+            [B, T, self.n_agents, self.obs_size]).float()
         next_action_mask = to_batches(next_action_mask)
 
         # TODO(ekl) this treats group termination as individual termination
@@ -308,8 +308,8 @@ class QMixPolicyGraph(PolicyGraph):
             "grad_norm": grad_norm
             if isinstance(grad_norm, float) else grad_norm.item(),
             "td_error_abs": masked_td_error.abs().sum().item() / mask_elems,
-            "q_taken_mean": (chosen_action_qvals * mask).sum().item() /
-            mask_elems,
+            "q_taken_mean": (
+                chosen_action_qvals * mask).sum().item() / mask_elems,
             "target_mean": (targets * mask).sum().item() / mask_elems,
         }
         return {LEARNER_STATS_KEY: stats}
