@@ -161,7 +161,7 @@ Ax Search
 
 The ``AxSearch`` is a SearchAlgorithm that is backed by `Ax <https://ax.dev/>`__ to perform sequential model-based hyperparameter optimization. Ax is a platform for understanding, managing, deploying, and automating adaptive experiments. Ax provides an easy to use interface with BoTorch, a flexible, modern library for Bayesian optimization in PyTorch. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using AxSearch.
 
-In order to use this search algorithm, you will need to install PyTorch and Ax. Instructions to install PyTorch locally can be found `here <https://pytorch.org/get-started/locally/>`__. You can install Ax via the following command:
+In order to use this search algorithm, you will need to install PyTorch, Ax, and sqlalchemy. Instructions to install PyTorch locally can be found `here <https://pytorch.org/get-started/locally/>`__. You can install Ax and sqlalchemy via the following command:
 
 .. code-block:: bash
 
