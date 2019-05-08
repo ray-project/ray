@@ -19,7 +19,7 @@ class GaussianLatentSpacePolicy(object):
 
         output_shape = action_space.shape
         self.input = tf.keras.layers.Input(
-            shape=observation_space.shape, name="obs")
+            shape=observation_space.shape, name="observations")
 
         out = ModelCatalog.get_model_as_keras_layer(
             observation_space, action_space, output_shape[0] * 2, ["obs"],
@@ -95,14 +95,14 @@ class GaussianLatentSpacePolicy(object):
     def reset(self):
         pass
 
-    def actions(self, obs):
-        return self.actions_model(obs)
+    def actions(self, observations):
+        return self.actions_model(observations)
 
-    def log_pis(self, obs, actions):
-        return self.log_pis_model([obs, actions])
+    def log_pis(self, observations, actions):
+        return self.log_pis_model([observations, actions])
 
-    def actions_np(self, obs):
-        return self.actions_model.predict(obs)
+    def actions_np(self, observations):
+        return self.actions_model.predict(observations)
 
     def log_pis_np(self, conditions, actions):
         return self.log_pis_model.predict([conditions, actions])
@@ -127,17 +127,19 @@ class GaussianLatentSpacePolicy(object):
 
 
 def q_network_model(observation_space, action_space, model_options):
-    obs = tf.keras.layers.Input(shape=observation_space.shape, name="obs")
-    action = tf.keras.layers.Input(shape=action_space.shape, name="action")
+    observations = tf.keras.layers.Input(
+        shape=observation_space.shape, name="observations")
+    actions = tf.keras.layers.Input(shape=action_space.shape, name="actions")
 
     if model_options.get("custom_model"):
         out = ModelCatalog.get_model_as_keras_layer(
-            observation_space, action_space, 1, ["obs", "action"],
-            model_options)([obs, action])
+            observation_space, action_space, 1, ["obs", "actions"],
+            model_options)([observations, actions])
     else:
-        concatenated = tf.keras.layers.Concatenate(axis=-1)([obs, action])
+        concatenated = tf.keras.layers.Concatenate(axis=-1)(
+            [observations, actions])
         out = ModelCatalog.get_model_as_keras_layer(
             observation_space, action_space, 1, ["obs"],
             model_options)(concatenated)
 
-    return tf.keras.Model([obs, action], out)
+    return tf.keras.Model([observations, actions], out)
