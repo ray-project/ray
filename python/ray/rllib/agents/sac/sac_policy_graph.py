@@ -131,16 +131,14 @@ class SACPolicyGraph(TFPolicyGraph):
             "policy"] == "GaussianLatentSpacePolicy", self.config["policy"]
 
         self.policy = GaussianLatentSpacePolicy(
-            observation_space, action_space, self.config["model"])
+            observation_space, action_space, self.config["policy_model"])
 
         self.log_alpha = tf.get_variable(
             "log_alpha", dtype=tf.float32, initializer=0.0)
         self.alpha = tf.exp(self.log_alpha)
 
-        q_options = self.config["Q"]
-
         self.Qs = [
-            q_network_model(observation_space, action_space, q_options)
+            q_network_model(observation_space, action_space, self.config["Q_model"])
             for _ in range(2)
         ]
         self.Q_targets = [

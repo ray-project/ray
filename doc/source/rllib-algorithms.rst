@@ -232,6 +232,21 @@ HalfCheetah    9664                       ~7700
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+Soft Actor Critic (SAC)
+-----------------------
+`[paper] <https://arxiv.org/pdf/1801.01290>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/sac/sac.py>`__
+
+RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs. Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, and currently has no support for non-continuous action distributions.
+
+Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pendulum-sac.yaml>`__
+
+**SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../python/ray/rllib/agents/sac/sac.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
 Derivative-free
 ~~~~~~~~~~~~~~~
 

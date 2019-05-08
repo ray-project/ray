@@ -20,15 +20,17 @@ OPTIMIZER_SHARED_CONFIGS = [
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
     "policy": "GaussianLatentSpacePolicy",
-    "Q": {
-        "fcnet_hiddens": (256, 256),
+
+    # RLlib model options for the Q function
+    "Q_model": {
         "fcnet_activation": "relu",
-        "squash_to_range": False
+        "fcnet_hiddens": (256, 256),
     },
 
-    "model": {
+    # RLlib model options for the policy function
+    "policy_model": {
         "fcnet_activation": "relu",
-        "fcnet_hiddens": (256, 256)
+        "fcnet_hiddens": (256, 256),
     },
 
     "n_step": 3,
