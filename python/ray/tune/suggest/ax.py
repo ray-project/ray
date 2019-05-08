@@ -3,9 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 try:
-    import ax.service.ax_client as ax_client
+    import ax
 except ImportError:
-    ax_client = None
+    ax = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
@@ -56,7 +56,8 @@ class AxSearch(SuggestionAlgorithm):
                  parameter_constraints=None,
                  outcome_constraints=None,
                  **kwargs):
-        assert ax_client is not None, "Ax must be installed!"
+        assert ax is not None, "Ax must be installed!"
+        from ax.service import ax_client
         assert type(max_concurrent) is int and max_concurrent > 0
         self._ax = ax_client.AxClient(enforce_sequential_optimization=False)
         self._ax.create_experiment(
@@ -104,8 +105,8 @@ class AxSearch(SuggestionAlgorithm):
                 self._ax.experiment.optimization_config.outcome_constraints
             ]
             metric_dict.update({on: (result[on], 0.0) for on in outcome_names})
-            self._ax.complete_trial(trial_index=ax_trial_index,
-                                    raw_data=metric_dict)
+            self._ax.complete_trial(
+                trial_index=ax_trial_index, raw_data=metric_dict)
 
     def _num_live_trials(self):
         return len(self._live_index_mapping)
