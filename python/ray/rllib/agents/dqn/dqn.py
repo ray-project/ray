@@ -212,9 +212,9 @@ class DQNTrainer(OffPolicyCriticTrainer):
     _policy_graph = DQNPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
 
-    @override(OffPolicyCriticTrainer)
+    @override(Trainer)
     def _init(self, config, env_creator):
-        super(DQNTrainer, self)._init(config, env_creator)
+        OffPolicyCriticTrainer._init(self, config, env_creator)
 
         self.exploration0 = self._make_exploration_schedule(-1)
         self.explorations = self._make_exploration_schedules()
@@ -256,20 +256,7 @@ class DQNTrainer(OffPolicyCriticTrainer):
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
-    def _update_exploration(self):
-        # Update worker explorations
-        exp_vals = [self.exploration0.value(self.global_timestep)]
-        self.local_evaluator.foreach_trainable_policy(
-            lambda p, _: p.set_epsilon(exp_vals[0]))
-        for schedule, evaluator in zip(self.explorations,
-                                       self.remote_evaluators):
-            exp_val = schedule.value(self.global_timestep)
-            evaluator.foreach_trainable_policy.remote(
-                lambda p, _: p.set_epsilon(exp_val))
-            exp_vals.append(exp_val)
-        return exp_vals
-
-    @override(OffPolicyCriticTrainer)
+    @override(Trainer)
     def _train(self):
         start_timestep = self.global_timestep
 
@@ -283,7 +270,7 @@ class DQNTrainer(OffPolicyCriticTrainer):
             self.optimizer.step()
             self.update_target_if_needed()
 
-        if self.config.get("per_worker_exploration", False):
+        if self.config.get("per_worker_exploration"):
             # Only collect metrics from the third of workers with lowest eps
             result = self.collect_metrics(
                 selected_evaluators=self.remote_evaluators[
@@ -315,9 +302,22 @@ class DQNTrainer(OffPolicyCriticTrainer):
             self.last_target_update_ts = self.global_timestep
             self.num_target_updates += 1
 
+    def _update_exploration(self):
+        # Update worker explorations
+        exp_vals = [self.exploration0.value(self.global_timestep)]
+        self.local_evaluator.foreach_trainable_policy(
+            lambda p, _: p.set_epsilon(exp_vals[0]))
+        for schedule, evaluator in zip(self.explorations,
+                                       self.remote_evaluators):
+            exp_val = schedule.value(self.global_timestep)
+            evaluator.foreach_trainable_policy.remote(
+                lambda p, _: p.set_epsilon(exp_val))
+            exp_vals.append(exp_val)
+        return exp_vals
+
     def _make_exploration_schedule(self, worker_index):
         # Use either a different `eps` per worker, or a linear schedule.
-        if self.config.get("per_worker_exploration", False):
+        if self.config.get("per_worker_exploration"):
             assert self.config["num_workers"] > 1, (
                 "This requires multiple workers")
             if worker_index >= 0:
@@ -356,12 +356,12 @@ class DQNTrainer(OffPolicyCriticTrainer):
         self.last_target_update_ts = state["last_target_update_ts"]
 
     def _validate_config(self):
-        if self.config.get("parameter_noise", False):
+        if self.config.get("parameter_noise"):
             if self.config["batch_mode"] != "complete_episodes":
                 raise ValueError(
                     "Exploration with parameter space noise requires "
                     "batch_mode to be complete_episodes.")
-            if self.config.get("noisy", False):
+            if self.config.get("noisy"):
                 raise ValueError(
                     "Exploration with parameter space noise and noisy network "
                     "cannot be used at the same time.")
