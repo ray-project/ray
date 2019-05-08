@@ -4,13 +4,12 @@ import java.util.List;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
-import org.ray.api.RuntimeContext;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
-import org.ray.api.gcs.GcsClient;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
+import org.ray.api.runtimecontext.RuntimeContext;
 
 /**
  * Base interface of a Ray runtime.
@@ -132,6 +131,4 @@ public interface RayRuntime {
    */
   RayPyActor createPyActor(String moduleName, String className, Object[] args,
       ActorCreationOptions options);
-
-  GcsClient getGcsClient();
 }

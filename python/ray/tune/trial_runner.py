@@ -16,7 +16,7 @@ from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
 from ray.tune.trial import Trial, Checkpoint
-from ray.tune.suggest import function
+from ray.tune.sample import function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.util import warn_if_slow
 from ray.utils import binary_to_hex, hex_to_binary
@@ -179,7 +179,10 @@ class TrialRunner(object):
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
             "runner_data": self.__getstate__(),
-            "timestamp": time.time()
+            "stats": {
+                "start_time": self._start_time,
+                "timestamp": time.time()
+            }
         }
         tmp_file_name = os.path.join(metadata_checkpoint_dir,
                                      ".tmp_checkpoint")

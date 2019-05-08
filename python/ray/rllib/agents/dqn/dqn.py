@@ -48,15 +48,6 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
-    # === Evaluation ===
-    # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
-    # The evaluation stats will be reported under the "evaluation" metric key.
-    # Note that evaluation is currently not parallelized, and that for Ape-X
-    # metrics are already only reported for the lowest epsilon workers.
-    "evaluation_interval": None,
-    # Number of episodes to run per evaluation period.
-    "evaluation_num_episodes": 10,
-
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
     # 1.0 to exploration_fraction over this number of timesteps scaled by
@@ -253,6 +244,7 @@ class DQNTrainer(OffPolicyCriticTrainer):
 
             config["callbacks"]["on_episode_end"] = tune.function(
                 on_episode_end)
+
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
@@ -285,11 +277,6 @@ class DQNTrainer(OffPolicyCriticTrainer):
                 "max_exploration": max(exp_vals),
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
-
-        if self.config["evaluation_interval"]:
-            if self.iteration % self.config["evaluation_interval"] == 0:
-                self.evaluation_metrics = self._evaluate()
-            result.update(self.evaluation_metrics)
 
         return result
 

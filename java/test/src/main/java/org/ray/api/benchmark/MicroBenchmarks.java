@@ -20,7 +20,8 @@ public class MicroBenchmarks {
     }
     final long duration = System.nanoTime() - start;
     LOGGER.info(
-        "Benchmark \"{}\" finished, repeated {} times, total duration {} ms, average duration {} ns.",
+        "Benchmark \"{}\" finished, repeated {} times, total duration {} ms," +
+            " average duration {} ns.",
         name, numRepeats, duration / 1_000_000, duration / numRepeats);
   }
 

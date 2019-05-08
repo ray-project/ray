@@ -99,7 +99,7 @@ This is how the example in the previous section looks when written using a polic
     
     # this optimizer implements the IMPALA architecture
     optimizer = AsyncSamplesOptimizer(
-        local_evaluator, remote_evaluator, train_batch_size=500)
+        local_evaluator, remote_evaluators, train_batch_size=500)
 
     while True:
         optimizer.step()

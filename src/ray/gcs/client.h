@@ -109,10 +109,10 @@ class RAY_EXPORT AsyncGcsClient {
 class SyncGcsClient {
   Status LogEvent(const std::string &key, const std::string &value, double timestamp);
   Status NotifyError(const std::map<std::string, std::string> &error_info);
-  Status RegisterFunction(const JobID &job_id, const FunctionID &function_id,
+  Status RegisterFunction(const DriverID &driver_id, const FunctionID &function_id,
                           const std::string &language, const std::string &name,
                           const std::string &data);
-  Status RetrieveFunction(const JobID &job_id, const FunctionID &function_id,
+  Status RetrieveFunction(const DriverID &driver_id, const FunctionID &function_id,
                           std::string *name, std::string *data);
 
   Status AddExport(const std::string &driver_id, std::string &export_data);
