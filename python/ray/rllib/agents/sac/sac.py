@@ -33,7 +33,7 @@ DEFAULT_CONFIG = with_common_config({
         "fcnet_hiddens": (256, 256),
     },
 
-    "n_step": 3,
+    "n_step": 1,
 
     # === Evaluation ===
     # The evaluation stats will be reported under the "evaluation" metric key.
