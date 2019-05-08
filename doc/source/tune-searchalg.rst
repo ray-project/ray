@@ -165,7 +165,7 @@ In order to use this search algorithm, you will need to install PyTorch and Ax. 
 
 .. code-block:: bash
 
-    $ pip install ax-platform
+    $ pip install ax-platform sqlalchemy
 
 This algorithm requires specifying a search space and objective. You can use `AxSearch` like follows:
 
