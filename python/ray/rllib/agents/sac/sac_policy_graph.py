@@ -26,7 +26,7 @@ class SACPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         if not isinstance(action_space, Box):
             # TODO(hartikainen): Should we support discrete action spaces?
-            # I"ve seen several people requesting support for it.
+            # I've seen several people requesting support for it.
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for SAC.".format(
                     action_space))
@@ -91,6 +91,7 @@ class SACPolicyGraph(TFPolicyGraph):
                 "log_pis": tf.reduce_mean(self.log_pis),
                 "policy_loss": self.policy_loss,
                 "entropy_loss": self.entropy_loss,
+                "td_error": self.td_error,
             }
         }
 
@@ -98,9 +99,7 @@ class SACPolicyGraph(TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
-        fetches = self.diagnostics.copy()
-        fetches["td_error"] = self.td_error
-        return fetches
+        return self.diagnostics
 
     def _init_placeholders(self, observation_space, action_space):
         observation_shape = observation_space.shape
@@ -169,24 +168,26 @@ class SACPolicyGraph(TFPolicyGraph):
         next_log_pis = self.policy.log_pis(self._next_observations_ph,
                                            next_actions)
 
-        next_Q_values = tf.stack([
+        next_Qs_values = tf.stack([
             Q_target([self._next_observations_ph, next_actions])
             for Q_target in self.Q_targets
         ])
 
-        next_values = next_Q_values - self.alpha * next_log_pis[None, :, :]
-        assert next_values.shape.as_list() == [2, None, 1]
+        min_next_Q_values = tf.reduce_min(next_Qs_values, axis=0)
+        next_values = min_next_Q_values - self.alpha * next_log_pis
+        assert next_values.shape.as_list() == [None, 1]
 
-        discount = self.config["gamma"]**self.config["n_step"]
+        discount = self.config["gamma"] ** self.config["n_step"]
         # td target
-        return (self._rewards_ph[None, :, None] + discount *
-                (1.0 - tf.to_float(self._terminals_ph[None, :, None])) *
+
+        return (self._rewards_ph[..., None] + discount *
+                (1.0 - tf.to_float(self._terminals_ph[..., None])) *
                 next_values)
 
     def _init_critic_loss(self):
         Q_targets = tf.stop_gradient(self._get_Q_targets())
 
-        assert Q_targets.shape.as_list() == [2, None, 1]
+        assert Q_targets.shape.as_list() == [None, 1]
 
         Q_values = self.Q_values = tf.stack(
             [Q([self._observations_ph, self._actions_ph]) for Q in self.Qs])
@@ -194,10 +195,12 @@ class SACPolicyGraph(TFPolicyGraph):
         assert Q_values.shape.as_list() == [2, None, 1]
 
         Q_loss_weight = self.config["optimization"]["Q_loss_weight"]
-        self.td_error = tf.reduce_mean(Q_targets - Q_values, axis=0)
+        self.td_error = tf.reduce_mean(Q_targets[None, ...] - Q_values)
 
         self.Q_loss = Q_loss_weight * tf.losses.mean_squared_error(
-            labels=Q_targets, predictions=Q_values, weights=0.5)
+            labels=tf.tile(Q_targets[None, ...], (2, 1, 1)),
+            predictions=Q_values,
+            weights=0.5)
 
     def _init_entropy_loss(self):
         target_entropy = (-np.prod(self.action_space.shape)

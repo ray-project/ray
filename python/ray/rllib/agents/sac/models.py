@@ -33,8 +33,7 @@ class GaussianLatentSpacePolicy(object):
         )(out)
 
         log_scale_diag = tf.keras.layers.Lambda(
-            lambda log_sc: tf.clip_by_value(log_sc, *SCALE_DIAG_MIN_MAX))(
-                log_scale_diag)
+            lambda x: tf.clip_by_value(x, *SCALE_DIAG_MIN_MAX))(log_scale_diag)
 
         base_distribution = tfp.distributions.MultivariateNormalDiag(
             loc=tf.zeros(output_shape), scale_diag=tf.ones(output_shape))
