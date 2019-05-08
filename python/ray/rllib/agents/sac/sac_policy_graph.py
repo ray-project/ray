@@ -15,18 +15,18 @@ from ray.rllib.evaluation import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.annotations import override
-from ray.rllib.models import ModelCatalog
 from ray.rllib.agents.dqn.dqn_policy_graph import _adjust_nstep
 
 from .models import GaussianLatentSpacePolicy, q_network_model
 
 PRIO_WEIGHTS = "weights"
 
+
 class SACPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         if not isinstance(action_space, Box):
             # TODO(hartikainen): Should we support discrete action spaces?
-            # I've seen several people requesting support for it.
+            # I"ve seen several people requesting support for it.
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for SAC.".format(
                     action_space))
@@ -80,17 +80,17 @@ class SACPolicyGraph(TFPolicyGraph):
         actions_max = tf.reduce_max(self._actions_ph)
         self.diagnostics = {
             LEARNER_STATS_KEY: {
-                'actions-avg': actions_mean,
-                'actions-std': actions_std,
-                'actions-min': actions_min,
-                'actions-max': actions_max,
-                'Q-avg': Q_mean,
-                'Q-std': Q_std,
-                'Q_loss': self.Q_loss,
-                'alpha': self.alpha,
-                'log_pis': tf.reduce_mean(self.log_pis),
-                'policy_loss': self.policy_loss,
-                'entropy_loss': self.entropy_loss,
+                "actions-avg": actions_mean,
+                "actions-std": actions_std,
+                "actions-min": actions_min,
+                "actions-max": actions_max,
+                "Q-avg": Q_mean,
+                "Q-std": Q_std,
+                "Q_loss": self.Q_loss,
+                "alpha": self.alpha,
+                "log_pis": tf.reduce_mean(self.log_pis),
+                "policy_loss": self.policy_loss,
+                "entropy_loss": self.entropy_loss,
             }
         }
 
@@ -99,7 +99,7 @@ class SACPolicyGraph(TFPolicyGraph):
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         fetches = self.diagnostics.copy()
-        fetches['td_error'] = self.td_error
+        fetches["td_error"] = self.td_error
         return fetches
 
     def _init_placeholders(self, observation_space, action_space):
@@ -122,24 +122,31 @@ class SACPolicyGraph(TFPolicyGraph):
         self._terminals_ph = tf.placeholder(
             tf.bool, (None, ), name="terminals")
 
-        self._tau_ph = tf.placeholder_with_default(self.config['tau'], (), name="tau")
+        self._tau_ph = tf.placeholder_with_default(
+            self.config["tau"], (), name="tau")
 
     def _init_models(self, observation_space, action_space):
         """Initialize models for value-functions and policy."""
-        assert self.config['policy'] == 'GaussianLatentSpacePolicy', self.config['policy']
+        assert self.config[
+            "policy"] == "GaussianLatentSpacePolicy", self.config["policy"]
 
         self.policy = GaussianLatentSpacePolicy(
             observation_space, action_space, self.config["model"])
 
         self.log_alpha = tf.get_variable(
-            'log_alpha', dtype=tf.float32, initializer=0.0)
+            "log_alpha", dtype=tf.float32, initializer=0.0)
         self.alpha = tf.exp(self.log_alpha)
 
-        q_options = self.config['Q']
+        q_options = self.config["Q"]
 
-        self.Qs = [q_network_model(observation_space, action_space, q_options)
-                for _ in range(2)]
-        self.Q_targets = [tf.keras.models.clone_model(self.Qs[i]) for i in range(len(self.Qs))]
+        self.Qs = [
+            q_network_model(observation_space, action_space, q_options)
+            for _ in range(2)
+        ]
+        self.Q_targets = [
+            tf.keras.models.clone_model(self.Qs[i])
+            for i in range(len(self.Qs))
+        ]
 
     def _init_actor_loss(self):
         actions = self.policy.actions(self._observations_ph)
@@ -155,37 +162,40 @@ class SACPolicyGraph(TFPolicyGraph):
 
         assert policy_kl_losses.shape.as_list() == [None, 1]
 
-        policy_loss_weight = self.config['optimization']['policy_loss_weight']
-        self.policy_loss = policy_loss_weight * tf.reduce_mean(policy_kl_losses)
+        policy_loss_weight = self.config["optimization"]["policy_loss_weight"]
+        self.policy_loss = (
+            policy_loss_weight * tf.reduce_mean(policy_kl_losses))
 
     def _get_Q_targets(self):
         next_actions = self.policy.actions(self._next_observations_ph)
         next_log_pis = self.policy.log_pis(self._next_observations_ph,
                                            next_actions)
 
-        next_Q_values = tf.stack([Q_target(
-            [self._next_observations_ph, next_actions]) for Q_target in self.Q_targets])
+        next_Q_values = tf.stack([
+            Q_target([self._next_observations_ph, next_actions])
+            for Q_target in self.Q_targets
+        ])
 
         next_values = next_Q_values - self.alpha * next_log_pis[None, :, :]
         assert next_values.shape.as_list() == [2, None, 1]
 
-        discount = self.config['gamma'] ** self.config['n_step']
+        discount = self.config["gamma"]**self.config["n_step"]
         # td target
-        return (
-            self._rewards_ph[None, :, None] + discount *
-            (1.0 - tf.to_float(self._terminals_ph[None, :, None])) * next_values)
+        return (self._rewards_ph[None, :, None] + discount *
+                (1.0 - tf.to_float(self._terminals_ph[None, :, None])) *
+                next_values)
 
     def _init_critic_loss(self):
         Q_targets = tf.stop_gradient(self._get_Q_targets())
 
         assert Q_targets.shape.as_list() == [2, None, 1]
 
-        Q_values = self.Q_values = tf.stack([Q(
-            [self._observations_ph, self._actions_ph]) for Q in self.Qs])
+        Q_values = self.Q_values = tf.stack(
+            [Q([self._observations_ph, self._actions_ph]) for Q in self.Qs])
 
         assert Q_values.shape.as_list() == [2, None, 1]
 
-        Q_loss_weight = self.config['optimization']['Q_loss_weight']
+        Q_loss_weight = self.config["optimization"]["Q_loss_weight"]
         self.td_error = tf.reduce_mean(Q_targets - Q_values, axis=0)
 
         self.Q_loss = Q_loss_weight * tf.losses.mean_squared_error(
@@ -193,8 +203,8 @@ class SACPolicyGraph(TFPolicyGraph):
 
     def _init_entropy_loss(self):
         target_entropy = (-np.prod(self.action_space.shape)
-                          if self.config['target_entropy'] == 'auto' else
-                          self.config['target_entropy'])
+                          if self.config["target_entropy"] == "auto" else
+                          self.config["target_entropy"])
 
         assert isinstance(target_entropy, Number)
 
@@ -202,8 +212,8 @@ class SACPolicyGraph(TFPolicyGraph):
         log_pis = self.policy.log_pis(self._observations_ph, actions)
 
         self.log_pis = log_pis
-        entropy_loss_weight = self.config['optimization'][
-            'entropy_loss_weight']
+        entropy_loss_weight = self.config["optimization"][
+            "entropy_loss_weight"]
         self.entropy_loss = -1.0 * entropy_loss_weight * tf.reduce_mean(
             self.log_alpha * tf.stop_gradient(log_pis + target_entropy))
 
@@ -216,7 +226,8 @@ class SACPolicyGraph(TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def _build_learn_on_batch(self, builder, postprocessed_batch):
-        fetch = super(SACPolicyGraph, self)._build_learn_on_batch(builder, postprocessed_batch)
+        fetch = super(SACPolicyGraph, self)._build_learn_on_batch(
+            builder, postprocessed_batch)
         builder.add_fetches([self._update_target_op])
         return fetch
 
@@ -229,7 +240,7 @@ class SACPolicyGraph(TFPolicyGraph):
     @override(TFPolicyGraph)
     def optimizer(self):
         return tf.train.AdamOptimizer(
-            learning_rate=self.config['optimization']["learning_rate"])
+            learning_rate=self.config["optimization"]["learning_rate"])
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):
@@ -237,8 +248,7 @@ class SACPolicyGraph(TFPolicyGraph):
 
         policy_grads_and_vars = optimizer.compute_gradients(
             loss, var_list=self.policy.trainable_variables)
-        Q_grads_and_vars = optimizer.compute_gradients(
-            loss, var_list=Q_vars)
+        Q_grads_and_vars = optimizer.compute_gradients(loss, var_list=Q_vars)
         entropy_grads_and_vars = optimizer.compute_gradients(
             loss, var_list=self.log_alpha)
 
@@ -263,9 +273,8 @@ class SACPolicyGraph(TFPolicyGraph):
         self._update_target_op = tf.group(ops)
 
     def update_target(self, tau=None):
-        self.session.run(self._update_target_op, {
-            self._tau_ph: tau or self.config['tau']
-            })
+        self.session.run(self._update_target_op,
+                         {self._tau_ph: tau or self.config["tau"]})
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done):
         return self.sess.run(
@@ -279,9 +288,13 @@ class SACPolicyGraph(TFPolicyGraph):
             })
 
     def _initializers(self):
-        initializers = [self.log_alpha.initializer, self.global_step.initializer]
+        initializers = [
+            self.log_alpha.initializer, self.global_step.initializer
+        ]
         initializers += [v.initializer for Q in self.Qs for v in Q.variables]
-        initializers += [v.initializer for Q in self.Q_targets for v in Q.variables]
+        initializers += [
+            v.initializer for Q in self.Q_targets for v in Q.variables
+        ]
         initializers += [v.initializer for v in self.policy.variables]
         initializers += [v.initializer for v in self._optimizer.variables()]
         return initializers
@@ -290,15 +303,16 @@ class SACPolicyGraph(TFPolicyGraph):
     def postprocess_trajectory(self, batch, *args, **kwargs):
         # N-step Q adjustments
         if self.config["n_step"] > 1:
-            _adjust_nstep(self.config["n_step"],
-                          self.config["gamma"], batch[SampleBatch.CUR_OBS],
-                          batch[SampleBatch.ACTIONS], batch[SampleBatch.REWARDS],
-                          batch[SampleBatch.NEXT_OBS], batch[SampleBatch.DONES])
+            _adjust_nstep(
+                self.config["n_step"], self.config["gamma"],
+                batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+                batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
+                batch[SampleBatch.DONES])
 
-        if self.config['worker_side_prioritization']:
-            td_errors = self.compute_td_error(batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
-                    batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
-                    batch[SampleBatch.DONES])
+        if self.config["worker_side_prioritization"]:
+            td_errors = self.compute_td_error(
+                batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+                batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
+                batch[SampleBatch.DONES])
             batch[PRIO_WEIGHTS] = td_errors
         return batch
-

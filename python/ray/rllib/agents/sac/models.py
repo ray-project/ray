@@ -8,6 +8,7 @@ from .squash_bijector import SquashBijector
 
 SCALE_DIAG_MIN_MAX = (-20, 2)
 
+
 class GaussianLatentSpacePolicy(object):
     def __init__(self,
                  observation_space,
@@ -17,10 +18,12 @@ class GaussianLatentSpacePolicy(object):
         self._squash = squash
 
         output_shape = action_space.shape
-        self.input = tf.keras.layers.Input(shape=observation_space.shape, name='obs')
+        self.input = tf.keras.layers.Input(
+            shape=observation_space.shape, name="obs")
 
         out = ModelCatalog.get_model_as_keras_layer(
-                observation_space, action_space, output_shape[0] * 2, ['obs'], model_options)(self.input)
+            observation_space, action_space, output_shape[0] * 2, ["obs"],
+            model_options)(self.input)
 
         shift, log_scale_diag = tf.keras.layers.Lambda(
             lambda shift_and_log_scale_diag: tf.split(
@@ -30,15 +33,14 @@ class GaussianLatentSpacePolicy(object):
         )(out)
 
         log_scale_diag = tf.keras.layers.Lambda(
-            lambda log_scale_diag: tf.clip_by_value(log_scale_diag, *SCALE_DIAG_MIN_MAX)
-        )(log_scale_diag)
+            lambda log_sc: tf.clip_by_value(log_sc, *SCALE_DIAG_MIN_MAX))(
+                log_scale_diag)
 
         base_distribution = tfp.distributions.MultivariateNormalDiag(
             loc=tf.zeros(output_shape), scale_diag=tf.ones(output_shape))
 
         latents = tf.keras.layers.Lambda(
-            lambda x: base_distribution.sample(tf.shape(x)[0]))(
-                self.input)
+            lambda x: base_distribution.sample(tf.shape(x)[0]))(self.input)
 
         def raw_actions_fn(inputs):
             shift, log_scale_diag, latents = inputs
@@ -52,7 +54,8 @@ class GaussianLatentSpacePolicy(object):
         squash_bijector = (SquashBijector()
                            if self._squash else tfp.bijectors.Identity())
 
-        actions = tf.keras.layers.Lambda(lambda x: squash_bijector.forward(x))(raw_actions)
+        actions = tf.keras.layers.Lambda(lambda x: squash_bijector.forward(x))(
+            raw_actions)
 
         self.actions_model = tf.keras.Model(self.input, actions)
 
@@ -72,13 +75,14 @@ class GaussianLatentSpacePolicy(object):
             log_pis = distribution.log_prob(actions)[:, None]
             return log_pis
 
-        self.actions_input = tf.keras.layers.Input(shape=output_shape, name='action')
+        self.actions_input = tf.keras.layers.Input(
+            shape=output_shape, name="action")
 
         log_pis = tf.keras.layers.Lambda(log_pis_fn)(
             [shift, log_scale_diag, self.actions_input])
 
-        self.log_pis_model = tf.keras.Model(
-            (self.input, self.actions_input), log_pis)
+        self.log_pis_model = tf.keras.Model((self.input, self.actions_input),
+                                            log_pis)
 
         # self.diagnostics_model = tf.keras.Model(
         #     self.condition_inputs,
@@ -122,21 +126,18 @@ class GaussianLatentSpacePolicy(object):
         return self.actions_model.variables
 
 
-def q_network_model(observation_space,
-                    action_space,
-                    model_options):
-    obs = tf.keras.layers.Input(shape=observation_space.shape, name='obs')
-    action = tf.keras.layers.Input(shape=action_space.shape, name='action')
+def q_network_model(observation_space, action_space, model_options):
+    obs = tf.keras.layers.Input(shape=observation_space.shape, name="obs")
+    action = tf.keras.layers.Input(shape=action_space.shape, name="action")
 
-    if model_options.get('custom_model'):
+    if model_options.get("custom_model"):
         out = ModelCatalog.get_model_as_keras_layer(
-                observation_space, action_space, 1, ['obs', 'action'],
-                model_options)([obs, action])
+            observation_space, action_space, 1, ["obs", "action"],
+            model_options)([obs, action])
     else:
         concatenated = tf.keras.layers.Concatenate(axis=-1)([obs, action])
         out = ModelCatalog.get_model_as_keras_layer(
-                observation_space, action_space, 1, ['obs'],
-                model_options)(concatenated)
+            observation_space, action_space, 1, ["obs"],
+            model_options)(concatenated)
 
     return tf.keras.Model([obs, action], out)
-

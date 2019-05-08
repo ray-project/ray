@@ -44,4 +44,3 @@ class FullyConnectedNetwork(Model):
                 activation_fn=None,
                 scope=label)
             return output, last_layer
-

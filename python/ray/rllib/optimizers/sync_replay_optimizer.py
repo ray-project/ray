@@ -175,4 +175,3 @@ class SyncReplayOptimizer(PolicyOptimizer):
                     "batch_indexes": batch_indexes
                 })
         return MultiAgentBatch(samples, self.train_batch_size)
-

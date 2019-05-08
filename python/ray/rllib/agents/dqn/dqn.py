@@ -136,7 +136,10 @@ DEFAULT_CONFIG = with_common_config({
 # __sphinx_doc_end__
 # yapf: enable
 
+
 class OffPolicyCriticTrainer(Trainer):
+    """Common trainer base for off-policy algos like DQN, DDPG, SAC, etc."""
+
     @override(Trainer)
     def _init(self, config, env_creator):
         self._validate_config()
@@ -200,6 +203,7 @@ class OffPolicyCriticTrainer(Trainer):
         metrics = collect_metrics(self.evaluation_ev)
         return {"evaluation": metrics}
 
+
 class DQNTrainer(OffPolicyCriticTrainer):
     """DQN implementation in TensorFlow."""
 
@@ -257,7 +261,8 @@ class DQNTrainer(OffPolicyCriticTrainer):
         exp_vals = [self.exploration0.value(self.global_timestep)]
         self.local_evaluator.foreach_trainable_policy(
             lambda p, _: p.set_epsilon(exp_vals[0]))
-        for schedule, evaluator in zip(self.explorations, self.remote_evaluators):
+        for schedule, evaluator in zip(self.explorations,
+                                       self.remote_evaluators):
             exp_val = schedule.value(self.global_timestep)
             evaluator.foreach_trainable_policy.remote(
                 lambda p, _: p.set_epsilon(exp_val))
@@ -360,4 +365,3 @@ class DQNTrainer(OffPolicyCriticTrainer):
                 raise ValueError(
                     "Exploration with parameter space noise and noisy network "
                     "cannot be used at the same time.")
-

@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import time
 
-from ray.rllib import optimizers
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.dqn.dqn import OffPolicyCriticTrainer
 from ray.rllib.agents.sac.sac_policy_graph import SACPolicyGraph
@@ -77,11 +76,11 @@ DEFAULT_CONFIG = with_common_config({
         # seems a more "standard" and direct way of controlling the learning
         # rates, and 2) sharing the optimizers decouples all the three models
         # to each other.
-        'learning_rate': 3e-4,
+        "learning_rate": 3e-4,
 
-        'policy_loss_weight': 1.0,
-        'Q_loss_weight': 1.0,
-        'entropy_loss_weight': 1.0,
+        "policy_loss_weight": 1.0,
+        "Q_loss_weight": 1.0,
+        "entropy_loss_weight": 1.0,
     },
     # If not None, clip gradients during optimization at this value
     # TODO(hartikainen): Make sure this works or remove the option.
@@ -147,7 +146,8 @@ class SACTrainer(OffPolicyCriticTrainer):
         else:
             result = self.collect_metrics()
 
-        result.update(timesteps_this_iter=self.global_timestep - start_timestep)
+        result.update(timesteps_this_iter=self.global_timestep -
+                      start_timestep)
 
         if self.config["evaluation_interval"]:
             if self.iteration % self.config["evaluation_interval"] == 0:
@@ -164,4 +164,3 @@ class SACTrainer(OffPolicyCriticTrainer):
 
     def _validate_config(self):
         pass
-
