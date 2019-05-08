@@ -37,6 +37,8 @@ def test_conn_cluster():
         "When connecting to an existing cluster, "
         "temp_dir must not be provided.")
 
+    ray.shutdown()
+
 
 def test_tempdir():
     shutil.rmtree("/tmp/ray", ignore_errors=True)
