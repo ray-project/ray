@@ -138,8 +138,8 @@ class SACPolicyGraph(TFPolicyGraph):
         self.alpha = tf.exp(self.log_alpha)
 
         self.Qs = [
-            q_network_model(observation_space, action_space, self.config["Q_model"])
-            for _ in range(2)
+            q_network_model(observation_space, action_space,
+                            self.config["Q_model"]) for _ in range(2)
         ]
         self.Q_targets = [
             tf.keras.models.clone_model(self.Qs[i])
