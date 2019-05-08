@@ -238,7 +238,7 @@ Soft Actor Critic (SAC)
 
 RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs. Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, and currently has no support for non-continuous action distributions.
 
-Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pendulum-sac.yaml>`__
+Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/regression_tests/pendulum-sac.yaml>`__
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
