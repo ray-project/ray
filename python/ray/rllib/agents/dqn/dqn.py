@@ -258,7 +258,7 @@ class DQNTrainer(OffPolicyCriticTrainer):
         self.local_evaluator.foreach_trainable_policy(
             lambda p, _: p.set_epsilon(exp_vals[0]))
         for schedule, evaluator in zip(self.explorations, self.remote_evaluators):
-            exp_val = evaluator.value(self.global_timestep)
+            exp_val = schedule.value(self.global_timestep)
             evaluator.foreach_trainable_policy.remote(
                 lambda p, _: p.set_epsilon(exp_val))
             exp_vals.append(exp_val)
