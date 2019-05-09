@@ -27,11 +27,12 @@ class TFSaverTest(unittest.TestCase):
         ray.shutdown()
 
     def test_saving(self):
+        ITERS = 5
         mnist_spec = {
             "stop": {
                 "mean_accuracy": 0.99,
                 "time_total_s": 600,
-                "training_iteration": 5,
+                "training_iteration": ITERS,
             },
             "config": {
                 "learning_rate": sample_from(
@@ -47,7 +48,7 @@ class TFSaverTest(unittest.TestCase):
             scheduler=FrequentPausesScheduler(),
             **mnist_spec)
         # This may fail because the restore fails.
-        self.assertEquals(trials[0].last_result["global_step"], 10)
+        self.assertEquals(trials[0].last_result["global_step"], ITERS)
 
 
 if __name__ == "__main__":

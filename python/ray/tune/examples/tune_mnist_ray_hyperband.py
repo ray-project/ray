@@ -27,6 +27,8 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
+import pickle
 import time
 
 import ray
@@ -196,15 +198,23 @@ class TrainMNIST(Trainable):
             })
 
         self.iterations += 1
-        return {"mean_accuracy": train_accuracy}
+        return {
+            "mean_accuracy": train_accuracy,
+            "global_step": self.iterations
+        }
 
     def _save(self, checkpoint_dir):
         prefix = self.saver.save(
             self.sess, checkpoint_dir + "/save", global_step=self.iterations)
-        return prefix
+        with open(os.path.join(checkpoint_dir, "checkpoint.pkl"), "wb") as f:
+            pickle.dump({"global_step": self.iterations, "prefix": prefix}, f)
+        return checkpoint_dir
 
-    def _restore(self, prefix):
-        return self.saver.restore(self.sess, prefix)
+    def _restore(self, checkpoint_dir):
+        with open(os.path.join(checkpoint_dir, "checkpoint.pkl"), "rb") as f:
+            data = pickle.load(f)
+        self.saver.restore(self.sess, data["prefix"])
+        self.iterations = data["global_step"]
 
 
 # !!! Example of using the ray.tune Python API !!!
