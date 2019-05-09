@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   gflags::ShutDownCommandLineFlags();
 
-  std::unordered_map<std::string, int> raylet_config;
+  std::unordered_map<std::string, std::string> raylet_config;
 
   // Parse the configuration list.
   std::istringstream config_string(config_list);
@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
   while (std::getline(config_string, config_name, ',')) {
     RAY_CHECK(std::getline(config_string, config_value, ','));
     // TODO(rkn): The line below could throw an exception. What should we do about this?
-    raylet_config[config_name] = std::stoi(config_value);
+    raylet_config[config_name] = config_value;
   }
 
   RayConfig::instance().initialize(raylet_config);
