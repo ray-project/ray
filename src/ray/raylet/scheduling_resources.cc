@@ -695,8 +695,8 @@ std::string ResourceIdSet::ToString() const {
   // Convert the first element to a string.
   if (it != available_resources_.end()) {
     return_string += (it->first + ": {" + it->second.ToString() + "}");
+    it++;
   }
-  it++;
 
   // Add the remaining elements to the string (along with a comma).
   for (; it != available_resources_.end(); ++it) {
