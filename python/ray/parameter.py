@@ -114,6 +114,7 @@ class RayParams(object):
                  java_worker_options=None,
                  load_code_from_local=False,
                  external_gcs_addresses=None,
+                 flush_external_gcs=None,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -147,6 +148,7 @@ class RayParams(object):
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
         self.external_gcs_addresses = external_gcs_addresses
+        self.flush_external_gcs = flush_external_gcs
         self._internal_config = _internal_config
         self._check_usage()
 

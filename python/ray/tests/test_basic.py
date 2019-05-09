@@ -2936,17 +2936,27 @@ def test_external_redis_in_driver():
     object_id = ray.put(number)
     assert ray.get(object_id) == number
     ray.shutdown()
+    ray.init(
+        external_gcs_addresses=[primary_address, shard_address],
+        num_cpus=0,
+        flush_external_gcs=False)
+    number = 42
+    object_id = ray.put(number)
+    assert ray.get(object_id) == number
+    ray.shutdown()
     shard_info.process.terminate()
     primary_info.process.terminate()
 
 
-def test_external_redis_in_cluster():
+def external_redis_in_cluster_test(flush):
     primary_port, primary_info = ray.services._start_redis_instance(
         ray.services.REDIS_EXECUTABLE, [ray.services.REDIS_MODULE])
     primary_address = "127.0.0.1:{}".format(primary_port)
-    command = "ray start --head --num-cpus=1 --external-gcs-addresses={}".format(
-        primary_address)
-    p = subprocess.Popen(command.split(" "))
+    command = "ray start --head --num-cpus=1 --external-gcs-addresses={}"
+    if not flush:
+        command += " --no-flush-external-gcs"
+    command = command.format(primary_address)
+    subprocess.Popen(command.split(" "))
     # Wait for the cluster starting up.
     time.sleep(2)
 
@@ -2955,6 +2965,11 @@ def test_external_redis_in_cluster():
     object_id = ray.put(number)
     assert ray.get(object_id) == number
     ray.shutdown()
-    subprocess.Popen(["ray", "stop"])
     primary_info.process.terminate()
-    time.sleep(1)
+    subprocess.Popen(["ray", "stop"])
+    time.sleep(3)
+
+
+def test_external_redis_in_cluster():
+    external_redis_in_cluster_test(True)
+    external_redis_in_cluster_test(False)

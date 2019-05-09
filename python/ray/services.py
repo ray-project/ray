@@ -509,7 +509,8 @@ def start_redis(node_ip_address,
                 use_credis=None,
                 redis_max_memory=None,
                 include_java=False,
-                external_gcs_addresses=None):
+                external_gcs_addresses=None,
+                flush_external_gcs=None):
     """Start the Redis global state store.
 
     Args:
@@ -578,10 +579,10 @@ def start_redis(node_ip_address,
     if external_gcs_addresses is None:
         if use_credis:
             redis_executable = CREDIS_EXECUTABLE
-            # TODO(suquark): We need credis here because some symbols need to be
-            # imported from credis dynamically through dlopen when Ray is built
-            # with RAY_USE_NEW_GCS=on. We should remove them later for the primary
-            # shard.
+            # TODO(suquark): We need credis here because some symbols need to
+            # be imported from credis dynamically through dlopen when Ray is
+            # built with RAY_USE_NEW_GCS=on. We should remove them later for
+            # the primary shard.
             # See src/ray/gcs/redis_module/ray_redis_module.cc
             redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
         else:
@@ -612,10 +613,14 @@ def start_redis(node_ip_address,
         port = int(port)
         primary_redis_client = redis.StrictRedis(
             host=primary_redis_ip, port=port, password=password)
-        # TODO(yuhong): use flushall(asynchronous=True), if python redis is
-        # updated to a newer version.
-        logger.info("Do the redis flushing.")
-        primary_redis_client.execute_command('FLUSHALL ASYNC')
+        if flush_external_gcs:
+            # TODO(guoyuhong) use flushall(asynchronous=True), if redis-py is
+            # updated to a newer version.
+            logger.info("Do the redis flushing.")
+            primary_redis_client.execute_command('FLUSHALL ASYNC')
+        else:
+            # Deleting the key to avoid duplicated rpush.
+            primary_redis_client.delete("RedisShards")
 
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
@@ -655,9 +660,9 @@ def start_redis(node_ip_address,
         if external_gcs_addresses is None:
             if use_credis:
                 redis_executable = CREDIS_EXECUTABLE
-                # It is important to load the credis module BEFORE the ray module,
-                # as the latter contains an extern declaration that the former
-                # supplies.
+                # It is important to load the credis module BEFORE the ray
+                # module, as the latter contains an extern declaration that the
+                # former supplies.
                 redis_modules = [CREDIS_MEMBER_MODULE, REDIS_MODULE]
             else:
                 redis_executable = REDIS_EXECUTABLE

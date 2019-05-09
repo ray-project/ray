@@ -1241,6 +1241,7 @@ def init(redis_address=None,
          temp_dir=None,
          load_code_from_local=False,
          external_gcs_addresses=None,
+         flush_external_gcs=True,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1320,6 +1321,8 @@ def init(redis_address=None,
             or from the GCS.
         external_gcs_addresses (str): The external redis address list.
             The 1st one is the primary shard, the rests are the other shards.
+        flush_external_gcs (bool): Whether the head node should flush the
+            external GCS data.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -1392,6 +1395,7 @@ def init(redis_address=None,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
             external_gcs_addresses=external_gcs_addresses,
+            flush_external_gcs=flush_external_gcs,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we

@@ -220,6 +220,11 @@ def cli(logging_level, logging_format):
     default=None,
     help=("Specify the external GCS addresses separated by comma. The 1st "
           "one is the primary shard, the rests are the other shards."))
+@click.option(
+    "--no-flush-external-gcs",
+    is_flag=True,
+    default=False,
+    help="Whether the head node should flush the external GCS data.")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
@@ -228,7 +233,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, external_gcs_addresses,
-          internal_config):
+          no_flush_external_gcs, internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -323,6 +328,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             autoscaling_config=autoscaling_config,
             include_java=False,
             external_gcs_addresses=external_gcs_addresses,
+            flush_external_gcs=not no_flush_external_gcs,
         )
 
         node = ray.node.Node(ray_params, head=True, shutdown_at_exit=False)
@@ -371,6 +377,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if external_gcs_addresses is not None:
             raise Exception("If --head is not passed in, "
                             "--external-gcs-addresses is not allowed")
+        if no_flush_external_gcs:
+            logger.warning("--no-flush-external-gcs will be ignored "
+                           "in non-head nodes.")
 
         redis_ip_address, redis_port = redis_address.split(":")
 
