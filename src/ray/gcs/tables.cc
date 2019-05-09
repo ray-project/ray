@@ -373,7 +373,7 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && (entry.second.entry_type == EntryType::DELETION)) {
+    if (!entry.first.is_nil() && entry.second.entry_type == EntryType::DELETION) {
       client_removed_callback_(client_, entry.first, entry.second);
     }
   }
@@ -395,7 +395,7 @@ void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &cal
   resource_deleted_callback_ = callback;
   // Call the callback for any clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && (entry.second.entry_type == EntryType::RES_DELETE)) {
+    if (!entry.first.is_nil() && entry.second.entry_type == EntryType::RES_DELETE) {
       resource_deleted_callback_(client_, entry.first, entry.second);
     }
   }
@@ -439,7 +439,6 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
                    << ". Setting the client cache to data.";
     client_cache_[client_id] = data;
   }
-  // If the entry is resource creation or updation
   else if ((data.entry_type == EntryType::RES_CREATEUPDATE) ||
            (data.entry_type == EntryType::RES_DELETE)) {
     RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable RES_CREATEUPDATE "

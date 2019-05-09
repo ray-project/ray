@@ -1284,7 +1284,7 @@ void NodeManager::ProcessSetResourceRequest(
 
   auto const &resource_name = string_from_flatbuf(*message->resource_name());
   double const &capacity = message->capacity();
-  bool is_deletion = capacity == 0;
+  bool is_deletion = capacity <= 0;
 
   ClientID client_id = from_flatbuf<ClientID>(*message->client_id());
 
