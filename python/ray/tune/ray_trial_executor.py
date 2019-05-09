@@ -4,19 +4,24 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import math
 import os
 import random
 import time
 import traceback
 
 import ray
-from ray.tune.error import TuneError, AbortTrialExecution
+from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.util import warn_if_slow
 
 logger = logging.getLogger(__name__)
+
+RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
+BOTTLENECK_WARN_PERIOD_S = 60
+NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 
 
 class _LocalWrapper(object):
@@ -31,18 +36,25 @@ class _LocalWrapper(object):
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
-    def __init__(self, queue_trials=False, reuse_actors=False):
+    def __init__(self,
+                 queue_trials=False,
+                 reuse_actors=False,
+                 refresh_period=RESOURCE_REFRESH_PERIOD):
         super(RayTrialExecutor, self).__init__(queue_trials)
         self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object id generated.
         # We use self._paused to store paused trials here.
         self._paused = {}
+        self._reuse_actors = reuse_actors
+        self._cached_actor = None
+
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
-        self._reuse_actors = reuse_actors
-        self._cached_actor = None
+        self._refresh_period = refresh_period
+        self._last_resource_refresh = float("-inf")
+        self._last_nontrivial_wait = time.time()
         if ray.is_initialized():
             self._update_avail_resources()
 
@@ -85,7 +97,8 @@ class RayTrialExecutor(TrialExecutor):
             # Set the working dir in the remote process, for user file writes
             if not os.path.exists(remote_logdir):
                 os.makedirs(remote_logdir)
-            os.chdir(remote_logdir)
+            if not ray.worker._mode() == ray.worker.LOCAL_MODE:
+                os.chdir(remote_logdir)
             return NoopLogger(config, remote_logdir)
 
         # Logging for trials is handled centrally by TrialRunner, so
@@ -154,7 +167,7 @@ class RayTrialExecutor(TrialExecutor):
 
         try:
             trial.write_error_log(error_msg)
-            if hasattr(trial, 'runner') and trial.runner:
+            if hasattr(trial, "runner") and trial.runner:
                 if (not error and self._reuse_actors
                         and self._cached_actor is None):
                     logger.debug("Reusing actor for {}".format(trial.runner))
@@ -275,7 +288,19 @@ class RayTrialExecutor(TrialExecutor):
         # the first available result, and we want to guarantee that slower
         # trials (i.e. trials that run remotely) also get fairly reported.
         # See https://github.com/ray-project/ray/issues/4211 for details.
+        start = time.time()
         [result_id], _ = ray.wait(shuffled_results)
+        wait_time = time.time() - start
+        if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
+            self._last_nontrivial_wait = time.time()
+        if time.time() - self._last_nontrivial_wait > BOTTLENECK_WARN_PERIOD_S:
+            logger.warn(
+                "Over the last {} seconds, the Tune event loop has been "
+                "backlogged processing new results. Consider increasing your "
+                "period of result reporting to improve performance.".format(
+                    BOTTLENECK_WARN_PERIOD_S))
+
+            self._last_nontrivial_wait = time.time()
         return self._running[result_id]
 
     def fetch_result(self, trial):
@@ -339,26 +364,39 @@ class RayTrialExecutor(TrialExecutor):
                 resources = ray.services.check_and_update_resources(
                     None, None, None)
             if not resources:
-                logger.warning("Cluster resources not detected. Retrying...")
+                logger.warning(
+                    "Cluster resources not detected or are 0. Retrying...")
                 time.sleep(0.5)
 
-        if not resources or "CPU" not in resources:
-            raise TuneError("Cluster resources cannot be detected. "
-                            "You can resume this experiment by passing in "
-                            "`resume=True` to `run_experiments`.")
+        if not resources:
+            # NOTE: This hides the possibility that Ray may be waiting for
+            # clients to connect.
+            resources.setdefault("CPU", 0)
+            resources.setdefault("GPU", 0)
+            logger.warning("Cluster resources cannot be detected or are 0. "
+                           "You can resume this experiment by passing in "
+                           "`resume=True` to `run`.")
 
         resources = resources.copy()
-        num_cpus = resources.pop("CPU")
-        num_gpus = resources.pop("GPU")
+        num_cpus = resources.pop("CPU", 0)
+        num_gpus = resources.pop("GPU", 0)
         custom_resources = resources
 
         self._avail_resources = Resources(
             int(num_cpus), int(num_gpus), custom_resources=custom_resources)
+        self._last_resource_refresh = time.time()
         self._resources_initialized = True
 
     def has_resources(self, resources):
-        """Returns whether this runner has at least the specified resources."""
-        self._update_avail_resources()
+        """Returns whether this runner has at least the specified resources.
+
+        This refreshes the Ray cluster resources if the time since last update
+        has exceeded self._refresh_period. This also assumes that the
+        cluster is not resizing very frequently.
+        """
+        if time.time() - self._last_resource_refresh > self._refresh_period:
+            self._update_avail_resources()
+
         currently_available = Resources.subtract(self._avail_resources,
                                                  self._committed_resources)
 
@@ -387,7 +425,7 @@ class RayTrialExecutor(TrialExecutor):
                 "may appear to hang until enough resources are added to the "
                 "cluster (e.g., via autoscaling). You can disable this "
                 "behavior by specifying `queue_trials=False` in "
-                "ray.tune.run_experiments().")
+                "ray.tune.run().")
             return True
 
         return False
@@ -429,7 +467,6 @@ class RayTrialExecutor(TrialExecutor):
 
     def on_step_begin(self):
         """Before step() called, update the available resources."""
-
         self._update_avail_resources()
 
     def save(self, trial, storage=Checkpoint.DISK):
@@ -439,9 +476,43 @@ class RayTrialExecutor(TrialExecutor):
         if storage == Checkpoint.MEMORY:
             trial._checkpoint.value = trial.runner.save_to_object.remote()
         else:
-            with warn_if_slow("save_to_disk"):
-                trial._checkpoint.value = ray.get(trial.runner.save.remote())
+            # Keeps only highest performing checkpoints if enabled
+            if trial.keep_checkpoints_num:
+                try:
+                    last_attr_val = trial.last_result[
+                        trial.checkpoint_score_attr]
+                    if (trial.compare_checkpoints(last_attr_val)
+                            and not math.isnan(last_attr_val)):
+                        trial.best_checkpoint_attr_value = last_attr_val
+                        self._checkpoint_and_erase(trial)
+                except KeyError:
+                    logger.warning(
+                        "Result dict has no key: {}. keep"
+                        "_checkpoints_num flag will not work".format(
+                            trial.checkpoint_score_attr))
+            else:
+                with warn_if_slow("save_to_disk"):
+                    trial._checkpoint.value = ray.get(
+                        trial.runner.save.remote())
+
         return trial._checkpoint.value
+
+    def _checkpoint_and_erase(self, trial):
+        """Checkpoints the model and erases old checkpoints
+            if needed.
+        Parameters
+        ----------
+            trial : trial to save
+        """
+
+        with warn_if_slow("save_to_disk"):
+            trial._checkpoint.value = ray.get(trial.runner.save.remote())
+
+        if len(trial.history) >= trial.keep_checkpoints_num:
+            ray.get(trial.runner.delete_checkpoint.remote(trial.history[-1]))
+            trial.history.pop()
+
+        trial.history.insert(0, trial._checkpoint.value)
 
     def restore(self, trial, checkpoint=None):
         """Restores training state from a given model checkpoint.

@@ -92,10 +92,6 @@ scripts/nodes.txt
 *.dSYM/
 *.su
 
-# CMake
-cmake-build-debug/
-build
-
 # Python setup files
 *.egg-info
 
@@ -148,6 +144,7 @@ java/**/lib
 java/**/.settings
 java/**/.classpath
 java/**/.project
+java/runtime/native_dependencies/
 
 # python virtual env
 venv
@@ -155,3 +152,6 @@ venv
 # Vim
 .*.swp
 *.swp
+
+# tools
+tools/prometheus*

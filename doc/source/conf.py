@@ -74,6 +74,7 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx_click.ext',
 ]

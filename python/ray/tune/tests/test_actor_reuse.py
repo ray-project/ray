@@ -15,27 +15,30 @@ class FrequentPausesScheduler(FIFOScheduler):
         return TrialScheduler.PAUSE
 
 
-class MyResettableClass(Trainable):
-    def _setup(self, config):
-        self.config = config
-        self.num_resets = 0
-        self.iter = 0
+def create_resettable_class():
+    class MyResettableClass(Trainable):
+        def _setup(self, config):
+            self.config = config
+            self.num_resets = 0
+            self.iter = 0
 
-    def _train(self):
-        self.iter += 1
-        return {"num_resets": self.num_resets, "done": self.iter > 1}
+        def _train(self):
+            self.iter += 1
+            return {"num_resets": self.num_resets, "done": self.iter > 1}
 
-    def _save(self, chkpt_dir):
-        return {"iter": self.iter}
+        def _save(self, chkpt_dir):
+            return {"iter": self.iter}
 
-    def _restore(self, item):
-        self.iter = item["iter"]
+        def _restore(self, item):
+            self.iter = item["iter"]
 
-    def reset_config(self, new_config):
-        if "fake_reset_not_supported" in self.config:
-            return False
-        self.num_resets += 1
-        return True
+        def reset_config(self, new_config):
+            if "fake_reset_not_supported" in self.config:
+                return False
+            self.num_resets += 1
+            return True
+
+    return MyResettableClass
 
 
 class ActorReuseTest(unittest.TestCase):
@@ -49,7 +52,7 @@ class ActorReuseTest(unittest.TestCase):
         trials = run_experiments(
             {
                 "foo": {
-                    "run": MyResettableClass,
+                    "run": create_resettable_class(),
                     "num_samples": 4,
                     "config": {},
                 }
@@ -63,7 +66,7 @@ class ActorReuseTest(unittest.TestCase):
         trials = run_experiments(
             {
                 "foo": {
-                    "run": MyResettableClass,
+                    "run": create_resettable_class(),
                     "num_samples": 4,
                     "config": {},
                 }
@@ -78,7 +81,7 @@ class ActorReuseTest(unittest.TestCase):
             run_experiments(
                 {
                     "foo": {
-                        "run": MyResettableClass,
+                        "run": create_resettable_class(),
                         "max_failures": 1,
                         "num_samples": 4,
                         "config": {

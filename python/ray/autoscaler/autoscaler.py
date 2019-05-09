@@ -3,34 +3,31 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import json
 import hashlib
+import json
+import logging
 import math
 import os
-from six import string_types
-from six.moves import queue
 import subprocess
 import threading
-import logging
 import time
-
 from collections import defaultdict
 
 import numpy as np
+import ray.services as services
 import yaml
-
-from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
-    AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES,\
-    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
-from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
                                  TAG_RAY_NODE_NAME)
-
-import ray.services as services
+from ray.autoscaler.updater import NodeUpdaterThread
+from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
+    AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
+    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from six import string_types
+from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +35,7 @@ REQUIRED, OPTIONAL = True, False
 
 # For (a, b), if a is a dictionary object, then
 # no extra fields can be introduced.
+
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
     "cluster_name": (str, REQUIRED),
@@ -52,6 +50,9 @@ CLUSTER_CONFIG_SCHEMA = {
 
     # The number of workers to launch initially, in addition to the head node.
     "initial_workers": (int, OPTIONAL),
+
+    # The mode of the autoscaler e.g. default, aggressive
+    "autoscaling_mode": (str, OPTIONAL),
 
     # The autoscaler will scale up the cluster to this target fraction of
     # resources usage. For example, if a cluster of 8 nodes is 100% busy
@@ -91,7 +92,17 @@ CLUSTER_CONFIG_SCHEMA = {
         {
             "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
             "container_name": (str, OPTIONAL),  # e.g., ray_docker
+            # shared options for starting head/worker docker
             "run_options": (list, OPTIONAL),
+
+            # image for head node, takes precedence over "image" if specified
+            "head_image": (str, OPTIONAL),
+            # head specific run options, appended to run_options
+            "head_run_options": (list, OPTIONAL),
+            # analogous to head_image
+            "worker_image": (str, OPTIONAL),
+            # analogous to head_run_options
+            "worker_run_options": (list, OPTIONAL),
         },
         OPTIONAL),
 
@@ -133,7 +144,7 @@ CLUSTER_CONFIG_SCHEMA = {
 class LoadMetrics(object):
     """Container for cluster load metrics.
 
-    Metrics here are updated from local scheduler heartbeats. The autoscaler
+    Metrics here are updated from raylet heartbeats. The autoscaler
     queries these metrics to determine when to scale up, and which nodes
     can be removed.
     """
@@ -492,7 +503,6 @@ class StandardAutoscaler(object):
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
             new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
-                new_config["setup_commands"],
                 new_config["worker_setup_commands"],
                 new_config["worker_start_ray_commands"]
             ])
@@ -512,9 +522,13 @@ class StandardAutoscaler(object):
         ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
         ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
 
+        initial_workers = self.config["initial_workers"]
+        aggressive = self.config["autoscaling_mode"] == "aggressive"
         if self.bringup:
-            ideal_num_workers = max(ideal_num_workers,
-                                    self.config["initial_workers"])
+            ideal_num_workers = max(ideal_num_workers, initial_workers)
+        elif aggressive and cur_used > 0:
+            # If we want any workers, we want at least initial_workers
+            ideal_num_workers = max(ideal_num_workers, initial_workers)
 
         return min(self.config["max_workers"],
                    max(self.config["min_workers"], ideal_num_workers))
@@ -575,11 +589,9 @@ class StandardAutoscaler(object):
         if successful_updated and self.config.get("restart_only", False):
             init_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = (self.config["setup_commands"] +
-                             self.config["worker_setup_commands"])
+            init_commands = self.config["worker_setup_commands"]
         else:
-            init_commands = (self.config["setup_commands"] +
-                             self.config["worker_setup_commands"] +
+            init_commands = (self.config["worker_setup_commands"] +
                              self.config["worker_start_ray_commands"])
 
         return (node_id, init_commands)
@@ -650,7 +662,7 @@ def typename(v):
 
 def check_required(config, schema):
     # Check required schema entries
-    if type(config) is not dict:
+    if not isinstance(config, dict):
         raise ValueError("Config is not a dictionary")
 
     for k, (v, kreq) in schema.items():
@@ -668,7 +680,7 @@ def check_required(config, schema):
 
 def check_extraneous(config, schema):
     """Make sure all items of config are in schema"""
-    if type(config) is not dict:
+    if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
     for k in config:
         if k not in schema:
@@ -691,7 +703,7 @@ def check_extraneous(config, schema):
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     """Required Dicts indicate that no extra fields can be introduced."""
-    if type(config) is not dict:
+    if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
 
     check_required(config, schema)
@@ -701,8 +713,17 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
 def fillout_defaults(config):
     defaults = get_default_config(config["provider"])
     defaults.update(config)
+    merge_setup_commands(defaults)
     dockerize_if_needed(defaults)
     return defaults
+
+
+def merge_setup_commands(config):
+    config["head_setup_commands"] = (
+        config["setup_commands"] + config["head_setup_commands"])
+    config["worker_setup_commands"] = (
+        config["setup_commands"] + config["worker_setup_commands"])
+    return config
 
 
 def with_head_node_ip(cmds):
@@ -732,7 +753,7 @@ def hash_runtime_conf(file_mounts, extra_objs):
     def add_content_hashes(path):
         def add_hash_of_file(fpath):
             with open(fpath, "rb") as f:
-                for chunk in iter(lambda: f.read(2**20), b''):
+                for chunk in iter(lambda: f.read(2**20), b""):
                     hasher.update(chunk)
 
         path = os.path.expanduser(path)

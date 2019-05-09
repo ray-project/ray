@@ -349,9 +349,9 @@ cdef class RayletClient:
 
         check_status(self.client.get().PushProfileEvents(profile_info))
 
-    def free_objects(self, object_ids, c_bool local_only):
+    def free_objects(self, object_ids, c_bool local_only, c_bool delete_creating_tasks):
         cdef c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
-        check_status(self.client.get().FreeObjects(free_ids, local_only))
+        check_status(self.client.get().FreeObjects(free_ids, local_only, delete_creating_tasks))
 
     def prepare_actor_checkpoint(self, ActorID actor_id):
         cdef CActorCheckpointID checkpoint_id

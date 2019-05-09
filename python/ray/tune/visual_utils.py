@@ -14,6 +14,8 @@ from ray.tune.util import flatten_dict
 
 logger = logging.getLogger(__name__)
 
+logger.warning("This module will be deprecated in a future version of Tune.")
+
 
 def _parse_results(res_path):
     res_dict = {}

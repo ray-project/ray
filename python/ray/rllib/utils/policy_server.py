@@ -39,7 +39,7 @@ class PolicyServer(ThreadingMixIn, HTTPServer):
                    server = PolicyServer(self, "localhost", 8900)
                    server.serve_forever()
         >>> register_env("srv", lambda _: CartpoleServing())
-        >>> pg = PGAgent(env="srv", config={"num_workers": 0})
+        >>> pg = PGTrainer(env="srv", config={"num_workers": 0})
         >>> while True:
                 pg.train()
 
@@ -61,7 +61,7 @@ class PolicyServer(ThreadingMixIn, HTTPServer):
 def _make_handler(external_env):
     class Handler(SimpleHTTPRequestHandler):
         def do_POST(self):
-            content_len = int(self.headers.get('Content-Length'), 0)
+            content_len = int(self.headers.get("Content-Length"), 0)
             raw_body = self.rfile.read(content_len)
             parsed_input = pickle.loads(raw_body)
             try:

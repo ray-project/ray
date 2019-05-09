@@ -12,16 +12,15 @@ import org.ray.runtime.util.Serializer;
 public class ArgumentsBuilder {
 
   /**
-   * If the the size of an argument's serialized data is smaller than this number,
-   * the argument will be passed by value. Otherwise it'll be passed by reference.
+   * If the the size of an argument's serialized data is smaller than this number, the argument will
+   * be passed by value. Otherwise it'll be passed by reference.
    */
   private static final int LARGEST_SIZE_PASS_BY_VALUE = 100 * 1024;
-
 
   /**
    * Convert real function arguments to task spec arguments.
    */
-  public static FunctionArg[] wrap(Object[] args) {
+  public static FunctionArg[] wrap(Object[] args, boolean crossLanguage) {
     FunctionArg[] ret = new FunctionArg[args.length];
     for (int i = 0; i < ret.length; i++) {
       Object arg = args[i];
@@ -33,10 +32,15 @@ public class ArgumentsBuilder {
         data = Serializer.encode(arg);
       } else if (arg instanceof RayObject) {
         id = ((RayObject) arg).getId();
+      } else if (arg instanceof byte[] && crossLanguage) {
+        // If the argument is a byte array and will be used by a different language,
+        // do not inline this argument. Because the other language doesn't know how
+        // to deserialize it.
+        id = Ray.put(arg).getId();
       } else {
         byte[] serialized = Serializer.encode(arg);
         if (serialized.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          id = ((AbstractRayRuntime)Ray.internal()).putSerialized(serialized).getId();
+          id = ((AbstractRayRuntime) Ray.internal()).putSerialized(serialized).getId();
         } else {
           data = serialized;
         }

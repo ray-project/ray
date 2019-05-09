@@ -7,9 +7,9 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tune import run_experiments, register_trainable
+from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest import SigOptSearch
+from ray.tune.suggest.sigopt import SigOptSearch
 
 
 def easy_objective(config, reporter):
@@ -36,38 +36,33 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    register_trainable("exp", easy_objective)
-
     space = [
         {
-            'name': 'width',
-            'type': 'int',
-            'bounds': {
-                'min': 0,
-                'max': 20
+            "name": "width",
+            "type": "int",
+            "bounds": {
+                "min": 0,
+                "max": 20
             },
         },
         {
-            'name': 'height',
-            'type': 'int',
-            'bounds': {
-                'min': -100,
-                'max': 100
+            "name": "height",
+            "type": "int",
+            "bounds": {
+                "min": -100,
+                "max": 100
             },
         },
     ]
 
     config = {
-        "my_exp": {
-            "run": "exp",
-            "num_samples": 10 if args.smoke_test else 1000,
-            "config": {
-                "iterations": 100,
-            },
-            "stop": {
-                "timesteps_total": 100
-            },
-        }
+        "num_samples": 10 if args.smoke_test else 1000,
+        "config": {
+            "iterations": 100,
+        },
+        "stop": {
+            "timesteps_total": 100
+        },
     }
     algo = SigOptSearch(
         space,
@@ -75,4 +70,8 @@ if __name__ == "__main__":
         max_concurrent=1,
         reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
-    run_experiments(config, search_alg=algo, scheduler=scheduler)
+    run(easy_objective,
+        name="my_exp",
+        search_alg=algo,
+        scheduler=scheduler,
+        **config)

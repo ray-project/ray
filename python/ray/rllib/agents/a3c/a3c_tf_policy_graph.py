@@ -8,10 +8,13 @@ import tensorflow as tf
 import gym
 
 import ray
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages, \
+    Postprocessing
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
@@ -26,7 +29,7 @@ class A3CLoss(object):
                  v_target,
                  vf,
                  vf_loss_coeff=0.5,
-                 entropy_coeff=-0.01):
+                 entropy_coeff=0.01):
         log_prob = action_dist.logp(actions)
 
         # The "policy gradients" loss
@@ -35,11 +38,40 @@ class A3CLoss(object):
         delta = vf - v_target
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
         self.entropy = tf.reduce_sum(action_dist.entropy())
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
+        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
 
-class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
+class A3CPostprocessing(object):
+    """Adds the VF preds and advantages fields to the trajectory."""
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self),
+            **{SampleBatch.VF_PREDS: self.vf})
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        completed = sample_batch[SampleBatch.DONES][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            next_state = []
+            for i in range(len(self.model.state_in)):
+                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                                 sample_batch[SampleBatch.ACTIONS][-1],
+                                 sample_batch[SampleBatch.REWARDS][-1],
+                                 *next_state)
+        return compute_advantages(sample_batch, last_r, self.config["gamma"],
+                                  self.config["lambda"])
+
+
+class A3CPolicyGraph(LearningRateSchedule, A3CPostprocessing, TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
@@ -82,12 +114,12 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Initialize TFPolicyGraph
         loss_in = [
-            ("obs", self.observations),
-            ("actions", actions),
-            ("prev_actions", self.prev_actions),
-            ("prev_rewards", self.prev_rewards),
-            ("advantages", advantages),
-            ("value_targets", self.v_target),
+            (SampleBatch.CUR_OBS, self.observations),
+            (SampleBatch.ACTIONS, actions),
+            (SampleBatch.PREV_ACTIONS, self.prev_actions),
+            (SampleBatch.PREV_REWARDS, self.prev_rewards),
+            (Postprocessing.ADVANTAGES, advantages),
+            (Postprocessing.VALUE_TARGETS, self.v_target),
         ]
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
@@ -110,7 +142,7 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             max_seq_len=self.config["model"]["max_seq_len"])
 
         self.stats_fetches = {
-            "stats": {
+            LEARNER_STATS_KEY: {
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "policy_entropy": self.loss.entropy,
@@ -127,27 +159,9 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def get_initial_state(self):
         return self.model.state_init
 
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(len(self.model.state_in)):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch["new_obs"][-1],
-                                 sample_batch["actions"][-1],
-                                 sample_batch["rewards"][-1], *next_state)
-        return compute_advantages(sample_batch, last_r, self.config["gamma"],
-                                  self.config["lambda"])
-
     @override(TFPolicyGraph)
-    def gradients(self, optimizer):
-        grads = tf.gradients(self._loss, self.var_list)
+    def gradients(self, optimizer, loss):
+        grads = tf.gradients(loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
@@ -155,12 +169,6 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
-
-    @override(TFPolicyGraph)
-    def extra_compute_action_fetches(self):
-        return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self),
-            **{"vf_preds": self.vf})
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {

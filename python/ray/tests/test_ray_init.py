@@ -18,13 +18,6 @@ def password():
     return random_bytes.encode("hex")  # Python 2
 
 
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
 class TestRedisPassword(object):
     @pytest.mark.skipif(
         os.environ.get("RAY_USE_NEW_GCS") == "on",

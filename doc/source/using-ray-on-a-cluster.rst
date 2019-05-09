@@ -49,7 +49,7 @@ Now we've started all of the Ray processes on each node Ray. This includes
 
 - Some worker processes on each machine.
 - An object store on each machine.
-- A local scheduler on each machine.
+- A raylet on each machine.
 - Multiple Redis servers (on the head node).
 
 To run some commands, start up Python on one of the nodes in the cluster, and do

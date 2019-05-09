@@ -7,16 +7,19 @@ ray.rllib.agents
 .. automodule:: ray.rllib.agents
     :members:
     
-.. autoclass:: ray.rllib.agents.a3c.A2CAgent
-.. autoclass:: ray.rllib.agents.a3c.A3CAgent
-.. autoclass:: ray.rllib.agents.ddpg.ApexDDPGAgent
-.. autoclass:: ray.rllib.agents.ddpg.DDPGAgent
-.. autoclass:: ray.rllib.agents.dqn.ApexAgent
-.. autoclass:: ray.rllib.agents.dqn.DQNAgent
-.. autoclass:: ray.rllib.agents.es.ESAgent
-.. autoclass:: ray.rllib.agents.pg.PGAgent
-.. autoclass:: ray.rllib.agents.impala.ImpalaAgent
-.. autoclass:: ray.rllib.agents.ppo.PPOAgent
+.. autoclass:: ray.rllib.agents.a3c.A2CTrainer
+.. autoclass:: ray.rllib.agents.a3c.A3CTrainer
+.. autoclass:: ray.rllib.agents.ddpg.ApexDDPGTrainer
+.. autoclass:: ray.rllib.agents.ddpg.DDPGTrainer
+.. autoclass:: ray.rllib.agents.dqn.ApexTrainer
+.. autoclass:: ray.rllib.agents.dqn.DQNTrainer
+.. autoclass:: ray.rllib.agents.es.ESTrainer
+.. autoclass:: ray.rllib.agents.pg.PGTrainer
+.. autoclass:: ray.rllib.agents.impala.ImpalaTrainer
+.. autoclass:: ray.rllib.agents.ppo.APPOTrainer
+.. autoclass:: ray.rllib.agents.ppo.PPOTrainer
+.. autoclass:: ray.rllib.agents.marwil.MARWILTrainer
+
 
 ray.rllib.env
 -------------

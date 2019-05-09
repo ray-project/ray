@@ -1,7 +1,8 @@
-"""Example of a custom gym environment. Run this for a demo.
+"""Example of a custom gym environment and model. Run this for a demo.
 
 This example shows:
   - using a custom environment
+  - using a custom model
   - using Tune for grid search
 
 You can visualize experiment results in ~/ray_results using TensorBoard.
@@ -13,10 +14,12 @@ from __future__ import print_function
 
 import numpy as np
 import gym
+from ray.rllib.models import FullyConnectedNetwork, Model, ModelCatalog
 from gym.spaces import Discrete, Box
 
 import ray
-from ray.tune import run_experiments, grid_search
+from ray import tune
+from ray.tune import grid_search
 
 
 class SimpleCorridor(gym.Env):
@@ -45,23 +48,39 @@ class SimpleCorridor(gym.Env):
         return [self.cur_pos], 1 if done else 0, done, {}
 
 
+class CustomModel(Model):
+    """Example of a custom model.
+
+    This model just delegates to the built-in fcnet.
+    """
+
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        self.obs_in = input_dict["obs"]
+        self.fcnet = FullyConnectedNetwork(input_dict, self.obs_space,
+                                           self.action_space, num_outputs,
+                                           options)
+        return self.fcnet.outputs, self.fcnet.last_layer
+
+
 if __name__ == "__main__":
     # Can also register the env creator function explicitly with:
     # register_env("corridor", lambda config: SimpleCorridor(config))
     ray.init()
-    run_experiments({
-        "demo": {
-            "run": "PPO",
+    ModelCatalog.register_custom_model("my_model", CustomModel)
+    tune.run(
+        "PPO",
+        stop={
+            "timesteps_total": 10000,
+        },
+        config={
             "env": SimpleCorridor,  # or "corridor" if registered above
-            "stop": {
-                "timesteps_total": 10000,
+            "model": {
+                "custom_model": "my_model",
             },
-            "config": {
-                "lr": grid_search([1e-2, 1e-4, 1e-6]),  # try different lrs
-                "num_workers": 1,  # parallelism
-                "env_config": {
-                    "corridor_length": 5,
-                },
+            "lr": grid_search([1e-2, 1e-4, 1e-6]),  # try different lrs
+            "num_workers": 1,  # parallelism
+            "env_config": {
+                "corridor_length": 5,
             },
         },
-    })
+    )

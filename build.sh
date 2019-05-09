@@ -13,7 +13,6 @@ function usage()
   echo
   echo "Options:"
   echo "  -h|--help               print the help info"
-  echo "  -d|--debug              CMAKE_BUILD_TYPE=Debug (default is RelWithDebInfo)"
   echo "  -l|--language language1[,language2]"
   echo "                          a list of languages to build native libraries."
   echo "                          Supported languages include \"python\" and \"java\"."
@@ -37,22 +36,14 @@ RAY_BUILD_PYTHON="YES"
 RAY_BUILD_JAVA="NO"
 PYTHON_EXECUTABLE=""
 BUILD_DIR=""
-if [ "$VALGRIND" = "1" ]; then
-  CBUILD_TYPE="Debug"
-else
-  CBUILD_TYPE="RelWithDebInfo"
-fi
 
 # Parse options
-while [[ $# > 0 ]]; do
+while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
     -h|--help)
       usage
       exit 0
-      ;;
-    -d|--debug)
-      CBUILD_TYPE=Debug
       ;;
     -l|--languags)
       LANGUAGE="$2"
@@ -85,50 +76,41 @@ while [[ $# > 0 ]]; do
 done
 
 if [[ -z  "$PYTHON_EXECUTABLE" ]]; then
-  PYTHON_EXECUTABLE=`which python`
+  PYTHON_EXECUTABLE=$(which python)
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
+# Find the bazel executable. The script ci/travis/install-bazel.sh doesn't
+# always put the bazel executable on the PATH.
+BAZEL_EXECUTABLE=$(PATH="$PATH:$HOME/.bazel/bin" which bazel)
+echo "Using Bazel executable $BAZEL_EXECUTABLE."
+
 RAY_BUILD_PYTHON=$RAY_BUILD_PYTHON \
 RAY_BUILD_JAVA=$RAY_BUILD_JAVA \
-bash $ROOT_DIR/setup_thirdparty.sh $PYTHON_EXECUTABLE
+bash "$ROOT_DIR/setup_thirdparty.sh" "$PYTHON_EXECUTABLE"
 
 # Now we build everything.
 BUILD_DIR="$ROOT_DIR/build/"
 if [ ! -d "${BUILD_DIR}" ]; then
-mkdir -p ${BUILD_DIR}
+mkdir -p "${BUILD_DIR}"
 fi
 
 pushd "$BUILD_DIR"
 
-if [ ! -z "$RAY_USE_CMAKE" ] ; then
-  # avoid the command failed and exits
-  # and cmake will check some directories to determine whether some targets built
-  make clean || true
-  rm -rf external/arrow-install
+# The following line installs pyarrow from S3, these wheels have been
+# generated from https://github.com/ray-project/arrow-build from
+# the commit listed in the command.
+$PYTHON_EXECUTABLE -m pip install \
+    --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.12.0.RAY \
+    --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/ca1fa51f0901f5a4298f0e4faea00f24e5dd7bb7/index.html
+export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
 
-  cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
-        -DCMAKE_RAY_LANG_JAVA=$RAY_BUILD_JAVA \
-        -DCMAKE_RAY_LANG_PYTHON=$RAY_BUILD_PYTHON \
-        -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
-        -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
+if [ "$RAY_BUILD_JAVA" == "YES" ]; then
+  $BAZEL_EXECUTABLE build //java:all --verbose_failures
+fi
 
-  make -j${PARALLEL}
-else
-  # The following line installs pyarrow from S3, these wheels have been
-  # generated from https://github.com/ray-project/arrow-build from
-  # the commit listed in the command.
-  $PYTHON_EXECUTABLE -m pip install \
-      --target=$ROOT_DIR/python/ray/pyarrow_files pyarrow==0.12.0.RAY \
-      --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9357dc130789ee42f8181d8724bee1d5d1509060/index.html
-  bazel build //:ray_pkg -c opt --verbose_failures --action_env=PYTHON_BIN_PATH=$PYTHON_EXECUTABLE
-  # Copy files and keep them writeable. This is a workaround, as Bazel
-  # marks all generated files non-writeable. If we would just copy them
-  # over without adding write permission, the copy would fail the next time.
-  # TODO(pcm): It would be great to have a solution here that does not
-  # require us to copy the files.
-  find $ROOT_DIR/bazel-genfiles/ray_pkg/ -exec chmod +w {} \;
-  cp -r $ROOT_DIR/bazel-genfiles/ray_pkg/ray $ROOT_DIR/python || true
+if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
+  $BAZEL_EXECUTABLE build //:ray_pkg --verbose_failures
 fi
 
 popd

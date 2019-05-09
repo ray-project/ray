@@ -10,24 +10,12 @@ public class RayConfigTest {
   @Test
   public void testCreateRayConfig() {
     try {
-      System.setProperty("ray.home", "/path/to/ray");
       System.setProperty("ray.driver.resource-path", "path/to/ray/driver/resource/path");
       RayConfig rayConfig = RayConfig.create();
-
-      Assert.assertEquals("/path/to/ray", rayConfig.rayHome);
       Assert.assertEquals(WorkerMode.DRIVER, rayConfig.workerMode);
-
-      System.setProperty("ray.home", "");
-      rayConfig = RayConfig.create();
-
-      Assert.assertEquals(System.getProperty("user.dir"), rayConfig.rayHome);
-      Assert.assertEquals(System.getProperty("user.dir") +
-          "/build/src/ray/thirdparty/redis/src/redis-server", rayConfig.redisServerExecutablePath);
-
       Assert.assertEquals("path/to/ray/driver/resource/path", rayConfig.driverResourcePath);
     } finally {
-      //unset the system property
-      System.clearProperty("ray.home");
+      // Unset system properties.
       System.clearProperty("ray.driver.resource-path");
     }
 

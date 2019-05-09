@@ -2,20 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pytest
 import time
 
 import ray
 from ray.experimental.streaming.batched_queue import BatchedQueue
-
-
-@pytest.fixture
-def ray_start():
-    # Start the Ray processes.
-    ray.init(num_cpus=2)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 @ray.remote
@@ -36,7 +26,7 @@ class Reader(object):
                 time.sleep(0.001)
 
 
-def test_batched_queue(ray_start):
+def test_batched_queue(ray_start_regular):
     # Batched queue parameters
     max_queue_size = 10000  # Max number of batches in queue
     max_batch_size = 1000  # Max number of elements per batch

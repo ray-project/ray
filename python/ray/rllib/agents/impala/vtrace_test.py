@@ -85,7 +85,7 @@ def _ground_truth_calculation(discounts, log_rhos, rewards, values,
 
 class LogProbsFromLogitsAndActionsTest(tf.test.TestCase,
                                        parameterized.TestCase):
-    @parameterized.named_parameters(('Batch1', 1), ('Batch2', 2))
+    @parameterized.named_parameters(("Batch1", 1), ("Batch2", 2))
     def test_log_probs_from_logits_and_actions(self, batch_size):
         """Tests log_probs_from_logits_and_actions."""
         seq_len = 7
@@ -117,7 +117,7 @@ class LogProbsFromLogitsAndActionsTest(tf.test.TestCase,
 
 
 class VtraceTest(tf.test.TestCase, parameterized.TestCase):
-    @parameterized.named_parameters(('Batch1', 1), ('Batch5', 5))
+    @parameterized.named_parameters(("Batch1", 1), ("Batch5", 5))
     def test_vtrace(self, batch_size):
         """Tests V-trace against ground truth data calculated in python."""
         seq_len = 5
@@ -129,15 +129,15 @@ class VtraceTest(tf.test.TestCase, parameterized.TestCase):
         log_rhos = _shaped_arange(seq_len, batch_size) / (batch_size * seq_len)
         log_rhos = 5 * (log_rhos - 0.5)  # [0.0, 1.0) -> [-2.5, 2.5).
         values = {
-            'log_rhos': log_rhos,
+            "log_rhos": log_rhos,
             # T, B where B_i: [0.9 / (i+1)] * T
-            'discounts': np.array([[0.9 / (b + 1) for b in range(batch_size)]
+            "discounts": np.array([[0.9 / (b + 1) for b in range(batch_size)]
                                    for _ in range(seq_len)]),
-            'rewards': _shaped_arange(seq_len, batch_size),
-            'values': _shaped_arange(seq_len, batch_size) / batch_size,
-            'bootstrap_value': _shaped_arange(batch_size) + 1.0,
-            'clip_rho_threshold': 3.7,
-            'clip_pg_rho_threshold': 2.2,
+            "rewards": _shaped_arange(seq_len, batch_size),
+            "values": _shaped_arange(seq_len, batch_size) / batch_size,
+            "bootstrap_value": _shaped_arange(batch_size) + 1.0,
+            "clip_rho_threshold": 3.7,
+            "clip_pg_rho_threshold": 2.2,
         }
 
         output = vtrace.from_importance_weights(**values)
@@ -149,7 +149,7 @@ class VtraceTest(tf.test.TestCase, parameterized.TestCase):
         for a, b in zip(ground_truth_v, output_v):
             self.assertAllClose(a, b)
 
-    @parameterized.named_parameters(('Batch1', 1), ('Batch2', 2))
+    @parameterized.named_parameters(("Batch1", 1), ("Batch2", 2))
     def test_vtrace_from_logits(self, batch_size):
         """Tests V-trace calculated from logits."""
         seq_len = 5
@@ -161,16 +161,16 @@ class VtraceTest(tf.test.TestCase, parameterized.TestCase):
         # deal with that.
         placeholders = {
             # T, B, NUM_ACTIONS
-            'behaviour_policy_logits': tf.placeholder(
+            "behaviour_policy_logits": tf.placeholder(
                 dtype=tf.float32, shape=[None, None, None]),
             # T, B, NUM_ACTIONS
-            'target_policy_logits': tf.placeholder(
+            "target_policy_logits": tf.placeholder(
                 dtype=tf.float32, shape=[None, None, None]),
-            'actions': tf.placeholder(dtype=tf.int32, shape=[None, None]),
-            'discounts': tf.placeholder(dtype=tf.float32, shape=[None, None]),
-            'rewards': tf.placeholder(dtype=tf.float32, shape=[None, None]),
-            'values': tf.placeholder(dtype=tf.float32, shape=[None, None]),
-            'bootstrap_value': tf.placeholder(dtype=tf.float32, shape=[None]),
+            "actions": tf.placeholder(dtype=tf.int32, shape=[None, None]),
+            "discounts": tf.placeholder(dtype=tf.float32, shape=[None, None]),
+            "rewards": tf.placeholder(dtype=tf.float32, shape=[None, None]),
+            "values": tf.placeholder(dtype=tf.float32, shape=[None, None]),
+            "bootstrap_value": tf.placeholder(dtype=tf.float32, shape=[None]),
         }
 
         from_logits_output = vtrace.from_logits(
@@ -179,25 +179,25 @@ class VtraceTest(tf.test.TestCase, parameterized.TestCase):
             **placeholders)
 
         target_log_probs = vtrace.log_probs_from_logits_and_actions(
-            placeholders['target_policy_logits'], placeholders['actions'])
+            placeholders["target_policy_logits"], placeholders["actions"])
         behaviour_log_probs = vtrace.log_probs_from_logits_and_actions(
-            placeholders['behaviour_policy_logits'], placeholders['actions'])
+            placeholders["behaviour_policy_logits"], placeholders["actions"])
         log_rhos = target_log_probs - behaviour_log_probs
         ground_truth = (log_rhos, behaviour_log_probs, target_log_probs)
 
         values = {
-            'behaviour_policy_logits': _shaped_arange(seq_len, batch_size,
+            "behaviour_policy_logits": _shaped_arange(seq_len, batch_size,
                                                       num_actions),
-            'target_policy_logits': _shaped_arange(seq_len, batch_size,
+            "target_policy_logits": _shaped_arange(seq_len, batch_size,
                                                    num_actions),
-            'actions': np.random.randint(
+            "actions": np.random.randint(
                 0, num_actions - 1, size=(seq_len, batch_size)),
-            'discounts': np.array(  # T, B where B_i: [0.9 / (i+1)] * T
+            "discounts": np.array(  # T, B where B_i: [0.9 / (i+1)] * T
                 [[0.9 / (b + 1) for b in range(batch_size)]
                  for _ in range(seq_len)]),
-            'rewards': _shaped_arange(seq_len, batch_size),
-            'values': _shaped_arange(seq_len, batch_size) / batch_size,
-            'bootstrap_value': _shaped_arange(batch_size) + 1.0,  # B
+            "rewards": _shaped_arange(seq_len, batch_size),
+            "values": _shaped_arange(seq_len, batch_size) / batch_size,
+            "bootstrap_value": _shaped_arange(batch_size) + 1.0,  # B
         }
 
         feed_dict = {placeholders[k]: v for k, v in values.items()}
@@ -211,10 +211,10 @@ class VtraceTest(tf.test.TestCase, parameterized.TestCase):
         # Calculate V-trace using the ground truth logits.
         from_iw = vtrace.from_importance_weights(
             log_rhos=ground_truth_log_rhos,
-            discounts=values['discounts'],
-            rewards=values['rewards'],
-            values=values['values'],
-            bootstrap_value=values['bootstrap_value'],
+            discounts=values["discounts"],
+            rewards=values["rewards"],
+            values=values["values"],
+            bootstrap_value=values["bootstrap_value"],
             clip_rho_threshold=clip_rho_threshold,
             clip_pg_rho_threshold=clip_pg_rho_threshold)
 
@@ -234,14 +234,14 @@ class VtraceTest(tf.test.TestCase, parameterized.TestCase):
     def test_higher_rank_inputs_for_importance_weights(self):
         """Checks support for additional dimensions in inputs."""
         placeholders = {
-            'log_rhos': tf.placeholder(
+            "log_rhos": tf.placeholder(
                 dtype=tf.float32, shape=[None, None, 1]),
-            'discounts': tf.placeholder(
+            "discounts": tf.placeholder(
                 dtype=tf.float32, shape=[None, None, 1]),
-            'rewards': tf.placeholder(
+            "rewards": tf.placeholder(
                 dtype=tf.float32, shape=[None, None, 42]),
-            'values': tf.placeholder(dtype=tf.float32, shape=[None, None, 42]),
-            'bootstrap_value': tf.placeholder(
+            "values": tf.placeholder(dtype=tf.float32, shape=[None, None, 42]),
+            "bootstrap_value": tf.placeholder(
                 dtype=tf.float32, shape=[None, 42])
         }
         output = vtrace.from_importance_weights(**placeholders)
@@ -250,19 +250,19 @@ class VtraceTest(tf.test.TestCase, parameterized.TestCase):
     def test_inconsistent_rank_inputs_for_importance_weights(self):
         """Test one of many possible errors in shape of inputs."""
         placeholders = {
-            'log_rhos': tf.placeholder(
+            "log_rhos": tf.placeholder(
                 dtype=tf.float32, shape=[None, None, 1]),
-            'discounts': tf.placeholder(
+            "discounts": tf.placeholder(
                 dtype=tf.float32, shape=[None, None, 1]),
-            'rewards': tf.placeholder(
+            "rewards": tf.placeholder(
                 dtype=tf.float32, shape=[None, None, 42]),
-            'values': tf.placeholder(dtype=tf.float32, shape=[None, None, 42]),
+            "values": tf.placeholder(dtype=tf.float32, shape=[None, None, 42]),
             # Should be [None, 42].
-            'bootstrap_value': tf.placeholder(dtype=tf.float32, shape=[None])
+            "bootstrap_value": tf.placeholder(dtype=tf.float32, shape=[None])
         }
-        with self.assertRaisesRegexp(ValueError, 'must have rank 2'):
+        with self.assertRaisesRegexp(ValueError, "must have rank 2"):
             vtrace.from_importance_weights(**placeholders)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

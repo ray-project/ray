@@ -27,9 +27,9 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 import ray
+from ray import tune
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.models.misc import normc_initializer
-from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -68,13 +68,13 @@ class ParametricActionCartpole(gym.Env):
         self.wrapped = gym.make("CartPole-v0")
         self.observation_space = Dict({
             "action_mask": Box(0, 1, shape=(max_avail_actions, )),
-            "avail_actions": Box(-1, 1, shape=(max_avail_actions, 2)),
+            "avail_actions": Box(-10, 10, shape=(max_avail_actions, 2)),
             "cart": self.wrapped.observation_space,
         })
 
     def update_avail_actions(self):
-        self.action_assignments = [[0, 0]] * self.action_space.n
-        self.action_mask = [0] * self.action_space.n
+        self.action_assignments = np.array([[0., 0.]] * self.action_space.n)
+        self.action_mask = np.array([0.] * self.action_space.n)
         self.left_idx, self.right_idx = random.sample(
             range(self.action_space.n), 2)
         self.action_assignments[self.left_idx] = self.left_action_embed
@@ -178,18 +178,16 @@ if __name__ == "__main__":
         }
     else:
         cfg = {}  # PG, IMPALA, A2C, etc.
-    run_experiments({
-        "parametric_cartpole": {
-            "run": args.run,
-            "env": "pa_cartpole",
-            "stop": {
-                "episode_reward_mean": args.stop,
-            },
-            "config": dict({
-                "model": {
-                    "custom_model": "pa_model",
-                },
-                "num_workers": 0,
-            }, **cfg),
+    tune.run(
+        args.run,
+        stop={
+            "episode_reward_mean": args.stop,
         },
-    })
+        config=dict({
+            "env": "pa_cartpole",
+            "model": {
+                "custom_model": "pa_model",
+            },
+            "num_workers": 0,
+        }, **cfg),
+    )

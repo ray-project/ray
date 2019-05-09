@@ -58,7 +58,7 @@ class sample_from(object):
     """Specify that tune should sample configuration values from this function.
 
     The use of function arguments in tune configs must be disambiguated by
-    either wrapped the function in tune.eval() or tune.function().
+    either wrapped the function in tune.sample_from() or tune.function().
 
     Arguments:
         func: An callable function to draw a sample from.
@@ -67,12 +67,18 @@ class sample_from(object):
     def __init__(self, func):
         self.func = func
 
+    def __str__(self):
+        return "tune.sample_from({})".format(str(self.func))
+
+    def __repr__(self):
+        return "tune.sample_from({})".format(repr(self.func))
+
 
 class function(object):
     """Wraps `func` to make sure it is not expanded during resolution.
 
     The use of function arguments in tune configs must be disambiguated by
-    either wrapped the function in tune.eval() or tune.function().
+    either wrapped the function in tune.sample_from() or tune.function().
 
     Arguments:
         func: A function literal.
@@ -83,6 +89,12 @@ class function(object):
 
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
+
+    def __str__(self):
+        return "tune.function({})".format(str(self.func))
+
+    def __repr__(self):
+        return "tune.function({})".format(repr(self.func))
 
 
 _STANDARD_IMPORTS = {

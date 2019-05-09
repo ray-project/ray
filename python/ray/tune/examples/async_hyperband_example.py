@@ -12,7 +12,7 @@ import random
 import numpy as np
 
 import ray
-from ray.tune import Trainable, run_experiments, sample_from
+from ray.tune import Trainable, run, sample_from
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
@@ -63,24 +63,21 @@ if __name__ == "__main__":
         grace_period=5,
         max_t=100)
 
-    run_experiments(
-        {
-            "asynchyperband_test": {
-                "run": MyTrainableClass,
-                "stop": {
-                    "training_iteration": 1 if args.smoke_test else 99999
-                },
-                "num_samples": 20,
-                "resources_per_trial": {
-                    "cpu": 1,
-                    "gpu": 0
-                },
-                "config": {
-                    "width": sample_from(
-                        lambda spec: 10 + int(90 * random.random())),
-                    "height": sample_from(
-                        lambda spec: int(100 * random.random())),
-                },
-            }
-        },
-        scheduler=ahb)
+    run(MyTrainableClass,
+        name="asynchyperband_test",
+        scheduler=ahb,
+        **{
+            "stop": {
+                "training_iteration": 1 if args.smoke_test else 99999
+            },
+            "num_samples": 20,
+            "resources_per_trial": {
+                "cpu": 1,
+                "gpu": 0
+            },
+            "config": {
+                "width": sample_from(
+                    lambda spec: 10 + int(90 * random.random())),
+                "height": sample_from(lambda spec: int(100 * random.random())),
+            },
+        })

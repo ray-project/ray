@@ -49,7 +49,9 @@ class EvaluatorInterface(object):
             >>> ev.learn_on_batch(samples)
         """
 
-        return self.compute_apply(samples)
+        grads, info = self.compute_gradients(samples)
+        self.apply_gradients(grads)
+        return info
 
     @DeveloperAPI
     def compute_gradients(self, samples):
@@ -112,14 +114,6 @@ class EvaluatorInterface(object):
         """
 
         raise NotImplementedError
-
-    @DeveloperAPI
-    def compute_apply(self, samples):
-        """Deprecated: override learn_on_batch instead."""
-
-        grads, info = self.compute_gradients(samples)
-        self.apply_gradients(grads)
-        return info
 
     @DeveloperAPI
     def get_host(self):

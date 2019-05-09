@@ -8,7 +8,8 @@ import argparse
 from gym.spaces import Tuple, Discrete
 
 import ray
-from ray.tune import register_env, run_experiments, grid_search
+from ray import tune
+from ray.tune import register_env, grid_search
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 parser = argparse.ArgumentParser()
@@ -108,13 +109,12 @@ if __name__ == "__main__":
         group = False
 
     ray.init()
-    run_experiments({
-        "two_step": {
-            "run": args.run,
-            "env": "grouped_twostep" if group else TwoStepGame,
-            "stop": {
-                "timesteps_total": args.stop,
-            },
-            "config": config,
+    tune.run(
+        args.run,
+        stop={
+            "timesteps_total": args.stop,
         },
-    })
+        config=dict(config, **{
+            "env": "grouped_twostep" if group else TwoStepGame,
+        }),
+    )

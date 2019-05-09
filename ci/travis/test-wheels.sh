@@ -56,7 +56,7 @@ if [[ "$platform" == "linux" ]]; then
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS=$(ls -1q $ROOT_DIR/../../.whl/*.whl | wc -l)
-  if [[ "$NUMBER_OF_WHEELS" != "5" ]]; then
+  if [[ "$NUMBER_OF_WHEELS" != "4" ]]; then
     echo "Wrong number of wheels found."
     ls -l $ROOT_DIR/../.whl/
     exit 2
@@ -65,13 +65,11 @@ if [[ "$platform" == "linux" ]]; then
 elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
   PY_MMS=("2.7"
-          "3.4"
           "3.5"
           "3.6"
           "3.7")
   # This array is just used to find the right wheel.
   PY_WHEEL_VERSIONS=("27"
-                     "34"
                      "35"
                      "36"
                      "37")

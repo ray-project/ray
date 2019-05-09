@@ -2,20 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pytest
 import os
-import ray
+import pytest
 import time
 import numpy as np
 
-
-@pytest.fixture
-def ray_start_regular():
-    # Start the Ray processes.
-    ray.init(num_cpus=3)
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+import ray
 
 
 def test_timing(ray_start_regular):
@@ -96,6 +88,7 @@ def test_timing(ray_start_regular):
     # average_elapsed_time should be about 0.00087.
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_cache(ray_start_regular):
     A = np.random.rand(1, 1000000)
     v = np.random.rand(1000000)

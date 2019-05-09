@@ -92,8 +92,9 @@ class OffPolicyEstimator(object):
             raise ValueError(
                 "Off-policy estimation is not possible unless the inputs "
                 "include action probabilities (i.e., the policy is stochastic "
-                "and emits the 'action_prob' key). You can set "
-                "`input_evaluation: []` to resolve this.")
+                "and emits the 'action_prob' key). For DQN this means using "
+                "`soft_q: True`. You can also set `input_evaluation: []` to "
+                "disable estimation.")
 
     @DeveloperAPI
     def get_metrics(self):

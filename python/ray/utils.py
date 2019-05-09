@@ -75,7 +75,7 @@ def push_error_to_driver_through_redis(redis_client,
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
-    instances, the local scheduler client is not available, e.g., because the
+    instances, the raylet client is not available, e.g., because the
     error happens in Python before the driver or worker has connected to the
     backend processes.
 
@@ -500,25 +500,7 @@ def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
 
 
-def try_to_create_directory(directory_path):
-    """Attempt to create a directory that is globally readable/writable.
-
-    Args:
-        directory_path: The path of the directory to create.
-    """
-    logger = logging.getLogger("ray")
-    directory_path = os.path.expanduser(directory_path)
-    if not os.path.exists(directory_path):
-        try:
-            os.makedirs(directory_path)
-        except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise e
-            logger.warning(
-                "Attempted to create '{}', but the directory already "
-                "exists.".format(directory_path))
-        # Change the log directory permissions so others can use it. This is
-        # important when multiple people are using the same machine.
+def try_make_directory_shared(directory_path):
     try:
         os.chmod(directory_path, 0o0777)
     except OSError as e:
@@ -531,3 +513,28 @@ def try_to_create_directory(directory_path):
             pass
         else:
             raise
+
+
+def try_to_create_directory(directory_path, warn_if_exist=True):
+    """Attempt to create a directory that is globally readable/writable.
+
+    Args:
+        directory_path: The path of the directory to create.
+        warn_if_exist (bool): Warn if the directory already exists.
+    """
+    logger = logging.getLogger("ray")
+    directory_path = os.path.expanduser(directory_path)
+    if not os.path.exists(directory_path):
+        try:
+            os.makedirs(directory_path)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise e
+            if warn_if_exist:
+                logger.warning(
+                    "Attempted to create '{}', but the directory already "
+                    "exists.".format(directory_path))
+
+    # Change the log directory permissions so others can use it. This is
+    # important when multiple people are using the same machine.
+    try_make_directory_shared(directory_path)

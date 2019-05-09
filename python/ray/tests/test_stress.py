@@ -133,7 +133,7 @@ def test_submitting_many_actors_to_one(ray_start_sharded):
             return ray.get(self.actor.ping.remote())
 
     a = Actor.remote()
-    workers = [Worker.remote(a) for _ in range(100)]
+    workers = [Worker.remote(a) for _ in range(10)]
     for _ in range(10):
         out = ray.get([w.ping.remote() for w in workers])
         assert out == [None for _ in workers]
@@ -196,7 +196,7 @@ def test_wait(ray_start_combination):
 def ray_start_reconstruction(request):
     num_nodes = request.param
 
-    plasma_store_memory = int(0.5 * 10**9)
+    plasma_store_memory = int(0.1 * 10**9)
 
     cluster = Cluster(
         initialize_head=True,
@@ -473,21 +473,13 @@ def test_nondeterministic_task(ray_start_reconstruction):
     assert cluster.remaining_processes_alive()
 
 
-@pytest.fixture
-def ray_start_driver_put_errors():
-    plasma_store_memory = 10**9
-    # Start the Ray processes.
-    ray.init(num_cpus=1, object_store_memory=plasma_store_memory)
-    yield plasma_store_memory
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
-def test_driver_put_errors(ray_start_driver_put_errors):
-    plasma_store_memory = ray_start_driver_put_errors
+@pytest.mark.parametrize(
+    "ray_start_object_store_memory", [10**9], indirect=True)
+def test_driver_put_errors(ray_start_object_store_memory):
+    plasma_store_memory = ray_start_object_store_memory
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.

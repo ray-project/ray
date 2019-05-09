@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
 
@@ -36,17 +36,17 @@ APEX_DEFAULT_CONFIG = merge_dicts(
 # yapf: enable
 
 
-class ApexAgent(DQNAgent):
+class ApexTrainer(DQNTrainer):
     """DQN variant that uses the Ape-X distributed policy optimizer.
 
     By default, this is configured for a large single node (32 cores). For
     running in a large cluster, increase the `num_workers` config var.
     """
 
-    _agent_name = "APEX"
+    _name = "APEX"
     _default_config = APEX_DEFAULT_CONFIG
 
-    @override(DQNAgent)
+    @override(DQNTrainer)
     def update_target_if_needed(self):
         # Ape-X updates based on num steps trained, not sampled
         if self.optimizer.num_steps_trained - self.last_target_update_ts > \

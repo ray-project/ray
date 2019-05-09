@@ -67,7 +67,7 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
         CRayStatus PushProfileEvents(
             const GCSProfileTableDataT &profile_events)
         CRayStatus FreeObjects(const c_vector[CObjectID] &object_ids,
-                               c_bool local_only)
+                               c_bool local_only, c_bool delete_creating_tasks)
         CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,
                                           CActorCheckpointID &checkpoint_id)
         CRayStatus NotifyActorResumedFromCheckpoint(

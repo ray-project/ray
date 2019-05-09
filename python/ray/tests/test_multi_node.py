@@ -8,30 +8,13 @@ import subprocess
 import time
 
 import ray
+from ray.utils import _random_string
 from ray.tests.utils import (run_and_get_output, run_string_as_driver,
                              run_string_as_driver_nonblocking)
 
 
-@pytest.fixture
-def ray_start_head():
-    out = run_and_get_output(["ray", "start", "--head", "--num-cpus=2"])
-    # Get the redis address from the output.
-    redis_substring_prefix = "redis_address=\""
-    redis_address_location = (
-        out.find(redis_substring_prefix) + len(redis_substring_prefix))
-    redis_address = out[redis_address_location:]
-    redis_address = redis_address.split("\"")[0]
-
-    yield redis_address
-
-    # Disconnect from the Ray cluster.
-    ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.Popen(["ray", "stop"]).wait()
-
-
-def test_error_isolation(ray_start_head):
-    redis_address = ray_start_head
+def test_error_isolation(call_ray_start):
+    redis_address = call_ray_start
     # Connect a driver to the Ray cluster.
     ray.init(redis_address=redis_address)
 
@@ -99,10 +82,10 @@ print("success")
     assert error_string1 in ray.error_info()[0]["message"]
 
 
-def test_remote_function_isolation(ray_start_head):
+def test_remote_function_isolation(call_ray_start):
     # This test will run multiple remote functions with the same names in
     # two different drivers. Connect a driver to the Ray cluster.
-    redis_address = ray_start_head
+    redis_address = call_ray_start
 
     ray.init(redis_address=redis_address)
 
@@ -142,10 +125,10 @@ print("success")
     assert "success" in out
 
 
-def test_driver_exiting_quickly(ray_start_head):
+def test_driver_exiting_quickly(call_ray_start):
     # This test will create some drivers that submit some tasks and then
     # exit without waiting for the tasks to complete.
-    redis_address = ray_start_head
+    redis_address = call_ray_start
 
     ray.init(redis_address=redis_address)
 
@@ -218,25 +201,11 @@ ray.get([a.log.remote(), f.remote()])
         assert out.count(log_message) == 4
 
 
-@pytest.fixture
-def ray_start_head_with_resources():
-    out = run_and_get_output(
-        ["ray", "start", "--head", "--num-cpus=1", "--num-gpus=1"])
-    # Get the redis address from the output.
-    redis_substring_prefix = "redis_address=\""
-    redis_address_location = (
-        out.find(redis_substring_prefix) + len(redis_substring_prefix))
-    redis_address = out[redis_address_location:]
-    redis_address = redis_address.split("\"")[0]
-
-    yield redis_address
-
-    # Kill the Ray cluster.
-    subprocess.Popen(["ray", "stop"]).wait()
-
-
-def test_drivers_release_resources(ray_start_head_with_resources):
-    redis_address = ray_start_head_with_resources
+@pytest.mark.parametrize(
+    "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1"],
+    indirect=True)
+def test_drivers_release_resources(call_ray_start):
+    redis_address = call_ray_start
 
     # Define a driver that creates an actor and exits.
     driver_script1 = """
@@ -359,23 +328,13 @@ def test_calling_start_ray_head():
     subprocess.Popen(["ray", "stop"]).wait()
 
 
-@pytest.fixture
-def ray_start_head_local():
-    # Start the Ray processes on this machine.
-    run_and_get_output([
-        "ray", "start", "--head", "--node-ip-address=localhost",
-        "--redis-port=6379"
-    ])
-
-    yield None
-
-    # Disconnect from the Ray cluster.
-    ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.Popen(["ray", "stop"]).wait()
-
-
-def test_using_hostnames(ray_start_head_local):
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        "ray start --head --num-cpus=1 " +
+        "--node-ip-address=localhost --redis-port=6379"
+    ],
+    indirect=True)
+def test_using_hostnames(call_ray_start):
     ray.init(node_ip_address="localhost", redis_address="localhost:6379")
 
     @ray.remote
@@ -383,15 +342,6 @@ def test_using_hostnames(ray_start_head_local):
         return 1
 
     assert ray.get(f.remote()) == 1
-
-
-@pytest.fixture
-def ray_start_regular():
-    # Start the Ray processes.
-    address_info = ray.init(num_cpus=1)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 def test_connecting_in_local_case(ray_start_regular):
@@ -453,14 +403,15 @@ print("success")
         assert "success" in out
 
 
-def test_driver_exiting_when_worker_blocked(ray_start_head):
+def test_driver_exiting_when_worker_blocked(call_ray_start):
     # This test will create some drivers that submit some tasks and then
     # exit without waiting for the tasks to complete.
-    redis_address = ray_start_head
+    redis_address = call_ray_start
 
     ray.init(redis_address=redis_address)
 
-    # Define a driver that creates an actor and exits.
+    # Define a driver that creates two tasks, one that runs forever and the
+    # other blocked on the first.
     driver_script = """
 import time
 import ray
@@ -480,6 +431,32 @@ print("success")
     # still alive.
     for _ in range(3):
         out = run_string_as_driver(driver_script)
+        # Make sure the first driver ran to completion.
+        assert "success" in out
+
+    nonexistent_id_bytes = _random_string()
+    nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
+    # Define a driver that creates one task that depends on a nonexistent
+    # object. This task will be queued as waiting to execute.
+    driver_script = """
+import time
+import ray
+ray.init(redis_address="{}")
+@ray.remote
+def g(x):
+    return
+g.remote(ray.ObjectID(ray.utils.hex_to_binary("{}")))
+time.sleep(1)
+print("success")
+""".format(redis_address, nonexistent_id_hex)
+
+    # Create some drivers and let them exit and make sure everything is
+    # still alive.
+    for _ in range(3):
+        out = run_string_as_driver(driver_script)
+        # Simulate the nonexistent dependency becoming available.
+        ray.worker.global_worker.put_object(
+            ray.ObjectID(nonexistent_id_bytes), None)
         # Make sure the first driver ran to completion.
         assert "success" in out
 

@@ -47,7 +47,7 @@ def bottleneck_block_v1(cnn, depth, depth_bottleneck, stride):
   """
     input_layer = cnn.top_layer
     in_size = cnn.top_size
-    name_key = 'resnet_v1'
+    name_key = "resnet_v1"
     name = name_key + str(cnn.counts[name_key])
     cnn.counts[name_key] += 1
 
@@ -91,7 +91,7 @@ def bottleneck_block_v1(cnn, depth, depth_bottleneck, stride):
             3,
             1,
             1,
-            mode='SAME_RESNET',
+            mode="SAME_RESNET",
             use_batch_norm=True,
             bias=None)
         res = cnn.conv(
@@ -116,7 +116,7 @@ def bottleneck_block_v2(cnn, depth, depth_bottleneck, stride):
   """
     input_layer = cnn.top_layer
     in_size = cnn.top_size
-    name_key = 'resnet_v2'
+    name_key = "resnet_v2"
     name = name_key + str(cnn.counts[name_key])
     cnn.counts[name_key] += 1
 
@@ -162,7 +162,7 @@ def bottleneck_block_v2(cnn, depth, depth_bottleneck, stride):
             3,
             1,
             1,
-            mode='SAME_RESNET',
+            mode="SAME_RESNET",
             use_batch_norm=True,
             bias=None)
         res = cnn.conv(
@@ -216,7 +216,7 @@ def residual_block(cnn, depth, stride, pre_activation):
             input_layer=input_layer,
             num_channels_in=in_size)
         padding = (depth - in_size) // 2
-        if cnn.channel_pos == 'channels_last':
+        if cnn.channel_pos == "channels_last":
             shortcut = tf.pad(shortcut,
                               [[0, 0], [0, 0], [0, 0], [padding, padding]])
         else:
@@ -263,30 +263,30 @@ class ResnetModel(model_lib.Model):
 
     def __init__(self, model, layer_counts):
         default_batch_sizes = {
-            'resnet50': 64,
-            'resnet101': 32,
-            'resnet152': 32,
-            'resnet50_v2': 64,
-            'resnet101_v2': 32,
-            'resnet152_v2': 32,
+            "resnet50": 64,
+            "resnet101": 32,
+            "resnet152": 32,
+            "resnet50_v2": 64,
+            "resnet101_v2": 32,
+            "resnet152_v2": 32,
         }
         batch_size = default_batch_sizes.get(model, 32)
         super(ResnetModel, self).__init__(model, 224, batch_size, 0.005,
                                           layer_counts)
-        self.pre_activation = 'v2' in model
+        self.pre_activation = "v2" in model
 
     def add_inference(self, cnn):
         if self.layer_counts is None:
             raise ValueError(
-                'Layer counts not specified for %s' % self.get_model())
+                "Layer counts not specified for %s" % self.get_model())
         cnn.use_batch_norm = True
         cnn.batch_norm_config = {
-            'decay': 0.997,
-            'epsilon': 1e-5,
-            'scale': True
+            "decay": 0.997,
+            "epsilon": 1e-5,
+            "scale": True
         }
-        cnn.conv(64, 7, 7, 2, 2, mode='SAME_RESNET', use_batch_norm=True)
-        cnn.mpool(3, 3, 2, 2, mode='SAME')
+        cnn.conv(64, 7, 7, 2, 2, mode="SAME_RESNET", use_batch_norm=True)
+        cnn.mpool(3, 3, 2, 2, mode="SAME")
         for _ in xrange(self.layer_counts[0]):
             bottleneck_block(cnn, 256, 64, 1, self.pre_activation)
         for i in xrange(self.layer_counts[1]):
@@ -308,27 +308,27 @@ class ResnetModel(model_lib.Model):
 
 
 def create_resnet50_model():
-    return ResnetModel('resnet50', (3, 4, 6, 3))
+    return ResnetModel("resnet50", (3, 4, 6, 3))
 
 
 def create_resnet50_v2_model():
-    return ResnetModel('resnet50_v2', (3, 4, 6, 3))
+    return ResnetModel("resnet50_v2", (3, 4, 6, 3))
 
 
 def create_resnet101_model():
-    return ResnetModel('resnet101', (3, 4, 23, 3))
+    return ResnetModel("resnet101", (3, 4, 23, 3))
 
 
 def create_resnet101_v2_model():
-    return ResnetModel('resnet101_v2', (3, 4, 23, 3))
+    return ResnetModel("resnet101_v2", (3, 4, 23, 3))
 
 
 def create_resnet152_model():
-    return ResnetModel('resnet152', (3, 8, 36, 3))
+    return ResnetModel("resnet152", (3, 8, 36, 3))
 
 
 def create_resnet152_v2_model():
-    return ResnetModel('resnet152_v2', (3, 8, 36, 3))
+    return ResnetModel("resnet152_v2", (3, 8, 36, 3))
 
 
 class ResnetCifar10Model(model_lib.Model):
@@ -342,17 +342,17 @@ class ResnetCifar10Model(model_lib.Model):
   """
 
     def __init__(self, model, layer_counts):
-        self.pre_activation = 'v2' in model
+        self.pre_activation = "v2" in model
         super(ResnetCifar10Model, self).__init__(model, 32, 128, 0.1,
                                                  layer_counts)
 
     def add_inference(self, cnn):
         if self.layer_counts is None:
             raise ValueError(
-                'Layer counts not specified for %s' % self.get_model())
+                "Layer counts not specified for %s" % self.get_model())
 
         cnn.use_batch_norm = True
-        cnn.batch_norm_config = {'decay': 0.9, 'epsilon': 1e-5, 'scale': True}
+        cnn.batch_norm_config = {"decay": 0.9, "epsilon": 1e-5, "scale": True}
         if self.pre_activation:
             cnn.conv(16, 3, 3, 1, 1, use_batch_norm=True)
         else:
@@ -383,40 +383,40 @@ class ResnetCifar10Model(model_lib.Model):
 
 
 def create_resnet20_cifar_model():
-    return ResnetCifar10Model('resnet20', (3, 3, 3))
+    return ResnetCifar10Model("resnet20", (3, 3, 3))
 
 
 def create_resnet20_v2_cifar_model():
-    return ResnetCifar10Model('resnet20_v2', (3, 3, 3))
+    return ResnetCifar10Model("resnet20_v2", (3, 3, 3))
 
 
 def create_resnet32_cifar_model():
-    return ResnetCifar10Model('resnet32_v2', (5, 5, 5))
+    return ResnetCifar10Model("resnet32_v2", (5, 5, 5))
 
 
 def create_resnet32_v2_cifar_model():
-    return ResnetCifar10Model('resnet32_v2', (5, 5, 5))
+    return ResnetCifar10Model("resnet32_v2", (5, 5, 5))
 
 
 def create_resnet44_cifar_model():
-    return ResnetCifar10Model('resnet44', (7, 7, 7))
+    return ResnetCifar10Model("resnet44", (7, 7, 7))
 
 
 def create_resnet44_v2_cifar_model():
-    return ResnetCifar10Model('resnet44_v2', (7, 7, 7))
+    return ResnetCifar10Model("resnet44_v2", (7, 7, 7))
 
 
 def create_resnet56_cifar_model():
-    return ResnetCifar10Model('resnet56', (9, 9, 9))
+    return ResnetCifar10Model("resnet56", (9, 9, 9))
 
 
 def create_resnet56_v2_cifar_model():
-    return ResnetCifar10Model('resnet56_v2', (9, 9, 9))
+    return ResnetCifar10Model("resnet56_v2", (9, 9, 9))
 
 
 def create_resnet110_cifar_model():
-    return ResnetCifar10Model('resnet110', (18, 18, 18))
+    return ResnetCifar10Model("resnet110", (18, 18, 18))
 
 
 def create_resnet110_v2_cifar_model():
-    return ResnetCifar10Model('resnet110_v2', (18, 18, 18))
+    return ResnetCifar10Model("resnet110_v2", (18, 18, 18))

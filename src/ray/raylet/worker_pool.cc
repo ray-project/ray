@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <thread>
 
+#include "ray/ray_config.h"
+#include "ray/stats/stats.h"
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
@@ -232,12 +234,20 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
+
+  stats::CurrentWorker().Record(
+      0, {{stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
+          {stats::WorkerPidKey, std::to_string(worker->Pid())}});
+
   return RemoveWorker(state.idle, worker);
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
+  stats::CurrentDriver().Record(
+      0, {{stats::LanguageKey, EnumNameLanguage(driver->GetLanguage())},
+          {stats::WorkerPidKey, std::to_string(driver->Pid())}});
 }
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
@@ -291,6 +301,24 @@ std::string WorkerPool::DebugString() const {
     result << "\n- num drivers: " << entry.second.registered_drivers.size();
   }
   return result.str();
+}
+
+void WorkerPool::RecordMetrics() const {
+  for (const auto &entry : states_by_lang_) {
+    // Record worker.
+    for (auto worker : entry.second.registered_workers) {
+      stats::CurrentWorker().Record(
+          worker->Pid(), {{stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
+                          {stats::WorkerPidKey, std::to_string(worker->Pid())}});
+    }
+
+    // Record driver.
+    for (auto driver : entry.second.registered_drivers) {
+      stats::CurrentDriver().Record(
+          driver->Pid(), {{stats::LanguageKey, EnumNameLanguage(driver->GetLanguage())},
+                          {stats::WorkerPidKey, std::to_string(driver->Pid())}});
+    }
+  }
 }
 
 }  // namespace raylet

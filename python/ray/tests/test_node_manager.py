@@ -2,27 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pytest
-
 import ray
-from ray.tests.cluster_utils import Cluster
 from ray.tests.utils import run_string_as_driver
-
-
-@pytest.fixture()
-def ray_start_empty_cluster():
-    cluster = Cluster()
-    yield cluster
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
 # in the past, e.g., https://github.com/ray-project/ray/issues/3275.
-def test_infeasible_tasks(ray_start_empty_cluster):
-    cluster = ray_start_empty_cluster
+def test_infeasible_tasks(ray_start_cluster):
+    cluster = ray_start_cluster
 
     @ray.remote
     def f():

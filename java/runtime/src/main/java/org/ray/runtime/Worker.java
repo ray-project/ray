@@ -85,7 +85,7 @@ public class Worker {
     try {
       // Get method
       RayFunction rayFunction = runtime.getFunctionManager()
-          .getFunction(spec.driverId, spec.functionDescriptor);
+          .getFunction(spec.driverId, spec.getJavaFunctionDescriptor());
       // Set context
       runtime.getWorkerContext().setCurrentTask(spec, rayFunction.classLoader);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
@@ -171,8 +171,8 @@ public class Worker {
     numTasksSinceLastCheckpoint = 0;
     lastCheckpointTimestamp = System.currentTimeMillis();
     checkpointIds = new ArrayList<>();
-    List<Checkpoint> availableCheckpoints = ((RayNativeRuntime) runtime)
-        .getCheckpointsForActor(actorId);
+    List<Checkpoint> availableCheckpoints
+        = runtime.getGcsClient().getCheckpointsForActor(actorId);
     if (availableCheckpoints.isEmpty()) {
       return;
     }

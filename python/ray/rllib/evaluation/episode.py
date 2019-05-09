@@ -66,6 +66,19 @@ class MultiAgentEpisode(object):
         self._agent_reward_history = defaultdict(list)
 
     @DeveloperAPI
+    def soft_reset(self):
+        """Clears rewards and metrics, but retains RNN and other state.
+
+        This is used to carry state across multiple logical episodes in the
+        same env (i.e., if `soft_horizon` is set).
+        """
+        self.length = 0
+        self.episode_id = random.randrange(2e9)
+        self.total_reward = 0.0
+        self.agent_rewards = defaultdict(float)
+        self._agent_reward_history = defaultdict(list)
+
+    @DeveloperAPI
     def policy_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the policy graph for the specified agent.
 

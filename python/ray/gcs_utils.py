@@ -76,7 +76,7 @@ def construct_error_message(driver_id, error_type, message, timestamp):
     message_offset = builder.CreateString(message)
 
     ray.core.generated.ErrorTableData.ErrorTableDataStart(builder)
-    ray.core.generated.ErrorTableData.ErrorTableDataAddJobId(
+    ray.core.generated.ErrorTableData.ErrorTableDataAddDriverId(
         builder, driver_offset)
     ray.core.generated.ErrorTableData.ErrorTableDataAddType(
         builder, error_type_offset)

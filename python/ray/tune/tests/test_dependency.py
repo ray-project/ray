@@ -25,4 +25,4 @@ if __name__ == "__main__":
             }
         }
     })
-    assert 'ray.rllib' not in sys.modules, "RLlib should not be imported"
+    assert "ray.rllib" not in sys.modules, "RLlib should not be imported"

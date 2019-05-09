@@ -15,7 +15,7 @@ Running Ray standalone
 
 Ray can be used standalone by calling ``ray.init()`` within a script. When the
 call to ``ray.init()`` happens, all of the relevant processes are started.
-These include a local scheduler, an object store and manager, a Redis server,
+These include a raylet, an object store and manager, a Redis server,
 and a number of worker processes.
 
 When the script exits, these processes will be killed.
@@ -109,31 +109,26 @@ When a driver or worker invokes a remote function, a number of things happen.
   - The ID of the task. This is generated uniquely from the above content.
   - The IDs for the return values of the task. These are generated uniquely
     from the above content.
-- The task object is then sent to the local scheduler on the same node as the
-  driver or worker.
-- The local scheduler makes a decision to either schedule the task locally or to
-  pass the task on to another local scheduler.
+- The task object is then sent to the raylet on the same node as the driver
+  or worker.
+- The raylet makes a decision to either schedule the task locally or to
+  pass the task on to another raylet.
 
   - If all of the task's object dependencies are present in the local object
     store and there are enough CPU and GPU resources available to execute the
-    task, then the local scheduler will assign the task to one of its
-    available workers.
-  - If those conditions are not met, the task will be passed on to a global
-    scheduler. This is done by adding the task to the **task table**, which is
-    part of the centralized control state.
+    task, then the raylet will assign the task to one of its available workers.
+  - If those conditions are not met, the task will be forwarded to another
+    raylet. This is done by peer-to-peer connection between raylets.
     The task table can be inspected as follows.
 
     .. code-block:: python
 
       TODO: Fill this in.
 
-    A global scheduler will be notified of the update and will assign the task
-    to a local scheduler by updating the task's state in the task table. The
-    local scheduler will be notified and pull the task object.
-- Once a task has been scheduled to a local scheduler, whether by itself or by
-  a global scheduler, the local scheduler queues the task for execution. A task
-  is assigned to a worker when enough resources become available and the object
-  dependencies are available locally, in first-in, first-out order.
+- Once a task has been scheduled to a raylet, the raylet queues
+  the task for execution. A task is assigned to a worker when enough resources
+  become available and the object dependencies are available locally,
+  in first-in, first-out order.
 - When the task has been assigned to a worker, the worker executes the task and
   puts the task's return values into the object store. The object store will
   then update the **object table**, which is part of the centralized control
@@ -157,7 +152,7 @@ Notes and limitations
 - When an object store on a particular node fills up, it will begin evicting
   objects in a least-recently-used manner. If an object that is needed later is
   evicted, then the call to ``ray.get`` for that object will initiate the
-  reconstruction of the object. The local scheduler will attempt to reconstruct
+  reconstruction of the object. The raylet will attempt to reconstruct
   the object by replaying its task lineage.
 
 TODO: Limitations on reconstruction.
@@ -183,7 +178,7 @@ Several things happen when a driver or worker calls ``ray.get`` on an object ID.
     state will notify the requesting manager when the object is created. If the
     object doesn't exist anywhere because it has been evicted from all object
     stores, the worker will also request reconstruction of the object from the
-    local scheduler. These checks repeat periodically until the object is
+    raylet. These checks repeat periodically until the object is
     available in the local object store, whether through reconstruction or
     through object transfer.
 - Once the object is available in the local object store, the driver or worker

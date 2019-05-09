@@ -104,9 +104,9 @@ class MedianStoppingRule(FIFOScheduler):
         if len(scores) >= self._min_samples_required:
             return np.median(scores)
         else:
-            return float('-inf')
+            return float("-inf")
 
-    def _running_result(self, trial, t_max=float('inf')):
+    def _running_result(self, trial, t_max=float("inf")):
         results = self._results[trial]
         # TODO(ekl) we could do interpolation to be more precise, but for now
         # assume len(results) is large and the time diffs are roughly equal
