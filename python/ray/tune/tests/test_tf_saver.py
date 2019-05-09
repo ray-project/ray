@@ -31,7 +31,7 @@ class TFSaverTest(unittest.TestCase):
             "stop": {
                 "mean_accuracy": 0.99,
                 "time_total_s": 600,
-                "training_iteration": 10,
+                "training_iteration": 5,
             },
             "config": {
                 "learning_rate": sample_from(
@@ -41,11 +41,13 @@ class TFSaverTest(unittest.TestCase):
             "num_samples": 1,
         }
 
-        tune.run(
+        trials = tune.run(
             TrainMNIST,
             name="mnist_hyperband_test",
             scheduler=FrequentPausesScheduler(),
             **mnist_spec)
+        # This may fail because the restore fails.
+        self.assertEquals(trials[0].last_result["global_step"], 10)
 
 
 if __name__ == "__main__":
