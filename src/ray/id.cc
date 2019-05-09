@@ -29,17 +29,14 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 UniqueID::UniqueID() {
   // Set the ID to nil.
   std::fill_n(id_, kUniqueIDSize, 255);
-  hash_ = MurmurHash64A(&id_[0], kUniqueIDSize, 0);
 }
 
 UniqueID::UniqueID(const std::string &binary) {
   std::memcpy(&id_, binary.data(), kUniqueIDSize);
-  hash_ = MurmurHash64A(&id_[0], kUniqueIDSize, 0);
 }
 
 UniqueID::UniqueID(const plasma::UniqueID &from) {
   std::memcpy(&id_, from.data(), kUniqueIDSize);
-  hash_ = MurmurHash64A(&id_[0], kUniqueIDSize, 0);
 }
 
 UniqueID UniqueID::from_random() {
@@ -154,7 +151,14 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-size_t UniqueID::hash() const { return hash_; }
+size_t UniqueID::hash() const {
+  // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
+  // default value 0)
+  if (!hash_) {
+    hash_ = MurmurHash64A(&id_[0], kUniqueIDSize, 0);
+  }
+  return hash_;
+}
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
   if (id.is_nil()) {

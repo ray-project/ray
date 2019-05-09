@@ -34,7 +34,7 @@ class RAY_EXPORT UniqueID {
 
  protected:
   uint8_t id_[kUniqueIDSize];
-  size_t hash_;
+  mutable size_t hash_ = 0;
 };
 
 static_assert(std::is_standard_layout<UniqueID>::value, "UniqueID must be standard");
