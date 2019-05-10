@@ -4,18 +4,6 @@ Ray Serve Module
 ``ray.experimental.serve`` is a module for publishing your actors to
 interact with outside world.
 
-Use Case
---------
-
-Serve machine learning model
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Scalable anayltics query
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Composible pipelines
-~~~~~~~~~~~~~~~~~~~~
-
 Architecture
 ------------
 

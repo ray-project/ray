@@ -2,8 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.experimental.serve.router.routers import (DeadlineAwareRouter,
-                                                   SingleQuery)
+from ray.experimental.serve.router.routers import DeadlineAwareRouter, SingleQuery
 import ray
 
 

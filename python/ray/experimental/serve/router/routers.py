@@ -92,8 +92,8 @@ class DeadlineAwareRouter:
 
     def set_replica(self, actor_name, new_replica_count):
         """Scale a managed actor according to new_replica_count."""
-        assert actor_name in self.managed_actors, (
-            ACTOR_NOT_REGISTERED_MSG(actor_name))
+        assert actor_name in self.managed_actors, ACTOR_NOT_REGISTERED_MSG(
+            actor_name)
 
         current_replicas = len(self.actor_handles[actor_name])
 
@@ -120,8 +120,8 @@ class DeadlineAwareRouter:
             List[ray.ObjectID] with length 1, the object ID wrapped inside is
                 the result object ID when the query is executed.
         """
-        assert actor_name in self.managed_actors, (
-            ACTOR_NOT_REGISTERED_MSG(actor_name))
+        assert actor_name in self.managed_actors, ACTOR_NOT_REGISTERED_MSG(
+            actor_name)
 
         result_object_id = get_new_oid()
 
@@ -179,8 +179,8 @@ class DeadlineAwareRouter:
 
     def _get_next_batch(self, actor_name: str) -> List[SingleQuery]:
         """Get next batch of request for the actor whose name is provided."""
-        assert actor_name in self.query_queues, (
-            ACTOR_NOT_REGISTERED_MSG(actor_name))
+        assert actor_name in self.query_queues, ACTOR_NOT_REGISTERED_MSG(
+            actor_name)
 
         inputs = []
         batch_size = self.max_batch_size[actor_name]

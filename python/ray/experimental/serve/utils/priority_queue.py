@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import heapq
 
+
 class BaseQueue:
     """Abstract base class for queue abstraction"""
 
@@ -18,6 +19,7 @@ class BaseQueue:
 
     def __len__(self):
         raise NotImplementedError()
+
 
 class PriorityQueue(BaseQueue):
     """A min-heap class wrapping heapq module."""
@@ -39,6 +41,7 @@ class PriorityQueue(BaseQueue):
 
     def __len__(self):
         return len(self.q)
+
 
 class FIFOQueue(BaseQueue):
     """A min-heap class wrapping heapq module."""

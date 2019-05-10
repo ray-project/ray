@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import time
 
-
 import ray
 
 
@@ -44,7 +43,8 @@ class HTTPFrontendActor:
     def start(self):
         # We have to import flask here to avoid Flask's
         # "Working outside of request context." error
-        from flask import Flask, request, jsonify # noqa: E402
+        from flask import Flask, request, jsonify  # noqa: E402
+
         default_app = Flask(__name__)
 
         @default_app.route("/<actor_name>", methods=["GET", "POST"])

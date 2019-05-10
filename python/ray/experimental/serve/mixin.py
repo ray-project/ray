@@ -1,6 +1,6 @@
 """
 Mixins are classes that are designed to be included in other class.
-This module tries to provide a RayServeMixin class that makes 
+This module tries to provide a RayServeMixin class that makes
 an actor servable by ray.serve
 """
 

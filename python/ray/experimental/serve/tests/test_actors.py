@@ -7,7 +7,12 @@ import pytest
 
 import ray
 from ray.experimental.serve import SingleQuery
-from ray.experimental.serve.example_actors import ScalerAdder, VectorizedAdder, Counter, CustomCounter
+from ray.experimental.serve.example_actors import (
+    ScalerAdder,
+    VectorizedAdder,
+    Counter,
+    CustomCounter,
+)
 from ray.experimental.serve.object_id import get_new_oid
 
 INCREMENT = 3

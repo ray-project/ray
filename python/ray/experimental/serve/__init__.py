@@ -10,14 +10,12 @@ from __future__ import print_function
 
 import sys
 
-assert sys.version_info >= (3, 5), (
-    "ray.experimental.serve is a python3 only library")
+assert sys.version_info >= (
+    3, 5), "ray.experimental.serve is a python3 only library"
 
-from ray.experimental.serve.router import (DeadlineAwareRouter,
-                                           SingleQuery)  # noqa: E402
+from ray.experimental.serve.router import DeadlineAwareRouter, SingleQuery  # noqa: E402
 from ray.experimental.serve.frontend import HTTPFrontendActor  # noqa: E402
-from ray.experimental.serve.mixin import (RayServeMixin,
-                                          batched_input)  # noqa: E402
+from ray.experimental.serve.mixin import RayServeMixin, batched_input  # noqa: E402
 
 __all__ = [
     "DeadlineAwareRouter",
