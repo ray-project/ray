@@ -9,7 +9,7 @@ import requests
 
 import ray
 from ray.experimental.serve import DeadlineAwareRouter
-from ray.experimental.serve.examples.adder import VectorizedAdder
+from ray.experimental.serve.example_actors import VectorizedAdder
 from ray.experimental.serve.frontend import HTTPFrontendActor
 from ray.experimental.serve.router import start_router
 
@@ -17,7 +17,7 @@ ROUTER_NAME = "DefaultRouter"
 NUMBER_OF_TRIES = 5
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def get_router():
     # We need this many workers so resource are not oversubscribed
     ray.init(num_cpus=4)

@@ -1,3 +1,9 @@
+"""
+Mixins are classes that are designed to be included in other class.
+This module tries to provide a RayServeMixin class that makes 
+an actor servable by ray.serve
+"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

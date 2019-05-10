@@ -8,8 +8,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.experimental.serve.examples.adder import ScalerAdder, VectorizedAdder
-from ray.experimental.serve.examples.halt import SleepCounter, SleepOnFirst
+from ray.experimental.serve.example_actors import ScalerAdder, VectorizedAdder, SleepCounter, SleepOnFirst
 from ray.experimental.serve.object_id import unwrap
 from ray.experimental.serve.router import DeadlineAwareRouter, start_router
 

@@ -10,7 +10,7 @@ from __future__ import print_function
 
 import sys
 
-assert sys.version_info >= (3, ), (
+assert sys.version_info >= (3, 5), (
     "ray.experimental.serve is a python3 only library")
 
 from ray.experimental.serve.router import (DeadlineAwareRouter,

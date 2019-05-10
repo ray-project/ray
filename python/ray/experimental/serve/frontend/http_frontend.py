@@ -4,9 +4,6 @@ from __future__ import print_function
 
 import time
 
-import uvicorn
-from starlette.applications import Starlette
-from starlette.responses import JSONResponse
 
 import ray
 
@@ -45,12 +42,14 @@ class HTTPFrontendActor:
         self.router = ray.experimental.named_actors.get_actor(router)
 
     def start(self):
-        default_app = Starlette()
+        # We have to import flask here to avoid Flask's
+        # "Working outside of request context." error
+        from flask import Flask, request, jsonify # noqa: E402
+        default_app = Flask(__name__)
 
-        @default_app.route("/{actor}", methods=["GET", "POST"])
-        async def dispatch_remote_function(request):
-            data = await request.json()
-            actor_name = request.path_params["actor"]
+        @default_app.route("/<actor_name>", methods=["GET", "POST"])
+        def dispatch_remote_function(actor_name):
+            data = request.get_json()
 
             slo_seconds = data.pop("slo_ms") / 1000
             deadline = time.perf_counter() + slo_seconds
@@ -59,14 +58,12 @@ class HTTPFrontendActor:
 
             result_future = unwrap(
                 self.router.call.remote(actor_name, inp, deadline))
-
-            # TODO(simon): change to asyncio ray.get
             result = ray.get(result_future)
 
-            return JSONResponse({
+            return jsonify({
                 "success": True,
                 "actor": actor_name,
                 "result": result
             })
 
-        uvicorn.run(default_app, host=self.ip, port=self.port)
+        default_app.run(host=self.ip, port=self.port)
