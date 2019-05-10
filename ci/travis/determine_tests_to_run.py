@@ -37,7 +37,7 @@ if __name__ == "__main__":
     RAY_CI_LINUX_WHEELS_AFFECTED = 0
     RAY_CI_MACOS_WHEELS_AFFECTED = 0
 
-    RAY_CI_PY3 = 1 if sys.version_info>=(3,5) else 0
+    RAY_CI_PY3 = 1 if sys.version_info >= (3, 5) else 0
 
     if os.environ["TRAVIS_EVENT_TYPE"] == "pull_request":
 
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     print("export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
     print("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
     print("export RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
-    print("export RAY_CI_LINUX_WHEELS_AFFECTED={}"
-          .format(RAY_CI_LINUX_WHEELS_AFFECTED))
-    print("export RAY_CI_MACOS_WHEELS_AFFECTED={}"
-          .format(RAY_CI_MACOS_WHEELS_AFFECTED))
+    print("export RAY_CI_LINUX_WHEELS_AFFECTED={}".format(
+        RAY_CI_LINUX_WHEELS_AFFECTED))
+    print("export RAY_CI_MACOS_WHEELS_AFFECTED={}".format(
+        RAY_CI_MACOS_WHEELS_AFFECTED))

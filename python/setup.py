@@ -103,8 +103,8 @@ class build_ext(_build_ext.build_ext):
             try:
                 self.move_file(filename)
             except Exception:
-                print("Failed to copy optional file {}. This is ok."
-                      .format(filename))
+                print("Failed to copy optional file {}. This is ok.".format(
+                    filename))
 
     def move_file(self, filename):
         # TODO(rkn): This feels very brittle. It may not handle all cases. See
