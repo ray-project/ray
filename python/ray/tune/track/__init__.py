@@ -13,7 +13,7 @@ def init(log_dir=None,
          upload_dir=None,
          sync_period=None,
          trial_prefix="",
-         param_map=None):
+         trial_config=None):
     """Initializes the global trial context for this process.
 
     This creates a TrackSession object and the corresponding hooks for logging.
@@ -29,7 +29,7 @@ def init(log_dir=None,
         upload_dir=upload_dir,
         sync_period=sync_period,
         trial_prefix=trial_prefix,
-        param_map=param_map)
+        trial_config=trial_config)
     # try:
     _session = local_session
     _session.start()
@@ -50,9 +50,9 @@ def metric(iteration=None, **kwargs):
 
 
 def trial_dir():
-    """Returns the directory where trial results are saved, including
+    """Returns the directory where trial results are saved.
 
-    json data containing the session's parameters an stored metrics.
+    This includes json data containing the session's parameters and metrics.
     """
     return _session.trial_dir()
 

@@ -46,7 +46,7 @@ class TrackSession(object):
                  upload_dir=None,
                  sync_period=None,
                  trial_prefix="",
-                 param_map=None):
+                 trial_config=None):
         if log_dir is None:
             log_dir = DEFAULT_RESULTS_DIR
         # TODO should probably check if this exists and whether
@@ -67,12 +67,12 @@ class TrackSession(object):
         self._sync_period = sync_period
 
         self.upload_dir = upload_dir
-        self.param_map = param_map or {}
+        self.trial_config = trial_config or {}
 
         # misc metadata to save as well
-        self.param_map["trial_id"] = self.trial_id
-        self.param_map[TRAINING_ITERATION] = -1
-        self.param_map["trial_completed"] = False
+        self.trial_config["trial_id"] = self.trial_id
+        self.trial_config[TRAINING_ITERATION] = -1
+        self.trial_config["trial_completed"] = False
 
     def start(self, reporter=None):
         for path in [self.base_dir, self.artifact_dir]:
@@ -81,7 +81,7 @@ class TrackSession(object):
 
         self._hooks = []
         if not reporter:
-            self._logger = UnifiedLogger(self.param_map, self.artifact_dir,
+            self._logger = UnifiedLogger(self.trial_config, self.artifact_dir,
                                          self.upload_dir)
             self._hooks += [self._logger]
         else:
@@ -101,11 +101,11 @@ class TrackSession(object):
         metrics_dict.update({"trial_id": self.trial_id})
 
         if iteration is not None:
-            max_iter = max(iteration, self.param_map[TRAINING_ITERATION])
+            max_iter = max(iteration, self.trial_config[TRAINING_ITERATION])
         else:
-            max_iter = self.param_map[TRAINING_ITERATION]
+            max_iter = self.trial_config[TRAINING_ITERATION]
 
-        self.param_map[TRAINING_ITERATION] = max_iter
+        self.trial_config[TRAINING_ITERATION] = max_iter
         metrics_dict[TRAINING_ITERATION] = max_iter
 
         for hook in self._hooks:
@@ -114,7 +114,7 @@ class TrackSession(object):
     def _get_fname(self, result_name, iteration=None):
         fname = os.path.join(self.artifact_dir, result_name)
         if iteration is None:
-            iteration = self.param_map[TRAINING_ITERATION]
+            iteration = self.trial_config[TRAINING_ITERATION]
         base, file_extension = os.path.splittext(fname)
         result = base + "_" + str(iteration) + file_extension
         return result
@@ -124,9 +124,9 @@ class TrackSession(object):
         return self.artifact_dir
 
     def close(self):
-        self.param_map["trial_completed"] = True
-        self.param_map["end_time"] = datetime.now().isoformat()
-        self._logger.update_config(self.param_map)
+        self.trial_config["trial_completed"] = True
+        self.trial_config["end_time"] = datetime.now().isoformat()
+        self._logger.update_config(self.trial_config)
 
         for hook in self._hooks:
             hook.close()

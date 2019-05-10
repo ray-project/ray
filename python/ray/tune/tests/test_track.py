@@ -7,7 +7,8 @@ import pandas as pd
 import unittest
 
 from ray.tune import track
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.result import (
+    TRAINING_ITERATION, EXPR_PARARM_FILE, EXPR_RESULT_FILE)
 
 
 class TrackApiTest(unittest.TestCase):
@@ -34,8 +35,8 @@ class TrackApiTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(session.base_dir))
         self.assertTrue(os.path.isdir(session.artifact_dir))
 
-        params_fname = os.path.join(session.artifact_dir, "params.json")
-        result_fname = os.path.join(session.artifact_dir, "result.json")
+        params_fname = os.path.join(session.artifact_dir, EXPR_PARARM_FILE)
+        result_fname = os.path.join(session.artifact_dir, EXPR_RESULT_FILE)
 
         self.assertTrue(os.path.exists(params_fname))
         self.assertTrue(os.path.exists(result_fname))
@@ -52,15 +53,15 @@ class TrackApiTest(unittest.TestCase):
         track.init(trial_prefix="test_metrics")
         session = track._session
         self.assertEqual(
-            set(session.param_map.keys()),
+            set(session.trial_config.keys()),
             set(["trial_id", TRAINING_ITERATION, "trial_completed"]))
 
         # iteration=None defaults to max_iteration
         track.metric(test=1)
-        self.assertEqual(session.param_map[TRAINING_ITERATION], -1)
+        self.assertEqual(session.trial_config[TRAINING_ITERATION], -1)
 
-        params_fname = os.path.join(session.artifact_dir, "params.json")
-        result_fname = os.path.join(session.artifact_dir, "result.json")
+        params_fname = os.path.join(session.artifact_dir, EXPR_PARARM_FILE)
+        result_fname = os.path.join(session.artifact_dir, EXPR_RESULT_FILE)
 
         # check that dict was correctly dumped to json
         def _assert_json_val(fname, key, val):
@@ -76,7 +77,7 @@ class TrackApiTest(unittest.TestCase):
         # check that they are updated!
         track.metric(iteration=1, test=2)
         _assert_json_val(result_fname, "test", 2)
-        self.assertEqual(session.param_map[TRAINING_ITERATION], 1)
+        self.assertEqual(session.trial_config[TRAINING_ITERATION], 1)
 
         # params are updated at the end
         track.shutdown()
