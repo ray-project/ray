@@ -9,7 +9,6 @@ import inspect
 import threading
 from six.moves import queue
 
-
 from ray.tune import track
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
@@ -249,7 +248,7 @@ class FunctionRunner(Trainable):
 def wrap_function(train_func):
 
     function_args = inspect.getargspec(train_func).args
-    use_track = ("reporter" not in  function_args and len(function_args) == 1)
+    use_track = ("reporter" not in function_args and len(function_args) == 1)
 
     class WrappedFunc(FunctionRunner):
         def _trainable_func(self, config, reporter):

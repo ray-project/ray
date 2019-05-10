@@ -11,7 +11,6 @@ from ray.tune.result import TRAINING_ITERATION
 
 
 class TrackApiTest(unittest.TestCase):
-
     def testSessionInitShutdown(self):
         self.assertTrue(track._session is None)
         """Checks that the singleton _session is created/destroyed
@@ -52,8 +51,9 @@ class TrackApiTest(unittest.TestCase):
         """
         track.init(trial_prefix="test_metrics")
         session = track._session
-        self.assertEqual(set(session.param_map.keys()), set(
-            ["trial_id", TRAINING_ITERATION, "trial_completed"]))
+        self.assertEqual(
+            set(session.param_map.keys()),
+            set(["trial_id", TRAINING_ITERATION, "trial_completed"]))
 
         # iteration=None defaults to max_iteration
         track.metric(test=1)

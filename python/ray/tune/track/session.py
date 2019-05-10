@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os
 import uuid
 from datetime import datetime
@@ -77,10 +81,8 @@ class TrackSession(object):
 
         self._hooks = []
         if not reporter:
-            self._logger = UnifiedLogger(
-                self.param_map,
-                self.artifact_dir,
-                self.upload_dir)
+            self._logger = UnifiedLogger(self.param_map, self.artifact_dir,
+                                         self.upload_dir)
             self._hooks += [self._logger]
         else:
             self._hooks += [_ReporterHook(reporter)]

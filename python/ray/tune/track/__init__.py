@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from ray.tune.track.session import TrackSession
 
 __name__ = 'track'
@@ -10,13 +14,13 @@ def init(log_dir=None,
          sync_period=None,
          trial_prefix="",
          param_map=None):
-    """
-    Initializes the global trial context for this process.
+    """Initializes the global trial context for this process.
+
     This creates a TrackSession object and the corresponding hooks for logging.
     """
-    global _session  # pylint: disable=global-statement
+    global _session
     if _session:
-        # TODO: would be nice to stack crawl at creation time to report
+        # TODO(ng): would be nice to stack crawl at creation time to report
         # where that initial trial was created, and that creation line
         # info is helpful to keep around anyway.
         raise ValueError("A session already exists in the current context")
@@ -32,9 +36,8 @@ def init(log_dir=None,
 
 
 def shutdown():
-    """Cleans up the trial and removes it from the global context.
-    """
-    global _session  # pylint: disable=global-statement
+    """Cleans up the trial and removes it from the global context."""
+    global _session
     if not _session:
         raise ValueError("Tried to stop session, but no session exists")
     _session.close()
@@ -54,5 +57,6 @@ def trial_dir():
     return _session.trial_dir()
 
 
-__all__ = ["TrackSession", "session", "metric", "trial_dir",
-           "init", "shutdown"]
+__all__ = [
+    "TrackSession", "session", "metric", "trial_dir", "init", "shutdown"
+]
