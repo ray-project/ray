@@ -3,11 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import uuid
 from datetime import datetime
 
 from ray.tune.trial import Trial
-from ray.tune.result import DEFAULT_RESULTS_DIR, TRAINING_ITERATION, DONE
+from ray.tune.result import DEFAULT_RESULTS_DIR, TRAINING_ITERATION
 from ray.tune.logger import UnifiedLogger, Logger
 
 
@@ -48,16 +47,17 @@ class TrackSession(object):
         self.trial_id = Trial.generate_id()
         if trial_name:
             self.trial_id = trial_name + "_" + self.trial_id
-        if tune_reporter:
-            self._logger = _ReporterHook(tune_reporter)
+        if _tune_reporter:
+            self._logger = _ReporterHook(_tune_reporter)
         else:
-            self._initialize_logging(
-                experiment_dir, upload_dir, trial_config)
+            self._initialize_logging(trial_name, experiment_dir, upload_dir,
+                                     trial_config)
 
     def _initialize_logging(self,
-                   experiment_dir=None,
-                   upload_dir=None,
-                   trial_config=None):
+                            trial_name="",
+                            experiment_dir=None,
+                            upload_dir=None,
+                            trial_config=None):
 
         # TODO(rliaw): In other parts of the code, this is `local_dir`.
         if experiment_dir is None:

@@ -63,7 +63,7 @@ class TrackApiTest(unittest.TestCase):
         # check that dict was correctly dumped to json
         def _assert_json_val(fname, key, val):
             with open(fname, "r") as f:
-                df = pd.read_json(f, typ='frame', lines=True)
+                df = pd.read_json(f, typ="frame", lines=True)
                 self.assertTrue(key in df.columns)
                 self.assertTrue((df[key].tail(n=1) == val).all())
 
