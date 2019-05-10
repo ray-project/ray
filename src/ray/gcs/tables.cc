@@ -438,9 +438,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
                    << client_id << ". EntryType: " << int(data.entry_type)
                    << ". Setting the client cache to data.";
     client_cache_[client_id] = data;
-  }
-  else if ((data.entry_type == EntryType::RES_CREATEUPDATE) ||
-           (data.entry_type == EntryType::RES_DELETE)) {
+  } else if ((data.entry_type == EntryType::RES_CREATEUPDATE) ||
+             (data.entry_type == EntryType::RES_DELETE)) {
     RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable RES_CREATEUPDATE "
                       "notification for client id "
                    << client_id << ". EntryType: " << int(data.entry_type)

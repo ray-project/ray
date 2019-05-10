@@ -340,8 +340,7 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
     @ray.remote
     def wait_func(running_oid, wait_oid):
         # Signal that the task is running
-        ray.worker.global_worker.put_object(
-            ray.ObjectID(running_oid), 1)
+        ray.worker.global_worker.put_object(ray.ObjectID(running_oid), 1)
         # Make the task wait till signalled by driver
         ray.get(ray.ObjectID(wait_oid))
 
@@ -422,8 +421,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     @ray.remote
     def wait_func(running_oid, wait_oid):
         # Signal that the task is running
-        ray.worker.global_worker.put_object(
-            ray.ObjectID(running_oid), 1)
+        ray.worker.global_worker.put_object(ray.ObjectID(running_oid), 1)
         # Make the task wait till signalled by driver
         ray.get(ray.ObjectID(wait_oid))
 
@@ -507,8 +505,7 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     @ray.remote
     def wait_func(running_oid, wait_oid):
         # Signal that the task is running
-        ray.worker.global_worker.put_object(
-            ray.ObjectID(running_oid), 1)
+        ray.worker.global_worker.put_object(ray.ObjectID(running_oid), 1)
         # Make the task wait till signalled by driver
         ray.get(ray.ObjectID(wait_oid))
 
