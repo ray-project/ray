@@ -24,7 +24,6 @@ class TrackApiTest(unittest.TestCase):
         track.shutdown()
         ray.shutdown()
 
-
     def testSessionInitShutdown(self):
         self.assertTrue(track._session is None)
 
@@ -61,10 +60,10 @@ class TrackApiTest(unittest.TestCase):
         result_path = os.path.join(session.logdir, EXPR_RESULT_FILE)
         self.assertTrue(_check_json_val(result_path, "test", i))
 
-
     def testRayOutput(self):
         """Checks that local and remote log format are the same."""
         ray.init()
+
         def testme(config):
             for i in range(config["iters"]):
                 track.metric(iteration=i, **{"hi": "test"})
@@ -73,7 +72,6 @@ class TrackApiTest(unittest.TestCase):
         trial_res = trials[0].last_result
         self.assertTrue(trial_res["hi"], "test")
         self.assertTrue(trial_res["training_iteration"], 5)
-
 
     # def testLocalMetrics(self):
     #     """Checks that metric state is updated correctly."""

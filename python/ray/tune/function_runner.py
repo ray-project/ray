@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import logging
 import sys
-import os
 import time
 import inspect
 import threading
