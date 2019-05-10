@@ -6,7 +6,7 @@ from __future__ import print_function
 import os
 import subprocess
 import sys
-from pprint import pprint
+from pprint import pformat
 
 
 def list_changed_files(commit_range):
@@ -27,6 +27,10 @@ def list_changed_files(commit_range):
     out = subprocess.check_output(command)
     return [s.strip() for s in out.decode().splitlines() if s is not None]
 
+def print_and_log(s):
+    print(s)
+    sys.stderr.write(s)
+    sys.stderr.write('\n')
 
 if __name__ == "__main__":
 
@@ -50,8 +54,8 @@ if __name__ == "__main__":
             "ci/", ".travis.yml"
         ]
 
-        print("Files Changed")
-        pprint(files)
+        sys.stderr.write("Files Changed\n")
+        sys.stderr.write(pformat(files))
 
         for changed_file in files:
             if changed_file.startswith("python/ray/tune/"):
@@ -102,13 +106,13 @@ if __name__ == "__main__":
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
 
-    print("export RAY_CI_PY3={}".format(RAY_CI_PY3))
-    print("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
-    print("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
-    print("export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
-    print("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
-    print("export RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
-    print("export RAY_CI_LINUX_WHEELS_AFFECTED={}".format(
+    print_and_log("export RAY_CI_PY3={}".format(RAY_CI_PY3))
+    print_and_log("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
+    print_and_log("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
+    print_and_log("export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
+    print_and_log("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
+    print_and_log("export RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
+    print_and_log("export RAY_CI_LINUX_WHEELS_AFFECTED={}".format(
         RAY_CI_LINUX_WHEELS_AFFECTED))
-    print("export RAY_CI_MACOS_WHEELS_AFFECTED={}".format(
+    print_and_log("export RAY_CI_MACOS_WHEELS_AFFECTED={}".format(
         RAY_CI_MACOS_WHEELS_AFFECTED))
