@@ -262,7 +262,6 @@ def wrap_function(train_func):
 
     class WrappedTrackFunc(FunctionRunner):
         def _trainable_func(self, config, reporter):
-            # TODO: logdir will need different handling in local_mode
             track.init(tune_reporter=reporter, log_dir=os.getcwd())
             output = train_func(config)
             reporter(**{RESULT_DUPLICATE: True})

@@ -6,8 +6,8 @@ import logging
 
 from ray.tune.track.session import TrackSession
 
-__name__ = 'track'
 logger = logging.getLogger(__name__)
+
 _session = None
 
 
