@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import os
 import subprocess
+import sys
 
 
 def list_changed_files(commit_range):
@@ -30,10 +31,13 @@ if __name__ == "__main__":
 
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_RLLIB_AFFECTED = 0
+    RAY_CI_SERVE_AFFECTED = 0
     RAY_CI_JAVA_AFFECTED = 0
     RAY_CI_PYTHON_AFFECTED = 0
     RAY_CI_LINUX_WHEELS_AFFECTED = 0
     RAY_CI_MACOS_WHEELS_AFFECTED = 0
+
+    RAY_CI_PY3 = 1 if sys.version_info>=(3,5) else 0
 
     if os.environ["TRAVIS_EVENT_TYPE"] == "pull_request":
 
@@ -52,6 +56,10 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/rllib/"):
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
+            elif changed_file.startswith("python/ray/experimental/serve"):
+                RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/"):
@@ -89,8 +97,10 @@ if __name__ == "__main__":
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
 
+    print("export RAY_CI_PY3={}".format(RAY_CI_PY3))
     print("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
     print("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
+    print("export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
     print("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
     print("export RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
     print("export RAY_CI_LINUX_WHEELS_AFFECTED={}"

@@ -173,6 +173,11 @@ script:
   - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_optimizers.py; fi
   - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_evaluators.py; fi
 
+  # ray serve tests
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ] && [ $RAY_CI_PY3 == "1" ]; then ./ci/suppress_output python python/ray/experimental/serve/tests/test_actors.py; fi
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ] && [ $RAY_CI_PY3 == "1" ]; then ./ci/suppress_output python python/ray/experimental/serve/tests/test_deadline_router.py; fi
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ] && [ $RAY_CI_PY3 == "1" ]; then ./ci/suppress_output python python/ray/experimental/serve/tests/test_default_app.py; fi
+  
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
