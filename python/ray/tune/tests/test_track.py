@@ -7,8 +7,8 @@ import pandas as pd
 import unittest
 
 from ray.tune import track
-from ray.tune.result import (
-    TRAINING_ITERATION, EXPR_PARARM_FILE, EXPR_RESULT_FILE)
+from ray.tune.result import (TRAINING_ITERATION, EXPR_PARARM_FILE,
+                             EXPR_RESULT_FILE)
 
 
 class TrackApiTest(unittest.TestCase):
@@ -26,8 +26,7 @@ class TrackApiTest(unittest.TestCase):
             self.assertTrue(track._session is None)
 
     def testLogCreation(self):
-        """Checks that track.init() starts logger and creates log files.
-        """
+        """Checks that track.init() starts logger and creates log files."""
         track.init(trial_prefix="test_init")
         session = track._session
         self.assertTrue(session is not None)
@@ -35,21 +34,19 @@ class TrackApiTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(session.base_dir))
         self.assertTrue(os.path.isdir(session.artifact_dir))
 
-        params_fname = os.path.join(session.artifact_dir, EXPR_PARARM_FILE)
-        result_fname = os.path.join(session.artifact_dir, EXPR_RESULT_FILE)
+        params_path = os.path.join(session.artifact_dir, EXPR_PARARM_FILE)
+        result_path = os.path.join(session.artifact_dir, EXPR_RESULT_FILE)
 
-        self.assertTrue(os.path.exists(params_fname))
-        self.assertTrue(os.path.exists(result_fname))
+        self.assertTrue(os.path.exists(params_path))
+        self.assertTrue(os.path.exists(result_path))
         track.shutdown()
 
     def testRayOutput(self):
-        """Checks that local and remote log format are the same.
-        """
+        """Checks that local and remote log format are the same."""
         pass
 
     def testLocalMetrics(self):
-        """Checks that metric state is updated correctly.
-        """
+        """Checks that metric state is updated correctly."""
         track.init(trial_prefix="test_metrics")
         session = track._session
         self.assertEqual(
@@ -60,8 +57,8 @@ class TrackApiTest(unittest.TestCase):
         track.metric(test=1)
         self.assertEqual(session.trial_config[TRAINING_ITERATION], -1)
 
-        params_fname = os.path.join(session.artifact_dir, EXPR_PARARM_FILE)
-        result_fname = os.path.join(session.artifact_dir, EXPR_RESULT_FILE)
+        params_path = os.path.join(session.artifact_dir, EXPR_PARARM_FILE)
+        result_path = os.path.join(session.artifact_dir, EXPR_RESULT_FILE)
 
         # check that dict was correctly dumped to json
         def _assert_json_val(fname, key, val):
@@ -71,14 +68,14 @@ class TrackApiTest(unittest.TestCase):
                 self.assertTrue((df[key].tail(n=1) == val).all())
 
         # check that params and results are dumped
-        _assert_json_val(params_fname, TRAINING_ITERATION, -1)
-        _assert_json_val(result_fname, "test", 1)
+        _assert_json_val(params_path, TRAINING_ITERATION, -1)
+        _assert_json_val(result_path, "test", 1)
 
         # check that they are updated!
         track.metric(iteration=1, test=2)
-        _assert_json_val(result_fname, "test", 2)
+        _assert_json_val(result_path, "test", 2)
         self.assertEqual(session.trial_config[TRAINING_ITERATION], 1)
 
         # params are updated at the end
         track.shutdown()
-        _assert_json_val(params_fname, TRAINING_ITERATION, 1)
+        _assert_json_val(params_path, TRAINING_ITERATION, 1)

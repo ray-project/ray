@@ -6,7 +6,8 @@ import os
 import uuid
 from datetime import datetime
 
-from ray.tune.result import DEFAULT_RESULTS_DIR, TRAINING_ITERATION
+from ray.tune.trial import Trial
+from ray.tune.result import DEFAULT_RESULTS_DIR, TRAINING_ITERATION, DONE
 from ray.tune.logger import UnifiedLogger, Logger
 
 
@@ -18,78 +19,65 @@ class _ReporterHook(Logger):
         return self.reporter(**metrics)
 
 
-class _TrackedState():
-    def __init__(self):
-        self.start_time = datetime.now().isoformat()
-
-
 class TrackSession(object):
-    """
-    TrackSession attempts to infer the local log_dir and remote upload_dir
-    automatically.
+    """Manages results for a single session.
 
-    In order of precedence, log_dir is determined by:
-    (1) the path passed into the argument of the TrackSession constructor
-    (2) autodetect.dfl_local_dir()
-
-    The upload directory may be None (in which case no upload is performed),
-    or an S3 directory or a GCS directory.
-
-    Arguments:
-        log_dir (str): base log directory in which the results for all trials
-                       are stored. if not specified, uses autodetect.dfl_local_dir()
-        upload_dir (str):
+    Represents a single Trial in an experiment.
     """
 
     def __init__(self,
-                 log_dir=None,
+                 trial_name="",
+                 reporter=None,
+                 experiment_dir=None,
                  upload_dir=None,
-                 sync_period=None,
-                 trial_prefix="",
                  trial_config=None):
-        if log_dir is None:
-            log_dir = DEFAULT_RESULTS_DIR
-        # TODO should probably check if this exists and whether
-        # we'll be clobbering anything in either the artifact dir
-        # or the metadata dir, idk what the probability is that a
-        # uuid truncation will get duplicated. Then also maybe
-        # the same thing for the remote dir.
+        self.experiment_dir = None
+        self.logdir = None
+        self.upload_dir = None
+        self.trial_config = None
+        self.trial_id = Trial.generate_id()
+        if trial_name:
+            self.trial_id = trial_name + "_" + self.trial_id
+        self.initialize(reporter, experiment_dir, upload_dir, trial_config)
 
-        base_dir = os.path.expanduser(log_dir)
-        self.base_dir = base_dir
-        self.trial_id = str(uuid.uuid1().hex[:10])
-        if trial_prefix:
-            self.trial_id = "_".join([trial_prefix, self.trial_id])
+    def initialize(self,
+                   reporter=None,
+                   experiment_dir=None,
+                   upload_dir=None,
+                   trial_config=None):
+        """
+        Arguments:
+            experiment_dir (str): Directory where results for all trials
+                are stored. Each session is stored into a unique directory
+                inside experiment_dir.
+            upload_dir (str): S3 directory or a GCS directory (or None)
+        """
+        if reporter:
+            self._logger = _ReporterHook(reporter)
+            return
 
-        self.artifact_dir = os.path.join(base_dir, self.trial_id)
-        os.makedirs(self.artifact_dir, exist_ok=True)
+        # TODO(rliaw): In other parts of the code, this is `local_dir`.
+        if experiment_dir is None:
+            experiment_dir = os.path.join(DEFAULT_RESULTS_DIR, "default")
 
-        self._sync_period = sync_period
+        self.experiment_dir = os.path.expanduser(experiment_dir)
 
+        # TODO(rliaw): Refactor `logdir` to `trial_dir`.
+        self.logdir = Trial.generate_logdir(trial_name, self.experiment_dir)
         self.upload_dir = upload_dir
         self.trial_config = trial_config or {}
 
         # misc metadata to save as well
         self.trial_config["trial_id"] = self.trial_id
         self.trial_config[TRAINING_ITERATION] = -1
-        self.trial_config["trial_completed"] = False
+        self.trial_config[DONE] = False
 
-    def start(self, reporter=None):
-        for path in [self.base_dir, self.artifact_dir]:
-            if not os.path.exists(path):
-                os.makedirs(path)
-
-        self._hooks = []
-        if not reporter:
-            self._logger = UnifiedLogger(self.trial_config, self.artifact_dir,
-                                         self.upload_dir)
-            self._hooks += [self._logger]
-        else:
-            self._hooks += [_ReporterHook(reporter)]
+        self._logger = UnifiedLogger(self.trial_config, self.logdir,
+                                     self.upload_dir)
 
     def metric(self, iteration=None, **metrics):
-        """
-        Logs all named arguments specified in **metrics.
+        """Logs all named arguments specified in **metrics.
+
         This will log trial metrics locally, and they will be synchronized
         with the driver periodically through ray.
 
@@ -97,6 +85,9 @@ class TrackSession(object):
             iteration (int): current iteration of the trial.
             **metrics: named arguments with corresponding values to log.
         """
+
+        # TODO: Implement a batching mechanism for multiple calls to `metric`
+        #     within the same iteration.
         metrics_dict = metrics.copy()
         metrics_dict.update({"trial_id": self.trial_id})
 
@@ -108,25 +99,15 @@ class TrackSession(object):
         self.trial_config[TRAINING_ITERATION] = max_iter
         metrics_dict[TRAINING_ITERATION] = max_iter
 
-        for hook in self._hooks:
-            hook.on_result(metrics_dict)
-
-    def _get_fname(self, result_name, iteration=None):
-        fname = os.path.join(self.artifact_dir, result_name)
-        if iteration is None:
-            iteration = self.trial_config[TRAINING_ITERATION]
-        base, file_extension = os.path.splittext(fname)
-        result = base + "_" + str(iteration) + file_extension
-        return result
+        self._logger.on_result(metrics_dict)
 
     def trial_dir(self):
-        """returns the local file path to the trial's artifact directory"""
-        return self.artifact_dir
+        """Returns the local file path to the trial directory."""
+        return self.logdir
 
     def close(self):
         self.trial_config["trial_completed"] = True
         self.trial_config["end_time"] = datetime.now().isoformat()
         self._logger.update_config(self.trial_config)
 
-        for hook in self._hooks:
-            hook.close()
+        self._logger.close()
