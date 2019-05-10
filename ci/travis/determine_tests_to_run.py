@@ -6,6 +6,7 @@ from __future__ import print_function
 import os
 import subprocess
 import sys
+from pprint import pprint
 
 
 def list_changed_files(commit_range):
@@ -45,8 +46,12 @@ if __name__ == "__main__":
             "...", ".."))
 
         skip_prefix_list = [
-            "doc/", "examples/", "dev/", "docker/", "kubernetes/", "site/"
+            "doc/", "examples/", "dev/", "docker/", "kubernetes/", "site/",
+            "ci/", ".travis.yml"
         ]
+
+        print("Files Changed")
+        pprint(files)
 
         for changed_file in files:
             if changed_file.startswith("python/ray/tune/"):

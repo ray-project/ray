@@ -57,8 +57,7 @@ extras = {
         "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy"
     ],
     "debug": ["psutil", "setproctitle", "py-spy"],
-    "dashboard": ["psutil", "aiohttp"],
-    "serve": ["flask"]
+    "dashboard": ["psutil", "aiohttp"]
 }
 
 
