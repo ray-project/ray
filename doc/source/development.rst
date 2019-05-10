@@ -81,7 +81,7 @@ API.  The easiest way to do this is to start or connect to a Ray cluster with
  ray.worker.global_state.client_table()
  # Returns current information about the nodes in the cluster, such as:
  # [{'ClientID': '2a9d2b34ad24a37ed54e4fcd32bf19f915742f5b',
- #   'IsInsertion': True,
+ #   'EntryType': 0,
  #   'NodeManagerAddress': '1.2.3.4',
  #   'NodeManagerPort': 43280,
  #   'ObjectManagerPort': 38062,

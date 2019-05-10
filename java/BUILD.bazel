@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "flatbuffer_java_library", "define_java_module", "gen_java_pom_file")
+load("//bazel:ray.bzl", "define_java_module", "flatbuffer_java_library", "gen_java_pom_file")
 
 exports_files([
     "testng.xml",
@@ -24,11 +24,11 @@ java_import(
         "streaming_tests_deploy-src.jar",
     ],
     deps = [
+        ":all_tests",
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        ":org_ray_ray_tutorial",
         ":org_ray_ray_streaming",
-        ":all_tests",
+        ":org_ray_ray_tutorial",
         ":streaming_tests",
     ],
 )
@@ -36,21 +36,21 @@ java_import(
 define_java_module(
     name = "api",
     deps = [
-        "@maven//:org_slf4j_slf4j_log4j12",
-        "@maven//:log4j_log4j",
-        "@maven//:javax_xml_bind_jaxb_api",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
+        "@maven//:javax_xml_bind_jaxb_api",
+        "@maven//:log4j_log4j",
+        "@maven//:org_slf4j_slf4j_log4j12",
     ],
 )
 
 define_java_module(
     name = "runtime",
-    additional_srcs = [
-        ":generate_java_gcs_fbs",
-    ],
     additional_resources = [
         ":java_native_deps",
+    ],
+    additional_srcs = [
+        ":generate_java_gcs_fbs",
     ],
     define_test_lib = True,
     test_deps = [
@@ -63,7 +63,6 @@ define_java_module(
     ],
     deps = [
         ":org_ray_ray_api",
-        "@plasma//:org_apache_arrow_arrow_plasma",
         "@maven//:com_github_davidmoten_flatbuffers_java",
         "@maven//:com_google_guava_guava",
         "@maven//:com_typesafe_config",
@@ -74,6 +73,7 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_slf4j_slf4j_log4j12",
         "@maven//:redis_clients_jedis",
+        "@plasma//:org_apache_arrow_arrow_plasma",
     ],
 )
 
@@ -91,24 +91,17 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@plasma//:org_apache_arrow_arrow_plasma",
+        "@maven//:com_google_guava_guava",
+        "@maven//:commons_io_commons_io",
         "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
-        "@maven//:com_google_guava_guava",
-        "@maven//:commons_io_commons_io",
+        "@plasma//:org_apache_arrow_arrow_plasma",
     ],
 )
 
 define_java_module(
     name = "streaming",
-    deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
-        "@maven//:com_google_guava_guava",
-        "@maven//:org_slf4j_slf4j_api",
-        "@maven//:org_slf4j_slf4j_log4j12",
-    ],
     define_test_lib = True,
     test_deps = [
         ":org_ray_ray_api",
@@ -120,24 +113,31 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_log4j12",
         "@maven//:org_testng_testng",
     ],
+    deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_slf4j_slf4j_log4j12",
+    ],
 )
 
 java_binary(
     name = "all_tests",
-    main_class = "org.testng.TestNG",
-    data = ["testng.xml"],
     args = ["java/testng.xml"],
+    data = ["testng.xml"],
+    main_class = "org.testng.TestNG",
     runtime_deps = [
-        ":org_ray_ray_test",
         ":org_ray_ray_runtime_test",
+        ":org_ray_ray_test",
     ],
 )
 
 java_binary(
     name = "streaming_tests",
-    main_class = "org.testng.TestNG",
-    data = ["streaming/testng.xml"],
     args = ["java/streaming/testng.xml"],
+    data = ["streaming/testng.xml"],
+    main_class = "org.testng.TestNG",
     runtime_deps = [
         ":org_ray_ray_streaming_test",
     ],
@@ -154,6 +154,7 @@ flatbuffers_generated_files = [
     "ConfigTableData.java",
     "CustomSerializerData.java",
     "DriverTableData.java",
+    "EntryType.java",
     "ErrorTableData.java",
     "ErrorType.java",
     "FunctionTableData.java",
@@ -187,7 +188,8 @@ genrule(
     name = "generate_java_gcs_fbs",
     srcs = [":java_gcs_fbs"],
     outs = [
-        "runtime/src/main/java/org/ray/runtime/generated/" + file for file in flatbuffers_generated_files
+        "runtime/src/main/java/org/ray/runtime/generated/" + file
+        for file in flatbuffers_generated_files
     ],
     cmd = """
         for f in $(locations //java:java_gcs_fbs); do
@@ -202,12 +204,12 @@ genrule(
 filegroup(
     name = "java_native_deps",
     srcs = [
-        "//:redis-server",
         "//:libray_redis_module.so",
         "//:raylet",
         "//:raylet_library_java",
-        "@plasma//:plasma_store_server",
+        "//:redis-server",
         "@plasma//:plasma_client_java",
+        "@plasma//:plasma_store_server",
     ],
 )
 

@@ -13,6 +13,7 @@ import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.runtime.generated.ActorCheckpointIdData;
 import org.ray.runtime.generated.ClientTableData;
+import org.ray.runtime.generated.EntryType;
 import org.ray.runtime.generated.TablePrefix;
 import org.ray.runtime.util.UniqueIdUtil;
 import org.slf4j.Logger;
@@ -63,7 +64,7 @@ public class GcsClient {
       ClientTableData data = ClientTableData.getRootAsClientTableData(ByteBuffer.wrap(result));
       final UniqueId clientId = UniqueId.fromByteBuffer(data.clientIdAsByteBuffer());
 
-      if (data.isInsertion()) {
+      if (data.entryType() == EntryType.INSERTION) {
         //Code path of node insertion.
         Map<String, Double> resources = new HashMap<>();
         // Compute resources.
@@ -72,12 +73,24 @@ public class GcsClient {
         for (int i = 0; i < data.resourcesTotalLabelLength(); i++) {
           resources.put(data.resourcesTotalLabel(i), data.resourcesTotalCapacity(i));
         }
-
         NodeInfo nodeInfo = new NodeInfo(
             clientId, data.nodeManagerAddress(), true, resources);
         clients.put(clientId, nodeInfo);
+      } else if (data.entryType() == EntryType.RES_CREATEUPDATE){
+        Preconditions.checkState(clients.containsKey(clientId));
+        NodeInfo nodeInfo = clients.get(clientId);
+        for (int i = 0; i < data.resourcesTotalLabelLength(); i++) {
+          nodeInfo.resources.put(data.resourcesTotalLabel(i), data.resourcesTotalCapacity(i));
+        }
+      } else if (data.entryType() == EntryType.RES_DELETE){
+        Preconditions.checkState(clients.containsKey(clientId));
+        NodeInfo nodeInfo = clients.get(clientId);
+        for (int i = 0; i < data.resourcesTotalLabelLength(); i++) {
+          nodeInfo.resources.remove(data.resourcesTotalLabel(i));
+        }
       } else {
         // Code path of node deletion.
+        Preconditions.checkState(data.entryType() == EntryType.DELETION);
         NodeInfo nodeInfo = new NodeInfo(clientId, clients.get(clientId).nodeAddress,
             false, clients.get(clientId).resources);
         clients.put(clientId, nodeInfo);
