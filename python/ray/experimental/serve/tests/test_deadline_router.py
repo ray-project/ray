@@ -32,19 +32,15 @@ def router():
     # handle = start_router(DeadlineAwareRouter, "DefaultRouter")
     handle = start_router(DeadlineAwareRouter, "DefaultRouter")
 
-    handle.register_actor.remote("VAdder",
-                                 VectorizedAdder,
-                                 init_kwargs={"scaler_increment": 1
-                                              })  # init args
-    handle.register_actor.remote("SAdder",
-                                 ScalerAdder,
-                                 init_kwargs={"scaler_increment": 2})
-    handle.register_actor.remote("SleepFirst",
-                                 SleepOnFirst,
-                                 init_kwargs={"sleep_time": 1})
-    handle.register_actor.remote("SleepCounter",
-                                 SleepCounter,
-                                 max_batch_size=1)
+    handle.register_actor.remote(
+        "VAdder", VectorizedAdder,
+        init_kwargs={"scaler_increment": 1})  # init args
+    handle.register_actor.remote(
+        "SAdder", ScalerAdder, init_kwargs={"scaler_increment": 2})
+    handle.register_actor.remote(
+        "SleepFirst", SleepOnFirst, init_kwargs={"sleep_time": 1})
+    handle.register_actor.remote(
+        "SleepCounter", SleepCounter, max_batch_size=1)
 
     yield handle
 

@@ -27,10 +27,12 @@ def list_changed_files(commit_range):
     out = subprocess.check_output(command)
     return [s.strip() for s in out.decode().splitlines() if s is not None]
 
+
 def print_and_log(s):
     print(s)
     sys.stderr.write(s)
-    sys.stderr.write('\n')
+    sys.stderr.write("\n")
+
 
 if __name__ == "__main__":
 
@@ -107,11 +109,16 @@ if __name__ == "__main__":
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
 
     print_and_log("export RAY_CI_PY3={}".format(RAY_CI_PY3))
-    print_and_log("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
-    print_and_log("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
-    print_and_log("export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
-    print_and_log("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
-    print_and_log("export RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
+    print_and_log(
+        "export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
+    print_and_log(
+        "export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
+    print_and_log(
+        "export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
+    print_and_log(
+        "export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
+    print_and_log(
+        "export RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
     print_and_log("export RAY_CI_LINUX_WHEELS_AFFECTED={}".format(
         RAY_CI_LINUX_WHEELS_AFFECTED))
     print_and_log("export RAY_CI_MACOS_WHEELS_AFFECTED={}".format(
