@@ -262,7 +262,7 @@ def wrap_function(train_func):
 
     class WrappedTrackFunc(FunctionRunner):
         def _trainable_func(self, config, reporter):
-            track.init(tune_reporter=reporter, log_dir=os.getcwd())
+            track.init(_tune_reporter=reporter)
             output = train_func(config)
             reporter(**{RESULT_DUPLICATE: True})
             track.shutdown()

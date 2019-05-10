@@ -44,6 +44,7 @@ class TrackSession(object):
         self.logdir = None
         self.upload_dir = None
         self.trial_config = None
+        self.iteration = 0
         self.trial_id = Trial.generate_id()
         if trial_name:
             self.trial_id = trial_name + "_" + self.trial_id
@@ -66,9 +67,8 @@ class TrackSession(object):
         self.experiment_dir = os.path.expanduser(experiment_dir)
 
         # TODO(rliaw): Refactor `logdir` to `trial_dir`.
-        self.logdir = Trial.generate_logdir(trial_name, self.experiment_dir)
+        self.logdir = Trial.create_logdir(trial_name, self.experiment_dir)
         self.upload_dir = upload_dir
-        self.iteration = -1
         self.trial_config = trial_config or {}
 
         # misc metadata to save as well

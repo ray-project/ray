@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 _session = None
 
 
-def _get_session():
+def get_session():
     global _session
     if not _session:
         raise ValueError("Session not detected. Try `track.init()`?")
@@ -45,14 +45,16 @@ def init(ignore_reinit_error=False, **session_kwargs):
 
 def shutdown():
     """Cleans up the trial and removes it from the global context."""
-    _session = _get_session()
-    _session.close()
+
+    global _session
+    if _session:
+        _session.close()
     _session = None
 
 
 def metric(iteration=None, **kwargs):
     """Applies TrackSession.metric to the trial in the current context."""
-    _session = _get_session()
+    _session = get_session()
     return _session.metric(iteration=iteration, **kwargs)
 
 
@@ -61,7 +63,7 @@ def trial_dir():
 
     This includes json data containing the session's parameters and metrics.
     """
-    _session = _get_session()
+    _session = get_session()
     return _session.trial_dir()
 
 
