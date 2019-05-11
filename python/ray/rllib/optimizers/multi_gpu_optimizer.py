@@ -6,7 +6,6 @@ import logging
 import math
 import numpy as np
 from collections import defaultdict
-import tensorflow as tf
 
 import ray
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
@@ -19,6 +18,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

@@ -4,8 +4,6 @@ from __future__ import print_function
 
 from gym.spaces import Box
 import numpy as np
-import tensorflow as tf
-import tensorflow.contrib.layers as layers
 
 import ray
 import ray.experimental.tf_utils
@@ -18,6 +16,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 ACTION_SCOPE = "action"
 POLICY_SCOPE = "policy"
@@ -397,6 +398,8 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         self.set_pure_exploration_phase(state[2])
 
     def _build_q_network(self, obs, obs_space, action_space, actions):
+        import tensorflow.contrib.layers as layers
+
         if self.config["use_state_preprocessor"]:
             q_model = ModelCatalog.get_model({
                 "obs": obs,
@@ -417,6 +420,8 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         return q_values, q_model
 
     def _build_policy_network(self, obs, obs_space, action_space):
+        import tensorflow.contrib.layers as layers
+
         if self.config["use_state_preprocessor"]:
             model = ModelCatalog.get_model({
                 "obs": obs,
