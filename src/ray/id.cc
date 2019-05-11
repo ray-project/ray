@@ -24,9 +24,15 @@ std::mt19937 RandomlySeededMersenneTwister() {
   return seeded_engine;
 }
 
+uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
+
 UniqueID::UniqueID() {
   // Set the ID to nil.
   std::fill_n(id_, kUniqueIDSize, 255);
+}
+
+UniqueID::UniqueID(const std::string &binary) {
+  std::memcpy(&id_, binary.data(), kUniqueIDSize);
 }
 
 UniqueID::UniqueID(const plasma::UniqueID &from) {
@@ -34,8 +40,7 @@ UniqueID::UniqueID(const plasma::UniqueID &from) {
 }
 
 UniqueID UniqueID::from_random() {
-  UniqueID id;
-  uint8_t *data = id.mutable_data();
+  std::string data(kUniqueIDSize, 0);
   // NOTE(pcm): The right way to do this is to have one std::mt19937 per
   // thread (using the thread_local keyword), but that's not supported on
   // older versions of macOS (see https://stackoverflow.com/a/29929949)
@@ -46,14 +51,10 @@ UniqueID UniqueID::from_random() {
   for (int i = 0; i < kUniqueIDSize; i++) {
     data[i] = static_cast<uint8_t>(dist(generator));
   }
-  return id;
+  return UniqueID::from_binary(data);
 }
 
-UniqueID UniqueID::from_binary(const std::string &binary) {
-  UniqueID id;
-  std::memcpy(&id, binary.data(), sizeof(id));
-  return id;
-}
+UniqueID UniqueID::from_binary(const std::string &binary) { return UniqueID(binary); }
 
 const UniqueID &UniqueID::nil() {
   static const UniqueID nil_id;
@@ -72,9 +73,7 @@ bool UniqueID::is_nil() const {
 
 const uint8_t *UniqueID::data() const { return id_; }
 
-uint8_t *UniqueID::mutable_data() { return id_; }
-
-size_t UniqueID::size() const { return kUniqueIDSize; }
+size_t UniqueID::size() { return kUniqueIDSize; }
 
 std::string UniqueID::binary() const {
   return std::string(reinterpret_cast<const char *>(id_), kUniqueIDSize);
@@ -152,7 +151,14 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-size_t UniqueID::hash() const { return MurmurHash64A(&id_[0], kUniqueIDSize, 0); }
+size_t UniqueID::hash() const {
+  // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
+  // default value 0)
+  if (!hash_) {
+    hash_ = MurmurHash64A(&id_[0], kUniqueIDSize, 0);
+  }
+  return hash_;
+}
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
   if (id.is_nil()) {
@@ -206,19 +212,15 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   // Compute hashes.
   SHA256_CTX ctx;
   sha256_init(&ctx);
-  sha256_update(&ctx, (BYTE *)&driver_id, sizeof(driver_id));
-  sha256_update(&ctx, (BYTE *)&parent_task_id, sizeof(parent_task_id));
-  sha256_update(&ctx, (BYTE *)&parent_task_counter, sizeof(parent_task_counter));
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(driver_id.data()), driver_id.size());
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.data()),
+                parent_task_id.size());
+  sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
 
   // Compute the final task ID from the hash.
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
-  TaskID task_id;
-  RAY_DCHECK(sizeof(task_id) <= DIGEST_SIZE);
-  memcpy(&task_id, buff, sizeof(task_id));
-  task_id = FinishTaskId(task_id);
-
-  return task_id;
+  return FinishTaskId(TaskID::from_binary(std::string(buff, buff + kUniqueIDSize)));
 }
 
 int64_t ComputeObjectIndex(const ObjectID &object_id) {

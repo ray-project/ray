@@ -59,18 +59,23 @@ def collect_episodes(local_evaluator=None,
                      timeout_seconds=180):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
-    pending = [
-        a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_evaluators
-    ]
-    collected, _ = ray.wait(
-        pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
-    num_metric_batches_dropped = len(pending) - len(collected)
-    if pending and len(collected) == 0:
-        raise ValueError(
-            "Timed out waiting for metrics from workers. You can configure "
-            "this timeout with `collect_metrics_timeout`.")
+    if remote_evaluators:
+        pending = [
+            a.apply.remote(lambda ev: ev.get_metrics())
+            for a in remote_evaluators
+        ]
+        collected, _ = ray.wait(
+            pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
+        num_metric_batches_dropped = len(pending) - len(collected)
+        if pending and len(collected) == 0:
+            raise ValueError(
+                "Timed out waiting for metrics from workers. You can "
+                "configure this timeout with `collect_metrics_timeout`.")
+        metric_lists = ray_get_and_free(collected)
+    else:
+        metric_lists = []
+        num_metric_batches_dropped = 0
 
-    metric_lists = ray_get_and_free(collected)
     if local_evaluator:
         metric_lists.append(local_evaluator.get_metrics())
     episodes = []

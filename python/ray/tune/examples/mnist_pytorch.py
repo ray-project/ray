@@ -154,7 +154,6 @@ if __name__ == "__main__":
     datasets.MNIST("~/data", train=True, download=True)
     args = parser.parse_args()
 
-    import numpy as np
     import ray
     from ray import tune
     from ray.tune.schedulers import AsyncHyperBandScheduler
@@ -183,9 +182,7 @@ if __name__ == "__main__":
             },
             "num_samples": 1 if args.smoke_test else 10,
             "config": {
-                "lr": tune.sample_from(
-                    lambda spec: np.random.uniform(0.001, 0.1)),
-                "momentum": tune.sample_from(
-                    lambda spec: np.random.uniform(0.1, 0.9)),
+                "lr": tune.uniform(0.001, 0.1),
+                "momentum": tune.uniform(0.1, 0.9),
             }
         })

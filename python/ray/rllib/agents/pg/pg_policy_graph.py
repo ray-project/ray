@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 import ray
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
@@ -12,6 +10,9 @@ from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class PGLoss(object):
