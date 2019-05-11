@@ -72,6 +72,7 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
                                           CActorCheckpointID &checkpoint_id)
         CRayStatus NotifyActorResumedFromCheckpoint(
             const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
+        CRayStatus SetResource(const c_string &resource_name, const double capacity, const CClientID &client_Id)
         CLanguage GetLanguage() const
         CClientID GetClientID() const
         CDriverID GetDriverID() const
