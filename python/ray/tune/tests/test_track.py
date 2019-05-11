@@ -9,8 +9,7 @@ import unittest
 import ray
 from ray import tune
 from ray.tune import track
-from ray.tune.result import (TRAINING_ITERATION, EXPR_PARARM_FILE,
-                             EXPR_RESULT_FILE)
+from ray.tune.result import EXPR_PARAM_FILE, EXPR_RESULT_FILE
 
 
 def _check_json_val(fname, key, val):
@@ -45,7 +44,7 @@ class TrackApiTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(session.experiment_dir))
         self.assertTrue(os.path.isdir(session.logdir))
 
-        params_path = os.path.join(session.logdir, EXPR_PARARM_FILE)
+        params_path = os.path.join(session.logdir, EXPR_PARAM_FILE)
         result_path = os.path.join(session.logdir, EXPR_RESULT_FILE)
 
         self.assertTrue(os.path.exists(params_path))
@@ -73,32 +72,14 @@ class TrackApiTest(unittest.TestCase):
         self.assertTrue(trial_res["hi"], "test")
         self.assertTrue(trial_res["training_iteration"], 5)
 
-    # def testLocalMetrics(self):
-    #     """Checks that metric state is updated correctly."""
-    #     track.init(trial_name="test_metrics")
-    #     session = track.get_session()
-    #     self.assertEqual(
-    #         set(session.trial_config.keys()),
-    #         set(["trial_id"]))
+    def testLocalMetrics(self):
+        """Checks that metric state is updated correctly."""
+        track.init(trial_name="test_metrics")
+        session = track.get_session()
+        self.assertEqual(set(session.trial_config.keys()), set(["trial_id"]))
 
-    #     # iteration=None defaults to max_iteration
-    #     track.metric(test=1)
-    #     self.assertEqual(session.trial_config[TRAINING_ITERATION], -1)
-
-    #     params_path = os.path.join(session.artifact_dir, EXPR_PARARM_FILE)
-    #     result_path = os.path.join(session.artifact_dir, EXPR_RESULT_FILE)
-
-    #     # check that dict was correctly dumped to json
-
-    #     # check that params and results are dumped
-    #     self.assertTrue(_check_json_val(params_path, TRAINING_ITERATION, -1))
-    #     self.assertTrue(_check_json_val(result_path, "test", 1))
-
-    #     # check that they are updated!
-    #     track.metric(iteration=1, test=2)
-    #     self.assertTrue(_check_json_val(result_path, "test", 2))
-    #     self.assertEqual(session.trial_config[TRAINING_ITERATION], 1)
-
-    #     # params are updated at the end
-    #     track.shutdown()
-    #     self.assertTrue(_check_json_val(params_path, TRAINING_ITERATION, 1))
+        result_path = os.path.join(session.logdir, EXPR_RESULT_FILE)
+        track.metric(test=1)
+        self.assertTrue(_check_json_val(result_path, "test", 1))
+        track.metric(iteration=1, test=2)
+        self.assertTrue(_check_json_val(result_path, "test", 2))
