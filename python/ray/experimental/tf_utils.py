@@ -4,13 +4,11 @@ from __future__ import print_function
 
 from collections import deque, OrderedDict
 import numpy as np
-import pickle
 
 import ray
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
-
 
 
 def unflatten(vector, shapes):

@@ -156,7 +156,7 @@ class ActorMethod(object):
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
-       def invocation(args, kwargs, num_return_vals=num_return_vals):
+        def invocation(args, kwargs, num_return_vals=num_return_vals):
             return self._actor._actor_method_call(
                 self._method_name,
                 args=args,
@@ -168,6 +168,7 @@ class ActorMethod(object):
             invocation = self._decorator(invocation)
 
         return invocation(args, kwargs)
+
 
 class ActorClass(object):
     """An actor class.
