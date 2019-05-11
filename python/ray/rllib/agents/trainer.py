@@ -420,7 +420,6 @@ class Trainer(Trainable):
             else:
                 return open("/dev/null")  # fake a no-op scope
 
-        # TODO(ekl) setting the graph is unnecessary for PyTorch agents
         with get_scope():
             self._init(self.config, self.env_creator)
 
