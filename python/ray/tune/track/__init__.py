@@ -18,7 +18,7 @@ def get_session():
     return _session
 
 
-def init(ignore_reinit_error=False, **session_kwargs):
+def init(ignore_reinit_error=True, **session_kwargs):
     """Initializes the global trial context for this process.
 
     This creates a TrackSession object and the corresponding hooks for logging.
@@ -35,7 +35,8 @@ def init(ignore_reinit_error=False, **session_kwargs):
         # info is helpful to keep around anyway.
         reinit_msg = "A session already exists in the current context."
         if ignore_reinit_error:
-            logger.warning(reinit_msg)
+            if not _session.is_tune_session:
+                logger.warning(reinit_msg)
             return
         else:
             raise ValueError(reinit_msg)

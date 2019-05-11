@@ -15,7 +15,9 @@ class TuneKerasCallback(keras.callbacks.Callback):
 
     def on_train_end(self, epoch, logs={}):
         self.reporter(
-            timesteps_total=self.iteration, done=1, mean_accuracy=logs["acc"])
+            timesteps_total=self.iteration,
+            done=1,
+            mean_accuracy=logs.get("acc"))
 
     def on_batch_end(self, batch, logs={}):
         self.iteration += 1
