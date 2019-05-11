@@ -26,81 +26,15 @@ std::mt19937 RandomlySeededMersenneTwister() {
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
-UniqueID::UniqueID() {
-  // Set the ID to nil.
-  std::fill_n(id_, kUniqueIDSize, 255);
-}
-
-UniqueID::UniqueID(const std::string &binary) {
-  std::memcpy(&id_, binary.data(), kUniqueIDSize);
-}
-
-UniqueID::UniqueID(const plasma::UniqueID &from) {
-  std::memcpy(&id_, from.data(), kUniqueIDSize);
-}
-
-UniqueID UniqueID::from_random() {
-  std::string data(kUniqueIDSize, 0);
-  // NOTE(pcm): The right way to do this is to have one std::mt19937 per
-  // thread (using the thread_local keyword), but that's not supported on
-  // older versions of macOS (see https://stackoverflow.com/a/29929949)
-  static std::mutex random_engine_mutex;
-  std::lock_guard<std::mutex> lock(random_engine_mutex);
-  static std::mt19937 generator = RandomlySeededMersenneTwister();
-  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
-  for (int i = 0; i < kUniqueIDSize; i++) {
-    data[i] = static_cast<uint8_t>(dist(generator));
-  }
-  return UniqueID::from_binary(data);
-}
-
-UniqueID UniqueID::from_binary(const std::string &binary) { return UniqueID(binary); }
-
-const UniqueID &UniqueID::nil() {
-  static const UniqueID nil_id;
-  return nil_id;
-}
-
-bool UniqueID::is_nil() const {
-  const uint8_t *d = data();
-  for (int i = 0; i < kUniqueIDSize; ++i) {
-    if (d[i] != 255) {
-      return false;
-    }
-  }
-  return true;
-}
-
-const uint8_t *UniqueID::data() const { return id_; }
-
-size_t UniqueID::size() { return kUniqueIDSize; }
-
-std::string UniqueID::binary() const {
-  return std::string(reinterpret_cast<const char *>(id_), kUniqueIDSize);
-}
-
-std::string UniqueID::hex() const {
-  constexpr char hex[] = "0123456789abcdef";
-  std::string result;
-  for (int i = 0; i < kUniqueIDSize; i++) {
-    unsigned int val = id_[i];
-    result.push_back(hex[val >> 4]);
-    result.push_back(hex[val & 0xf]);
-  }
-  return result;
-}
-
 plasma::UniqueID UniqueID::to_plasma_id() const {
   plasma::UniqueID result;
   std::memcpy(result.mutable_data(), &id_, kUniqueIDSize);
   return result;
 }
 
-bool UniqueID::operator==(const UniqueID &rhs) const {
-  return std::memcmp(data(), rhs.data(), kUniqueIDSize) == 0;
+UniqueID::UniqueID(const plasma::UniqueID &from) {
+  std::memcpy(&id_, from.data(), kUniqueIDSize);
 }
-
-bool UniqueID::operator!=(const UniqueID &rhs) const { return !(*this == rhs); }
 
 // This code is from https://sites.google.com/site/murmurhash/
 // and is public domain.
@@ -231,5 +165,7 @@ int64_t ComputeObjectIndex(const ObjectID &object_id) {
   index >>= (8 * sizeof(int64_t) - kObjectIdIndexSize);
   return index;
 }
+
+template class BaseId<UniqueID>;
 
 }  // namespace ray
