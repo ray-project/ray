@@ -4,9 +4,11 @@ from __future__ import print_function
 
 from collections import namedtuple
 import logging
-import tensorflow as tf
 
 from ray.rllib.utils.debug import log_once, summarize
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 # Variable scope in which created variables will be placed under
 TOWER_SCOPE_NAME = "tower"

@@ -5,8 +5,6 @@ from __future__ import print_function
 from gym.spaces import Discrete
 import numpy as np
 from scipy.stats import entropy
-import tensorflow as tf
-import tensorflow.contrib.layers as layers
 
 import ray
 from ray.rllib.evaluation.sample_batch import SampleBatch
@@ -17,6 +15,9 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
@@ -153,6 +154,8 @@ class QNetwork(object):
                  v_max=10.0,
                  sigma0=0.5,
                  parameter_noise=False):
+        import tensorflow.contrib.layers as layers
+
         self.model = model
         with tf.variable_scope("action_value"):
             if hiddens:
@@ -263,6 +266,8 @@ class QNetwork(object):
         distributions and \sigma are trainable variables which are expected to
         vanish along the training procedure
         """
+        import tensorflow.contrib.layers as layers
+
         in_size = int(action_in.shape[1])
 
         epsilon_in = tf.random_normal(shape=[in_size])
