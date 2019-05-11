@@ -72,11 +72,11 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions,
       ...,
       [T, B, ACTION_SPACE[-1]]
       with un-normalized log-probabilities parameterizing a softmax policy.
-    actions: A list with length of ACTION_SPACE of int32
+    actions: A list with length of ACTION_SPACE of
       tensors of shapes
-      [T, B],
+      [T, B, ...],
       ...,
-      [T, B]
+      [T, B, ...]
       with actions.
 
   Returns:
@@ -91,15 +91,16 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions,
 
     log_probs = []
     for i in range(len(policy_logits)):
-        p_shp = tf.shape(policy_logits[i])
-        a_shp = tf.shape(actions[i])
+        p_shape = tf.shape(policy_logits[i])
+        a_shape = tf.shape(actions[i])
         policy_logits_flat = tf.reshape(policy_logits[i],
-                                        tf.concat([[-1], p_shp[2:]], axis=0))
+                                        tf.concat([[-1], p_shape[2:]], axis=0))
         actions_flat = tf.reshape(actions[i],
-                                  tf.concat([[-1], a_shp[2:]], axis=0))
+                                  tf.concat([[-1], a_shape[2:]], axis=0))
         log_probs.append(
             tf.reshape(
-                dist_class(policy_logits_flat).logp(actions_flat), a_shp[:2]))
+                dist_class(policy_logits_flat).logp(actions_flat),
+                a_shape[:2]))
 
     return log_probs
 
@@ -182,11 +183,11 @@ def multi_from_logits(behaviour_policy_logits,
       [T, B, ACTION_SPACE[-1]]
       with un-normalized log-probabilities parameterizing the softmax target
       policy.
-    actions: A list with length of ACTION_SPACE of int32
+    actions: A list with length of ACTION_SPACE of
       tensors of shapes
-      [T, B],
+      [T, B, ...],
       ...,
-      [T, B]
+      [T, B, ...]
       with actions sampled from the behaviour policy.
     discounts: A float32 tensor of shape [T, B] with the discount encountered
       when following the behaviour policy.
