@@ -17,6 +17,7 @@ Currently, Tune offers the following search algorithms (and library integrations
 - `SigOpt <tune-searchalg.html#sigopt-search>`__
 - `Nevergrad <tune-searchalg.html#nevergrad-search>`__
 - `Scikit-Optimize <tune-searchalg.html#scikit-optimize-search>`__
+- `Ax <tune-searchalg.html#ax-search>`__
 
 
 Variant Generation (Grid Search/Random Search)
@@ -152,6 +153,29 @@ This algorithm requires using the `Scikit-Optimize ask and tell interface <https
 An example of this can be found in `skopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/skopt_example.py>`__.
 
 .. autoclass:: ray.tune.suggest.skopt.SkOptSearch
+    :show-inheritance:
+    :noindex:
+
+Ax Search
+---------
+
+The ``AxSearch`` is a SearchAlgorithm that is backed by `Ax <https://ax.dev/>`__ to perform sequential model-based hyperparameter optimization. Ax is a platform for understanding, managing, deploying, and automating adaptive experiments. Ax provides an easy to use interface with BoTorch, a flexible, modern library for Bayesian optimization in PyTorch. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using AxSearch.
+
+In order to use this search algorithm, you will need to install PyTorch, Ax, and sqlalchemy. Instructions to install PyTorch locally can be found `here <https://pytorch.org/get-started/locally/>`__. You can install Ax and sqlalchemy via the following command:
+
+.. code-block:: bash
+
+    $ pip install ax-platform sqlalchemy
+
+This algorithm requires specifying a search space and objective. You can use `AxSearch` like follows:
+
+.. code-block:: python
+
+    tune.run(... , search_alg=AxSearch(parameter_dicts, ... ))
+
+An example of this can be found in `ax_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/ax_example.py>`__.
+
+.. autoclass:: ray.tune.suggest.ax.AxSearch
     :show-inheritance:
     :noindex:
 
