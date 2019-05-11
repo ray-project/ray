@@ -107,14 +107,14 @@ class VTraceSurrogateLoss(object):
         handle episode cut boundaries.
 
         Arguments:
-            actions: An int|float32 tensor of shape [T, B, NUM_ACTIONS].
+            actions: An int|float32 tensor of shape [T, B, logit_dim].
             prev_actions_logp: A float32 tensor of shape [T, B].
             actions_logp: A float32 tensor of shape [T, B].
             action_kl: A float32 tensor of shape [T, B].
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
-            behaviour_logits: A float32 tensor of shape [T, B, NUM_ACTIONS].
-            target_logits: A float32 tensor of shape [T, B, NUM_ACTIONS].
+            behaviour_logits: A float32 tensor of shape [T, B, logit_dim].
+            target_logits: A float32 tensor of shape [T, B, logit_dim].
             discount: A float32 scalar.
             rewards: A float32 tensor of shape [T, B].
             values: A float32 tensor of shape [T, B].
