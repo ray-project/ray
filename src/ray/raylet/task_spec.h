@@ -18,6 +18,24 @@ namespace ray {
 
 namespace raylet {
 
+/// \class FastTaskSpecification
+class FastTaskSpecification {
+ public:
+  FastTaskSpecification() : method_(""), args_("") {}
+
+  FastTaskSpecification(const std::string &method, const std::string &args) : method_(method), args_(args) {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto m = fbb.CreateString(method_);
+    auto a = fbb.CreateString(args_);
+    auto spec = CreateFastTaskInfo(fbb, m, a);
+    fbb.Finish(spec);
+  }
+
+ private:
+  std::string method_;
+  std::string args_;
+};
+
 /// \class TaskArgument
 ///
 /// A virtual class that represents an argument to a task.

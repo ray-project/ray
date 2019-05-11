@@ -44,6 +44,10 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
     cdef cppclass CTaskArgumentByValue "ray::raylet::TaskArgumentByValue":
         CTaskArgumentByValue(const uint8_t *value, size_t length)
 
+    cdef cppclass CFastTaskSpecification "ray::raylet::FastTaskSpecification":
+        CFastTaskSpecification()
+        CFastTaskSpecification(const c_string &method, const c_string &args)
+
     cdef cppclass CTaskSpecification "ray::raylet::TaskSpecification":
         CTaskSpecification(
             const CDriverID &driver_id, const CTaskID &parent_task_id,

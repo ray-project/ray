@@ -39,7 +39,7 @@ class ActorTransport {
   /// task to enable batching.
   ///
   /// \param task_spec Task spec.
-  virtual void SubmitTask(const TaskSpecification& task_spec) = 0;
+  virtual void SubmitTask(const FastTaskSpecification& task_spec) = 0;
 
   /// Retrieve the results of tasks executed with SendTask(). This call blocks until the
   /// results
@@ -59,27 +59,27 @@ class ActorTransport {
   /// are available.
   ///
   /// \return List of task specs to execute.
-  virtual std::vector<std::unique_ptr<TaskSpecification>> GetTasksToExecute() = 0;
+  virtual std::vector<std::unique_ptr<FastTaskSpecification>> GetTasksToExecute() = 0;
 
   /// Enqueue a batch of results to be returned to the caller.
   ///
   /// \param List of inline results.
   virtual void SendResults(std::vector<InlineResult> results) = 0;
 
-  virtual ~ActorTransport() = 0;
+  virtual ~ActorTransport() {}
 };
 
 /// \class DummyTransport
 ///
 /// An actor transport that discards all task executions. This can be useful for measuring
 /// client serialization performance in isolation.
-class DummyTransport : ActorTransport {
+class DummyTransport : public ActorTransport {
  public:
   DummyTransport() {}
 
-  ~DummyTransport() {}
+  ~DummyTransport() override {}
 
-  void SubmitTask(const TaskSpecification &task_spec) override {}
+  void SubmitTask(const FastTaskSpecification &task_spec) override {}
 
   std::vector<InlineResult> GetResults(std::vector<ObjectID> ids) override {
     std::vector<InlineResult> results;
@@ -88,6 +88,8 @@ class DummyTransport : ActorTransport {
     }
     return results;
   }
+
+  std::vector<std::unique_ptr<FastTaskSpecification>> GetTasksToExecute() override { return {}; }
 
   void SendResults(std::vector<InlineResult> results) override {}
 };

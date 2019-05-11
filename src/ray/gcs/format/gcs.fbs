@@ -50,6 +50,11 @@ table Arg {
   data: string;
 }
 
+table FastTaskInfo {
+  actor_method: string;
+  arguments: string;
+}
+
 table TaskInfo {
   // ID of the driver that created this task.
   driver_id: string;

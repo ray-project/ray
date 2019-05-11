@@ -18,7 +18,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CTaskID,
 )
-from ray.includes.task cimport CTaskSpecification
+from ray.includes.task cimport CTaskSpecification, CFastTaskSpecification
 
 
 cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
@@ -87,7 +87,7 @@ cdef extern from "ray/raylet/actor_transport.h" nogil:
         c_string inline_data
 
     cdef cppclass CActorTransport "ray::raylet::ActorTransport":
-        void SubmitTask(const CTaskSpecification &task_spec)
+        void SubmitTask(const CFastTaskSpecification &task_spec)
         c_vector[CInlineResult] GetResults(c_vector[CObjectID] obj_ids)
-        c_vector[CTaskSpecification] GetTasksToExecute()
+        c_vector[CFastTaskSpecification] GetTasksToExecute()
         void SendResults(c_vector[CInlineResult] results)

@@ -21,7 +21,9 @@
 using MessageType = ray::protocol::MessageType;
 
 // TODO(ekl) implement the actor transport factory
-ray::raylet::ActorTransport *GetActorTransport(RayletClient *client) { return nullptr; }
+ray::raylet::ActorTransport *GetActorTransport(RayletClient *client) {
+    return new ray::raylet::DummyTransport();
+}
 
 // TODO(rkn): The io methods below should be removed.
 int connect_ipc_sock(const std::string &socket_pathname) {

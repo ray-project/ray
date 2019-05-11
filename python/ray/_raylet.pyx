@@ -34,7 +34,7 @@ from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CObjectID,
 )
-from ray.includes.task cimport CTaskSpecification
+from ray.includes.task cimport CTaskSpecification, CFastTaskSpecification
 from ray.includes.ray_config cimport RayConfig
 from ray.utils import decode
 
@@ -221,9 +221,9 @@ cdef class ActorTransport:
     cdef void init(self, CRayletClient* client):
         self.client = client
 
-    def submit_task(self, Task task):
+    cdef submit_task(self, const CFastTaskSpecification& task):
         cdef CActorTransport* transport = self.client.GetTransport()
-        transport.SubmitTask(dereference(task.task_spec.get()))
+        transport.SubmitTask(task)
 
 
 cdef class RayletClient:
@@ -247,8 +247,10 @@ cdef class RayletClient:
     def disconnect(self):
         check_status(self.client.get().Disconnect())
 
-    def fast_submit_task(self, Task task):
-        pass  # self.transport.submit_task(task) TODO
+    def fast_submit_task(self, actor_handle, method_name, args):
+        cdef CFastTaskSpecification task = CFastTaskSpecification(
+            method_name, pickle.dumps(args))
+        self.transport.submit_task(task)
 
     def fast_get_results(self, ids):
         pass  # self.transport.get_results(ids) TODO
