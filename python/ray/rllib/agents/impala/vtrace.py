@@ -34,9 +34,11 @@ from __future__ import print_function
 
 import collections
 
-import tensorflow as tf
+from ray.rllib.utils import try_import_tf
 
-nest = tf.contrib.framework.nest
+tf = try_import_tf()
+if tf:
+    nest = tf.contrib.framework.nest
 
 VTraceFromLogitsReturns = collections.namedtuple("VTraceFromLogitsReturns", [
     "vs", "pg_advantages", "log_rhos", "behaviour_action_log_probs",

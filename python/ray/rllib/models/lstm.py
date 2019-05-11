@@ -18,12 +18,13 @@ more info.
 """
 
 import numpy as np
-import tensorflow as tf
-import tensorflow.contrib.rnn as rnn
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
 from ray.rllib.utils.annotations import override, DeveloperAPI, PublicAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class LSTM(Model):
@@ -37,6 +38,8 @@ class LSTM(Model):
 
     @override(Model)
     def _build_layers_v2(self, input_dict, num_outputs, options):
+        import tensorflow.contrib.rnn as rnn
+
         cell_size = options.get("lstm_cell_size")
         if options.get("lstm_use_prev_action_reward"):
             action_dim = int(

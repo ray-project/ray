@@ -2,12 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-import tensorflow.contrib.slim as slim
-
 from ray.rllib.models.model import Model
 from ray.rllib.models.misc import get_activation_fn, flatten
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class VisionNetwork(Model):
@@ -15,6 +15,8 @@ class VisionNetwork(Model):
 
     @override(Model)
     def _build_layers_v2(self, input_dict, num_outputs, options):
+        import tensorflow.contrib.slim as slim
+
         inputs = input_dict["obs"]
         filters = options.get("conv_filters")
         if not filters:

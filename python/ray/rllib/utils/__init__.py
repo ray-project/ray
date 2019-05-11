@@ -1,4 +1,5 @@
 import logging
+import os
 
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
@@ -26,6 +27,18 @@ def renamed_class(cls):
     return DeprecationWrapper
 
 
+def try_import_tf():
+    if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
+        logger.warning("Not importing TensorFlow for test purposes")
+        return None
+
+    try:
+        import tensorflow as tf
+        return tf
+    except ImportError:
+        return None
+
+
 __all__ = [
     "Filter",
     "FilterManager",
@@ -34,4 +47,5 @@ __all__ = [
     "merge_dicts",
     "deep_update",
     "renamed_class",
+    "try_import_tf",
 ]

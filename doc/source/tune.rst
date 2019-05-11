@@ -91,6 +91,12 @@ For the function you wish to tune, pass in a ``reporter`` object:
 
 Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
 
+Contribute to Tune
+------------------
+
+Take a look at our `Contributor Guide <tune-contrib.html>`__ for guidelines on contributing.
+
+
 Citing Tune
 -----------
 
