@@ -24,33 +24,39 @@ class RAY_EXPORT UniqueID {
   bool operator==(const UniqueID &rhs) const;
   bool operator!=(const UniqueID &rhs) const;
   const uint8_t *data() const;
-  uint8_t *mutable_data();
-  size_t size() const;
+  static size_t size();
   std::string binary() const;
   std::string hex() const;
   plasma::UniqueID to_plasma_id() const;
 
+ private:
+  UniqueID(const std::string &binary);
+
  protected:
   uint8_t id_[kUniqueIDSize];
+  mutable size_t hash_ = 0;
 };
 
 static_assert(std::is_standard_layout<UniqueID>::value, "UniqueID must be standard");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 
-#define DEFINE_UNIQUE_ID(type)                                                          \
-  class RAY_EXPORT type : public UniqueID {                                             \
-   public:                                                                              \
-    explicit type(const UniqueID &from) {                                               \
-      std::memcpy(&id_, from.data(), kUniqueIDSize);                                    \
-    }                                                                                   \
-    type() : UniqueID() {}                                                              \
-    static type from_random() { return type(UniqueID::from_random()); }                 \
-    static type from_binary(const std::string &binary) { return type(binary); }         \
-    static type nil() { return type(UniqueID::nil()); }                                 \
-                                                                                        \
-   private:                                                                             \
-    type(const std::string &binary) { std::memcpy(id_, binary.data(), kUniqueIDSize); } \
+#define DEFINE_UNIQUE_ID(type)                                                  \
+  class RAY_EXPORT type : public UniqueID {                                     \
+   public:                                                                      \
+    explicit type(const UniqueID &from) {                                       \
+      std::memcpy(&id_, from.data(), kUniqueIDSize);                            \
+    }                                                                           \
+    type() : UniqueID() {}                                                      \
+    static type from_random() { return type(UniqueID::from_random()); }         \
+    static type from_binary(const std::string &binary) { return type(binary); } \
+    static type nil() { return type(UniqueID::nil()); }                         \
+    static size_t size() { return kUniqueIDSize; }                              \
+                                                                                \
+   private:                                                                     \
+    explicit type(const std::string &binary) {                                  \
+      std::memcpy(&id_, binary.data(), kUniqueIDSize);                          \
+    }                                                                           \
   };
 
 #include "id_def.h"

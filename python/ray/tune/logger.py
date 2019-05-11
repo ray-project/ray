@@ -118,10 +118,14 @@ class TFLogger(Logger):
     def _init(self):
         try:
             global tf, use_tf150_api
-            import tensorflow
-            tf = tensorflow
-            use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                             distutils.version.LooseVersion("1.5.0"))
+            if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
+                logger.warning("Not importing TensorFlow for test purposes")
+                tf = None
+            else:
+                import tensorflow
+                tf = tensorflow
+                use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
+                                 distutils.version.LooseVersion("1.5.0"))
         except ImportError:
             logger.warning("Couldn't import TensorFlow - "
                            "disabling TensorBoard logging.")

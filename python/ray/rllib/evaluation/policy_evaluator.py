@@ -5,7 +5,6 @@ from __future__ import print_function
 import gym
 import logging
 import pickle
-import tensorflow as tf
 
 import ray
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
@@ -32,7 +31,9 @@ from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
     summarize, enable_periodic_logging
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils import try_import_tf
 
+tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 # Handle to the current evaluator, which will be set to the most recently
@@ -722,7 +723,10 @@ class PolicyEvaluator(EvaluatorInterface):
                     "Found raw Tuple|Dict space as input to policy graph. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            with tf.variable_scope(name):
+            if tf:
+                with tf.variable_scope(name):
+                    policy_map[name] = cls(obs_space, act_space, merged_conf)
+            else:
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
         if self.worker_index == 0:
             logger.info("Built policy map: {}".format(policy_map))
