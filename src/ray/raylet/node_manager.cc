@@ -672,10 +672,9 @@ void NodeManager::DispatchTasks(
       }
     }
   }
-  // Move the assigned tasks to the SWAP queue so that we remember that we
-  // have them queued locally. Once the GetTaskReply has been sent to a worker,
-  // the task will get queued to either RUNNING or READY, depending on whether
-  // the assignment succeeded or not.
+  // Move the forwarded task to the SWAP queue so that we remember that we have
+  // it queued locally. Once the GetTaskReply has been sent, the task will get
+  // re-queued, depending on whether the message succeeded or not.
   local_queues_.MoveTasks(removed_task_ids, TaskState::READY, TaskState::SWAP);
 }
 
@@ -1669,13 +1668,12 @@ bool NodeManager::AssignTask(const Task &task) {
   auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
                                               fbb.CreateVector(resource_id_set_flatbuf));
   fbb.Finish(message);
-  // Give the callback a copy of the task so it can modify it.
-  Task assigned_task(task);
+  const auto &task_id = spec.TaskId();
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, worker, assigned_task](ray::Status status) mutable {
+      fbb.GetBufferPointer(), [this, worker, task_id](ray::Status status) {
         // Remove the task from the SWAP queue.
-        local_queues_.RemoveTask(assigned_task.GetTaskSpecification().TaskId());
+        auto assigned_task = local_queues_.RemoveTask(task_id);
         if (status.ok()) {
           auto spec = assigned_task.GetTaskSpecification();
           // We successfully assigned the task to the worker.
@@ -2056,10 +2054,10 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
   /// TODO(rkn): Should we check that the node manager is remote and not local?
   /// TODO(rkn): Should we check if the remote node manager is known to be dead?
   // Attempt to forward the task.
-  local_queues_.QueueTasks({task}, TaskState::SWAP);
-  ForwardTask(task, node_manager_id, [this, task, node_manager_id](ray::Status error) {
+  const auto &task_id = task.GetTaskSpecification().TaskId();
+  ForwardTask(task, node_manager_id, [this, node_manager_id](ray::Status error,
+                                                             const Task &task) {
     const TaskID task_id = task.GetTaskSpecification().TaskId();
-
     RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
                   << node_manager_id;
 
@@ -2076,6 +2074,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
       // the task in a little bit. TODO(rkn): Really this should be a
       // unique_ptr instead of a shared_ptr. However, it's a little harder to
       // move unique_ptrs into lambdas.
+      local_queues_.QueueTasks({task}, TaskState::SWAP);
       auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
       auto retry_duration = boost::posix_time::milliseconds(
           RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
@@ -2096,15 +2095,15 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
     } else {
       // The task is not for an actor and may therefore be placed on another
       // node immediately. Send it to the scheduling policy to be placed again.
-      const auto task = local_queues_.RemoveTask(task_id);
       local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
       ScheduleTasks(cluster_resource_map_);
     }
   });
 }
 
-void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
-                              const std::function<void(const ray::Status &)> &on_error) {
+void NodeManager::ForwardTask(
+    const Task &task, const ClientID &node_id,
+    const std::function<void(const ray::Status &, const Task &)> &on_error) {
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
 
@@ -2138,17 +2137,19 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   if (it == remote_server_connections_.end()) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
     RAY_LOG(INFO) << "No NodeManager connection found for GCS client id " << node_id;
-    on_error(ray::Status::IOError("NodeManager connection not found"));
+    on_error(ray::Status::IOError("NodeManager connection not found"), task);
     return;
   }
-
   auto &server_conn = it->second;
+  // Move the forwarded task to the SWAP queue so that we remember that we have
+  // it queued locally. Once the ForwardTaskRequest has been sent, the task
+  // will get re-queued, depending on whether the message succeeded or not.
+  local_queues_.QueueTasks({task}, TaskState::SWAP);
   server_conn->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
-      fbb.GetBufferPointer(),
-      [this, on_error, task_id, node_id](ray::Status status) {
+      fbb.GetBufferPointer(), [this, on_error, task_id, node_id](ray::Status status) {
+        const auto task = local_queues_.RemoveTask(task_id);
         if (status.ok()) {
-          const auto task = local_queues_.RemoveTask(task_id);
           const auto &spec = task.GetTaskSpecification();
           // If we were able to forward the task, remove the forwarded task from the
           // lineage cache since the receiving node is now responsible for writing
@@ -2184,7 +2185,7 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
             }
           }
         } else {
-          on_error(status);
+          on_error(status, task);
         }
       });
 }

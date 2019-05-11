@@ -146,8 +146,7 @@ class SchedulingQueue {
     for (const auto &task_state : {
              TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY,
              TaskState::RUNNING, TaskState::INFEASIBLE,
-             TaskState::WAITING_FOR_ACTOR_CREATION,
-             TaskState::SWAP,
+             TaskState::WAITING_FOR_ACTOR_CREATION, TaskState::SWAP,
          }) {
       if (task_state == TaskState::READY) {
         task_queues_[static_cast<int>(task_state)] = ready_queue_;
