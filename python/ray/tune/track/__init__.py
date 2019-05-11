@@ -65,7 +65,7 @@ def trial_dir():
     This includes json data containing the session's parameters and metrics.
     """
     _session = get_session()
-    return _session.trial_dir()
+    return _session.logdir
 
 
 __all__ = [

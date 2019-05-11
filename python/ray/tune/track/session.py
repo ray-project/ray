@@ -106,3 +106,7 @@ class TrackSession(object):
         # TODO(rliaw): Have Tune support updated configs
         self._logger.update_config(self.trial_config)
         self._logger.close()
+
+    @property
+    def logdir(self):
+        return self.experiment_dir

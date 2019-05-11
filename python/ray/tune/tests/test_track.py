@@ -49,7 +49,7 @@ class TrackApiTest(unittest.TestCase):
 
         self.assertTrue(os.path.exists(params_path))
         self.assertTrue(os.path.exists(result_path))
-        track.shutdown()
+        self.assertTrue(session.logdir == track.trial_dir())
 
     def testMetric(self):
         track.init(trial_name="test_metric")

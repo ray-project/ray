@@ -238,8 +238,6 @@ class UnifiedLogger(Logger):
     def update_config(self, config):
         for _logger in self._loggers:
             _logger.update_config(config)
-        self._log_syncer.set_worker_ip(config.get(NODE_IP))
-        self._log_syncer.sync_if_needed()
 
     def close(self):
         for _logger in self._loggers:

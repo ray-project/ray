@@ -3,16 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import numpy as np
 import keras
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import (Dense, Dropout, Flatten, Conv2D, MaxPooling2D)
 
-import ray
 from ray.tune import track
 from ray.tune.examples.utils import TuneKerasCallback, get_mnist_data
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -30,10 +27,7 @@ parser.add_argument(
     metavar="M",
     help="SGD momentum (default: 0.5)")
 parser.add_argument(
-    "--hidden",
-    type=int,
-    default=64,
-    help="Size of hidden layer.")
+    "--hidden", type=int, default=64, help="Size of hidden layer.")
 args, _ = parser.parse_known_args()
 
 
@@ -42,7 +36,7 @@ def train_mnist(args):
     batch_size = 128
     num_classes = 10
     epochs = 1 if args.smoke_test else 12
-
+    mnist.load()
     x_train, y_train, x_test, y_test, input_shape = get_mnist_data()
 
     model = Sequential()
@@ -60,20 +54,18 @@ def train_mnist(args):
 
     model.compile(
         loss="categorical_crossentropy",
-        optimizer=keras.optimizers.SGD(
-            lr=args.lr, momentum=args.momentum),
+        optimizer=keras.optimizers.SGD(lr=args.lr, momentum=args.momentum),
         metrics=["accuracy"])
 
     model.fit(
-        x_test,
-        y_test,
+        x_train,
+        y_train,
         batch_size=batch_size,
         epochs=epochs,
-        # verbose=0,
         validation_data=(x_test, y_test),
         callbacks=[TuneKerasCallback(track.metric)])
     track.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     train_mnist(args)
