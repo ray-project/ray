@@ -995,9 +995,9 @@ class Worker(object):
             with _changeproctitle(title, next_title):
                 # Print new driver to stdout/err if it has changed
                 if self.previous_driver_id != driver_id:
-                    print("Ray driver id: {}".format(str(driver_id)))
+                    print("Ray driver id: {}".format(str(driver_id.hex())))
                     print(
-                        "Ray driver id: {}".format(str(driver_id)),
+                        "Ray driver id: {}".format(str(driver_id.hex())),
                         file=sys.stderr)
                     sys.stdout.flush()
                     sys.stderr.flush()
@@ -1550,7 +1550,8 @@ def print_logs(redis_client, threads_stopped, driver_id):
             the thread that it should exit.
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
-    pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL + str(driver_id))
+    pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL +
+                            str(driver_id.hex()))
     localhost = services.get_node_ip_address()
     try:
         # Keep track of the number of consecutive log messages that have been
