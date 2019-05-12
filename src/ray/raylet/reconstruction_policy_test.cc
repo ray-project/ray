@@ -224,7 +224,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
   TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ComputeReturnId(task_id, 1);
+  ObjectID object_id = ObjectID::build(task_id, /*is_put=*/false, 1);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -242,7 +242,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
   TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ComputeReturnId(task_id, 1);
+  ObjectID object_id = ObjectID::build(task_id, /*is_put=*/false, 1);
   mock_object_directory_->SetObjectLocations(object_id, {ClientID::from_random()});
 
   // Listen for both objects.
@@ -265,7 +265,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
   TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ComputeReturnId(task_id, 1);
+  ObjectID object_id = ObjectID::build(task_id, /*is_put=*/false, 1);
   ClientID client_id = ClientID::from_random();
   mock_object_directory_->SetObjectLocations(object_id, {client_id});
 
@@ -289,8 +289,8 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
 TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
   // Create two object IDs produced by the same task.
   TaskID task_id = TaskID::from_random();
-  ObjectID object_id1 = ComputeReturnId(task_id, 1);
-  ObjectID object_id2 = ComputeReturnId(task_id, 2);
+  ObjectID object_id1 = ObjectID::build(task_id, /*is_put=*/false, 1);
+  ObjectID object_id2 = ObjectID::build(task_id, /*is_put=*/false, 2);
 
   // Listen for both objects.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id1);
@@ -309,7 +309,7 @@ TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ComputeReturnId(task_id, 1);
+  ObjectID object_id = ObjectID::build(task_id, /*is_put=*/false, 1);
   // Run the test for much longer than the reconstruction timeout.
   int64_t test_period = 2 * reconstruction_timeout_ms_;
 
@@ -335,7 +335,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
   TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ComputeReturnId(task_id, 1);
+  ObjectID object_id = ObjectID::build(task_id, /*is_put=*/false, 1);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -362,7 +362,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ComputeReturnId(task_id, 1);
+  ObjectID object_id = ObjectID::build(task_id, /*is_put=*/false, 1);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -388,7 +388,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
 
 TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ComputeReturnId(task_id, 1);
+  ObjectID object_id = ObjectID::build(task_id, /*is_put=*/false, 1);
 
   // Log a reconstruction attempt to simulate a different node attempting the
   // reconstruction first. This should suppress this node's first attempt at

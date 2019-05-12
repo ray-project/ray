@@ -141,54 +141,17 @@ TaskID TaskID::GetDriverTaskID(const DriverID &driver_id) {
 }
 
 ObjectID ObjectID::build(const TaskID &task_id, bool is_put, int64_t index) {
-    ObjectID object_id;
-    object_id.task_id_ = task_id;
-    if (is_put) {
-      object_id.index_ = -index;
-    } else {
-      object_id.index_ = index;
-    }
-    RAY_LOG(ERROR) << "ObjectID::build(is_put:" << is_put << ","
-                   << "index:" << index << "):" << object_id;
-    return object_id;
+  RAY_CHECK(index >= 1) << "index=" << index;
+  ObjectID object_id;
+  object_id.task_id_ = task_id;
+  if (is_put) {
+    RAY_CHECK(index <= kMaxTaskPuts) << "index=" << index;
+    object_id.index_ = -index;
+  } else {
+    RAY_CHECK(index <= kMaxTaskReturns) << "index=" << index;
+    object_id.index_ = index;
   }
-
-const ObjectID ComputeObjectId(const TaskID &task_id, int64_t object_index) {
-  return ObjectID::build(task_id, true, object_index);
-  /*RAY_CHECK(object_index <= kMaxTaskReturns && object_index >= -kMaxTaskPuts);
-  ObjectID return_id = ObjectID(task_id);
-  int64_t *first_bytes = reinterpret_cast<int64_t *>(&return_id);
-  // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
-  // object ID.
-  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
-  *first_bytes = *first_bytes & (bitmask);
-  // OR the first byte of the object ID with the return index.
-  *first_bytes = *first_bytes | (object_index & ~bitmask);
-  return return_id;*/
-}
-
-const ObjectID ComputeReturnId(const TaskID &task_id, int64_t return_index) {
-  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns);
-  return ObjectID::build(task_id, false, return_index);
-  //return ComputeObjectId(task_id, return_index);
-}
-
-const ObjectID ComputePutId(const TaskID &task_id, int64_t put_index) {
-  RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts);
-  return ObjectID::build(task_id, true, put_index);
-  // We multiply put_index by -1 to distinguish from return_index.
-  //return ComputeObjectId(task_id, -1 * put_index);
-}
-
-const TaskID ComputeTaskId(const ObjectID &object_id) {
-  return object_id.task_id();
-  /*TaskID task_id = TaskID(object_id);
-  int64_t *first_bytes = reinterpret_cast<int64_t *>(&task_id);
-  // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
-  // object ID.
-  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
-  *first_bytes = *first_bytes & (bitmask);
-  return task_id;*/
+  return object_id;
 }
 
 const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
@@ -206,18 +169,5 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   sha256_final(&ctx, buff);
   return TaskID::from_binary(std::string(buff, buff + TaskID::size()));
 }
-
-int64_t ComputeObjectIndex(const ObjectID &object_id) {
-  RAY_LOG(ERROR) << "ComputeObjectIndex:" << object_id << " with index:" << object_id.index();
-  return object_id.index();
-  /*const int64_t *first_bytes = reinterpret_cast<const int64_t *>(&object_id);
-  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
-  int64_t index = *first_bytes & (~bitmask);
-  index <<= (8 * sizeof(int64_t) - kObjectIdIndexSize);
-  index >>= (8 * sizeof(int64_t) - kObjectIdIndexSize);
-  return index;*/
-}
-
-template class BaseId<UniqueID>;
 
 }  // namespace ray

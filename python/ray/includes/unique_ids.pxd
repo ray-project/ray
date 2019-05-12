@@ -1,9 +1,9 @@
 from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
-from libc.stdint cimport uint8_t
+from libc.stdint cimport uint8_t, int64_t
 
 cdef extern from "ray/id.h" namespace "ray" nogil:
-    cdef cppclass CBaseId[T]:
+    cdef cppclass CBaseID[T]:
         @staticmethod
         T from_random()
 
@@ -18,14 +18,14 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
 
         size_t hash() const
         c_bool is_nil() const
-        c_bool operator==(const CBaseId &rhs) const
-        c_bool operator!=(const CBaseId &rhs) const
+        c_bool operator==(const CBaseID &rhs) const
+        c_bool operator!=(const CBaseID &rhs) const
         const uint8_t *data() const;
 
         c_string binary() const;
         c_string hex() const;
 
-    cdef cppclass CUniqueID "ray::UniqueID"(CBaseId):
+    cdef cppclass CUniqueID "ray::UniqueID"(CBaseID):
         CUniqueID()
 
         @staticmethod
@@ -83,7 +83,7 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
         @staticmethod
         CDriverID from_binary(const c_string &binary)
 
-    cdef cppclass CTaskID "ray::TaskID"(CBaseId[CTaskID]):
+    cdef cppclass CTaskID "ray::TaskID"(CBaseID[CTaskID]):
 
         @staticmethod
         CTaskID from_binary(const c_string &binary)
@@ -94,7 +94,7 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
         @staticmethod
         size_t size()
 
-    cdef cppclass CObjectID" ray::ObjectID"(CBaseId[CObjectID]):
+    cdef cppclass CObjectID" ray::ObjectID"(CBaseID[CObjectID]):
 
         @staticmethod
         CObjectID from_binary(const c_string &binary)
@@ -103,7 +103,16 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
         const CObjectID nil()
 
         @staticmethod
+        CObjectID build(const CTaskID &task_id, c_bool is_put, int64_t index);
+
+        @staticmethod
         size_t size()
+
+        c_bool is_put()
+
+        int64_t object_index() const 
+
+        CTaskID task_id() const
 
     cdef cppclass CWorkerID "ray::WorkerID"(CUniqueID):
 

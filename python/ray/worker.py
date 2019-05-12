@@ -198,7 +198,7 @@ class Worker(object):
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID(_random_string(12))
+                self._task_context.current_task_id = TaskID(_random_string(TaskID.size()))
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -1866,7 +1866,7 @@ def connect(node,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            TaskID(driver_id_str[:12]),  # parent_task_id.
+            TaskID(driver_id_str[:TaskID.size()]),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
@@ -1895,7 +1895,6 @@ def connect(node,
         node.raylet_socket_name,
         ClientID(worker.worker_id),
         (mode == WORKER_MODE),
-        #DriverID(worker.current_task_id.binary()),
         DriverID(driver_id_str),
     )
 

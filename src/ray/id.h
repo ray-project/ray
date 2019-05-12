@@ -23,45 +23,38 @@ class UniqueID;
 std::mt19937 RandomlySeededMersenneTwister();
 
 template<typename T>
-class BaseId {
+class BaseID {
  public:
-  BaseId() {
+  BaseID() {
     std::fill_n(reinterpret_cast<uint8_t*>(this), T::size(), 0xff);
   }
 
   static T from_random();
-
   static T from_binary(const std::string &binary);
-
   static const T &nil();
-  
-  size_t hash() const;
+  static size_t size() { return sizeof(T); }
 
+  size_t hash() const;
   bool is_nil() const;
-  bool operator==(const BaseId &rhs) const;
-  bool operator!=(const BaseId &rhs) const;
+  bool operator==(const BaseID &rhs) const;
+  bool operator!=(const BaseID &rhs) const;
   const uint8_t *data() const;
-  static size_t size() {
-    return sizeof(T);
-  }
   std::string binary() const;
   std::string hex() const;
 
-  //plasma::UniqueID to_plasma_id() const;
  protected:
-  BaseId(const std::string &binary) {
+  BaseID(const std::string &binary) {
     std::memcpy(reinterpret_cast<uint8_t*>(this), binary.data(), T::size());
   }
- private:
 };
 
-class UniqueID : public BaseId<UniqueID> {
+#pragma pack(push, 1)
+
+class UniqueID : public BaseID<UniqueID> {
  public:
-  UniqueID() : BaseId() {};
+  UniqueID() : BaseID() {};
   size_t hash() const;
-  static size_t size()  {
-    return kUniqueIDSize;
-  }
+  static size_t size()  { return kUniqueIDSize; }
 
  private:
   UniqueID(const std::string &binary);
@@ -73,25 +66,23 @@ class UniqueID : public BaseId<UniqueID> {
 
 static_assert(std::is_standard_layout<UniqueID>::value, "UniqueID must be standard");
 
-#pragma pack(push, 1)
-
-class TaskID : public BaseId<TaskID> {
+class TaskID : public BaseID<TaskID> {
  public:
-  TaskID() : BaseId() {}
+  TaskID() : BaseID() {}
   size_t hash() const;
   static size_t size()  {
-    return kUniqueIDSize - sizeof(int64_t);
+    return kUniqueIDSize - sizeof(int32_t);
   }
   static TaskID GetDriverTaskID(const DriverID &driver_id);
 
  protected:
-  uint8_t id_[kUniqueIDSize - sizeof(int64_t)];
+  uint8_t id_[kUniqueIDSize - sizeof(int32_t)];
 };
 
 
-class ObjectID : public BaseId<ObjectID> {
+class ObjectID : public BaseID<ObjectID> {
  public:
-  ObjectID() : BaseId() {}
+  ObjectID() : BaseID() {}
   size_t hash() const;
   static size_t size()  {
     return kUniqueIDSize;
@@ -99,28 +90,34 @@ class ObjectID : public BaseId<ObjectID> {
   plasma::ObjectID to_plasma_id() const;
   ObjectID(const plasma::UniqueID &from);
 
-  bool is_put() const {
-    return index_ < 0;
-  }
+  /// Get the index of this object in the task that created it.
+  ///
+  /// \return The index of object creation according to the task that created
+  /// this object. This is positive if the task returned the object and negative
+  /// if created by a put.
+  int32_t object_index() const { return index_; }
 
-  int64_t index() const {
-    return index_;
-  }
+  /// Compute the task ID of the task that created the object.
+  ///
+  /// \return The task ID of the task that created this object.
+  const TaskID &task_id() const { return task_id_; }
 
-  TaskID task_id() const {
-    return task_id_;
-  }
-
+  /// Compute the object ID of an object put or returned by the task.
+  ///
+  /// \param task_id The task ID of the task that created the object.
+  /// \param index What number the object was created by in the task.
+  /// \return The computed object ID.
   static ObjectID build(const TaskID &task_id, bool is_put, int64_t index);
 
  protected:
   TaskID task_id_;
-  int64_t index_;
+  int32_t index_;
   mutable size_t hash_ = 0;
 };
 
 static_assert(std::is_standard_layout<ObjectID>::value, "ObjectID must be standard");
 static_assert(sizeof(ObjectID) == sizeof(size_t) + kUniqueIDSize, "ObjectID size is not as expected");
+static_assert(sizeof(TaskID) == kUniqueIDSize - kObjectIdIndexSize/8, "TaskID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
@@ -150,26 +147,6 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
 #pragma pack(pop)
 
-/// Compute the object ID of an object returned by the task.
-///
-/// \param task_id The task ID of the task that created the object.
-/// \param return_index What number return value this object is in the task.
-/// \return The computed object ID.
-const ObjectID ComputeReturnId(const TaskID &task_id, int64_t return_index);
-
-/// Compute the object ID of an object put by the task.
-///
-/// \param task_id The task ID of the task that created the object.
-/// \param put_index What number put this object was created by in the task.
-/// \return The computed object ID.
-const ObjectID ComputePutId(const TaskID &task_id, int64_t put_index);
-
-/// Compute the task ID of the task that created the object.
-///
-/// \param object_id The object ID.
-/// \return The task ID of the task that created this object.
-const TaskID ComputeTaskId(const ObjectID &object_id);
-
 /// Generate a task ID from the given info.
 ///
 /// \param driver_id The driver that creates the task.
@@ -179,17 +156,9 @@ const TaskID ComputeTaskId(const ObjectID &object_id);
 const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
                             int parent_task_counter);
 
-/// Compute the index of this object in the task that created it.
-///
-/// \param object_id The object ID.
-/// \return The index of object creation according to the task that created
-/// this object. This is positive if the task returned the object and negative
-/// if created by a put.
-int64_t ComputeObjectIndex(const ObjectID &object_id);
-
 
 template<typename T>
-T BaseId<T>::from_random() {
+T BaseID<T>::from_random() {
   std::string data(T::size(), 0);
   // NOTE(pcm): The right way to do this is to have one std::mt19937 per
   // thread (using the thread_local keyword), but that's not supported on
@@ -205,20 +174,20 @@ T BaseId<T>::from_random() {
 }
 
 template<typename T>
-T BaseId<T>::from_binary(const std::string &binary) {
+T BaseID<T>::from_binary(const std::string &binary) {
   T t = T::nil();
   std::memcpy(reinterpret_cast<uint8_t*>(&t), binary.data(), T::size());
   return t;
 }
 
 template<typename T>
-const T &BaseId<T>::nil(){
+const T &BaseID<T>::nil(){
   static const T nil_id;
   return nil_id;
 }
 
 template<typename T>
-bool BaseId<T>::is_nil() const {
+bool BaseID<T>::is_nil() const {
   const uint8_t *d = data();
   for (int i = 0; i < T::size(); ++i) {
     if (d[i] != 0xff) {
@@ -229,27 +198,27 @@ bool BaseId<T>::is_nil() const {
 }
 
 template<typename T>
-bool BaseId<T>::operator==(const BaseId &rhs) const {
+bool BaseID<T>::operator==(const BaseID &rhs) const {
   return std::memcmp(data(), rhs.data(), T::size()) == 0;
 }
 
 template<typename T>
-bool BaseId<T>::operator!=(const BaseId &rhs) const {
+bool BaseID<T>::operator!=(const BaseID &rhs) const {
   return !(*this == rhs);
 }
 
 template<typename T>
-const uint8_t *BaseId<T>::data() const {
+const uint8_t *BaseID<T>::data() const {
   return reinterpret_cast<const uint8_t*>(this);
 }
 
 template<typename T>
-std::string BaseId<T>::binary() const {
+std::string BaseID<T>::binary() const {
   return std::string(reinterpret_cast<const char *>(this), T::size());
 }
 
 template<typename T>
-std::string BaseId<T>::hex() const {
+std::string BaseID<T>::hex() const {
   constexpr char hex[] = "0123456789abcdef";
   const uint8_t *id = reinterpret_cast<const uint8_t *>(this);
   std::string result;

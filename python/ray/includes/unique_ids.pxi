@@ -6,10 +6,7 @@ See https://github.com/ray-project/ray/issues/3721.
 
 # WARNING: Any additional ID types defined in this file must be added to the
 # _ID_TYPES list at the bottom of this file.
-from ray.includes.common cimport (
-    ComputePutId,
-    ComputeTaskId,
-)
+
 from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CActorClassID,
@@ -89,7 +86,7 @@ cdef class BaseID:
         # GetRedisContext in src/ray/gcs/tables.h. Changes to the
         # hash function should only be made through std::hash in
         # src/common/common.h
-        return self.__hash__()
+        return self.hash()
 
 
 cdef class UniqueID(BaseID):
@@ -159,7 +156,7 @@ cdef class TaskID(BaseID):
     cdef CTaskID data
 
     def __init__(self, id):
-        check_id(id, 12)
+        check_id(id, CTaskID.size())
         self.data = CTaskID.from_binary(<c_string>id)
 
     cdef CTaskID native(self):
@@ -183,6 +180,10 @@ cdef class TaskID(BaseID):
     @classmethod
     def nil(cls):
         return cls(CTaskID.nil().binary())
+
+    @classmethod
+    def size(cla):
+        return CTaskID.size()
 
 
 cdef class ClientID(UniqueID):

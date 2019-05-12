@@ -852,7 +852,7 @@ void NodeManager::ProcessClientMessage(
       // Clean up their creating tasks from GCS.
       std::vector<TaskID> creating_task_ids;
       for (const auto &object_id : object_ids) {
-        creating_task_ids.push_back(ComputeTaskId(object_id));
+        creating_task_ids.push_back(object_id.task_id());
       }
       gcs_client_->raylet_task_table().Delete(DriverID::nil(), creating_task_ids);
     }
