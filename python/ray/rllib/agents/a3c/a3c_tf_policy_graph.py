@@ -4,7 +4,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import gym
 
 import ray
@@ -19,6 +18,9 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class A3CLoss(object):
