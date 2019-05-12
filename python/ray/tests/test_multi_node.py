@@ -212,6 +212,7 @@ def test_logging_to_multiple_drivers(call_ray_start):
     ray.init(redis_address=redis_address)
 
     driver_script = """
+from __future__ import print_function
 import ray
 from ray.tests.utils import CaptureOutputAndError
 import sys
