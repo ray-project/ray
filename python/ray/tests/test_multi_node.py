@@ -262,6 +262,12 @@ print("success")
         assert "success" in str(out)
     ray.shutdown()
 
+
+@pytest.mark.parametrize(
+    "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1"],
+    indirect=True)
+
+
 def test_drivers_release_resources(call_ray_start):
     redis_address = call_ray_start
 
