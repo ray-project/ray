@@ -206,7 +206,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
 
  protected:
   std::shared_ptr<RedisContext> GetRedisContext(const ID &id) {
-    static std::hash<ray::UniqueID> index;
+    static std::hash<ID> index;
     return shard_contexts_[index(id) % shard_contexts_.size()];
   }
 

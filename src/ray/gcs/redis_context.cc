@@ -226,7 +226,7 @@ Status RedisContext::AttachToEventLoop(aeEventLoop *loop) {
   }
 }
 
-Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
+/*Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
                               const uint8_t *data, int64_t length,
                               const TablePrefix prefix, const TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
@@ -263,7 +263,7 @@ Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
     }
   }
   return Status::OK();
-}
+}*/
 
 Status RedisContext::RunArgvAsync(const std::vector<std::string> &args) {
   // Build the arguments.

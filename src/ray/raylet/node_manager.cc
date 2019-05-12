@@ -887,11 +887,12 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // message is actually the ID of the driver task, while client_id represents the
     // real driver ID, which can associate all the tasks/actors for a given driver,
     // which is set to the worker ID.
-    const DriverID driver_task_id = from_flatbuf<DriverID>(*message->driver_id());
-    worker->AssignTaskId(TaskID(driver_task_id));
+    const DriverID driver_id = from_flatbuf<DriverID>(*message->driver_id());
+    TaskID driver_task_id = TaskID::GetDriverTaskID(driver_id);
+    worker->AssignTaskId(driver_task_id);
     worker->AssignDriverId(from_flatbuf<DriverID>(*message->client_id()));
     worker_pool_.RegisterDriver(std::move(worker));
-    local_queues_.AddDriverTaskId(TaskID(driver_task_id));
+    local_queues_.AddDriverTaskId(driver_task_id);
   }
 }
 

@@ -3,10 +3,33 @@ from libcpp.string cimport string as c_string
 from libc.stdint cimport uint8_t
 
 cdef extern from "ray/id.h" namespace "ray" nogil:
-    cdef cppclass CUniqueID "ray::UniqueID":
+    cdef cppclass CBaseId[T]:
+        @staticmethod
+        T from_random()
+
+        @staticmethod
+        T from_binary(const c_string &binary)
+
+        @staticmethod
+        const T nil()
+
+        @staticmethod
+        size_t size()
+
+        size_t hash() const
+        c_bool is_nil() const
+        c_bool operator==(const CBaseId &rhs) const
+        c_bool operator!=(const CBaseId &rhs) const
+        const uint8_t *data() const;
+
+        c_string binary() const;
+        c_string hex() const;
+
+    cdef cppclass CUniqueID "ray::UniqueID"(CBaseId):
         CUniqueID()
-        CUniqueID(const c_string &binary)
-        CUniqueID(const CUniqueID &from_id)
+
+        @staticmethod
+        size_t size()
 
         @staticmethod
         CUniqueID from_random()
@@ -17,15 +40,8 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
         @staticmethod
         const CUniqueID nil()
 
-        size_t hash() const
-        c_bool is_nil() const
-        c_bool operator==(const CUniqueID& rhs) const
-        c_bool operator!=(const CUniqueID& rhs) const
-        const uint8_t *data() const
-        uint8_t *mutable_data()
-        size_t size() const
-        c_string binary() const
-        c_string hex() const
+        @staticmethod
+        size_t size()
 
     cdef cppclass CActorCheckpointID "ray::ActorCheckpointID"(CUniqueID):
 
@@ -67,15 +83,27 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
         @staticmethod
         CDriverID from_binary(const c_string &binary)
 
-    cdef cppclass CTaskID "ray::TaskID"(CUniqueID):
+    cdef cppclass CTaskID "ray::TaskID"(CBaseId[CTaskID]):
 
         @staticmethod
         CTaskID from_binary(const c_string &binary)
 
-    cdef cppclass CObjectID" ray::ObjectID"(CUniqueID):
+        @staticmethod
+        const CTaskID nil()
+
+        @staticmethod
+        size_t size()
+
+    cdef cppclass CObjectID" ray::ObjectID"(CBaseId[CObjectID]):
 
         @staticmethod
         CObjectID from_binary(const c_string &binary)
+
+        @staticmethod
+        const CObjectID nil()
+
+        @staticmethod
+        size_t size()
 
     cdef cppclass CWorkerID "ray::WorkerID"(CUniqueID):
 

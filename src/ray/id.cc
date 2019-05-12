@@ -26,14 +26,14 @@ std::mt19937 RandomlySeededMersenneTwister() {
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
-plasma::UniqueID UniqueID::to_plasma_id() const {
+plasma::UniqueID ObjectID::to_plasma_id() const {
   plasma::UniqueID result;
-  std::memcpy(result.mutable_data(), &id_, kUniqueIDSize);
+  std::memcpy(result.mutable_data(), this, kUniqueIDSize);
   return result;
 }
 
-UniqueID::UniqueID(const plasma::UniqueID &from) {
-  std::memcpy(&id_, from.data(), kUniqueIDSize);
+ObjectID::ObjectID(const plasma::UniqueID &from) {
+  std::memcpy(this, from.data(), kUniqueIDSize);
 }
 
 // This code is from https://sites.google.com/site/murmurhash/
@@ -103,8 +103,59 @@ std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
   return os;
 }
 
+std::ostream &operator<<(std::ostream &os, const TaskID &id) {
+  if (id.is_nil()) {
+    os << "NIL_ID";
+  } else {
+    os << id.hex();
+  }
+  return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const ObjectID &id) {
+  if (id.is_nil()) {
+    os << "NIL_ID";
+  } else {
+    os << id.hex();
+  }
+  return os;
+}
+
+size_t ObjectID::hash() const {
+  // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
+  // default value 0)
+  if (!hash_) {
+    hash_ = MurmurHash64A(this, ObjectID::size(), 0);
+  }
+  return hash_;
+}
+
+size_t TaskID::hash() const {
+  return MurmurHash64A(this, TaskID::size(), 0);
+}
+
+TaskID TaskID::GetDriverTaskID(const DriverID &driver_id) {
+  std::string driver_id_str = driver_id.binary();
+  driver_id_str.resize(size());
+  return TaskID::from_binary(driver_id_str);
+}
+
+ObjectID ObjectID::build(const TaskID &task_id, bool is_put, int64_t index) {
+    ObjectID object_id;
+    object_id.task_id_ = task_id;
+    if (is_put) {
+      object_id.index_ = -index;
+    } else {
+      object_id.index_ = index;
+    }
+    RAY_LOG(ERROR) << "ObjectID::build(is_put:" << is_put << ","
+                   << "index:" << index << "):" << object_id;
+    return object_id;
+  }
+
 const ObjectID ComputeObjectId(const TaskID &task_id, int64_t object_index) {
-  RAY_CHECK(object_index <= kMaxTaskReturns && object_index >= -kMaxTaskPuts);
+  return ObjectID::build(task_id, true, object_index);
+  /*RAY_CHECK(object_index <= kMaxTaskReturns && object_index >= -kMaxTaskPuts);
   ObjectID return_id = ObjectID(task_id);
   int64_t *first_bytes = reinterpret_cast<int64_t *>(&return_id);
   // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
@@ -113,32 +164,31 @@ const ObjectID ComputeObjectId(const TaskID &task_id, int64_t object_index) {
   *first_bytes = *first_bytes & (bitmask);
   // OR the first byte of the object ID with the return index.
   *first_bytes = *first_bytes | (object_index & ~bitmask);
-  return return_id;
-}
-
-const TaskID FinishTaskId(const TaskID &task_id) {
-  return TaskID(ComputeObjectId(task_id, 0));
+  return return_id;*/
 }
 
 const ObjectID ComputeReturnId(const TaskID &task_id, int64_t return_index) {
   RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns);
-  return ComputeObjectId(task_id, return_index);
+  return ObjectID::build(task_id, false, return_index);
+  //return ComputeObjectId(task_id, return_index);
 }
 
 const ObjectID ComputePutId(const TaskID &task_id, int64_t put_index) {
   RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts);
+  return ObjectID::build(task_id, true, put_index);
   // We multiply put_index by -1 to distinguish from return_index.
-  return ComputeObjectId(task_id, -1 * put_index);
+  //return ComputeObjectId(task_id, -1 * put_index);
 }
 
 const TaskID ComputeTaskId(const ObjectID &object_id) {
-  TaskID task_id = TaskID(object_id);
+  return object_id.task_id();
+  /*TaskID task_id = TaskID(object_id);
   int64_t *first_bytes = reinterpret_cast<int64_t *>(&task_id);
   // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
   // object ID.
   uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
   *first_bytes = *first_bytes & (bitmask);
-  return task_id;
+  return task_id;*/
 }
 
 const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
@@ -154,16 +204,18 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   // Compute the final task ID from the hash.
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
-  return FinishTaskId(TaskID::from_binary(std::string(buff, buff + kUniqueIDSize)));
+  return TaskID::from_binary(std::string(buff, buff + TaskID::size()));
 }
 
 int64_t ComputeObjectIndex(const ObjectID &object_id) {
-  const int64_t *first_bytes = reinterpret_cast<const int64_t *>(&object_id);
+  RAY_LOG(ERROR) << "ComputeObjectIndex:" << object_id << " with index:" << object_id.index();
+  return object_id.index();
+  /*const int64_t *first_bytes = reinterpret_cast<const int64_t *>(&object_id);
   uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
   int64_t index = *first_bytes & (~bitmask);
   index <<= (8 * sizeof(int64_t) - kObjectIdIndexSize);
   index >>= (8 * sizeof(int64_t) - kObjectIdIndexSize);
-  return index;
+  return index;*/
 }
 
 template class BaseId<UniqueID>;

@@ -21,12 +21,15 @@ import ray.gcs_utils
 import ray.ray_constants as ray_constants
 
 
-def _random_string():
+def _random_string(length=ray_constants.ID_SIZE):
     id_hash = hashlib.sha1()
     id_hash.update(uuid.uuid4().bytes)
     id_bytes = id_hash.digest()
     assert len(id_bytes) == ray_constants.ID_SIZE
-    return id_bytes
+    if length == ray_constants.ID_SIZE:
+        return id_bytes
+    else:
+        return id_bytes[:length]
 
 
 def format_error_message(exception_message, task_exception=False):

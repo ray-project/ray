@@ -17,6 +17,7 @@
 
 namespace ray {
 
+class DriverID;
 class UniqueID;
 
 std::mt19937 RandomlySeededMersenneTwister();
@@ -45,6 +46,7 @@ class BaseId {
   }
   std::string binary() const;
   std::string hex() const;
+
   //plasma::UniqueID to_plasma_id() const;
  protected:
   BaseId(const std::string &binary) {
@@ -56,12 +58,10 @@ class BaseId {
 class UniqueID : public BaseId<UniqueID> {
  public:
   UniqueID() : BaseId() {};
-  UniqueID(const plasma::UniqueID &from);
   size_t hash() const;
   static size_t size()  {
     return kUniqueIDSize;
   }
-  plasma::UniqueID to_plasma_id() const;
 
  private:
   UniqueID(const std::string &binary);
@@ -70,30 +70,61 @@ class UniqueID : public BaseId<UniqueID> {
   uint8_t id_[kUniqueIDSize];
   mutable size_t hash_ = 0;
 };
+
 static_assert(std::is_standard_layout<UniqueID>::value, "UniqueID must be standard");
 
-std::ostream &operator<<(std::ostream &os, const UniqueID &id);
+#pragma pack(push, 1)
 
-/*struct TaskId : public BaseId<TaskId> {
+class TaskID : public BaseId<TaskID> {
  public:
-  static TaskId from_random();
-  static TaskId from_binary(const std::string &binary);
-  static const TaskId &nil();
+  TaskID() : BaseId() {}
   size_t hash() const;
-  bool is_nil() const;
-  bool operator==(const TaskId &rhs) const;
-  bool operator!=(const TaskId &rhs) const;
-  const uint8_t *data() const;
-  static size_t size();
-  std::string binary() const;
-  std::string hex() const;
-
- private:
-  TaskId(const std::string &binary);
+  static size_t size()  {
+    return kUniqueIDSize - sizeof(int64_t);
+  }
+  static TaskID GetDriverTaskID(const DriverID &driver_id);
 
  protected:
   uint8_t id_[kUniqueIDSize - sizeof(int64_t)];
-};*/
+};
+
+
+class ObjectID : public BaseId<ObjectID> {
+ public:
+  ObjectID() : BaseId() {}
+  size_t hash() const;
+  static size_t size()  {
+    return kUniqueIDSize;
+  }
+  plasma::ObjectID to_plasma_id() const;
+  ObjectID(const plasma::UniqueID &from);
+
+  bool is_put() const {
+    return index_ < 0;
+  }
+
+  int64_t index() const {
+    return index_;
+  }
+
+  TaskID task_id() const {
+    return task_id_;
+  }
+
+  static ObjectID build(const TaskID &task_id, bool is_put, int64_t index);
+
+ protected:
+  TaskID task_id_;
+  int64_t index_;
+  mutable size_t hash_ = 0;
+};
+
+static_assert(std::is_standard_layout<ObjectID>::value, "ObjectID must be standard");
+static_assert(sizeof(ObjectID) == sizeof(size_t) + kUniqueIDSize, "ObjectID size is not as expected");
+
+std::ostream &operator<<(std::ostream &os, const UniqueID &id);
+std::ostream &operator<<(std::ostream &os, const TaskID &id);
+std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                  \
   class RAY_EXPORT type : public UniqueID {                                     \
@@ -117,15 +148,7 @@ std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 
 #undef DEFINE_UNIQUE_ID
 
-// TODO(swang): ObjectID and TaskID should derive from UniqueID. Then, we
-// can make these methods of the derived classes.
-/// Finish computing a task ID. Since objects created by the task share a
-/// prefix of the ID, the suffix of the task ID is zeroed out by this function.
-///
-/// \param task_id A task ID to finish.
-/// \return The finished task ID. It may now be used to compute IDs for objects
-/// created by the task.
-const TaskID FinishTaskId(const TaskID &task_id);
+#pragma pack(pop)
 
 /// Compute the object ID of an object returned by the task.
 ///
@@ -253,6 +276,8 @@ namespace std {
   };
 
 DEFINE_UNIQUE_ID(UniqueID);
+DEFINE_UNIQUE_ID(TaskID);
+DEFINE_UNIQUE_ID(ObjectID);
 #include "id_def.h"
 
 #undef DEFINE_UNIQUE_ID
