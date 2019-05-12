@@ -2493,63 +2493,27 @@ def test_global_state_api(shutdown_only):
     assert object_table[result_id] == object_table_entry
 
 
-logging_driver_script = """
-import ray
-from ray.tests.utils import CaptureOutputAndError
-import sys
-import time
-
-ray.init(num_cpus=1, log_to_driver=True)
-
-start = {}
-
-@ray.remote
-def f():
-    # It's important to make sure that these print statements occur even
-    # without calling sys.stdout.flush() and sys.stderr.flush().
-    for i in range(start * 100):
-        print(i)
-        print(100 + i, file=sys.stderr)
-
-captured = dict()
-with CaptureOutputAndError(captured):
-    ray.get(f.remote())
-    time.sleep(1)
-
-output_lines = captured["out"]
-for i in range(start * 100 + 100):
-    assert str(i) in output_lines
-error_lines = captured["err"]
-assert len(error_lines) == 0
-
-print("success")
-"""
-
-
 def test_logging_to_driver(shutdown_only):
-    driver_script = logging_driver_script.format(1)
-    out = ray.tests.utils.run_string_as_driver(driver_script)
+    ray.init(num_cpus=1, log_to_driver=True)
 
-    assert "success" in out
+    @ray.remote
+    def f():
+        # It's important to make sure that these print statements occur even
+        # without calling sys.stdout.flush() and sys.stderr.flush().
+        for i in range(100):
+            print(i)
+            print(100 + i, file=sys.stderr)
 
+    captured = {}
+    with CaptureOutputAndError(captured):
+        ray.get(f.remote())
+        time.sleep(1)
 
-def test_logging_to_multiple_drivers(shutdown_only):
-    num_drivers = 10
-    procs = [None] * num_drivers
-
-    for i in range(num_drivers):
-        driver_script = logging_driver_script.format(i * 2 + 1)
-        procs[i] = ray.tests.utils.run_string_as_driver_nonblocking(
-            driver_script)
-
-    for i in range(num_drivers):
-        try:
-            out, _ = procs[i].communicate(timeout=15)
-        except:
-            procs[i].kill()
-            raise Exception("Logging process timed out")
-
-        assert "success" in str(out)
+    output_lines = captured["out"]
+    for i in range(200):
+        assert str(i) in output_lines
+    error_lines = captured["err"]
+    assert len(error_lines) == 0
 
 
 def test_not_logging_to_driver(shutdown_only):

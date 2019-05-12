@@ -204,6 +204,62 @@ ray.get([a.log.remote(), f.remote()])
 @pytest.mark.parametrize(
     "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1"],
     indirect=True)
+
+
+def test_logging_to_multiple_drivers(call_ray_start):
+    redis_address = call_ray_start
+
+    ray.init(redis_address=redis_address)
+
+    driver_script = """
+import ray
+from ray.tests.utils import CaptureOutputAndError
+import sys
+import time
+
+ray.init(redis_address="{}", log_to_driver=True)
+
+start = {}
+
+@ray.remote
+def f():
+    # It's important to make sure that these print statements occur even
+    # without calling sys.stdout.flush() and sys.stderr.flush().
+    for i in range(start * 100):
+        print(i)
+        print(100 + i, file=sys.stderr)
+
+captured = dict()
+with CaptureOutputAndError(captured):
+    ray.get(f.remote())
+    time.sleep(1)
+
+output_lines = captured["out"]
+for i in range(start * 100 + 100):
+    assert str(i) in output_lines
+error_lines = captured["err"]
+assert len(error_lines) == 0
+
+print("success")
+"""
+
+    num_drivers = 10
+    procs = [None] * num_drivers
+
+    for i in range(num_drivers):
+        script = driver_script.format(redis_address, i * 2 + 1)
+        procs[i] = ray.tests.utils.run_string_as_driver_nonblocking(
+            script)
+
+    for i in range(num_drivers):
+        try:
+            out, _ = procs[i].communicate(timeout=15)
+        except:
+            procs[i].kill()
+            raise Exception("Logging process timed out")
+
+        assert "success" in str(out)
+
 def test_drivers_release_resources(call_ray_start):
     redis_address = call_ray_start
 
