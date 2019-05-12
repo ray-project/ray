@@ -256,11 +256,9 @@ print("success")
             out, _ = procs[i].communicate(timeout=15)
         except:
             procs[i].kill()
-            ray.shutdown()
             raise Exception("Logging process timed out")
 
         assert "success" in str(out)
-    ray.shutdown()
 
 
 @pytest.mark.parametrize(
