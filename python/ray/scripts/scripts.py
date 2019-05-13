@@ -380,9 +380,11 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @cli.command()
 def stop():
+    # Note that raylet needs to exit before object store, otherwise
+    # it cannot exit gracefully.
     processes_to_kill = [
-        "plasma_store_server",
         "raylet",
+        "plasma_store_server",
         "raylet_monitor",
         "monitor.py",
         "redis-server",
