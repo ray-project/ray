@@ -40,11 +40,11 @@ class TrackSession(object):
                  upload_dir=None,
                  trial_config=None,
                  _tune_reporter=None):
-        self.experiment_dir = None
-        self.logdir = None
-        self.upload_dir = None
+        self._experiment_dir = None
+        self._logdir = None
+        self._upload_dir = None
         self.trial_config = None
-        self.iteration = 0
+        self._iteration = -1
         self.is_tune_session = bool(_tune_reporter)
         self.trial_id = Trial.generate_id()
         if trial_name:
@@ -65,39 +65,36 @@ class TrackSession(object):
         if experiment_dir is None:
             experiment_dir = os.path.join(DEFAULT_RESULTS_DIR, "default")
 
-        self.experiment_dir = os.path.expanduser(experiment_dir)
+        self._experiment_dir = os.path.expanduser(experiment_dir)
 
         # TODO(rliaw): Refactor `logdir` to `trial_dir`.
-        self.logdir = Trial.create_logdir(trial_name, self.experiment_dir)
-        self.upload_dir = upload_dir
+        self._logdir = Trial.create_logdir(trial_name, self._experiment_dir)
+        self._upload_dir = upload_dir
         self.trial_config = trial_config or {}
 
         # misc metadata to save as well
         self.trial_config["trial_id"] = self.trial_id
-        self._logger = UnifiedLogger(self.trial_config, self.logdir,
-                                     self.upload_dir)
+        self._logger = UnifiedLogger(self.trial_config, self._logdir,
+                                     self._upload_dir)
 
-    def metric(self, iteration=None, **metrics):
+    def log(self, **metrics):
         """Logs all named arguments specified in **metrics.
 
         This will log trial metrics locally, and they will be synchronized
         with the driver periodically through ray.
 
         Arguments:
-            iteration (int): current iteration of the trial.
-            **metrics: named arguments with corresponding values to log.
+            metrics: named arguments with corresponding values to log.
         """
 
-        # TODO: Implement a batching mechanism for multiple calls to `metric`
+        # TODO: Implement a batching mechanism for multiple calls to `log`
         #     within the same iteration.
+        self._iteration += 1
         metrics_dict = metrics.copy()
         metrics_dict.update({"trial_id": self.trial_id})
 
-        if iteration is not None:
-            self.iteration = max(iteration, self.iteration)
-
         # TODO: Move Trainable autopopulation to a util function
-        metrics_dict[TRAINING_ITERATION] = self.iteration
+        metrics_dict.setdefault(TRAINING_ITERATION, self._iteration)
         self._logger.on_result(metrics_dict)
 
     def close(self):
@@ -109,4 +106,5 @@ class TrackSession(object):
 
     @property
     def logdir(self):
-        return self.experiment_dir
+        """Trial logdir (subdir of given experiment directory)"""
+        return self._logdir

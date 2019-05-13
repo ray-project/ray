@@ -41,7 +41,6 @@ class TrackApiTest(unittest.TestCase):
         session = track.get_session()
         self.assertTrue(session is not None)
 
-        self.assertTrue(os.path.isdir(session.experiment_dir))
         self.assertTrue(os.path.isdir(session.logdir))
 
         params_path = os.path.join(session.logdir, EXPR_PARAM_FILE)
@@ -52,10 +51,10 @@ class TrackApiTest(unittest.TestCase):
         self.assertTrue(session.logdir == track.trial_dir())
 
     def testMetric(self):
-        track.init(trial_name="test_metric")
+        track.init(trial_name="test_log")
         session = track.get_session()
         for i in range(5):
-            track.metric(test=i)
+            track.log(test=i)
         result_path = os.path.join(session.logdir, EXPR_RESULT_FILE)
         self.assertTrue(_check_json_val(result_path, "test", i))
 
@@ -65,7 +64,7 @@ class TrackApiTest(unittest.TestCase):
 
         def testme(config):
             for i in range(config["iters"]):
-                track.metric(iteration=i, **{"hi": "test"})
+                track.log(iteration=i, hi="test")
 
         trials = tune.run(testme, config={"iters": 5})
         trial_res = trials[0].last_result
@@ -74,12 +73,12 @@ class TrackApiTest(unittest.TestCase):
 
     def testLocalMetrics(self):
         """Checks that metric state is updated correctly."""
-        track.init(trial_name="test_metrics")
+        track.init(trial_name="test_logs")
         session = track.get_session()
         self.assertEqual(set(session.trial_config.keys()), set(["trial_id"]))
 
         result_path = os.path.join(session.logdir, EXPR_RESULT_FILE)
-        track.metric(test=1)
+        track.log(test=1)
         self.assertTrue(_check_json_val(result_path, "test", 1))
-        track.metric(iteration=1, test=2)
+        track.log(iteration=1, test=2)
         self.assertTrue(_check_json_val(result_path, "test", 2))

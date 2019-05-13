@@ -53,10 +53,10 @@ def shutdown():
     _session = None
 
 
-def metric(iteration=None, **kwargs):
-    """Applies TrackSession.metric to the trial in the current context."""
+def log(iteration=None, **kwargs):
+    """Applies TrackSession.log to the trial in the current context."""
     _session = get_session()
-    return _session.metric(iteration=iteration, **kwargs)
+    return _session.log(iteration=iteration, **kwargs)
 
 
 def trial_dir():
@@ -68,6 +68,4 @@ def trial_dir():
     return _session.logdir
 
 
-__all__ = [
-    "TrackSession", "session", "metric", "trial_dir", "init", "shutdown"
-]
+__all__ = ["TrackSession", "session", "log", "trial_dir", "init", "shutdown"]
