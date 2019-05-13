@@ -204,8 +204,6 @@ ray.get([a.log.remote(), f.remote()])
 @pytest.mark.parametrize(
     "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1"],
     indirect=True)
-
-
 def test_logging_to_multiple_drivers(call_ray_start):
     redis_address = call_ray_start
 
@@ -247,8 +245,7 @@ print("success")
 
     for i in range(num_drivers):
         script = driver_script.format(redis_address, i * 2 + 1)
-        procs[i] = run_string_as_driver_nonblocking(
-            script)
+        procs[i] = run_string_as_driver_nonblocking(script)
 
     for i in range(num_drivers):
         try:
@@ -263,8 +260,6 @@ print("success")
 @pytest.mark.parametrize(
     "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1"],
     indirect=True)
-
-
 def test_drivers_release_resources(call_ray_start):
     redis_address = call_ray_start
 
