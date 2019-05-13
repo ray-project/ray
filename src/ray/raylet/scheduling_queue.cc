@@ -403,10 +403,8 @@ const std::unordered_set<TaskID> &SchedulingQueue::GetDriverTaskIds() const {
 std::string SchedulingQueue::DebugString() const {
   std::stringstream result;
   result << "SchedulingQueue:";
-  for (const auto &task_state : {
-           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
-           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION, TaskState::SWAP,
-       }) {
+  for (size_t i = 0; i < static_cast<int>(ray::raylet::TaskState::kNumTaskQueues); i++) {
+    TaskState task_state = static_cast<TaskState>(i);
     result << "\n- num " << GetTaskStateString(task_state)
            << " tasks: " << GetTaskQueue(task_state)->GetTasks().size();
   }
@@ -415,10 +413,8 @@ std::string SchedulingQueue::DebugString() const {
 }
 
 void SchedulingQueue::RecordMetrics() const {
-  for (const auto &task_state : {
-           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
-           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
-       }) {
+  for (size_t i = 0; i < static_cast<int>(ray::raylet::TaskState::kNumTaskQueues); i++) {
+    TaskState task_state = static_cast<TaskState>(i);
     stats::SchedulingQueueStats().Record(
         static_cast<double>(GetTaskQueue(task_state)->GetTasks().size()),
         {{stats::ValueTypeKey,

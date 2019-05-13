@@ -672,7 +672,7 @@ void NodeManager::DispatchTasks(
       }
     }
   }
-  // Move the forwarded task to the SWAP queue so that we remember that we have
+  // Move the assigned task to the SWAP queue so that we remember that we have
   // it queued locally. Once the GetTaskReply has been sent, the task will get
   // re-queued, depending on whether the message succeeded or not.
   local_queues_.MoveTasks(removed_task_ids, TaskState::READY, TaskState::SWAP);
@@ -1673,7 +1673,10 @@ bool NodeManager::AssignTask(const Task &task) {
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
       fbb.GetBufferPointer(), [this, worker, task_id](ray::Status status) {
         // Remove the task from the SWAP queue.
-        auto assigned_task = local_queues_.RemoveTask(task_id);
+        TaskState state;
+        auto assigned_task = local_queues_.RemoveTask(task_id, &state);
+        RAY_CHECK(state == TaskState::SWAP);
+
         if (status.ok()) {
           auto spec = assigned_task.GetTaskSpecification();
           // We successfully assigned the task to the worker.
@@ -2074,7 +2077,6 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
       // the task in a little bit. TODO(rkn): Really this should be a
       // unique_ptr instead of a shared_ptr. However, it's a little harder to
       // move unique_ptrs into lambdas.
-      local_queues_.QueueTasks({task}, TaskState::SWAP);
       auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
       auto retry_duration = boost::posix_time::milliseconds(
           RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
@@ -2086,9 +2088,15 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
             RAY_CHECK(!error);
             RAY_LOG(INFO) << "Resubmitting task " << task_id
                           << " because ForwardTask failed.";
-            const auto task = local_queues_.RemoveTask(task_id);
+            // Remove the task from the SWAP queue.
+            TaskState state;
+            const auto task = local_queues_.RemoveTask(task_id, &state);
+            RAY_CHECK(state == TaskState::SWAP);
+            // Submit the task again.
             SubmitTask(task, Lineage());
           });
+      // Temporarily move the task to the SWAP queue while the timer is active.
+      local_queues_.QueueTasks({task}, TaskState::SWAP);
       // Remove the task from the lineage cache. The task will get added back
       // once it is resubmitted.
       lineage_cache_.RemoveWaitingTask(task_id);
@@ -2148,7 +2156,11 @@ void NodeManager::ForwardTask(
   server_conn->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
       fbb.GetBufferPointer(), [this, on_error, task_id, node_id](ray::Status status) {
-        const auto task = local_queues_.RemoveTask(task_id);
+        // Remove the task from the SWAP queue.
+        TaskState state;
+        const auto task = local_queues_.RemoveTask(task_id, &state);
+        RAY_CHECK(state == TaskState::SWAP);
+
         if (status.ok()) {
           const auto &spec = task.GetTaskSpecification();
           // If we were able to forward the task, remove the forwarded task from the
