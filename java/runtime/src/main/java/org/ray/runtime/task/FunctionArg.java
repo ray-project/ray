@@ -1,6 +1,6 @@
 package org.ray.runtime.task;
 
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.ObjectId;
 
 /**
  * Represents a function argument in task spec.
@@ -12,13 +12,13 @@ public class FunctionArg {
   /**
    * The id of this argument (passed by reference).
    */
-  public final UniqueId id;
+  public final ObjectId id;
   /**
    * Serialized data of this argument (passed by value).
    */
   public final byte[] data;
 
-  private FunctionArg(UniqueId id, byte[] data) {
+  private FunctionArg(ObjectId id, byte[] data) {
     this.id = id;
     this.data = data;
   }
@@ -26,7 +26,7 @@ public class FunctionArg {
   /**
    * Create a FunctionArg that will be passed by reference.
    */
-  public static FunctionArg passByReference(UniqueId id) {
+  public static FunctionArg passByReference(ObjectId id) {
     return new FunctionArg(id, null);
   }
 

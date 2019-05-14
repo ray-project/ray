@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.ray.api.Checkpointable.Checkpoint;
+import org.ray.api.id.BaseId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.runtime.generated.ActorCheckpointIdData;
@@ -112,7 +114,7 @@ public class GcsClient {
   /**
    * Query whether the raylet task exists in Gcs.
    */
-  public boolean rayletTaskExistsInGcs(UniqueId taskId) {
+  public boolean rayletTaskExistsInGcs(TaskId taskId) {
     byte[] key = ArrayUtils.addAll(TablePrefix.name(TablePrefix.RAYLET_TASK).getBytes(),
         taskId.getBytes());
     RedisClient client = getShardClient(taskId);
@@ -143,7 +145,7 @@ public class GcsClient {
     return checkpoints;
   }
 
-  private RedisClient getShardClient(UniqueId key) {
+  private RedisClient getShardClient(BaseId key) {
     return shards.get((int) Long.remainderUnsigned(UniqueIdUtil.murmurHashCode(key),
         shards.size()));
   }

@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.apache.arrow.plasma.ObjectStoreLink;
+import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
 import org.slf4j.Logger;
@@ -24,8 +25,8 @@ public class MockObjectStore implements ObjectStoreLink {
   private static final int GET_CHECK_INTERVAL_MS = 100;
 
   private final RayDevRuntime runtime;
-  private final Map<UniqueId, byte[]> data = new ConcurrentHashMap<>();
-  private final Map<UniqueId, byte[]> metadata = new ConcurrentHashMap<>();
+  private final Map<ObjectId, byte[]> data = new ConcurrentHashMap<>();
+  private final Map<ObjectId, byte[]> metadata = new ConcurrentHashMap<>();
   private final List<Consumer<UniqueId>> objectPutCallbacks;
 
   public MockObjectStore(RayDevRuntime runtime) {
@@ -44,7 +45,7 @@ public class MockObjectStore implements ObjectStoreLink {
           .error("{} cannot put null: {}, {}", logPrefix(), objectId, Arrays.toString(value));
       System.exit(-1);
     }
-    UniqueId uniqueId = new UniqueId(objectId);
+    ObjectId uniqueId = new ObjectId(objectId);
     data.put(uniqueId, value);
     if (metadataValue != null) {
       metadata.put(uniqueId, metadataValue);
@@ -138,11 +139,11 @@ public class MockObjectStore implements ObjectStoreLink {
     return stes[k].getFileName() + ":" + stes[k].getLineNumber();
   }
 
-  public boolean isObjectReady(UniqueId id) {
+  public boolean isObjectReady(ObjectId id) {
     return data.containsKey(id);
   }
 
-  public void free(UniqueId id) {
+  public void free(ObjectId id) {
     data.remove(id);
     metadata.remove(id);
   }

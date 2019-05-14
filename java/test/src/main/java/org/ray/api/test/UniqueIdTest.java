@@ -3,6 +3,8 @@ package org.ray.api.test;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import javax.xml.bind.DatatypeConverter;
+import org.ray.api.id.ObjectId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.UniqueIdUtil;
 import org.testng.Assert;
@@ -50,33 +52,33 @@ public class UniqueIdTest {
   @Test
   public void testComputeReturnId() {
     // Mock a taskId, and the lowest 4 bytes should be 0.
-    UniqueId taskId = UniqueId.fromHexString("00000000123456789ABCDEF123456789ABCDEF00");
+    TaskId taskId = TaskId.fromHexString("123456789ABCDEF123456789ABCDEF00");
 
-    UniqueId returnId = UniqueIdUtil.computeReturnId(taskId, 1);
-    Assert.assertEquals("01000000123456789abcdef123456789abcdef00", returnId.toString());
+    ObjectId returnId = UniqueIdUtil.computeReturnId(taskId, 1);
+    Assert.assertEquals("123456789abcdef123456789abcdef0001000000", returnId.toString());
 
     returnId = UniqueIdUtil.computeReturnId(taskId, 0x01020304);
-    Assert.assertEquals("04030201123456789abcdef123456789abcdef00", returnId.toString());
+    Assert.assertEquals("123456789abcdef123456789abcdef0004030201", returnId.toString());
   }
 
   @Test
   public void testComputeTaskId() {
-    UniqueId objId = UniqueId.fromHexString("34421980123456789ABCDEF123456789ABCDEF00");
-    UniqueId taskId = UniqueIdUtil.computeTaskId(objId);
+    ObjectId objId = ObjectId.fromHexString("123456789ABCDEF123456789ABCDEF0034421980");
+    TaskId taskId = objId.getTaskId();
 
-    Assert.assertEquals("00000000123456789abcdef123456789abcdef00", taskId.toString());
+    Assert.assertEquals("123456789abcdef123456789abcdef00", taskId.toString());
   }
 
   @Test
   public void testComputePutId() {
     // Mock a taskId, the lowest 4 bytes should be 0.
-    UniqueId taskId = UniqueId.fromHexString("00000000123456789ABCDEF123456789ABCDEF00");
+    TaskId taskId = TaskId.fromHexString("123456789ABCDEF123456789ABCDEF00");
 
-    UniqueId putId = UniqueIdUtil.computePutId(taskId, 1);
-    Assert.assertEquals("FFFFFFFF123456789ABCDEF123456789ABCDEF00".toLowerCase(), putId.toString());
+    ObjectId putId = UniqueIdUtil.computePutId(taskId, 1);
+    Assert.assertEquals("123456789ABCDEF123456789ABCDEF00FFFFFFFF".toLowerCase(), putId.toString());
 
     putId = UniqueIdUtil.computePutId(taskId, 0x01020304);
-    Assert.assertEquals("FCFCFDFE123456789ABCDEF123456789ABCDEF00".toLowerCase(), putId.toString());
+    Assert.assertEquals("123456789ABCDEF123456789ABCDEF00FCFCFDFE".toLowerCase(), putId.toString());
   }
 
   @Test
@@ -87,7 +89,7 @@ public class UniqueIdTest {
       ids[i] = UniqueId.randomId();
     }
 
-    ByteBuffer temp = UniqueIdUtil.concatUniqueIds(ids);
+    ByteBuffer temp = UniqueIdUtil.concatIds(ids);
     UniqueId[] res = UniqueIdUtil.getUniqueIdsFromByteBuffer(temp);
 
     for (int i = 0; i < len; ++i) {
@@ -100,6 +102,40 @@ public class UniqueIdTest {
     UniqueId id = UniqueId.fromHexString("3131313131313131313132323232323232323232");
     long remainder = Long.remainderUnsigned(UniqueIdUtil.murmurHashCode(id), 1000000000);
     Assert.assertEquals(remainder, 787616861);
+  }
+
+  @Test
+  void testCopyIds() {
+    String hexStr1 = "3131313131313131313132323232323232323232";
+    String hexStr2 = "123456789ABCDEF123456789ABCDEF0001020304";
+    String hexStr3 = "123456789ABCDEF123456789ABCDEF00";
+    UniqueId uniqueId = UniqueId.fromHexString(hexStr1);
+    ObjectId objectId = ObjectId.fromHexString(hexStr2);
+    TaskId taskId = TaskId.fromHexString(hexStr3);
+    Assert.assertEquals(uniqueId, uniqueId.copy());
+    Assert.assertEquals(objectId, objectId.copy());
+    Assert.assertEquals(taskId, taskId.copy());
+    Assert.assertEquals(taskId, objectId.copy().getTaskId());
+  }
+
+  @Test
+  void testConcateIds() {
+    String taskHexStr = "123456789ABCDEF123456789ABCDEF00";
+    String objectHexStr = taskHexStr + "01020304";
+    ObjectId objectId1 = ObjectId.fromHexString(objectHexStr);
+    ObjectId objectId2 = ObjectId.fromHexString(objectHexStr);
+    TaskId[] taskIds = new TaskId[2];
+    taskIds[0] = objectId1.getTaskId();
+    taskIds[1] = objectId2.getTaskId();
+    ObjectId[] objectIds = new ObjectId[2];
+    objectIds[0] = objectId1;
+    objectIds[1] = objectId2;
+    String taskHexCompareStr = taskHexStr + taskHexStr;
+    String objectHexCompareStr = objectHexStr + objectHexStr;
+    Assert.assertEquals(DatatypeConverter.printHexBinary(
+        UniqueIdUtil.concatIds(taskIds).array()), taskHexCompareStr);
+    Assert.assertEquals(DatatypeConverter.printHexBinary(
+        UniqueIdUtil.concatIds(objectIds).array()), objectHexCompareStr);
   }
 
 }

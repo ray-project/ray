@@ -3,8 +3,11 @@ package org.ray.runtime.util;
 import com.google.common.base.Preconditions;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Arrays;
 import java.util.List;
+
+import org.ray.api.id.BaseId;
+import org.ray.api.id.ObjectId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 
 
@@ -14,7 +17,7 @@ import org.ray.api.id.UniqueId;
  * in src/ray/id.h
  */
 public class UniqueIdUtil {
-  public static final int OBJECT_INDEX_POS = 0;
+  public static final int OBJECT_INDEX_POS = 16;
   public static final int OBJECT_INDEX_LENGTH = 4;
 
   /**
@@ -24,7 +27,7 @@ public class UniqueIdUtil {
    * @param returnIndex What number return value this object is in the task.
    * @return The computed object ID.
    */
-  public static UniqueId computeReturnId(UniqueId taskId, int returnIndex) {
+  public static ObjectId computeReturnId(TaskId taskId, int returnIndex) {
     return computeObjectId(taskId, returnIndex);
   }
 
@@ -34,14 +37,13 @@ public class UniqueIdUtil {
    * @param index The index which can distinguish different objects in one task.
    * @return The computed object ID.
    */
-  private static UniqueId computeObjectId(UniqueId taskId, int index) {
-    byte[] objId = new byte[UniqueId.LENGTH];
-    System.arraycopy(taskId.getBytes(),0, objId, 0, UniqueId.LENGTH);
-    ByteBuffer wbb = ByteBuffer.wrap(objId);
+  private static ObjectId computeObjectId(TaskId taskId, int index) {
+    byte[] bytes = new byte[ObjectId.LENGTH];
+    System.arraycopy(taskId.getBytes(), 0, bytes, 0, taskId.size());
+    ByteBuffer wbb = ByteBuffer.wrap(bytes);
     wbb.order(ByteOrder.LITTLE_ENDIAN);
-    wbb.putInt(UniqueIdUtil.OBJECT_INDEX_POS, index);
-
-    return new UniqueId(objId);
+    wbb.putInt(OBJECT_INDEX_POS, index);
+    return new ObjectId(bytes);
   }
 
   /**
@@ -51,24 +53,9 @@ public class UniqueIdUtil {
    * @param putIndex What number put this object was created by in the task.
    * @return The computed object ID.
    */
-  public static UniqueId computePutId(UniqueId taskId, int putIndex) {
+  public static ObjectId computePutId(TaskId taskId, int putIndex) {
     // We multiply putIndex by -1 to distinguish from returnIndex.
     return computeObjectId(taskId, -1 * putIndex);
-  }
-
-  /**
-   * Compute the task ID of the task that created the object.
-   *
-   * @param objectId The object ID.
-   * @return The task ID of the task that created this object.
-   */
-  public static UniqueId computeTaskId(UniqueId objectId) {
-    byte[] taskId = new byte[UniqueId.LENGTH];
-    System.arraycopy(objectId.getBytes(), 0, taskId, 0, UniqueId.LENGTH);
-    Arrays.fill(taskId, UniqueIdUtil.OBJECT_INDEX_POS,
-        UniqueIdUtil.OBJECT_INDEX_POS + UniqueIdUtil.OBJECT_INDEX_LENGTH, (byte) 0);
-
-    return new UniqueId(taskId);
   }
 
   /**
@@ -78,15 +65,15 @@ public class UniqueIdUtil {
    * @param numReturns The number of returnIds.
    * @return The Return Ids of this task.
    */
-  public static UniqueId[] genReturnIds(UniqueId taskId, int numReturns) {
-    UniqueId[] ret = new UniqueId[numReturns];
+  public static ObjectId[] genReturnIds(TaskId taskId, int numReturns) {
+    ObjectId[] ret = new ObjectId[numReturns];
     for (int i = 0; i < numReturns; i++) {
       ret[i] = UniqueIdUtil.computeReturnId(taskId, i + 1);
     }
     return ret;
   }
 
-  public static byte[][] getIdBytes(List<UniqueId> objectIds) {
+  public static <T extends BaseId> byte[][] getIdBytes(List<T> objectIds) {
     int size = objectIds.size();
     byte[][] ids = new byte[size][];
     for (int i = 0; i < size; i++) {
@@ -125,11 +112,15 @@ public class UniqueIdUtil {
    * @param ids The array of IDs that will be concatenated.
    * @return A ByteBuffer that contains bytes of concatenated IDs.
    */
-  public static ByteBuffer concatUniqueIds(UniqueId[] ids) {
-    byte[] bytesOfIds = new byte[UniqueId.LENGTH * ids.length];
+  public static <T extends BaseId> ByteBuffer concatIds(T[] ids) {
+    int length = 0;
+    if (ids != null && ids.length != 0) {
+      length = ids[0].size() * ids.length;
+    }
+    byte[] bytesOfIds = new byte[length];
     for (int i = 0; i < ids.length; ++i) {
       System.arraycopy(ids[i].getBytes(), 0, bytesOfIds,
-          i * UniqueId.LENGTH, UniqueId.LENGTH);
+          i * ids[i].size(), ids[i].size());
     }
 
     return ByteBuffer.wrap(bytesOfIds);
@@ -139,8 +130,8 @@ public class UniqueIdUtil {
   /**
    * Compute the murmur hash code of this ID.
    */
-  public static long murmurHashCode(UniqueId id) {
-    return murmurHash64A(id.getBytes(), UniqueId.LENGTH, 0);
+  public static long murmurHashCode(BaseId id) {
+    return murmurHash64A(id.getBytes(), id.size(), 0);
   }
 
   /**
