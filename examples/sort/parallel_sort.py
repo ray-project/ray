@@ -1,8 +1,9 @@
-import ray
 import numpy as np
 import time
 
-num_blocks = 4
+import ray
+
+num_blocks = 8
 num_partition_blocks = num_blocks
 num_sorting_blocks = num_blocks
 num_samples_for_pivots = num_partition_blocks * 25
@@ -10,7 +11,7 @@ array_len = 100000000
 
 
 def compute_pivots(values, num_samples, num_partitions):
-    """Sampling a subsection of the array and chooses partition pivots"""
+    """Subsample the array to choose pivots."""
     samples = values[np.random.randint(0, len(values), size=num_samples)]
     samples = np.sort(samples)
     pivot_indices = np.arange(1, num_partitions) * (len(samples) //
