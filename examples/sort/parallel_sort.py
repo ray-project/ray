@@ -1,11 +1,10 @@
 import ray
-
 import numpy as np
 import time
 
-num_cores = 6
-num_partition_blocks = num_cores
-num_sorting_blocks = num_cores
+num_blocks = 4
+num_partition_blocks = num_blocks
+num_sorting_blocks = num_blocks
 num_samples_for_pivots = num_partition_blocks * 25
 array_len = 100000000
 
@@ -20,25 +19,24 @@ def compute_pivots(values, num_samples, num_partitions):
 
 
 @ray.remote(num_return_vals=num_sorting_blocks)
-def separate(partition, pivots):
+def partition_block(block, pivots):
     """Sort and partition the array further by the given pivots."""
-    sorted = np.sort(partition)
+    sorted = np.sort(block)
     partition_indices = sorted.searchsorted(pivots)
     return np.split(sorted, partition_indices)
 
 
 @ray.remote
-def merge_and_sort(partition_ids, id):
+def merge_and_sort(*partition):
     """Concatenate the arrays given and sort afterwards"""
-    sections = ray.get(partition_ids[id])
-    return np.sort(np.concatenate(sections))
+    return np.sort(np.concatenate(partition))
 
 
 if __name__ == "__main__":
     ray.init()
 
     # Generate a random array.
-    values = np.random.randn(array_len)
+    values = np.random.randint(0, 256, size=array_len, dtype=np.uint8)
 
     # Begin timing the parallel sort example.
     parallel_sort_start = time.time()
@@ -49,15 +47,13 @@ if __name__ == "__main__":
 
     # Split the array into roughly equal partitions, which we will further
     # partition into ranges by pivots in parallel.
-    partitions = np.array_split(values, num_partition_blocks)
-    partition_ids = [separate.remote(partition, pivots) for partition in
-                     partitions]
+    blocks = np.array_split(values, num_partition_blocks)
+    partition_ids = [partition_block.remote(block, pivots) for block in blocks]
     partition_ids = list(map(list, zip(*partition_ids)))
 
-    sorted_ids = [merge_and_sort.remote(partition_ids, id) for id in
+    sorted_ids = [merge_and_sort.remote(*partition_ids[id]) for id in
                   range(len(partition_ids))]
-    sorted = ray.get(sorted_ids)
-    parallel_sorted = np.concatenate(sorted)
+    parallel_sorted = np.concatenate(ray.get(sorted_ids))
 
     parallel_sort_end = time.time()
     print("Parallel sort took {} seconds."
