@@ -1,3 +1,4 @@
+{auto_gen_header}
 <?xml version="1.0" encoding="UTF-8"?>
 
 <project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -28,7 +29,7 @@
       <artifactId>ray-runtime</artifactId>
       <version>${project.version}</version>
     </dependency>
-    {generated_bzl_deps}
+{generated_bzl_deps}
   </dependencies>
   <build>
     <plugins>

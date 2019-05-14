@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "flatbuffer_java_library", "define_java_module", "gen_java_pom_file")
+load("//bazel:ray.bzl", "flatbuffer_java_library", "define_java_module")
 
 exports_files([
     "testng.xml",
@@ -247,23 +247,6 @@ genrule(
     local = 1,
 )
 
-# generate pom.xml file for maven compile
-gen_java_pom_file(
-    name = "api",
-)
-
-gen_java_pom_file(
-    name = "runtime",
-)
-
-gen_java_pom_file(
-    name = "tutorial",
-)
-
-gen_java_pom_file(
-    name = "test",
-)
-
 genrule(
     name = "copy_pom_file",
     srcs = [
@@ -271,6 +254,7 @@ genrule(
         "//java:org_ray_ray_runtime_pom",
         "//java:org_ray_ray_tutorial_pom",
         "//java:org_ray_ray_test_pom",
+        "//java:org_ray_ray_streaming_pom",
     ],
     outs = ["copy_pom_file.out"],
     cmd = """
@@ -280,6 +264,7 @@ genrule(
         cp -f $(location //java:org_ray_ray_runtime_pom) $$WORK_DIR/java/runtime/pom.xml
         cp -f $(location //java:org_ray_ray_tutorial_pom) $$WORK_DIR/java/tutorial/pom.xml
         cp -f $(location //java:org_ray_ray_test_pom) $$WORK_DIR/java/test/pom.xml
+        cp -f $(location //java:org_ray_ray_streaming_pom) $$WORK_DIR/java/streaming/pom.xml
         echo $$(date) > $@
     """,
     local = 1,
