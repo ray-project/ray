@@ -198,7 +198,8 @@ class Worker(object):
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID(_random_string(TaskID.size()))
+                self._task_context.current_task_id = TaskID(
+                    _random_string(TaskID.size()))
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "

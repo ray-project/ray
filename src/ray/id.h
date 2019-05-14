@@ -12,8 +12,8 @@
 
 #include "plasma/common.h"
 #include "ray/constants.h"
-#include "ray/util/visibility.h"
 #include "ray/util/logging.h"
+#include "ray/util/visibility.h"
 
 namespace ray {
 
@@ -22,12 +22,10 @@ class UniqueID;
 
 std::mt19937 RandomlySeededMersenneTwister();
 
-template<typename T>
+template <typename T>
 class BaseID {
  public:
-  BaseID() {
-    std::fill_n(reinterpret_cast<uint8_t*>(this), T::size(), 0xff);
-  }
+  BaseID() { std::fill_n(reinterpret_cast<uint8_t *>(this), T::size(), 0xff); }
 
   static T from_random();
   static T from_binary(const std::string &binary);
@@ -44,7 +42,7 @@ class BaseID {
 
  protected:
   BaseID(const std::string &binary) {
-    std::memcpy(reinterpret_cast<uint8_t*>(this), binary.data(), T::size());
+    std::memcpy(reinterpret_cast<uint8_t *>(this), binary.data(), T::size());
   }
 };
 
@@ -52,9 +50,9 @@ class BaseID {
 
 class UniqueID : public BaseID<UniqueID> {
  public:
-  UniqueID() : BaseID() {};
+  UniqueID() : BaseID(){};
   size_t hash() const;
-  static size_t size()  { return kUniqueIDSize; }
+  static size_t size() { return kUniqueIDSize; }
 
  private:
   UniqueID(const std::string &binary);
@@ -70,23 +68,18 @@ class TaskID : public BaseID<TaskID> {
  public:
   TaskID() : BaseID() {}
   size_t hash() const;
-  static size_t size()  {
-    return kUniqueIDSize - sizeof(int32_t);
-  }
+  static size_t size() { return kUniqueIDSize - sizeof(int32_t); }
   static TaskID GetDriverTaskID(const DriverID &driver_id);
 
  protected:
   uint8_t id_[kUniqueIDSize - sizeof(int32_t)];
 };
 
-
 class ObjectID : public BaseID<ObjectID> {
  public:
   ObjectID() : BaseID() {}
   size_t hash() const;
-  static size_t size()  {
-    return kUniqueIDSize;
-  }
+  static size_t size() { return kUniqueIDSize; }
   plasma::ObjectID to_plasma_id() const;
   ObjectID(const plasma::UniqueID &from);
 
@@ -116,8 +109,10 @@ class ObjectID : public BaseID<ObjectID> {
 };
 
 static_assert(std::is_standard_layout<ObjectID>::value, "ObjectID must be standard");
-static_assert(sizeof(ObjectID) == sizeof(size_t) + kUniqueIDSize, "ObjectID size is not as expected");
-static_assert(sizeof(TaskID) == kUniqueIDSize - kObjectIdIndexSize/8, "TaskID size is not as expected");
+static_assert(sizeof(ObjectID) == sizeof(size_t) + kUniqueIDSize,
+              "ObjectID size is not as expected");
+static_assert(sizeof(TaskID) == kUniqueIDSize - kObjectIdIndexSize / 8,
+              "TaskID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
@@ -156,8 +151,7 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
                             int parent_task_counter);
 
-
-template<typename T>
+template <typename T>
 T BaseID<T>::from_random() {
   std::string data(T::size(), 0);
   // NOTE(pcm): The right way to do this is to have one std::mt19937 per
@@ -173,20 +167,20 @@ T BaseID<T>::from_random() {
   return T::from_binary(data);
 }
 
-template<typename T>
+template <typename T>
 T BaseID<T>::from_binary(const std::string &binary) {
   T t = T::nil();
-  std::memcpy(reinterpret_cast<uint8_t*>(&t), binary.data(), T::size());
+  std::memcpy(reinterpret_cast<uint8_t *>(&t), binary.data(), T::size());
   return t;
 }
 
-template<typename T>
-const T &BaseID<T>::nil(){
+template <typename T>
+const T &BaseID<T>::nil() {
   static const T nil_id;
   return nil_id;
 }
 
-template<typename T>
+template <typename T>
 bool BaseID<T>::is_nil() const {
   const uint8_t *d = data();
   for (int i = 0; i < T::size(); ++i) {
@@ -197,27 +191,27 @@ bool BaseID<T>::is_nil() const {
   return true;
 }
 
-template<typename T>
+template <typename T>
 bool BaseID<T>::operator==(const BaseID &rhs) const {
   return std::memcmp(data(), rhs.data(), T::size()) == 0;
 }
 
-template<typename T>
+template <typename T>
 bool BaseID<T>::operator!=(const BaseID &rhs) const {
   return !(*this == rhs);
 }
 
-template<typename T>
+template <typename T>
 const uint8_t *BaseID<T>::data() const {
-  return reinterpret_cast<const uint8_t*>(this);
+  return reinterpret_cast<const uint8_t *>(this);
 }
 
-template<typename T>
+template <typename T>
 std::string BaseID<T>::binary() const {
   return std::string(reinterpret_cast<const char *>(this), T::size());
 }
 
-template<typename T>
+template <typename T>
 std::string BaseID<T>::hex() const {
   constexpr char hex[] = "0123456789abcdef";
   const uint8_t *id = reinterpret_cast<const uint8_t *>(this);

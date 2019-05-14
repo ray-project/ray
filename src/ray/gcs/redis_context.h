@@ -91,7 +91,7 @@ class RedisContext {
   /// at which the data must be appended. For all other commands, set to
   /// -1 for unused. If set, then data must be provided.
   /// \return Status.
-  template<typename ID>
+  template <typename ID>
   Status RunAsync(const std::string &command, const ID &id, const uint8_t *data,
                   int64_t length, const TablePrefix prefix,
                   const TablePubsub pubsub_channel, RedisCallback redisCallback,
@@ -122,7 +122,7 @@ class RedisContext {
   redisAsyncContext *subscribe_context_;
 };
 
-template<typename ID>
+template <typename ID>
 Status RedisContext::RunAsync(const std::string &command, const ID &id,
                               const uint8_t *data, int64_t length,
                               const TablePrefix prefix, const TablePubsub pubsub_channel,

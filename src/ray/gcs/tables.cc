@@ -202,13 +202,15 @@ void Log<ID, Data>::Delete(const DriverID &driver_id, const std::vector<ID> &ids
       std::string send_data(data_field_size + sizeof(id_count), 0);
       uint8_t *buffer = reinterpret_cast<uint8_t *>(&send_data[0]);
       *reinterpret_cast<uint16_t *>(buffer) = id_count;
-      RAY_IGNORE_EXPR(std::copy_n(reinterpret_cast<const uint8_t *>(current_data.c_str() + cur), data_field_size, buffer + sizeof(uint16_t)));
+      RAY_IGNORE_EXPR(
+          std::copy_n(reinterpret_cast<const uint8_t *>(current_data.c_str() + cur),
+                      data_field_size, buffer + sizeof(uint16_t)));
 
-      RAY_IGNORE_EXPR(pair.first->RunAsync(
-          "RAY.TABLE_DELETE", UniqueID::nil(),
-          reinterpret_cast<const uint8_t *>(send_data.c_str()),
-          send_data.size(),prefix_, pubsub_channel_,
-          /*redisCallback=*/nullptr));
+      RAY_IGNORE_EXPR(
+          pair.first->RunAsync("RAY.TABLE_DELETE", UniqueID::nil(),
+                               reinterpret_cast<const uint8_t *>(send_data.c_str()),
+                               send_data.size(), prefix_, pubsub_channel_,
+                               /*redisCallback=*/nullptr));
     }
   }
 }

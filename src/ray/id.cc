@@ -103,9 +103,7 @@ size_t ObjectID::hash() const {
   return hash_;
 }
 
-size_t TaskID::hash() const {
-  return MurmurHash64A(this, TaskID::size(), 0);
-}
+size_t TaskID::hash() const { return MurmurHash64A(this, TaskID::size(), 0); }
 
 TaskID TaskID::GetDriverTaskID(const DriverID &driver_id) {
   std::string driver_id_str = driver_id.binary();
@@ -143,16 +141,15 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   return TaskID::from_binary(std::string(buff, buff + TaskID::size()));
 }
 
-
-#define ID_OSTREAM_OPERATOR(id_type)                             \
-std::ostream &operator<<(std::ostream &os, const id_type &id) {  \
-  if (id.is_nil()) { \
-    os << "NIL_ID"; \
-  } else { \
-    os << id.hex(); \
-  } \
-  return os; \
-}
+#define ID_OSTREAM_OPERATOR(id_type)                              \
+  std::ostream &operator<<(std::ostream &os, const id_type &id) { \
+    if (id.is_nil()) {                                            \
+      os << "NIL_ID";                                             \
+    } else {                                                      \
+      os << id.hex();                                             \
+    }                                                             \
+    return os;                                                    \
+  }
 
 ID_OSTREAM_OPERATOR(UniqueID);
 ID_OSTREAM_OPERATOR(TaskID);

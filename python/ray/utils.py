@@ -218,6 +218,7 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
 def binary_to_object_id(binary_object_id):
     return ray.ObjectID(binary_object_id)
 
+
 def binary_to_task_id(binary_task_id):
     return ray.TaskID(binary_task_id)
 
