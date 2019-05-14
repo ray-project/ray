@@ -104,7 +104,7 @@ public class RayletClientImpl implements RayletClient {
 
   @Override
   public void fetchOrReconstruct(List<ObjectId> objectIds, boolean fetchOnly,
-                                 TaskId currentTaskId) {
+      TaskId currentTaskId) {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("Blocked on objects for task {}, object IDs are {}",
           objectIds.get(0).getTaskId(), objectIds);

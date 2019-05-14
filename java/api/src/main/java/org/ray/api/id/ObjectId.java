@@ -6,8 +6,7 @@ import java.util.Arrays;
 import java.util.Random;
 
 /**
- * Represents a unique id of all Ray concepts, including
- * objects, tasks, workers, actors, etc.
+ * Represents an obejct id of Ray objects.
  */
 public class ObjectId extends BaseId implements Serializable {
 
@@ -15,14 +14,14 @@ public class ObjectId extends BaseId implements Serializable {
   public static final ObjectId NIL = genNil();
 
   /**
-   * Create a ObjectId from a hex string.
+   * Create an ObjectId from a hex string.
    */
   public static ObjectId fromHexString(String hex) {
     return new ObjectId(hexString2Bytes(hex));
   }
 
   /**
-   * Creates a ObjectId from a ByteBuffer.
+   * Creates an ObjectId from a ByteBuffer.
    */
   public static ObjectId fromByteBuffer(ByteBuffer bb) {
     return new ObjectId(byteBuffer2Bytes(bb));

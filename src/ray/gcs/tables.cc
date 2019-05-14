@@ -206,8 +206,6 @@ void Log<ID, Data>::Delete(const DriverID &driver_id, const std::vector<ID> &ids
 
       RAY_IGNORE_EXPR(pair.first->RunAsync(
           "RAY.TABLE_DELETE", UniqueID::nil(),
-          //reinterpret_cast<const uint8_t *>(current_data.c_str() + cur),
-          //std::min(batch_size, current_data.size() - cur), prefix_, pubsub_channel_,
           reinterpret_cast<const uint8_t *>(send_data.c_str()),
           send_data.size(),prefix_, pubsub_channel_,
           /*redisCallback=*/nullptr));

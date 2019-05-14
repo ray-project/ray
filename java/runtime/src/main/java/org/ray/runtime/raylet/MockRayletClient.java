@@ -154,7 +154,7 @@ public class MockRayletClient implements RayletClient {
 
   @Override
   public void fetchOrReconstruct(List<ObjectId> objectIds, boolean fetchOnly,
-                                 TaskId currentTaskId) {
+      TaskId currentTaskId) {
 
   }
 

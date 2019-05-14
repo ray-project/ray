@@ -7,7 +7,7 @@ import java.util.Random;
 
 /**
  * Represents a unique id of all Ray concepts, including
- * objects, tasks, workers, actors, etc.
+ * workers, actors, checkpoints, etc.
  */
 public class UniqueId extends BaseId implements Serializable {
 

@@ -6,8 +6,7 @@ import java.util.Arrays;
 import java.util.Random;
 
 /**
- * Represents a unique id of all Ray concepts, including
- * objects, tasks, workers, actors, etc.
+ * Represents a task id of all Ray tasks.
  */
 public class TaskId extends BaseId implements Serializable {
 

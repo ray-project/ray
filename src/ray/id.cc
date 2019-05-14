@@ -94,33 +94,6 @@ size_t UniqueID::hash() const {
   return hash_;
 }
 
-std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
-  if (id.is_nil()) {
-    os << "NIL_ID";
-  } else {
-    os << id.hex();
-  }
-  return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const TaskID &id) {
-  if (id.is_nil()) {
-    os << "NIL_ID";
-  } else {
-    os << id.hex();
-  }
-  return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const ObjectID &id) {
-  if (id.is_nil()) {
-    os << "NIL_ID";
-  } else {
-    os << id.hex();
-  }
-  return os;
-}
-
 size_t ObjectID::hash() const {
   // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
   // default value 0)
@@ -169,5 +142,20 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   sha256_final(&ctx, buff);
   return TaskID::from_binary(std::string(buff, buff + TaskID::size()));
 }
+
+
+#define ID_OSTREAM_OPERATOR(id_type)                             \
+std::ostream &operator<<(std::ostream &os, const id_type &id) {  \
+  if (id.is_nil()) { \
+    os << "NIL_ID"; \
+  } else { \
+    os << id.hex(); \
+  } \
+  return os; \
+}
+
+ID_OSTREAM_OPERATOR(UniqueID);
+ID_OSTREAM_OPERATOR(TaskID);
+ID_OSTREAM_OPERATOR(ObjectID);
 
 }  // namespace ray

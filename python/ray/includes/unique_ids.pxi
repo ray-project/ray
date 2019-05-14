@@ -85,7 +85,9 @@ cdef class BaseID:
         # NOTE: The hash function used here must match the one in
         # GetRedisContext in src/ray/gcs/tables.h. Changes to the
         # hash function should only be made through std::hash in
-        # src/common/common.h
+        # src/common/common.h.
+        # Do not use __hash__ that returns signed uint64_t, which
+        # is different from std::hash in c++ code.
         return self.hash()
 
 
