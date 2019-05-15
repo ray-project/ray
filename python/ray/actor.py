@@ -255,10 +255,6 @@ class ActorClass(object):
                 self._method_decorators[method_name] = (
                     method.__ray_invocation_decorator__)
 
-            if hasattr(method, "__ray_invocation_decorator__"):
-                self._method_decorators[method_name] = (
-                    method.__ray_invocation_decorator__)
-
     def __call__(self, *args, **kwargs):
         raise Exception("Actors methods cannot be instantiated directly. "
                         "Instead of running '{}()', try '{}.remote()'.".format(
