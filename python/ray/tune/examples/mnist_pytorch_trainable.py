@@ -50,6 +50,11 @@ parser.add_argument(
     default=False,
     help="disables CUDA training")
 parser.add_argument(
+    "--redis-address",
+    default=None,
+    type=str,
+    help="The Redis address of the cluster.")
+parser.add_argument(
     "--seed",
     type=int,
     default=1,
@@ -173,7 +178,7 @@ if __name__ == "__main__":
     from ray import tune
     from ray.tune.schedulers import HyperBandScheduler
 
-    ray.init()
+    ray.init(redis_address=args.redis_address)
     sched = HyperBandScheduler(
         time_attr="training_iteration", reward_attr="neg_mean_loss")
     tune.run(
