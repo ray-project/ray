@@ -3,8 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.trainer import Trainer, with_common_config
-from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
-
+from ray.rllib.agents.pg.pg_policy_graph import postprocess_advantages, \
+    policy_gradient_loss, make_optimizer
+from ray.rllib.evaluation.dynamic_tf_policy_graph import build_tf_graph
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils.annotations import override
 
@@ -20,6 +21,14 @@ DEFAULT_CONFIG = with_common_config({
 })
 # __sphinx_doc_end__
 # yapf: enable
+
+
+PGPolicyGraph = build_tf_graph(
+    name="PG",
+    default_config=DEFAULT_CONFIG,
+    postprocess_fn=postprocess_advantages,
+    loss_fn=policy_gradient_loss,
+    make_optimizer=make_optimizer)
 
 
 class PGTrainer(Trainer):
