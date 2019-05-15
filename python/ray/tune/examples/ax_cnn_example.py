@@ -7,32 +7,23 @@ from ray.tune.suggest.ax import AxSearch
 
 from ax.utils.tutorials.cnn_utils import load_mnist, train, evaluate
 
-dtype = torch.float
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-train_loader, valid_loader, test_loader = load_mnist()
-parameters = [
-    {
-        "name": "lr",
-        "type": "range",
-        "bounds": [1e-6, 0.4],
-        "log_scale": True
-    },
-    {
-        "name": "momentum",
-        "type": "range",
-        "bounds": [0.0, 1.0]
-    },
-]
-
 
 def easy_objective(config, reporter):
     import time
     time.sleep(0.2)
+
+    dtype = torch.float
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    train_loader, valid_loader, test_loader = load_mnist()
+
     for i in range(config["iterations"]):
         net = train(
             train_loader=train_loader,
-            parameters=parameters,
+            parameters={
+                "lr": config["lr"],
+                "momentum": config["momentum"]
+            },
             dtype=dtype,
             device=device)
         reporter(
@@ -61,7 +52,19 @@ if __name__ == "__main__":
         }
     }
     algo = AxSearch(
-        parameters=parameters,
+        parameters=[
+            {
+                "name": "lr",
+                "type": "range",
+                "bounds": [1e-6, 0.4],
+                "log_scale": True
+            },
+            {
+                "name": "momentum",
+                "type": "range",
+                "bounds": [0.0, 1.0]
+            },
+        ],
         objective_name="accuracy",
         max_concurrent=4,
     )
