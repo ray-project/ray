@@ -110,3 +110,6 @@ class AxSearch(SuggestionAlgorithm):
 
     def _num_live_trials(self):
         return len(self._live_index_mapping)
+
+    def get_best_parameters(self):
+        return self._ax.get_best_parameters()
