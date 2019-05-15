@@ -201,9 +201,6 @@ ray.get([a.log.remote(), f.remote()])
         assert out.count(log_message) == 4
 
 
-@pytest.mark.parametrize(
-    "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1"],
-    indirect=True)
 def test_logging_to_multiple_drivers(call_ray_start):
     redis_address = call_ray_start
 
