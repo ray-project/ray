@@ -3,33 +3,34 @@ import time
 
 import ray
 
+# Can be manually modified to adjust the number of blocks and workers
 num_blocks = 8
-num_partition_blocks = num_blocks
-num_sorting_blocks = num_blocks
-num_samples_for_pivots = num_partition_blocks * 25
-array_len = 100000000
+num_input_blocks = num_blocks
+num_output_blocks = num_blocks
+num_samples_for_pivots = num_input_blocks * 25
+array_len = 10**8
 
 
 def compute_pivots(values, num_samples, num_partitions):
     """Subsample the array to choose pivots."""
     samples = values[np.random.randint(0, len(values), size=num_samples)]
-    samples = np.sort(samples)
-    pivot_indices = np.arange(1, num_partitions) * (len(samples) //
+    samples_sorted = np.sort(samples)
+    pivot_indices = np.arange(1, num_partitions) * (len(samples_sorted) //
                                                     num_partitions)
-    return samples[pivot_indices]
+    return samples_sorted[pivot_indices]
 
 
-@ray.remote(num_return_vals=num_sorting_blocks)
+@ray.remote(num_return_vals=num_output_blocks)
 def partition_block(block, pivots):
     """Sort and partition the array further by the given pivots."""
-    sorted = np.sort(block)
-    partition_indices = sorted.searchsorted(pivots)
-    return np.split(sorted, partition_indices)
+    block_sorted = np.sort(block)
+    partition_indices = block_sorted.searchsorted(pivots)
+    return np.split(block_sorted, partition_indices)
 
 
 @ray.remote
 def merge_and_sort(*partition):
-    """Concatenate the arrays given and sort afterwards"""
+    """Merge the sorted input arrays to produce a sorted array."""
     return np.sort(np.concatenate(partition))
 
 
@@ -43,16 +44,15 @@ if __name__ == "__main__":
     parallel_sort_start = time.time()
 
     # Generate pivots to use as range partitions.
-    pivots = compute_pivots(values, num_samples_for_pivots,
-                            num_partition_blocks)
+    pivots = compute_pivots(values, num_samples_for_pivots, num_input_blocks)
 
     # Split the array into roughly equal partitions, which we will further
     # partition into ranges by pivots in parallel.
-    blocks = np.array_split(values, num_partition_blocks)
-    partition_ids = [partition_block.remote(block, pivots) for block in blocks]
-    partition_ids = list(map(list, zip(*partition_ids)))
+    blocks = np.array_split(values, num_input_blocks)
+    partition_ids = np.array([partition_block.remote(block, pivots) for block
+                             in blocks]).T
 
-    sorted_ids = [merge_and_sort.remote(*partition_ids[id]) for id in
+    sorted_ids = [merge_and_sort.remote(*partition_ids[idx]) for idx in
                   range(len(partition_ids))]
     parallel_sorted = np.concatenate(ray.get(sorted_ids))
 
@@ -68,7 +68,4 @@ if __name__ == "__main__":
           .format(serial_sort_end - serial_sort_start))
 
     # Check that we sorted the array properly.
-    assert np.allclose(parallel_sorted, serial_sorted)
-    print("Parallel sort successful and correct.")
-
-    ray.shutdown()
+    assert np.array_equal(parallel_sorted, serial_sorted)
