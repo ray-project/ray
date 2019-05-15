@@ -800,7 +800,7 @@ class Worker(object):
             if isinstance(value, RayTaskError):
                 raise value
             else:
-                arguments[object_indices[i]] = arg
+                arguments[object_indices[i]] = value
 
         return arguments
 
