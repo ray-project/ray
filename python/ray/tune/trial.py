@@ -245,6 +245,8 @@ class Trial(object):
 
     def __init__(self,
                  trainable_name,
+                 args=None,
+                 kwargs=None,
                  config=None,
                  trial_id=None,
                  local_dir=DEFAULT_RESULTS_DIR,
@@ -271,6 +273,8 @@ class Trial(object):
         Trial._registration_check(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
+        self.args = args or []
+        self.kwargs = kwargs or {}
         self.config = config or {}
         self.local_dir = os.path.expanduser(local_dir)
         self.experiment_tag = experiment_tag
