@@ -101,9 +101,10 @@ def wait_for_success_output(process_handle, timeout=10):
         while time.time() - start_time < timeout:
             output_line = ray.utils.decode(
                 process_handle.stdout.readline()).strip()
-            print(output_line)
             if output_line == "success":
                 return
+            elif output_line == "error":
+                raise Exception("Logging process did not succeed.")
         raise Exception("Timed out waiting for process to print success.")
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we

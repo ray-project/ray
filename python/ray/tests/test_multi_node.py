@@ -210,18 +210,22 @@ import ray
 from ray.tests.utils import CaptureOutputAndError
 import sys
 import time
+import atexit
+
+atexit.register(lambda: print("error"))
 
 ray.init(redis_address="{}", log_to_driver=True)
 
-start = {}
+log_range = {}
+total_range = {}
 
 @ray.remote
 def f():
     # It's important to make sure that these print statements occur even
     # without calling sys.stdout.flush() and sys.stderr.flush().
-    for i in range(start * 100 - 100, start * 100):
+    for i in range(*log_range):
         print(i)
-        print(100 + i, file=sys.stderr)
+        time.sleep(0.01)
 
 captured = dict()
 with CaptureOutputAndError(captured):
@@ -229,11 +233,19 @@ with CaptureOutputAndError(captured):
     time.sleep(1)
 
 output_lines = captured["out"]
+output = [line.split(" ")[1] for line in output_lines.splitlines()]
 
-for i in range(start * 100 - 100, start * 100 + 100):
-    assert str(i) in output_lines
+for i in range(*total_range):
+    if i >= log_range[0] and i < log_range[1]:
+        if str(i) != output[i - log_range[0]]:
+            sys.exit()
+    else:
+        if str(i) in output:
+            sys.exit()
+
 error_lines = captured["err"]
-assert len(error_lines) == 0
+if len(error_lines) != 0:
+    sys.exit()
 
 print("success")
 """
@@ -241,12 +253,13 @@ print("success")
     num_drivers = 3
     procs = [None] * num_drivers
 
-    for i in range(num_drivers):
-        script = driver_script.format(redis_address, i * 2 + 1)
-        procs[i] = run_string_as_driver_nonblocking(script)
+    for idx in range(num_drivers):
+        i = idx 
+        script = driver_script.format(redis_address, (i * 100, (i + 1) * 100), (0, num_drivers * 100))
+        procs[idx] = run_string_as_driver_nonblocking(script)
 
-    for i in range(num_drivers):
-        wait_for_success_output(procs[i])
+    for idx in range(num_drivers):
+        wait_for_success_output(procs[idx])
 
 
 @pytest.mark.parametrize(
