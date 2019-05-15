@@ -798,10 +798,9 @@ class Worker(object):
         values = self.get_object(object_ids)
         for i, value in enumerate(values):
             if isinstance(value, RayTaskError):
-                raise RayGetError(object_ids[i], value)
-
-        for (i, arg) in enumerate(values):
-            arguments[object_indices[i]] = arg
+                raise value
+            else:
+                arguments[object_indices[i]] = arg
 
         return arguments
 
