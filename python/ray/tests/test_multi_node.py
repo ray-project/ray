@@ -246,7 +246,7 @@ print("success")
 
     for i in range(num_drivers):
         try:
-            out, _ = procs[i].communicate(timeout=15)
+            out, _ = procs[i].communicate(timeout=30)
         except:
             procs[i].kill()
             raise Exception("Logging process timed out")
