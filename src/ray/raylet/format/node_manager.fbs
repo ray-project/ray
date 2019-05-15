@@ -77,6 +77,8 @@ enum MessageType:int {
   NotifyActorResumedFromCheckpoint,
   // A node manager requests to connect to another node manager.
   ConnectClient,
+  // Set dynamic custom resource
+  SetResourceRequest,
 }
 
 table TaskExecutionSpecification {
@@ -232,5 +234,14 @@ table NotifyActorResumedFromCheckpoint {
 
 table ConnectClient {
   // ID of the connecting client.
+  client_id: string;
+}
+
+table SetResourceRequest{
+  // Name of the resource to be set
+  resource_name: string;
+  // Capacity of the resource to be set
+  capacity: double;
+  // Client ID where this resource will be set
   client_id: string;
 }

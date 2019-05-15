@@ -154,6 +154,7 @@ flatbuffers_generated_files = [
     "ConfigTableData.java",
     "CustomSerializerData.java",
     "DriverTableData.java",
+    "EntryType.java",
     "ErrorTableData.java",
     "ErrorType.java",
     "FunctionTableData.java",

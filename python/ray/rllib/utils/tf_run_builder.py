@@ -6,11 +6,10 @@ import logging
 import os
 import time
 
-import tensorflow as tf
-from tensorflow.python.client import timeline
-
 from ray.rllib.utils.debug import log_once
+from ray.rllib.utils import try_import_tf
 
+tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
@@ -48,6 +47,8 @@ class TFRunBuilder(object):
                     self.session, self.fetches, self.debug_name,
                     self.feed_dict, os.environ.get("TF_TIMELINE_DIR"))
             except Exception:
+                logger.exception("Error fetching: {}, feed_dict={}".format(
+                    self.fetches, self.feed_dict))
                 raise ValueError("Error fetching: {}, feed_dict={}".format(
                     self.fetches, self.feed_dict))
         if isinstance(to_fetch, int):
@@ -65,6 +66,8 @@ _count = 0
 
 def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
     if timeline_dir:
+        from tensorflow.python.client import timeline
+
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
         start = time.time()

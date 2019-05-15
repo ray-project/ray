@@ -190,10 +190,22 @@ def run(run_or_experiment,
     experiment = run_or_experiment
     if not isinstance(run_or_experiment, Experiment):
         experiment = Experiment(
-            name, run_or_experiment, stop, config, resources_per_trial,
-            num_samples, local_dir, upload_dir, trial_name_creator, loggers,
-            sync_function, checkpoint_freq, checkpoint_at_end, export_formats,
-            max_failures, restore)
+            name=name,
+            run=run_or_experiment,
+            stop=stop,
+            config=config,
+            resources_per_trial=resources_per_trial,
+            num_samples=num_samples,
+            local_dir=local_dir,
+            upload_dir=upload_dir,
+            trial_name_creator=trial_name_creator,
+            loggers=loggers,
+            sync_function=sync_function,
+            checkpoint_freq=checkpoint_freq,
+            checkpoint_at_end=checkpoint_at_end,
+            export_formats=export_formats,
+            max_failures=max_failures,
+            restore=restore)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 

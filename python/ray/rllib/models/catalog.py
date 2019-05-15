@@ -5,7 +5,6 @@ from __future__ import print_function
 import gym
 import logging
 import numpy as np
-import tensorflow as tf
 from functools import partial
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
@@ -22,6 +21,9 @@ from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

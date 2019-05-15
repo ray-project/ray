@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
@@ -15,6 +13,9 @@ from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.agents.dqn.dqn_policy_graph import _scope_vars
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 POLICY_SCOPE = "p_func"
 VALUE_SCOPE = "v_func"

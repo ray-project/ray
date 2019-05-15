@@ -39,6 +39,14 @@ enum TablePubsub:int {
   DRIVER,
 }
 
+// Enum for the entry type in the ClientTable
+enum EntryType:int {
+  INSERTION = 0,
+  DELETION,
+  RES_CREATEUPDATE,
+  RES_DELETE,
+}
+
 table Arg {
   // Object ID for pass-by-reference arguments. Normally there is only one
   // object ID in this list which represents the object that is being passed.
@@ -267,9 +275,8 @@ table ClientTableData {
   // The port at which the client's object manager is listening for TCP
   // connections from other object managers.
   object_manager_port: int;
-  // True if the message is about the addition of a client and false if it is
-  // about the deletion of a client.
-  is_insertion: bool;
+  // Enum to store the entry type in the log
+  entry_type: EntryType = INSERTION;
   resources_total_label: [string];
   resources_total_capacity: [double];
 }

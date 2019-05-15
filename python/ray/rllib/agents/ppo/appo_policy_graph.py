@@ -7,7 +7,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 import logging
 import gym
 
@@ -23,6 +22,9 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.models.action_dist import MultiCategorical
 from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

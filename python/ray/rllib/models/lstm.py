@@ -18,12 +18,13 @@ more info.
 """
 
 import numpy as np
-import tensorflow as tf
-import tensorflow.contrib.rnn as rnn
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
 from ray.rllib.utils.annotations import override, DeveloperAPI, PublicAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class LSTM(Model):
@@ -37,6 +38,8 @@ class LSTM(Model):
 
     @override(Model)
     def _build_layers_v2(self, input_dict, num_outputs, options):
+        import tensorflow.contrib.rnn as rnn
+
         cell_size = options.get("lstm_cell_size")
         if options.get("lstm_use_prev_action_reward"):
             action_dim = int(
@@ -56,7 +59,7 @@ class LSTM(Model):
         last_layer = add_time_dimension(features, self.seq_lens)
 
         # Setup the LSTM cell
-        lstm = rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
+        lstm = tf.nn.rnn_cell.LSTMCell(cell_size, state_is_tuple=True)
         self.state_init = [
             np.zeros(lstm.state_size.c, np.float32),
             np.zeros(lstm.state_size.h, np.float32)

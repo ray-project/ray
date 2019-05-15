@@ -1188,12 +1188,12 @@ void ClientTableNotification(gcs::AsyncGcsClient *client, const ClientID &client
   ASSERT_EQ(client_id, added_id);
   ASSERT_EQ(ClientID::from_binary(data.client_id), added_id);
   ASSERT_EQ(ClientID::from_binary(data.client_id), added_id);
-  ASSERT_EQ(data.is_insertion, is_insertion);
+  ASSERT_EQ(data.entry_type == EntryType::INSERTION, is_insertion);
 
   ClientTableDataT cached_client;
   client->client_table().GetClient(added_id, cached_client);
   ASSERT_EQ(ClientID::from_binary(cached_client.client_id), added_id);
-  ASSERT_EQ(cached_client.is_insertion, is_insertion);
+  ASSERT_EQ(cached_client.entry_type == EntryType::INSERTION, is_insertion);
 }
 
 void TestClientTableConnect(const DriverID &driver_id,
