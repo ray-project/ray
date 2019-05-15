@@ -782,14 +782,17 @@ class Worker(object):
             RayError: This exception is raised if a task that
                 created one of the arguments failed.
         """
-        arguments = []
+        arguments = [None] * len(serialized_args)
         object_ids = []
+        object_indices = []
+
         for (i, arg) in enumerate(serialized_args):
             if isinstance(arg, ObjectID):
                 object_ids.append(arg)
+                object_indices.append(i)
             else:
                 # pass the argument by value
-                arguments.append(arg)
+                arguments[i] = arg
 
         # get the objects from the local object store
         values = self.get_object(object_ids)
@@ -797,7 +800,9 @@ class Worker(object):
             if isinstance(value, RayTaskError):
                 raise RayGetError(object_ids[i], value)
 
-        arguments.extend(values)
+        for (i, arg) in enumerate(values):
+            arguments[object_indices[i]] = arg
+
         return arguments
 
     def _store_outputs_in_object_store(self, object_ids, outputs):
