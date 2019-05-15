@@ -33,6 +33,13 @@ enum class TaskState {
   // The task is an actor method and is waiting to learn where the actor was
   // created.
   WAITING_FOR_ACTOR_CREATION,
+  // Swap queue for tasks that are in between states. This can happen when a
+  // task is removed from one queue, and an async callback is responsible for
+  // re-queuing the task. For example, a READY task that has just been assigned
+  // to a worker will get moved to the SWAP queue while waiting for a response
+  // from the worker. If the worker accepts the task, the task will be added to
+  // the RUNNING queue, else it will be returned to READY.
+  SWAP,
   // The number of task queues. All states that precede this enum must have an
   // associated TaskQueue in SchedulingQueue. All states that succeed
   // this enum do not have an associated TaskQueue, since the tasks
@@ -144,7 +151,7 @@ class SchedulingQueue {
     for (const auto &task_state : {
              TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY,
              TaskState::RUNNING, TaskState::INFEASIBLE,
-             TaskState::WAITING_FOR_ACTOR_CREATION,
+             TaskState::WAITING_FOR_ACTOR_CREATION, TaskState::SWAP,
          }) {
       if (task_state == TaskState::READY) {
         task_queues_[static_cast<int>(task_state)] = ready_queue_;
