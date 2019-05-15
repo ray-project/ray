@@ -42,6 +42,11 @@ void ObjectStoreNotificationManager::NotificationWait() {
 void ObjectStoreNotificationManager::ProcessStoreLength(
     const boost::system::error_code &error) {
   notification_.resize(length_);
+  if (error) {
+    RAY_LOG(FATAL)
+        << "Problem communicating with the object store from raylet, check logs or "
+        << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
+  }
   boost::asio::async_read(
       socket_, boost::asio::buffer(notification_),
       boost::bind(&ObjectStoreNotificationManager::ProcessStoreNotification, this,
@@ -50,7 +55,7 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 
 void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
-  if (error.value() != boost::system::errc::success) {
+  if (error) {
     RAY_LOG(FATAL)
         << "Problem communicating with the object store from raylet, check logs or "
         << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();

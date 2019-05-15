@@ -166,8 +166,9 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                         stddev=self.config["target_noise"]),
                     -target_noise_clip, target_noise_clip)
                 policy_tp1_smoothed = tf.clip_by_value(
-                    policy_tp1 + clipped_normal_sample, action_space.low,
-                    action_space.high)
+                    policy_tp1 + clipped_normal_sample,
+                    action_space.low * tf.ones_like(policy_tp1),
+                    action_space.high * tf.ones_like(policy_tp1))
             else:
                 # no smoothing, just use deterministic actions
                 policy_tp1_smoothed = policy_tp1
@@ -473,8 +474,9 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                         tf.shape(deterministic_actions),
                         stddev=self.config["exploration_gaussian_sigma"])
                     stochastic_actions = tf.clip_by_value(
-                        deterministic_actions + normal_sample, action_low,
-                        action_high)
+                        deterministic_actions + normal_sample,
+                        action_low * tf.ones_like(deterministic_actions),
+                        action_high * tf.ones_like(deterministic_actions))
                 elif noise_type == "ou":
                     # add OU noise for exploration, DDPG-style
                     zero_acts = action_low.size * [.0]
@@ -494,7 +496,9 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                     noise = noise_scale * base_scale \
                         * exploration_value * action_range
                     stochastic_actions = tf.clip_by_value(
-                        deterministic_actions + noise, action_low, action_high)
+                        deterministic_actions + noise,
+                        action_low * tf.ones_like(deterministic_actions),
+                        action_high * tf.ones_like(deterministic_actions))
                 else:
                     raise ValueError(
                         "Unknown noise type '%s' (try 'ou' or 'gaussian')" %
