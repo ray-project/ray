@@ -10,7 +10,7 @@ import time
 import ray
 from ray.utils import _random_string
 from ray.tests.utils import (run_and_get_output, run_string_as_driver,
-                             run_string_as_driver_nonblocking)
+                             run_string_as_driver_nonblocking, wait_for_success_output)
 
 
 def test_error_isolation(call_ray_start):
@@ -219,7 +219,7 @@ start = {}
 def f():
     # It's important to make sure that these print statements occur even
     # without calling sys.stdout.flush() and sys.stderr.flush().
-    for i in range(start * 100):
+    for i in range(start * 100 - 100, start * 100):
         print(i)
         print(100 + i, file=sys.stderr)
 
@@ -229,7 +229,8 @@ with CaptureOutputAndError(captured):
     time.sleep(1)
 
 output_lines = captured["out"]
-for i in range(start * 100 + 100):
+
+for i in range(start * 100 - 100, start * 100 + 100):
     assert str(i) in output_lines
 error_lines = captured["err"]
 assert len(error_lines) == 0
@@ -245,13 +246,7 @@ print("success")
         procs[i] = run_string_as_driver_nonblocking(script)
 
     for i in range(num_drivers):
-        try:
-            out, _ = procs[i].communicate(timeout=30)
-        except:
-            procs[i].kill()
-            raise Exception("Logging process timed out")
-
-        assert "success" in str(out)
+        wait_for_success_output(procs[i])
 
 
 @pytest.mark.parametrize(
@@ -294,17 +289,6 @@ print("success")
 
     driver_script2 = (driver_script1 +
                       "import sys\nsys.stdout.flush()\ntime.sleep(10 ** 6)\n")
-
-    def wait_for_success_output(process_handle, timeout=10):
-        # Wait until the process prints "success" and then return.
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            output_line = ray.utils.decode(
-                process_handle.stdout.readline()).strip()
-            print(output_line)
-            if output_line == "success":
-                return
-        raise Exception("Timed out waiting for process to print success.")
 
     # Make sure we can run this driver repeatedly, which means that resources
     # are getting released in between.
