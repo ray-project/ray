@@ -39,6 +39,8 @@ MODEL_DEFAULTS = {
     "fcnet_activation": "tanh",
     # Number of hidden layers for fully connected net
     "fcnet_hiddens": [256, 256],
+    # The dropout rate range from [0, 1]. 0.5 would drop out 50% of hidden units
+    "fcnet_dropout_rate": 0.,
     # For control envs, documented in ray.rllib.models.Model
     "free_log_std": False,
     # (deprecated) Whether to use sigmoid to squash actions to space range

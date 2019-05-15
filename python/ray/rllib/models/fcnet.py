@@ -14,35 +14,31 @@ class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
     @override(Model)
-    def _build_layers(self, inputs, num_outputs, options):
-        """Process the flattened inputs.
-
-        Note that dict inputs will be flattened into a vector. To define a
-        model that processes the components separately, use _build_layers_v2().
-        """
-
+    def _build_layers_v2(self, input_dict: dict, num_outputs: int, config: dict):
         import tensorflow.contrib.slim as slim
 
-        hiddens = options.get("fcnet_hiddens")
-        activation = get_activation_fn(options.get("fcnet_activation"))
-
         with tf.name_scope("fc_net"):
-            i = 1
-            last_layer = inputs
-            for size in hiddens:
-                label = "fc{}".format(i)
+            last_layer = input_dict['obs']
+            activation = get_activation_fn(config.get("fcnet_activation"))
+            for i, size in enumerate(config.get("fcnet_hiddens"), 1):
                 last_layer = slim.fully_connected(
-                    last_layer,
-                    size,
+                    inputs=last_layer,
+                    num_outputs=size,
                     weights_initializer=normc_initializer(1.0),
                     activation_fn=activation,
-                    scope=label)
-                i += 1
-            label = "fc_out"
+                    scope="fc{}".format(i),
+                )
+                last_layer = tf.layers.dropout(
+                    inputs=last_layer,
+                    rate=config.get("fcnet_dropout_rate"),
+                    training=input_dict['is_training'],
+                    name="dropout{}".format(i),
+                )
             output = slim.fully_connected(
-                last_layer,
-                num_outputs,
+                inputs=last_layer,
+                num_outputs=num_outputs,
                 weights_initializer=normc_initializer(0.01),
                 activation_fn=None,
-                scope=label)
+                scope="fc_out",
+            )
             return output, last_layer
