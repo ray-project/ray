@@ -67,6 +67,8 @@ def _prompt_restore(checkpoint_dir, resume):
 
 def run(run_or_experiment,
         name=None,
+        args=None,
+        kwargs=None,
         stop=None,
         config=None,
         resources_per_trial=None,
@@ -103,6 +105,8 @@ def run(run_or_experiment,
             If Experiment, then Tune will execute training based on
             Experiment.spec.
         name (str): Name of experiment.
+        args (list): List of positional arguments to be passed to each Trainable.
+        kwargs (): Dict of arguments to be passed to each Trainable.
         stop (dict): The stopping criteria. The keys may be any field in
             the return result of 'train()', whichever is reached first.
             Defaults to empty dict.
@@ -192,6 +196,8 @@ def run(run_or_experiment,
         experiment = Experiment(
             name=name,
             run=run_or_experiment,
+            args=args,
+            kwargs=kwargs,
             stop=stop,
             config=config,
             resources_per_trial=resources_per_trial,

@@ -119,6 +119,11 @@ class FunctionRunner(Trainable):
 
     _name = "func"
 
+    def __init__(self, *args, config=None, logger_creator=None, **kwargs):
+        Trainable.__init__(self, config=config, logger_creator=logger_creator)
+        self.args = args
+        self.kwargs = kwargs
+
     def _setup(self, config):
         # Semaphore for notifying the reporter to continue with the computation
         # and to generate the next result.
@@ -246,7 +251,8 @@ class FunctionRunner(Trainable):
 def wrap_function(train_func):
     class WrappedFunc(FunctionRunner):
         def _trainable_func(self, config, reporter):
-            output = train_func(config, reporter)
+            output = train_func(
+                *self.args, config=config, reporter=reporter, **self.kwargs)
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
             # with the keyword RESULT_DUPLICATE -- see tune/trial_runner.py.

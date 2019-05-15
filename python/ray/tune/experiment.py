@@ -61,6 +61,8 @@ class Experiment(object):
                  name,
                  run,
                  stop=None,
+                 args=None,
+                 kwargs=None,
                  config=None,
                  resources_per_trial=None,
                  num_samples=1,
@@ -93,8 +95,10 @@ class Experiment(object):
         run_identifier = Experiment._register_if_needed(run)
         spec = {
             "run": run_identifier,
-            "stop": stop or {},
-            "config": config or {},
+            "stop": stop,
+            "args": args,
+            "kwargs": kwargs,
+            "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
             "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
@@ -106,7 +110,7 @@ class Experiment(object):
             "checkpoint_at_end": checkpoint_at_end,
             "keep_checkpoints_num": keep_checkpoints_num,
             "checkpoint_score_attr": checkpoint_score_attr,
-            "export_formats": export_formats or [],
+            "export_formats": export_formats,
             "max_failures": max_failures,
             "restore": restore
         }
