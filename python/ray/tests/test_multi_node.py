@@ -237,7 +237,7 @@ assert len(error_lines) == 0
 print("success")
 """
 
-    num_drivers = 10
+    num_drivers = 3
     procs = [None] * num_drivers
 
     for i in range(num_drivers):
