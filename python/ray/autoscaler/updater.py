@@ -185,8 +185,6 @@ class NodeUpdater(object):
 
     def sync_file_mounts(self, sync_cmd):
         # Rsync file mounts
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "syncing-files"})
         for remote_path, local_path in self.file_mounts.items():
             assert os.path.exists(local_path), local_path
             if os.path.isdir(local_path):
@@ -217,6 +215,8 @@ class NodeUpdater(object):
             ssh_ok = self.wait_for_ssh(deadline)
             assert ssh_ok, "Unable to SSH to node"
 
+        self.provider.set_node_tags(self.node_id,
+                                    {TAG_RAY_NODE_STATUS: "syncing-files"})
         self.sync_file_mounts(self.rsync_up)
 
         # Run init commands
