@@ -587,7 +587,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     help="Override the configured cluster name.")
 @click.option(
     "--port-forward", required=False, type=int, help="Port to forward.")
-@click.argument("script", required=True, type=str, help="Script to upload.")
+@click.argument("script", required=True, type=str)
 @click.option("--args", required=False, type=str, help="Script args.")
 def submit(cluster_config_file, docker, screen, tmux, stop, start,
            cluster_name, port_forward, script, args):
@@ -609,7 +609,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     target = os.path.join("~", os.path.basename(script))
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
-    cmd = " ".join(["python", target] + args.split(" "))
+    cmd = " ".join(["python", target, args])
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
                  cluster_name, port_forward)
 
