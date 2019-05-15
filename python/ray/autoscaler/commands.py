@@ -448,7 +448,12 @@ def rsync(config_file, source, target, override_cluster_name, down):
             rsync = updater.rsync_down
         else:
             rsync = updater.rsync_up
-        rsync(source, target, check_error=False)
+
+        if source and target:
+            rsync(source, target, check_error=False)
+        else:
+            updater.sync_file_mounts(rsync)
+
     finally:
         provider.cleanup()
 

@@ -529,8 +529,8 @@ def attach(cluster_config_file, start, tmux, cluster_name, new):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
+@click.argument("source", required=False, type=str)
+@click.argument("target", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
@@ -538,13 +538,14 @@ def attach(cluster_config_file, start, tmux, cluster_name, new):
     type=str,
     help="Override the configured cluster name.")
 def rsync_down(cluster_config_file, source, target, cluster_name):
+    assert bool(source) == bool(target), "Must provide source and target."
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
+@click.argument("source", required=False, type=str)
+@click.argument("target", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
@@ -552,6 +553,7 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     type=str,
     help="Override the configured cluster name.")
 def rsync_up(cluster_config_file, source, target, cluster_name):
+    assert bool(source) == bool(target), "Must provide source and target."
     rsync(cluster_config_file, source, target, cluster_name, down=False)
 
 
