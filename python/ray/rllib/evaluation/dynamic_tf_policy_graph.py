@@ -14,22 +14,24 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-def build_tf_graph(
-    name, default_config, postprocess_fn, loss_fn, make_optimizer=None):
-
+def build_tf_graph(name,
+                   default_config,
+                   postprocess_fn,
+                   loss_fn,
+                   make_optimizer=None):
     class graph_cls(DynamicTFPolicyGraph):
         def __init__(self, obs_space, action_space, config):
             config = dict(default_config, **config)
-            DynamicTFPolicyGraph.__init__(
-                self, obs_space, action_space, config, loss_fn)
+            DynamicTFPolicyGraph.__init__(self, obs_space, action_space,
+                                          config, loss_fn)
 
         @override(PolicyGraph)
         def postprocess_trajectory(self,
                                    sample_batch,
                                    other_agent_batches=None,
                                    episode=None):
-            return postprocess_fn(
-                self, sample_batch, other_agent_batches, episode)
+            return postprocess_fn(self, sample_batch, other_agent_batches,
+                                  episode)
 
         @override(TFPolicyGraph)
         def optimizer(self):
@@ -108,10 +110,11 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                     continue
                 elif v.dtype == np.object:
                     continue  # can't handle arbitrary objects in TF
-                shape = (None,) + v.shape[1:]
+                shape = (None, ) + v.shape[1:]
                 placeholder = tf.placeholder(v.dtype, shape=shape, name=k)
                 unroll_tensors[k] = placeholder
-                loss_inputs.append((k, placeholder))  # TODO: prune to used only
+                loss_inputs.append((k,
+                                    placeholder))  # TODO: prune to used only
 
             loss = self._build_loss(unroll_tensors, self.action_dist)
             TFPolicyGraph._initialize_loss(self, loss, loss_inputs)

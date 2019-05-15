@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.evaluation.sample_batch import SampleBatch
