@@ -180,8 +180,8 @@ class DictSpyModel(Model):
             stateful=True)
 
         with tf.control_dependencies([spy_fn]):
-            output = tf.layers.dense(
-                input_dict["obs"]["sensors"]["position"], num_outputs)
+            output = tf.layers.dense(input_dict["obs"]["sensors"]["position"],
+                                     num_outputs)
         return output, output
 
 
