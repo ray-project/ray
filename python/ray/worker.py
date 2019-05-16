@@ -797,7 +797,7 @@ class Worker(object):
         # get the objects from the local object store
         values = self.get_object(object_ids)
         for i, value in enumerate(values):
-            if isinstance(value, RayTaskError):
+            if isinstance(value, RayError):
                 raise value
             else:
                 arguments[object_indices[i]] = value
