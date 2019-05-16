@@ -28,7 +28,8 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
       * Phase 1: the model is created and model variables are initialized.
       * Phase 2: a fake batch of data is created, sent to the trajectory
         postprocessor, and then used to create placeholders for the loss
-        function. The loss function is initialized with these placeholders.
+        function. The loss and stats functions are initialized with these
+        placeholders.
     """
 
     def __init__(self,
@@ -38,10 +39,33 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                  loss_fn,
                  stats_fn=None,
                  autosetup_model=True,
-                 pre_loss_init_fn=None,
+                 before_loss_init=None,
                  action_sampler=None,
                  action_prob=None,
                  existing_inputs=None):
+        """Initialize a dynamic TF policy graph.
+
+        Arguments:
+            observation_space (gym.Space): Observation space of the policy.
+            action_space (gym.Space): Action space of the policy.
+            config (dict): Policy-specific configuration data.
+            loss_fn (func): function that returns a loss tensor the policy
+                graph, and dict of experience tensor placeholders
+            stats_fn (func): optional function that returns a dict of
+                TF fetches given the policy graph and batch input tensors
+            autosetup_model (bool): whether to create a model and action dist
+                using catalog defaults. These will be available as self.model
+                and self.action_dist
+            before_loss_init (func): optional function to run prior to loss
+                init that takes the same arguments as __init__
+            action_sampler (Tensor): if autosetup_model is False, this must be
+                specified to define how the policy computes actions
+            action_prob (Tensor): if autosetup_model is False, this can be
+                specified to define the chosen action probability
+            existing_inputs (OrderedDict): when copying a policy graph, this
+                specifies an existing dict of placeholders to use instead of
+                defining new ones
+        """
         self.config = config
         self.autosetup_model = autosetup_model
         self._loss_fn = loss_fn
@@ -123,7 +147,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             max_seq_len=config["model"]["max_seq_len"])
 
         # Phase 2 init
-        pre_loss_init_fn(self, obs_space, action_space, config)
+        before_loss_init(self, obs_space, action_space, config)
         if not existing_inputs:
             self._initialize_loss()
 
