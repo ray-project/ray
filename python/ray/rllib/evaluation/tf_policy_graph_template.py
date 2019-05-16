@@ -17,9 +17,9 @@ def build_tf_graph(name,
                    postprocess_fn=None,
                    optimizer_fn=None,
                    gradients_fn=None,
-                   pre_init_fn=None,
-                   pre_loss_init_fn=None,
-                   post_init_fn=None,
+                   before_init=None,
+                   before_loss_init=None,
+                   after_init=None,
                    mixins=None):
     """Helper function for creating a dynamic tf policy graph at runtime.
 
@@ -40,11 +40,11 @@ def build_tf_graph(name,
         gradients_fn (func): optional function that returns a list of gradients
             given a tf optimizer and loss tensor. If not specified, this
             defaults to optimizer.compute_gradients(loss)
-        pre_init_fn (func): optional function to run at the beginning of
+        before_init (func): optional function to run at the beginning of
             __init__ that takes the same arguments as __init__
-        pre_loss_init_fn (func): optional function to run prior to loss
+        before_loss_init (func): optional function to run prior to loss
             init that takes the same arguments as __init__
-        post_init_fn (func): optional function to run at the end of __init__
+        after_init (func): optional function to run at the end of __init__
             that takes the same arguments as __init__
         mixins (list): list of any class mixins for the returned policy class
 
@@ -63,12 +63,13 @@ def build_tf_graph(name,
                      existing_inputs=None):
             config = dict(get_default_config(), **config)
 
-            if pre_init_fn:
-                pre_init_fn(self, obs_space, action_space, config)
+            if before_init:
+                before_init(self, obs_space, action_space, config)
 
-            def before_loss_init(policy, obs_space, action_space, config):
-                if pre_loss_init_fn:
-                    pre_loss_init_fn(policy, obs_space, action_space, config)
+            def before_loss_init_wrapper(policy, obs_space, action_space,
+                                         config):
+                if before_loss_init:
+                    before_loss_init(policy, obs_space, action_space, config)
                 if extra_action_fetches_fn is None:
                     self._extra_action_fetches = {}
                 else:
@@ -81,10 +82,11 @@ def build_tf_graph(name,
                 config,
                 loss_fn,
                 stats_fn,
-                pre_loss_init_fn=before_loss_init,
+                before_loss_init=before_loss_init_wrapper,
                 existing_inputs=existing_inputs)
-            if post_init_fn:
-                post_init_fn(self, obs_space, action_space, config)
+
+            if after_init:
+                after_init(self, obs_space, action_space, config)
 
         @override(PolicyGraph)
         def postprocess_trajectory(self,

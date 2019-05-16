@@ -279,5 +279,5 @@ PPOPolicyGraph = build_tf_graph(
     extra_action_fetches_fn=_build_ppo_action_fetches,
     postprocess_fn=_postprocess_ppo_gae,
     gradients_fn=_build_ppo_gradients,
-    pre_loss_init_fn=_setup_mixins,
+    before_loss_init=_setup_mixins,
     mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin])
