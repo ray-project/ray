@@ -5,7 +5,7 @@ from __future__ import print_function
 
 class UsageTrackingDict(dict):
     """Dict that tracks which keys have been accessed.
-    
+
     We make the simplifying assumption only __getitem__ is used to access
     values.
     """
