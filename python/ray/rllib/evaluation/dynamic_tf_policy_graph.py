@@ -116,6 +116,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                     "When autosetup_model=False, action_sampler must be "
                     "passed in to the constructor.")
 
+        # Phase 1 init
         sess = tf.get_default_session()
         TFPolicyGraph.__init__(
             self,
@@ -134,7 +135,9 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             prev_reward_input=prev_rewards,
             seq_lens=self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
-        self._initialize_loss_if_needed()
+
+        # Phase 2 init
+        self._initialize_loss_dynamic()
         sess.run(tf.global_variables_initializer())
 
     @override(PolicyGraph)
@@ -144,10 +147,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
         else:
             return []
 
-    def _initialize_loss_if_needed(self):
-        if self._loss is not None:
-            return  # already created
-
+    def _initialize_loss_dynamic(self):
         def fake_array(tensor):
             shape = tensor.shape.as_list()
             shape[0] = 1
@@ -157,8 +157,10 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             SampleBatch.PREV_ACTIONS: fake_array(self._prev_action_input),
             SampleBatch.PREV_REWARDS: fake_array(self._prev_reward_input),
             SampleBatch.CUR_OBS: fake_array(self._obs_input),
+            SampleBatch.NEXT_OBS: fake_array(self._obs_input),
             SampleBatch.ACTIONS: fake_array(self._sampler),
             SampleBatch.REWARDS: np.array([0], dtype=np.int32),
+            SampleBatch.DONES: np.array([False], dtype=np.bool),
         }
         for k, v in self.extra_compute_action_fetches().items():
             fake_batch[k] = fake_array(v)
