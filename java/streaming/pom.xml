@@ -28,6 +28,11 @@
             <version>${project.version}</version>
         </dependency>
 <dependency>
+  <groupId>com.beust</groupId>
+  <artifactId>jcommander</artifactId>
+  <version>1.72</version>
+</dependency>
+<dependency>
   <groupId>com.google.guava</groupId>
   <artifactId>guava</artifactId>
   <version>27.0.1-jre</version>
@@ -41,6 +46,11 @@
   <groupId>org.slf4j</groupId>
   <artifactId>slf4j-log4j12</artifactId>
   <version>1.7.25</version>
+</dependency>
+<dependency>
+  <groupId>org.testng</groupId>
+  <artifactId>testng</artifactId>
+  <version>6.9.9</version>
 </dependency>
     </dependencies>
 </project>
