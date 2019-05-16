@@ -538,7 +538,6 @@ def attach(cluster_config_file, start, tmux, cluster_name, new):
     type=str,
     help="Override the configured cluster name.")
 def rsync_down(cluster_config_file, source, target, cluster_name):
-    assert bool(source) == bool(target), "Must provide source and target."
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
 
@@ -553,7 +552,6 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     type=str,
     help="Override the configured cluster name.")
 def rsync_up(cluster_config_file, source, target, cluster_name):
-    assert bool(source) == bool(target), "Must provide source and target."
     rsync(cluster_config_file, source, target, cluster_name, down=False)
 
 
