@@ -273,7 +273,7 @@ class Trial(object):
         # Trial config
         self.trainable_name = trainable_name
         self.config = config or {}
-        self.local_dir = os.path.expanduser(local_dir)
+        self.local_dir = local_dir # This remains unexpanded for syncing.
         self.experiment_tag = experiment_tag
         self.resources = (
             resources
@@ -356,8 +356,9 @@ class Trial(object):
         """Init logger."""
 
         if not self.result_logger:
+            local_dir = os.path.expanduser(self.local_dir)
             if not self.logdir:
-                self.logdir = Trial.create_logdir(str(self), self.local_dir)
+                self.logdir = Trial.create_logdir(str(self), local_dir)
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 
