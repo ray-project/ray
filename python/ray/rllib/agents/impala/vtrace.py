@@ -37,8 +37,6 @@ import collections
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
-if tf:
-    nest = tf.contrib.framework.nest
 
 VTraceFromLogitsReturns = collections.namedtuple("VTraceFromLogitsReturns", [
     "vs", "pg_advantages", "log_rhos", "behaviour_action_log_probs",
