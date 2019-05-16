@@ -28,7 +28,7 @@ def build_tf_graph(name,
     """Helper function for creating a dynamic tf policy graph at runtime.
 
     Arguments:
-        name (str): name of the graph (e.g., "PGPolicyGraph")
+        name (str): name of the graph (e.g., "PPOPolicyGraph")
         get_default_config (func): function that returns the default config
             to merge with any overrides
         loss_fn (func): function that returns a loss tensor the policy graph,

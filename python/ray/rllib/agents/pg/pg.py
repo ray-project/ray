@@ -27,7 +27,7 @@ def _make_policy_optimizer(local_ev, remote_evs, config):
     return SyncSamplesOptimizer(local_ev, remote_evs, **optimizer_config)
 
 
-def _make_policy_graph(config):
+def _get_policy_graph(config):
     if config["use_pytorch"]:
         from ray.rllib.agents.pg.torch_pg_policy_graph import \
             PGTorchPolicyGraph
@@ -40,5 +40,5 @@ PGTrainer = build_trainer(
     "PG",
     default_config=DEFAULT_CONFIG,
     default_policy_graph=PGPolicyGraph,
-    make_policy_graph=_make_policy_graph,
+    get_policy_graph=_get_policy_graph,
     make_policy_optimizer=_make_policy_optimizer)
