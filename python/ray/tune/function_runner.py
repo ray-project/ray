@@ -247,7 +247,7 @@ class FunctionRunner(Trainable):
 
 def wrap_function(train_func):
 
-    function_args = inspect.getargspec(train_func).args
+    function_args = inspect.signature(train_func).parameters
     use_track = ("reporter" not in function_args and len(function_args) == 1)
 
     class WrappedFunc(FunctionRunner):
