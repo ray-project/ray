@@ -21,7 +21,7 @@ def build_torch_policy(name,
                        after_init=None,
                        make_model_and_action_dist=None,
                        mixins=None):
-    """Helper function for creating a dynamic tf policy graph at runtime.
+    """Helper function for creating a torch policy graph at runtime.
 
     Arguments:
         name (str): name of the graph (e.g., "PPOPolicyGraph")

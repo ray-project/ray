@@ -40,6 +40,19 @@ def a3c_torch_stats(policy, batch_tensors):
     }
 
 
+def postprocess_torch_a3c(policy,
+                          sample_batch,
+                          other_agent_batches=None,
+                          episode=None):
+    completed = sample_batch[SampleBatch.DONES][-1]
+    if completed:
+        last_r = 0.0
+    else:
+        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1])
+    return compute_advantages(sample_batch, last_r, policy.config["gamma"],
+                              policy.config["lambda"])
+
+
 def a3c_extra_action_out(policy, model_out):
     return {SampleBatch.VF_PREDS: model_out[2].cpu().numpy()}
 
@@ -55,19 +68,6 @@ def a3c_extra_grad_process(policy):
 
 def optimizer(policy):
     return torch.optim.Adam(policy.model.parameters(), lr=policy.config["lr"])
-
-
-def postprocess_torch_a3c(policy,
-                          sample_batch,
-                          other_agent_batches=None,
-                          episode=None):
-    completed = sample_batch[SampleBatch.DONES][-1]
-    if completed:
-        last_r = 0.0
-    else:
-        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1])
-    return compute_advantages(sample_batch, last_r, policy.config["gamma"],
-                              policy.config["lambda"])
 
 
 class ValueNetworkMixin(object):
