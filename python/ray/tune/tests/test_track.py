@@ -75,7 +75,7 @@ class TrackApiTest(unittest.TestCase):
         """Checks that metric state is updated correctly."""
         track.init(trial_name="test_logs")
         session = track.get_session()
-        self.assertEqual(set(session.trial_config.keys()), set(["trial_id"]))
+        self.assertEqual(set(session.trial_config.keys()), {"trial_id"})
 
         result_path = os.path.join(session.logdir, EXPR_RESULT_FILE)
         track.log(test=1)
