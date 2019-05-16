@@ -430,11 +430,12 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         activation = getattr(tf.nn, self.config["actor_hidden_activation"])
         for hidden in self.config["actor_hiddens"]:
             if self.config["parameter_noise"]:
-                action_out = tf.contrib.layers.fully_connected(
+                import tf.contrib.layers as layers
+                action_out = layers.fully_connected(
                     action_out,
                     num_outputs=hidden,
                     activation_fn=activation,
-                    normalizer_fn=tf.contrib.layers.layer_norm)
+                    normalizer_fn=layers.layer_norm)
             else:
                 action_out = tf.layers.dense(
                     action_out, units=hidden, activation=activation)
@@ -503,7 +504,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
             def make_uniform_random_actions():
                 # pure random exploration option
-                uniform_random_actions = tf.random.uniform(
+                uniform_random_actions = tf.random_uniform(
                     tf.shape(deterministic_actions))
                 # rescale uniform random actions according to action range
                 tf_range = tf.constant(action_range[None], dtype="float32")
