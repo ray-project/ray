@@ -2,7 +2,6 @@ package org.ray.runtime.runner.worker;
 
 import org.ray.api.Ray;
 import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.util.WorkerUncaughtExceptionHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,7 +15,9 @@ public class DefaultWorker {
   public static void main(String[] args) {
     try {
       System.setProperty("ray.worker.mode", "WORKER");
-      Thread.setDefaultUncaughtExceptionHandler(new WorkerUncaughtExceptionHandler());
+      Thread.setDefaultUncaughtExceptionHandler((Thread t, Throwable e) -> {
+        LOGGER.error("Uncaught worker exception in thread {}: {}", t, e);
+      });
       Ray.init();
       LOGGER.info("Worker started.");
       ((AbstractRayRuntime)Ray.internal()).loop();
