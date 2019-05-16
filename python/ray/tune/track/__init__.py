@@ -53,10 +53,10 @@ def shutdown():
     _session = None
 
 
-def log(iteration=None, **kwargs):
+def log(**kwargs):
     """Applies TrackSession.log to the trial in the current context."""
     _session = get_session()
-    return _session.log(iteration=iteration, **kwargs)
+    return _session.log(**kwargs)
 
 
 def trial_dir():
