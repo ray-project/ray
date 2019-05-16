@@ -163,7 +163,7 @@ class QNetwork(object):
                         action_out = self.noisy_layer(
                             "hidden_%d" % i, action_out, hiddens[i], sigma0)
                     elif parameter_noise:
-                        import tf.contrib.layers as layers
+                        import tensorflow.contrib.layers as layers
                         action_out = layers.fully_connected(
                             action_out,
                             num_outputs=hiddens[i],

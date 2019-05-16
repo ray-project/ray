@@ -430,7 +430,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         activation = getattr(tf.nn, self.config["actor_hidden_activation"])
         for hidden in self.config["actor_hiddens"]:
             if self.config["parameter_noise"]:
-                import tf.contrib.layers as layers
+                import tensorflow.contrib.layers as layers
                 action_out = layers.fully_connected(
                     action_out,
                     num_outputs=hidden,
