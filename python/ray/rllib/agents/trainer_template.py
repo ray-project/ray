@@ -41,6 +41,10 @@ def build_trainer(name,
         a Trainer instance that uses the specified args.
     """
 
+    if name.endswith("Trainer"):
+        raise ValueError("Algorithm name should not include *Trainer suffix",
+                         name)
+
     class trainer_cls(Trainer):
         _name = name
         _default_config = default_config
@@ -78,5 +82,6 @@ def build_trainer(name,
                 after_train_result(self, res)
             return res
 
-    trainer_cls.__name__ = name
+    trainer_cls.__name__ = name + "Trainer"
+    trainer_cls.__qualname__ = name + "Trainer"
     return trainer_cls

@@ -57,6 +57,9 @@ def build_tf_graph(name,
     if mixins is None:
         mixins = []
 
+    if not name.endswith("PolicyGraph"):
+        raise ValueError("Name should match *PolicyGraph", name)
+
     class graph_cls(*mixins, DynamicTFPolicyGraph):
         def __init__(self,
                      obs_space,
@@ -121,4 +124,5 @@ def build_tf_graph(name,
                 **self._extra_action_fetches)
 
     graph_cls.__name__ = name
+    graph_cls.__qualname__ = name
     return graph_cls
