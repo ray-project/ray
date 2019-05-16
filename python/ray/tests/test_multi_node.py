@@ -251,16 +251,18 @@ if len(error_lines) != 0:
 print("success")
 """
 
-    num_drivers = 3
-    procs = [None] * num_drivers
+    LOG_SIZE = 100
+    NUM_DRIVERS = 3
+    procs = [None] * NUM_DRIVERS
 
-    for idx in range(num_drivers):
+    for idx in range(NUM_DRIVERS):
         i = idx
-        script = driver_script.format(redis_address, (i * 100, (i + 1) * 100),
-                                      (0, num_drivers * 100))
+        script = driver_script.format(redis_address, (i * LOG_SIZE,
+                                                      (i + 1) * LOG_SIZE),
+                                      (0, NUM_DRIVERS * LOG_SIZE))
         procs[idx] = run_string_as_driver_nonblocking(script)
 
-    for idx in range(num_drivers):
+    for idx in range(NUM_DRIVERS):
         wait_for_success_output(procs[idx])
 
 
