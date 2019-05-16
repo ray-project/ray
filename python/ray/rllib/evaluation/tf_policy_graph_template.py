@@ -9,18 +9,18 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 
 
 @DeveloperAPI
-def build_tf_graph(name,
-                   get_default_config,
-                   loss_fn,
-                   stats_fn=None,
-                   extra_action_fetches_fn=None,
-                   postprocess_fn=None,
-                   optimizer_fn=None,
-                   gradients_fn=None,
-                   before_init=None,
-                   before_loss_init=None,
-                   after_init=None,
-                   mixins=None):
+def build_tf_policy(name,
+                    get_default_config,
+                    loss_fn,
+                    stats_fn=None,
+                    extra_action_fetches_fn=None,
+                    postprocess_fn=None,
+                    optimizer_fn=None,
+                    gradients_fn=None,
+                    before_init=None,
+                    before_loss_init=None,
+                    after_init=None,
+                    mixins=None):
     """Helper function for creating a dynamic tf policy graph at runtime.
 
     Arguments:

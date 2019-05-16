@@ -6,6 +6,9 @@ from __future__ import print_function
 class UsageTrackingDict(dict):
     """Dict that tracks which keys have been accessed.
 
+    It can also intercept gets and allow an arbitrary callback to be applied
+    (i.e., to lazily convert numpy arrays to Tensors).
+
     We make the simplifying assumption only __getitem__ is used to access
     values.
     """
@@ -13,7 +16,14 @@ class UsageTrackingDict(dict):
     def __init__(self, *args, **kwargs):
         dict.__init__(self, *args, **kwargs)
         self.accessed_keys = set()
+        self.get_interceptor = None
+
+    def set_get_interceptor(self, fn):
+        self.get_interceptor = fn
 
     def __getitem__(self, key):
         self.accessed_keys.add(key)
-        return dict.__getitem__(self, key)
+        value = dict.__getitem__(self, key)
+        if self.get_interceptor:
+            value = self.get_interceptor(value)
+        return value

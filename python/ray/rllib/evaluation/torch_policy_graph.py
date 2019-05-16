@@ -15,6 +15,7 @@ except ImportError:
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 
 class TorchPolicyGraph(PolicyGraph):
@@ -87,30 +88,26 @@ class TorchPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def learn_on_batch(self, postprocessed_batch):
+        batch_tensors = self._lazy_tensor_dict(postprocessed_batch)
+
         with self.lock:
-            loss_in = []
-            for key in self._loss_inputs:
-                loss_in.append(
-                    torch.from_numpy(postprocessed_batch[key]).to(self.device))
-            loss_out = self._loss(self._model, *loss_in)
+            loss_out = self._compute_loss(batch_tensors)
             self._optimizer.zero_grad()
             loss_out.backward()
 
             grad_process_info = self.extra_grad_process()
             self._optimizer.step()
 
-            grad_info = self.extra_grad_info()
+            grad_info = self.extra_grad_info(batch_tensors)
             grad_info.update(grad_process_info)
             return {LEARNER_STATS_KEY: grad_info}
 
     @override(PolicyGraph)
     def compute_gradients(self, postprocessed_batch):
+        batch_tensors = self._lazy_tensor_dict(postprocessed_batch)
+
         with self.lock:
-            loss_in = []
-            for key in self._loss_inputs:
-                loss_in.append(
-                    torch.from_numpy(postprocessed_batch[key]).to(self.device))
-            loss_out = self._loss(self._model, *loss_in)
+            loss_out = self._compute_loss(batch_tensors)
             self._optimizer.zero_grad()
             loss_out.backward()
 
@@ -125,7 +122,7 @@ class TorchPolicyGraph(PolicyGraph):
                 else:
                     grads.append(None)
 
-            grad_info = self.extra_grad_info()
+            grad_info = self.extra_grad_info(batch_tensors)
             grad_info.update(grad_process_info)
             return grads, {LEARNER_STATS_KEY: grad_info}
 
@@ -163,7 +160,7 @@ class TorchPolicyGraph(PolicyGraph):
             model_out (list): Outputs of the policy model module."""
         return {}
 
-    def extra_grad_info(self):
+    def extra_grad_info(self, batch_tensors):
         """Return dict of extra grad info."""
 
         return {}
@@ -171,3 +168,16 @@ class TorchPolicyGraph(PolicyGraph):
     def optimizer(self):
         """Custom PyTorch optimizer to use."""
         return torch.optim.Adam(self._model.parameters())
+
+    def _compute_loss(self, batch_tensors):
+        loss_in = []
+        for key in self._loss_inputs:
+            loss_in.append(batch_tensors[key])
+        loss_out = self._loss(self._model, *loss_in)
+        return loss_out
+
+    def _lazy_tensor_dict(self, postprocessed_batch):
+        batch_tensors = UsageTrackingDict(postprocessed_batch)
+        batch_tensors.set_get_interceptor(
+            lambda arr: torch.from_numpy(arr).to(self.device))
+        return batch_tensors

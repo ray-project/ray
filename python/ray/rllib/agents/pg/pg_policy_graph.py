@@ -5,7 +5,7 @@ from __future__ import print_function
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
-from ray.rllib.evaluation.tf_policy_graph_template import build_tf_graph
+from ray.rllib.evaluation.tf_policy_graph_template import build_tf_policy
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_tf
 
@@ -32,7 +32,7 @@ def _make_optimizer(policy):
     return tf.train.AdamOptimizer(learning_rate=policy.config["lr"])
 
 
-PGPolicyGraph = build_tf_graph(
+PGPolicyGraph = build_tf_policy(
     name="PGPolicyGraph",
     get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
     postprocess_fn=_postprocess_advantages,

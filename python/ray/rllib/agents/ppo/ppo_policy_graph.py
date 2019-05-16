@@ -9,7 +9,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import LearningRateSchedule
-from ray.rllib.evaluation.tf_policy_graph_template import build_tf_graph
+from ray.rllib.evaluation.tf_policy_graph_template import build_tf_policy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
@@ -271,7 +271,7 @@ def _setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-PPOPolicyGraph = build_tf_graph(
+PPOPolicyGraph = build_tf_policy(
     name="PPOPolicyGraph",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     loss_fn=_build_ppo_loss,
