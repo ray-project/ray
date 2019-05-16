@@ -14,6 +14,7 @@ from ray.rllib.utils.actors import TaskPool, create_colocated
 from ray.rllib.utils.annotations import override
 from ray.rllib.optimizers.aso_aggregator import Aggregator, \
     AggregationWorkerBase
+from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class TreeAggregator(Aggregator):
     def iter_train_batches(self):
         assert self.initialized, "Must call init() before using this class."
         for agg, batches in self.agg_tasks.completed_prefetch():
-            for b in ray.get(batches):
+            for b in ray_get_and_free(batches):
                 self.num_sent_since_broadcast += 1
                 yield b
             agg.set_weights.remote(self.broadcasted_weights)

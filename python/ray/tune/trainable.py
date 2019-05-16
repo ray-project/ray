@@ -210,6 +210,17 @@ class Trainable(object):
 
         return result
 
+    def delete_checkpoint(self, checkpoint_dir):
+        """Removes subdirectory within checkpoint_folder
+        Parameters
+        ----------
+            checkpoint_dir : path to checkpoint
+        """
+        if os.path.isfile(checkpoint_dir):
+            shutil.rmtree(os.path.dirname(checkpoint_dir))
+        else:
+            shutil.rmtree(checkpoint_dir)
+
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 

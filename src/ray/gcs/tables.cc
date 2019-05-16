@@ -38,7 +38,7 @@ namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
+Status Log<ID, Data>::Append(const DriverID &driver_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_appends_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
@@ -48,7 +48,6 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -59,7 +58,7 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
+Status Log<ID, Data>::AppendAt(const DriverID &driver_id, const ID &id,
                                std::shared_ptr<DataT> &dataT, const WriteCallback &done,
                                const WriteCallback &failure, int log_length) {
   num_appends_++;
@@ -73,7 +72,6 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
         (failure)(client_, id, *dataT);
       }
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -84,7 +82,8 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
+Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
+                             const Callback &lookup) {
   num_lookups_++;
   auto callback = [this, id, lookup](const std::string &data) {
     if (lookup != nullptr) {
@@ -101,7 +100,6 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
       }
       lookup(client_, id, results);
     }
-    return true;
   };
   std::vector<uint8_t> nil;
   return GetRedisContext(id)->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
@@ -109,7 +107,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &client_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
   auto subscribe_wrapper = [subscribe](AsyncGcsClient *client, const ID &id,
@@ -118,11 +116,11 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
     RAY_CHECK(notification_mode != GcsTableNotificationMode::REMOVE);
     subscribe(client, id, data);
   };
-  return Subscribe(job_id, client_id, subscribe_wrapper, done);
+  return Subscribe(driver_id, client_id, subscribe_wrapper, done);
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &client_id,
                                 const NotificationCallback &subscribe,
                                 const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
@@ -153,10 +151,8 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
         subscribe(client_, id, root->notification_mode(), results);
       }
     }
-    // We do not delete the callback after calling it since there may be
-    // more subscription messages.
-    return false;
   };
+
   subscribe_callback_index_ = 1;
   for (auto &context : shard_contexts_) {
     RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback,
@@ -166,7 +162,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
+Status Log<ID, Data>::RequestNotifications(const DriverID &driver_id, const ID &id,
                                            const ClientID &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
@@ -176,7 +172,7 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
+Status Log<ID, Data>::CancelNotifications(const DriverID &driver_id, const ID &id,
                                           const ClientID &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
@@ -186,7 +182,7 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-void Log<ID, Data>::Delete(const JobID &job_id, const std::vector<ID> &ids) {
+void Log<ID, Data>::Delete(const DriverID &driver_id, const std::vector<ID> &ids) {
   if (ids.empty()) {
     return;
   }
@@ -210,8 +206,8 @@ void Log<ID, Data>::Delete(const JobID &job_id, const std::vector<ID> &ids) {
 }
 
 template <typename ID, typename Data>
-void Log<ID, Data>::Delete(const JobID &job_id, const ID &id) {
-  Delete(job_id, std::vector<ID>({id}));
+void Log<ID, Data>::Delete(const DriverID &driver_id, const ID &id) {
+  Delete(driver_id, std::vector<ID>({id}));
 }
 
 template <typename ID, typename Data>
@@ -222,14 +218,13 @@ std::string Log<ID, Data>::DebugString() const {
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
+Status Table<ID, Data>::Add(const DriverID &driver_id, const ID &id,
                             std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -240,10 +235,10 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
-                               const FailureCallback &failure) {
+Status Table<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
+                               const Callback &lookup, const FailureCallback &failure) {
   num_lookups_++;
-  return Log<ID, Data>::Lookup(job_id, id,
+  return Log<ID, Data>::Lookup(driver_id, id,
                                [lookup, failure](AsyncGcsClient *client, const ID &id,
                                                  const std::vector<DataT> &data) {
                                  if (data.empty()) {
@@ -260,12 +255,12 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+Status Table<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &client_id,
                                   const Callback &subscribe,
                                   const FailureCallback &failure,
                                   const SubscriptionCallback &done) {
   return Log<ID, Data>::Subscribe(
-      job_id, client_id,
+      driver_id, client_id,
       [subscribe, failure](AsyncGcsClient *client, const ID &id,
                            const std::vector<DataT> &data) {
         RAY_CHECK(data.empty() || data.size() == 1);
@@ -288,14 +283,13 @@ std::string Table<ID, Data>::DebugString() const {
 }
 
 template <typename ID, typename Data>
-Status Set<ID, Data>::Add(const JobID &job_id, const ID &id,
+Status Set<ID, Data>::Add(const DriverID &driver_id, const ID &id,
                           std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -306,14 +300,13 @@ Status Set<ID, Data>::Add(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Set<ID, Data>::Remove(const JobID &job_id, const ID &id,
+Status Set<ID, Data>::Remove(const DriverID &driver_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_removes_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
-    return true;
   };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
@@ -334,11 +327,11 @@ std::string Set<ID, Data>::DebugString() const {
 Status ErrorTable::PushErrorToDriver(const DriverID &driver_id, const std::string &type,
                                      const std::string &error_message, double timestamp) {
   auto data = std::make_shared<ErrorTableDataT>();
-  data->job_id = driver_id.binary();
+  data->driver_id = driver_id.binary();
   data->type = type;
   data->error_message = error_message;
   data->timestamp = timestamp;
-  return Append(JobID(driver_id), driver_id, data, /*done_callback=*/nullptr);
+  return Append(DriverID(driver_id), driver_id, data, /*done_callback=*/nullptr);
 }
 
 std::string ErrorTable::DebugString() const {
@@ -351,7 +344,7 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
   // call "Pack" and undo the "UnPack".
   profile_events.UnPackTo(data.get());
 
-  return Append(JobID::nil(), UniqueID::from_random(), data,
+  return Append(DriverID::nil(), UniqueID::from_random(), data,
                 /*done_callback=*/nullptr);
 }
 
@@ -363,14 +356,14 @@ Status DriverTable::AppendDriverData(const DriverID &driver_id, bool is_dead) {
   auto data = std::make_shared<DriverTableDataT>();
   data->driver_id = driver_id.binary();
   data->is_dead = is_dead;
-  return Append(JobID(driver_id), driver_id, data, /*done_callback=*/nullptr);
+  return Append(DriverID(driver_id), driver_id, data, /*done_callback=*/nullptr);
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && entry.second.is_insertion) {
+    if (!entry.first.is_nil() && (entry.second.entry_type == EntryType::INSERTION)) {
       client_added_callback_(client_, entry.first, entry.second);
     }
   }
@@ -380,8 +373,30 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && !entry.second.is_insertion) {
+    if (!entry.first.is_nil() && entry.second.entry_type == EntryType::DELETION) {
       client_removed_callback_(client_, entry.first, entry.second);
+    }
+  }
+}
+
+void ClientTable::RegisterResourceCreateUpdatedCallback(
+    const ClientTableCallback &callback) {
+  resource_createupdated_callback_ = callback;
+  // Call the callback for any clients that are cached.
+  for (const auto &entry : client_cache_) {
+    if (!entry.first.is_nil() &&
+        (entry.second.entry_type == EntryType::RES_CREATEUPDATE)) {
+      resource_createupdated_callback_(client_, entry.first, entry.second);
+    }
+  }
+}
+
+void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &callback) {
+  resource_deleted_callback_ = callback;
+  // Call the callback for any clients that are cached.
+  for (const auto &entry : client_cache_) {
+    if (!entry.first.is_nil() && entry.second.entry_type == EntryType::RES_DELETE) {
+      resource_deleted_callback_(client_, entry.first, entry.second);
     }
   }
 }
@@ -392,43 +407,102 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   // It's possible to get duplicate notifications from the client table, so
   // check whether this notification is new.
   auto entry = client_cache_.find(client_id);
-  bool is_new;
+  bool is_notif_new;
   if (entry == client_cache_.end()) {
     // If the entry is not in the cache, then the notification is new.
-    is_new = true;
+    is_notif_new = true;
   } else {
     // If the entry is in the cache, then the notification is new if the client
-    // was alive and is now dead.
-    bool was_inserted = entry->second.is_insertion;
-    bool is_deleted = !data.is_insertion;
-    is_new = (was_inserted && is_deleted);
+    // was alive and is now dead or resources have been updated.
+    bool was_not_deleted = (entry->second.entry_type != EntryType::DELETION);
+    bool is_deleted = (data.entry_type == EntryType::DELETION);
+    bool is_res_modified = ((data.entry_type == EntryType::RES_CREATEUPDATE) ||
+                            (data.entry_type == EntryType::RES_DELETE));
+    is_notif_new = (was_not_deleted && (is_deleted || is_res_modified));
     // Once a client with a given ID has been removed, it should never be added
     // again. If the entry was in the cache and the client was deleted, check
     // that this new notification is not an insertion.
-    if (!entry->second.is_insertion) {
-      RAY_CHECK(!data.is_insertion)
+    if (entry->second.entry_type == EntryType::DELETION) {
+      RAY_CHECK((data.entry_type == EntryType::DELETION))
           << "Notification for addition of a client that was already removed:"
           << client_id;
     }
   }
 
   // Add the notification to our cache. Notifications are idempotent.
-  client_cache_[client_id] = data;
+  // If it is a new client or a client removal, add as is
+  if ((data.entry_type == EntryType::INSERTION) ||
+      (data.entry_type == EntryType::DELETION)) {
+    RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable Insertion/Deletion "
+                      "notification for client id "
+                   << client_id << ". EntryType: " << int(data.entry_type)
+                   << ". Setting the client cache to data.";
+    client_cache_[client_id] = data;
+  } else if ((data.entry_type == EntryType::RES_CREATEUPDATE) ||
+             (data.entry_type == EntryType::RES_DELETE)) {
+    RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable RES_CREATEUPDATE "
+                      "notification for client id "
+                   << client_id << ". EntryType: " << int(data.entry_type)
+                   << ". Updating the client cache with the delta from the log.";
+
+    ClientTableDataT &cache_data = client_cache_[client_id];
+    // Iterate over all resources in the new create/update notification
+    for (std::vector<int>::size_type i = 0; i != data.resources_total_label.size(); i++) {
+      auto const &resource_name = data.resources_total_label[i];
+      auto const &capacity = data.resources_total_capacity[i];
+
+      // If resource exists in the ClientTableData, update it, else create it
+      auto existing_resource_label =
+          std::find(cache_data.resources_total_label.begin(),
+                    cache_data.resources_total_label.end(), resource_name);
+      if (existing_resource_label != cache_data.resources_total_label.end()) {
+        auto index = std::distance(cache_data.resources_total_label.begin(),
+                                   existing_resource_label);
+        // Resource already exists, set capacity if updation call..
+        if (data.entry_type == EntryType::RES_CREATEUPDATE) {
+          cache_data.resources_total_capacity[index] = capacity;
+        }
+        // .. delete if deletion call.
+        else if (data.entry_type == EntryType::RES_DELETE) {
+          cache_data.resources_total_label.erase(
+              cache_data.resources_total_label.begin() + index);
+          cache_data.resources_total_capacity.erase(
+              cache_data.resources_total_capacity.begin() + index);
+        }
+      } else {
+        // Resource does not exist, create resource and add capacity if it was a resource
+        // create call.
+        if (data.entry_type == EntryType::RES_CREATEUPDATE) {
+          cache_data.resources_total_label.push_back(resource_name);
+          cache_data.resources_total_capacity.push_back(capacity);
+        }
+      }
+    }
+  }
 
   // If the notification is new, call any registered callbacks.
-  if (is_new) {
-    if (data.is_insertion) {
+  ClientTableDataT &cache_data = client_cache_[client_id];
+  if (is_notif_new) {
+    if (data.entry_type == EntryType::INSERTION) {
       if (client_added_callback_ != nullptr) {
-        client_added_callback_(client, client_id, data);
+        client_added_callback_(client, client_id, cache_data);
       }
       RAY_CHECK(removed_clients_.find(client_id) == removed_clients_.end());
-    } else {
+    } else if (data.entry_type == EntryType::DELETION) {
       // NOTE(swang): The client should be added to this data structure before
       // the callback gets called, in case the callback depends on the data
       // structure getting updated.
       removed_clients_.insert(client_id);
       if (client_removed_callback_ != nullptr) {
-        client_removed_callback_(client, client_id, data);
+        client_removed_callback_(client, client_id, cache_data);
+      }
+    } else if (data.entry_type == EntryType::RES_CREATEUPDATE) {
+      if (resource_createupdated_callback_ != nullptr) {
+        resource_createupdated_callback_(client, client_id, cache_data);
+      }
+    } else if (data.entry_type == EntryType::RES_DELETE) {
+      if (resource_deleted_callback_ != nullptr) {
+        resource_deleted_callback_(client, client_id, cache_data);
       }
     }
   }
@@ -456,7 +530,7 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
 
   // Construct the data to add to the client table.
   auto data = std::make_shared<ClientTableDataT>(local_client_);
-  data->is_insertion = true;
+  data->entry_type = EntryType::INSERTION;
   // Callback to handle our own successful connection once we've added
   // ourselves.
   auto add_callback = [this](AsyncGcsClient *client, const UniqueID &log_key,
@@ -474,7 +548,7 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
       for (auto &notification : notifications) {
         // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
         // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
-        if (notification.is_insertion) {
+        if (notification.entry_type != EntryType::DELETION) {
           connected_nodes.emplace(notification.client_id, notification);
         } else {
           auto iter = connected_nodes.find(notification.client_id);
@@ -494,27 +568,27 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
     // Callback to request notifications from the client table once we've
     // successfully subscribed.
     auto subscription_callback = [this](AsyncGcsClient *c) {
-      RAY_CHECK_OK(RequestNotifications(JobID::nil(), client_log_key_, client_id_));
+      RAY_CHECK_OK(RequestNotifications(DriverID::nil(), client_log_key_, client_id_));
     };
     // Subscribe to the client table.
-    RAY_CHECK_OK(Subscribe(JobID::nil(), client_id_, notification_callback,
+    RAY_CHECK_OK(Subscribe(DriverID::nil(), client_id_, notification_callback,
                            subscription_callback));
   };
-  return Append(JobID::nil(), client_log_key_, data, add_callback);
+  return Append(DriverID::nil(), client_log_key_, data, add_callback);
 }
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto data = std::make_shared<ClientTableDataT>(local_client_);
-  data->is_insertion = false;
+  data->entry_type = EntryType::DELETION;
   auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
                                        const ClientTableDataT &data) {
     HandleConnected(client, data);
-    RAY_CHECK_OK(CancelNotifications(JobID::nil(), client_log_key_, id));
+    RAY_CHECK_OK(CancelNotifications(DriverID::nil(), client_log_key_, id));
     if (callback != nullptr) {
       callback();
     }
   };
-  RAY_RETURN_NOT_OK(Append(JobID::nil(), client_log_key_, data, add_callback));
+  RAY_RETURN_NOT_OK(Append(DriverID::nil(), client_log_key_, data, add_callback));
   // We successfully added the deletion entry. Mark ourselves as disconnected.
   disconnected_ = true;
   return Status::OK();
@@ -523,8 +597,8 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   auto data = std::make_shared<ClientTableDataT>();
   data->client_id = dead_client_id.binary();
-  data->is_insertion = false;
-  return Append(JobID::nil(), client_log_key_, data, nullptr);
+  data->entry_type = EntryType::DELETION;
+  return Append(DriverID::nil(), client_log_key_, data, nullptr);
 }
 
 void ClientTable::GetClient(const ClientID &client_id,
@@ -544,7 +618,7 @@ const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients
 
 Status ClientTable::Lookup(const Callback &lookup) {
   RAY_CHECK(lookup != nullptr);
-  return Log::Lookup(JobID::nil(), client_log_key_, lookup);
+  return Log::Lookup(DriverID::nil(), client_log_key_, lookup);
 }
 
 std::string ClientTable::DebugString() const {
@@ -555,10 +629,10 @@ std::string ClientTable::DebugString() const {
   return result.str();
 }
 
-Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
+Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id) {
-  auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
+  auto lookup_callback = [this, checkpoint_id, driver_id, actor_id](
       ray::gcs::AsyncGcsClient *client, const UniqueID &id,
       const ActorCheckpointIdDataT &data) {
     std::shared_ptr<ActorCheckpointIdDataT> copy =
@@ -574,20 +648,20 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                      << actor_id;
       copy->timestamps.erase(copy->timestamps.begin());
       copy->checkpoint_ids.erase(0, kUniqueIDSize);
-      client_->actor_checkpoint_table().Delete(job_id, checkpoint_id);
+      client_->actor_checkpoint_table().Delete(driver_id, checkpoint_id);
     }
-    RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
+    RAY_CHECK_OK(Add(driver_id, actor_id, copy, nullptr));
   };
-  auto failure_callback = [this, checkpoint_id, job_id, actor_id](
+  auto failure_callback = [this, checkpoint_id, driver_id, actor_id](
       ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
     std::shared_ptr<ActorCheckpointIdDataT> data =
         std::make_shared<ActorCheckpointIdDataT>();
     data->actor_id = id.binary();
     data->timestamps.push_back(current_sys_time_ms());
     data->checkpoint_ids = checkpoint_id.binary();
-    RAY_CHECK_OK(Add(job_id, actor_id, data, nullptr));
+    RAY_CHECK_OK(Add(driver_id, actor_id, data, nullptr));
   };
-  return Lookup(job_id, actor_id, lookup_callback, failure_callback);
+  return Lookup(driver_id, actor_id, lookup_callback, failure_callback);
 }
 
 template class Log<ObjectID, ObjectTableData>;

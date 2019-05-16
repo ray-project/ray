@@ -18,12 +18,13 @@ more info.
 """
 
 import numpy as np
-import tensorflow as tf
-import tensorflow.contrib.rnn as rnn
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
 from ray.rllib.utils.annotations import override, DeveloperAPI, PublicAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class LSTM(Model):
@@ -37,6 +38,8 @@ class LSTM(Model):
 
     @override(Model)
     def _build_layers_v2(self, input_dict, num_outputs, options):
+        import tensorflow.contrib.rnn as rnn
+
         cell_size = options.get("lstm_cell_size")
         if options.get("lstm_use_prev_action_reward"):
             action_dim = int(
@@ -56,7 +59,7 @@ class LSTM(Model):
         last_layer = add_time_dimension(features, self.seq_lens)
 
         # Setup the LSTM cell
-        lstm = rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
+        lstm = tf.nn.rnn_cell.LSTMCell(cell_size, state_is_tuple=True)
         self.state_init = [
             np.zeros(lstm.state_size.c, np.float32),
             np.zeros(lstm.state_size.h, np.float32)
@@ -121,6 +124,7 @@ def add_time_dimension(padded_inputs, seq_lens):
 
 @DeveloperAPI
 def chop_into_sequences(episode_ids,
+                        unroll_ids,
                         agent_indices,
                         feature_columns,
                         state_columns,
@@ -131,6 +135,8 @@ def chop_into_sequences(episode_ids,
 
     Arguments:
         episode_ids (list): List of episode ids for each step.
+        unroll_ids (list): List of identifiers for the sample batch. This is
+            used to make sure sequences are cut between sample batches.
         agent_indices (list): List of agent ids for each step. Note that this
             has to be combined with episode_ids for uniqueness.
         feature_columns (list): List of arrays containing features.
@@ -150,7 +156,9 @@ def chop_into_sequences(episode_ids,
 
     Examples:
         >>> f_pad, s_init, seq_lens = chop_into_sequences(
-                episode_id=[1, 1, 5, 5, 5, 5],
+                episode_ids=[1, 1, 5, 5, 5, 5],
+                unroll_ids=[4, 4, 4, 4, 4, 4],
+                agent_indices=[0, 0, 0, 0, 0, 0],
                 feature_columns=[[4, 4, 8, 8, 8, 8],
                                  [1, 1, 0, 1, 1, 0]],
                 state_columns=[[4, 5, 4, 5, 5, 5]],
@@ -167,7 +175,9 @@ def chop_into_sequences(episode_ids,
     prev_id = None
     seq_lens = []
     seq_len = 0
-    unique_ids = np.add(episode_ids, agent_indices)
+    unique_ids = np.add(
+        np.add(episode_ids, agent_indices),
+        np.array(unroll_ids) << 32)
     for uid in unique_ids:
         if (prev_id is not None and uid != prev_id) or \
                 seq_len >= max_seq_len:

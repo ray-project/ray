@@ -42,6 +42,16 @@ Environments
 * `Interfacing with External Agents <rllib-env.html#interfacing-with-external-agents>`__
 * `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
+Models and Preprocessors
+------------------------
+* `RLlib Models and Preprocessors Overview <rllib-models.html>`__
+* `Custom Models (TensorFlow) <rllib-models.html#custom-models-tensorflow>`__
+* `Custom Models (PyTorch) <rllib-models.html#custom-models-pytorch>`__
+* `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
+* `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
+* `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
+* `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
+
 Algorithms
 ----------
 
@@ -79,22 +89,29 @@ Algorithms
 
    -  `Advantage Re-Weighted Imitation Learning (MARWIL) <rllib-algorithms.html#advantage-re-weighted-imitation-learning-marwil>`__
 
-Models and Preprocessors
-------------------------
-* `RLlib Models and Preprocessors Overview <rllib-models.html>`__
-* `Custom Models (TensorFlow) <rllib-models.html#custom-models-tensorflow>`__
-* `Custom Models (PyTorch) <rllib-models.html#custom-models-pytorch>`__
-* `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
-* `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
-* `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
-* `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
-
 Offline Datasets
 ----------------
 * `Working with Offline Datasets <rllib-offline.html>`__
 * `Input Pipeline for Supervised Losses <rllib-offline.html#input-pipeline-for-supervised-losses>`__
 * `Input API <rllib-offline.html#input-api>`__
 * `Output API <rllib-offline.html#output-api>`__
+
+Concepts
+--------
+* `Policy Graphs <rllib-concepts.html>`__
+* `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
+* `Policy Optimization <rllib-concepts.html#policy-optimization>`__
+* `Trainers <rllib-concepts.html#trainers>`__
+
+Examples
+--------
+
+* `Tuned Examples <rllib-examples.html#tuned-examples>`__
+* `Training Workflows <rllib-examples.html#training-workflows>`__
+* `Custom Envs and Models <rllib-examples.html#custom-envs-and-models>`__
+* `Serving and Offline <rllib-examples.html#serving-and-offline>`__
+* `Multi-Agent and Hierarchical <rllib-examples.html#multi-agent-and-hierarchical>`__
+* `Community Examples <rllib-examples.html#community-examples>`__
 
 Development
 -----------
@@ -105,12 +122,6 @@ Development
 * `Benchmarks <rllib-dev.html#benchmarks>`__
 * `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
 
-Concepts
---------
-* `Policy Graphs <rllib-concepts.html>`__
-* `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
-* `Policy Optimization <rllib-concepts.html#policy-optimization>`__
-
 Package Reference
 -----------------
 * `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
@@ -119,11 +130,6 @@ Package Reference
 * `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
 * `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 * `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
-
-Examples
---------
-
-You can find an index of RLlib code examples on `this page <rllib-examples.html>`__. This includes tuned hyperparameters, demo scripts on how to use specific features of RLlib, and several community examples of applications built on RLlib.
 
 Troubleshooting
 ---------------

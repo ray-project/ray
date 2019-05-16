@@ -12,8 +12,8 @@ import tensorflow as tf
 import unittest
 
 import ray
-from ray.rllib.agents.a3c import A2CAgent
-from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.a3c import A2CTrainer
+from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import BaseEnv
@@ -215,7 +215,7 @@ class TupleSpyModel(Model):
 class NestedSpacesTest(unittest.TestCase):
     def testInvalidModel(self):
         ModelCatalog.register_custom_model("invalid", InvalidModel)
-        self.assertRaises(ValueError, lambda: PGAgent(
+        self.assertRaises(ValueError, lambda: PGTrainer(
             env="CartPole-v0", config={
                 "model": {
                     "custom_model": "invalid",
@@ -226,7 +226,7 @@ class NestedSpacesTest(unittest.TestCase):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
         self.assertRaisesRegexp(
             ValueError, "Expected output.*",
-            lambda: PGAgent(
+            lambda: PGTrainer(
                 env="CartPole-v0", config={
                     "model": {
                         "custom_model": "invalid2",
@@ -236,7 +236,7 @@ class NestedSpacesTest(unittest.TestCase):
     def doTestNestedDict(self, make_env, test_lstm=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
-        pg = PGAgent(
+        pg = PGTrainer(
             env="nested",
             config={
                 "num_workers": 0,
@@ -265,7 +265,7 @@ class NestedSpacesTest(unittest.TestCase):
     def doTestNestedTuple(self, make_env):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
         register_env("nested2", make_env)
-        pg = PGAgent(
+        pg = PGTrainer(
             env="nested2",
             config={
                 "num_workers": 0,
@@ -323,7 +323,7 @@ class NestedSpacesTest(unittest.TestCase):
         ModelCatalog.register_custom_model("tuple_spy", TupleSpyModel)
         register_env("nested_ma", lambda _: NestedMultiAgentEnv())
         act_space = spaces.Discrete(2)
-        pg = PGAgent(
+        pg = PGTrainer(
             env="nested_ma",
             config={
                 "num_workers": 0,
@@ -370,13 +370,13 @@ class NestedSpacesTest(unittest.TestCase):
 
     def testRolloutDictSpace(self):
         register_env("nested", lambda _: NestedDictEnv())
-        agent = PGAgent(env="nested")
+        agent = PGTrainer(env="nested")
         agent.train()
         path = agent.save()
         agent.stop()
 
         # Test train works on restore
-        agent2 = PGAgent(env="nested")
+        agent2 = PGTrainer(env="nested")
         agent2.restore(path)
         agent2.train()
 
@@ -386,7 +386,7 @@ class NestedSpacesTest(unittest.TestCase):
     def testPyTorchModel(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)
         register_env("nested", lambda _: NestedDictEnv())
-        a2c = A2CAgent(
+        a2c = A2CTrainer(
             env="nested",
             config={
                 "num_workers": 0,

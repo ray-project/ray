@@ -32,6 +32,7 @@ from ray.includes.libraylet cimport (
 from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CObjectID,
+    CClientID,
 )
 from ray.includes.task cimport CTaskSpecification
 from ray.includes.ray_config cimport RayConfig
@@ -349,9 +350,9 @@ cdef class RayletClient:
 
         check_status(self.client.get().PushProfileEvents(profile_info))
 
-    def free_objects(self, object_ids, c_bool local_only):
+    def free_objects(self, object_ids, c_bool local_only, c_bool delete_creating_tasks):
         cdef c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
-        check_status(self.client.get().FreeObjects(free_ids, local_only))
+        check_status(self.client.get().FreeObjects(free_ids, local_only, delete_creating_tasks))
 
     def prepare_actor_checkpoint(self, ActorID actor_id):
         cdef CActorCheckpointID checkpoint_id
@@ -367,6 +368,9 @@ cdef class RayletClient:
                                              ActorCheckpointID checkpoint_id):
         check_status(self.client.get().NotifyActorResumedFromCheckpoint(
             actor_id.native(), checkpoint_id.native()))
+
+    def set_resource(self, basestring resource_name, double capacity, ClientID client_id):
+        self.client.get().SetResource(resource_name.encode("ascii"), capacity, CClientID.from_binary(client_id.binary()))
 
     @property
     def language(self):

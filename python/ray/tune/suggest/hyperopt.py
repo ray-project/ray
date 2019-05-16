@@ -120,8 +120,8 @@ class HyperOptSearch(SuggestionAlgorithm):
         if ho_trial is None:
             return
         now = hpo.utils.coarse_utcnow()
-        ho_trial['book_time'] = now
-        ho_trial['refresh_time'] = now
+        ho_trial["book_time"] = now
+        ho_trial["refresh_time"] = now
 
     def on_trial_complete(self,
                           trial_id,
@@ -136,17 +136,17 @@ class HyperOptSearch(SuggestionAlgorithm):
         ho_trial = self._get_hyperopt_trial(trial_id)
         if ho_trial is None:
             return
-        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
+        ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
         if error:
-            ho_trial['state'] = hpo.base.JOB_STATE_ERROR
-            ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
+            ho_trial["state"] = hpo.base.JOB_STATE_ERROR
+            ho_trial["misc"]["error"] = (str(TuneError), "Tune Error")
         elif early_terminated:
-            ho_trial['state'] = hpo.base.JOB_STATE_ERROR
-            ho_trial['misc']['error'] = (str(TuneError), "Tune Removed")
+            ho_trial["state"] = hpo.base.JOB_STATE_ERROR
+            ho_trial["misc"]["error"] = (str(TuneError), "Tune Removed")
         else:
-            ho_trial['state'] = hpo.base.JOB_STATE_DONE
+            ho_trial["state"] = hpo.base.JOB_STATE_DONE
             hp_result = self._to_hyperopt_result(result)
-            ho_trial['result'] = hp_result
+            ho_trial["result"] = hp_result
         self._hpopt_trials.refresh()
         del self._live_trial_mapping[trial_id]
 

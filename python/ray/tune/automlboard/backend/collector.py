@@ -63,9 +63,9 @@ class CollectorService(object):
         """Initialize logger settings."""
         logger = logging.getLogger("AutoMLBoard")
         handler = logging.StreamHandler()
-        formatter = logging.Formatter('[%(levelname)s %(asctime)s] '
-                                      '%(filename)s: %(lineno)d  '
-                                      '%(message)s')
+        formatter = logging.Formatter("[%(levelname)s %(asctime)s] "
+                                      "%(filename)s: %(lineno)d  "
+                                      "%(message)s")
         handler.setFormatter(formatter)
         logger.setLevel(log_level)
         logger.addHandler(handler)
@@ -294,7 +294,7 @@ class Collector(Thread):
         meta = parse_json(meta_file)
 
         if not meta:
-            job_name = job_dir.split('/')[-1]
+            job_name = job_dir.split("/")[-1]
             user = os.environ.get("USER", None)
             meta = {
                 "job_id": job_name,
@@ -325,7 +325,7 @@ class Collector(Thread):
         meta = parse_json(meta_file)
 
         if not meta:
-            job_id = expr_dir.split('/')[-2]
+            job_id = expr_dir.split("/")[-2]
             trial_id = expr_dir[-8:]
             params = parse_json(os.path.join(expr_dir, EXPR_PARARM_FILE))
             meta = {

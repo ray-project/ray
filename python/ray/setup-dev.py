@@ -17,7 +17,7 @@ def do_link(package, force=False):
     package_home = os.path.abspath(
         os.path.join(ray.__file__, "../{}".format(package)))
     local_home = os.path.abspath(
-        os.path.join(__file__, "../../{}".format(package)))
+        os.path.join(__file__, "../{}".format(package)))
     assert os.path.isdir(package_home), package_home
     assert os.path.isdir(local_home), local_home
     if not force and not click.confirm(
@@ -40,13 +40,15 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Setup dev.")
     parser.add_argument(
-        "--yes", action='store_true', help="Don't ask for confirmation.")
+        "--yes", action="store_true", help="Don't ask for confirmation.")
     args = parser.parse_args()
 
     do_link("rllib", force=args.yes)
     do_link("tune", force=args.yes)
     do_link("autoscaler", force=args.yes)
     do_link("scripts", force=args.yes)
+    do_link("internal", force=args.yes)
+    do_link("experimental", force=args.yes)
     print("Created links.\n\nIf you run into issues initializing Ray, please "
           "ensure that your local repo and the installed Ray are in sync "
           "(pip install -U the latest wheels at "

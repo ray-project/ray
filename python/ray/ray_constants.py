@@ -100,7 +100,7 @@ LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
 LOGGER_FORMAT_HELP = "The logging format. default='{}'".format(LOGGER_FORMAT)
 LOGGER_LEVEL = "info"
-LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
+LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
 

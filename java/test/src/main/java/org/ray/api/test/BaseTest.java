@@ -20,7 +20,6 @@ public class BaseTest {
   public void setUpBase(Method method) {
     LOGGER.info("===== Running test: "
         + method.getDeclaringClass().getName() + "." + method.getName());
-    System.setProperty("ray.resources", "CPU:4,RES-A:4");
     Ray.init();
     // These files need to be deleted after each test case.
     filesToDelete = ImmutableList.of(
@@ -38,9 +37,6 @@ public class BaseTest {
     for (File file : filesToDelete) {
       file.delete();
     }
-
-    // Unset system properties.
-    System.clearProperty("ray.resources");
   }
 
 }

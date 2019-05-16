@@ -26,7 +26,7 @@ def run_func(func, *args, **kwargs):
     return result
 
 
-@click.group(context_settings={'help_option_names': ['-h', '--help']})
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
 def cli():
     """Working with Cython actors and functions in Ray"""
 

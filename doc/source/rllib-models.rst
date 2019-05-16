@@ -127,7 +127,7 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
     ModelCatalog.register_custom_model("my_model", MyModelClass)
 
     ray.init()
-    agent = ppo.PPOAgent(env="CartPole-v0", config={
+    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
         "model": {
             "custom_model": "my_model",
             "custom_options": {},  # extra options to pass to your model
@@ -220,7 +220,7 @@ Similarly, you can create and register custom PyTorch models for use with PyTorc
     ModelCatalog.register_custom_model("my_model", CustomTorchModel)
 
     ray.init()
-    agent = a3c.A2CAgent(env="CartPole-v0", config={
+    trainer = a3c.A2CTrainer(env="CartPole-v0", config={
         "use_pytorch": True,
         "model": {
             "custom_model": "my_model",
@@ -249,7 +249,7 @@ Custom preprocessors should subclass the RLlib `preprocessor class <https://gith
     ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
 
     ray.init()
-    agent = ppo.PPOAgent(env="CartPole-v0", config={
+    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
         "model": {
             "custom_preprocessor": "my_prep",
             "custom_options": {},  # extra options to pass to your preprocessor
@@ -315,7 +315,7 @@ Depending on your use case it may make sense to use just the masking, just actio
 Customizing Policy Graphs
 -------------------------
 
-For deeper customization of algorithms, you can modify the policy graphs of the agent classes. Here's an example of extending the DDPG policy graph to specify custom sub-network modules:
+For deeper customization of algorithms, you can modify the policy graphs of the trainer classes. Here's an example of extending the DDPG policy graph to specify custom sub-network modules:
 
 .. code-block:: python
 
@@ -349,15 +349,15 @@ For deeper customization of algorithms, you can modify the policy graphs of the 
                 self.config["critic_hiddens"],
                 self.config["critic_hidden_activation"]).value
 
-Then, you can create an agent with your custom policy graph by:
+Then, you can create an trainer with your custom policy graph by:
 
 .. code-block:: python
 
-    from ray.rllib.agents.ddpg.ddpg import DDPGAgent
+    from ray.rllib.agents.ddpg.ddpg import DDPGTrainer
     from custom_policy_graph import CustomDDPGPolicyGraph
 
-    DDPGAgent._policy_graph = CustomDDPGPolicyGraph
-    agent = DDPGAgent(...)
+    DDPGTrainer._policy_graph = CustomDDPGPolicyGraph
+    trainer = DDPGTrainer(...)
 
 In this example we overrode existing methods of the existing DDPG policy graph, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
 

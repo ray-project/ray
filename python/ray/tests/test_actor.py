@@ -1402,13 +1402,13 @@ def test_actor_init_fails(ray_start_cluster_head):
             return self.x
 
     # Create many actors. It should take a while to finish initializing them.
-    actors = [Counter.remote() for _ in range(100)]
+    actors = [Counter.remote() for _ in range(15)]
     # Allow some time to forward the actor creation tasks to the other node.
     time.sleep(0.1)
     # Kill the second node.
     cluster.remove_node(remote_node)
 
-    # Get all of the results
+    # Get all of the results.
     results = ray.get([actor.inc.remote() for actor in actors])
     assert results == [1 for actor in actors]
 
@@ -2576,3 +2576,35 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 2
     assert error_message1 in errors[1]["message"]
+
+
+def test_decorated_method(ray_start_regular):
+    def method_invocation_decorator(f):
+        def new_f_invocation(args, kwargs):
+            # Split one argument into two. Return th kwargs without passing
+            # them into the actor.
+            return f([args[0], args[0]], {}), kwargs
+
+        return new_f_invocation
+
+    def method_execution_decorator(f):
+        def new_f_execution(self, b, c):
+            # Turn two arguments into one.
+            return f(self, b + c)
+
+        new_f_execution.__ray_invocation_decorator__ = (
+            method_invocation_decorator)
+        return new_f_execution
+
+    @ray.remote
+    class Actor(object):
+        @method_execution_decorator
+        def decorated_method(self, x):
+            return x + 1
+
+    a = Actor.remote()
+
+    object_id, extra = a.decorated_method.remote(3, kwarg=3)
+    assert isinstance(object_id, ray.ObjectID)
+    assert extra == {"kwarg": 3}
+    assert ray.get(object_id) == 7  # 2 * 3 + 1

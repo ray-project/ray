@@ -6,7 +6,7 @@ java_library(
     data = [":plasma_client_java"],
     visibility = ["//visibility:public"],
     deps = [
-        "@org_slf4j_slf4j_api//jar",
+        "@maven//:org_slf4j_slf4j_api",
     ],
 )
 
@@ -17,7 +17,7 @@ java_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":org_apache_arrow_arrow_plasma",
-        "@junit_junit//jar",
+        "@maven//:junit_junit",
     ],
 )
 

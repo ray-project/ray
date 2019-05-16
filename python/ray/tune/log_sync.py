@@ -15,6 +15,7 @@ import ray
 from ray.tune.syncer import CommandSyncer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.sample import function as tune_function
 
 logger = logging.getLogger(__name__)
 _log_sync_warned = False

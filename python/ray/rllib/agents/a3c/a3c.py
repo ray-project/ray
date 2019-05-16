@@ -5,7 +5,7 @@ from __future__ import print_function
 import time
 
 from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils.annotations import override
 
@@ -38,14 +38,14 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class A3CAgent(Agent):
+class A3CTrainer(Trainer):
     """A3C implementations in TensorFlow and PyTorch."""
 
-    _agent_name = "A3C"
+    _name = "A3C"
     _default_config = DEFAULT_CONFIG
     _policy_graph = A3CPolicyGraph
 
-    @override(Agent)
+    @override(Trainer)
     def _init(self, config, env_creator):
         if config["use_pytorch"]:
             from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
@@ -63,7 +63,7 @@ class A3CAgent(Agent):
             env_creator, policy_cls, config["num_workers"])
         self.optimizer = self._make_optimizer()
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()
@@ -77,4 +77,4 @@ class A3CAgent(Agent):
     def _make_optimizer(self):
         return AsyncGradientsOptimizer(self.local_evaluator,
                                        self.remote_evaluators,
-                                       self.config["optimizer"])
+                                       **self.config["optimizer"])

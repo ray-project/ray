@@ -31,7 +31,8 @@ PY3 = sys.version_info.major >= 3
 class Node(object):
     """An encapsulation of the Ray processes on a single node.
 
-    This class is responsible for starting Ray processes and killing them.
+    This class is responsible for starting Ray processes and killing them,
+    and it also controls the temp file policy.
 
     Attributes:
         all_processes (dict): A mapping from process type (str) to a list of
@@ -61,43 +62,89 @@ class Node(object):
         if shutdown_at_exit and connect_only:
             raise ValueError("'shutdown_at_exit' and 'connect_only' cannot "
                              "be both true.")
+        self.head = head
         self.all_processes = {}
 
+        # Try to get node IP address with the parameters.
+        if ray_params.node_ip_address:
+            node_ip_address = ray_params.node_ip_address
+        elif ray_params.redis_address:
+            node_ip_address = ray.services.get_node_ip_address(
+                ray_params.redis_address)
+        else:
+            node_ip_address = ray.services.get_node_ip_address()
+        self._node_ip_address = node_ip_address
+
         ray_params.update_if_absent(
-            node_ip_address=ray.services.get_node_ip_address(),
             include_log_monitor=True,
             resources={},
             include_webui=False,
+            temp_dir="/tmp/ray",
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
 
         self._ray_params = ray_params
-
-        self._node_ip_address = ray_params.node_ip_address
         self._redis_address = ray_params.redis_address
         self._config = (json.loads(ray_params._internal_config)
                         if ray_params._internal_config else None)
 
         if head:
-            ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
-            self._plasma_store_socket_name = None
-            self._raylet_socket_name = None
-            self._webui_url = None
+            redis_client = None
+            # date including microsecond
+            date_str = datetime.datetime.today().strftime(
+                "%Y-%m-%d_%H-%M-%S_%f")
+            self.session_name = "session_{date_str}_{pid}".format(
+                pid=os.getpid(), date_str=date_str)
         else:
+            redis_client = self.create_redis_client()
+            self.session_name = ray.utils.decode(
+                redis_client.get("session_name"))
+
+        self._init_temp(redis_client)
+
+        if connect_only:
+            # Get socket names from the configuration.
             self._plasma_store_socket_name = (
                 ray_params.plasma_store_socket_name)
             self._raylet_socket_name = ray_params.raylet_socket_name
-            redis_client = self.create_redis_client()
-            # TODO(suquark): Replace _webui_url_helper in worker.py in
-            # another PR.
-            _webui_url = redis_client.hmget("webui", "url")[0]
-            self._webui_url = (ray.utils.decode(_webui_url)
-                               if _webui_url is not None else None)
+
+            # If user does not provide the socket name, get it from Redis.
+            if (self._plasma_store_socket_name is None
+                    or self._raylet_socket_name is None):
+                # Get the address info of the processes to connect to
+                # from Redis.
+                address_info = ray.services.get_address_info_from_redis(
+                    self.redis_address,
+                    self._node_ip_address,
+                    redis_password=self.redis_password)
+                self._plasma_store_socket_name = address_info[
+                    "object_store_address"]
+                self._raylet_socket_name = address_info["raylet_socket_name"]
+        else:
+            # If the user specified a socket name, use it.
+            self._plasma_store_socket_name = self._prepare_socket_file(
+                self._ray_params.plasma_store_socket_name,
+                default_prefix="plasma_store")
+            self._raylet_socket_name = self._prepare_socket_file(
+                self._ray_params.raylet_socket_name, default_prefix="raylet")
+
+        if head:
+            ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
+            self._webui_url = None
+        else:
+            self._webui_url = (
+                ray.services.get_webui_url_from_redis(redis_client))
             ray_params.include_java = (
                 ray.services.include_java_from_redis(redis_client))
 
-        self._init_temp()
+        # Start processes.
+        if head:
+            self.start_head_processes()
+            redis_client = self.create_redis_client()
+            redis_client.set("session_name", self.session_name)
+            redis_client.set("session_dir", self._session_dir)
+            redis_client.set("temp_dir", self._temp_dir)
 
         if not connect_only:
             self.start_ray_processes()
@@ -106,25 +153,31 @@ class Node(object):
             atexit.register(lambda: self.kill_all_processes(
                 check_alive=False, allow_graceful=True))
 
-    def _init_temp(self):
+    def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
-        self._temp_dir = self._ray_params.temp_dir
-        if self._temp_dir is None:
-            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            self._temp_dir = self._make_inc_temp(
-                prefix="session_{date_str}_{pid}".format(
-                    pid=os.getpid(), date_str=date_str),
-                directory_name="/tmp/ray")
+        if self.head:
+            self._temp_dir = self._ray_params.temp_dir
+        else:
+            self._temp_dir = ray.utils.decode(redis_client.get("temp_dir"))
 
-        try_to_create_directory(self._temp_dir)
+        try_to_create_directory(self._temp_dir, warn_if_exist=False)
+
+        if self.head:
+            self._session_dir = os.path.join(self._temp_dir, self.session_name)
+        else:
+            self._session_dir = ray.utils.decode(
+                redis_client.get("session_dir"))
+
+        # Send a warning message if the session exists.
+        try_to_create_directory(self._session_dir)
         # Create a directory to be used for socket files.
-        self._sockets_dir = os.path.join(self._temp_dir, "sockets")
-        try_to_create_directory(self._sockets_dir)
+        self._sockets_dir = os.path.join(self._session_dir, "sockets")
+        try_to_create_directory(self._sockets_dir, warn_if_exist=False)
         # Create a directory to be used for process log files.
-        self._logs_dir = os.path.join(self._temp_dir, "logs")
-        try_to_create_directory(self._logs_dir)
+        self._logs_dir = os.path.join(self._session_dir, "logs")
+        try_to_create_directory(self._logs_dir, warn_if_exist=False)
 
     @property
     def node_ip_address(self):
@@ -135,6 +188,20 @@ class Node(object):
     def redis_address(self):
         """Get the cluster Redis address."""
         return self._redis_address
+
+    @property
+    def redis_password(self):
+        """Get the cluster Redis password"""
+        return self._ray_params.redis_password
+
+    @property
+    def load_code_from_local(self):
+        return self._ray_params.load_code_from_local
+
+    @property
+    def object_id_seed(self):
+        """Get the seed for deterministic generation of object IDs"""
+        return self._ray_params.object_id_seed
 
     @property
     def plasma_store_socket_name(self):
@@ -151,6 +218,18 @@ class Node(object):
         """Get the node's raylet socket name."""
         return self._raylet_socket_name
 
+    @property
+    def address_info(self):
+        """Get a dictionary of addresses."""
+        return {
+            "node_ip_address": self._node_ip_address,
+            "redis_address": self._redis_address,
+            "object_store_address": self._plasma_store_socket_name,
+            "raylet_socket_name": self._raylet_socket_name,
+            "webui_url": self._webui_url,
+            "session_dir": self._session_dir,
+        }
+
     def create_redis_client(self):
         """Create a redis client."""
         return ray.services.create_redis_client(
@@ -159,6 +238,10 @@ class Node(object):
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
         return self._temp_dir
+
+    def get_session_dir_path(self):
+        """Get the path of the session directory."""
+        return self._session_dir
 
     def get_logs_dir_path(self):
         """Get the path of the log files directory."""
@@ -321,11 +404,6 @@ class Node(object):
 
     def start_plasma_store(self):
         """Start the plasma store."""
-        assert self._plasma_store_socket_name is None
-        # If the user specified a socket name, use it.
-        self._plasma_store_socket_name = self._prepare_socket_file(
-            self._ray_params.plasma_store_socket_name,
-            default_prefix="plasma_store")
         stdout_file, stderr_file = self.new_log_files("plasma_store")
         process_info = ray.services.start_plasma_store(
             stdout_file=stdout_file,
@@ -349,10 +427,6 @@ class Node(object):
             use_profiler (bool): True if we should start the process in the
                 valgrind profiler.
         """
-        assert self._raylet_socket_name is None
-        # If the user specified a socket name, use it.
-        self._raylet_socket_name = self._prepare_socket_file(
-            self._ray_params.raylet_socket_name, default_prefix="raylet")
         stdout_file, stderr_file = self.new_log_files("raylet")
         process_info = ray.services.start_raylet(
             self._redis_address,
@@ -416,19 +490,25 @@ class Node(object):
             process_info
         ]
 
+    def start_head_processes(self):
+        """Start head processes on the node."""
+        logger.info(
+            "Process STDOUT and STDERR is being redirected to {}.".format(
+                self._logs_dir))
+        assert self._redis_address is None
+        # If this is the head node, start the relevant head node processes.
+        self.start_redis()
+        self.start_monitor()
+        self.start_raylet_monitor()
+        # The dashboard is Python3.x only.
+        if PY3 and self._ray_params.include_webui:
+            self.start_dashboard()
+
     def start_ray_processes(self):
         """Start all of the processes on the node."""
         logger.info(
             "Process STDOUT and STDERR is being redirected to {}.".format(
                 self._logs_dir))
-
-        # If this is the head node, start the relevant head node processes.
-        if self._redis_address is None:
-            self.start_redis()
-            self.start_monitor()
-            self.start_raylet_monitor()
-            if PY3 and self._ray_params.include_webui:
-                self.start_dashboard()
 
         self.start_plasma_store()
         self.start_raylet()
@@ -685,3 +765,16 @@ class Node(object):
             True if any process that wasn't explicitly killed is still alive.
         """
         return not any(self.dead_processes())
+
+
+class LocalNode(object):
+    """Imitate the node that manages the processes in local mode."""
+
+    def kill_all_processes(self, *args, **kwargs):
+        """Kill all of the processes."""
+        pass  # Keep this function empty because it will be used in worker.py
+
+    @property
+    def address_info(self):
+        """Get a dictionary of addresses."""
+        return {}  # Return a null dict.

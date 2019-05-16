@@ -35,7 +35,7 @@ void Monitor::Start() {
     HandleHeartbeat(id, heartbeat_data);
   };
   RAY_CHECK_OK(gcs_client_.heartbeat_table().Subscribe(
-      JobID::nil(), ClientID::nil(), heartbeat_callback, nullptr, nullptr));
+      DriverID::nil(), ClientID::nil(), heartbeat_callback, nullptr, nullptr));
   Tick();
 }
 
@@ -52,7 +52,8 @@ void Monitor::Tick() {
             const std::vector<ClientTableDataT> &all_data) {
           bool marked = false;
           for (const auto &data : all_data) {
-            if (client_id.binary() == data.client_id && !data.is_insertion) {
+            if (client_id.binary() == data.client_id &&
+                data.entry_type == EntryType::DELETION) {
               // The node has been marked dead by itself.
               marked = true;
             }
@@ -67,7 +68,7 @@ void Monitor::Tick() {
             error_message << "The node with client ID " << client_id
                           << " has been marked dead because the monitor"
                           << " has missed too many heartbeats from it.";
-            // We use the nil JobID to broadcast the message to all drivers.
+            // We use the nil DriverID to broadcast the message to all drivers.
             RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
                 DriverID::nil(), type, error_message.str(), current_time_ms()));
           }
@@ -88,7 +89,7 @@ void Monitor::Tick() {
       batch->batch.push_back(std::unique_ptr<HeartbeatTableDataT>(
           new HeartbeatTableDataT(heartbeat.second)));
     }
-    RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(JobID::nil(), ClientID::nil(),
+    RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(DriverID::nil(), ClientID::nil(),
                                                          batch, nullptr));
     heartbeat_buffer_.clear();
   }

@@ -12,7 +12,6 @@ import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
-import org.ray.api.RuntimeContext;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
@@ -21,17 +20,18 @@ import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.BaseTaskOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
+import org.ray.api.runtimecontext.RuntimeContext;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
+import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.UniqueIdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,6 +67,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected ObjectStoreProxy objectStoreProxy;
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
+  protected GcsClient gcsClient;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
@@ -205,8 +206,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public void free(List<UniqueId> objectIds, boolean localOnly) {
-    rayletClient.freePlasmaObjects(objectIds, localOnly);
+  public void free(List<UniqueId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+    rayletClient.freePlasmaObjects(objectIds, localOnly, deleteCreatingTasks);
   }
 
   private List<List<UniqueId>> splitIntoBatches(List<UniqueId> objectIds) {
@@ -350,11 +351,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       resources = new HashMap<>(taskOptions.resources);
     }
 
-    if (!resources.containsKey(ResourceUtil.CPU_LITERAL)
-        && !resources.containsKey(ResourceUtil.CPU_LITERAL.toLowerCase())) {
-      resources.put(ResourceUtil.CPU_LITERAL, 0.0);
-    }
-
     int maxActorReconstruction = 0;
     if (taskOptions instanceof ActorCreationOptions) {
       maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
@@ -422,4 +418,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return runtimeContext;
   }
 
+  public GcsClient getGcsClient() {
+    return gcsClient;
+  }
 }

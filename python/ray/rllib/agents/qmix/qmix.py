@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.agent import with_common_config
-from ray.rllib.agents.dqn.dqn import DQNAgent
+from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.qmix.qmix_policy_graph import QMixPolicyGraph
 
 # yapf: disable
@@ -90,10 +90,10 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class QMixAgent(DQNAgent):
+class QMixTrainer(DQNTrainer):
     """QMix implementation in PyTorch."""
 
-    _agent_name = "QMIX"
+    _name = "QMIX"
     _default_config = DEFAULT_CONFIG
     _policy_graph = QMixPolicyGraph
     _optimizer_shared_configs = [

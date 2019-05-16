@@ -21,6 +21,7 @@ public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
   public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
     super.open(collectorList, runtimeContext);
     this.sourceContext = new SourceContextImpl(collectorList);
+    this.function.init(runtimeContext.getParallelism(), runtimeContext.getTaskIndex());
   }
 
   public void process(Long batchId) {

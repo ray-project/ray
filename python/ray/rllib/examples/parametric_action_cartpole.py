@@ -68,13 +68,13 @@ class ParametricActionCartpole(gym.Env):
         self.wrapped = gym.make("CartPole-v0")
         self.observation_space = Dict({
             "action_mask": Box(0, 1, shape=(max_avail_actions, )),
-            "avail_actions": Box(-1, 1, shape=(max_avail_actions, 2)),
+            "avail_actions": Box(-10, 10, shape=(max_avail_actions, 2)),
             "cart": self.wrapped.observation_space,
         })
 
     def update_avail_actions(self):
-        self.action_assignments = [[0, 0]] * self.action_space.n
-        self.action_mask = [0] * self.action_space.n
+        self.action_assignments = np.array([[0., 0.]] * self.action_space.n)
+        self.action_mask = np.array([0.] * self.action_space.n)
         self.left_idx, self.right_idx = random.sample(
             range(self.action_space.n), 2)
         self.action_assignments[self.left_idx] = self.left_action_embed

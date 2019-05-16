@@ -91,12 +91,12 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(JNIEnv *, jcla
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeFreePlasmaObjects
- * Signature: (J[[BZ)V
+ * Signature: (J[[BZZ)V
  */
 JNIEXPORT void JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(JNIEnv *, jclass,
                                                                      jlong, jobjectArray,
-                                                                     jboolean);
+                                                                     jboolean, jboolean);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl

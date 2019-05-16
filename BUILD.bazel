@@ -15,6 +15,7 @@ cc_binary(
     deps = [
         ":ray_util",
         ":raylet_lib",
+        "@com_github_gflags_gflags//:gflags",
     ],
 )
 
@@ -494,6 +495,7 @@ flatbuffer_py_library(
         "ConfigTableData.py",
         "CustomSerializerData.py",
         "DriverTableData.py",
+        "EntryType.py",
         "ErrorTableData.py",
         "ErrorType.py",
         "FunctionTableData.py",

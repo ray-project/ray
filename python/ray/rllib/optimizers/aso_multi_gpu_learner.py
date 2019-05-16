@@ -6,6 +6,7 @@ from __future__ import print_function
 
 import logging
 import threading
+import math
 
 from six.moves import queue
 
@@ -47,9 +48,13 @@ class TFMultiGPULearner(LearnerThread):
         if not num_gpus:
             self.devices = ["/cpu:0"]
         elif _fake_gpus:
-            self.devices = ["/cpu:{}".format(i) for i in range(num_gpus)]
+            self.devices = [
+                "/cpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
+            ]
         else:
-            self.devices = ["/gpu:{}".format(i) for i in range(num_gpus)]
+            self.devices = [
+                "/gpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
+            ]
         logger.info("TFMultiGPULearner devices {}".format(self.devices))
         assert self.train_batch_size % len(self.devices) == 0
         assert self.train_batch_size >= len(self.devices), "batch too small"

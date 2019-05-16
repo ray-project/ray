@@ -171,8 +171,8 @@ public class Worker {
     numTasksSinceLastCheckpoint = 0;
     lastCheckpointTimestamp = System.currentTimeMillis();
     checkpointIds = new ArrayList<>();
-    List<Checkpoint> availableCheckpoints = ((RayNativeRuntime) runtime)
-        .getCheckpointsForActor(actorId);
+    List<Checkpoint> availableCheckpoints
+        = runtime.getGcsClient().getCheckpointsForActor(actorId);
     if (availableCheckpoints.isEmpty()) {
       return;
     }

@@ -17,6 +17,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.schedules import LinearSchedule
+from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +29,21 @@ class SyncReplayOptimizer(PolicyOptimizer):
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
-    @override(PolicyOptimizer)
-    def _init(self,
-              learning_starts=1000,
-              buffer_size=10000,
-              prioritized_replay=True,
-              prioritized_replay_alpha=0.6,
-              prioritized_replay_beta=0.4,
-              schedule_max_timesteps=100000,
-              beta_annealing_fraction=0.2,
-              final_prioritized_replay_beta=0.4,
-              prioritized_replay_eps=1e-6,
-              train_batch_size=32,
-              sample_batch_size=4):
+    def __init__(self,
+                 local_evaluator,
+                 remote_evaluators,
+                 learning_starts=1000,
+                 buffer_size=10000,
+                 prioritized_replay=True,
+                 prioritized_replay_alpha=0.6,
+                 prioritized_replay_beta=0.4,
+                 schedule_max_timesteps=100000,
+                 beta_annealing_fraction=0.2,
+                 final_prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6,
+                 train_batch_size=32,
+                 sample_batch_size=4):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
 
         self.replay_starts = learning_starts
         # linearly annealing beta used in Rainbow paper
@@ -87,7 +90,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
         with self.sample_timer:
             if self.remote_evaluators:
                 batch = SampleBatch.concat_samples(
-                    ray.get(
+                    ray_get_and_free(
                         [e.sample.remote() for e in self.remote_evaluators]))
             else:
                 batch = self.local_evaluator.sample()

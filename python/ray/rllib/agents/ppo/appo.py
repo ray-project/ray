@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.ppo.appo_policy_graph import AsyncPPOPolicyGraph
-from ray.rllib.agents.agent import with_base_config
+from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents import impala
 from ray.rllib.utils.annotations import override
 
@@ -52,13 +52,13 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 # yapf: enable
 
 
-class APPOAgent(impala.ImpalaAgent):
+class APPOTrainer(impala.ImpalaTrainer):
     """PPO surrogate loss with IMPALA-architecture."""
 
-    _agent_name = "APPO"
+    _name = "APPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = AsyncPPOPolicyGraph
 
-    @override(impala.ImpalaAgent)
+    @override(impala.ImpalaTrainer)
     def _get_policy_graph(self):
         return AsyncPPOPolicyGraph

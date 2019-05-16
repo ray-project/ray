@@ -10,6 +10,7 @@ from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,13 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
-    @override(PolicyOptimizer)
-    def _init(self, num_sgd_iter=1, train_batch_size=1):
+    def __init__(self,
+                 local_evaluator,
+                 remote_evaluators,
+                 num_sgd_iter=1,
+                 train_batch_size=1):
+        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+
         self.update_weights_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
@@ -45,7 +51,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
             while sum(s.count for s in samples) < self.train_batch_size:
                 if self.remote_evaluators:
                     samples.extend(
-                        ray.get([
+                        ray_get_and_free([
                             e.sample.remote() for e in self.remote_evaluators
                         ]))
                 else:

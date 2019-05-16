@@ -4,19 +4,27 @@
 #include "ray/raylet/monitor.h"
 #include "ray/util/util.h"
 
+#include "gflags/gflags.h"
+
+DEFINE_string(redis_address, "", "The ip address of redis.");
+DEFINE_int32(redis_port, -1, "The port of redis.");
+DEFINE_string(config_list, "", "The config list of raylet.");
+DEFINE_string(redis_password, "", "The password of redis.");
+
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO, /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc == 4 || argc == 5);
 
-  const std::string redis_address = std::string(argv[1]);
-  int redis_port = std::stoi(argv[2]);
-  const std::string config_list = std::string(argv[3]);
-  const std::string redis_password = (argc == 5 ? std::string(argv[4]) : "");
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  const std::string redis_address = FLAGS_redis_address;
+  const int redis_port = static_cast<int>(FLAGS_redis_port);
+  const std::string config_list = FLAGS_config_list;
+  const std::string redis_password = FLAGS_redis_password;
+  gflags::ShutDownCommandLineFlags();
 
-  std::unordered_map<std::string, int> raylet_config;
+  std::unordered_map<std::string, std::string> raylet_config;
 
   // Parse the configuration list.
   std::istringstream config_string(config_list);
@@ -26,7 +34,7 @@ int main(int argc, char *argv[]) {
   while (std::getline(config_string, config_name, ',')) {
     RAY_CHECK(std::getline(config_string, config_value, ','));
     // TODO(rkn): The line below could throw an exception. What should we do about this?
-    raylet_config[config_name] = std::stoi(config_value);
+    raylet_config[config_name] = config_value;
   }
 
   RayConfig::instance().initialize(raylet_config);

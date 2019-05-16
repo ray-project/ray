@@ -299,6 +299,9 @@ class LineageCache {
   /// \return string.
   std::string DebugString() const;
 
+  /// Record metrics.
+  void RecordMetrics() const;
+
  private:
   FRIEND_TEST(LineageCacheTest, BarReturnsZeroOnNull);
   /// Flush a task that is in UNCOMMITTED_READY state.

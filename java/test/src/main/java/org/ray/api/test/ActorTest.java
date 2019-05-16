@@ -97,7 +97,7 @@ public class ActorTest extends BaseTest {
     RayObject value = Ray.call(Counter::getValue, counter);
     Assert.assertEquals(100, value.get());
     // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(value.getId()), false);
+    Ray.internal().free(ImmutableList.of(value.getId()), false, false);
     // Wait until the object is deleted, because the above free operation is async.
     while (true) {
       GetResult<Integer> result = ((AbstractRayRuntime)

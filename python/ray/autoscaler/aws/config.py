@@ -173,7 +173,7 @@ def _configure_subnet(config):
             "on instance launch unless you set 'use_internal_ips': True in "
             "the 'provider' config.")
     if "availability_zone" in config["provider"]:
-        azs = config["provider"]["availability_zone"].split(',')
+        azs = config["provider"]["availability_zone"].split(",")
         subnets = [s for s in subnets if s.availability_zone in azs]
         if not subnets:
             raise Exception(
@@ -315,11 +315,11 @@ def _get_key(key_name, config):
 
 
 def _client(name, config):
-    boto_config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
+    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
     return boto3.client(name, config["provider"]["region"], config=boto_config)
 
 
 def _resource(name, config):
-    boto_config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
+    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
     return boto3.resource(
         name, config["provider"]["region"], config=boto_config)

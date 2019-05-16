@@ -69,13 +69,13 @@ This example plot shows the Q-value metric in addition to importance sampling (I
 
 .. code-block:: python
 
-    agent = DQNAgent(...)
-    ...  # train agent offline
+    trainer = DQNTrainer(...)
+    ...  # train policy offline
 
     from ray.rllib.offline.json_reader import JsonReader
     from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 
-    estimator = WeightedImportanceSamplingEstimator(agent.get_policy(), gamma=0.99)
+    estimator = WeightedImportanceSamplingEstimator(trainer.get_policy(), gamma=0.99)
     reader = JsonReader("/path/to/data")
     for _ in range(1000):
         batch = reader.next()
@@ -155,7 +155,7 @@ Input API
 
 You can configure experience input for an agent using the following options:
 
-.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+.. literalinclude:: ../../python/ray/rllib/agents/trainer.py
    :language: python
    :start-after: === Offline Datasets ===
    :end-before: Specify where experiences should be saved
@@ -170,7 +170,7 @@ Output API
 
 You can configure experience output for an agent using the following options:
 
-.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+.. literalinclude:: ../../python/ray/rllib/agents/trainer.py
    :language: python
    :start-after: shuffle_buffer_size
    :end-before: === Multiagent ===

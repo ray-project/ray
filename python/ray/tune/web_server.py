@@ -110,7 +110,7 @@ def RunnerHandler(runner):
                 headers (list[tuples]): Standard HTTP response headers
             """
             if headers is None:
-                headers = [('Content-type', 'application/json')]
+                headers = [("Content-type", "application/json")]
 
             self.send_response(response_code)
             for key, value in headers:
@@ -170,14 +170,14 @@ def RunnerHandler(runner):
             """HTTP POST handler method."""
             response_code = 201
 
-            content_len = int(self.headers.get('Content-Length'), 0)
+            content_len = int(self.headers.get("Content-Length"), 0)
             raw_body = self.rfile.read(content_len)
             parsed_input = json.loads(raw_body.decode())
             resource = self._add_trials(parsed_input["name"],
                                         parsed_input["spec"])
 
-            headers = [('Content-type', 'application/json'), ('Location',
-                                                              '/trials/')]
+            headers = [("Content-type", "application/json"), ("Location",
+                                                              "/trials/")]
             self._do_header(response_code=response_code, headers=headers)
             self.wfile.write(json.dumps(resource).encode())
 
@@ -237,7 +237,7 @@ class TuneServer(threading.Thread):
         """Initialize HTTPServer and serve forever by invoking self.run()"""
         threading.Thread.__init__(self)
         self._port = port if port else self.DEFAULT_PORT
-        address = ('localhost', self._port)
+        address = ("localhost", self._port)
         logger.info("Starting Tune Server...")
         self._server = HTTPServer(address, RunnerHandler(runner))
         self.daemon = True

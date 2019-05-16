@@ -5,7 +5,6 @@ from __future__ import print_function
 import gym
 import logging
 import pickle
-import tensorflow as tf
 
 import ray
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
@@ -13,6 +12,7 @@ from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
@@ -31,8 +31,23 @@ from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
     summarize, enable_periodic_logging
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils import try_import_tf
 
+tf = try_import_tf()
 logger = logging.getLogger(__name__)
+
+# Handle to the current evaluator, which will be set to the most recently
+# created PolicyEvaluator in this process. This can be helpful to access in
+# custom env or policy classes for debugging or advanced use cases.
+_global_evaluator = None
+
+
+@DeveloperAPI
+def get_global_evaluator():
+    """Returns a handle to the active policy evaluator in this process."""
+
+    global _global_evaluator
+    return _global_evaluator
 
 
 @DeveloperAPI
@@ -214,6 +229,9 @@ class PolicyEvaluator(EvaluatorInterface):
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
 
+        global _global_evaluator
+        _global_evaluator = self
+
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)
 
@@ -308,12 +326,14 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent:
-            if not (isinstance(self.env, MultiAgentEnv)
+            if not ((isinstance(self.env, MultiAgentEnv)
+                     or isinstance(self.env, ExternalMultiAgentEnv))
                     or isinstance(self.env, BaseEnv)):
                 raise ValueError(
                     "Have multiple policy graphs {}, but the env ".format(
                         self.policy_map) +
-                    "{} is not a subclass of MultiAgentEnv?".format(self.env))
+                    "{} is not a subclass of BaseEnv, MultiAgentEnv or "
+                    "ExternalMultiAgentEnv?".format(self.env))
 
         self.filters = {
             policy_id: get_filter(observation_filter,
@@ -545,24 +565,24 @@ class PolicyEvaluator(EvaluatorInterface):
                     summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
+            to_fetch = {}
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "learn_on_batch")
-                for pid, batch in samples.policy_batches.items():
-                    if pid not in self.policies_to_train:
-                        continue
-                    info_out[pid], _ = (
-                        self.policy_map[pid]._build_learn_on_batch(
-                            builder, batch))
-                info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
-                for pid, batch in samples.policy_batches.items():
-                    if pid not in self.policies_to_train:
-                        continue
-                    info_out[pid], _ = (
-                        self.policy_map[pid].learn_on_batch(batch))
+                builder = None
+            for pid, batch in samples.policy_batches.items():
+                if pid not in self.policies_to_train:
+                    continue
+                policy = self.policy_map[pid]
+                if builder and hasattr(policy, "_build_learn_on_batch"):
+                    to_fetch[pid] = policy._build_learn_on_batch(
+                        builder, batch)
+                else:
+                    info_out[pid] = policy.learn_on_batch(batch)
+            info_out.update({k: builder.get(v) for k, v in to_fetch.items()})
         else:
-            info_out, _ = (
-                self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(samples))
+            info_out = self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(
+                samples)
         if log_once("learn_out"):
             logger.info("Training output:\n\n{}\n".format(summarize(info_out)))
         return info_out
@@ -703,7 +723,10 @@ class PolicyEvaluator(EvaluatorInterface):
                     "Found raw Tuple|Dict space as input to policy graph. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            with tf.variable_scope(name):
+            if tf:
+                with tf.variable_scope(name):
+                    policy_map[name] = cls(obs_space, act_space, merged_conf)
+            else:
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
         if self.worker_index == 0:
             logger.info("Built policy map: {}".format(policy_map))
