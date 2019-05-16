@@ -15,6 +15,9 @@ public class DefaultWorker {
   public static void main(String[] args) {
     try {
       System.setProperty("ray.worker.mode", "WORKER");
+      Thread.setDefaultUncaughtExceptionHandler((Thread t, Throwable e) -> {
+        LOGGER.error("Uncaught worker exception in thread {}: {}", t, e);
+      });
       Ray.init();
       LOGGER.info("Worker started.");
       ((AbstractRayRuntime)Ray.internal()).loop();
