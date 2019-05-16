@@ -172,8 +172,10 @@ class TFPolicyGraph(PolicyGraph):
             self._apply_op = self.build_apply_op(self._optimizer,
                                                  self._grads_and_vars)
 
-        logger.debug("Initialized {} with loss inputs: {}".format(
-            self, self._loss_input_dict))
+        if log_once("loss_used"):
+            logger.info(
+                "These tensors were used in the loss_fn:\n\n{}\n".format(
+                    summarize(self._loss_input_dict)))
 
     @override(PolicyGraph)
     def compute_actions(self,
