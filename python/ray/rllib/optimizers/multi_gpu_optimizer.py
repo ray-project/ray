@@ -6,9 +6,9 @@ import logging
 import math
 import numpy as np
 from collections import defaultdict
+import tensorflow as tf
 
 import ray
-from ray.rllib.evaluation.dynamic_tf_policy_graph import DynamicTFPolicyGraph
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -19,9 +19,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -93,18 +90,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
         self.optimizers = {}
-
-    def _initialize_optimizers_as_needed(self, samples):
         with self.local_evaluator.tf_sess.graph.as_default():
             with self.local_evaluator.tf_sess.as_default():
-                for policy_id, sample_batch in samples.policy_batches.items():
-                    if policy_id in self.optimizers:
-                        continue  # already initialized
-
-                    policy = self.policies[policy_id]
-                    if isinstance(policy, DynamicTFPolicyGraph):
-                        policy._initialize_loss_if_needed(sample_batch)
-
+                for policy_id, policy in self.policies.items():
                     with tf.variable_scope(policy_id, reuse=tf.AUTO_REUSE):
                         if policy._state_inputs:
                             rnn_inputs = policy._state_inputs + [
@@ -120,9 +108,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                                 self.per_device_batch_size, policy.copy))
 
                 self.sess = self.local_evaluator.tf_sess
-                self.sess.run(tf.global_variables_initializer())  # TODO(ekl) how to deal with this
-
-        self.optimizers_initialized = True
+                self.sess.run(tf.global_variables_initializer())
 
     @override(PolicyOptimizer)
     def step(self):
@@ -159,8 +145,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 samples = MultiAgentBatch({
                     DEFAULT_POLICY_ID: samples
                 }, samples.count)
-
-            self._initialize_optimizers_as_needed(samples)
 
         for policy_id, policy in self.policies.items():
             if policy_id not in samples.policy_batches:

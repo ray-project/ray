@@ -108,7 +108,7 @@ class PPOLoss(object):
         self.loss = loss
 
 
-def loss_fn(graph, postprocessed_batch):
+def _build_ppo_loss(graph, postprocessed_batch):
     if graph.model.state_in:
         max_seq_len = tf.reduce_max(graph.model.seq_lens)
         mask = tf.sequence_mask(graph.model.seq_lens, max_seq_len)
@@ -188,9 +188,8 @@ class PPOPostprocessing(object):
         return batch
 
 
-class PPOPolicyGraph(
-        LearningRateSchedule, PPOPostprocessing, DynamicTFPolicyGraph):
-
+class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing,
+                     DynamicTFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -209,8 +208,13 @@ class PPOPolicyGraph(
             dtype=tf.float32)
 
         DynamicTFPolicyGraph.__init__(
-            self, observation_space, action_space, config, loss_fn,
-            existing_inputs=existing_inputs)
+            self,
+            observation_space,
+            action_space,
+            config,
+            _build_ppo_loss,
+            existing_inputs=existing_inputs,
+            autoinit_loss=False)
 
         if self.config["use_gae"]:
             if self.config["vf_share_layers"]:
@@ -242,7 +246,7 @@ class PPOPolicyGraph(
 
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
-        self._sess.run(tf.global_variables_initializer())
+        self._initialize_loss()
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):

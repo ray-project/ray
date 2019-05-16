@@ -125,9 +125,6 @@ class TFPolicyGraph(PolicyGraph):
             self._initialize_loss(loss, loss_inputs)
         else:
             self._loss = None
-            # TODO(ekl) what is the right way to handle pre-init vars?
-            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-                self._sampler, self._sess)
 
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(
