@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import gym
 import numpy as np
-import tensorflow as tf
 import time
 import unittest
 
@@ -16,6 +15,9 @@ from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.tests.mock_evaluator import _MockEvaluator
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class AsyncOptimizerTest(unittest.TestCase):
