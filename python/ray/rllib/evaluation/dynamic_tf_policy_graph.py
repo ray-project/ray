@@ -21,68 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def build_tf_graph(name,
-                   get_default_config,
-                   loss_fn,
-                   postprocess_fn=None,
-                   make_optimizer=None,
-                   make_extra_action_fetches=None):
-    """Helper function for creating a dynamic tf policy graph at runtime.
-
-    Arguments:
-        name (str): name of the graph (e.g., "PPOPolicyGraph")
-        get_default_config (func): function that returns the default config
-            to merge with any overrides
-        loss_fn (func): function that returns a loss tensor the policy graph,
-            and dict of experience tensor placeholders
-        postprocess_fn (func): optional experience postprocessing function
-            that takes the same args as PolicyGraph.postprocess_trajectory()
-        make_optimizer (func): optional function that returns a tf.Optimizer
-            given the policy graph object
-        make_extra_action_fetches (func): optional function that returns
-            a dict of TF fetches given the policy graph object
-
-    Returns:
-        a DynamicTFPolicyGraph instance that uses the specified args
-    """
-
-    class graph_cls(DynamicTFPolicyGraph):
-        def __init__(self, obs_space, action_space, config):
-            config = dict(get_default_config(), **config)
-            if make_extra_action_fetches is None:
-                self._extra_action_fetches = {}
-            else:
-                self._extra_action_fetches = make_extra_action_fetches(self)
-            DynamicTFPolicyGraph.__init__(self, obs_space, action_space,
-                                          config, loss_fn)
-
-        @override(PolicyGraph)
-        def postprocess_trajectory(self,
-                                   sample_batch,
-                                   other_agent_batches=None,
-                                   episode=None):
-            if not postprocess_fn:
-                return sample_batch
-            return postprocess_fn(self, sample_batch, other_agent_batches,
-                                  episode)
-
-        @override(TFPolicyGraph)
-        def optimizer(self):
-            if make_optimizer:
-                return make_optimizer(self)
-            else:
-                return TFPolicyGraph.optimizer(self)
-
-        @override(TFPolicyGraph)
-        def extra_compute_action_fetches(self):
-            return dict(
-                TFPolicyGraph.extra_compute_action_fetches(self),
-                **self._extra_action_fetches)
-
-    graph_cls.__name__ = name
-    return graph_cls
-
-
 class DynamicTFPolicyGraph(TFPolicyGraph):
     """A TFPolicyGraph that auto-defines placeholders dynamically at runtime.
 
@@ -98,14 +36,16 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                  action_space,
                  config,
                  loss_fn,
+                 stats_fn=None,
                  autosetup_model=True,
-                 autoinit_loss=True,
+                 pre_loss_init_fn=None,
                  action_sampler=None,
                  action_prob=None,
                  existing_inputs=None):
         self.config = config
         self.autosetup_model = autosetup_model
-        self._build_loss = loss_fn
+        self._loss_fn = loss_fn
+        self._stats_fn = stats_fn
 
         # Setup standard placeholders
         if existing_inputs is not None:
@@ -182,7 +122,9 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             seq_lens=self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
 
-        if autoinit_loss:
+        # Phase 2 init
+        pre_loss_init_fn(self, obs_space, action_space, config)
+        if not existing_inputs:
             self._initialize_loss()
 
     @override(TFPolicyGraph)
@@ -201,7 +143,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             if v.shape.as_list() != existing_inputs[i].shape.as_list():
                 raise ValueError("Tensor shape mismatch", i, k, v.shape,
                                  existing_inputs[i].shape)
-        # by convention, the loss inputs are followed by state inputs and then
+        # By convention, the loss inputs are followed by state inputs and then
         # the seq len tensor
         rnn_inputs = []
         for i in range(len(self._state_inputs)):
@@ -217,7 +159,10 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             self.action_space,
             self.config,
             existing_inputs=input_dict)
-        loss = instance._build_loss(instance, input_dict)
+        loss = instance._loss_fn(instance, input_dict)
+        if instance._stats_fn:
+            instance._stats_fetches.update(
+                instance._stats_fn(instance, input_dict))
         TFPolicyGraph._initialize_loss(
             instance, loss, [(k, existing_inputs[i])
                              for i, (k, _) in enumerate(self._loss_inputs)])
@@ -259,7 +204,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
         postprocessed_batch = self.postprocess_trajectory(
             SampleBatch(dummy_batch))
 
-        loss_input = UsageTrackingDict({
+        batch_tensors = UsageTrackingDict({
             SampleBatch.PREV_ACTIONS: self._prev_action_input,
             SampleBatch.PREV_REWARDS: self._prev_reward_input,
             SampleBatch.CUR_OBS: self._obs_input,
@@ -271,22 +216,24 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
         ]
 
         for k, v in postprocessed_batch.items():
-            if k in loss_input:
+            if k in batch_tensors:
                 continue
             elif v.dtype == np.object:
                 continue  # can't handle arbitrary objects in TF
             shape = (None, ) + v.shape[1:]
             placeholder = tf.placeholder(v.dtype, shape=shape, name=k)
-            loss_input[k] = placeholder
+            batch_tensors[k] = placeholder
 
         if log_once("loss_init"):
             logger.info(
                 "Initializing loss function with dummy input:\n\n{}\n".format(
-                    summarize(loss_input)))
+                    summarize(batch_tensors)))
 
-        loss = self._build_loss(self, loss_input)
-        for k in sorted(loss_input.accessed_keys):
-            loss_inputs.append((k, loss_input[k]))
+        loss = self._loss_fn(self, batch_tensors)
+        if self._stats_fn:
+            self._stats_fetches.update(self._stats_fn(self, batch_tensors))
+        for k in sorted(batch_tensors.accessed_keys):
+            loss_inputs.append((k, batch_tensors[k]))
 
         TFPolicyGraph._initialize_loss(self, loss, loss_inputs)
         self._sess.run(tf.global_variables_initializer())

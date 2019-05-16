@@ -7,14 +7,10 @@ import logging
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
-from ray.rllib.evaluation.dynamic_tf_policy_graph import DynamicTFPolicyGraph
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
-    LearningRateSchedule
+from ray.rllib.evaluation.tf_policy_graph import LearningRateSchedule
+from ray.rllib.evaluation.tf_policy_graph_template import build_tf_graph
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
 
@@ -108,95 +104,103 @@ class PPOLoss(object):
         self.loss = loss
 
 
-def _build_ppo_loss(graph, postprocessed_batch):
-    if graph.model.state_in:
-        max_seq_len = tf.reduce_max(graph.model.seq_lens)
-        mask = tf.sequence_mask(graph.model.seq_lens, max_seq_len)
+def _build_ppo_loss(policy, batch_tensors):
+    if policy.model.state_in:
+        max_seq_len = tf.reduce_max(policy.model.seq_lens)
+        mask = tf.sequence_mask(policy.model.seq_lens, max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(
-            postprocessed_batch[Postprocessing.ADVANTAGES], dtype=tf.bool)
+            batch_tensors[Postprocessing.ADVANTAGES], dtype=tf.bool)
 
-    loss_obj = PPOLoss(
-        graph.action_space,
-        postprocessed_batch[Postprocessing.VALUE_TARGETS],
-        postprocessed_batch[Postprocessing.ADVANTAGES],
-        postprocessed_batch[SampleBatch.ACTIONS],
-        postprocessed_batch[BEHAVIOUR_LOGITS],
-        postprocessed_batch[SampleBatch.VF_PREDS],
-        graph.action_dist,
-        graph.value_function,
-        graph.kl_coeff,
+    policy.loss_obj = PPOLoss(
+        policy.action_space,
+        batch_tensors[Postprocessing.VALUE_TARGETS],
+        batch_tensors[Postprocessing.ADVANTAGES],
+        batch_tensors[SampleBatch.ACTIONS],
+        batch_tensors[BEHAVIOUR_LOGITS],
+        batch_tensors[SampleBatch.VF_PREDS],
+        policy.action_dist,
+        policy.value_function,
+        policy.kl_coeff,
         mask,
-        entropy_coeff=graph.config["entropy_coeff"],
-        clip_param=graph.config["clip_param"],
-        vf_clip_param=graph.config["vf_clip_param"],
-        vf_loss_coeff=graph.config["vf_loss_coeff"],
-        use_gae=graph.config["use_gae"])
+        entropy_coeff=policy.config["entropy_coeff"],
+        clip_param=policy.config["clip_param"],
+        vf_clip_param=policy.config["vf_clip_param"],
+        vf_loss_coeff=policy.config["vf_loss_coeff"],
+        use_gae=policy.config["use_gae"])
 
-    graph.explained_variance = explained_variance(
-        postprocessed_batch[Postprocessing.VALUE_TARGETS],
-        graph.value_function)
+    return policy.loss_obj.loss
 
-    graph.stats_fetches = {
-        "cur_kl_coeff": graph.kl_coeff,
-        "cur_lr": tf.cast(graph.cur_lr, tf.float64),
-        "total_loss": loss_obj.loss,
-        "policy_loss": loss_obj.mean_policy_loss,
-        "vf_loss": loss_obj.mean_vf_loss,
-        "vf_explained_var": graph.explained_variance,
-        "kl": loss_obj.mean_kl,
-        "entropy": loss_obj.mean_entropy,
+
+def _build_ppo_stats(policy, batch_tensors):
+    policy.explained_variance = explained_variance(
+        batch_tensors[Postprocessing.VALUE_TARGETS], policy.value_function)
+
+    stats_fetches = {
+        "cur_kl_coeff": policy.kl_coeff,
+        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+        "total_loss": policy.loss_obj.loss,
+        "policy_loss": policy.loss_obj.mean_policy_loss,
+        "vf_loss": policy.loss_obj.mean_vf_loss,
+        "vf_explained_var": policy.explained_variance,
+        "kl": policy.loss_obj.mean_kl,
+        "entropy": policy.loss_obj.mean_entropy,
     }
 
-    return loss_obj.loss
+    return stats_fetches
 
 
-class PPOPostprocessing(object):
+def _build_ppo_action_fetches(policy):
+    """Adds value function and logits outputs to experience batches."""
+    return {
+        SampleBatch.VF_PREDS: policy.value_function,
+        BEHAVIOUR_LOGITS: policy.model.outputs,
+    }
+
+
+def _postprocess_ppo_gae(policy,
+                         sample_batch,
+                         other_agent_batches=None,
+                         episode=None):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
 
-    @override(TFPolicyGraph)
-    def extra_compute_action_fetches(self):
-        return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self), **{
-                SampleBatch.VF_PREDS: self.value_function,
-                BEHAVIOUR_LOGITS: self.model.outputs,
-            })
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(len(self.model.state_in)):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                                 sample_batch[SampleBatch.ACTIONS][-1],
-                                 sample_batch[SampleBatch.REWARDS][-1],
-                                 *next_state)
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            self.config["gamma"],
-            self.config["lambda"],
-            use_gae=self.config["use_gae"])
-        return batch
+    completed = sample_batch["dones"][-1]
+    if completed:
+        last_r = 0.0
+    else:
+        next_state = []
+        for i in range(len(policy.model.state_in)):
+            next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                               sample_batch[SampleBatch.ACTIONS][-1],
+                               sample_batch[SampleBatch.REWARDS][-1],
+                               *next_state)
+    batch = compute_advantages(
+        sample_batch,
+        last_r,
+        policy.config["gamma"],
+        policy.config["lambda"],
+        use_gae=policy.config["use_gae"])
+    return batch
 
 
-class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing,
-                     DynamicTFPolicyGraph):
-    def __init__(self,
-                 observation_space,
-                 action_space,
-                 config,
-                 existing_inputs=None):
-        config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
+def _build_ppo_gradients(policy, optimizer, loss):
+    if policy.config["grad_clip"] is not None:
+        policy.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                            tf.get_variable_scope().name)
+        grads = tf.gradients(loss, policy.var_list)
+        policy.grads, _ = tf.clip_by_global_norm(grads,
+                                                 policy.config["grad_clip"])
+        clipped_grads = list(zip(policy.grads, policy.var_list))
+        return clipped_grads
+    else:
+        return optimizer.compute_gradients(
+            loss, colocate_gradients_with_ops=True)
 
+
+class KLCoeffMixin(object):
+    def __init__(self, config):
         # KL Coefficient
         self.kl_coeff_val = config["kl_coeff"]
         self.kl_target = config["kl_target"]
@@ -207,20 +211,22 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing,
             trainable=False,
             dtype=tf.float32)
 
-        DynamicTFPolicyGraph.__init__(
-            self,
-            observation_space,
-            action_space,
-            config,
-            _build_ppo_loss,
-            existing_inputs=existing_inputs,
-            autoinit_loss=False)
+    def update_kl(self, sampled_kl):
+        if sampled_kl > 2.0 * self.kl_target:
+            self.kl_coeff_val *= 1.5
+        elif sampled_kl < 0.5 * self.kl_target:
+            self.kl_coeff_val *= 0.5
+        self.kl_coeff.load(self.kl_coeff_val, session=self._sess)
+        return self.kl_coeff_val
 
-        if self.config["use_gae"]:
-            if self.config["vf_share_layers"]:
+
+class ValueNetworkMixin(object):
+    def __init__(self, obs_space, action_space, config):
+        if config["use_gae"]:
+            if config["vf_share_layers"]:
                 self.value_function = self.model.value_function()
             else:
-                vf_config = self.config["model"].copy()
+                vf_config = config["model"].copy()
                 # Do not split the last layer of the value function into
                 # mean parameters and standard deviation parameters and
                 # do not make the standard deviations free variables.
@@ -239,44 +245,10 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing,
                         "prev_actions": self._prev_action_input,
                         "prev_rewards": self._prev_reward_input,
                         "is_training": self._get_is_training_placeholder(),
-                    }, observation_space, action_space, 1, vf_config).outputs
+                    }, obs_space, action_space, 1, vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
         else:
             self.value_function = tf.zeros(shape=tf.shape(self._obs_input)[:1])
-
-        LearningRateSchedule.__init__(self, self.config["lr"],
-                                      self.config["lr_schedule"])
-        self._initialize_loss()
-
-    @override(TFPolicyGraph)
-    def gradients(self, optimizer, loss):
-        if self.config["grad_clip"] is not None:
-            self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                              tf.get_variable_scope().name)
-            grads = tf.gradients(loss, self.var_list)
-            self.grads, _ = tf.clip_by_global_norm(grads,
-                                                   self.config["grad_clip"])
-            clipped_grads = list(zip(self.grads, self.var_list))
-            return clipped_grads
-        else:
-            return optimizer.compute_gradients(
-                loss, colocate_gradients_with_ops=True)
-
-    @override(PolicyGraph)
-    def get_initial_state(self):
-        return self.model.state_init
-
-    @override(TFPolicyGraph)
-    def extra_compute_grad_fetches(self):
-        return {LEARNER_STATS_KEY: self.stats_fetches}
-
-    def update_kl(self, sampled_kl):
-        if sampled_kl > 2.0 * self.kl_target:
-            self.kl_coeff_val *= 1.5
-        elif sampled_kl < 0.5 * self.kl_target:
-            self.kl_coeff_val *= 0.5
-        self.kl_coeff.load(self.kl_coeff_val, session=self._sess)
-        return self.kl_coeff_val
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {
@@ -291,3 +263,21 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing,
             feed_dict[k] = v
         vf = self._sess.run(self.value_function, feed_dict)
         return vf[0]
+
+
+def _setup_mixins(policy, obs_space, action_space, config):
+    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    KLCoeffMixin.__init__(policy, config)
+    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+
+
+PPOPolicyGraph = build_tf_graph(
+    name="PPOPolicyGraph",
+    get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
+    loss_fn=_build_ppo_loss,
+    stats_fn=_build_ppo_stats,
+    extra_action_fetches_fn=_build_ppo_action_fetches,
+    postprocess_fn=_postprocess_ppo_gae,
+    gradients_fn=_build_ppo_gradients,
+    pre_loss_init_fn=_setup_mixins,
+    mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin])

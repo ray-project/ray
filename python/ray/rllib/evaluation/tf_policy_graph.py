@@ -120,6 +120,7 @@ class TFPolicyGraph(PolicyGraph):
         self._max_seq_len = max_seq_len
         self._batch_divisibility_req = batch_divisibility_req
         self._update_ops = update_ops
+        self._stats_fetches = {}
 
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
@@ -147,10 +148,9 @@ class TFPolicyGraph(PolicyGraph):
 
         if self.model:
             self._loss = self.model.custom_loss(loss, self._loss_input_dict)
-            self._stats_fetches = {"model": self.model.custom_stats()}
+            self._stats_fetches.update({"model": self.model.custom_stats()})
         else:
             self._loss = loss
-            self._stats_fetches = {}
 
         self._optimizer = self.optimizer()
         self._grads_and_vars = [
