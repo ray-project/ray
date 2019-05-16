@@ -21,13 +21,13 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def _make_policy_optimizer(local_ev, remote_evs, config):
+def make_policy_optimizer(local_ev, remote_evs, config):
     optimizer_config = dict(config["optimizer"],
                             **{"train_batch_size": config["train_batch_size"]})
     return SyncSamplesOptimizer(local_ev, remote_evs, **optimizer_config)
 
 
-def _get_policy_graph(config):
+def get_policy_graph(config):
     if config["use_pytorch"]:
         from ray.rllib.agents.pg.torch_pg_policy_graph import \
             PGTorchPolicyGraph
@@ -40,5 +40,5 @@ PGTrainer = build_trainer(
     "PG",
     default_config=DEFAULT_CONFIG,
     default_policy_graph=PGPolicyGraph,
-    get_policy_graph=_get_policy_graph,
-    make_policy_optimizer=_make_policy_optimizer)
+    get_policy_graph=get_policy_graph,
+    make_policy_optimizer=make_policy_optimizer)

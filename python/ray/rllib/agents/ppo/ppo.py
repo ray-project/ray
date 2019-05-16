@@ -63,7 +63,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def _make_optimizer(local_evaluator, remote_evaluators, config):
+def make_optimizer(local_evaluator, remote_evaluators, config):
     if config["simple_optimizer"]:
         return SyncSamplesOptimizer(
             local_evaluator,
@@ -84,7 +84,7 @@ def _make_optimizer(local_evaluator, remote_evaluators, config):
         straggler_mitigation=config["straggler_mitigation"])
 
 
-def _update_kl(trainer, fetches):
+def update_kl(trainer, fetches):
     if "kl" in fetches:
         # single-agent
         trainer.local_evaluator.for_policy(
@@ -101,7 +101,7 @@ def _update_kl(trainer, fetches):
         trainer.local_evaluator.foreach_trainable_policy(update)
 
 
-def _warn_about_obs_filter(trainer):
+def warn_about_obs_filter(trainer):
     if "observation_filter" not in trainer.raw_user_config:
         # TODO(ekl) remove this message after a few releases
         logger.info(
@@ -112,7 +112,7 @@ def _warn_about_obs_filter(trainer):
             "require observation normalization.")
 
 
-def _warn_about_bad_reward_scales(trainer, result):
+def warn_about_bad_reward_scales(trainer, result):
     # Warn about bad clipping configs
     if trainer.config["vf_clip_param"] <= 0:
         rew_scale = float("inf")
@@ -132,7 +132,7 @@ def _warn_about_bad_reward_scales(trainer, result):
             "increasing `vf_clip_param`.")
 
 
-def _validate_config(config):
+def validate_config(config):
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
     if config["sgd_minibatch_size"] > config["train_batch_size"]:
@@ -159,8 +159,8 @@ PPOTrainer = build_trainer(
     "PPO",
     default_config=DEFAULT_CONFIG,
     default_policy_graph=PPOPolicyGraph,
-    make_policy_optimizer=_make_optimizer,
-    validate_config=_validate_config,
-    after_optimizer_step=_update_kl,
-    before_train_step=_warn_about_obs_filter,
-    after_train_result=_warn_about_bad_reward_scales)
+    make_policy_optimizer=make_optimizer,
+    validate_config=validate_config,
+    after_optimizer_step=update_kl,
+    before_train_step=warn_about_obs_filter,
+    after_train_result=warn_about_bad_reward_scales)
