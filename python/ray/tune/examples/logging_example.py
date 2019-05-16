@@ -13,7 +13,7 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.tune import Trainable, run, Experiment
+from ray.tune import Trainable, run
 
 
 class TestLogger(tune.logger.Logger):
@@ -61,18 +61,17 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     ray.init(redis_address="localhost:6379")
-    exp = Experiment(
+
+    trials = run(
+        MyTrainableClass,
         name="hyperband_test",
-        run=MyTrainableClass,
-        num_samples=1,
+        num_samples=10,
         trial_name_creator=tune.function(trial_str_creator),
-        upload_dir="s3://sac-real-nvp/ray-testing/",
         loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
             "width": tune.sample_from(
                 lambda spec: 10 + int(90 * random.random())),
             "height": tune.sample_from(lambda spec: int(100 * random.random()))
-        })
-
-    trials = run(exp)
+        },
+        upload_dir="s3://sac-real-nvp/ray-testing/")

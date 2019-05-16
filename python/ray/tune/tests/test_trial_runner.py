@@ -909,30 +909,30 @@ class RunExperimentTest(unittest.TestCase):
 
     def testSyncFunction(self):
         def fail_sync_local():
-            [trial] = run_experiments({
-                "foo": {
-                    "run": "__fake",
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                **{
                     "stop": {
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
                     "sync_function": "ls {remote_dir}"
-                }
-            })
+                })
 
         self.assertRaises(AssertionError, fail_sync_local)
 
         def fail_sync_remote():
-            [trial] = run_experiments({
-                "foo": {
-                    "run": "__fake",
+            [trial] = tune.run(
+                "foo",
+                name="__fake",
+                **{
                     "stop": {
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
                     "sync_function": "ls {local_dir}"
-                }
-            })
+                })
 
         self.assertRaises(AssertionError, fail_sync_remote)
 
@@ -940,16 +940,16 @@ class RunExperimentTest(unittest.TestCase):
             with open(os.path.join(local, "test.log"), "w") as f:
                 f.write(remote)
 
-        [trial] = run_experiments({
-            "foo": {
-                "run": "__fake",
+        [trial] = tune.run(
+            "foo",
+            name="__fake",
+            **{
                 "stop": {
                     "training_iteration": 1
                 },
                 "upload_dir": "test",
                 "sync_function": tune.function(sync_func)
-            }
-        })
+            })
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
 
 

@@ -18,7 +18,6 @@ except ImportError:  # py2
 from ray.tune.suggest.variant_generator import function as tune_function
 from ray.tune.error import TuneError
 
-
 logger = logging.getLogger(__name__)
 
 S3_PREFIX = "s3://"
@@ -42,12 +41,23 @@ class BaseSyncer(object):
             sync_function (func): Function for syncing the local_dir to
                 remote_dir.
         """
-        self._local_dir = os.path.join(local_dir, '')
-        self._remote_dir = remote_dir or self._local_dir  # TODO(rliaw) - double check
+        self._local_dir = os.path.join(local_dir, "")
+        self._remote_dir = remote_dir
         self.last_sync_up_time = 0
         self.last_sync_down_time = 0
-        if sync_function:  # TODO(rliaw): Check on this
-            self.sync_function = sync_function
+        self._sync_function = sync_function
+
+    def sync_function(self, source, target):
+        """Executes sync between source and target.
+
+        Can be overwritten by subclasses for custom sync procedures.
+
+        Args:
+            source: Path to source file(s).
+            target: Path to target file(s).
+        """
+        if self._sync_function:
+            return self._sync_function(source, target)
 
     def sync(self, source, target):
 
@@ -95,20 +105,36 @@ class BaseSyncer(object):
         return self._remote_dir
 
 
+class NoopSyncer(BaseSyncer):
+    def __init__(self):
+        pass
+
+    def sync(self, *args):
+        pass
+
+    @property
+    def local_dir(self):
+        return None
+
+    @property
+    def remote_path(self):
+        return None
+
+
 class CommandSyncer(BaseSyncer):
-    def __init__(self, local_dir, remote_dir, sync_cmd_tmpl):
+    def __init__(self, local_dir, remote_dir, sync_template):
         """
         Arguments:
             local_dir (str): Directory to sync.
             remote_dir (str): Remote directory to sync with.
-            sync_cmd_tmpl (str): A string template
+            sync_template (str): A string template
                 for syncer to run and needs to include replacement fields
-                '{local_dir}' and '{remote_dir}'.
+                '{local_dir}' and '{remote_dir}'. If None, syncing
+                will not take place.
         """
         super(CommandSyncer, self).__init__(local_dir, remote_dir)
-        if sync_cmd_tmpl is not None:
-            validate_sync_string(sync_cmd_tmpl)
-        self.sync_cmd_tmpl = sync_cmd_tmpl
+        validate_sync_string(sync_template)
+        self._sync_template = sync_template
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync", dir=self.local_dir, suffix=".log", delete=False)
 
@@ -122,9 +148,7 @@ class CommandSyncer(BaseSyncer):
                 logger.warning("Last sync is still in progress, skipping.")
                 return
 
-        sync_template = self.get_remote_sync_template()
-        if sync_template is None:
-            return
+        sync_template = self.sync_template
         final_cmd = sync_template.format(
             source=quote(source), target=quote(target))
         logger.debug("Running sync: {}".format(final_cmd))
@@ -132,8 +156,13 @@ class CommandSyncer(BaseSyncer):
             final_cmd, shell=True, stdout=self.logfile)
         return True
 
-    def get_remote_sync_template(self):
-        return self.sync_cmd_tmpl
+    @property
+    def sync_template(self):
+        """Template for executing a sync command.
+
+        Can be overwritten by subclass for custom behavior.
+        """
+        return self._sync_template
 
     def close(self):
         self.logfile.close()
@@ -144,7 +173,20 @@ class CommandSyncer(BaseSyncer):
 
 
 def get_syncer(local_dir, remote_dir, sync_function=None):
-    """This returns a Syncer depending on given args."""
+    """This returns a Syncer depending on given args.
+
+    Args:
+        local_dir: Source directory for syncing.
+        remote_dir: Target directory for syncing. If None,
+            returns NoopSyncer.
+        sync_function (func | str): Function for syncing the local_dir to
+            remote_dir. If string, then it must be a string template for
+            syncer to run. If not provided, it defaults
+            to standard S3 or gsutil sync commands.
+        """
+    if not remote_dir:
+        return NoopSyncer()
+
     if sync_function:
         if isinstance(sync_function, types.FunctionType) or isinstance(
                 sync_function, tune_function):

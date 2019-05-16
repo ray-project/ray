@@ -355,7 +355,6 @@ class Trial(object):
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 
-            # TODO(rliaw): A better check to make sure no upload dir is used?
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,

@@ -77,12 +77,6 @@ def make_parser(parser_creator=None, **kwargs):
         help="Optional creator function for the trial string, used in "
         "generating a trial directory.")
     parser.add_argument(
-        "--sync-function",
-        default=None,
-        help="Function for syncing the local_dir to upload_dir. If string, "
-        "then it must be a string template for syncer to run and needs to "
-        "include replacement fields '{local_dir}' and '{remote_dir}'.")
-    parser.add_argument(
         "--loggers",
         default=None,
         help="List of logger creators to be used with each Trial. "
@@ -207,6 +201,6 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         trial_name_creator=spec.get("trial_name_creator"),
         loggers=spec.get("loggers"),
         # str(None) doesn't create None
-        sync_function=spec.get("sync_function"),
+        sync_function=spec.get("sync_to_driver"),
         max_failures=args.max_failures,
         **trial_kwargs)

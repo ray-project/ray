@@ -45,12 +45,12 @@ worker_nodes:
               VolumeSize: 150
 
 setup_commands:
-    - pip install -U ray
-    - cd ray_edits/rllib; python setup-rllib-dev.py --yes
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp36-cp36m-manylinux1_x86_64.whl
+    - cd ray_edits; python setup-dev.py --yes
 
 
 file_mounts: {
-  "~/ray_edits/": /Users/kristian/github/hartikainen/ray/python/ray/
+  "~/ray_edits/": /Users/rliaw/Research/riselab/ray/python/ray/
 }
 
 # Custom commands that will be run on the head node after common setup.

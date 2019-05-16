@@ -52,7 +52,6 @@ class Experiment(object):
         >>>     },
         >>>     num_samples=10,
         >>>     local_dir="~/ray_results",
-        >>>     upload_dir="s3://your_bucket/path",
         >>>     checkpoint_freq=10,
         >>>     max_failures=2)
     """
@@ -65,10 +64,9 @@ class Experiment(object):
                  resources_per_trial=None,
                  num_samples=1,
                  local_dir=None,
-                 upload_dir=None,
                  trial_name_creator=None,
                  loggers=None,
-                 sync_function=None,
+                 sync_to_driver=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  keep_checkpoints_num=None,
@@ -78,17 +76,20 @@ class Experiment(object):
                  restore=None,
                  repeat=None,
                  trial_resources=None,
-                 custom_loggers=None):
-        if sync_function:
-            assert upload_dir, "Need `upload_dir` if sync_function given."
-
+                 custom_loggers=None,
+                 sync_function=None,
+                 upload_dir=None):
         if repeat:
             _raise_deprecation_note("repeat", "num_samples", soft=False)
         if trial_resources:
             _raise_deprecation_note(
                 "trial_resources", "resources_per_trial", soft=False)
-        if custom_loggers:
-            _raise_deprecation_note("custom_loggers", "loggers", soft=False)
+        if sync_function:
+            raise DeprecationWarning("`sync_function` is deprecated. Please"
+                                     " use `tune.run` for uploading.")
+        if upload_dir:
+            raise DeprecationWarning("`upload_dir` is deprecated. Please"
+                                     " use `tune.run` for uploading.")
 
         run_identifier = Experiment._register_if_needed(run)
         spec = {
@@ -100,7 +101,7 @@ class Experiment(object):
             "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
             "trial_name_creator": trial_name_creator,
             "loggers": loggers,
-            "sync_function": sync_function,
+            "sync_to_driver": sync_to_driver,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
             "keep_checkpoints_num": keep_checkpoints_num,
@@ -110,7 +111,6 @@ class Experiment(object):
             "restore": restore
         }
 
-        self.upload_dir = upload_dir or ""  # argparse converts None to "null"
         self.name = name or run_identifier
         self.spec = spec
 

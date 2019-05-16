@@ -105,7 +105,7 @@ class TrialRunner(object):
                  launch_web_server=False,
                  local_checkpoint_dir=None,
                  remote_checkpoint_dir=None,
-                 sync_function=None,
+                 sync_to_cloud=None,
                  resume=None,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
@@ -163,7 +163,7 @@ class TrialRunner(object):
 
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_syncer(local_checkpoint_dir, remote_checkpoint_dir,
-                                  sync_function)
+                                  sync_to_cloud)
 
         self._resumed = False
 

@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import distutils.spawn
 import logging
-import os
 
 try:  # py3
     from shlex import quote
@@ -14,8 +13,6 @@ except ImportError:  # py2
 import ray
 from ray.tune.syncer import CommandSyncer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
-from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.sample import function as tune_function
 
 logger = logging.getLogger(__name__)
 _log_sync_warned = False
@@ -56,7 +53,8 @@ class LogSyncer(CommandSyncer):
         """Set the worker ip to sync logs from."""
         self.worker_ip = worker_ip
 
-    def get_remote_sync_template(self):
+    @property
+    def sync_template(self):
         """Syncs the local local_dir on driver to worker if possible.
 
         Requires ray cluster to be started with the autoscaler. Also requires
@@ -101,4 +99,4 @@ class LogSyncer(CommandSyncer):
                              "`ray up`.")
                 _log_sync_warned = True
             return
-        return '{}@{}:{}/'.format(ssh_user, self.worker_ip, self._remote_dir)
+        return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
