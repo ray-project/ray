@@ -72,10 +72,11 @@ def build_tf_graph(name,
 class DynamicTFPolicyGraph(TFPolicyGraph):
     """A TFPolicyGraph that auto-defines placeholders dynamically at runtime.
 
-    The loss function of this class is not initialized until the first batch
-    of experiences is collected from the environment. At that point we
-    dynamically generate TF placeholders based on the batch keys and values.
-    which are passed into the user-defined loss function.
+    Initialization of this class occurs in two phases.
+      * Phase 1: the model is created and model variables are initialized.
+      * Phase 2: a fake batch of data is created, sent to the trajectory
+        postprocessor, and then used to create placeholders for the loss
+        function. The loss function is initialiezd with these placeholders.
     """
 
     def __init__(self,
@@ -133,6 +134,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             prev_reward_input=prev_rewards,
             seq_lens=self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
+        self._initialize_loss_if_needed()
         sess.run(tf.global_variables_initializer())
 
     @override(PolicyGraph)
@@ -142,9 +144,27 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
         else:
             return []
 
-    def _initialize_loss_if_needed(self, postprocessed_batch):
+    def _initialize_loss_if_needed(self):
         if self._loss is not None:
             return  # already created
+
+        def fake_array(tensor):
+            shape = tensor.shape.as_list()
+            shape[0] = 1
+            return np.zeros(shape, dtype=tensor.dtype.as_numpy_dtype)
+
+        fake_batch = {
+            SampleBatch.PREV_ACTIONS: fake_array(self._prev_action_input),
+            SampleBatch.PREV_REWARDS: fake_array(self._prev_reward_input),
+            SampleBatch.CUR_OBS: fake_array(self._obs_input),
+            SampleBatch.ACTIONS: fake_array(self._sampler),
+            SampleBatch.REWARDS: np.array([0], dtype=np.int32),
+        }
+        for k, v in self.extra_compute_action_fetches().items():
+            fake_batch[k] = fake_array(v)
+
+        postprocessed_batch = self.postprocess_trajectory(
+            SampleBatch(fake_batch))
 
         with self._sess.graph.as_default():
             unroll_tensors = UsageTrackingDict({
@@ -177,14 +197,3 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 loss_inputs.append((k, unroll_tensors[k]))
 
             TFPolicyGraph._initialize_loss(self, loss, loss_inputs)
-            self._sess.run(tf.global_variables_initializer())
-
-    @override(PolicyGraph)
-    def compute_gradients(self, postprocessed_batch):
-        self._initialize_loss_if_needed(postprocessed_batch)
-        return TFPolicyGraph.compute_gradients(self, postprocessed_batch)
-
-    @override(PolicyGraph)
-    def learn_on_batch(self, postprocessed_batch):
-        self._initialize_loss_if_needed(postprocessed_batch)
-        return TFPolicyGraph.learn_on_batch(self, postprocessed_batch)
