@@ -95,17 +95,19 @@ def wait_for_errors(error_type, num_errors, timeout=10):
         time.sleep(0.1)
     raise Exception("Timing out of wait.")
 
+
 def wait_for_success_output(process_handle, timeout=10):
-        # Wait until the process prints "success" and then return.
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            output_line = ray.utils.decode(
-                process_handle.stdout.readline()).strip()
-            if output_line == "success":
-                return
-            elif output_line == "error":
-                raise Exception("Logging process did not succeed.")
-        raise Exception("Timed out waiting for process to print success.")
+    # Wait until the process prints "success" and then return.
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        output_line = ray.utils.decode(
+            process_handle.stdout.readline()).strip()
+        if output_line == "success":
+            return
+        elif output_line == "error":
+            raise Exception("Logging process did not succeed.")
+    raise Exception("Timed out waiting for process to print success.")
+
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
 # should use those, but they seem to conflict with Ray's use of faulthandler.

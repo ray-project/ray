@@ -10,7 +10,8 @@ import time
 import ray
 from ray.utils import _random_string
 from ray.tests.utils import (run_and_get_output, run_string_as_driver,
-                             run_string_as_driver_nonblocking, wait_for_success_output)
+                             run_string_as_driver_nonblocking,
+                             wait_for_success_output)
 
 
 def test_error_isolation(call_ray_start):
@@ -254,8 +255,9 @@ print("success")
     procs = [None] * num_drivers
 
     for idx in range(num_drivers):
-        i = idx 
-        script = driver_script.format(redis_address, (i * 100, (i + 1) * 100), (0, num_drivers * 100))
+        i = idx
+        script = driver_script.format(redis_address, (i * 100, (i + 1) * 100),
+                                      (0, num_drivers * 100))
         procs[idx] = run_string_as_driver_nonblocking(script)
 
     for idx in range(num_drivers):
