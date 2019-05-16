@@ -20,6 +20,7 @@ def build_tf_policy(name,
                     before_init=None,
                     before_loss_init=None,
                     after_init=None,
+                    make_action_sampler=None,
                     mixins=None):
     """Helper function for creating a dynamic tf policy graph at runtime.
 
@@ -46,6 +47,10 @@ def build_tf_policy(name,
             init that takes the same arguments as __init__
         after_init (func): optional function to run at the end of __init__
             that takes the same arguments as __init__
+        make_action_sampler (func): optional function that returns a
+            tuple of action and action prob tensors. The function takes
+            (policy, input_dict, obs_space, action_space, config) as its
+            arguments
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the DynamicTFPolicyGraph class

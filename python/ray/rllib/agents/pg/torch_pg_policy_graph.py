@@ -11,7 +11,7 @@ from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.torch_policy_graph_template import build_torch_policy
 
 
-def _pg_torch_loss(policy, batch_tensors):
+def pg_torch_loss(policy, batch_tensors):
     logits, _, values, _ = policy.model({
         SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
     }, [])
@@ -23,27 +23,27 @@ def _pg_torch_loss(policy, batch_tensors):
     return policy.pi_err
 
 
-def _postprocess_advantages(policy,
-                            sample_batch,
-                            other_agent_batches=None,
-                            episode=None):
+def postprocess_advantages(policy,
+                           sample_batch,
+                           other_agent_batches=None,
+                           episode=None):
     return compute_advantages(
         sample_batch, 0.0, policy.config["gamma"], use_gae=False)
 
 
-def _pg_loss_stats(policy, batch_tensors):
+def pg_loss_stats(policy, batch_tensors):
     # the error is recorded when computing the loss
     return {"policy_loss": policy.pi_err.item()}
 
 
-def _make_optimizer(policy):
+def make_optimizer(policy):
     return torch.optim.Adam(policy._model.parameters(), lr=policy.config["lr"])
 
 
 PGTorchPolicyGraph = build_torch_policy(
     name="PGTorchPolicyGraph",
     get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
-    loss_fn=_pg_torch_loss,
-    stats_fn=_pg_loss_stats,
-    postprocess_fn=_postprocess_advantages,
-    optimizer_fn=_make_optimizer)
+    loss_fn=pg_torch_loss,
+    stats_fn=pg_loss_stats,
+    postprocess_fn=postprocess_advantages,
+    optimizer_fn=make_optimizer)

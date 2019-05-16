@@ -10,7 +10,7 @@ from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
@@ -20,7 +20,6 @@ tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
 class DynamicTFPolicyGraph(TFPolicyGraph):
     """A TFPolicyGraph that auto-defines placeholders dynamically at runtime.
 
@@ -38,10 +37,8 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                  config,
                  loss_fn,
                  stats_fn=None,
-                 autosetup_model=True,
                  before_loss_init=None,
-                 action_sampler=None,
-                 action_prob=None,
+                 make_action_sampler=None,
                  existing_inputs=None):
         """Initialize a dynamic TF policy graph.
 
@@ -53,21 +50,17 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 graph, and dict of experience tensor placeholders
             stats_fn (func): optional function that returns a dict of
                 TF fetches given the policy graph and batch input tensors
-            autosetup_model (bool): whether to create a model and action dist
-                using catalog defaults. These will be available as self.model
-                and self.action_dist
             before_loss_init (func): optional function to run prior to loss
                 init that takes the same arguments as __init__
-            action_sampler (Tensor): if autosetup_model is False, this must be
-                specified to define how the policy computes actions
-            action_prob (Tensor): if autosetup_model is False, this can be
-                specified to define the chosen action probability
+            make_action_sampler (func): optional function that returns a
+                tuple of action and action prob tensors. The function takes
+                (policy, input_dict, obs_space, action_space, config) as its
+                arguments
             existing_inputs (OrderedDict): when copying a policy graph, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
         """
         self.config = config
-        self.autosetup_model = autosetup_model
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn
 
@@ -85,9 +78,23 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             prev_rewards = tf.placeholder(
                 tf.float32, [None], name="prev_reward")
 
+        input_dict = {
+            "obs": obs,
+            "prev_actions": prev_actions,
+            "prev_rewards": prev_rewards,
+            "is_training": self._get_is_training_placeholder(),
+        }
+
         # Create the model network and action outputs
-        if autosetup_model:
-            dist_class, self.logit_dim = ModelCatalog.get_action_dist(
+        if make_action_sampler:
+            assert not existing_inputs, \
+                "Cloning not supported with custom action sampler"
+            self.model = None
+            self.action_dist = None
+            action_sampler, action_prob = make_action_sampler(
+                self, input_dict, obs_space, action_space, config)
+        else:
+            dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
             if existing_inputs:
                 existing_state_in = [
@@ -102,29 +109,16 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 existing_state_in = []
                 existing_seq_lens = None
             self.model = ModelCatalog.get_model(
-                {
-                    "obs": obs,
-                    "prev_actions": prev_actions,
-                    "prev_rewards": prev_rewards,
-                    "is_training": self._get_is_training_placeholder(),
-                },
+                input_dict,
                 obs_space,
                 action_space,
-                self.logit_dim,
+                logit_dim,
                 self.config["model"],
                 state_in=existing_state_in,
                 seq_lens=existing_seq_lens)
             self.action_dist = dist_class(self.model.outputs)
             action_sampler = self.action_dist.sample()
             action_prob = self.action_dist.sampled_action_prob()
-        else:
-            self.logit_dim = None
-            self.model = None
-            self.action_dist = None
-            if not action_sampler:
-                raise ValueError(
-                    "When autosetup_model=False, action_sampler must be "
-                    "passed in to the constructor.")
 
         # Phase 1 init
         sess = tf.get_default_session()
@@ -139,11 +133,11 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
-            state_inputs=self.model.state_in,
-            state_outputs=self.model.state_out,
+            state_inputs=self.model and self.model.state_in,
+            state_outputs=self.model and self.model.state_out,
             prev_action_input=prev_actions,
             prev_reward_input=prev_rewards,
-            seq_lens=self.model.seq_lens,
+            seq_lens=self.model and self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
 
         # Phase 2 init

@@ -14,9 +14,12 @@ def build_torch_policy(name,
                        loss_fn,
                        stats_fn=None,
                        postprocess_fn=None,
+                       extra_action_out_fn=None,
+                       extra_grad_process_fn=None,
                        optimizer_fn=None,
                        before_init=None,
                        after_init=None,
+                       make_model_and_action_dist=None,
                        mixins=None):
     """Helper function for creating a dynamic tf policy graph at runtime.
 
@@ -30,12 +33,20 @@ def build_torch_policy(name,
             values given the policy graph and batch input tensors
         postprocess_fn (func): optional experience postprocessing function
             that takes the same args as PolicyGraph.postprocess_trajectory()
+        extra_action_out_fn (func): optional function that returns
+            a dict of extra values to include in experiences
+        extra_grad_process_fn (func): optional function that is called after
+            gradients are computed and returns processing info
         optimizer_fn (func): optional function that returns a torch optimizer
             given the policy graph object
         before_init (func): optional function to run at the beginning of
             __init__ that takes the same arguments as __init__
         after_init (func): optional function to run at the end of __init__
             that takes the same arguments as __init__
+        make_model_and_action_dist (func): optional func that takes the same
+            arguments as __init__ and returns a tuple of model instance and
+            torch action distribution class. If not specified, the default
+            model and action dist from the catalog will be used
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the TorchPolicyGraph class
@@ -58,19 +69,17 @@ def build_torch_policy(name,
             if before_init:
                 before_init(self, obs_space, action_space, config)
 
-            self.dist_class, self.logit_dim = ModelCatalog.get_action_dist(
-                action_space, self.config["model"], torch=True)
-            self.model = ModelCatalog.get_torch_model(
-                obs_space, self.logit_dim, self.config["model"])
+            if make_model_and_action_dist:
+                self.model, self.dist_class = make_model_and_action_dist(
+                    self, obs_space, action_space, config)
+            else:
+                self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+                    action_space, self.config["model"], torch=True)
+                self.model = ModelCatalog.get_torch_model(
+                    obs_space, logit_dim, self.config["model"])
 
-            TorchPolicyGraph.__init__(
-                self,
-                obs_space,
-                action_space,
-                self.model,
-                None,  # loss fn is None since we override _compute_loss
-                [],  # TODO(ekl) clean up torch loss handling
-                self.dist_class)
+            TorchPolicyGraph.__init__(self, obs_space, action_space,
+                                      self.model, loss_fn, self.dist_class)
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
@@ -86,6 +95,20 @@ def build_torch_policy(name,
                                   episode)
 
         @override(TorchPolicyGraph)
+        def extra_grad_process(self):
+            if extra_grad_process_fn:
+                return extra_grad_process_fn(self)
+            else:
+                return TorchPolicyGraph.extra_grad_process(self)
+
+        @override(TorchPolicyGraph)
+        def extra_action_out(self, model_out):
+            if extra_action_out_fn:
+                return extra_action_out_fn(self, model_out)
+            else:
+                return TorchPolicyGraph.extra_action_out_fn(self, model_out)
+
+        @override(TorchPolicyGraph)
         def optimizer(self):
             if optimizer_fn:
                 return optimizer_fn(self)
@@ -98,10 +121,6 @@ def build_torch_policy(name,
                 return stats_fn(self, batch_tensors)
             else:
                 return TorchPolicyGraph.extra_grad_info(self, batch_tensors)
-
-        @override(TorchPolicyGraph)
-        def _compute_loss(self, batch_tensors):
-            return loss_fn(self, batch_tensors)
 
     graph_cls.__name__ = name
     graph_cls.__qualname__ = name

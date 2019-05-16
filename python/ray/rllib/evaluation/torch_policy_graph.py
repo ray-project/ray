@@ -31,7 +31,7 @@ class TorchPolicyGraph(PolicyGraph):
     """
 
     def __init__(self, observation_space, action_space, model, loss,
-                 loss_inputs, action_distribution_cls):
+                 action_distribution_cls):
         """Build a policy graph from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
@@ -43,13 +43,8 @@ class TorchPolicyGraph(PolicyGraph):
             model (nn.Module): PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
-            loss (nn.Module): Loss defined as a PyTorch module. The inputs for
-                this module are defined by the `loss_inputs` param. This module
-                returns a single scalar loss. Note that this module should
-                internally be using the model module.
-            loss_inputs (list): List of SampleBatch columns that will be
-                passed to the loss module's forward() function when computing
-                the loss. For example, ["obs", "action", "advantages"].
+            loss (func): Function that takes (policy_graph, batch_tensors)
+                and returns a single scalar loss.
             action_distribution_cls (ActionDistribution): Class for action
                 distribution.
         """
@@ -61,7 +56,6 @@ class TorchPolicyGraph(PolicyGraph):
                        else torch.device("cpu"))
         self._model = model.to(self.device)
         self._loss = loss
-        self._loss_inputs = loss_inputs
         self._optimizer = self.optimizer()
         self._action_dist_cls = action_distribution_cls
 
@@ -91,7 +85,7 @@ class TorchPolicyGraph(PolicyGraph):
         batch_tensors = self._lazy_tensor_dict(postprocessed_batch)
 
         with self.lock:
-            loss_out = self._compute_loss(batch_tensors)
+            loss_out = self._loss(self, batch_tensors)
             self._optimizer.zero_grad()
             loss_out.backward()
 
@@ -107,7 +101,7 @@ class TorchPolicyGraph(PolicyGraph):
         batch_tensors = self._lazy_tensor_dict(postprocessed_batch)
 
         with self.lock:
-            loss_out = self._compute_loss(batch_tensors)
+            loss_out = self._loss(self, batch_tensors)
             self._optimizer.zero_grad()
             loss_out.backward()
 
@@ -168,13 +162,6 @@ class TorchPolicyGraph(PolicyGraph):
     def optimizer(self):
         """Custom PyTorch optimizer to use."""
         return torch.optim.Adam(self._model.parameters())
-
-    def _compute_loss(self, batch_tensors):
-        loss_in = []
-        for key in self._loss_inputs:
-            loss_in.append(batch_tensors[key])
-        loss_out = self._loss(self._model, *loss_in)
-        return loss_out
 
     def _lazy_tensor_dict(self, postprocessed_batch):
         batch_tensors = UsageTrackingDict(postprocessed_batch)

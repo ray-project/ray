@@ -13,28 +13,28 @@ tf = try_import_tf()
 
 
 # The basic policy gradients loss
-def _policy_gradient_loss(policy, batch_tensors):
+def policy_gradient_loss(policy, batch_tensors):
     actions = batch_tensors[SampleBatch.ACTIONS]
     advantages = batch_tensors[Postprocessing.ADVANTAGES]
     return -tf.reduce_mean(policy.action_dist.logp(actions) * advantages)
 
 
 # This adds the "advantages" column to the sample batch.
-def _postprocess_advantages(policy,
-                            sample_batch,
-                            other_agent_batches=None,
-                            episode=None):
+def postprocess_advantages(policy,
+                           sample_batch,
+                           other_agent_batches=None,
+                           episode=None):
     return compute_advantages(
         sample_batch, 0.0, policy.config["gamma"], use_gae=False)
 
 
-def _make_optimizer(policy):
+def make_optimizer(policy):
     return tf.train.AdamOptimizer(learning_rate=policy.config["lr"])
 
 
 PGPolicyGraph = build_tf_policy(
     name="PGPolicyGraph",
     get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
-    postprocess_fn=_postprocess_advantages,
-    loss_fn=_policy_gradient_loss,
-    optimizer_fn=_make_optimizer)
+    postprocess_fn=postprocess_advantages,
+    loss_fn=policy_gradient_loss,
+    optimizer_fn=make_optimizer)
