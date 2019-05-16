@@ -90,7 +90,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
       * Phase 1: the model is created and model variables are initialized.
       * Phase 2: a fake batch of data is created, sent to the trajectory
         postprocessor, and then used to create placeholders for the loss
-        function. The loss function is initialiezd with these placeholders.
+        function. The loss function is initialized with these placeholders.
     """
 
     def __init__(self,
