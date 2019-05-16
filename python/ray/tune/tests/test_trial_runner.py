@@ -907,18 +907,19 @@ class RunExperimentTest(unittest.TestCase):
             str(trial), "{}_{}_321".format(trial.trainable_name,
                                            trial.trial_id))
 
+    @patch("ray.tune.syncer.S3_PREFIX", "test")
     def testSyncFunction(self):
         def fail_sync_local():
-            [trial] = tune.run(
-                "__fake",
-                name="foo",
-                **{
-                    "stop": {
-                        "training_iteration": 1
-                    },
-                    "upload_dir": "test",
-                    "sync_function": "ls {remote_dir}"
-                })
+                [trial] = tune.run(
+                    "__fake",
+                    name="foo",
+                    **{
+                        "stop": {
+                            "training_iteration": 1
+                        },
+                        "upload_dir": "test",
+                        "sync_to_driver": "ls {remote_dir}"
+                    })
 
         self.assertRaises(AssertionError, fail_sync_local)
 
@@ -931,7 +932,7 @@ class RunExperimentTest(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_function": "ls {local_dir}"
+                    "sync_to_driver": "ls {local_dir}"
                 })
 
         self.assertRaises(AssertionError, fail_sync_remote)
@@ -948,7 +949,7 @@ class RunExperimentTest(unittest.TestCase):
                     "training_iteration": 1
                 },
                 "upload_dir": "test",
-                "sync_function": tune.function(sync_func)
+                "sync_to_driver": tune.function(sync_func)
             })
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
 

@@ -15,7 +15,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.tune.suggest.variant_generator import function as tune_function
+from ray.tune.sample import function as tune_function
 from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
