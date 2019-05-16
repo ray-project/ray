@@ -16,20 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class PyTorchRunner(object):
-    """Manages a distributed PyTorch model replica.
-
-    Args:
-        model_creator (dict -> torch.nn.Module): creates the model using the
-            config.
-        data_creator (dict -> Dataset, Dataset): creates the training and
-            validation data sets using the config.
-        optimizer_creator (model, dict -> loss, optimizer): creates the loss
-            and optimizer using the config.
-        config (dict): configuration passed to 'model_creator', 'data_creator',
-            and 'optimizer_creator'.
-        batch_size (int): batch size used for SGD.
-        backend (string): backend used for distributed SGD. "gloo" or "nccl".
-    """
+    """Manages a distributed PyTorch model replica"""
 
     def __init__(self,
                  model_creator,
@@ -38,6 +25,20 @@ class PyTorchRunner(object):
                  config=None,
                  batch_size=16,
                  backend="gloo"):
+        """Initializes the runner.
+
+        Args:
+            model_creator (dict -> torch.nn.Module): creates the model using the
+                config.
+            data_creator (dict -> Dataset, Dataset): creates the training and
+                validation data sets using the config.
+            optimizer_creator (model, dict -> loss, optimizer): creates the loss
+                and optimizer using the config.
+            config (dict): configuration passed to 'model_creator', 'data_creator',
+                and 'optimizer_creator'.
+            batch_size (int): batch size used for SGD.
+            backend (string): backend used for distributed SGD. "gloo" or "nccl".
+        """
 
         self.model_creator = model_creator
         self.data_creator = data_creator
@@ -49,23 +50,28 @@ class PyTorchRunner(object):
 
         self.local_rank = None
         if os.environ.get("CUDA_VISIBLE_DEVICES", None):
-            # TODO: might break if multiple GPUs requested
             self.local_rank = int(os.environ["CUDA_VISIBLE_DEVICES"])
         self.epoch = 0
         self._timers = {
-            "setup_proc": utils.TimerStat(window_size=1),
-            "setup_model": utils.TimerStat(window_size=1),
-            "get_state": utils.TimerStat(window_size=1),
-            "set_state": utils.TimerStat(window_size=1),
-            "validation": utils.TimerStat(window_size=1),
-            "training": utils.TimerStat(window_size=1)
+            k: utils.TimerStat(window_size=1)
+            for k in [
+                "setup_proc", "setup_model", "get_state", "set_state",
+                "validation", "training"
+            ]
         }
 
     def setup(self, url, world_rank, world_size):
-        self.setup_distributed_pytorch(url, world_rank, world_size)
-        self.setup_training()
+        """Connects to the distributed PyTorch backend and initializes the model.
 
-    def setup_distributed_pytorch(self, url, world_rank, world_size):
+        Args:
+            url (str): the URL used to connect to distributed PyTorch.
+            world_rank (int): the index of the runner.
+            world_size (int): the total number of runners.
+        """
+        self._setup_distributed_pytorch(url, world_rank, world_size)
+        self._setup_training()
+
+    def _setup_distributed_pytorch(self, url, world_rank, world_size):
         os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
         with self._timers["setup_proc"]:
             self.world_rank = world_rank
@@ -73,10 +79,11 @@ class PyTorchRunner(object):
                 "Connecting to {} world_rank: {} world_size: {}".format(
                     url, world_rank, world_size))
             logger.debug("using {}".format(self.backend))
-            dist.init_process_group(backend=self.backend,
-                                    init_method=url,
-                                    rank=world_rank,
-                                    world_size=world_size)
+            dist.init_process_group(
+                backend=self.backend,
+                init_method=url,
+                rank=world_rank,
+                world_size=world_size)
 
             # This is a hack because set_devices fails otherwise
             os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
@@ -87,7 +94,7 @@ class PyTorchRunner(object):
             if self.verbose:
                 logger.info("Device Set.")
 
-    def setup_training(self):
+    def _setup_training(self):
         logger.debug("Creating model")
         self.model = self.model_creator(self.config)
         if self.local_rank is None:
@@ -120,9 +127,11 @@ class PyTorchRunner(object):
         # TODO: set up validation dataset
 
     def get_node_ip(self):
+        """Returns the IP address of the current node"""
         return ray.services.get_node_ip_address()
 
     def step(self):
+        """Runs a training epoch and updates the model parameters"""
         logger.debug("Starting step")
         self.train_sampler.set_epoch(self.epoch)
 
@@ -142,6 +151,7 @@ class PyTorchRunner(object):
         return train_stats
 
     def stats(self):
+        """Returns a dictionary of statistics collected"""
         stats = {}
         for k, t in self._timers.items():
             stats[k + "_time_mean"] = t.mean
@@ -150,12 +160,15 @@ class PyTorchRunner(object):
         return stats
 
     def get_state(self):
+        """Returns the state of the model"""
         return self.model.state_dict()
 
     def set_state(self, state_dict):
+        """Sets the state of the model"""
         self.model.load_state_dict(state_dict)
 
     def shutdown(self):
+        """Attempts to shut down the worker"""
         logger.debug("Stopping worker.")
         try:
             dist.destroy_process_group()

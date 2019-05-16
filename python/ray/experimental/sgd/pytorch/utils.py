@@ -3,7 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+from contextlib import closing
 import numpy as np
+import socket
 import time
 import torch
 
@@ -149,6 +151,13 @@ class TimerStat(object):
         self.count = 0
 
 
+def find_free_port():
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
@@ -168,6 +177,13 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-class Resources(namedtuple("Resources",
-                           ["num_cpus", "num_gpus", "resources"])):
-    pass
+class Resources(
+        namedtuple("Resources", ["num_cpus", "num_gpus", "resources"])):
+    __slots__ = ()
+
+    def __new__(cls, num_cpus=0, num_gpus=0, resources=None):
+        if resources is None:
+            resources = {}
+
+        return super(Resources, cls).__new__(cls, num_cpus, num_gpus,
+                                             resources)

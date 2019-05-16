@@ -25,17 +25,15 @@ class LinearDataset(torch.utils.data.Dataset):
 
 
 def model_creator(config):
-    return nn.Sequential(nn.Linear(1, 16), nn.ReLU(), nn.Linear(16, 1),
-                         nn.Sigmoid())
+    return nn.Sequential(
+        nn.Linear(1, 16), nn.ReLU(), nn.Linear(16, 1), nn.Sigmoid())
 
 
 def optimizer_creator(model, config):
     """Returns criterion, optimizer"""
     criterion = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(),
-                                lr=0.1,
-                                momentum=1e-6,
-                                weight_decay=1e-6)
+    optimizer = torch.optim.SGD(
+        model.parameters(), lr=0.1, momentum=1e-6, weight_decay=1e-6)
     return criterion, optimizer
 
 
