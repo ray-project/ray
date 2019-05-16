@@ -7,6 +7,7 @@ import logging
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
+from ray.rllib.evaluation.dynamic_tf_policy_graph import DynamicTFPolicyGraph
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
@@ -107,6 +108,50 @@ class PPOLoss(object):
         self.loss = loss
 
 
+def loss_fn(graph, postprocessed_batch):
+    if graph.model.state_in:
+        max_seq_len = tf.reduce_max(graph.model.seq_lens)
+        mask = tf.sequence_mask(graph.model.seq_lens, max_seq_len)
+        mask = tf.reshape(mask, [-1])
+    else:
+        mask = tf.ones_like(
+            postprocessed_batch[Postprocessing.ADVANTAGES], dtype=tf.bool)
+
+    loss_obj = PPOLoss(
+        graph.action_space,
+        postprocessed_batch[Postprocessing.VALUE_TARGETS],
+        postprocessed_batch[Postprocessing.ADVANTAGES],
+        postprocessed_batch[SampleBatch.ACTIONS],
+        postprocessed_batch[BEHAVIOUR_LOGITS],
+        postprocessed_batch[SampleBatch.VF_PREDS],
+        graph.action_dist,
+        graph.value_function,
+        graph.kl_coeff,
+        mask,
+        entropy_coeff=graph.config["entropy_coeff"],
+        clip_param=graph.config["clip_param"],
+        vf_clip_param=graph.config["vf_clip_param"],
+        vf_loss_coeff=graph.config["vf_loss_coeff"],
+        use_gae=graph.config["use_gae"])
+
+    graph.explained_variance = explained_variance(
+        postprocessed_batch[Postprocessing.VALUE_TARGETS],
+        graph.value_function)
+
+    graph.stats_fetches = {
+        "cur_kl_coeff": graph.kl_coeff,
+        "cur_lr": tf.cast(graph.cur_lr, tf.float64),
+        "total_loss": loss_obj.loss,
+        "policy_loss": loss_obj.mean_policy_loss,
+        "vf_loss": loss_obj.mean_vf_loss,
+        "vf_explained_var": graph.explained_variance,
+        "kl": loss_obj.mean_kl,
+        "entropy": loss_obj.mean_entropy,
+    }
+
+    return loss_obj.loss
+
+
 class PPOPostprocessing(object):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
 
@@ -115,7 +160,7 @@ class PPOPostprocessing(object):
         return dict(
             TFPolicyGraph.extra_compute_action_fetches(self), **{
                 SampleBatch.VF_PREDS: self.value_function,
-                BEHAVIOUR_LOGITS: self.logits
+                BEHAVIOUR_LOGITS: self.model.outputs,
             })
 
     @override(PolicyGraph)
@@ -143,83 +188,19 @@ class PPOPostprocessing(object):
         return batch
 
 
-class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
+class PPOPolicyGraph(
+        LearningRateSchedule, PPOPostprocessing, DynamicTFPolicyGraph):
+
     def __init__(self,
                  observation_space,
                  action_space,
                  config,
                  existing_inputs=None):
-        """
-        Arguments:
-            observation_space: Environment observation space specification.
-            action_space: Environment action space specification.
-            config (dict): Configuration values for PPO graph.
-            existing_inputs (list): Optional list of tuples that specify the
-                placeholders upon which the graph should be built upon.
-        """
         config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
-        self.sess = tf.get_default_session()
-        self.action_space = action_space
-        self.config = config
-        self.kl_coeff_val = self.config["kl_coeff"]
-        self.kl_target = self.config["kl_target"]
-        dist_cls, logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"])
-
-        if existing_inputs:
-            obs_ph, value_targets_ph, adv_ph, act_ph, \
-                logits_ph, vf_preds_ph, prev_actions_ph, prev_rewards_ph = \
-                existing_inputs[:8]
-            existing_state_in = existing_inputs[8:-1]
-            existing_seq_lens = existing_inputs[-1]
-        else:
-            obs_ph = tf.placeholder(
-                tf.float32,
-                name="obs",
-                shape=(None, ) + observation_space.shape)
-            adv_ph = tf.placeholder(
-                tf.float32, name="advantages", shape=(None, ))
-            act_ph = ModelCatalog.get_action_placeholder(action_space)
-            logits_ph = tf.placeholder(
-                tf.float32, name="logits", shape=(None, logit_dim))
-            vf_preds_ph = tf.placeholder(
-                tf.float32, name="vf_preds", shape=(None, ))
-            value_targets_ph = tf.placeholder(
-                tf.float32, name="value_targets", shape=(None, ))
-            prev_actions_ph = ModelCatalog.get_action_placeholder(action_space)
-            prev_rewards_ph = tf.placeholder(
-                tf.float32, [None], name="prev_reward")
-            existing_state_in = None
-            existing_seq_lens = None
-        self.observations = obs_ph
-        self.prev_actions = prev_actions_ph
-        self.prev_rewards = prev_rewards_ph
-
-        self.loss_in = [
-            (SampleBatch.CUR_OBS, obs_ph),
-            (Postprocessing.VALUE_TARGETS, value_targets_ph),
-            (Postprocessing.ADVANTAGES, adv_ph),
-            (SampleBatch.ACTIONS, act_ph),
-            (BEHAVIOUR_LOGITS, logits_ph),
-            (SampleBatch.VF_PREDS, vf_preds_ph),
-            (SampleBatch.PREV_ACTIONS, prev_actions_ph),
-            (SampleBatch.PREV_REWARDS, prev_rewards_ph),
-        ]
-        self.model = ModelCatalog.get_model(
-            {
-                "obs": obs_ph,
-                "prev_actions": prev_actions_ph,
-                "prev_rewards": prev_rewards_ph,
-                "is_training": self._get_is_training_placeholder(),
-            },
-            observation_space,
-            action_space,
-            logit_dim,
-            self.config["model"],
-            state_in=existing_state_in,
-            seq_lens=existing_seq_lens)
 
         # KL Coefficient
+        self.kl_coeff_val = config["kl_coeff"]
+        self.kl_target = config["kl_target"]
         self.kl_coeff = tf.get_variable(
             initializer=tf.constant_initializer(self.kl_coeff_val),
             name="kl_coeff",
@@ -227,9 +208,10 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
             trainable=False,
             dtype=tf.float32)
 
-        self.logits = self.model.outputs
-        curr_action_dist = dist_cls(self.logits)
-        self.sampler = curr_action_dist.sample()
+        DynamicTFPolicyGraph.__init__(
+            self, observation_space, action_space, config, loss_fn,
+            existing_inputs=existing_inputs)
+
         if self.config["use_gae"]:
             if self.config["vf_share_layers"]:
                 self.value_function = self.model.value_function()
@@ -249,81 +231,18 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
                         "value_function() method.")
                 with tf.variable_scope("value_function"):
                     self.value_function = ModelCatalog.get_model({
-                        "obs": obs_ph,
-                        "prev_actions": prev_actions_ph,
-                        "prev_rewards": prev_rewards_ph,
+                        "obs": self._obs_input,
+                        "prev_actions": self._prev_action_input,
+                        "prev_rewards": self._prev_reward_input,
                         "is_training": self._get_is_training_placeholder(),
                     }, observation_space, action_space, 1, vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
         else:
-            self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
-
-        if self.model.state_in:
-            max_seq_len = tf.reduce_max(self.model.seq_lens)
-            mask = tf.sequence_mask(self.model.seq_lens, max_seq_len)
-            mask = tf.reshape(mask, [-1])
-        else:
-            mask = tf.ones_like(adv_ph, dtype=tf.bool)
-
-        self.loss_obj = PPOLoss(
-            action_space,
-            value_targets_ph,
-            adv_ph,
-            act_ph,
-            logits_ph,
-            vf_preds_ph,
-            curr_action_dist,
-            self.value_function,
-            self.kl_coeff,
-            mask,
-            entropy_coeff=self.config["entropy_coeff"],
-            clip_param=self.config["clip_param"],
-            vf_clip_param=self.config["vf_clip_param"],
-            vf_loss_coeff=self.config["vf_loss_coeff"],
-            use_gae=self.config["use_gae"])
+            self.value_function = tf.zeros(shape=tf.shape(self._obs_input)[:1])
 
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
-        TFPolicyGraph.__init__(
-            self,
-            observation_space,
-            action_space,
-            self.sess,
-            obs_input=obs_ph,
-            action_sampler=self.sampler,
-            action_prob=curr_action_dist.sampled_action_prob(),
-            loss=self.loss_obj.loss,
-            model=self.model,
-            loss_inputs=self.loss_in,
-            state_inputs=self.model.state_in,
-            state_outputs=self.model.state_out,
-            prev_action_input=prev_actions_ph,
-            prev_reward_input=prev_rewards_ph,
-            seq_lens=self.model.seq_lens,
-            max_seq_len=config["model"]["max_seq_len"])
-
-        self.sess.run(tf.global_variables_initializer())
-        self.explained_variance = explained_variance(value_targets_ph,
-                                                     self.value_function)
-        self.stats_fetches = {
-            "cur_kl_coeff": self.kl_coeff,
-            "cur_lr": tf.cast(self.cur_lr, tf.float64),
-            "total_loss": self.loss_obj.loss,
-            "policy_loss": self.loss_obj.mean_policy_loss,
-            "vf_loss": self.loss_obj.mean_vf_loss,
-            "vf_explained_var": self.explained_variance,
-            "kl": self.loss_obj.mean_kl,
-            "entropy": self.loss_obj.mean_entropy
-        }
-
-    @override(TFPolicyGraph)
-    def copy(self, existing_inputs):
-        """Creates a copy of self using existing input placeholders."""
-        return PPOPolicyGraph(
-            self.observation_space,
-            self.action_space,
-            self.config,
-            existing_inputs=existing_inputs)
+        self._sess.run(tf.global_variables_initializer())
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer, loss):
@@ -352,19 +271,19 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
             self.kl_coeff_val *= 1.5
         elif sampled_kl < 0.5 * self.kl_target:
             self.kl_coeff_val *= 0.5
-        self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
+        self.kl_coeff.load(self.kl_coeff_val, session=self._sess)
         return self.kl_coeff_val
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {
-            self.observations: [ob],
-            self.prev_actions: [prev_action],
-            self.prev_rewards: [prev_reward],
+            self._obs_input: [ob],
+            self._prev_action_input: [prev_action],
+            self._prev_reward_input: [prev_reward],
             self.model.seq_lens: [1]
         }
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):
             feed_dict[k] = v
-        vf = self.sess.run(self.value_function, feed_dict)
+        vf = self._sess.run(self.value_function, feed_dict)
         return vf[0]

@@ -24,7 +24,8 @@ def build_tf_graph(name,
                    get_default_config,
                    loss_fn,
                    postprocess_fn=None,
-                   make_optimizer=None):
+                   make_optimizer=None,
+                   extra_action_fetches=None):
     """Helper function for creating a dynamic tf policy graph at runtime.
 
     Arguments:
@@ -37,6 +38,8 @@ def build_tf_graph(name,
             that takes the same args as PolicyGraph.postprocess_trajectory()
         make_optimizer (func): optional function that returns a tf.Optimizer
             given the policy graph object
+        extra_action_fetches (func): optional function that returns
+            a dict of TF fetches given the policy graph object
 
     Returns:
         a DynamicTFPolicyGraph instance that uses the specified args
@@ -47,6 +50,11 @@ def build_tf_graph(name,
             config = dict(get_default_config(), **config)
             DynamicTFPolicyGraph.__init__(self, obs_space, action_space,
                                           config, loss_fn)
+            if build_extra_action_fetches is None:
+                self._extra_action_fetches = {}
+            else:
+                self._extra_action_fetches = (
+                    build_extra_action_fetches(self))
 
         @override(PolicyGraph)
         def postprocess_trajectory(self,
@@ -64,6 +72,12 @@ def build_tf_graph(name,
                 return make_optimizer(self)
             else:
                 return TFPolicyGraph.optimizer(self)
+
+        @override(TFPolicyGraph)
+        def extra_compute_action_fetches(self):
+            return dict(
+                TFPolicyGraph.extra_compute_action_fetches(self),
+                **self._extra_action_fetches)
 
     graph_cls.__name__ = name
     return graph_cls
@@ -85,19 +99,28 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                  loss_fn,
                  autosetup_model=True,
                  action_sampler=None,
-                 action_prob=None):
+                 action_prob=None,
+                 existing_inputs=None):
         self.config = config
+        self.autosetup_model = autosetup_model
         self._build_loss = loss_fn
 
         # Setup standard placeholders
-        obs = tf.placeholder(tf.float32, shape=[None] + list(obs_space.shape))
-        dist_class, self.logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"])
-        prev_actions = ModelCatalog.get_action_placeholder(action_space)
-        prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
+        if existing_inputs is not None:
+            obs = existing_inputs[SampleBatch.CUR_OBS]
+            prev_actions = existing_inputs[SampleBatch.PREV_ACTIONS]
+            prev_rewards = existing_inputs[SampleBatch.PREV_REWARDS]
+        else:
+            obs = tf.placeholder(
+                tf.float32, shape=[None] + list(obs_space.shape),
+                name="observation")
+            prev_actions = ModelCatalog.get_action_placeholder(action_space)
+            prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
 
         # Create the model network and action outputs
         if autosetup_model:
+            dist_class, self.logit_dim = ModelCatalog.get_action_dist(
+                action_space, self.config["model"])
             self.model = ModelCatalog.get_model({
                 "obs": obs,
                 "prev_actions": prev_actions,
@@ -108,6 +131,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             action_sampler = self.action_dist.sample()
             action_prob = self.action_dist.sampled_action_prob()
         else:
+            self.logit_dim = None
             self.model = None
             self.action_dist = None
             if not action_sampler:
@@ -134,6 +158,31 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             seq_lens=self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
         sess.run(tf.global_variables_initializer())
+
+    @override(TFPolicyGraph)
+    def copy(self, existing_inputs):
+        """Creates a copy of self using existing input placeholders."""
+        assert self._loss is not None, "Cannot copy graph before loss init"
+        if len(self._loss_inputs) != len(existing_inputs):
+            raise ValueError(
+                "Tensor list mismatch", self._loss_inputs,
+                existing_inputs)
+        for i, (k, v) in enumerate(self._loss_inputs):
+            if v.shape.as_list() != existing_inputs[i].shape.as_list():
+                raise ValueError(
+                    "Tensor shape mismatch", i, k,
+                    v.shape, existing_inputs[i].shape)
+        input_dict = {
+            k: existing_inputs[i] for i, (k, _) in enumerate(self._loss_inputs)
+        }
+        instance = self.__class__(
+            self.observation_space, self.action_space, self.config,
+            existing_inputs=input_dict)
+        loss = instance._build_loss(instance, input_dict)
+        TFPolicyGraph._initialize_loss(
+            instance, loss,
+            [(k, existing_inputs[i]) for i, (k, _) in enumerate(self._loss_inputs)])
+        return instance
 
     @override(PolicyGraph)
     def get_initial_state(self):
@@ -177,7 +226,6 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 loss_inputs.append((k, unroll_tensors[k]))
 
             TFPolicyGraph._initialize_loss(self, loss, loss_inputs)
-            self._sess.run(tf.global_variables_initializer())
 
     @override(PolicyGraph)
     def compute_gradients(self, postprocessed_batch):
