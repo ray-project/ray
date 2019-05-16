@@ -588,8 +588,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
 @click.option(
     "--port-forward", required=False, type=int, help="Port to forward.")
 @click.argument("script", required=True, type=str)
-@click.option(
-    "--args", required=False, type=str, default="", help="Script args.")
+@click.option("--args", required=False, type=str, help="Script args.")
 def submit(cluster_config_file, docker, screen, tmux, stop, start,
            cluster_name, port_forward, script, args):
     """Uploads and runs a script on the specified cluster.
@@ -611,7 +610,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
     command_parts = ["python", target]
-    if args:
+    if args is not None:
         command_parts += [args]
     cmd = " ".join(command_parts)
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
