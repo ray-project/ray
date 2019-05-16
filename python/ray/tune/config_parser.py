@@ -77,22 +77,6 @@ def make_parser(parser_creator=None, **kwargs):
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
     parser.add_argument(
-        "--trial-name-creator",
-        default=None,
-        help="Optional creator function for the trial string, used in "
-        "generating a trial directory.")
-    parser.add_argument(
-        "--sync-function",
-        default=None,
-        help="Function for syncing the local_dir to upload_dir. If string, "
-        "then it must be a string template for syncer to run and needs to "
-        "include replacement fields '{local_dir}' and '{remote_dir}'.")
-    parser.add_argument(
-        "--loggers",
-        default=None,
-        help="List of logger creators to be used with each Trial. "
-        "Defaults to ray.tune.logger.DEFAULT_LOGGERS.")
-    parser.add_argument(
         "--checkpoint-freq",
         default=0,
         type=int,
@@ -187,7 +171,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         A trial object with corresponding parameters to the specification.
     """
     try:
-        args = parser.parse_args(to_argv(spec))
+        args, _ = parser.parse_known_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
     if "resources_per_trial" in spec:
