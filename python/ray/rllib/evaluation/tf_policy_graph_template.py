@@ -46,7 +46,9 @@ def build_tf_graph(name,
             init that takes the same arguments as __init__
         after_init (func): optional function to run at the end of __init__
             that takes the same arguments as __init__
-        mixins (list): list of any class mixins for the returned policy class
+        mixins (list): list of any class mixins for the returned policy class.
+            These mixins will be applied in order and will have higher
+            precedence than the DynamicTFPolicyGraph class
 
     Returns:
         a DynamicTFPolicyGraph instance that uses the specified args
