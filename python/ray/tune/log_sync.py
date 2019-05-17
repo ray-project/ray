@@ -53,6 +53,18 @@ class LogSyncer(CommandSyncer):
         """Set the worker ip to sync logs from."""
         self.worker_ip = worker_ip
 
+    def _check_valid_worker_ip(self):
+        if not self.worker_ip:
+            logger.info("Worker ip unknown, skipping log sync for {}".format(
+                self.local_dir))
+            return False
+        if self.worker_ip == self.local_ip:
+            logger.debug(
+                "Worker ip is local ip, skipping log sync for {}".format(
+                    self.local_dir))
+            return False
+        return True
+
     @property
     def sync_template(self):
         """Syncs the local local_dir on driver to worker if possible.
@@ -63,15 +75,7 @@ class LogSyncer(CommandSyncer):
         TODO:
             Make this command more flexible with self.sync_func?
         """
-
-        if not self.worker_ip:
-            logger.info("Worker ip unknown, skipping log sync for {}".format(
-                self.local_dir))
-            return
-        if self.worker_ip == self.local_ip:
-            logger.debug(
-                "Worker ip is local ip, skipping log sync for {}".format(
-                    self.local_dir))
+        if not self._check_valid_worker_ip():
             return
         if not distutils.spawn.find_executable("rsync"):
             logger.error("Log sync requires rsync to be installed.")
@@ -93,6 +97,8 @@ class LogSyncer(CommandSyncer):
     def remote_path(self):
         ssh_user = get_ssh_user()
         global _log_sync_warned
+        if not self._check_valid_worker_ip():
+            return
         if ssh_user is None:
             if not _log_sync_warned:
                 logger.error("Log sync requires cluster to be setup with "

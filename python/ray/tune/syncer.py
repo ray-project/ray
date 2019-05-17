@@ -122,18 +122,20 @@ class NoopSyncer(BaseSyncer):
 
 
 class CommandSyncer(BaseSyncer):
-    def __init__(self, local_dir, remote_dir, sync_template):
+    def __init__(self, local_dir, remote_dir, sync_template=None):
         """
         Arguments:
             local_dir (str): Directory to sync.
             remote_dir (str): Remote directory to sync with.
             sync_template (str): A string template
                 for syncer to run and needs to include replacement fields
-                '{local_dir}' and '{remote_dir}'. If None, syncing
-                will not take place.
+                '{local_dir}' and '{remote_dir}'. Returned when using
+                `CommandSyncer.sync_template`, which can be overridden
+                by subclass.
         """
         super(CommandSyncer, self).__init__(local_dir, remote_dir)
-        validate_sync_string(sync_template)
+        if sync_template and isinstance(sync_template, str):
+            validate_sync_string(sync_template)
         self._sync_template = sync_template
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync", dir=self.local_dir, suffix=".log", delete=False)
@@ -147,7 +149,6 @@ class CommandSyncer(BaseSyncer):
             if self.sync_process.returncode is None:
                 logger.warning("Last sync is still in progress, skipping.")
                 return
-
         sync_template = self.sync_template
         final_cmd = sync_template.format(
             source=quote(source), target=quote(target))

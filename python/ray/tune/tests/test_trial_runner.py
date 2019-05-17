@@ -910,46 +910,49 @@ class RunExperimentTest(unittest.TestCase):
     @patch("ray.tune.syncer.S3_PREFIX", "test")
     def testSyncFunction(self):
         def fail_sync_local():
-                [trial] = tune.run(
-                    "__fake",
-                    name="foo",
-                    **{
-                        "stop": {
-                            "training_iteration": 1
-                        },
-                        "upload_dir": "test",
-                        "sync_to_driver": "ls {remote_dir}"
-                    })
-
-        self.assertRaises(AssertionError, fail_sync_local)
-
-        def fail_sync_remote():
             [trial] = tune.run(
-                "foo",
-                name="__fake",
+                "__fake",
+                name="foo",
+                max_failures=0,
                 **{
                     "stop": {
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_to_driver": "ls {local_dir}"
+                    "sync_to_cloud": "ls {remote_dir}"
                 })
 
-        self.assertRaises(AssertionError, fail_sync_remote)
+        self.assertRaises(ValueError, fail_sync_local)
+
+        def fail_sync_remote():
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "upload_dir": "test",
+                    "sync_to_cloud": "ls {local_dir}"
+                })
+
+        self.assertRaises(ValueError, fail_sync_remote)
 
         def sync_func(local, remote):
             with open(os.path.join(local, "test.log"), "w") as f:
                 f.write(remote)
 
         [trial] = tune.run(
-            "foo",
-            name="__fake",
+            "__fake",
+            name="foo",
+            max_failures=0,
             **{
                 "stop": {
                     "training_iteration": 1
                 },
                 "upload_dir": "test",
-                "sync_to_driver": tune.function(sync_func)
+                "sync_to_cloud": tune.function(sync_func)
             })
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
 
