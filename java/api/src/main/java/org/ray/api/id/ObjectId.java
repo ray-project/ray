@@ -21,7 +21,7 @@ public class ObjectId extends BaseId implements Serializable {
   }
 
   /**
-   * Creates an ObjectId from a ByteBuffer.
+   * Create an ObjectId from a ByteBuffer.
    */
   public static ObjectId fromByteBuffer(ByteBuffer bb) {
     return new ObjectId(byteBuffer2Bytes(bb));
