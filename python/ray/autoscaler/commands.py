@@ -423,6 +423,8 @@ def rsync(config_file, source, target, override_cluster_name, down):
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
     """
+    assert bool(source) == bool(target), (
+        "Must either provide both or neither source and target.")
 
     config = yaml.load(open(config_file).read())
     if override_cluster_name is not None:
@@ -448,7 +450,12 @@ def rsync(config_file, source, target, override_cluster_name, down):
             rsync = updater.rsync_down
         else:
             rsync = updater.rsync_up
-        rsync(source, target, check_error=False)
+
+        if source and target:
+            rsync(source, target, check_error=False)
+        else:
+            updater.sync_file_mounts(rsync)
+
     finally:
         provider.cleanup()
 
