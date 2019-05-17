@@ -342,7 +342,7 @@ def validate_config(policy, obs_space, action_space, config):
         "Must use `truncate_episodes` batch mode with V-trace."
 
 
-def optimizer(policy):
+def choose_optimizer(policy):
     if policy.config["opt_type"] == "adam":
         return tf.train.AdamOptimizer(policy.cur_lr)
     else:
@@ -351,7 +351,7 @@ def optimizer(policy):
                                          policy.config["epsilon"])
 
 
-def gradients(policy, optimizer, loss):
+def clip_gradients(policy, optimizer, loss):
     grads = tf.gradients(loss, policy.var_list)
     policy.grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
     clipped_grads = list(zip(policy.grads, policy.var_list))
@@ -386,7 +386,8 @@ AsyncPPOTFPolicy = build_tf_policy(
     stats_fn=stats,
     grad_stats_fn=grad_stats,
     postprocess_fn=postprocess_trajectory,
-    optimizer_fn=optimizer,
+    optimizer_fn=choose_optimizer,
+    gradients_fn=clip_gradients,
     extra_action_fetches_fn=add_values_and_logits,
     before_init=validate_config,
     before_loss_init=setup_mixins,
