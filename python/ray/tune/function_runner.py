@@ -247,8 +247,14 @@ class FunctionRunner(Trainable):
 
 def wrap_function(train_func):
 
-    function_args = inspect.signature(train_func).parameters
-    use_track = ("reporter" not in function_args and len(function_args) == 1)
+    use_track = False
+    try:
+        func_args = inspect.getargspec(train_func).args
+        use_track = ("reporter" not in func_args and len(func_args) == 1)
+        if use_track:
+            logger.info("tune.track signature detected.")
+    except Exception:
+        logger.info("Function inspection failed - assuming reporter signature.")
 
     class WrappedFunc(FunctionRunner):
         def _trainable_func(self, config, reporter):
