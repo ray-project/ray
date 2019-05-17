@@ -6,7 +6,9 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 def compute_ranks(x):

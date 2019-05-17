@@ -18,12 +18,13 @@ more info.
 """
 
 import numpy as np
-import tensorflow as tf
-import tensorflow.contrib.rnn as rnn
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
 from ray.rllib.utils.annotations import override, DeveloperAPI, PublicAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class LSTM(Model):
@@ -73,7 +74,7 @@ class LSTM(Model):
             self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
-        state_in = rnn.LSTMStateTuple(c_in, h_in)
+        state_in = tf.nn.rnn_cell.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
             lstm,
             last_layer,

@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "flatbuffer_java_library", "define_java_module", "gen_java_pom_file")
+load("//bazel:ray.bzl", "flatbuffer_java_library", "define_java_module")
 
 exports_files([
     "testng.xml",
@@ -7,27 +7,29 @@ exports_files([
     "streaming/testng.xml",
 ])
 
+all_modules = [
+    "api",
+    "runtime",
+    "test",
+    "tutorial",
+    "streaming",
+]
+
 java_import(
     name = "all_modules",
     jars = [
-        "liborg_ray_ray_api.jar",
-        "liborg_ray_ray_api-src.jar",
-        "liborg_ray_ray_runtime.jar",
-        "liborg_ray_ray_runtime-src.jar",
-        "liborg_ray_ray_tutorial.jar",
-        "liborg_ray_ray_tutorial-src.jar",
-        "liborg_ray_ray_streaming.jar",
-        "liborg_ray_ray_streaming-src.jar",
+        "liborg_ray_ray_" + module + ".jar" for module in all_modules
+    ] + [
+        "liborg_ray_ray_" + module + "-src.jar" for module in all_modules
+    ] + [
         "all_tests_deploy.jar",
         "all_tests_deploy-src.jar",
         "streaming_tests_deploy.jar",
         "streaming_tests_deploy-src.jar",
     ],
     deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
-        ":org_ray_ray_tutorial",
-        ":org_ray_ray_streaming",
+        ":org_ray_ray_" + module for module in all_modules
+    ] + [
         ":all_tests",
         ":streaming_tests",
     ],
@@ -154,6 +156,7 @@ flatbuffers_generated_files = [
     "ConfigTableData.java",
     "CustomSerializerData.java",
     "DriverTableData.java",
+    "EntryType.java",
     "ErrorTableData.java",
     "ErrorType.java",
     "FunctionTableData.java",
@@ -246,30 +249,10 @@ genrule(
     local = 1,
 )
 
-# generate pom.xml file for maven compile
-gen_java_pom_file(
-    name = "api",
-)
-
-gen_java_pom_file(
-    name = "runtime",
-)
-
-gen_java_pom_file(
-    name = "tutorial",
-)
-
-gen_java_pom_file(
-    name = "test",
-)
-
 genrule(
     name = "copy_pom_file",
     srcs = [
-        "//java:org_ray_ray_api_pom",
-        "//java:org_ray_ray_runtime_pom",
-        "//java:org_ray_ray_tutorial_pom",
-        "//java:org_ray_ray_test_pom",
+        "//java:org_ray_ray_" + module + "_pom" for module in all_modules
     ],
     outs = ["copy_pom_file.out"],
     cmd = """
@@ -279,6 +262,7 @@ genrule(
         cp -f $(location //java:org_ray_ray_runtime_pom) $$WORK_DIR/java/runtime/pom.xml
         cp -f $(location //java:org_ray_ray_tutorial_pom) $$WORK_DIR/java/tutorial/pom.xml
         cp -f $(location //java:org_ray_ray_test_pom) $$WORK_DIR/java/test/pom.xml
+        cp -f $(location //java:org_ray_ray_streaming_pom) $$WORK_DIR/java/streaming/pom.xml
         echo $$(date) > $@
     """,
     local = 1,

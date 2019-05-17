@@ -32,6 +32,7 @@ from ray.includes.libraylet cimport (
 from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CObjectID,
+    CClientID,
 )
 from ray.includes.task cimport CTaskSpecification
 from ray.includes.ray_config cimport RayConfig
@@ -367,6 +368,9 @@ cdef class RayletClient:
                                              ActorCheckpointID checkpoint_id):
         check_status(self.client.get().NotifyActorResumedFromCheckpoint(
             actor_id.native(), checkpoint_id.native()))
+
+    def set_resource(self, basestring resource_name, double capacity, ClientID client_id):
+        self.client.get().SetResource(resource_name.encode("ascii"), capacity, CClientID.from_binary(client_id.binary()))
 
     @property
     def language(self):

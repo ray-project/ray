@@ -5,11 +5,13 @@ from __future__ import print_function
 from collections import OrderedDict
 
 import gym
-import tensorflow as tf
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 @PublicAPI

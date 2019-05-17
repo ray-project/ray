@@ -4,13 +4,22 @@ from __future__ import print_function
 
 from collections import namedtuple
 import distutils.version
-import tensorflow as tf
 import numpy as np
 
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils import try_import_tf
 
-use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                 distutils.version.LooseVersion("1.5.0"))
+tf = try_import_tf()
+
+if tf:
+    if hasattr(tf, "__version__"):
+        version = tf.__version__
+    else:
+        version = tf.VERSION
+    use_tf150_api = (distutils.version.LooseVersion(version) >=
+                     distutils.version.LooseVersion("1.5.0"))
+else:
+    use_tf150_api = False
 
 
 @DeveloperAPI

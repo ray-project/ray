@@ -5,8 +5,6 @@ from __future__ import print_function
 from gym.spaces import Discrete
 import numpy as np
 from scipy.stats import entropy
-import tensorflow as tf
-import tensorflow.contrib.layers as layers
 
 import ray
 from ray.rllib.evaluation.sample_batch import SampleBatch
@@ -17,6 +15,9 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
@@ -161,13 +162,18 @@ class QNetwork(object):
                     if use_noisy:
                         action_out = self.noisy_layer(
                             "hidden_%d" % i, action_out, hiddens[i], sigma0)
-                    else:
+                    elif parameter_noise:
+                        import tensorflow.contrib.layers as layers
                         action_out = layers.fully_connected(
                             action_out,
                             num_outputs=hiddens[i],
                             activation_fn=tf.nn.relu,
-                            normalizer_fn=layers.layer_norm
-                            if parameter_noise else None)
+                            normalizer_fn=layers.layer_norm)
+                    else:
+                        action_out = tf.layers.dense(
+                            action_out,
+                            units=hiddens[i],
+                            activation=tf.nn.relu)
             else:
                 # Avoid postprocessing the outputs. This enables custom models
                 # to be used for parametric action DQN.
@@ -180,10 +186,8 @@ class QNetwork(object):
                     sigma0,
                     non_linear=False)
             elif hiddens:
-                action_scores = layers.fully_connected(
-                    action_out,
-                    num_outputs=num_actions * num_atoms,
-                    activation_fn=None)
+                action_scores = tf.layers.dense(
+                    action_out, units=num_actions * num_atoms, activation=None)
             else:
                 action_scores = model.outputs
             if num_atoms > 1:
@@ -211,13 +215,15 @@ class QNetwork(object):
                         state_out = self.noisy_layer("dueling_hidden_%d" % i,
                                                      state_out, hiddens[i],
                                                      sigma0)
-                    else:
-                        state_out = layers.fully_connected(
+                    elif parameter_noise:
+                        state_out = tf.contrib.layers.fully_connected(
                             state_out,
                             num_outputs=hiddens[i],
                             activation_fn=tf.nn.relu,
-                            normalizer_fn=layers.layer_norm
-                            if parameter_noise else None)
+                            normalizer_fn=tf.contrib.layers.layer_norm)
+                    else:
+                        state_out = tf.layers.dense(
+                            state_out, units=hiddens[i], activation=tf.nn.relu)
                 if use_noisy:
                     state_score = self.noisy_layer(
                         "dueling_output",
@@ -226,8 +232,8 @@ class QNetwork(object):
                         sigma0,
                         non_linear=False)
                 else:
-                    state_score = layers.fully_connected(
-                        state_out, num_outputs=num_atoms, activation_fn=None)
+                    state_score = tf.layers.dense(
+                        state_out, units=num_atoms, activation=None)
             if num_atoms > 1:
                 support_logits_per_action_mean = tf.reduce_mean(
                     support_logits_per_action, 1)
@@ -263,6 +269,8 @@ class QNetwork(object):
         distributions and \sigma are trainable variables which are expected to
         vanish along the training procedure
         """
+        import tensorflow.contrib.layers as layers
+
         in_size = int(action_in.shape[1])
 
         epsilon_in = tf.random_normal(shape=[in_size])

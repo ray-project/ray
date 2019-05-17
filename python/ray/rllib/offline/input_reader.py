@@ -4,11 +4,13 @@ from __future__ import print_function
 
 import logging
 import numpy as np
-import tensorflow as tf
 import threading
 
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

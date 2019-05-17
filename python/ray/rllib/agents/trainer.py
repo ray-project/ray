@@ -10,7 +10,6 @@ import pickle
 import six
 import time
 import tempfile
-import tensorflow as tf
 from types import FunctionType
 
 import ray
@@ -26,11 +25,14 @@ from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.memory import ray_get_and_free
+from ray.rllib.utils import try_import_tf
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Resources, ExportFormat
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
+
+tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -412,8 +414,13 @@ class Trainer(Trainable):
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
-        # TODO(ekl) setting the graph is unnecessary for PyTorch agents
-        with tf.Graph().as_default():
+        def get_scope():
+            if tf:
+                return tf.Graph().as_default()
+            else:
+                return open("/dev/null")  # fake a no-op scope
+
+        with get_scope():
             self._init(self.config, self.env_creator)
 
             # Evaluation related
