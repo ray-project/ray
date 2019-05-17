@@ -529,8 +529,8 @@ def attach(cluster_config_file, start, tmux, cluster_name, new):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
+@click.argument("source", required=False, type=str)
+@click.argument("target", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
@@ -543,8 +543,8 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
+@click.argument("source", required=False, type=str)
+@click.argument("target", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
