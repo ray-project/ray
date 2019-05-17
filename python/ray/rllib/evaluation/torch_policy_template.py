@@ -24,7 +24,7 @@ def build_torch_policy(name,
     """Helper function for creating a torch policy graph at runtime.
 
     Arguments:
-        name (str): name of the graph (e.g., "PPOPolicyGraph")
+        name (str): name of the graph (e.g., "PPOPolicy")
         get_default_config (func): function that returns the default config
             to merge with any overrides
         loss_fn (func): function that returns a loss tensor the policy graph,
@@ -55,8 +55,8 @@ def build_torch_policy(name,
         a TorchPolicyGraph instance that uses the specified args
     """
 
-    if not name.endswith("TorchPolicyGraph"):
-        raise ValueError("Name should match *TorchPolicyGraph", name)
+    if not name.endswith("TorchPolicy"):
+        raise ValueError("Name should match *TorchPolicy", name)
 
     base = TorchPolicyGraph
     while mixins:

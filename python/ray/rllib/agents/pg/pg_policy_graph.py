@@ -32,8 +32,8 @@ def make_optimizer(policy):
     return tf.train.AdamOptimizer(learning_rate=policy.config["lr"])
 
 
-PGPolicyGraph = build_tf_policy(
-    name="PGPolicyGraph",
+PGTFPolicy = build_tf_policy(
+    name="PGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
     postprocess_fn=postprocess_advantages,
     loss_fn=policy_gradient_loss,

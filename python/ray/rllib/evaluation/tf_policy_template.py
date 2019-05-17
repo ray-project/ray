@@ -25,7 +25,7 @@ def build_tf_policy(name,
     """Helper function for creating a dynamic tf policy graph at runtime.
 
     Arguments:
-        name (str): name of the graph (e.g., "PPOPolicyGraph")
+        name (str): name of the graph (e.g., "PPOPolicy")
         get_default_config (func): function that returns the default config
             to merge with any overrides
         loss_fn (func): function that returns a loss tensor the policy graph,
@@ -59,8 +59,8 @@ def build_tf_policy(name,
         a DynamicTFPolicyGraph instance that uses the specified args
     """
 
-    if not name.endswith("PolicyGraph"):
-        raise ValueError("Name should match *PolicyGraph", name)
+    if not name.endswith("TFPolicy"):
+        raise ValueError("Name should match *TFPolicy", name)
 
     base = DynamicTFPolicyGraph
     while mixins:

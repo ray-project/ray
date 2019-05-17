@@ -78,8 +78,8 @@ class ValueNetworkMixin(object):
             return vf.detach().cpu().numpy().squeeze()
 
 
-A3CTorchPolicyGraph = build_torch_policy(
-    name="A3CTorchPolicyGraph",
+A3CTorchPolicy = build_torch_policy(
+    name="A3CTorchPolicy",
     get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
     loss_fn=actor_critic_loss,
     stats_fn=loss_and_entropy_stats,

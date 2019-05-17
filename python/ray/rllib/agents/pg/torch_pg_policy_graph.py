@@ -40,8 +40,8 @@ def make_optimizer(policy):
     return torch.optim.Adam(policy._model.parameters(), lr=policy.config["lr"])
 
 
-PGTorchPolicyGraph = build_torch_policy(
-    name="PGTorchPolicyGraph",
+PGTorchPolicy = build_torch_policy(
+    name="PGTorchPolicy",
     get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
     loss_fn=pg_torch_loss,
     stats_fn=pg_loss_stats,

@@ -5,7 +5,7 @@ from __future__ import print_function
 import logging
 
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
+from ray.rllib.agents.ppo.ppo_policy_graph import PPOTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 
@@ -158,7 +158,7 @@ def validate_config(config):
 PPOTrainer = build_trainer(
     "PPO",
     default_config=DEFAULT_CONFIG,
-    default_policy_graph=PPOPolicyGraph,
+    default_policy=PPOTFPolicy,
     make_policy_optimizer=make_optimizer,
     validate_config=validate_config,
     after_optimizer_step=update_kl,

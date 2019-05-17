@@ -9,10 +9,10 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 @DeveloperAPI
 def build_trainer(name,
                   default_config,
-                  default_policy_graph,
+                  default_policy,
                   make_policy_optimizer,
                   validate_config=None,
-                  get_policy_graph=None,
+                  get_policy_class=None,
                   before_train_step=None,
                   after_optimizer_step=None,
                   after_train_result=None):
@@ -21,12 +21,12 @@ def build_trainer(name,
     Arguments:
         name (str): name of the trainer (e.g., "PPO")
         default_config (dict): the default config dict of the algorithm
-        default_policy_graph (cls): the default PolicyGraph class to use
+        default_policy (cls): the default PolicyGraph class to use
         make_policy_optimizer (func): function that returns a PolicyOptimizer
             instance given (local_evaluator, remote_evaluators, config)
         validate_config (func): optional callback that checks a given config
             for correctness. It may mutate the config as needed.
-        get_policy_graph (func): optional callback that takes a config and
+        get_policy_class (func): optional callback that takes a config and
             returns the policy graph class to override the default with
         before_train_step (func): optional callback to run before each train()
             call. It takes the trainer instance as an argument.
@@ -48,15 +48,15 @@ def build_trainer(name,
     class trainer_cls(Trainer):
         _name = name
         _default_config = default_config
-        _policy_graph = default_policy_graph
+        _policy_graph = default_policy
 
         def _init(self, config, env_creator):
             if validate_config:
                 validate_config(config)
-            if get_policy_graph is None:
-                policy_graph = default_policy_graph
+            if get_policy_class is None:
+                policy_graph = default_policy
             else:
-                policy_graph = get_policy_graph(config)
+                policy_graph = get_policy_class(config)
             self.local_evaluator = self.make_local_evaluator(
                 env_creator, policy_graph)
             self.remote_evaluators = self.make_remote_evaluators(

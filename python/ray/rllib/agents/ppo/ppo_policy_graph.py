@@ -271,8 +271,8 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-PPOPolicyGraph = build_tf_policy(
-    name="PPOPolicyGraph",
+PPOTFPolicy = build_tf_policy(
+    name="PPOTFPolicy",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     loss_fn=ppo_surrogate_loss,
     stats_fn=kl_and_loss_stats,
