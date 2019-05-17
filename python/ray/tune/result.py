@@ -68,7 +68,7 @@ JOB_META_FILE = "job_status.json"
 EXPR_META_FILE = "trial_status.json"
 
 # File that stores parameters of the trial.
-EXPR_PARARM_FILE = "params.json"
+EXPR_PARAM_FILE = "params.json"
 
 # File that stores the progress of the trial.
 EXPR_PROGRESS_FILE = "progress.csv"
