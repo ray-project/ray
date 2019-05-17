@@ -240,7 +240,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 continue  # can't handle arbitrary objects in TF
             shape = (None, ) + v.shape[1:]
             dtype = np.float32 if v.dtype == np.float64 else v.dtype
-            placeholder = tf.placeholder(v.dtype, shape=shape, name=k)
+            placeholder = tf.placeholder(dtype, shape=shape, name=k)
             batch_tensors[k] = placeholder
 
         if log_once("loss_init"):

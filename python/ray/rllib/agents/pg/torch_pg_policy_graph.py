@@ -8,7 +8,7 @@ import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.evaluation.sample_batch import SampleBatch
-from ray.rllib.evaluation.torch_policy_graph_template import build_torch_policy
+from ray.rllib.evaluation.torch_policy_template import build_torch_policy
 
 
 def pg_torch_loss(policy, batch_tensors):
