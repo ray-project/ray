@@ -26,6 +26,7 @@ MOCK_MODULES = [
     "ray.core.generated.ActorCheckpointIdData",
     "ray.core.generated.ClientTableData",
     "ray.core.generated.DriverTableData",
+    "ray.core.generated.EntryType",
     "ray.core.generated.ErrorTableData",
     "ray.core.generated.ErrorType",
     "ray.core.generated.GcsTableEntry",

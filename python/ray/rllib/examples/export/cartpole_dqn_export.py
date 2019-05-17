@@ -6,9 +6,11 @@ from __future__ import print_function
 
 import os
 import ray
-import tensorflow as tf
 
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 ray.init(num_cpus=10)
 
