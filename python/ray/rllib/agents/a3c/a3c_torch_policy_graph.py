@@ -13,7 +13,7 @@ from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.torch_policy_graph_template import build_torch_policy
 
 
-def a3c_torch_loss(policy, batch_tensors):
+def actor_critic_loss(policy, batch_tensors):
     logits, _, values, _ = policy.model({
         SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
     }, [])
@@ -32,7 +32,7 @@ def a3c_torch_loss(policy, batch_tensors):
     return overall_err
 
 
-def a3c_torch_stats(policy, batch_tensors):
+def loss_and_entropy_stats(policy, batch_tensors):
     return {
         "policy_entropy": policy.entropy.item(),
         "policy_loss": policy.pi_err.item(),
@@ -40,10 +40,10 @@ def a3c_torch_stats(policy, batch_tensors):
     }
 
 
-def postprocess_torch_a3c(policy,
-                          sample_batch,
-                          other_agent_batches=None,
-                          episode=None):
+def add_advantages(policy,
+                   sample_batch,
+                   other_agent_batches=None,
+                   episode=None):
     completed = sample_batch[SampleBatch.DONES][-1]
     if completed:
         last_r = 0.0
@@ -53,11 +53,11 @@ def postprocess_torch_a3c(policy,
                               policy.config["lambda"])
 
 
-def a3c_extra_action_out(policy, model_out):
+def model_value_predictions(policy, model_out):
     return {SampleBatch.VF_PREDS: model_out[2].cpu().numpy()}
 
 
-def a3c_extra_grad_process(policy):
+def apply_grad_clipping(policy):
     info = {}
     if policy.config["grad_clip"]:
         total_norm = nn.utils.clip_grad_norm_(policy.model.parameters(),
@@ -66,7 +66,7 @@ def a3c_extra_grad_process(policy):
     return info
 
 
-def optimizer(policy):
+def torch_optimizer(policy):
     return torch.optim.Adam(policy.model.parameters(), lr=policy.config["lr"])
 
 
@@ -81,10 +81,10 @@ class ValueNetworkMixin(object):
 A3CTorchPolicyGraph = build_torch_policy(
     name="A3CTorchPolicyGraph",
     get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
-    loss_fn=a3c_torch_loss,
-    stats_fn=a3c_torch_stats,
-    postprocess_fn=postprocess_torch_a3c,
-    extra_action_out_fn=a3c_extra_action_out,
-    extra_grad_process_fn=a3c_extra_grad_process,
-    optimizer_fn=optimizer,
+    loss_fn=actor_critic_loss,
+    stats_fn=loss_and_entropy_stats,
+    postprocess_fn=add_advantages,
+    extra_action_out_fn=model_value_predictions,
+    extra_grad_process_fn=apply_grad_clipping,
+    optimizer_fn=torch_optimizer,
     mixins=[ValueNetworkMixin])

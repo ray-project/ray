@@ -104,7 +104,7 @@ class PPOLoss(object):
         self.loss = loss
 
 
-def build_ppo_loss(policy, batch_tensors):
+def ppo_surrogate_loss(policy, batch_tensors):
     if policy.model.state_in:
         max_seq_len = tf.reduce_max(policy.model.seq_lens)
         mask = tf.sequence_mask(policy.model.seq_lens, max_seq_len)
@@ -133,7 +133,7 @@ def build_ppo_loss(policy, batch_tensors):
     return policy.loss_obj.loss
 
 
-def build_ppo_stats(policy, batch_tensors):
+def kl_and_loss_stats(policy, batch_tensors):
     policy.explained_variance = explained_variance(
         batch_tensors[Postprocessing.VALUE_TARGETS], policy.value_function)
 
@@ -151,7 +151,7 @@ def build_ppo_stats(policy, batch_tensors):
     return stats_fetches
 
 
-def build_ppo_action_fetches(policy):
+def vf_preds_and_logits_fetches(policy):
     """Adds value function and logits outputs to experience batches."""
     return {
         SampleBatch.VF_PREDS: policy.value_function,
@@ -185,7 +185,7 @@ def postprocess_ppo_gae(policy,
     return batch
 
 
-def build_ppo_gradients(policy, optimizer, loss):
+def clip_gradients(policy, optimizer, loss):
     if policy.config["grad_clip"] is not None:
         policy.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                             tf.get_variable_scope().name)
@@ -274,10 +274,10 @@ def setup_mixins(policy, obs_space, action_space, config):
 PPOPolicyGraph = build_tf_policy(
     name="PPOPolicyGraph",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
-    loss_fn=build_ppo_loss,
-    stats_fn=build_ppo_stats,
-    extra_action_fetches_fn=build_ppo_action_fetches,
+    loss_fn=ppo_surrogate_loss,
+    stats_fn=kl_and_loss_stats,
+    extra_action_fetches_fn=vf_preds_and_logits_fetches,
     postprocess_fn=postprocess_ppo_gae,
-    gradients_fn=build_ppo_gradients,
+    gradients_fn=clip_gradients,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin])
