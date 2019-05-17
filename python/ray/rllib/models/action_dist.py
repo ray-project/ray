@@ -12,7 +12,11 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 if tf:
-    use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
+    if hasattr(tf, "__version__"):
+        version = tf.__version__
+    else:
+        version = tf.VERSION
+    use_tf150_api = (distutils.version.LooseVersion(version) >=
                      distutils.version.LooseVersion("1.5.0"))
 else:
     use_tf150_api = False

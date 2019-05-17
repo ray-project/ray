@@ -15,8 +15,6 @@ class VisionNetwork(Model):
 
     @override(Model)
     def _build_layers_v2(self, input_dict, num_outputs, options):
-        import tensorflow.contrib.slim as slim
-
         inputs = input_dict["obs"]
         filters = options.get("conv_filters")
         if not filters:
@@ -26,28 +24,29 @@ class VisionNetwork(Model):
 
         with tf.name_scope("vision_net"):
             for i, (out_size, kernel, stride) in enumerate(filters[:-1], 1):
-                inputs = slim.conv2d(
+                inputs = tf.layers.conv2d(
                     inputs,
                     out_size,
                     kernel,
                     stride,
-                    activation_fn=activation,
-                    scope="conv{}".format(i))
+                    activation=activation,
+                    padding="same",
+                    name="conv{}".format(i))
             out_size, kernel, stride = filters[-1]
-            fc1 = slim.conv2d(
+            fc1 = tf.layers.conv2d(
                 inputs,
                 out_size,
                 kernel,
                 stride,
-                activation_fn=activation,
-                padding="VALID",
-                scope="fc1")
-            fc2 = slim.conv2d(
+                activation=activation,
+                padding="valid",
+                name="fc1")
+            fc2 = tf.layers.conv2d(
                 fc1,
                 num_outputs, [1, 1],
-                activation_fn=None,
-                normalizer_fn=None,
-                scope="fc2")
+                activation=None,
+                padding="same",
+                name="fc2")
             return flatten(fc2), flatten(fc1)
 
 
