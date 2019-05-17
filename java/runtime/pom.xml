@@ -27,6 +27,11 @@
       <artifactId>arrow-plasma</artifactId>
     </dependency>
 <dependency>
+  <groupId>com.beust</groupId>
+  <artifactId>jcommander</artifactId>
+  <version>1.72</version>
+</dependency>
+<dependency>
   <groupId>com.github.davidmoten</groupId>
   <artifactId>flatbuffers-java</artifactId>
   <version>1.9.0.1</version>
@@ -70,6 +75,11 @@
   <groupId>org.slf4j</groupId>
   <artifactId>slf4j-log4j12</artifactId>
   <version>1.7.25</version>
+</dependency>
+<dependency>
+  <groupId>org.testng</groupId>
+  <artifactId>testng</artifactId>
+  <version>6.9.9</version>
 </dependency>
 <dependency>
   <groupId>redis.clients</groupId>
