@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import shutil
 import os
 import subprocess
 import sys
@@ -95,17 +94,3 @@ def wait_for_errors(error_type, num_errors, timeout=10):
             return
         time.sleep(0.1)
     raise Exception("Timing out of wait.")
-
-
-def try_remove_directory(path):
-    if not os.path.exists(path):
-        return
-
-    for _ in range(3):
-        try:
-            shutil.rmtree(path)
-            return
-        except Exception:
-            time.sleep(1)
-
-    shutil.rmtree(path)

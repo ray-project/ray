@@ -66,7 +66,7 @@ A typical layout of temporary files could look like this:
           │   ├── worker-{worker_id}.out
           │   └── {other workers}
           └── sockets  # for sockets
-              ├── plasma_store
+              ├── plasma_store  # this could be deleted by Ray's shutdown cleanup.
               └── raylet  # this could be deleted by Ray's shutdown cleanup.
 
 

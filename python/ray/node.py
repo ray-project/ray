@@ -519,6 +519,40 @@ class Node(object):
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
 
+    def _remove_raylet_socket_file(self):
+        if self._raylet_socket_name is None:
+            logger.warning("Trying to remove the raylet socket,"
+                           "but the socket name is unknown.")
+        elif not os.path.exists(self._raylet_socket_name):
+            logger.warning("Trying to remove the raylet socket,"
+                           "but the socket file does not exist.")
+        else:
+            if ray_constants.PROCESS_TYPE_RAYLET in self.all_processes:
+                logger.warning("Trying to remove the raylet socket,"
+                               "but the raylet process is still alive.")
+            try:
+                os.remove(self._raylet_socket_name)
+            except Exception as err:
+                # We should not fail here. Just report the errors.
+                logger.error(err)
+
+    def _remove_plasma_socket_file(self):
+        if self._plasma_store_socket_name is None:
+            logger.warning("Trying to remove the plasma store socket,"
+                           "but the socket name is unknown.")
+        elif not os.path.exists(self._plasma_store_socket_name):
+            logger.warning("Trying to remove the plasma store socket,"
+                           "but the socket file does not exist.")
+        else:
+            if ray_constants.PROCESS_TYPE_PLASMA_STORE in self.all_processes:
+                logger.warning("Trying to remove the plasma socket,"
+                               "but the plasma store process is still alive.")
+            try:
+                os.remove(self._plasma_store_socket_name)
+            except Exception as err:
+                # We should not fail here. Just report the errors.
+                logger.error(err)
+
     def _kill_process_type(self,
                            process_type,
                            allow_graceful=False,
@@ -617,25 +651,41 @@ class Node(object):
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_REDIS_SERVER, check_alive=check_alive)
 
-    def kill_plasma_store(self, check_alive=True):
+    def kill_plasma_store(self, check_alive=True, allow_graceful=False):
         """Kill the plasma store.
 
         Args:
             check_alive (bool): Raise an exception if the process was already
                 dead.
+            allow_graceful (bool): Send a SIGTERM first and give the process
+                time to exit gracefully. If that doesn't work, then use
+                SIGKILL. We usually want to do this outside of tests.
         """
         self._kill_process_type(
-            ray_constants.PROCESS_TYPE_PLASMA_STORE, check_alive=check_alive)
+            ray_constants.PROCESS_TYPE_PLASMA_STORE,
+            check_alive=check_alive,
+            allow_graceful=allow_graceful)
+        if os.path.exists(self._plasma_store_socket_name):
+            # Remove the plasma store socket file.
+            self._remove_plasma_socket_file()
 
-    def kill_raylet(self, check_alive=True):
+    def kill_raylet(self, check_alive=True, allow_graceful=False):
         """Kill the raylet.
 
         Args:
             check_alive (bool): Raise an exception if the process was already
                 dead.
+            allow_graceful (bool): Send a SIGTERM first and give the process
+                time to exit gracefully. If that doesn't work, then use
+                SIGKILL. We usually want to do this outside of tests.
         """
         self._kill_process_type(
-            ray_constants.PROCESS_TYPE_RAYLET, check_alive=check_alive)
+            ray_constants.PROCESS_TYPE_RAYLET,
+            check_alive=check_alive,
+            allow_graceful=allow_graceful)
+        if os.path.exists(self._raylet_socket_name):
+            # The raylet socket file haven't been
+            self._remove_raylet_socket_file()
 
     def kill_log_monitor(self, check_alive=True):
         """Kill the log monitor.
@@ -698,6 +748,9 @@ class Node(object):
         Args:
             check_alive (bool): Raise an exception if any of the processes were
                 already dead.
+            allow_graceful (bool): Send a SIGTERM first and give the process
+                time to exit gracefully. If that doesn't work, then use
+                SIGKILL. We usually want to do this outside of tests.
         """
         # Kill the raylet first. This is important for suppressing errors at
         # shutdown because we give the raylet a chance to exit gracefully and
@@ -705,14 +758,14 @@ class Node(object):
         # store (or Redis) first, that could cause the raylet to exit
         # ungracefully, leading to more verbose output from the workers.
         if ray_constants.PROCESS_TYPE_RAYLET in self.all_processes:
-            self._kill_process_type(
-                ray_constants.PROCESS_TYPE_RAYLET,
-                check_alive=check_alive,
-                allow_graceful=allow_graceful)
+            self.kill_raylet(check_alive, allow_graceful)
 
         # We call "list" to copy the keys because we are modifying the
         # dictionary while iterating over it.
         for process_type in list(self.all_processes.keys()):
+            if process_type == ray_constants.PROCESS_TYPE_PLASMA_STORE:
+                self.kill_plasma_store(check_alive, allow_graceful)
+                continue
             self._kill_process_type(
                 process_type,
                 check_alive=check_alive,
