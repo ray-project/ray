@@ -254,7 +254,8 @@ def wrap_function(train_func):
         if use_track:
             logger.info("tune.track signature detected.")
     except Exception:
-        logger.info("Function inspection failed - assuming reporter signature.")
+        logger.info(
+            "Function inspection failed - assuming reporter signature.")
 
     class WrappedFunc(FunctionRunner):
         def _trainable_func(self, config, reporter):
