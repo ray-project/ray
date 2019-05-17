@@ -6,3 +6,4 @@ pendulum-sac:
         timesteps_total: 20000
     config:
         evaluation_interval: 1  # logged under evaluation/* metric keys
+        soft_horizon: true
