@@ -25,6 +25,7 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
     key = (local_dir, remote_dir)
     if key not in _syncers:
         _syncers[key] = LogSyncer(local_dir, remote_dir, sync_function)
+        raise NotImplementedError("Sync_function as func_type is not defined.")
 
     return _syncers[key]
 
@@ -35,12 +36,7 @@ def wait_for_log_sync():
 
 
 class LogSyncer(CommandSyncer):
-    """This syncs files to and from a remote directory to a local directory.
-
-    Attributes:
-        remote_path:
-        local_dir:
-    """
+    """Syncs files to and from a remote directory to a local directory."""
 
     def __init__(self, *args, **kwargs):
         super(LogSyncer, self).__init__(*args, **kwargs)
@@ -56,24 +52,21 @@ class LogSyncer(CommandSyncer):
     def _check_valid_worker_ip(self):
         if not self.worker_ip:
             logger.info("Worker ip unknown, skipping log sync for {}".format(
-                self.local_dir))
+                self._local_dir))
             return False
         if self.worker_ip == self.local_ip:
             logger.debug(
                 "Worker ip is local ip, skipping log sync for {}".format(
-                    self.local_dir))
+                    self._local_dir))
             return False
         return True
 
     @property
     def sync_template(self):
-        """Syncs the local local_dir on driver to worker if possible.
+        """Syncs the local_dir on driver to worker if possible.
 
         Requires ray cluster to be started with the autoscaler. Also requires
         rsync to be installed.
-
-        TODO:
-            Make this command more flexible with self.sync_func?
         """
         if not self._check_valid_worker_ip():
             return
@@ -94,7 +87,7 @@ class LogSyncer(CommandSyncer):
                 ).format(ssh_key=quote(ssh_key))
 
     @property
-    def remote_path(self):
+    def _remote_path(self):
         ssh_user = get_ssh_user()
         global _log_sync_warned
         if not self._check_valid_worker_ip():

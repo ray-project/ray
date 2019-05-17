@@ -972,11 +972,17 @@ class TestSyncFunctionality(unittest.TestCase):
             })
 
     @patch("ray.tune.syncer.S3_PREFIX", "test")
-    def testCloudFunction(self):
+    def testFunctions(self):
         def sync_func(local, remote):
             with open(os.path.join(local, "test.log"), "w") as f:
                 print("writing to", f.name)
                 f.write(remote)
+
+        def sync_func_driver(local, remote):
+            with open(os.path.join(local, "test.log2"), "w") as f:
+                print("writing to", f.name)
+                f.write(remote)
+
 
         [trial] = tune.run(
             "__fake",
@@ -992,6 +998,14 @@ class TestSyncFunctionality(unittest.TestCase):
         test_file_path = os.path.join(trial.local_dir, "test.log")
         self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
+
+    def testLocalWorker(self):
+        """Test when local worker_ip is equal to remote worker_ip"""
+        pass
+
+    def testClusterBadArgs(self):
+        """Test when sync_to_driver is and isn't valid."""
+        pass
 
 
 class VariantGeneratorTest(unittest.TestCase):

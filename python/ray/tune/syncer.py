@@ -39,13 +39,13 @@ class BaseSyncer(object):
             local_dir (str): Directory to sync. Uniquely identifies the syncer.
             remote_dir (str): Remote directory to sync with.
             sync_function (func): Function for syncing the local_dir to
-                remote_dir.
+                remote_dir. Defaults to a Noop.
         """
         self._local_dir = os.path.join(local_dir, "")
         self._remote_dir = remote_dir
         self.last_sync_up_time = 0
         self.last_sync_down_time = 0
-        self._sync_function = sync_function
+        self._sync_function = sync_function or (lambda source, target: None)
 
     def sync_function(self, source, target):
         """Executes sync between source and target.
@@ -60,11 +60,10 @@ class BaseSyncer(object):
             return self._sync_function(source, target)
 
     def sync(self, source, target):
-
         if not (source and target):
             logger.debug(
                 "Source or target is empty, skipping log sync for {}".format(
-                    self.local_dir))
+                    self._local_dir))
             return
 
         try:
@@ -83,11 +82,11 @@ class BaseSyncer(object):
             self.sync_down()
 
     def sync_down(self, *args, **kwargs):
-        self.sync(self.remote_path, self.local_dir, *args, **kwargs)
+        self.sync(self._remote_path, self._local_dir, *args, **kwargs)
         self.last_sync_down_time = time.time()
 
     def sync_up(self, *args, **kwargs):
-        self.sync(self.local_dir, self.remote_path, *args, **kwargs)
+        self.sync(self._local_dir, self._remote_path, *args, **kwargs)
         self.last_sync_up_time = time.time()
 
     def close(self):
@@ -97,28 +96,12 @@ class BaseSyncer(object):
         pass
 
     @property
-    def local_dir(self):
-        return self._local_dir
+    def _remote_path(self):
+        """Protected method for accessing remote_dir.
 
-    @property
-    def remote_path(self):
+        Can be overridden in subclass for custom path.
+        """
         return self._remote_dir
-
-
-class NoopSyncer(BaseSyncer):
-    def __init__(self):
-        pass
-
-    def sync(self, *args):
-        pass
-
-    @property
-    def local_dir(self):
-        return None
-
-    @property
-    def remote_path(self):
-        return None
 
 
 class CommandSyncer(BaseSyncer):
@@ -129,7 +112,7 @@ class CommandSyncer(BaseSyncer):
             remote_dir (str): Remote directory to sync with.
             sync_template (str): A string template
                 for syncer to run and needs to include replacement fields
-                '{local_dir}' and '{remote_dir}'. Returned when using
+                '{source}' and '{target}'. Returned when using
                 `CommandSyncer.sync_template`, which can be overridden
                 by subclass.
         """
@@ -138,7 +121,7 @@ class CommandSyncer(BaseSyncer):
             validate_sync_string(sync_template)
         self._sync_template = sync_template
         self.logfile = tempfile.NamedTemporaryFile(
-            prefix="log_sync", dir=self.local_dir, suffix=".log", delete=False)
+            prefix="log_sync", dir=self._local_dir, suffix=".log", delete=False)
 
         self.sync_process = None
 
@@ -186,7 +169,7 @@ def get_syncer(local_dir, remote_dir, sync_function=None):
             to standard S3 or gsutil sync commands.
         """
     if not remote_dir:
-        return NoopSyncer()
+        return BaseSyncer(None, None)
 
     if sync_function:
         if isinstance(sync_function, types.FunctionType) or isinstance(
