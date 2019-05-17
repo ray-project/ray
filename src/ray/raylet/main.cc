@@ -22,7 +22,8 @@ DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(session_dir, "", "Session directory.");
-DEFINE_string(debug_state_filename, "/tmp/ray/debug_state.txt", "The path of the debug state file.");
+DEFINE_string(debug_state_filename, "/tmp/ray/debug_state.txt",
+              "The path of the debug state file.");
 DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
 DEFINE_bool(enable_stdout_exporter, false,

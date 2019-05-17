@@ -103,7 +103,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       remote_clients_(),
       remote_server_connections_(),
       actor_registry_() {
-  RAY_LOG(INFO) << "Dumping state to: " <<  debug_state_file_;
+  RAY_LOG(INFO) << "Dumping state to: " << debug_state_file_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
