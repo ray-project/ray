@@ -507,7 +507,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
             def make_uniform_random_actions():
                 # pure random exploration option
-                uniform_random_actions = tf.random.uniform(
+                uniform_random_actions = tf.random_uniform(
                     tf.shape(deterministic_actions))
                 # rescale uniform random actions according to action range
                 tf_range = tf.constant(action_range[None], dtype="float32")

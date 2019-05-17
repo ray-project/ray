@@ -55,13 +55,18 @@ def build_torch_policy(name,
         a TorchPolicyGraph instance that uses the specified args
     """
 
-    if mixins is None:
-        mixins = []
-
     if not name.endswith("TorchPolicyGraph"):
         raise ValueError("Name should match *TorchPolicyGraph", name)
 
-    class graph_cls(*mixins, TorchPolicyGraph):
+    base = TorchPolicyGraph
+    while mixins:
+
+        class new_base(mixins.pop(), base):
+            pass
+
+        base = new_base
+
+    class graph_cls(base):
         def __init__(self, obs_space, action_space, config):
             config = dict(get_default_config(), **config)
             self.config = config
@@ -106,7 +111,7 @@ def build_torch_policy(name,
             if extra_action_out_fn:
                 return extra_action_out_fn(self, model_out)
             else:
-                return TorchPolicyGraph.extra_action_out_fn(self, model_out)
+                return TorchPolicyGraph.extra_action_out(self, model_out)
 
         @override(TorchPolicyGraph)
         def optimizer(self):

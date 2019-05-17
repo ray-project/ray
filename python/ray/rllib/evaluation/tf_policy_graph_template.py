@@ -59,13 +59,18 @@ def build_tf_policy(name,
         a DynamicTFPolicyGraph instance that uses the specified args
     """
 
-    if mixins is None:
-        mixins = []
-
     if not name.endswith("PolicyGraph"):
         raise ValueError("Name should match *PolicyGraph", name)
 
-    class graph_cls(*mixins, DynamicTFPolicyGraph):
+    base = DynamicTFPolicyGraph
+    while mixins:
+
+        class new_base(mixins.pop(), base):
+            pass
+
+        base = new_base
+
+    class graph_cls(base):
         def __init__(self,
                      obs_space,
                      action_space,
