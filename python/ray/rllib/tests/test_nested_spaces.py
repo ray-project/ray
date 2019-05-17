@@ -7,8 +7,6 @@ import pickle
 from gym import spaces
 from gym.envs.registration import EnvSpec
 import gym
-import tensorflow.contrib.slim as slim
-import tensorflow as tf
 import unittest
 
 import ray
@@ -25,6 +23,9 @@ from ray.rllib.models.pytorch.model import TorchModel
 from ray.rllib.rollout import rollout
 from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 DICT_SPACE = spaces.Dict({
     "sensors": spaces.Dict({
@@ -179,8 +180,8 @@ class DictSpyModel(Model):
             stateful=True)
 
         with tf.control_dependencies([spy_fn]):
-            output = slim.fully_connected(
-                input_dict["obs"]["sensors"]["position"], num_outputs)
+            output = tf.layers.dense(input_dict["obs"]["sensors"]["position"],
+                                     num_outputs)
         return output, output
 
 
@@ -208,7 +209,7 @@ class TupleSpyModel(Model):
             stateful=True)
 
         with tf.control_dependencies([spy_fn]):
-            output = slim.fully_connected(input_dict["obs"][0], num_outputs)
+            output = tf.layers.dense(input_dict["obs"][0], num_outputs)
         return output, output
 
 

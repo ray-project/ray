@@ -38,8 +38,6 @@ class LSTM(Model):
 
     @override(Model)
     def _build_layers_v2(self, input_dict, num_outputs, options):
-        import tensorflow.contrib.rnn as rnn
-
         cell_size = options.get("lstm_cell_size")
         if options.get("lstm_use_prev_action_reward"):
             action_dim = int(
@@ -76,7 +74,7 @@ class LSTM(Model):
             self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
-        state_in = rnn.LSTMStateTuple(c_in, h_in)
+        state_in = tf.nn.rnn_cell.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
             lstm,
             last_layer,
