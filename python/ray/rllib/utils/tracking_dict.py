@@ -16,6 +16,7 @@ class UsageTrackingDict(dict):
     def __init__(self, *args, **kwargs):
         dict.__init__(self, *args, **kwargs)
         self.accessed_keys = set()
+        self.intercepted_values = {}
         self.get_interceptor = None
 
     def set_get_interceptor(self, fn):
@@ -25,5 +26,7 @@ class UsageTrackingDict(dict):
         self.accessed_keys.add(key)
         value = dict.__getitem__(self, key)
         if self.get_interceptor:
-            value = self.get_interceptor(value)
+            if key not in self.intercepted_values:
+                self.intercepted_values[key] = self.get_interceptor(value)
+            value = self.intercepted_values[key]
         return value
