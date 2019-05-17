@@ -31,7 +31,7 @@ public class UniqueId extends BaseId implements Serializable {
   /**
    * Generate a nil UniqueId.
    */
-  public static UniqueId genNil() {
+  private static UniqueId genNil() {
     byte[] b = new byte[LENGTH];
     Arrays.fill(b, (byte) 0xFF);
     return new UniqueId(b);
@@ -53,13 +53,5 @@ public class UniqueId extends BaseId implements Serializable {
   @Override
   public int size() {
     return LENGTH;
-  }
-
-  /**
-   * Create a copy of this UniqueId.
-   */
-  public UniqueId copy() {
-    byte[] nid = Arrays.copyOf(getBytes(), size());
-    return new UniqueId(nid);
   }
 }

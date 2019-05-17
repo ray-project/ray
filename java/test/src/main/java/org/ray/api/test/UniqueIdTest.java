@@ -44,7 +44,7 @@ public class UniqueIdTest {
 
 
     // Test `genNil()`
-    UniqueId id6 = UniqueId.genNil();
+    UniqueId id6 = UniqueId.NIL;
     Assert.assertEquals("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF".toLowerCase(), id6.toString());
     Assert.assertTrue(id6.isNil());
   }
@@ -102,20 +102,6 @@ public class UniqueIdTest {
     UniqueId id = UniqueId.fromHexString("3131313131313131313132323232323232323232");
     long remainder = Long.remainderUnsigned(UniqueIdUtil.murmurHashCode(id), 1000000000);
     Assert.assertEquals(remainder, 787616861);
-  }
-
-  @Test
-  void testCopyIds() {
-    String hexStr1 = "3131313131313131313132323232323232323232";
-    String hexStr2 = "123456789ABCDEF123456789ABCDEF0001020304";
-    String hexStr3 = "123456789ABCDEF123456789ABCDEF00";
-    UniqueId uniqueId = UniqueId.fromHexString(hexStr1);
-    ObjectId objectId = ObjectId.fromHexString(hexStr2);
-    TaskId taskId = TaskId.fromHexString(hexStr3);
-    Assert.assertEquals(uniqueId, uniqueId.copy());
-    Assert.assertEquals(objectId, objectId.copy());
-    Assert.assertEquals(taskId, taskId.copy());
-    Assert.assertEquals(taskId, objectId.copy().getTaskId());
   }
 
   @Test

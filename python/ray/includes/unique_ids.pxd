@@ -103,7 +103,10 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
         const CObjectID nil()
 
         @staticmethod
-        CObjectID build(const CTaskID &task_id, c_bool is_put, int64_t index);
+        CObjectID for_put(const CTaskID &task_id, int64_t index);
+
+        @staticmethod
+        CObjectID for_task_return(const CTaskID &task_id, int64_t index);
 
         @staticmethod
         size_t size()

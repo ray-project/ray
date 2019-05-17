@@ -178,11 +178,7 @@ public class RayletClientImpl implements RayletClient {
       }
     }
     // Deserialize return ids
-    UniqueId[] uniqueIds = UniqueIdUtil.getUniqueIdsFromByteBuffer(info.returnsAsByteBuffer());
-    ObjectId[] returnIds = new ObjectId[uniqueIds.length];
-    for (int i = 0; i < uniqueIds.length; i++) {
-      returnIds[i] = new ObjectId(uniqueIds[i].getBytes());
-    }
+    ObjectId[] returnIds = UniqueIdUtil.getObjectIdsFromByteBuffer(info.returnsAsByteBuffer());
 
     // Deserialize required resources;
     Map<String, Double> resources = new HashMap<>();

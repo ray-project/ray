@@ -30,7 +30,7 @@ public class TaskId extends BaseId implements Serializable {
   /**
    * Generate a nil TaskId.
    */
-  public static TaskId genNil() {
+  private static TaskId genNil() {
     byte[] b = new byte[LENGTH];
     Arrays.fill(b, (byte) 0xFF);
     return new TaskId(b);
@@ -52,13 +52,5 @@ public class TaskId extends BaseId implements Serializable {
   @Override
   public int size() {
     return LENGTH;
-  }
-
-  /**
-   * Create a copy of this TaskId.
-   */
-  public TaskId copy() {
-    byte[] nid = Arrays.copyOf(getBytes(), size());
-    return new TaskId(nid);
   }
 }

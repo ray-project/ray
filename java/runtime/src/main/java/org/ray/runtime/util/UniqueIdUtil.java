@@ -17,7 +17,6 @@ import org.ray.api.id.UniqueId;
  */
 public class UniqueIdUtil {
   public static final int OBJECT_INDEX_POS = 16;
-  public static final int OBJECT_INDEX_LENGTH = 4;
 
   /**
    * Compute the object ID of an object returned by the task.
@@ -81,6 +80,24 @@ public class UniqueIdUtil {
     return ids;
   }
 
+  public static byte[][] getByteListFromByteBuffer(ByteBuffer byteBufferOfIds, int length) {
+    Preconditions.checkArgument(byteBufferOfIds != null);
+
+    byte[] bytesOfIds = new byte[byteBufferOfIds.remaining()];
+    byteBufferOfIds.get(bytesOfIds, 0, byteBufferOfIds.remaining());
+
+    int count = bytesOfIds.length / length;
+    byte[][] idBytes = new byte[count][];
+
+    for (int i = 0; i < count; ++i) {
+      byte[] id = new byte[length];
+      System.arraycopy(bytesOfIds, i * length, id, 0, length);
+      idBytes[i] = id;
+    }
+
+    return idBytes;
+  }
+
   /**
    * Get unique IDs from concatenated ByteBuffer.
    *
@@ -88,21 +105,31 @@ public class UniqueIdUtil {
    * @return The array of unique IDs.
    */
   public static UniqueId[] getUniqueIdsFromByteBuffer(ByteBuffer byteBufferOfIds) {
-    Preconditions.checkArgument(byteBufferOfIds != null);
+    byte[][]idBytes = getByteListFromByteBuffer(byteBufferOfIds, UniqueId.LENGTH);
+    UniqueId[] uniqueIds = new UniqueId[idBytes.length];
 
-    byte[] bytesOfIds = new byte[byteBufferOfIds.remaining()];
-    byteBufferOfIds.get(bytesOfIds, 0, byteBufferOfIds.remaining());
-
-    int count = bytesOfIds.length / UniqueId.LENGTH;
-    UniqueId[] uniqueIds = new UniqueId[count];
-
-    for (int i = 0; i < count; ++i) {
-      byte[] id = new byte[UniqueId.LENGTH];
-      System.arraycopy(bytesOfIds, i * UniqueId.LENGTH, id, 0, UniqueId.LENGTH);
-      uniqueIds[i] = UniqueId.fromByteBuffer(ByteBuffer.wrap(id));
+    for (int i = 0; i < idBytes.length; ++i) {
+      uniqueIds[i] = UniqueId.fromByteBuffer(ByteBuffer.wrap(idBytes[i]));
     }
 
     return uniqueIds;
+  }
+
+  /**
+   * Get object IDs from concatenated ByteBuffer.
+   *
+   * @param byteBufferOfIds The ByteBuffer concatenated from IDs.
+   * @return The array of object IDs.
+   */
+  public static ObjectId[] getObjectIdsFromByteBuffer(ByteBuffer byteBufferOfIds) {
+    byte[][]idBytes = getByteListFromByteBuffer(byteBufferOfIds, UniqueId.LENGTH);
+    ObjectId[] objectIds = new ObjectId[idBytes.length];
+
+    for (int i = 0; i < idBytes.length; ++i) {
+      objectIds[i] = ObjectId.fromByteBuffer(ByteBuffer.wrap(idBytes[i]));
+    }
+
+    return objectIds;
   }
 
   /**

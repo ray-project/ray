@@ -28,12 +28,12 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
 plasma::UniqueID ObjectID::to_plasma_id() const {
   plasma::UniqueID result;
-  std::memcpy(result.mutable_data(), this, kUniqueIDSize);
+  std::memcpy(result.mutable_data(), data(), kUniqueIDSize);
   return result;
 }
 
 ObjectID::ObjectID(const plasma::UniqueID &from) {
-  std::memcpy(this, from.data(), kUniqueIDSize);
+  std::memcpy(this->mutable_data(), from.data(), kUniqueIDSize);
 }
 
 // This code is from https://sites.google.com/site/murmurhash/
@@ -85,43 +85,31 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-size_t UniqueID::hash() const {
-  // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
-  // default value 0)
-  if (!hash_) {
-    hash_ = MurmurHash64A(&id_[0], kUniqueIDSize, 0);
-  }
-  return hash_;
-}
-
-size_t ObjectID::hash() const {
-  // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
-  // default value 0)
-  if (!hash_) {
-    hash_ = MurmurHash64A(this, ObjectID::size(), 0);
-  }
-  return hash_;
-}
-
-size_t TaskID::hash() const { return MurmurHash64A(this, TaskID::size(), 0); }
-
 TaskID TaskID::GetDriverTaskID(const DriverID &driver_id) {
   std::string driver_id_str = driver_id.binary();
   driver_id_str.resize(size());
   return TaskID::from_binary(driver_id_str);
 }
 
-ObjectID ObjectID::build(const TaskID &task_id, bool is_put, int64_t index) {
-  RAY_CHECK(index >= 1) << "index=" << index;
+TaskID ObjectID::task_id() const {
+  return TaskID::from_binary(
+      std::string(reinterpret_cast<const char *>(id_), TaskID::size()));
+}
+
+ObjectID ObjectID::for_put(const TaskID &task_id, int64_t put_index) {
+  RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts) << "index=" << put_index;
   ObjectID object_id;
-  object_id.task_id_ = task_id;
-  if (is_put) {
-    RAY_CHECK(index <= kMaxTaskPuts) << "index=" << index;
-    object_id.index_ = -index;
-  } else {
-    RAY_CHECK(index <= kMaxTaskReturns) << "index=" << index;
-    object_id.index_ = index;
-  }
+  std::memcpy(object_id.id_, task_id.binary().c_str(), task_id.size());
+  object_id.index_ = -put_index;
+  return object_id;
+}
+
+ObjectID ObjectID::for_task_return(const TaskID &task_id, int64_t return_index) {
+  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns)
+      << "index=" << return_index;
+  ObjectID object_id;
+  std::memcpy(object_id.id_, task_id.binary().c_str(), task_id.size());
+  object_id.index_ = return_index;
   return object_id;
 }
 

@@ -8,6 +8,26 @@ import javax.xml.bind.DatatypeConverter;
 public abstract class BaseId implements Serializable {
   private static final long serialVersionUID = 8588849129675565761L;
   private final byte[] id;
+  private int hashCodeCache = 0;
+  private boolean isNilCache;
+
+  /**
+   * Create a BaseId instance according to the input byte array.
+   */
+  public BaseId(byte[] id) {
+    if (id.length != size()) {
+      throw new IllegalArgumentException("Illegal argument for Construct BaseId, expect " + size()
+              + " bytes, but got " + id.length + " bytes.");
+    }
+    this.id = id;
+    isNilCache = true;
+    for (int i = 0; i < size(); ++i) {
+      if (id[i] != (byte) 0xff) {
+        isNilCache = false;
+        break;
+      }
+    }
+  }
 
   /**
    * Get the byte data of this id.
@@ -24,26 +44,10 @@ public abstract class BaseId implements Serializable {
   }
 
   /**
-   * Create a BaseId instance according to the input byte array.
-   */
-  public BaseId(byte[] id) {
-    if (id.length != size()) {
-      throw new IllegalArgumentException("Illegal argument for Construct BaseId, expect " + size()
-          + " bytes, but got " + id.length + " bytes.");
-    }
-    this.id = id;
-  }
-
-  /**
    * @return True if this id is nil.
    */
   public boolean isNil() {
-    for (int i = 0; i < size(); ++i) {
-      if (id[i] != (byte) 0xff) {
-        return false;
-      }
-    }
-    return true;
+    return isNilCache;
   }
 
   /**
@@ -54,7 +58,11 @@ public abstract class BaseId implements Serializable {
 
   @Override
   public int hashCode() {
-    return Arrays.hashCode(id);
+    // Lazy evaluation.
+    if (hashCodeCache == 0) {
+      hashCodeCache = Arrays.hashCode(id);
+    }
+    return hashCodeCache;
   }
 
   @Override
@@ -63,7 +71,7 @@ public abstract class BaseId implements Serializable {
       return false;
     }
 
-    if (!this.getClass().equals(obj.getClass()) {
+    if (!this.getClass().equals(obj.getClass())) {
       return false;
     }
 
@@ -76,11 +84,11 @@ public abstract class BaseId implements Serializable {
     return DatatypeConverter.printHexBinary(id).toLowerCase();
   }
 
-  public static byte[] hexString2Bytes(String hex) {
+  protected static byte[] hexString2Bytes(String hex) {
     return DatatypeConverter.parseHexBinary(hex);
   }
 
-  public static byte[] byteBuffer2Bytes(ByteBuffer bb) {
+  protected static byte[] byteBuffer2Bytes(ByteBuffer bb) {
     byte[] id = new byte[bb.remaining()];
     bb.get(id);
     return id;

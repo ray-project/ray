@@ -30,7 +30,7 @@ public class ObjectId extends BaseId implements Serializable {
   /**
    * Generate a nil ObjectId.
    */
-  public static ObjectId genNil() {
+  private static ObjectId genNil() {
     byte[] b = new byte[LENGTH];
     Arrays.fill(b, (byte) 0xFF);
     return new ObjectId(b);
@@ -52,14 +52,6 @@ public class ObjectId extends BaseId implements Serializable {
   @Override
   public int size() {
     return LENGTH;
-  }
-
-  /**
-   * Create a copy of this ObjectId.
-   */
-  public ObjectId copy() {
-    byte[] nid = Arrays.copyOf(getBytes(), size());
-    return new ObjectId(nid);
   }
 
   public TaskId getTaskId() {
