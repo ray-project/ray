@@ -62,6 +62,7 @@ A typical layout of temporary files could look like this:
           │   ├── redis.out
           │   ├── webui.err  # ipython notebook web ui
           │   ├── webui.out
+          │   ├── debug_state.txt  # dumped state of raylet
           │   ├── worker-{worker_id}.err  # redirected output of workers
           │   ├── worker-{worker_id}.out
           │   └── {other workers}
