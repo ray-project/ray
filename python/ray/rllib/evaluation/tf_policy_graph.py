@@ -173,7 +173,7 @@ class TFPolicyGraph(PolicyGraph):
                                                  self._grads_and_vars)
 
         if log_once("loss_used"):
-            logger.info(
+            logger.debug(
                 "These tensors were used in the loss_fn:\n\n{}\n".format(
                     summarize(self._loss_input_dict)))
 
