@@ -9,9 +9,9 @@ To use Ray, you need to understand the following:
 Overview
 --------
 
-Ray is a distributed execution engine. The same code can be run on
-a single machine to achieve efficient multiprocessing, and it can be used on a
-cluster for large computations.
+Ray is a fast and simple framework for building and running distributed applications.
+The same code can be run on a single machine to achieve efficient multiprocessing,
+and it can be used on a cluster for large computations.
 
 When using Ray, several processes are involved.
 
