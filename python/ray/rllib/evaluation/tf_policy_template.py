@@ -13,6 +13,7 @@ def build_tf_policy(name,
                     get_default_config,
                     loss_fn,
                     stats_fn=None,
+                    grad_stats_fn=None,
                     extra_action_fetches_fn=None,
                     postprocess_fn=None,
                     optimizer_fn=None,
@@ -21,7 +22,8 @@ def build_tf_policy(name,
                     before_loss_init=None,
                     after_init=None,
                     make_action_sampler=None,
-                    mixins=None):
+                    mixins=None,
+                    get_batch_divisibility_req=None):
     """Helper function for creating a dynamic tf policy graph at runtime.
 
     Arguments:
@@ -32,6 +34,8 @@ def build_tf_policy(name,
             and dict of experience tensor placeholders
         stats_fn (func): optional function that returns a dict of
             TF fetches given the policy graph and batch input tensors
+        grad_stats_fn (func): optional function that returns a dict of
+            TF fetches given the policy graph and loss gradient tensors
         extra_action_fetches_fn (func): optional function that returns
             a dict of TF fetches given the policy graph object
         postprocess_fn (func): optional experience postprocessing function
@@ -54,6 +58,8 @@ def build_tf_policy(name,
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the DynamicTFPolicyGraph class
+        get_batch_divisibility_req (func): optional function that returns
+            the divisibility requirement for sample batches
 
     Returns:
         a DynamicTFPolicyGraph instance that uses the specified args
@@ -96,7 +102,8 @@ def build_tf_policy(name,
                 action_space,
                 config,
                 loss_fn,
-                stats_fn,
+                stats_fn=stats_fn,
+                grad_stats_fn=grad_stats_fn,
                 before_loss_init=before_loss_init_wrapper,
                 existing_inputs=existing_inputs)
 

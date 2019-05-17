@@ -37,9 +37,11 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                  config,
                  loss_fn,
                  stats_fn=None,
+                 grad_stats_fn=None,
                  before_loss_init=None,
                  make_action_sampler=None,
-                 existing_inputs=None):
+                 existing_inputs=None,
+                 get_batch_divisibility_req=None):
         """Initialize a dynamic TF policy graph.
 
         Arguments:
@@ -50,6 +52,8 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 graph, and dict of experience tensor placeholders
             stats_fn (func): optional function that returns a dict of
                 TF fetches given the policy graph and batch input tensors
+            grad_stats_fn (func): optional function that returns a dict of
+                TF fetches given the policy graph and loss gradient tensors
             before_loss_init (func): optional function to run prior to loss
                 init that takes the same arguments as __init__
             make_action_sampler (func): optional function that returns a
@@ -59,10 +63,13 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             existing_inputs (OrderedDict): when copying a policy graph, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
+            get_batch_divisibility_req (func): optional function that returns
+                the divisibility requirement for sample batches
         """
         self.config = config
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn
+        self._grad_stats_fn = grad_stats_fn
 
         # Setup standard placeholders
         if existing_inputs is not None:
@@ -90,11 +97,12 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             assert not existing_inputs, \
                 "Cloning not supported with custom action sampler"
             self.model = None
+            self.dist_class = None
             self.action_dist = None
             action_sampler, action_prob = make_action_sampler(
                 self, input_dict, obs_space, action_space, config)
         else:
-            dist_class, logit_dim = ModelCatalog.get_action_dist(
+            self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
             if existing_inputs:
                 existing_state_in = [
@@ -116,12 +124,16 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 self.config["model"],
                 state_in=existing_state_in,
                 seq_lens=existing_seq_lens)
-            self.action_dist = dist_class(self.model.outputs)
+            self.action_dist = self.dist_class(self.model.outputs)
             action_sampler = self.action_dist.sample()
             action_prob = self.action_dist.sampled_action_prob()
 
         # Phase 1 init
         sess = tf.get_default_session()
+        if get_batch_divisibility_req:
+            batch_divisibility_req = get_batch_divisibility_req(self)
+        else:
+            batch_divisibility_req = 1
         TFPolicyGraph.__init__(
             self,
             obs_space,
@@ -138,7 +150,8 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             prev_action_input=prev_actions,
             prev_reward_input=prev_rewards,
             seq_lens=self.model and self.model.seq_lens,
-            max_seq_len=config["model"]["max_seq_len"])
+            max_seq_len=config["model"]["max_seq_len"],
+            batch_divisibility_req=batch_divisibility_req)
 
         # Phase 2 init
         before_loss_init(self, obs_space, action_space, config)
@@ -184,6 +197,9 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
         TFPolicyGraph._initialize_loss(
             instance, loss, [(k, existing_inputs[i])
                              for i, (k, _) in enumerate(self._loss_inputs)])
+        if instance._grad_stats_fn:
+            instance._stats_fetches.update(
+                instance._grad_stats_fn(instance, instance._grads))
         return instance
 
     @override(PolicyGraph)
@@ -205,7 +221,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             SampleBatch.CUR_OBS: fake_array(self._obs_input),
             SampleBatch.NEXT_OBS: fake_array(self._obs_input),
             SampleBatch.ACTIONS: fake_array(self._sampler),
-            SampleBatch.REWARDS: np.array([0], dtype=np.int32),
+            SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             SampleBatch.DONES: np.array([False], dtype=np.bool),
         }
         state_init = self.get_initial_state()
@@ -253,6 +269,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             self._stats_fetches.update(self._stats_fn(self, batch_tensors))
         for k in sorted(batch_tensors.accessed_keys):
             loss_inputs.append((k, batch_tensors[k]))
-
         TFPolicyGraph._initialize_loss(self, loss, loss_inputs)
+        if self._grad_stats_fn:
+            self._stats_fetches.update(self._grad_stats_fn(self, self._grads))
         self._sess.run(tf.global_variables_initializer())
