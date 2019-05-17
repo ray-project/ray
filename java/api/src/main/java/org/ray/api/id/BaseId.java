@@ -10,7 +10,7 @@ public abstract class BaseId implements Serializable {
   private final byte[] id;
 
   /**
-   * Get the byte data of this UniqueId.
+   * Get the byte data of this id.
    */
   public byte[] getBytes() {
     return id;
