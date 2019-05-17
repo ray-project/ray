@@ -69,7 +69,7 @@ class RemoteFunction(object):
         # Export the function.
         worker = ray.worker.get_global_worker()
         # In which session this function was exported last time.
-        self._last_export_session = worker._session_index
+        self._last_export_session = None
         worker.function_actor_manager.export(self)
 
     def __call__(self, *args, **kwargs):
@@ -109,10 +109,10 @@ class RemoteFunction(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        if self._last_export_session < worker._session_index:
-            # If this function was exported in a previous session, we need to
+        if self._last_export_session != worker.session_name:
+            # If this function was exported in a different session, we need to
             # export this function again, because current GCS doesn't have it.
-            self._last_export_session = worker._session_index
+            self._last_export_session = worker.session_name
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs

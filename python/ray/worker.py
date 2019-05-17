@@ -152,13 +152,15 @@ class Worker(object):
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
-        # Index of the current session. This number will
-        # increment every time when `ray.shutdown` is called.
-        self._session_index = 0
         self._current_task = None
         # Functions to run to process the values returned by ray.get. Each
         # postprocessor must take two arguments ("object_ids", and "values").
         self._post_get_hooks = []
+
+    @property
+    def session_name(self):
+        self.check_connected()
+        return self.node.session_name
 
     @property
     def connected(self):
@@ -1986,7 +1988,6 @@ def disconnect():
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
-        worker._session_index += 1
 
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []

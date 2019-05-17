@@ -355,6 +355,7 @@ class FunctionActorManager(object):
         """
         if self._worker.load_code_from_local:
             return
+        remote_function._last_export_session = self._worker.session_name
         # Work around limitations of Python pickling.
         function = remote_function._function
         function_name_global_valid = function.__name__ in function.__globals__
