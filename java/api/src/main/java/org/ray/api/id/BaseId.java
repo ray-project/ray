@@ -63,7 +63,7 @@ public abstract class BaseId implements Serializable {
       return false;
     }
 
-    if (!(obj instanceof BaseId)) {
+    if (!this.getClass().equals(obj.getClass()) {
       return false;
     }
 
