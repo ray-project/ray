@@ -6,7 +6,7 @@ import java.util.Arrays;
 import java.util.Random;
 
 /**
- * Represents a task id of all Ray tasks.
+ * Represents the id of a Ray task.
  */
 public class TaskId extends BaseId implements Serializable {
 
