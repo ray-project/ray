@@ -239,6 +239,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             elif v.dtype == np.object:
                 continue  # can't handle arbitrary objects in TF
             shape = (None, ) + v.shape[1:]
+            dtype = np.float32 if v.dtype == np.float64 else v.dtype
             placeholder = tf.placeholder(v.dtype, shape=shape, name=k)
             batch_tensors[k] = placeholder
 
