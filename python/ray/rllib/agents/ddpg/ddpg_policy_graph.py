@@ -399,8 +399,6 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         self.set_pure_exploration_phase(state[2])
 
     def _build_q_network(self, obs, obs_space, action_space, actions):
-        import tensorflow.contrib.layers as layers
-
         if self.config["use_state_preprocessor"]:
             q_model = ModelCatalog.get_model({
                 "obs": obs,
@@ -413,16 +411,12 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
         activation = getattr(tf.nn, self.config["critic_hidden_activation"])
         for hidden in self.config["critic_hiddens"]:
-            q_out = layers.fully_connected(
-                q_out, num_outputs=hidden, activation_fn=activation)
-        q_values = layers.fully_connected(
-            q_out, num_outputs=1, activation_fn=None)
+            q_out = tf.layers.dense(q_out, units=hidden, activation=activation)
+        q_values = tf.layers.dense(q_out, units=1, activation=None)
 
         return q_values, q_model
 
     def _build_policy_network(self, obs, obs_space, action_space):
-        import tensorflow.contrib.layers as layers
-
         if self.config["use_state_preprocessor"]:
             model = ModelCatalog.get_model({
                 "obs": obs,
@@ -434,16 +428,19 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
             action_out = obs
 
         activation = getattr(tf.nn, self.config["actor_hidden_activation"])
-        normalizer_fn = layers.layer_norm if self.config["parameter_noise"] \
-            else None
         for hidden in self.config["actor_hiddens"]:
-            action_out = layers.fully_connected(
-                action_out,
-                num_outputs=hidden,
-                activation_fn=activation,
-                normalizer_fn=normalizer_fn)
-        action_out = layers.fully_connected(
-            action_out, num_outputs=self.dim_actions, activation_fn=None)
+            if self.config["parameter_noise"]:
+                import tensorflow.contrib.layers as layers
+                action_out = layers.fully_connected(
+                    action_out,
+                    num_outputs=hidden,
+                    activation_fn=activation,
+                    normalizer_fn=layers.layer_norm)
+            else:
+                action_out = tf.layers.dense(
+                    action_out, units=hidden, activation=activation)
+        action_out = tf.layers.dense(
+            action_out, units=self.dim_actions, activation=None)
 
         # Use sigmoid to scale to [0,1], but also double magnitude of input to
         # emulate behaviour of tanh activation used in DDPG and TD3 papers.
@@ -507,7 +504,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
 
             def make_uniform_random_actions():
                 # pure random exploration option
-                uniform_random_actions = tf.random.uniform(
+                uniform_random_actions = tf.random_uniform(
                     tf.shape(deterministic_actions))
                 # rescale uniform random actions according to action range
                 tf_range = tf.constant(action_range[None], dtype="float32")

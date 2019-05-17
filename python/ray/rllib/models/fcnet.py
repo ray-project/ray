@@ -21,8 +21,6 @@ class FullyConnectedNetwork(Model):
         model that processes the components separately, use _build_layers_v2().
         """
 
-        import tensorflow.contrib.slim as slim
-
         hiddens = options.get("fcnet_hiddens")
         activation = get_activation_fn(options.get("fcnet_activation"))
 
@@ -31,18 +29,18 @@ class FullyConnectedNetwork(Model):
             last_layer = inputs
             for size in hiddens:
                 label = "fc{}".format(i)
-                last_layer = slim.fully_connected(
+                last_layer = tf.layers.dense(
                     last_layer,
                     size,
-                    weights_initializer=normc_initializer(1.0),
-                    activation_fn=activation,
-                    scope=label)
+                    kernel_initializer=normc_initializer(1.0),
+                    activation=activation,
+                    name=label)
                 i += 1
             label = "fc_out"
-            output = slim.fully_connected(
+            output = tf.layers.dense(
                 last_layer,
                 num_outputs,
-                weights_initializer=normc_initializer(0.01),
-                activation_fn=None,
-                scope=label)
+                kernel_initializer=normc_initializer(0.01),
+                activation=None,
+                name=label)
             return output, last_layer

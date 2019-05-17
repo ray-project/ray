@@ -278,14 +278,11 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
                 self.KL_stats.update({
                     "mean_KL_{}".format(i): tf.reduce_mean(kl),
                     "max_KL_{}".format(i): tf.reduce_max(kl),
-                    "median_KL_{}".format(i): tf.contrib.distributions.
-                    percentile(kl, 50.0),
                 })
         else:
             self.KL_stats = {
                 "mean_KL": tf.reduce_mean(kls[0]),
                 "max_KL": tf.reduce_max(kls[0]),
-                "median_KL": tf.contrib.distributions.percentile(kls[0], 50.0),
             }
 
         # Initialize TFPolicyGraph
