@@ -11,8 +11,7 @@
 
 |
 
-**Ray is a fast and simple framework for building and running distributed
-  applications.**
+**Ray is a fast and simple framework for building and running distributed applications.**
 
 
 Ray is easy to install: ``pip install ray``
