@@ -18,7 +18,6 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.models.action_dist import MultiCategorical
 from ray.rllib.evaluation.postprocessing import compute_advantages
@@ -94,6 +93,7 @@ class VTraceSurrogateLoss(object):
                  rewards,
                  values,
                  bootstrap_value,
+                 dist_class,
                  valid_mask,
                  vf_loss_coeff=0.5,
                  entropy_coeff=0.01,
@@ -107,18 +107,19 @@ class VTraceSurrogateLoss(object):
         handle episode cut boundaries.
 
         Arguments:
-            actions: An int32 tensor of shape [T, B, NUM_ACTIONS].
+            actions: An int|float32 tensor of shape [T, B, logit_dim].
             prev_actions_logp: A float32 tensor of shape [T, B].
             actions_logp: A float32 tensor of shape [T, B].
             action_kl: A float32 tensor of shape [T, B].
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
-            behaviour_logits: A float32 tensor of shape [T, B, NUM_ACTIONS].
-            target_logits: A float32 tensor of shape [T, B, NUM_ACTIONS].
+            behaviour_logits: A float32 tensor of shape [T, B, logit_dim].
+            target_logits: A float32 tensor of shape [T, B, logit_dim].
             discount: A float32 scalar.
             rewards: A float32 tensor of shape [T, B].
             values: A float32 tensor of shape [T, B].
             bootstrap_value: A float32 tensor of shape [B].
+            dist_class: action distribution class for logits.
             valid_mask: A bool tensor of valid RNN input elements (#2992).
         """
 
@@ -127,11 +128,12 @@ class VTraceSurrogateLoss(object):
             self.vtrace_returns = vtrace.multi_from_logits(
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
-                actions=tf.unstack(tf.cast(actions, tf.int32), axis=2),
+                actions=tf.unstack(actions, axis=2),
                 discounts=tf.to_float(~dones) * discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
+                dist_class=dist_class,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
@@ -218,10 +220,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
             is_multidiscrete = True
             output_hidden_shape = action_space.nvec.astype(np.int32)
-        elif self.config["vtrace"]:
-            raise UnsupportedSpaceException(
-                "Action space {} is not supported for APPO + VTrace.",
-                format(action_space))
         else:
             is_multidiscrete = False
             output_hidden_shape = 1
@@ -365,6 +363,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, APPOPostprocessing,
                 rewards=make_time_major(rewards, drop_last=True),
                 values=make_time_major(values, drop_last=True),
                 bootstrap_value=make_time_major(values)[-1],
+                dist_class=dist_class,
                 valid_mask=make_time_major(mask, drop_last=True),
                 vf_loss_coeff=self.config["vf_loss_coeff"],
                 entropy_coeff=self.config["entropy_coeff"],
