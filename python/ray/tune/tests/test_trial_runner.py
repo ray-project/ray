@@ -907,9 +907,33 @@ class RunExperimentTest(unittest.TestCase):
             str(trial), "{}_{}_321".format(trial.trainable_name,
                                            trial.trial_id))
 
+
+class TestSyncFunctionality(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()  # re-register the evicted objects
+
     @patch("ray.tune.syncer.S3_PREFIX", "test")
-    def testSyncFunction(self):
-        def fail_sync_local():
+    def testCloudSyncFunction(self):
+        """No Upload Dir is given."""
+        with self.assertRaises(AssertionError):
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_cloud": "ls {source}"
+                })
+
+    @patch("ray.tune.syncer.S3_PREFIX", "test")
+    def testCloudBadArgs(self):
+        with self.assertRaises(ValueError):
             [trial] = tune.run(
                 "__fake",
                 name="foo",
@@ -919,12 +943,10 @@ class RunExperimentTest(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_to_cloud": "ls {remote_dir}"
+                    "sync_to_cloud": "ls {target}"
                 })
 
-        self.assertRaises(ValueError, fail_sync_local)
-
-        def fail_sync_remote():
+        with self.assertRaises(ValueError):
             [trial] = tune.run(
                 "__fake",
                 name="foo",
@@ -934,13 +956,26 @@ class RunExperimentTest(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_to_cloud": "ls {local_dir}"
+                    "sync_to_cloud": "ls {source}"
                 })
 
-        self.assertRaises(ValueError, fail_sync_remote)
+        [trial] = tune.run(
+            "__fake",
+            name="foo",
+            max_failures=0,
+            **{
+                "stop": {
+                    "training_iteration": 1
+                },
+                "upload_dir": "test",
+                "sync_to_cloud": "echo {source} {target}"
+            })
 
+    @patch("ray.tune.syncer.S3_PREFIX", "test")
+    def testCloudFunction(self):
         def sync_func(local, remote):
             with open(os.path.join(local, "test.log"), "w") as f:
+                print("writing to", f.name)
                 f.write(remote)
 
         [trial] = tune.run(
@@ -954,7 +989,9 @@ class RunExperimentTest(unittest.TestCase):
                 "upload_dir": "test",
                 "sync_to_cloud": tune.function(sync_func)
             })
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
+        test_file_path = os.path.join(trial.local_dir, "test.log")
+        self.assertTrue(os.path.exists(test_file_path))
+        os.remove(test_file_path)
 
 
 class VariantGeneratorTest(unittest.TestCase):
