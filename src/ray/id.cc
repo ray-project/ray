@@ -105,8 +105,8 @@ ObjectID ObjectID::for_put(const TaskID &task_id, int64_t put_index) {
 }
 
 ObjectID ObjectID::for_task_return(const TaskID &task_id, int64_t return_index) {
-  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns)
-      << "index=" << return_index;
+  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns) << "index="
+                                                                  << return_index;
   ObjectID object_id;
   std::memcpy(object_id.id_, task_id.binary().c_str(), task_id.size());
   object_id.index_ = return_index;
