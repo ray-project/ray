@@ -21,7 +21,8 @@ DEFINE_string(config_list, "", "The raylet config list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
-DEFINE_string(temp_dir, "", "Temporary directory.");
+DEFINE_string(session_dir, "", "Session directory.");
+DEFINE_string(debug_state_filename, "/tmp/ray/debug_state.txt", "The path of the debug state file.");
 DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
 DEFINE_bool(enable_stdout_exporter, false,
@@ -60,7 +61,8 @@ int main(int argc, char *argv[]) {
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string redis_password = FLAGS_redis_password;
-  const std::string temp_dir = FLAGS_temp_dir;
+  const std::string session_dir = FLAGS_session_dir;
+  const std::string debug_state_filename = FLAGS_debug_state_filename;
   const bool disable_stats = FLAGS_disable_stats;
   const std::string stat_address = FLAGS_stat_address;
   const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
@@ -131,7 +133,8 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().debug_dump_period_milliseconds();
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
   node_manager_config.store_socket_name = store_socket_name;
-  node_manager_config.temp_dir = temp_dir;
+  node_manager_config.session_dir = session_dir;
+  node_manager_config.debug_state_filename = debug_state_filename;
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;

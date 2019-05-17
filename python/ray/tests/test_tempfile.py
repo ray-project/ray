@@ -149,6 +149,13 @@ def test_raylet_tempfiles(shutdown_only):
     assert socket_files == {"plasma_store", "raylet"}
 
 
+def test_raylet_dump_state(shutdown_only):
+    ray.init(num_cpus=1)
+    node = ray.worker._global_node
+    time.sleep(15)  # wait raylet to dump state
+    assert "debug_state.txt" in os.listdir(node.get_logs_dir_path())
+
+
 def test_tempdir_privilege(shutdown_only):
     if not os.path.exists("/tmp/ray"):
         os.mkdir("/tmp/ray")

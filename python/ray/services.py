@@ -1064,6 +1064,7 @@ def start_raylet(redis_address,
                  worker_path,
                  temp_dir,
                  session_dir,
+                 debug_state_filename,
                  num_cpus=None,
                  num_gpus=None,
                  resources=None,
@@ -1090,6 +1091,7 @@ def start_raylet(redis_address,
             processes will execute.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
+        debug_state_filename (str): The path of the debug state file.
         num_cpus: The CPUs allocated for this raylet.
         num_gpus: The GPUs allocated for this raylet.
         resources: The custom resources allocated for this raylet.
@@ -1193,7 +1195,8 @@ def start_raylet(redis_address,
         "--python_worker_command={}".format(start_worker_command),
         "--java_worker_command={}".format(java_worker_command),
         "--redis_password={}".format(redis_password or ""),
-        "--temp_dir={}".format(temp_dir),
+        "--session_dir={}".format(session_dir),
+        "--debug_state_filename={}".format(debug_state_filename),
     ]
     process_info = start_ray_process(
         command,

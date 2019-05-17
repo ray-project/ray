@@ -129,6 +129,9 @@ class Node(object):
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet")
 
+        self._raylet_debug_state_filename = self._make_inc_temp(
+            prefix="debug_state.txt", directory_name=self._logs_dir)
+
         if head:
             ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
             self._webui_url = None
@@ -228,6 +231,7 @@ class Node(object):
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,
             "session_dir": self._session_dir,
+            "raylet_debug_state_filename": self._raylet_debug_state_filename,
         }
 
     def create_redis_client(self):
@@ -436,6 +440,7 @@ class Node(object):
             self._ray_params.worker_path,
             self._temp_dir,
             self._session_dir,
+            self._raylet_debug_state_filename,
             self._ray_params.num_cpus,
             self._ray_params.num_gpus,
             self._ray_params.resources,

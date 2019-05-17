@@ -78,7 +78,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
-      temp_dir_(config.temp_dir),
+      session_dir_(config.session_dir),
+      debug_state_file_(config.debug_state_filename),
       object_manager_profile_timer_(io_service),
       initial_config_(config),
       local_available_resources_(config.resource_config),
@@ -102,6 +103,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       remote_clients_(),
       remote_server_connections_(),
       actor_registry_() {
+  RAY_LOG(INFO) << "Dumping state to: " <<  debug_state_file_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -2367,7 +2369,7 @@ void NodeManager::ForwardTask(
 
 void NodeManager::DumpDebugState() const {
   std::fstream fs;
-  fs.open(temp_dir_ + "/debug_state.txt", std::fstream::out | std::fstream::trunc);
+  fs.open(debug_state_file_, std::fstream::out | std::fstream::trunc);
   fs << DebugString();
   fs.close();
 }
