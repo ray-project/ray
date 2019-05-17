@@ -346,6 +346,7 @@ class Trial(object):
 
     @classmethod
     def create_logdir(cls, identifier, local_dir):
+        local_dir = os.path.expanduser(local_dir)
         if not os.path.exists(local_dir):
             os.makedirs(local_dir)
         return tempfile.mkdtemp(
@@ -356,9 +357,8 @@ class Trial(object):
         """Init logger."""
 
         if not self.result_logger:
-            local_dir = os.path.expanduser(self.local_dir)
             if not self.logdir:
-                self.logdir = Trial.create_logdir(str(self), local_dir)
+                self.logdir = Trial.create_logdir(str(self), self.local_dir)
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 
