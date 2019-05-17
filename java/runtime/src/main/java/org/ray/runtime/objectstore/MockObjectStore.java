@@ -10,7 +10,6 @@ import java.util.stream.Collectors;
 
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.ray.api.id.ObjectId;
-import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,14 +26,14 @@ public class MockObjectStore implements ObjectStoreLink {
   private final RayDevRuntime runtime;
   private final Map<ObjectId, byte[]> data = new ConcurrentHashMap<>();
   private final Map<ObjectId, byte[]> metadata = new ConcurrentHashMap<>();
-  private final List<Consumer<UniqueId>> objectPutCallbacks;
+  private final List<Consumer<ObjectId>> objectPutCallbacks;
 
   public MockObjectStore(RayDevRuntime runtime) {
     this.runtime = runtime;
     this.objectPutCallbacks = new ArrayList<>();
   }
 
-  public void addObjectPutCallback(Consumer<UniqueId> callback) {
+  public void addObjectPutCallback(Consumer<ObjectId> callback) {
     this.objectPutCallbacks.add(callback);
   }
 
@@ -45,13 +44,12 @@ public class MockObjectStore implements ObjectStoreLink {
           .error("{} cannot put null: {}, {}", logPrefix(), objectId, Arrays.toString(value));
       System.exit(-1);
     }
-    ObjectId uniqueId = new ObjectId(objectId);
-    data.put(uniqueId, value);
+    ObjectId id = new ObjectId(objectId);
+    data.put(id, value);
     if (metadataValue != null) {
-      metadata.put(uniqueId, metadataValue);
+      metadata.put(id, metadataValue);
     }
-    UniqueId id = new UniqueId(objectId);
-    for (Consumer<UniqueId> callback : objectPutCallbacks) {
+    for (Consumer<ObjectId> callback : objectPutCallbacks) {
       callback.accept(id);
     }
   }
@@ -86,7 +84,8 @@ public class MockObjectStore implements ObjectStoreLink {
       }
       ready = 0;
       for (byte[] id : objectIds) {
-        if (data.containsKey(new UniqueId(id))) {
+        ObjectId id0 = new ObjectId(id);
+        if (data.containsKey(id0)) {
           ready += 1;
         }
       }
@@ -94,8 +93,8 @@ public class MockObjectStore implements ObjectStoreLink {
     }
     ArrayList<ObjectStoreData> rets = new ArrayList<>();
     for (byte[] objId : objectIds) {
-      UniqueId uniqueId = new UniqueId(objId);
-      rets.add(new ObjectStoreData(metadata.get(uniqueId), data.get(uniqueId)));
+      ObjectId objectId = new ObjectId(objId);
+      rets.add(new ObjectStoreData(metadata.get(objectId), data.get(objectId)));
     }
     return rets;
   }
@@ -122,7 +121,7 @@ public class MockObjectStore implements ObjectStoreLink {
 
   @Override
   public boolean contains(byte[] objectId) {
-    return data.containsKey(new UniqueId(objectId));
+    return data.containsKey(new ObjectId(objectId));
   }
 
   private String logPrefix() {

@@ -54,7 +54,7 @@ public class MockRayletClient implements RayletClient {
     currentWorker = new ThreadLocal<>();
   }
 
-  public synchronized void onObjectPut(UniqueId id) {
+  public synchronized void onObjectPut(ObjectId id) {
     Set<TaskSpec> tasks = waitingTasks.get(id);
     if (tasks != null) {
       waitingTasks.remove(id);

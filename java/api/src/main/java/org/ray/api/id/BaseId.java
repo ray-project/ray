@@ -76,7 +76,7 @@ public abstract class BaseId implements Serializable {
     }
 
     BaseId r = (BaseId) obj;
-    return Arrays.equals(id, r.id);
+    return hashCode() == r.hashCode();
   }
 
   @Override
