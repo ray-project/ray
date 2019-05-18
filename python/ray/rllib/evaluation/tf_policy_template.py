@@ -10,8 +10,8 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 
 @DeveloperAPI
 def build_tf_policy(name,
-                    get_default_config,
                     loss_fn,
+                    get_default_config=None,
                     stats_fn=None,
                     grad_stats_fn=None,
                     extra_action_fetches_fn=None,
@@ -28,10 +28,10 @@ def build_tf_policy(name,
 
     Arguments:
         name (str): name of the graph (e.g., "PPOPolicy")
-        get_default_config (func): function that returns the default config
-            to merge with any overrides
         loss_fn (func): function that returns a loss tensor the policy graph,
             and dict of experience tensor placeholders
+        get_default_config (func): optional function that returns the default
+            config to merge with any overrides
         stats_fn (func): optional function that returns a dict of
             TF fetches given the policy graph and batch input tensors
         grad_stats_fn (func): optional function that returns a dict of
@@ -82,7 +82,8 @@ def build_tf_policy(name,
                      action_space,
                      config,
                      existing_inputs=None):
-            config = dict(get_default_config(), **config)
+            if get_default_config:
+                config = dict(get_default_config(), **config)
 
             if before_init:
                 before_init(self, obs_space, action_space, config)

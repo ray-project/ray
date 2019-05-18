@@ -10,8 +10,8 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 
 @DeveloperAPI
 def build_torch_policy(name,
-                       get_default_config,
                        loss_fn,
+                       get_default_config=None,
                        stats_fn=None,
                        postprocess_fn=None,
                        extra_action_out_fn=None,
@@ -25,10 +25,10 @@ def build_torch_policy(name,
 
     Arguments:
         name (str): name of the graph (e.g., "PPOPolicy")
-        get_default_config (func): function that returns the default config
-            to merge with any overrides
         loss_fn (func): function that returns a loss tensor the policy graph,
             and dict of experience tensor placeholders
+        get_default_config (func): optional function that returns the default
+            config to merge with any overrides
         stats_fn (func): optional function that returns a dict of
             values given the policy graph and batch input tensors
         postprocess_fn (func): optional experience postprocessing function
@@ -68,7 +68,8 @@ def build_torch_policy(name,
 
     class graph_cls(base):
         def __init__(self, obs_space, action_space, config):
-            config = dict(get_default_config(), **config)
+            if get_default_config:
+                config = dict(get_default_config(), **config)
             self.config = config
 
             if before_init:

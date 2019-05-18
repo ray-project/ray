@@ -9,8 +9,8 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 
 @DeveloperAPI
 def build_trainer(name,
-                  default_config,
                   default_policy,
+                  default_config=None,
                   make_policy_optimizer=None,
                   validate_config=None,
                   get_policy_class=None,
@@ -21,8 +21,9 @@ def build_trainer(name,
 
     Arguments:
         name (str): name of the trainer (e.g., "PPO")
-        default_config (dict): the default config dict of the algorithm
         default_policy (cls): the default PolicyGraph class to use
+        default_config (dict): the default config dict of the algorithm,
+            otherwises uses the Trainer default config
         make_policy_optimizer (func): optional function that returns a
             PolicyOptimizer instance given
             (local_evaluator, remote_evaluators, config)
@@ -49,7 +50,7 @@ def build_trainer(name,
 
     class trainer_cls(Trainer):
         _name = name
-        _default_config = default_config
+        _default_config = default_config or Trainer.COMMON_CONFIG
         _policy_graph = default_policy
 
         def _init(self, config, env_creator):

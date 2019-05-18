@@ -156,7 +156,7 @@ def validate_config(config):
 
 
 PPOTrainer = build_trainer(
-    "PPO",
+    name="PPO",
     default_config=DEFAULT_CONFIG,
     default_policy=PPOTFPolicy,
     make_policy_optimizer=make_optimizer,
