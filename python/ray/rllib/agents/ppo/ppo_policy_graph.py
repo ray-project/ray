@@ -7,13 +7,10 @@ import logging
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
-    LearningRateSchedule
+from ray.rllib.evaluation.tf_policy_graph import LearningRateSchedule
+from ray.rllib.evaluation.tf_policy_template import build_tf_policy
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
 
@@ -107,119 +104,106 @@ class PPOLoss(object):
         self.loss = loss
 
 
-class PPOPostprocessing(object):
+def ppo_surrogate_loss(policy, batch_tensors):
+    if policy.model.state_in:
+        max_seq_len = tf.reduce_max(policy.model.seq_lens)
+        mask = tf.sequence_mask(policy.model.seq_lens, max_seq_len)
+        mask = tf.reshape(mask, [-1])
+    else:
+        mask = tf.ones_like(
+            batch_tensors[Postprocessing.ADVANTAGES], dtype=tf.bool)
+
+    policy.loss_obj = PPOLoss(
+        policy.action_space,
+        batch_tensors[Postprocessing.VALUE_TARGETS],
+        batch_tensors[Postprocessing.ADVANTAGES],
+        batch_tensors[SampleBatch.ACTIONS],
+        batch_tensors[BEHAVIOUR_LOGITS],
+        batch_tensors[SampleBatch.VF_PREDS],
+        policy.action_dist,
+        policy.value_function,
+        policy.kl_coeff,
+        mask,
+        entropy_coeff=policy.config["entropy_coeff"],
+        clip_param=policy.config["clip_param"],
+        vf_clip_param=policy.config["vf_clip_param"],
+        vf_loss_coeff=policy.config["vf_loss_coeff"],
+        use_gae=policy.config["use_gae"])
+
+    return policy.loss_obj.loss
+
+
+def kl_and_loss_stats(policy, batch_tensors):
+    policy.explained_variance = explained_variance(
+        batch_tensors[Postprocessing.VALUE_TARGETS], policy.value_function)
+
+    stats_fetches = {
+        "cur_kl_coeff": policy.kl_coeff,
+        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+        "total_loss": policy.loss_obj.loss,
+        "policy_loss": policy.loss_obj.mean_policy_loss,
+        "vf_loss": policy.loss_obj.mean_vf_loss,
+        "vf_explained_var": policy.explained_variance,
+        "kl": policy.loss_obj.mean_kl,
+        "entropy": policy.loss_obj.mean_entropy,
+    }
+
+    return stats_fetches
+
+
+def vf_preds_and_logits_fetches(policy):
+    """Adds value function and logits outputs to experience batches."""
+    return {
+        SampleBatch.VF_PREDS: policy.value_function,
+        BEHAVIOUR_LOGITS: policy.model.outputs,
+    }
+
+
+def postprocess_ppo_gae(policy,
+                        sample_batch,
+                        other_agent_batches=None,
+                        episode=None):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
 
-    @override(TFPolicyGraph)
-    def extra_compute_action_fetches(self):
-        return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self), **{
-                SampleBatch.VF_PREDS: self.value_function,
-                BEHAVIOUR_LOGITS: self.logits
-            })
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(len(self.model.state_in)):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                                 sample_batch[SampleBatch.ACTIONS][-1],
-                                 sample_batch[SampleBatch.REWARDS][-1],
-                                 *next_state)
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            self.config["gamma"],
-            self.config["lambda"],
-            use_gae=self.config["use_gae"])
-        return batch
+    completed = sample_batch["dones"][-1]
+    if completed:
+        last_r = 0.0
+    else:
+        next_state = []
+        for i in range(len(policy.model.state_in)):
+            next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                               sample_batch[SampleBatch.ACTIONS][-1],
+                               sample_batch[SampleBatch.REWARDS][-1],
+                               *next_state)
+    batch = compute_advantages(
+        sample_batch,
+        last_r,
+        policy.config["gamma"],
+        policy.config["lambda"],
+        use_gae=policy.config["use_gae"])
+    return batch
 
 
-class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
-    def __init__(self,
-                 observation_space,
-                 action_space,
-                 config,
-                 existing_inputs=None):
-        """
-        Arguments:
-            observation_space: Environment observation space specification.
-            action_space: Environment action space specification.
-            config (dict): Configuration values for PPO graph.
-            existing_inputs (list): Optional list of tuples that specify the
-                placeholders upon which the graph should be built upon.
-        """
-        config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
-        self.sess = tf.get_default_session()
-        self.action_space = action_space
-        self.config = config
-        self.kl_coeff_val = self.config["kl_coeff"]
-        self.kl_target = self.config["kl_target"]
-        dist_cls, logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"])
+def clip_gradients(policy, optimizer, loss):
+    if policy.config["grad_clip"] is not None:
+        policy.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                            tf.get_variable_scope().name)
+        grads = tf.gradients(loss, policy.var_list)
+        policy.grads, _ = tf.clip_by_global_norm(grads,
+                                                 policy.config["grad_clip"])
+        clipped_grads = list(zip(policy.grads, policy.var_list))
+        return clipped_grads
+    else:
+        return optimizer.compute_gradients(
+            loss, colocate_gradients_with_ops=True)
 
-        if existing_inputs:
-            obs_ph, value_targets_ph, adv_ph, act_ph, \
-                logits_ph, vf_preds_ph, prev_actions_ph, prev_rewards_ph = \
-                existing_inputs[:8]
-            existing_state_in = existing_inputs[8:-1]
-            existing_seq_lens = existing_inputs[-1]
-        else:
-            obs_ph = tf.placeholder(
-                tf.float32,
-                name="obs",
-                shape=(None, ) + observation_space.shape)
-            adv_ph = tf.placeholder(
-                tf.float32, name="advantages", shape=(None, ))
-            act_ph = ModelCatalog.get_action_placeholder(action_space)
-            logits_ph = tf.placeholder(
-                tf.float32, name="logits", shape=(None, logit_dim))
-            vf_preds_ph = tf.placeholder(
-                tf.float32, name="vf_preds", shape=(None, ))
-            value_targets_ph = tf.placeholder(
-                tf.float32, name="value_targets", shape=(None, ))
-            prev_actions_ph = ModelCatalog.get_action_placeholder(action_space)
-            prev_rewards_ph = tf.placeholder(
-                tf.float32, [None], name="prev_reward")
-            existing_state_in = None
-            existing_seq_lens = None
-        self.observations = obs_ph
-        self.prev_actions = prev_actions_ph
-        self.prev_rewards = prev_rewards_ph
 
-        self.loss_in = [
-            (SampleBatch.CUR_OBS, obs_ph),
-            (Postprocessing.VALUE_TARGETS, value_targets_ph),
-            (Postprocessing.ADVANTAGES, adv_ph),
-            (SampleBatch.ACTIONS, act_ph),
-            (BEHAVIOUR_LOGITS, logits_ph),
-            (SampleBatch.VF_PREDS, vf_preds_ph),
-            (SampleBatch.PREV_ACTIONS, prev_actions_ph),
-            (SampleBatch.PREV_REWARDS, prev_rewards_ph),
-        ]
-        self.model = ModelCatalog.get_model(
-            {
-                "obs": obs_ph,
-                "prev_actions": prev_actions_ph,
-                "prev_rewards": prev_rewards_ph,
-                "is_training": self._get_is_training_placeholder(),
-            },
-            observation_space,
-            action_space,
-            logit_dim,
-            self.config["model"],
-            state_in=existing_state_in,
-            seq_lens=existing_seq_lens)
-
+class KLCoeffMixin(object):
+    def __init__(self, config):
         # KL Coefficient
+        self.kl_coeff_val = config["kl_coeff"]
+        self.kl_target = config["kl_target"]
         self.kl_coeff = tf.get_variable(
             initializer=tf.constant_initializer(self.kl_coeff_val),
             name="kl_coeff",
@@ -227,14 +211,22 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
             trainable=False,
             dtype=tf.float32)
 
-        self.logits = self.model.outputs
-        curr_action_dist = dist_cls(self.logits)
-        self.sampler = curr_action_dist.sample()
-        if self.config["use_gae"]:
-            if self.config["vf_share_layers"]:
+    def update_kl(self, sampled_kl):
+        if sampled_kl > 2.0 * self.kl_target:
+            self.kl_coeff_val *= 1.5
+        elif sampled_kl < 0.5 * self.kl_target:
+            self.kl_coeff_val *= 0.5
+        self.kl_coeff.load(self.kl_coeff_val, session=self._sess)
+        return self.kl_coeff_val
+
+
+class ValueNetworkMixin(object):
+    def __init__(self, obs_space, action_space, config):
+        if config["use_gae"]:
+            if config["vf_share_layers"]:
                 self.value_function = self.model.value_function()
             else:
-                vf_config = self.config["model"].copy()
+                vf_config = config["model"].copy()
                 # Do not split the last layer of the value function into
                 # mean parameters and standard deviation parameters and
                 # do not make the standard deviations free variables.
@@ -249,122 +241,43 @@ class PPOPolicyGraph(LearningRateSchedule, PPOPostprocessing, TFPolicyGraph):
                         "value_function() method.")
                 with tf.variable_scope("value_function"):
                     self.value_function = ModelCatalog.get_model({
-                        "obs": obs_ph,
-                        "prev_actions": prev_actions_ph,
-                        "prev_rewards": prev_rewards_ph,
+                        "obs": self._obs_input,
+                        "prev_actions": self._prev_action_input,
+                        "prev_rewards": self._prev_reward_input,
                         "is_training": self._get_is_training_placeholder(),
-                    }, observation_space, action_space, 1, vf_config).outputs
+                    }, obs_space, action_space, 1, vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
         else:
-            self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
-
-        if self.model.state_in:
-            max_seq_len = tf.reduce_max(self.model.seq_lens)
-            mask = tf.sequence_mask(self.model.seq_lens, max_seq_len)
-            mask = tf.reshape(mask, [-1])
-        else:
-            mask = tf.ones_like(adv_ph, dtype=tf.bool)
-
-        self.loss_obj = PPOLoss(
-            action_space,
-            value_targets_ph,
-            adv_ph,
-            act_ph,
-            logits_ph,
-            vf_preds_ph,
-            curr_action_dist,
-            self.value_function,
-            self.kl_coeff,
-            mask,
-            entropy_coeff=self.config["entropy_coeff"],
-            clip_param=self.config["clip_param"],
-            vf_clip_param=self.config["vf_clip_param"],
-            vf_loss_coeff=self.config["vf_loss_coeff"],
-            use_gae=self.config["use_gae"])
-
-        LearningRateSchedule.__init__(self, self.config["lr"],
-                                      self.config["lr_schedule"])
-        TFPolicyGraph.__init__(
-            self,
-            observation_space,
-            action_space,
-            self.sess,
-            obs_input=obs_ph,
-            action_sampler=self.sampler,
-            action_prob=curr_action_dist.sampled_action_prob(),
-            loss=self.loss_obj.loss,
-            model=self.model,
-            loss_inputs=self.loss_in,
-            state_inputs=self.model.state_in,
-            state_outputs=self.model.state_out,
-            prev_action_input=prev_actions_ph,
-            prev_reward_input=prev_rewards_ph,
-            seq_lens=self.model.seq_lens,
-            max_seq_len=config["model"]["max_seq_len"])
-
-        self.sess.run(tf.global_variables_initializer())
-        self.explained_variance = explained_variance(value_targets_ph,
-                                                     self.value_function)
-        self.stats_fetches = {
-            "cur_kl_coeff": self.kl_coeff,
-            "cur_lr": tf.cast(self.cur_lr, tf.float64),
-            "total_loss": self.loss_obj.loss,
-            "policy_loss": self.loss_obj.mean_policy_loss,
-            "vf_loss": self.loss_obj.mean_vf_loss,
-            "vf_explained_var": self.explained_variance,
-            "kl": self.loss_obj.mean_kl,
-            "entropy": self.loss_obj.mean_entropy
-        }
-
-    @override(TFPolicyGraph)
-    def copy(self, existing_inputs):
-        """Creates a copy of self using existing input placeholders."""
-        return PPOPolicyGraph(
-            self.observation_space,
-            self.action_space,
-            self.config,
-            existing_inputs=existing_inputs)
-
-    @override(TFPolicyGraph)
-    def gradients(self, optimizer, loss):
-        if self.config["grad_clip"] is not None:
-            self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                              tf.get_variable_scope().name)
-            grads = tf.gradients(loss, self.var_list)
-            self.grads, _ = tf.clip_by_global_norm(grads,
-                                                   self.config["grad_clip"])
-            clipped_grads = list(zip(self.grads, self.var_list))
-            return clipped_grads
-        else:
-            return optimizer.compute_gradients(
-                loss, colocate_gradients_with_ops=True)
-
-    @override(PolicyGraph)
-    def get_initial_state(self):
-        return self.model.state_init
-
-    @override(TFPolicyGraph)
-    def extra_compute_grad_fetches(self):
-        return {LEARNER_STATS_KEY: self.stats_fetches}
-
-    def update_kl(self, sampled_kl):
-        if sampled_kl > 2.0 * self.kl_target:
-            self.kl_coeff_val *= 1.5
-        elif sampled_kl < 0.5 * self.kl_target:
-            self.kl_coeff_val *= 0.5
-        self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
-        return self.kl_coeff_val
+            self.value_function = tf.zeros(shape=tf.shape(self._obs_input)[:1])
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {
-            self.observations: [ob],
-            self.prev_actions: [prev_action],
-            self.prev_rewards: [prev_reward],
+            self._obs_input: [ob],
+            self._prev_action_input: [prev_action],
+            self._prev_reward_input: [prev_reward],
             self.model.seq_lens: [1]
         }
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):
             feed_dict[k] = v
-        vf = self.sess.run(self.value_function, feed_dict)
+        vf = self._sess.run(self.value_function, feed_dict)
         return vf[0]
+
+
+def setup_mixins(policy, obs_space, action_space, config):
+    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    KLCoeffMixin.__init__(policy, config)
+    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+
+
+PPOTFPolicy = build_tf_policy(
+    name="PPOTFPolicy",
+    get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
+    loss_fn=ppo_surrogate_loss,
+    stats_fn=kl_and_loss_stats,
+    extra_action_fetches_fn=vf_preds_and_logits_fetches,
+    postprocess_fn=postprocess_ppo_gae,
+    gradients_fn=clip_gradients,
+    before_loss_init=setup_mixins,
+    mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin])

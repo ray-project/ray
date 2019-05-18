@@ -8,7 +8,7 @@ import random
 import unittest
 
 import ray
-from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
+from ray.rllib.agents.pg.pg_policy_graph import PGTFPolicy
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
@@ -67,7 +67,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         obs_space = single_env.observation_space
         policies = {}
         for i in range(20):
-            policies["pg_{}".format(i)] = (PGPolicyGraph, obs_space, act_space,
+            policies["pg_{}".format(i)] = (PGTFPolicy, obs_space, act_space,
                                            {})
         policy_ids = list(policies.keys())
         ev = PolicyEvaluator(

@@ -65,7 +65,7 @@ class PolicyEvaluator(EvaluatorInterface):
         >>> # Create a policy evaluator and using it to collect experiences.
         >>> evaluator = PolicyEvaluator(
         ...   env_creator=lambda _: gym.make("CartPole-v0"),
-        ...   policy_graph=PGPolicyGraph)
+        ...   policy_graph=PGTFPolicy)
         >>> print(evaluator.sample())
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
@@ -76,7 +76,7 @@ class PolicyEvaluator(EvaluatorInterface):
         ...   evaluator_cls=PolicyEvaluator,
         ...   evaluator_args={
         ...     "env_creator": lambda _: gym.make("CartPole-v0"),
-        ...     "policy_graph": PGPolicyGraph,
+        ...     "policy_graph": PGTFPolicy,
         ...   },
         ...   num_workers=10)
         >>> for _ in range(10): optimizer.step()
@@ -87,12 +87,12 @@ class PolicyEvaluator(EvaluatorInterface):
         ...   policy_graphs={
         ...       # Use an ensemble of two policies for car agents
         ...       "car_policy1":
-        ...         (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.99}),
+        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}),
         ...       "car_policy2":
-        ...         (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.95}),
+        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.95}),
         ...       # Use a single shared policy for all traffic lights
         ...       "traffic_light_policy":
-        ...         (PGPolicyGraph, Box(...), Discrete(...), {}),
+        ...         (PGTFPolicy, Box(...), Discrete(...), {}),
         ...   },
         ...   policy_mapping_fn=lambda agent_id:
         ...     random.choice(["car_policy1", "car_policy2"])

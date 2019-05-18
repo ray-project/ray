@@ -222,6 +222,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 def _averaged(kv):
     out = {}
     for k, v in kv.items():
-        if v[0] is not None:
+        if v[0] is not None and not isinstance(v[0], dict):
             out[k] = np.mean(v)
     return out

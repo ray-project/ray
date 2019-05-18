@@ -4,10 +4,10 @@ from __future__ import print_function
 
 import logging
 
-from ray.rllib.agents import Trainer, with_common_config
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
+from ray.rllib.agents import with_common_config
+from ray.rllib.agents.ppo.ppo_policy_graph import PPOTFPolicy
+from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
-from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
 
@@ -63,110 +63,104 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class PPOTrainer(Trainer):
-    """Multi-GPU optimized implementation of PPO in TensorFlow."""
+def make_optimizer(local_evaluator, remote_evaluators, config):
+    if config["simple_optimizer"]:
+        return SyncSamplesOptimizer(
+            local_evaluator,
+            remote_evaluators,
+            num_sgd_iter=config["num_sgd_iter"],
+            train_batch_size=config["train_batch_size"])
 
-    _name = "PPO"
-    _default_config = DEFAULT_CONFIG
-    _policy_graph = PPOPolicyGraph
+    return LocalMultiGPUOptimizer(
+        local_evaluator,
+        remote_evaluators,
+        sgd_batch_size=config["sgd_minibatch_size"],
+        num_sgd_iter=config["num_sgd_iter"],
+        num_gpus=config["num_gpus"],
+        sample_batch_size=config["sample_batch_size"],
+        num_envs_per_worker=config["num_envs_per_worker"],
+        train_batch_size=config["train_batch_size"],
+        standardize_fields=["advantages"],
+        straggler_mitigation=config["straggler_mitigation"])
 
-    @override(Trainer)
-    def _init(self, config, env_creator):
-        self._validate_config()
-        self.local_evaluator = self.make_local_evaluator(
-            env_creator, self._policy_graph)
-        self.remote_evaluators = self.make_remote_evaluators(
-            env_creator, self._policy_graph, config["num_workers"])
-        if config["simple_optimizer"]:
-            self.optimizer = SyncSamplesOptimizer(
-                self.local_evaluator,
-                self.remote_evaluators,
-                num_sgd_iter=config["num_sgd_iter"],
-                train_batch_size=config["train_batch_size"])
-        else:
-            self.optimizer = LocalMultiGPUOptimizer(
-                self.local_evaluator,
-                self.remote_evaluators,
-                sgd_batch_size=config["sgd_minibatch_size"],
-                num_sgd_iter=config["num_sgd_iter"],
-                num_gpus=config["num_gpus"],
-                sample_batch_size=config["sample_batch_size"],
-                num_envs_per_worker=config["num_envs_per_worker"],
-                train_batch_size=config["train_batch_size"],
-                standardize_fields=["advantages"],
-                straggler_mitigation=config["straggler_mitigation"])
 
-    @override(Trainer)
-    def _train(self):
-        if "observation_filter" not in self.raw_user_config:
-            # TODO(ekl) remove this message after a few releases
-            logger.info(
-                "Important! Since 0.7.0, observation normalization is no "
-                "longer enabled by default. To enable running-mean "
-                "normalization, set 'observation_filter': 'MeanStdFilter'. "
-                "You can ignore this message if your environment doesn't "
-                "require observation normalization.")
-        prev_steps = self.optimizer.num_steps_sampled
-        fetches = self.optimizer.step()
-        if "kl" in fetches:
-            # single-agent
-            self.local_evaluator.for_policy(
-                lambda pi: pi.update_kl(fetches["kl"]))
-        else:
+def update_kl(trainer, fetches):
+    if "kl" in fetches:
+        # single-agent
+        trainer.local_evaluator.for_policy(
+            lambda pi: pi.update_kl(fetches["kl"]))
+    else:
 
-            def update(pi, pi_id):
-                if pi_id in fetches:
-                    pi.update_kl(fetches[pi_id]["kl"])
-                else:
-                    logger.debug(
-                        "No data for {}, not updating kl".format(pi_id))
+        def update(pi, pi_id):
+            if pi_id in fetches:
+                pi.update_kl(fetches[pi_id]["kl"])
+            else:
+                logger.debug("No data for {}, not updating kl".format(pi_id))
 
-            # multi-agent
-            self.local_evaluator.foreach_trainable_policy(update)
-        res = self.collect_metrics()
-        res.update(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
-            info=res.get("info", {}))
+        # multi-agent
+        trainer.local_evaluator.foreach_trainable_policy(update)
 
-        # Warn about bad clipping configs
-        if self.config["vf_clip_param"] <= 0:
-            rew_scale = float("inf")
-        elif res["policy_reward_mean"]:
-            rew_scale = 0  # punt on handling multiagent case
-        else:
-            rew_scale = round(
-                abs(res["episode_reward_mean"]) / self.config["vf_clip_param"],
-                0)
-        if rew_scale > 200:
-            logger.warning(
-                "The magnitude of your environment rewards are more than "
-                "{}x the scale of `vf_clip_param`. ".format(rew_scale) +
-                "This means that it will take more than "
-                "{} iterations for your value ".format(rew_scale) +
-                "function to converge. If this is not intended, consider "
-                "increasing `vf_clip_param`.")
-        return res
 
-    def _validate_config(self):
-        if self.config["entropy_coeff"] < 0:
-            raise DeprecationWarning("entropy_coeff must be >= 0")
-        if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
-            raise ValueError(
-                "Minibatch size {} must be <= train batch size {}.".format(
-                    self.config["sgd_minibatch_size"],
-                    self.config["train_batch_size"]))
-        if (self.config["batch_mode"] == "truncate_episodes"
-                and not self.config["use_gae"]):
-            raise ValueError(
-                "Episode truncation is not supported without a value "
-                "function. Consider setting batch_mode=complete_episodes.")
-        if (self.config["multiagent"]["policy_graphs"]
-                and not self.config["simple_optimizer"]):
-            logger.info(
-                "In multi-agent mode, policies will be optimized sequentially "
-                "by the multi-GPU optimizer. Consider setting "
-                "simple_optimizer=True if this doesn't work for you.")
-        if not self.config["vf_share_layers"]:
-            logger.warning(
-                "FYI: By default, the value function will not share layers "
-                "with the policy model ('vf_share_layers': False).")
+def warn_about_obs_filter(trainer):
+    if "observation_filter" not in trainer.raw_user_config:
+        # TODO(ekl) remove this message after a few releases
+        logger.info(
+            "Important! Since 0.7.0, observation normalization is no "
+            "longer enabled by default. To enable running-mean "
+            "normalization, set 'observation_filter': 'MeanStdFilter'. "
+            "You can ignore this message if your environment doesn't "
+            "require observation normalization.")
+
+
+def warn_about_bad_reward_scales(trainer, result):
+    # Warn about bad clipping configs
+    if trainer.config["vf_clip_param"] <= 0:
+        rew_scale = float("inf")
+    elif result["policy_reward_mean"]:
+        rew_scale = 0  # punt on handling multiagent case
+    else:
+        rew_scale = round(
+            abs(result["episode_reward_mean"]) /
+            trainer.config["vf_clip_param"], 0)
+    if rew_scale > 200:
+        logger.warning(
+            "The magnitude of your environment rewards are more than "
+            "{}x the scale of `vf_clip_param`. ".format(rew_scale) +
+            "This means that it will take more than "
+            "{} iterations for your value ".format(rew_scale) +
+            "function to converge. If this is not intended, consider "
+            "increasing `vf_clip_param`.")
+
+
+def validate_config(config):
+    if config["entropy_coeff"] < 0:
+        raise DeprecationWarning("entropy_coeff must be >= 0")
+    if config["sgd_minibatch_size"] > config["train_batch_size"]:
+        raise ValueError(
+            "Minibatch size {} must be <= train batch size {}.".format(
+                config["sgd_minibatch_size"], config["train_batch_size"]))
+    if (config["batch_mode"] == "truncate_episodes" and not config["use_gae"]):
+        raise ValueError(
+            "Episode truncation is not supported without a value "
+            "function. Consider setting batch_mode=complete_episodes.")
+    if (config["multiagent"]["policy_graphs"]
+            and not config["simple_optimizer"]):
+        logger.info(
+            "In multi-agent mode, policies will be optimized sequentially "
+            "by the multi-GPU optimizer. Consider setting "
+            "simple_optimizer=True if this doesn't work for you.")
+    if not config["vf_share_layers"]:
+        logger.warning(
+            "FYI: By default, the value function will not share layers "
+            "with the policy model ('vf_share_layers': False).")
+
+
+PPOTrainer = build_trainer(
+    name="PPO",
+    default_config=DEFAULT_CONFIG,
+    default_policy=PPOTFPolicy,
+    make_policy_optimizer=make_optimizer,
+    validate_config=validate_config,
+    after_optimizer_step=update_kl,
+    before_train_step=warn_about_obs_filter,
+    after_train_result=warn_about_bad_reward_scales)
