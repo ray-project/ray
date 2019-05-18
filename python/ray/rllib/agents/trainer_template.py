@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.trainer import Trainer
+from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils.annotations import override, DeveloperAPI
 
 
@@ -10,7 +11,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 def build_trainer(name,
                   default_config,
                   default_policy,
-                  make_policy_optimizer,
+                  make_policy_optimizer=None,
                   validate_config=None,
                   get_policy_class=None,
                   before_train_step=None,
@@ -22,8 +23,9 @@ def build_trainer(name,
         name (str): name of the trainer (e.g., "PPO")
         default_config (dict): the default config dict of the algorithm
         default_policy (cls): the default PolicyGraph class to use
-        make_policy_optimizer (func): function that returns a PolicyOptimizer
-            instance given (local_evaluator, remote_evaluators, config)
+        make_policy_optimizer (func): optional function that returns a
+            PolicyOptimizer instance given
+            (local_evaluator, remote_evaluators, config)
         validate_config (func): optional callback that checks a given config
             for correctness. It may mutate the config as needed.
         get_policy_class (func): optional callback that takes a config and
@@ -64,6 +66,13 @@ def build_trainer(name,
             if make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(
                     self.local_evaluator, self.remote_evaluators, config)
+            else:
+                optimizer_config = dict(
+                    config["optimizer"],
+                    **{"train_batch_size": config["train_batch_size"]})
+                self.optimizer = SyncSamplesOptimizer(self.local_evaluator,
+                                                      self.remote_evaluators,
+                                                      **optimizer_config)
 
         @override(Trainer)
         def _train(self):
