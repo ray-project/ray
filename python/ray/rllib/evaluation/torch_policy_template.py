@@ -40,11 +40,11 @@ def build_torch_policy(name,
         optimizer_fn (func): optional function that returns a torch optimizer
             given the policy and config
         before_init (func): optional function to run at the beginning of
-            __init__ that takes the same arguments as __init__
-        after_init (func): optional function to run at the end of __init__
-            that takes the same arguments as __init__
+            policy init that takes the same arguments as the policy constructor
+        after_init (func): optional function to run at the end of policy init
+            that takes the same arguments as the policy constructor
         make_model_and_action_dist (func): optional func that takes the same
-            arguments as __init__ and returns a tuple of model instance and
+            arguments as policy init and returns a tuple of model instance and
             torch action distribution class. If not specified, the default
             model and action dist from the catalog will be used
         mixins (list): list of any class mixins for the returned policy class.

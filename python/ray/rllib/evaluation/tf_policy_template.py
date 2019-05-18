@@ -46,11 +46,11 @@ def build_tf_policy(name,
             given a tf optimizer and loss tensor. If not specified, this
             defaults to optimizer.compute_gradients(loss)
         before_init (func): optional function to run at the beginning of
-            __init__ that takes the same arguments as __init__
+            policy init that takes the same arguments as the policy constructor
         before_loss_init (func): optional function to run prior to loss
-            init that takes the same arguments as __init__
-        after_init (func): optional function to run at the end of __init__
-            that takes the same arguments as __init__
+            init that takes the same arguments as the policy constructor
+        after_init (func): optional function to run at the end of policy init
+            that takes the same arguments as the policy constructor
         make_action_sampler (func): optional function that returns a
             tuple of action and action prob tensors. The function takes
             (policy, input_dict, obs_space, action_space, config) as its
