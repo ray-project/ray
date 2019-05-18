@@ -18,7 +18,7 @@ import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.agents.ppo.ppo import PPOTrainer
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
+from ray.rllib.agents.ppo.ppo_policy_graph import PPOTFPolicy
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     # You can also have multiple policy graphs per trainer, but here we just
     # show one each for PPO and DQN.
     policy_graphs = {
-        "ppo_policy": (PPOPolicyGraph, obs_space, act_space, {}),
+        "ppo_policy": (PPOTFPolicy, obs_space, act_space, {}),
         "dqn_policy": (DQNPolicyGraph, obs_space, act_space, {}),
     }
 

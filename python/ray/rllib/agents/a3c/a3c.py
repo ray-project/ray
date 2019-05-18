@@ -49,8 +49,8 @@ class A3CTrainer(Trainer):
     def _init(self, config, env_creator):
         if config["use_pytorch"]:
             from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
-                A3CTorchPolicyGraph
-            policy_cls = A3CTorchPolicyGraph
+                A3CTorchPolicy
+            policy_cls = A3CTorchPolicy
         else:
             policy_cls = self._policy_graph
 
