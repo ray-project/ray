@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import torch
-
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
@@ -36,14 +34,9 @@ def pg_loss_stats(policy, batch_tensors):
     return {"policy_loss": policy.pi_err.item()}
 
 
-def make_optimizer(policy, config):
-    return torch.optim.Adam(policy._model.parameters(), lr=config["lr"])
-
-
 PGTorchPolicy = build_torch_policy(
     name="PGTorchPolicy",
     get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
     loss_fn=pg_torch_loss,
     stats_fn=pg_loss_stats,
-    postprocess_fn=postprocess_advantages,
-    optimizer_fn=make_optimizer)
+    postprocess_fn=postprocess_advantages)

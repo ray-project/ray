@@ -161,7 +161,11 @@ class TorchPolicyGraph(PolicyGraph):
 
     def optimizer(self):
         """Custom PyTorch optimizer to use."""
-        return torch.optim.Adam(self._model.parameters())
+        if hasattr(self, "config"):
+            return torch.optim.Adam(
+                self._model.parameters(), lr=self.config["lr"])
+        else:
+            return torch.optim.Adam(self._model.parameters())
 
     def _lazy_tensor_dict(self, postprocessed_batch):
         batch_tensors = UsageTrackingDict(postprocessed_batch)
