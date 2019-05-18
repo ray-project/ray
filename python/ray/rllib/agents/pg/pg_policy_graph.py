@@ -28,13 +28,8 @@ def postprocess_advantages(policy,
         sample_batch, 0.0, policy.config["gamma"], use_gae=False)
 
 
-def make_optimizer(policy, config):
-    return tf.train.AdamOptimizer(learning_rate=config["lr"])
-
-
 PGTFPolicy = build_tf_policy(
     name="PGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
     postprocess_fn=postprocess_advantages,
-    loss_fn=policy_gradient_loss,
-    optimizer_fn=make_optimizer)
+    loss_fn=policy_gradient_loss)
