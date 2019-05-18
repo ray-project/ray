@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import time
 
-from ray.rllib.agents.a3c.a3c_tf_policy import A3CPolicy
+from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils.annotations import override
@@ -43,7 +43,7 @@ class A3CTrainer(Trainer):
 
     _name = "A3C"
     _default_config = DEFAULT_CONFIG
-    _policy = A3CPolicy
+    _policy = A3CTFPolicy
 
     @override(Trainer)
     def _init(self, config, env_creator):

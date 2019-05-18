@@ -345,7 +345,7 @@ class QValuePolicy(object):
         self.action_prob = None
 
 
-class DQNPolicy(LearningRateSchedule, DQNPostprocessing, TFPolicy):
+class DQNTFPolicy(LearningRateSchedule, DQNPostprocessing, TFPolicy):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Discrete):

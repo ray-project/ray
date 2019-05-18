@@ -16,7 +16,7 @@ import gym
 
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer
-from ray.rllib.agents.dqn.dqn_policy import DQNPolicy
+from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     # show one each for PPO and DQN.
     policies = {
         "ppo_policy": (PPOTFPolicy, obs_space, act_space, {}),
-        "dqn_policy": (DQNPolicy, obs_space, act_space, {}),
+        "dqn_policy": (DQNTFPolicy, obs_space, act_space, {}),
     }
 
     def policy_mapping_fn(agent_id):

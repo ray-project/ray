@@ -9,7 +9,7 @@ import unittest
 import ray
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_policy import PGTFPolicy
-from ray.rllib.agents.dqn.dqn_policy import DQNPolicy
+from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
 from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
                                   AsyncGradientsOptimizer)
 from ray.rllib.tests.test_policy_evaluator import (MockEnv, MockEnv2,
@@ -579,13 +579,13 @@ class TestMultiAgentEnv(unittest.TestCase):
             # happen since the replay buffer doesn't encode extra fields like
             # "advantages" that PG uses.
             policies = {
-                "p1": (DQNPolicy, obs_space, act_space, dqn_config),
-                "p2": (DQNPolicy, obs_space, act_space, dqn_config),
+                "p1": (DQNTFPolicy, obs_space, act_space, dqn_config),
+                "p2": (DQNTFPolicy, obs_space, act_space, dqn_config),
             }
         else:
             policies = {
                 "p1": (PGTFPolicy, obs_space, act_space, {}),
-                "p2": (DQNPolicy, obs_space, act_space, dqn_config),
+                "p2": (DQNTFPolicy, obs_space, act_space, dqn_config),
             }
         ev = PolicyEvaluator(
             env_creator=lambda _: MultiCartpole(n),
@@ -610,13 +610,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(200):
             ev.foreach_policy(lambda p, _: p.set_epsilon(
                 max(0.02, 1 - i * .02))
-                              if isinstance(p, DQNPolicy) else None)
+                              if isinstance(p, DQNTFPolicy) else None)
             optimizer.step()
             result = collect_metrics(ev, remote_evs)
             if i % 20 == 0:
 
                 def do_update(p):
-                    if isinstance(p, DQNPolicy):
+                    if isinstance(p, DQNTFPolicy):
                         p.update_target()
 
                 ev.foreach_policy(lambda p, _: do_update(p))

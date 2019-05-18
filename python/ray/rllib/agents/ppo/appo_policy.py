@@ -1,6 +1,6 @@
-"""Adapted from VTracePolicy to use the PPO surrogate loss.
+"""Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 
-Keep in sync with changes to VTracePolicy."""
+Keep in sync with changes to VTraceTFPolicy."""
 
 from __future__ import absolute_import
 from __future__ import division

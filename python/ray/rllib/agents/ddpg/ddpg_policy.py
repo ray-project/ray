@@ -68,7 +68,7 @@ class DDPGPostprocessing(object):
         return _postprocess_dqn(self, sample_batch)
 
 
-class DDPGPolicy(DDPGPostprocessing, TFPolicy):
+class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Box):

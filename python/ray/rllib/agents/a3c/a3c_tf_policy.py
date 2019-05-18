@@ -1,4 +1,4 @@
-"""Note: Keep in sync with changes to VTracePolicy."""
+"""Note: Keep in sync with changes to VTraceTFPolicy."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -73,7 +73,7 @@ class A3CPostprocessing(object):
                                   self.config["lambda"])
 
 
-class A3CPolicy(LearningRateSchedule, A3CPostprocessing, TFPolicy):
+class A3CTFPolicy(LearningRateSchedule, A3CPostprocessing, TFPolicy):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config

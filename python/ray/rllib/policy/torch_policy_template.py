@@ -24,7 +24,7 @@ def build_torch_policy(name,
     """Helper function for creating a torch policy at runtime.
 
     Arguments:
-        name (str): name of the policy (e.g., "PPOPolicy")
+        name (str): name of the policy (e.g., "PPOTFPolicy")
         loss_fn (func): function that returns a loss tensor the policy,
             and dict of experience tensor placeholders
         get_default_config (func): optional function that returns the default

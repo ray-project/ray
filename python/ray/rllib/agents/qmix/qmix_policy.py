@@ -130,7 +130,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-class QMixPolicy(Policy):
+class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 
     You must use MultiAgentEnv.with_agent_groups() to group agents

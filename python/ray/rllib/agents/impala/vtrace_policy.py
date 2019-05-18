@@ -1,6 +1,6 @@
-"""Adapted from A3CPolicy to add V-trace.
+"""Adapted from A3CTFPolicy to add V-trace.
 
-Keep in sync with changes to A3CPolicy and VtraceSurrogatePolicy."""
+Keep in sync with changes to A3CTFPolicy and VtraceSurrogatePolicy."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -126,7 +126,7 @@ class VTracePostprocessing(object):
         return sample_batch
 
 
-class VTracePolicy(LearningRateSchedule, VTracePostprocessing, TFPolicy):
+class VTraceTFPolicy(LearningRateSchedule, VTracePostprocessing, TFPolicy):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -333,7 +333,7 @@ class VTracePolicy(LearningRateSchedule, VTracePostprocessing, TFPolicy):
 
     @override(TFPolicy)
     def copy(self, existing_inputs):
-        return VTracePolicy(
+        return VTraceTFPolicy(
             self.observation_space,
             self.action_space,
             self.config,
