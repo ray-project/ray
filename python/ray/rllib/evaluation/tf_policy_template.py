@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.evaluation.dynamic_tf_policy_graph import DynamicTFPolicyGraph
-from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.dynamic_tf_policy import DynamicTFPolicy
+from ray.rllib.evaluation.policy import Policy
+from ray.rllib.evaluation.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import override, DeveloperAPI
 
 
@@ -39,7 +39,7 @@ def build_tf_policy(name,
         extra_action_fetches_fn (func): optional function that returns
             a dict of TF fetches given the policy object
         postprocess_fn (func): optional experience postprocessing function
-            that takes the same args as PolicyGraph.postprocess_trajectory()
+            that takes the same args as Policy.postprocess_trajectory()
         optimizer_fn (func): optional function that returns a tf.Optimizer
             given the policy and config
         gradients_fn (func): optional function that returns a list of gradients
@@ -57,18 +57,18 @@ def build_tf_policy(name,
             arguments
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
-            precedence than the DynamicTFPolicyGraph class
+            precedence than the DynamicTFPolicy class
         get_batch_divisibility_req (func): optional function that returns
             the divisibility requirement for sample batches
 
     Returns:
-        a DynamicTFPolicyGraph instance that uses the specified args
+        a DynamicTFPolicy instance that uses the specified args
     """
 
     if not name.endswith("TFPolicy"):
         raise ValueError("Name should match *TFPolicy", name)
 
-    base = DynamicTFPolicyGraph
+    base = DynamicTFPolicy
     while mixins:
 
         class new_base(mixins.pop(), base):
@@ -97,7 +97,7 @@ def build_tf_policy(name,
                 else:
                     self._extra_action_fetches = extra_action_fetches_fn(self)
 
-            DynamicTFPolicyGraph.__init__(
+            DynamicTFPolicy.__init__(
                 self,
                 obs_space,
                 action_space,
@@ -111,7 +111,7 @@ def build_tf_policy(name,
             if after_init:
                 after_init(self, obs_space, action_space, config)
 
-        @override(PolicyGraph)
+        @override(Policy)
         def postprocess_trajectory(self,
                                    sample_batch,
                                    other_agent_batches=None,
@@ -121,24 +121,24 @@ def build_tf_policy(name,
             return postprocess_fn(self, sample_batch, other_agent_batches,
                                   episode)
 
-        @override(TFPolicyGraph)
+        @override(TFPolicy)
         def optimizer(self):
             if optimizer_fn:
                 return optimizer_fn(self, self.config)
             else:
-                return TFPolicyGraph.optimizer(self)
+                return TFPolicy.optimizer(self)
 
-        @override(TFPolicyGraph)
+        @override(TFPolicy)
         def gradients(self, optimizer, loss):
             if gradients_fn:
                 return gradients_fn(self, optimizer, loss)
             else:
-                return TFPolicyGraph.gradients(self, optimizer, loss)
+                return TFPolicy.gradients(self, optimizer, loss)
 
-        @override(TFPolicyGraph)
+        @override(TFPolicy)
         def extra_compute_action_fetches(self):
             return dict(
-                TFPolicyGraph.extra_compute_action_fetches(self),
+                TFPolicy.extra_compute_action_fetches(self),
                 **self._extra_action_fetches)
 
     graph_cls.__name__ = name

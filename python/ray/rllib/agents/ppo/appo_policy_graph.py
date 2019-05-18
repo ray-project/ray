@@ -1,6 +1,6 @@
-"""Adapted from VTracePolicyGraph to use the PPO surrogate loss.
+"""Adapted from VTracePolicy to use the PPO surrogate loss.
 
-Keep in sync with changes to VTracePolicyGraph."""
+Keep in sync with changes to VTracePolicy."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -15,7 +15,7 @@ from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.evaluation.tf_policy_template import build_tf_policy
-from ray.rllib.evaluation.tf_policy_graph import LearningRateSchedule
+from ray.rllib.evaluation.tf_policy import LearningRateSchedule
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils import try_import_tf

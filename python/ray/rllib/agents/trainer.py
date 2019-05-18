@@ -220,9 +220,9 @@ COMMON_CONFIG = {
 
     # === Multiagent ===
     "multiagent": {
-        # Map from policy ids to tuples of (policy_graph_cls, obs_space,
+        # Map from policy ids to tuples of (policy_cls, obs_space,
         # act_space, config). See policy_evaluator.py for more info.
-        "policy_graphs": {},
+        "policies": {},
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
         # Optional whitelist of policies to train, or None for all policies.
@@ -436,7 +436,7 @@ class Trainer(Trainable):
                 # Make local evaluation evaluators
                 self.evaluation_ev = self.make_local_evaluator(
                     self.env_creator,
-                    self._policy_graph,
+                    self._policy,
                     extra_config=extra_config)
                 self.evaluation_metrics = self._evaluate()
 
@@ -578,10 +578,10 @@ class Trainer(Trainable):
 
     @PublicAPI
     def get_policy(self, policy_id=DEFAULT_POLICY_ID):
-        """Return policy graph for the specified id, or None.
+        """Return policy for the specified id, or None.
 
         Arguments:
-            policy_id (str): id of policy graph to return.
+            policy_id (str): id of policy to return.
         """
 
         return self.local_evaluator.get_policy(policy_id)
@@ -608,14 +608,14 @@ class Trainer(Trainable):
     @DeveloperAPI
     def make_local_evaluator(self,
                              env_creator,
-                             policy_graph,
+                             policy,
                              extra_config=None):
         """Convenience method to return configured local evaluator."""
 
         return self._make_evaluator(
             PolicyEvaluator,
             env_creator,
-            policy_graph,
+            policy,
             0,
             merge_dicts(
                 # important: allow local tf to use more CPUs for optimization
@@ -627,7 +627,7 @@ class Trainer(Trainable):
                 extra_config or {}))
 
     @DeveloperAPI
-    def make_remote_evaluators(self, env_creator, policy_graph, count):
+    def make_remote_evaluators(self, env_creator, policy, count):
         """Convenience method to return a number of remote evaluators."""
 
         remote_args = {
@@ -639,7 +639,7 @@ class Trainer(Trainable):
         cls = PolicyEvaluator.as_remote(**remote_args).remote
 
         return [
-            self._make_evaluator(cls, env_creator, policy_graph, i + 1,
+            self._make_evaluator(cls, env_creator, policy, i + 1,
                                  self.config) for i in range(count)
         ]
 
@@ -760,7 +760,7 @@ class Trainer(Trainable):
         return hasattr(self, "optimizer") and isinstance(
             self.optimizer, PolicyOptimizer)
 
-    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
+    def _make_evaluator(self, cls, env_creator, policy, worker_index,
                         config):
         def session_creator():
             logger.debug("Creating TF session {}".format(
@@ -803,18 +803,18 @@ class Trainer(Trainable):
         else:
             input_evaluation = config["input_evaluation"]
 
-        # Fill in the default policy graph if 'None' is specified in multiagent
-        if self.config["multiagent"]["policy_graphs"]:
-            tmp = self.config["multiagent"]["policy_graphs"]
+        # Fill in the default policy if 'None' is specified in multiagent
+        if self.config["multiagent"]["policies"]:
+            tmp = self.config["multiagent"]["policies"]
             _validate_multiagent_config(tmp, allow_none_graph=True)
             for k, v in tmp.items():
                 if v[0] is None:
-                    tmp[k] = (policy_graph, v[1], v[2], v[3])
-            policy_graph = tmp
+                    tmp[k] = (policy, v[1], v[2], v[3])
+            policy = tmp
 
         return cls(
             env_creator,
-            policy_graph,
+            policy,
             policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
             policies_to_train=self.config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator

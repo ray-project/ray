@@ -8,8 +8,8 @@ import logging
 # This file is imported from the tune module in order to register RLlib agents.
 from ray.tune.registry import register_trainable
 
-from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.policy import Policy
+from ray.rllib.evaluation.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
@@ -43,8 +43,8 @@ _setup_logger()
 _register_all()
 
 __all__ = [
-    "PolicyGraph",
-    "TFPolicyGraph",
+    "Policy",
+    "TFPolicy",
     "PolicyEvaluator",
     "SampleBatch",
     "BaseEnv",

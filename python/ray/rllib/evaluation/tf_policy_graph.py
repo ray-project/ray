@@ -10,7 +10,7 @@ import numpy as np
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.policy import Policy
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -24,11 +24,11 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class TFPolicyGraph(PolicyGraph):
+class TFPolicy(Policy):
     """An agent policy and loss implemented in TensorFlow.
 
     Extending this class enables RLlib to perform TensorFlow specific
-    optimizations on the policy graph, e.g., parallelization across gpus or
+    optimizations on the policy, e.g., parallelization across gpus or
     fusing multiple graphs together in the multi-agent setting.
 
     Input tensors are typically shaped like [BATCH_SIZE, ...].
@@ -39,7 +39,7 @@ class TFPolicyGraph(PolicyGraph):
         model (rllib.models.Model): RLlib model used for the policy.
 
     Examples:
-        >>> policy = TFPolicyGraphSubclass(
+        >>> policy = TFPolicySubclass(
             sess, obs_input, action_sampler, loss, loss_inputs)
 
         >>> print(policy.compute_actions([1, 0, 2]))
@@ -68,7 +68,7 @@ class TFPolicyGraph(PolicyGraph):
                  max_seq_len=20,
                  batch_divisibility_req=1,
                  update_ops=None):
-        """Initialize the policy graph.
+        """Initialize the policy.
 
         Arguments:
             observation_space (gym.Space): Observation space of the env.
@@ -179,7 +179,7 @@ class TFPolicyGraph(PolicyGraph):
 
         self._sess.run(tf.global_variables_initializer())
 
-    @override(PolicyGraph)
+    @override(Policy)
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -194,36 +194,36 @@ class TFPolicyGraph(PolicyGraph):
                                               prev_reward_batch)
         return builder.get(fetches)
 
-    @override(PolicyGraph)
+    @override(Policy)
     def compute_gradients(self, postprocessed_batch):
         assert self._loss is not None, "Loss not initialized"
         builder = TFRunBuilder(self._sess, "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
 
-    @override(PolicyGraph)
+    @override(Policy)
     def apply_gradients(self, gradients):
         assert self._loss is not None, "Loss not initialized"
         builder = TFRunBuilder(self._sess, "apply_gradients")
         fetches = self._build_apply_gradients(builder, gradients)
         builder.get(fetches)
 
-    @override(PolicyGraph)
+    @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
         assert self._loss is not None, "Loss not initialized"
         builder = TFRunBuilder(self._sess, "learn_on_batch")
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         return builder.get(fetches)
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_weights(self):
         return self._variables.get_flat()
 
-    @override(PolicyGraph)
+    @override(Policy)
     def set_weights(self, weights):
         return self._variables.set_flat(weights)
 
-    @override(PolicyGraph)
+    @override(Policy)
     def export_model(self, export_dir):
         """Export tensorflow graph to export_dir for serving."""
         with self._sess.graph.as_default():
@@ -234,7 +234,7 @@ class TFPolicyGraph(PolicyGraph):
                 signature_def_map=signature_def_map)
             builder.save()
 
-    @override(PolicyGraph)
+    @override(Policy)
     def export_checkpoint(self, export_dir, filename_prefix="model"):
         """Export tensorflow checkpoint to export_dir."""
         try:
@@ -491,7 +491,7 @@ class TFPolicyGraph(PolicyGraph):
 
 @DeveloperAPI
 class LearningRateSchedule(object):
-    """Mixin for TFPolicyGraph that adds a learning rate schedule."""
+    """Mixin for TFPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
@@ -502,13 +502,13 @@ class LearningRateSchedule(object):
             self.lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1])
 
-    @override(PolicyGraph)
+    @override(Policy)
     def on_global_var_update(self, global_vars):
         super(LearningRateSchedule, self).on_global_var_update(global_vars)
         self.cur_lr.load(
             self.lr_schedule.value(global_vars["timestep"]),
             session=self._sess)
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def optimizer(self):
         return tf.train.AdamOptimizer(self.cur_lr)

@@ -50,7 +50,7 @@ Models and Preprocessors
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
-* `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
+* `Customizing Policies <rllib-models.html#customizing-policys>`__
 
 Algorithms
 ----------
@@ -98,7 +98,7 @@ Offline Datasets
 
 Concepts
 --------
-* `Policy Graphs <rllib-concepts.html>`__
+* `Policies <rllib-concepts.html>`__
 * `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
 * `Policy Optimization <rllib-concepts.html#policy-optimization>`__
 * `Trainers <rllib-concepts.html#trainers>`__

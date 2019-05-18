@@ -161,7 +161,7 @@ class Model(object):
         You can find an runnable example in examples/custom_loss.py.
 
         Arguments:
-            policy_loss (Tensor): scalar policy loss from the policy graph.
+            policy_loss (Tensor): scalar policy loss from the policy.
             loss_inputs (dict): map of input placeholders for rollout data.
 
         Returns:

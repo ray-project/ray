@@ -13,15 +13,15 @@ except ImportError:
     pass  # soft dep
 
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 
-class TorchPolicyGraph(PolicyGraph):
+class TorchPolicy(Policy):
     """Template for a PyTorch policy and loss to use with RLlib.
 
-    This is similar to TFPolicyGraph, but for PyTorch.
+    This is similar to TFPolicy, but for PyTorch.
 
     Attributes:
         observation_space (gym.Space): observation space of the policy.
@@ -32,7 +32,7 @@ class TorchPolicyGraph(PolicyGraph):
 
     def __init__(self, observation_space, action_space, model, loss,
                  action_distribution_cls):
-        """Build a policy graph from policy and loss torch modules.
+        """Build a policy from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
         is set. Only single GPU is supported for now.
@@ -43,7 +43,7 @@ class TorchPolicyGraph(PolicyGraph):
             model (nn.Module): PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
-            loss (func): Function that takes (policy_graph, batch_tensors)
+            loss (func): Function that takes (policy, batch_tensors)
                 and returns a single scalar loss.
             action_distribution_cls (ActionDistribution): Class for action
                 distribution.
@@ -59,7 +59,7 @@ class TorchPolicyGraph(PolicyGraph):
         self._optimizer = self.optimizer()
         self._action_dist_cls = action_distribution_cls
 
-    @override(PolicyGraph)
+    @override(Policy)
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -80,7 +80,7 @@ class TorchPolicyGraph(PolicyGraph):
                         [h.cpu().numpy() for h in state],
                         self.extra_action_out(model_out))
 
-    @override(PolicyGraph)
+    @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
         batch_tensors = self._lazy_tensor_dict(postprocessed_batch)
 
@@ -96,7 +96,7 @@ class TorchPolicyGraph(PolicyGraph):
             grad_info.update(grad_process_info)
             return {LEARNER_STATS_KEY: grad_info}
 
-    @override(PolicyGraph)
+    @override(Policy)
     def compute_gradients(self, postprocessed_batch):
         batch_tensors = self._lazy_tensor_dict(postprocessed_batch)
 
@@ -120,7 +120,7 @@ class TorchPolicyGraph(PolicyGraph):
             grad_info.update(grad_process_info)
             return grads, {LEARNER_STATS_KEY: grad_info}
 
-    @override(PolicyGraph)
+    @override(Policy)
     def apply_gradients(self, gradients):
         with self.lock:
             for g, p in zip(gradients, self._model.parameters()):
@@ -128,17 +128,17 @@ class TorchPolicyGraph(PolicyGraph):
                     p.grad = torch.from_numpy(g).to(self.device)
             self._optimizer.step()
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_weights(self):
         with self.lock:
             return {k: v.cpu() for k, v in self._model.state_dict().items()}
 
-    @override(PolicyGraph)
+    @override(Policy)
     def set_weights(self, weights):
         with self.lock:
             self._model.load_state_dict(weights)
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_initial_state(self):
         return [s.numpy() for s in self._model.state_init()]
 

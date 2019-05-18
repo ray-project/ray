@@ -21,7 +21,7 @@ LEARNER_STATS_KEY = "learner_stats"
 
 @DeveloperAPI
 def get_learner_stats(grad_info):
-    """Return optimization stats reported from the policy graph.
+    """Return optimization stats reported from the policy.
 
     Example:
         >>> grad_info = evaluator.learn_on_batch(samples)

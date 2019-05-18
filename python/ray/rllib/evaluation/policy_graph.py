@@ -9,16 +9,16 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class PolicyGraph(object):
-    """An agent policy and loss, i.e., a TFPolicyGraph or other subclass.
+class Policy(object):
+    """An agent policy and loss, i.e., a TFPolicy or other subclass.
 
     This object defines how to act in the environment, and also losses used to
     improve the policy based on its experiences. Note that both policy and
     loss are defined together for convenience, though the policy itself is
     logically separate.
 
-    All policies can directly extend PolicyGraph, however TensorFlow users may
-    find TFPolicyGraph simpler to implement. TFPolicyGraph also enables RLlib
+    All policies can directly extend Policy, however TensorFlow users may
+    find TFPolicy simpler to implement. TFPolicy also enables RLlib
     to apply TensorFlow-specific optimizations such as fusing multiple policy
     graphs and multi-GPU support.
 
@@ -31,7 +31,7 @@ class PolicyGraph(object):
     def __init__(self, observation_space, action_space, config):
         """Initialize the graph.
 
-        This is the standard constructor for policy graphs. The policy graph
+        This is the standard constructor for policies. The policy
         class you pass into PolicyEvaluator will be constructed with
         these arguments.
 
@@ -143,8 +143,8 @@ class PolicyGraph(object):
             sample_batch (SampleBatch): batch of experiences for the policy,
                 which will contain at most one episode trajectory.
             other_agent_batches (dict): In a multi-agent env, this contains a
-                mapping of agent ids to (policy_graph, agent_batch) tuples
-                containing the policy graph and experiences of the other agent.
+                mapping of agent ids to (policy, agent_batch) tuples
+                containing the policy and experiences of the other agent.
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
@@ -245,7 +245,7 @@ class PolicyGraph(object):
 
     @DeveloperAPI
     def export_model(self, export_dir):
-        """Export PolicyGraph to local directory for serving.
+        """Export Policy to local directory for serving.
 
         Arguments:
             export_dir (str): Local writable directory.
@@ -254,7 +254,7 @@ class PolicyGraph(object):
 
     @DeveloperAPI
     def export_checkpoint(self, export_dir):
-        """Export PolicyGraph checkpoint to local directory.
+        """Export Policy checkpoint to local directory.
 
         Argument:
             export_dir (str): Local writable directory.
