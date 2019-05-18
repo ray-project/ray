@@ -220,7 +220,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             SampleBatch.PREV_REWARDS: fake_array(self._prev_reward_input),
             SampleBatch.CUR_OBS: fake_array(self._obs_input),
             SampleBatch.NEXT_OBS: fake_array(self._obs_input),
-            SampleBatch.ACTIONS: fake_array(self._sampler),
+            SampleBatch.ACTIONS: fake_array(self._prev_action_input),
             SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             SampleBatch.DONES: np.array([False], dtype=np.bool),
         }
