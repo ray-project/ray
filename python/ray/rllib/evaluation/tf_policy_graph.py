@@ -284,7 +284,10 @@ class TFPolicyGraph(PolicyGraph):
     @DeveloperAPI
     def optimizer(self):
         """TF optimizer to use for policy optimization."""
-        return tf.train.AdamOptimizer(self.config["lr"])
+        if hasattr(self, "config"):
+            return tf.train.AdamOptimizer(self.config["lr"])
+        else:
+            return tf.train.AdamOptimizer()
 
     @DeveloperAPI
     def gradients(self, optimizer, loss):
