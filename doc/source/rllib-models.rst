@@ -320,7 +320,7 @@ For deeper customization of algorithms, you can modify the policies of the train
 .. code-block:: python
 
     from ray.rllib.models import ModelCatalog
-    from ray.rllib.agents.ddpg.ddpg_policy import DDPGPolicy as BaseDDPGPolicy
+    from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy as BaseDDPGTFPolicy
 
     class CustomPNetwork(object):
         def __init__(self, dim_actions, hiddens, activation):
@@ -336,7 +336,7 @@ For deeper customization of algorithms, you can modify the policies of the train
             self.value = layers.fully_connected(
                 q_out, num_outputs=1, activation_fn=None)
 
-    class CustomDDPGPolicy(BaseDDPGPolicy):
+    class CustomDDPGTFPolicy(BaseDDPGTFPolicy):
         def _build_p_network(self, obs):
             return CustomPNetwork(
                 self.dim_actions,
@@ -354,9 +354,9 @@ Then, you can create an trainer with your custom policy by:
 .. code-block:: python
 
     from ray.rllib.agents.ddpg.ddpg import DDPGTrainer
-    from custom_policy import CustomDDPGPolicy
+    from custom_policy import CustomDDPGTFPolicy
 
-    DDPGTrainer._policy = CustomDDPGPolicy
+    DDPGTrainer._policy = CustomDDPGTFPolicy
     trainer = DDPGTrainer(...)
 
 In this example we overrode existing methods of the existing DDPG policy, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
