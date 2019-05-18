@@ -614,9 +614,12 @@ class TestMultiAgentEnv(unittest.TestCase):
             optimizer.step()
             result = collect_metrics(ev, remote_evs)
             if i % 20 == 0:
-                ev.foreach_policy(
-                    lambda p, _: p.update_target() if isinstance(p, DQNPolicy) else None
-                )
+
+                def do_update(p):
+                    if isinstance(p, DQNPolicy):
+                        p.update_target()
+
+                ev.foreach_policy(lambda p, _: do_update(p))
                 print("Iter {}, rew {}".format(i,
                                                result["policy_reward_mean"]))
                 print("Total reward", result["episode_reward_mean"])
