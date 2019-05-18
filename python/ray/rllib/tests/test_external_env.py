@@ -13,8 +13,8 @@ from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.env.external_env import ExternalEnv
-from ray.rllib.tests.test_policy_evaluator import (BadPolicy,
-                                                   MockPolicy, MockEnv)
+from ray.rllib.tests.test_policy_evaluator import (BadPolicy, MockPolicy,
+                                                   MockEnv)
 from ray.tune.registry import register_env
 
 

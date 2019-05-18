@@ -435,9 +435,7 @@ class Trainer(Trainable):
                     "using evaluation_config: {}".format(extra_config))
                 # Make local evaluation evaluators
                 self.evaluation_ev = self.make_local_evaluator(
-                    self.env_creator,
-                    self._policy,
-                    extra_config=extra_config)
+                    self.env_creator, self._policy, extra_config=extra_config)
                 self.evaluation_metrics = self._evaluate()
 
     @override(Trainable)
@@ -606,10 +604,7 @@ class Trainer(Trainable):
         self.local_evaluator.set_weights(weights)
 
     @DeveloperAPI
-    def make_local_evaluator(self,
-                             env_creator,
-                             policy,
-                             extra_config=None):
+    def make_local_evaluator(self, env_creator, policy, extra_config=None):
         """Convenience method to return configured local evaluator."""
 
         return self._make_evaluator(
@@ -639,8 +634,8 @@ class Trainer(Trainable):
         cls = PolicyEvaluator.as_remote(**remote_args).remote
 
         return [
-            self._make_evaluator(cls, env_creator, policy, i + 1,
-                                 self.config) for i in range(count)
+            self._make_evaluator(cls, env_creator, policy, i + 1, self.config)
+            for i in range(count)
         ]
 
     @DeveloperAPI
@@ -700,6 +695,13 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config):
+        if "policy_graphs" in config["multiagent"]:
+            logger.warning(
+                "The `policy_graphs` config has been renamed to `policies`.")
+            # Backwards compatibility
+            config["multiagent"]["policies"] = config["multiagent"][
+                "policy_graphs"]
+            del config["multiagent"]["policy_graphs"]
         if "gpu" in config:
             raise ValueError(
                 "The `gpu` config is deprecated, please use `num_gpus=0|1` "
@@ -760,8 +762,7 @@ class Trainer(Trainable):
         return hasattr(self, "optimizer") and isinstance(
             self.optimizer, PolicyOptimizer)
 
-    def _make_evaluator(self, cls, env_creator, policy, worker_index,
-                        config):
+    def _make_evaluator(self, cls, env_creator, policy, worker_index, config):
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))

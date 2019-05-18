@@ -126,8 +126,7 @@ class VTracePostprocessing(object):
         return sample_batch
 
 
-class VTracePolicy(LearningRateSchedule, VTracePostprocessing,
-                        TFPolicy):
+class VTracePolicy(LearningRateSchedule, VTracePostprocessing, TFPolicy):
     def __init__(self,
                  observation_space,
                  action_space,

@@ -132,8 +132,7 @@ class MockVectorEnv(VectorEnv):
 class TestPolicyEvaluator(unittest.TestCase):
     def testBasic(self):
         ev = PolicyEvaluator(
-            env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=MockPolicy)
+            env_creator=lambda _: gym.make("CartPole-v0"), policy=MockPolicy)
         batch = ev.sample()
         for key in [
                 "obs", "actions", "rewards", "dones", "advantages",
@@ -157,8 +156,7 @@ class TestPolicyEvaluator(unittest.TestCase):
 
     def testBatchIds(self):
         ev = PolicyEvaluator(
-            env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=MockPolicy)
+            env_creator=lambda _: gym.make("CartPole-v0"), policy=MockPolicy)
         batch1 = ev.sample()
         batch2 = ev.sample()
         self.assertEqual(len(set(batch1["unroll_id"])), 1)

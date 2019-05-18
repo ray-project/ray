@@ -143,8 +143,7 @@ def validate_config(config):
         raise ValueError(
             "Episode truncation is not supported without a value "
             "function. Consider setting batch_mode=complete_episodes.")
-    if (config["multiagent"]["policies"]
-            and not config["simple_optimizer"]):
+    if (config["multiagent"]["policies"] and not config["simple_optimizer"]):
         logger.info(
             "In multi-agent mode, policies will be optimized sequentially "
             "by the multi-GPU optimizer. Consider setting "

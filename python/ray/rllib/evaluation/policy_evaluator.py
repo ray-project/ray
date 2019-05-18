@@ -768,21 +768,18 @@ def _validate_multiagent_config(policy, allow_none_graph=False):
         if allow_none_graph and v[0] is None:
             pass
         elif not issubclass(v[0], Policy):
-            raise ValueError(
-                "policy tuple value 0 must be a rllib.Policy "
-                "class or None, got {}".format(v[0]))
+            raise ValueError("policy tuple value 0 must be a rllib.Policy "
+                             "class or None, got {}".format(v[0]))
         if not isinstance(v[1], gym.Space):
             raise ValueError(
                 "policy tuple value 1 (observation_space) must be a "
                 "gym.Space, got {}".format(type(v[1])))
         if not isinstance(v[2], gym.Space):
-            raise ValueError(
-                "policy tuple value 2 (action_space) must be a "
-                "gym.Space, got {}".format(type(v[2])))
+            raise ValueError("policy tuple value 2 (action_space) must be a "
+                             "gym.Space, got {}".format(type(v[2])))
         if not isinstance(v[3], dict):
-            raise ValueError(
-                "policy tuple value 3 (config) must be a dict, "
-                "got {}".format(type(v[3])))
+            raise ValueError("policy tuple value 3 (config) must be a dict, "
+                             "got {}".format(type(v[3])))
 
 
 def _validate_env(env):

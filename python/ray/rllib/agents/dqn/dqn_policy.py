@@ -636,10 +636,10 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
 def _postprocess_dqn(policy, batch):
     # N-step Q adjustments
     if policy.config["n_step"] > 1:
-        _adjust_nstep(policy.config["n_step"],
-                      policy.config["gamma"], batch[SampleBatch.CUR_OBS],
-                      batch[SampleBatch.ACTIONS], batch[SampleBatch.REWARDS],
-                      batch[SampleBatch.NEXT_OBS], batch[SampleBatch.DONES])
+        _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
+                      batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+                      batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
+                      batch[SampleBatch.DONES])
 
     if PRIO_WEIGHTS not in batch:
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
