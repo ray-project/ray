@@ -188,8 +188,10 @@ def run(run_or_experiment,
                 }
             )
     """
-    executor = executor or RayTrialExecutor(
-        queue_trials=queue_trials, reuse_actors=reuse_actors, ray_redis_address=ray_redis_address)
+    trial_executor = trial_executor or RayTrialExecutor(
+        queue_trials=queue_trials,
+        reuse_actors=reuse_actors,
+        ray_redis_address=ray_redis_address)
     experiment = run_or_experiment
     if not isinstance(run_or_experiment, Experiment):
         experiment = Experiment(
