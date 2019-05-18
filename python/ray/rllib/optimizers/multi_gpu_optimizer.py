@@ -16,7 +16,7 @@ from ray.rllib.optimizers.rollout import collect_samples, \
     collect_samples_straggler_mitigation
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils import try_import_tf
 

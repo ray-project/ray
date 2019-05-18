@@ -5,7 +5,7 @@ from __future__ import print_function
 from collections import namedtuple
 import logging
 
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)

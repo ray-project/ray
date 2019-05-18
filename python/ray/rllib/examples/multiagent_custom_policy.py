@@ -22,7 +22,7 @@ import gym
 
 import ray
 from ray import tune
-from ray.rllib.evaluation import Policy
+from ray.rllib.policy import Policy
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
 

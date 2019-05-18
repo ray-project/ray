@@ -14,14 +14,17 @@ def renamed_class(cls, old_name=None):
     """Helper class for renaming classes with a warning."""
 
     class DeprecationWrapper(cls):
-        def __init__(self, config=None, env=None, logger_creator=None):
+        def __init__(self, *args, **kw):
             if not old_name:
-                old_name = cls.__name__.replace("Trainer", "Agent")
-            new_name = cls.__name__
+                # special case shorthand for the agent rename
+                prev = cls.__name__.replace("Trainer", "Agent")
+            else:
+                prev = old_name
+            new_name = cls.__module__ + "." + cls.__name__
             logger.warn("DeprecationWarning: {} has been renamed to {}. ".
-                        format(old_name, new_name) +
+                        format(prev, new_name) +
                         "This will raise an error in the future.")
-            cls.__init__(self, config, env, logger_creator)
+            cls.__init__(self, *args, **kw)
 
     DeprecationWrapper.__name__ = cls.__name__
 

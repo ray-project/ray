@@ -14,7 +14,8 @@ import gym
 
 import ray
 from ray import tune
-from ray.rllib.evaluation import Policy, PolicyEvaluator, SampleBatch
+from ray.rllib.policy import Policy
+from ray.rllib.evaluation import PolicyEvaluator, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 
 parser = argparse.ArgumentParser()

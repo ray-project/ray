@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 import scipy.signal
-from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 
 

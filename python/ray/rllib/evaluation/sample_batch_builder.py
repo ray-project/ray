@@ -6,7 +6,7 @@ import collections
 import logging
 import numpy as np
 
-from ray.rllib.evaluation.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import log_once, summarize
 

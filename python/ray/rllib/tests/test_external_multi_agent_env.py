@@ -10,7 +10,7 @@ import unittest
 import ray
 from ray.rllib.agents.pg.pg_policy import PGTFPolicy
 from ray.rllib.optimizers import SyncSamplesOptimizer
-from ray.rllib.policy.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.tests.test_policy_evaluator import MockPolicy
 from ray.rllib.tests.test_external_env import make_simple_serving

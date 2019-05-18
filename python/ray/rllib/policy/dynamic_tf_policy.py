@@ -7,7 +7,7 @@ import logging
 import numpy as np
 
 from ray.rllib.policy.policy import Policy
-from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override

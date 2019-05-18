@@ -14,7 +14,7 @@ from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
                                   AsyncGradientsOptimizer)
 from ray.rllib.tests.test_policy_evaluator import (MockEnv, MockEnv2,
                                                    MockPolicy)
-from ray.rllib.policy.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.policy.policy import Policy
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
