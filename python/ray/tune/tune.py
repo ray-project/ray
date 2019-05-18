@@ -90,7 +90,8 @@ def run(run_or_experiment,
         queue_trials=False,
         reuse_actors=False,
         trial_executor=None,
-        raise_on_failed_trial=True):
+        raise_on_failed_trial=True,
+        ray_redis_address="auto"):
     """Executes training.
 
     Args:
@@ -187,6 +188,8 @@ def run(run_or_experiment,
                 }
             )
     """
+    executor = executor or RayTrialExecutor(
+        queue_trials=queue_trials, reuse_actors=reuse_actors, ray_redis_address=ray_redis_address)
     experiment = run_or_experiment
     if not isinstance(run_or_experiment, Experiment):
         experiment = Experiment(
@@ -235,8 +238,6 @@ def run(run_or_experiment,
             launch_web_server=with_server,
             server_port=server_port,
             verbose=bool(verbose > 1),
-            queue_trials=queue_trials,
-            reuse_actors=reuse_actors,
             trial_executor=trial_executor)
 
     if verbose:

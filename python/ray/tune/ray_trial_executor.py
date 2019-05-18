@@ -33,12 +33,17 @@ class _LocalWrapper(object):
         return self._result
 
 
+def _auto_init_ray():
+    pass
+
+
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
     def __init__(self,
                  queue_trials=False,
                  reuse_actors=False,
+                 ray_redis_address=None,
                  refresh_period=RESOURCE_REFRESH_PERIOD):
         super(RayTrialExecutor, self).__init__(queue_trials)
         self._running = {}

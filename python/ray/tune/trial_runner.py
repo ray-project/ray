@@ -104,8 +104,6 @@ class TrialRunner(object):
                  metadata_checkpoint_dir=None,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
-                 queue_trials=False,
-                 reuse_actors=False,
                  trial_executor=None):
         """Initializes a new TrialRunner.
 
@@ -131,8 +129,7 @@ class TrialRunner(object):
         """
         self._search_alg = search_alg
         self._scheduler_alg = scheduler or FIFOScheduler()
-        self.trial_executor = (trial_executor or RayTrialExecutor(
-            queue_trials=queue_trials, reuse_actors=reuse_actors))
+        self.trial_executor = trial_executor
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
