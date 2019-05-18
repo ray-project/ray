@@ -8,7 +8,6 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 
-
 __all__ = [
     "Policy",
     "TFPolicy",
