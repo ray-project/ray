@@ -36,8 +36,8 @@ def pg_loss_stats(policy, batch_tensors):
     return {"policy_loss": policy.pi_err.item()}
 
 
-def make_optimizer(policy):
-    return torch.optim.Adam(policy._model.parameters(), lr=policy.config["lr"])
+def make_optimizer(policy, config):
+    return torch.optim.Adam(policy._model.parameters(), lr=config["lr"])
 
 
 PGTorchPolicy = build_torch_policy(

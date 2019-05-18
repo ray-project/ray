@@ -28,8 +28,8 @@ def postprocess_advantages(policy,
         sample_batch, 0.0, policy.config["gamma"], use_gae=False)
 
 
-def make_optimizer(policy):
-    return tf.train.AdamOptimizer(learning_rate=policy.config["lr"])
+def make_optimizer(policy, config):
+    return tf.train.AdamOptimizer(learning_rate=config["lr"])
 
 
 PGTFPolicy = build_tf_policy(

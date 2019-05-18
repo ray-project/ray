@@ -66,8 +66,8 @@ def apply_grad_clipping(policy):
     return info
 
 
-def torch_optimizer(policy):
-    return torch.optim.Adam(policy.model.parameters(), lr=policy.config["lr"])
+def torch_optimizer(policy, config):
+    return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
 
 
 class ValueNetworkMixin(object):

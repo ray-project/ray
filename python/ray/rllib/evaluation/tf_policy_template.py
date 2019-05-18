@@ -24,24 +24,24 @@ def build_tf_policy(name,
                     make_action_sampler=None,
                     mixins=None,
                     get_batch_divisibility_req=None):
-    """Helper function for creating a dynamic tf policy graph at runtime.
+    """Helper function for creating a dynamic tf policy at runtime.
 
     Arguments:
         name (str): name of the graph (e.g., "PPOPolicy")
-        loss_fn (func): function that returns a loss tensor the policy graph,
+        loss_fn (func): function that returns a loss tensor the policy,
             and dict of experience tensor placeholders
         get_default_config (func): optional function that returns the default
             config to merge with any overrides
         stats_fn (func): optional function that returns a dict of
-            TF fetches given the policy graph and batch input tensors
+            TF fetches given the policy and batch input tensors
         grad_stats_fn (func): optional function that returns a dict of
-            TF fetches given the policy graph and loss gradient tensors
+            TF fetches given the policy and loss gradient tensors
         extra_action_fetches_fn (func): optional function that returns
-            a dict of TF fetches given the policy graph object
+            a dict of TF fetches given the policy object
         postprocess_fn (func): optional experience postprocessing function
             that takes the same args as PolicyGraph.postprocess_trajectory()
         optimizer_fn (func): optional function that returns a tf.Optimizer
-            given the policy graph object
+            given the policy and config
         gradients_fn (func): optional function that returns a list of gradients
             given a tf optimizer and loss tensor. If not specified, this
             defaults to optimizer.compute_gradients(loss)
@@ -124,7 +124,7 @@ def build_tf_policy(name,
         @override(TFPolicyGraph)
         def optimizer(self):
             if optimizer_fn:
-                return optimizer_fn(self)
+                return optimizer_fn(self, self.config)
             else:
                 return TFPolicyGraph.optimizer(self)
 

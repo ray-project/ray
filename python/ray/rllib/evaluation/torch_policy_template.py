@@ -21,16 +21,16 @@ def build_torch_policy(name,
                        after_init=None,
                        make_model_and_action_dist=None,
                        mixins=None):
-    """Helper function for creating a torch policy graph at runtime.
+    """Helper function for creating a torch policy at runtime.
 
     Arguments:
         name (str): name of the graph (e.g., "PPOPolicy")
-        loss_fn (func): function that returns a loss tensor the policy graph,
+        loss_fn (func): function that returns a loss tensor the policy,
             and dict of experience tensor placeholders
         get_default_config (func): optional function that returns the default
             config to merge with any overrides
         stats_fn (func): optional function that returns a dict of
-            values given the policy graph and batch input tensors
+            values given the policy and batch input tensors
         postprocess_fn (func): optional experience postprocessing function
             that takes the same args as PolicyGraph.postprocess_trajectory()
         extra_action_out_fn (func): optional function that returns
@@ -38,7 +38,7 @@ def build_torch_policy(name,
         extra_grad_process_fn (func): optional function that is called after
             gradients are computed and returns processing info
         optimizer_fn (func): optional function that returns a torch optimizer
-            given the policy graph object
+            given the policy and config
         before_init (func): optional function to run at the beginning of
             __init__ that takes the same arguments as __init__
         after_init (func): optional function to run at the end of __init__
@@ -117,7 +117,7 @@ def build_torch_policy(name,
         @override(TorchPolicyGraph)
         def optimizer(self):
             if optimizer_fn:
-                return optimizer_fn(self)
+                return optimizer_fn(self, self.config)
             else:
                 return TorchPolicyGraph.optimizer(self)
 

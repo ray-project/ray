@@ -342,13 +342,12 @@ def validate_config(policy, obs_space, action_space, config):
         "Must use `truncate_episodes` batch mode with V-trace."
 
 
-def choose_optimizer(policy):
+def choose_optimizer(policy, config):
     if policy.config["opt_type"] == "adam":
         return tf.train.AdamOptimizer(policy.cur_lr)
     else:
-        return tf.train.RMSPropOptimizer(policy.cur_lr, policy.config["decay"],
-                                         policy.config["momentum"],
-                                         policy.config["epsilon"])
+        return tf.train.RMSPropOptimizer(policy.cur_lr, config["decay"],
+                                         config["momentum"], config["epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):
