@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.evaluation.policy import Policy
+from ray.rllib.policy.policy import Policy
 
 
 def _sample(probs):

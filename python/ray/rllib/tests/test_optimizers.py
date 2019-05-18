@@ -11,7 +11,7 @@ import ray
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
 from ray.rllib.evaluation import SampleBatch
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.policy.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.tests.mock_evaluator import _MockEvaluator

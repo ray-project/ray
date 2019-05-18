@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.evaluation.dynamic_tf_policy import DynamicTFPolicy
-from ray.rllib.evaluation.policy import Policy
-from ray.rllib.evaluation.tf_policy import TFPolicy
+from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import override, DeveloperAPI
 
 

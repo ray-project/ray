@@ -11,9 +11,9 @@ import ray
 import numpy as np
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.policy import Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.evaluation.sample_batch import SampleBatch
-from ray.rllib.evaluation.tf_policy import TFPolicy, \
+from ray.rllib.policy.tf_policy import TFPolicy, \
     LearningRateSchedule
 from ray.rllib.models.action_dist import MultiCategorical
 from ray.rllib.models.catalog import ModelCatalog

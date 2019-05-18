@@ -9,7 +9,7 @@ from collections import defaultdict
 
 import ray
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.tf_policy import TFPolicy
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.optimizers.rollout import collect_samples, \

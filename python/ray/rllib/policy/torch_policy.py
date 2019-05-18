@@ -13,7 +13,7 @@ except ImportError:
     pass  # soft dep
 
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.policy import Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 

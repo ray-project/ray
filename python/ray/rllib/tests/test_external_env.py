@@ -11,7 +11,7 @@ import uuid
 import ray
 from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.policy.policy_evaluator import PolicyEvaluator
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.tests.test_policy_evaluator import (BadPolicy, MockPolicy,
                                                    MockEnv)

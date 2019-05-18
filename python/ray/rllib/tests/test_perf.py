@@ -7,7 +7,7 @@ import time
 import unittest
 
 import ray
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.policy.policy_evaluator import PolicyEvaluator
 from ray.rllib.tests.test_policy_evaluator import MockPolicy
 
 

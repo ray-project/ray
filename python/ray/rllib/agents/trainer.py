@@ -17,7 +17,7 @@ from ray.exceptions import RayError
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator, \
+from ray.rllib.policy.policy_evaluator import PolicyEvaluator, \
     _validate_multiagent_config
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics

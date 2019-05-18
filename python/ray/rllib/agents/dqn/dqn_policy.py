@@ -12,8 +12,8 @@ from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog, Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.evaluation.policy import Policy
-from ray.rllib.evaluation.tf_policy import TFPolicy, \
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tf_policy import TFPolicy, \
     LearningRateSchedule
 from ray.rllib.utils import try_import_tf
 

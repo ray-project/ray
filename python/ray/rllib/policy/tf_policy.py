@@ -10,7 +10,7 @@ import numpy as np
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.policy import Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.annotations import override, DeveloperAPI

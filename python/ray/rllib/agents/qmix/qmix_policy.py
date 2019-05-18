@@ -14,7 +14,7 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.policy import Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.models.catalog import ModelCatalog

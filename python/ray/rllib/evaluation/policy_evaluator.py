@@ -18,8 +18,8 @@ from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
-from ray.rllib.evaluation.policy import Policy
-from ray.rllib.evaluation.tf_policy import TFPolicy
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
