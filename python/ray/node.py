@@ -829,6 +829,12 @@ class Node(object):
 class LocalNode(object):
     """Imitate the node that manages the processes in local mode."""
 
+    def __init__(self):
+        # date including microsecond
+        date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
+        self.session_name = "session_{date_str}_{pid}".format(
+            pid=os.getpid(), date_str=date_str)
+
     def kill_all_processes(self, *args, **kwargs):
         """Kill all of the processes."""
         pass  # Keep this function empty because it will be used in worker.py
