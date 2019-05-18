@@ -23,7 +23,7 @@ class OffPolicyEstimator(object):
         """Creates an off-policy estimator.
 
         Arguments:
-            policy (Policy): Policy graph to evaluate.
+            policy (Policy): Policy to evaluate.
             gamma (float): Discount of the MDP.
         """
         self.policy = policy

@@ -10,12 +10,13 @@ from ray.tune.util import merge_dicts, deep_update
 logger = logging.getLogger(__name__)
 
 
-def renamed_class(cls):
-    """Helper class for renaming Agent => Trainer with a warning."""
+def renamed_class(cls, old_name=None):
+    """Helper class for renaming classes with a warning."""
 
     class DeprecationWrapper(cls):
         def __init__(self, config=None, env=None, logger_creator=None):
-            old_name = cls.__name__.replace("Trainer", "Agent")
+            if not old_name:
+                old_name = cls.__name__.replace("Trainer", "Agent")
             new_name = cls.__name__
             logger.warn("DeprecationWarning: {} has been renamed to {}. ".
                         format(old_name, new_name) +

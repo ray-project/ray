@@ -27,7 +27,7 @@ def build_tf_policy(name,
     """Helper function for creating a dynamic tf policy at runtime.
 
     Arguments:
-        name (str): name of the graph (e.g., "PPOPolicy")
+        name (str): name of the policy (e.g., "PPOPolicy")
         loss_fn (func): function that returns a loss tensor the policy,
             and dict of experience tensor placeholders
         get_default_config (func): optional function that returns the default
@@ -76,7 +76,7 @@ def build_tf_policy(name,
 
         base = new_base
 
-    class graph_cls(base):
+    class policy_cls(base):
         def __init__(self,
                      obs_space,
                      action_space,
@@ -141,6 +141,6 @@ def build_tf_policy(name,
                 TFPolicy.extra_compute_action_fetches(self),
                 **self._extra_action_fetches)
 
-    graph_cls.__name__ = name
-    graph_cls.__qualname__ = name
-    return graph_cls
+    policy_cls.__name__ = name
+    policy_cls.__qualname__ = name
+    return policy_cls
