@@ -22,7 +22,7 @@ import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.UniqueIdUtil;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,7 +63,7 @@ public class RayletClientImpl implements RayletClient {
       ids.add(element.getId());
     }
 
-    boolean[] ready = nativeWaitObject(client, UniqueIdUtil.getIdBytes(ids),
+    boolean[] ready = nativeWaitObject(client, IdUtil.getIdBytes(ids),
         numReturns, timeoutMs, false, currentTaskId.getBytes());
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
@@ -109,7 +109,7 @@ public class RayletClientImpl implements RayletClient {
       LOGGER.debug("Blocked on objects for task {}, object IDs are {}",
           objectIds.get(0).getTaskId(), objectIds);
     }
-    nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
+    nativeFetchOrReconstruct(client, IdUtil.getIdBytes(objectIds),
         fetchOnly, currentTaskId.getBytes());
   }
 
@@ -127,7 +127,7 @@ public class RayletClientImpl implements RayletClient {
   @Override
   public void freePlasmaObjects(List<ObjectId> objectIds, boolean localOnly,
                                 boolean deleteCreatingTasks) {
-    byte[][] objectIdsArray = UniqueIdUtil.getIdBytes(objectIds);
+    byte[][] objectIdsArray = IdUtil.getIdBytes(objectIds);
     nativeFreePlasmaObjects(client, objectIdsArray, localOnly, deleteCreatingTasks);
   }
 
@@ -156,7 +156,7 @@ public class RayletClientImpl implements RayletClient {
     int actorCounter = info.actorCounter();
 
     // Deserialize new actor handles
-    UniqueId[] newActorHandles = UniqueIdUtil.getUniqueIdsFromByteBuffer(
+    UniqueId[] newActorHandles = IdUtil.getUniqueIdsFromByteBuffer(
         info.newActorHandlesAsByteBuffer());
 
     // Deserialize args
@@ -178,7 +178,7 @@ public class RayletClientImpl implements RayletClient {
       }
     }
     // Deserialize return ids
-    ObjectId[] returnIds = UniqueIdUtil.getObjectIdsFromByteBuffer(info.returnsAsByteBuffer());
+    ObjectId[] returnIds = IdUtil.getObjectIdsFromByteBuffer(info.returnsAsByteBuffer());
 
     // Deserialize required resources;
     Map<String, Double> resources = new HashMap<>();
@@ -214,7 +214,7 @@ public class RayletClientImpl implements RayletClient {
 
     // Serialize the new actor handles.
     int newActorHandlesOffset
-        = fbb.createString(UniqueIdUtil.concatIds(task.newActorHandles));
+        = fbb.createString(IdUtil.concatIds(task.newActorHandles));
 
     // Serialize args
     int[] argsOffsets = new int[task.args.length];
@@ -223,7 +223,7 @@ public class RayletClientImpl implements RayletClient {
       int dataOffset = 0;
       if (task.args[i].id != null) {
         objectIdOffset = fbb.createString(
-            UniqueIdUtil.concatIds(new ObjectId[]{task.args[i].id}));
+            IdUtil.concatIds(new ObjectId[]{task.args[i].id}));
       } else {
         objectIdOffset = fbb.createString("");
       }
@@ -235,7 +235,7 @@ public class RayletClientImpl implements RayletClient {
     int argsOffset = fbb.createVectorOfTables(argsOffsets);
 
     // Serialize returns
-    int returnsOffset = fbb.createString(UniqueIdUtil.concatIds(task.returnIds));
+    int returnsOffset = fbb.createString(IdUtil.concatIds(task.returnIds));
 
     // Serialize required resources
     // The required_resources vector indicates the quantities of the different

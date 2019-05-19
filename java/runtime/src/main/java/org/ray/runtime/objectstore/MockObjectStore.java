@@ -84,8 +84,7 @@ public class MockObjectStore implements ObjectStoreLink {
       }
       ready = 0;
       for (byte[] id : objectIds) {
-        ObjectId id0 = new ObjectId(id);
-        if (data.containsKey(id0)) {
+        if (data.containsKey(new ObjectId(id))) {
           ready += 1;
         }
       }

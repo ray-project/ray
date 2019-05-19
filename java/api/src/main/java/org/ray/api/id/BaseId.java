@@ -16,7 +16,7 @@ public abstract class BaseId implements Serializable {
    */
   public BaseId(byte[] id) {
     if (id.length != size()) {
-      throw new IllegalArgumentException("Illegal argument for Construct BaseId, expect " + size()
+      throw new IllegalArgumentException("Failed to construct BaseId, expect " + size()
               + " bytes, but got " + id.length + " bytes.");
     }
     this.id = id;
@@ -76,7 +76,7 @@ public abstract class BaseId implements Serializable {
     }
 
     BaseId r = (BaseId) obj;
-    return hashCode() == r.hashCode();
+    return Arrays.equals(id, r.id);
   }
 
   @Override

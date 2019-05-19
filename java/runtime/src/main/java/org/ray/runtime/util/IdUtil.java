@@ -11,11 +11,11 @@ import org.ray.api.id.UniqueId;
 
 
 /**
- * Helper method for UniqueId.
+ * Helper method for different Ids.
  * Note: any changes to these methods must be synced with C++ helper functions
  * in src/ray/id.h
  */
-public class UniqueIdUtil {
+public class IdUtil {
   public static final int OBJECT_INDEX_POS = 16;
 
   /**
@@ -66,7 +66,7 @@ public class UniqueIdUtil {
   public static ObjectId[] genReturnIds(TaskId taskId, int numReturns) {
     ObjectId[] ret = new ObjectId[numReturns];
     for (int i = 0; i < numReturns; i++) {
-      ret[i] = UniqueIdUtil.computeReturnId(taskId, i + 1);
+      ret[i] = IdUtil.computeReturnId(taskId, i + 1);
     }
     return ret;
   }

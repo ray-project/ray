@@ -17,7 +17,7 @@ import org.ray.runtime.generated.ActorCheckpointIdData;
 import org.ray.runtime.generated.ClientTableData;
 import org.ray.runtime.generated.EntryType;
 import org.ray.runtime.generated.TablePrefix;
-import org.ray.runtime.util.UniqueIdUtil;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -134,7 +134,7 @@ public class GcsClient {
     if (result != null) {
       ActorCheckpointIdData data =
           ActorCheckpointIdData.getRootAsActorCheckpointIdData(ByteBuffer.wrap(result));
-      UniqueId[] checkpointIds = UniqueIdUtil.getUniqueIdsFromByteBuffer(
+      UniqueId[] checkpointIds = IdUtil.getUniqueIdsFromByteBuffer(
           data.checkpointIdsAsByteBuffer());
 
       for (int i = 0; i < checkpointIds.length; i++) {
@@ -146,7 +146,7 @@ public class GcsClient {
   }
 
   private RedisClient getShardClient(BaseId key) {
-    return shards.get((int) Long.remainderUnsigned(UniqueIdUtil.murmurHashCode(key),
+    return shards.get((int) Long.remainderUnsigned(IdUtil.murmurHashCode(key),
         shards.size()));
   }
 

@@ -17,8 +17,8 @@ import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.generated.ErrorType;
+import org.ray.runtime.util.IdUtil;
 import org.ray.runtime.util.Serializer;
-import org.ray.runtime.util.UniqueIdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,7 +75,7 @@ public class ObjectStoreProxy {
    * @return A list of GetResult objects.
    */
   public <T> List<GetResult<T>> get(List<ObjectId> ids, int timeoutMs) {
-    byte[][] binaryIds = UniqueIdUtil.getIdBytes(ids);
+    byte[][] binaryIds = IdUtil.getIdBytes(ids);
     List<ObjectStoreData> dataAndMetaList = objectStore.get().get(binaryIds, timeoutMs);
 
     List<GetResult<T>> results = new ArrayList<>();

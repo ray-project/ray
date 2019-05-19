@@ -34,7 +34,7 @@ import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.UniqueIdUtil;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -90,7 +90,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    ObjectId objectId = UniqueIdUtil.computePutId(
+    ObjectId objectId = IdUtil.computePutId(
         workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
 
     put(objectId, obj);
@@ -111,7 +111,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    * @return A RayObject instance that represents the in-store object.
    */
   public RayObject<Object> putSerialized(byte[] obj) {
-    ObjectId objectId = UniqueIdUtil.computePutId(
+    ObjectId objectId = IdUtil.computePutId(
         workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
     TaskId taskId = workerContext.getCurrentTaskId();
     LOGGER.debug("Putting serialized object {}, for task {} ", objectId, taskId);
@@ -348,7 +348,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     TaskId taskId = rayletClient.generateTaskId(workerContext.getCurrentDriverId(),
         workerContext.getCurrentTaskId(), workerContext.nextTaskIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
-    ObjectId[] returnIds = UniqueIdUtil.genReturnIds(taskId, numReturns);
+    ObjectId[] returnIds = IdUtil.genReturnIds(taskId, numReturns);
 
     UniqueId actorCreationId = UniqueId.NIL;
     if (isActorCreationTask) {
