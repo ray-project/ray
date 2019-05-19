@@ -70,7 +70,7 @@ class TestGcsWithAsio : public TestGcs {
   void Start() override { io_service_.run(); }
   void Stop() override { io_service_.stop(); }
 
- private:
+ protected:
   boost::asio::io_service io_service_;
   // Give the event loop some work so that it's forced to run until Stop() is
   // called.
@@ -292,11 +292,55 @@ void TestSet(const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   // Do a lookup at the object ID.
   RAY_CHECK_OK(client->object_table().Lookup(driver_id, object_id, lookup_callback));
 
+  // Test the Replace function of set.
+  const std::string suffix = "-replaced";
+  for (auto &manager : managers) {
+    auto old_data = std::make_shared<ObjectTableDataT>();
+    auto new_data = std::make_shared<ObjectTableDataT>();
+    old_data->manager = manager;
+    new_data->manager = manager + suffix;
+    // Check that we added the correct object entries.
+    auto add_callback = [object_id, new_data, suffix](
+        gcs::AsyncGcsClient *client, const UniqueID &id, const ObjectTableDataT &d) {
+      ASSERT_EQ(id, object_id);
+      ASSERT_EQ(new_data->manager, d.manager);
+      test->IncrementNumCallbacks();
+    };
+    auto no_trigger_failure = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
+      ASSERT_TRUE(false);
+    };
+    auto trigger_failure = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
+      ASSERT_TRUE(true);
+    };
+    auto no_trigger_add = [](gcs::AsyncGcsClient *client, const UniqueID &id,
+                             const ObjectTableDataT &d) { ASSERT_TRUE(false); };
+    RAY_CHECK_OK(client->object_table().Replace(driver_id, object_id, old_data, new_data,
+                                                add_callback, no_trigger_failure));
+    // The old entry should be replaced with the new entry.
+    RAY_CHECK_OK(client->object_table().Replace(driver_id, object_id, old_data, new_data,
+                                                no_trigger_add, trigger_failure));
+  }
+
+  // Check that lookup returns the added object entries.
+  auto lookup_callback2 = [object_id, managers, suffix](
+      gcs::AsyncGcsClient *client, const ObjectID &id,
+      const std::vector<ObjectTableDataT> &data) {
+    ASSERT_EQ(id, object_id);
+    ASSERT_EQ(data.size(), managers.size());
+    for (auto &d : data) {
+      ASSERT_EQ(d.manager.find(suffix), managers[0].length());
+    }
+    test->IncrementNumCallbacks();
+  };
+
+  // Do a lookup at the object ID.
+  RAY_CHECK_OK(client->object_table().Lookup(driver_id, object_id, lookup_callback2));
+
   for (auto &manager : managers) {
     auto data = std::make_shared<ObjectTableDataT>();
-    data->manager = manager;
+    data->manager = manager + suffix;
     // Check that we added the correct object entries.
-    auto remove_entry_callback = [object_id, data](
+    auto remove_entry_callback = [object_id, data, suffix](
         gcs::AsyncGcsClient *client, const UniqueID &id, const ObjectTableDataT &d) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data->manager, d.manager);
@@ -307,7 +351,7 @@ void TestSet(const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   }
 
   // Check that the entries are removed.
-  auto lookup_callback2 = [object_id, managers](
+  auto lookup_callback3 = [object_id, managers](
       gcs::AsyncGcsClient *client, const ObjectID &id,
       const std::vector<ObjectTableDataT> &data) {
     ASSERT_EQ(id, object_id);
@@ -317,11 +361,11 @@ void TestSet(const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   };
 
   // Do a lookup at the object ID.
-  RAY_CHECK_OK(client->object_table().Lookup(driver_id, object_id, lookup_callback2));
+  RAY_CHECK_OK(client->object_table().Lookup(driver_id, object_id, lookup_callback3));
   // Run the event loop. The loop will only stop if the Lookup callback is
   // called (or an assertion failure).
   test->Start();
-  ASSERT_EQ(test->NumCallbacks(), managers.size() * 2 + 2);
+  ASSERT_EQ(test->NumCallbacks(), managers.size() * 3 + 3);
 }
 
 TEST_F(TestGcsWithAsio, TestSet) {
@@ -1227,14 +1271,14 @@ void TestClientTableDisconnect(const DriverID &driver_id,
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
       [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-        ClientTableNotification(client, id, data, /*is_insertion=*/true);
+        ClientTableNotification(client, id, data, /*is_connected=*/true);
         // Disconnect from the client table. We should receive a notification
         // for the removal of our own entry.
         RAY_CHECK_OK(client->client_table().Disconnect());
       });
   client->client_table().RegisterClientRemovedCallback(
       [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-        ClientTableNotification(client, id, data, /*is_insertion=*/false);
+        ClientTableNotification(client, id, data, /*is_connected=*/false);
         test->Stop();
       });
   // Connect to the client table. We should receive notification for the
@@ -1282,7 +1326,13 @@ TEST_F(TestGcsWithAsio, TestClientTableImmediateDisconnect) {
 }
 
 void TestClientTableMarkDisconnected(const DriverID &driver_id,
-                                     std::shared_ptr<gcs::AsyncGcsClient> client) {
+                                     std::shared_ptr<gcs::AsyncGcsClient> client,
+                                     std::shared_ptr<gcs::AsyncGcsClient> dead_client) {
+  // Since marking a non-existing node will not trigger the ClientRemovedCallback,
+  // a new client is used to connect and mark to dead.
+  ClientTableDataT dead_client_info = dead_client->client_table().GetLocalClient();
+  RAY_CHECK_OK(dead_client->client_table().Connect(dead_client_info));
+
   ClientTableDataT local_client_info = client->client_table().GetLocalClient();
   local_client_info.node_manager_address = "127.0.0.1";
   local_client_info.node_manager_port = 0;
@@ -1290,7 +1340,7 @@ void TestClientTableMarkDisconnected(const DriverID &driver_id,
   // Connect to the client table to start receiving notifications.
   RAY_CHECK_OK(client->client_table().Connect(local_client_info));
   // Mark a different client as dead.
-  ClientID dead_client_id = ClientID::from_random();
+  ClientID dead_client_id = ClientID::from_binary(dead_client_info.client_id);
   RAY_CHECK_OK(client->client_table().MarkDisconnected(dead_client_id));
   // Make sure we only get a notification for the removal of the client we
   // marked as dead.
@@ -1304,7 +1354,11 @@ void TestClientTableMarkDisconnected(const DriverID &driver_id,
 
 TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
   test = this;
-  TestClientTableMarkDisconnected(driver_id_, client_);
+  auto dead_client =
+      std::make_shared<gcs::AsyncGcsClient>("127.0.0.1", 6379, command_type_,
+                                            /*is_test_client=*/true);
+  RAY_CHECK_OK(dead_client->Attach(io_service_));
+  TestClientTableMarkDisconnected(driver_id_, client_, dead_client);
 }
 
 #undef TEST_MACRO

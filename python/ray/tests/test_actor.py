@@ -1995,9 +1995,10 @@ def test_lifetime_and_transient_resources(ray_start_regular):
 
 def test_custom_label_placement(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2, resources={"CustomResource1": 2})
+    node = cluster.add_node(num_cpus=2, resources={"CustomResource1": 2})
     cluster.add_node(num_cpus=2, resources={"CustomResource2": 2})
     ray.init(redis_address=cluster.redis_address)
+    resource1_plasma_socket_name = node.plasma_store_socket_name
 
     @ray.remote(resources={"CustomResource1": 1})
     class ResourceActor1(object):
@@ -2009,17 +2010,15 @@ def test_custom_label_placement(ray_start_cluster):
         def get_location(self):
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
-
     # Create some actors.
     actors1 = [ResourceActor1.remote() for _ in range(2)]
     actors2 = [ResourceActor2.remote() for _ in range(2)]
     locations1 = ray.get([a.get_location.remote() for a in actors1])
     locations2 = ray.get([a.get_location.remote() for a in actors2])
     for location in locations1:
-        assert location == local_plasma
+        assert location == resource1_plasma_socket_name
     for location in locations2:
-        assert location != local_plasma
+        assert location != resource1_plasma_socket_name
 
 
 def test_creating_more_actors_than_resources(shutdown_only):

@@ -317,6 +317,42 @@ Status Set<ID, Data>::Remove(const DriverID &driver_id, const ID &id,
 }
 
 template <typename ID, typename Data>
+Status Set<ID, Data>::Replace(const DriverID &driver_id, const ID &id,
+                              std::shared_ptr<DataT> &old_data,
+                              std::shared_ptr<DataT> &new_data, const WriteCallback &done,
+                              const FailureCallback &failure) {
+  num_removes_++;
+  auto callback = [this, id, new_data, done, failure](const std::string &data) {
+    if (data.length() == 0 && done != nullptr) {
+      (done)(client_, id, *new_data);
+    } else if (data.length() != 0 && failure != nullptr) {
+      (failure)(client_, id);
+    }
+    return true;
+  };
+
+  flatbuffers::FlatBufferBuilder fbb_old;
+  fbb_old.ForceDefaults(true);
+  fbb_old.Finish(Data::Pack(fbb_old, old_data.get()));
+  std::string old_data_string(reinterpret_cast<char *>(fbb_old.GetBufferPointer()),
+                              fbb_old.GetSize());
+  flatbuffers::FlatBufferBuilder fbb_new;
+  fbb_new.ForceDefaults(true);
+  fbb_new.Finish(Data::Pack(fbb_new, new_data.get()));
+  std::string new_data_string(reinterpret_cast<char *>(fbb_new.GetBufferPointer()),
+                              fbb_new.GetSize());
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateSetReplaceEntryData(fbb, fbb.CreateString(old_data_string),
+                                           fbb.CreateString(new_data_string));
+  fbb.Finish(message);
+
+  return GetRedisContext(id)->RunAsync("RAY.SET_REPLACE", id, fbb.GetBufferPointer(),
+                                       fbb.GetSize(), prefix_, pubsub_channel_,
+                                       std::move(callback));
+  return Status::OK();
+}
+
+template <typename ID, typename Data>
 std::string Set<ID, Data>::DebugString() const {
   std::stringstream result;
   result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_
@@ -527,6 +563,7 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
 
   RAY_CHECK(local_client.client_id == local_client_.client_id);
   local_client_ = local_client;
+  local_client_.entry_type = EntryType::INSERTION;
 
   // Construct the data to add to the client table.
   auto data = std::make_shared<ClientTableDataT>(local_client_);
@@ -541,6 +578,7 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
     // Callback for a notification from the client table.
     auto notification_callback = [this](
         AsyncGcsClient *client, const UniqueID &log_key,
+        const GcsTableNotificationMode notification_mode,
         const std::vector<ClientTableDataT> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
       std::unordered_map<std::string, ClientTableDataT> connected_nodes;
@@ -557,12 +595,11 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
           }
           disconnected_nodes.emplace(notification.client_id, notification);
         }
-      }
-      for (const auto &pair : connected_nodes) {
-        HandleNotification(client, pair.second);
-      }
-      for (const auto &pair : disconnected_nodes) {
-        HandleNotification(client, pair.second);
+      // We only handle the message of APPEND_OR_ADD and ignore the deletion message.
+      //if (notification_mode == GcsTableNotificationMode::APPEND_OR_ADD) {
+      //  for (const auto &notification : notifications) {
+      //    HandleNotification(client, notification);
+      //  }
       }
     };
     // Callback to request notifications from the client table once we've
@@ -574,7 +611,7 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
     RAY_CHECK_OK(Subscribe(DriverID::nil(), client_id_, notification_callback,
                            subscription_callback));
   };
-  return Append(DriverID::nil(), client_log_key_, data, add_callback);
+  return Add(DriverID::nil(), client_log_key_, data, add_callback);
 }
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
@@ -582,23 +619,63 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   data->entry_type = EntryType::DELETION;
   auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
                                        const ClientTableDataT &data) {
+  //auto remove_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
+  //                                        const ClientTableDataT &data) {
     HandleConnected(client, data);
     RAY_CHECK_OK(CancelNotifications(DriverID::nil(), client_log_key_, id));
     if (callback != nullptr) {
       callback();
     }
   };
-  RAY_RETURN_NOT_OK(Append(DriverID::nil(), client_log_key_, data, add_callback));
+  auto failure_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
+    RAY_LOG(FATAL) << "This should not happen in ClientTable::Disconnect.";
+  };
+  // Change is_connected of this entry from true to false.
+  auto new_data = std::make_shared<ClientTableDataT>(*data);
+  data->entry_type = EntryType::DELETION;
+  RAY_CHECK_OK(Replace(DriverID::nil(), client_log_key_, data, new_data, nullptr,
+                       failure_callback));
   // We successfully added the deletion entry. Mark ourselves as disconnected.
   disconnected_ = true;
   return Status::OK();
 }
 
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
-  auto data = std::make_shared<ClientTableDataT>();
+  /*auto data = std::make_shared<ClientTableDataT>();
   data->client_id = dead_client_id.binary();
   data->entry_type = EntryType::DELETION;
-  return Append(DriverID::nil(), client_log_key_, data, nullptr);
+  return Append(DriverID::nil(), client_log_key_, data, nullptr);*/
+  if (client_id_ == dead_client_id) {
+    return Disconnect(nullptr);
+  } else {
+    auto lookup_callback = [this, dead_client_id](
+        AsyncGcsClient *client, const ClientID &id,
+        const std::vector<ClientTableDataT> &clients) {
+      std::shared_ptr<ClientTableDataT> data;
+      for (const auto &client_data : clients) {
+        if (client_data.client_id == dead_client_id.binary()) {
+          data = std::make_shared<ClientTableDataT>(client_data);
+          break;
+        }
+      }
+      if (data != nullptr) {
+        // Change is_connected of this entry from true to false.
+        auto failure_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
+          // To avoid race condition, say the monitor and the raylet both try to change
+          // the status, we just log an error message here.
+          RAY_LOG(ERROR) << "ClientTable::MarkDisconnected failed, "
+                         << "which may be caused by race condition.";
+        };
+        auto new_data = std::make_shared<ClientTableDataT>(*data);
+        data->entry_type = EntryType::DELETION;
+        RAY_CHECK_OK(Replace(DriverID::nil(), client_log_key_, data, new_data, nullptr,
+                             failure_callback));
+      } else {
+        RAY_LOG(WARNING) << "Trying to mark a raylet node that is not registered.";
+      }
+    };
+    return Lookup(lookup_callback);
+  }
 }
 
 void ClientTable::GetClient(const ClientID &client_id,
@@ -618,12 +695,12 @@ const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients
 
 Status ClientTable::Lookup(const Callback &lookup) {
   RAY_CHECK(lookup != nullptr);
-  return Log::Lookup(DriverID::nil(), client_log_key_, lookup);
+  return Set::Lookup(DriverID::nil(), client_log_key_, lookup);
 }
 
 std::string ClientTable::DebugString() const {
   std::stringstream result;
-  result << Log<ClientID, ClientTableData>::DebugString();
+  result << Set<ClientID, ClientTableData>::DebugString();
   result << ", cache size: " << client_cache_.size()
          << ", num removed: " << removed_clients_.size();
   return result.str();
@@ -676,6 +753,7 @@ template class Table<ClientID, HeartbeatTableData>;
 template class Table<ClientID, HeartbeatBatchTableData>;
 template class Log<DriverID, ErrorTableData>;
 template class Log<ClientID, ClientTableData>;
+template class Set<ClientID, ClientTableData>;
 template class Log<DriverID, DriverTableData>;
 template class Log<UniqueID, ProfileTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;

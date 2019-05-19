@@ -222,11 +222,12 @@ def test_object_transfer_retry(ray_start_cluster):
     object_store_memory = 10**8
     cluster.add_node(
         object_store_memory=object_store_memory, _internal_config=config)
+    # Make sure the driver is connecting to the head node.
+    ray.init(redis_address=cluster.redis_address)
     cluster.add_node(
         num_gpus=1,
         object_store_memory=object_store_memory,
         _internal_config=config)
-    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote(num_gpus=1)
     def f(size):

@@ -371,10 +371,16 @@ class SetInterface {
  public:
   using DataT = typename Data::NativeTableType;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
+  /// The callback to call when a Replace call returns missing entry reply.
+  using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
   virtual Status Add(const DriverID &driver_id, const ID &id,
                      std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
   virtual Status Remove(const DriverID &driver_id, const ID &id,
                         std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
+  virtual Status Replace(const DriverID &driver_id, const ID &id,
+                         std::shared_ptr<DataT> &old_data,
+                         std::shared_ptr<DataT> &new_data, const WriteCallback &done,
+                         const FailureCallback &failure) = 0;
   virtual ~SetInterface(){};
 };
 
@@ -397,6 +403,7 @@ class Set : private Log<ID, Data>,
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
   using NotificationCallback = typename Log<ID, Data>::NotificationCallback;
   using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
+  using FailureCallback = typename SetInterface<ID, Data>::FailureCallback;
 
   Set(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
       : Log<ID, Data>(contexts, client) {}
@@ -427,6 +434,20 @@ class Set : private Log<ID, Data>,
   /// \return Status
   Status Remove(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
                 const WriteCallback &done);
+
+  /// Replace an entry with the new data.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is removed from the GCS.
+  /// \param old_data The old data to remove from the set. The new data will not be
+  /// added if this data is not in the set.
+  /// \param new_data The new data to add to the set.
+  /// \param done Callback that is called once the data has been written to the
+  /// GCS.
+  /// \return Status
+  Status Replace(const DriverID &driver_id, const ID &id,
+                 std::shared_ptr<DataT> &old_data, std::shared_ptr<DataT> &new_data,
+                 const WriteCallback &done, const FailureCallback &failure);
 
   Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
                    const NotificationCallback &subscribe,
@@ -677,14 +698,14 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 /// it should append an entry to the log indicating that it is dead. A client
 /// that is marked as dead should never again be marked as alive; if it needs
 /// to reconnect, it must connect with a different ClientID.
-class ClientTable : public Log<ClientID, ClientTableData> {
+class ClientTable : private Set<ClientID, ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
       AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
   using DisconnectCallback = std::function<void(void)>;
   ClientTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
               AsyncGcsClient *client, const ClientID &client_id)
-      : Log(contexts, client),
+      : Set(contexts, client),
         // We set the client log's key equal to nil so that all instances of
         // ClientTable have the same key.
         client_log_key_(),

@@ -79,24 +79,16 @@ def ray_start_10_cpus(request):
 
 
 @contextmanager
-def _ray_start_cluster(**kwargs):
+def _ray_start_cluster(num_nodes=0, do_init=False, **kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
-    num_nodes = 0
-    do_init = False
-    # num_nodes & do_init are not arguments for ray.init, so delete them.
-    if "num_nodes" in kwargs:
-        num_nodes = kwargs["num_nodes"]
-        del kwargs["num_nodes"]
-    if "do_init" in kwargs:
-        do_init = kwargs["do_init"]
-        del kwargs["do_init"]
-    elif num_nodes > 0:
+    if num_nodes > 0:
         do_init = True
     init_kwargs.update(kwargs)
     cluster = Cluster()
     remote_nodes = []
-    for _ in range(num_nodes):
+    for i in range(num_nodes):
         remote_nodes.append(cluster.add_node(**init_kwargs))
+        # Make sure the driver is conencting to the head node.
     if do_init:
         ray.init(redis_address=cluster.redis_address)
     yield cluster
@@ -116,14 +108,14 @@ def ray_start_cluster(request):
 @pytest.fixture
 def ray_start_cluster_head(request):
     param = getattr(request, "param", {})
-    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+    with _ray_start_cluster(num_nodes=1, do_init=True, **param) as res:
         yield res
 
 
 @pytest.fixture
 def ray_start_cluster_2_nodes(request):
     param = getattr(request, "param", {})
-    with _ray_start_cluster(do_init=True, num_nodes=2, **param) as res:
+    with _ray_start_cluster(num_nodes=2, do_init=True, **param) as res:
         yield res
 
 
@@ -161,22 +153,3 @@ def call_ray_start(request):
     ray.shutdown()
     # Kill the Ray cluster.
     subprocess.Popen(["ray", "stop"]).wait()
-
-
-@pytest.fixture()
-def two_node_cluster():
-    internal_config = json.dumps({
-        "initial_reconstruction_timeout_milliseconds": 200,
-        "num_heartbeats_timeout": 10,
-    })
-    cluster = ray.tests.cluster_utils.Cluster(
-        head_node_args={"_internal_config": internal_config})
-    for _ in range(2):
-        remote_node = cluster.add_node(
-            num_cpus=1, _internal_config=internal_config)
-    ray.init(redis_address=cluster.redis_address)
-    yield cluster, remote_node
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()

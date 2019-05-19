@@ -274,7 +274,7 @@ def test_forget(ray_start_regular):
     assert len(result_list) == count
 
 
-def test_signal_on_node_failure(two_node_cluster):
+def test_signal_on_node_failure(ray_start_cluster_2_nodes):
     """Test actor checkpointing on a remote node."""
 
     class ActorSignal(object):
@@ -285,7 +285,8 @@ def test_signal_on_node_failure(two_node_cluster):
             return ray.worker.global_worker.plasma_client.store_socket_name
 
     # Place the actor on the remote node.
-    cluster, remote_node = two_node_cluster
+    cluster = ray_start_cluster_2_nodes
+    remote_node = list(cluster.worker_nodes)[0]
     actor_cls = ray.remote(max_reconstructions=0)(ActorSignal)
     actor = actor_cls.remote()
     # Try until we put an actor on a different node.

@@ -190,9 +190,9 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
 /// \param mode the update mode, such as append or remove.
 /// \param data The appended/removed data.
 /// \return OK if there is no error during a publish.
-int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
-                       RedisModuleString *id, GcsTableNotificationMode notification_mode,
-                       RedisModuleString *data) {
+Status PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
+                          RedisModuleString *id, GcsTableNotificationMode notification_mode,
+                          RedisModuleString *data) {
   // Serialize the notification to send.
   flatbuffers::FlatBufferBuilder fbb;
   auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
@@ -206,12 +206,11 @@ int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_st
   RedisModuleCallReply *reply = RedisModule_Call(ctx, "PUBLISH", "sb", pubsub_channel_str,
                                                  fbb.GetBufferPointer(), fbb.GetSize());
   if (reply == NULL) {
-    return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
+    return Status::RedisError("Empty reply during PUBLISH to all subscriber.");
   }
 
   std::string notification_key;
-  REPLY_AND_RETURN_IF_NOT_OK(
-      GetBroadcastKey(ctx, pubsub_channel_str, id, &notification_key));
+  RAY_RETURN_NOT_OK(GetBroadcastKey(ctx, pubsub_channel_str, id, &notification_key));
   // Publish the data to any clients who requested notifications on this key.
   auto it = notification_map.find(notification_key);
   if (it != notification_map.end()) {
@@ -224,11 +223,11 @@ int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_st
       RedisModuleCallReply *reply = RedisModule_Call(
           ctx, "PUBLISH", "sb", channel, fbb.GetBufferPointer(), fbb.GetSize());
       if (reply == NULL) {
-        return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
+        return Status::RedisError("Empty reply during PUBLISH");
       }
     }
   }
-  return RedisModule_ReplyWithSimpleString(ctx, "OK");
+  return Status::OK();
 }
 
 // RAY.TABLE_ADD:
@@ -253,23 +252,23 @@ int TableAdd_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   return REDISMODULE_OK;
 }
 
-int TableAdd_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+Status TableAdd_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   if (argc != 5) {
-    return RedisModule_WrongArity(ctx);
+    return Status::RedisError("Wrong arity in TableAdd_DoPublish.");
   }
   RedisModuleString *pubsub_channel_str = argv[2];
   RedisModuleString *id = argv[3];
   RedisModuleString *data = argv[4];
 
   TablePubsub pubsub_channel;
-  REPLY_AND_RETURN_IF_NOT_OK(ParseTablePubsub(&pubsub_channel, pubsub_channel_str));
+  RAY_RETURN_NOT_OK(ParseTablePubsub(&pubsub_channel, pubsub_channel_str));
 
   if (pubsub_channel != TablePubsub::NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the channel.
     return PublishTableUpdate(ctx, pubsub_channel_str, id,
                               GcsTableNotificationMode::APPEND_OR_ADD, data);
   } else {
-    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return Status::OK();
   }
 }
 
@@ -290,7 +289,8 @@ int TableAdd_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 /// \return The current value at the key, or OK if there is no value.
 int TableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   TableAdd_DoWrite(ctx, argv, argc, /*mutated_key_str=*/nullptr);
-  return TableAdd_DoPublish(ctx, argv, argc);
+  REPLY_AND_RETURN_IF_NOT_OK(TableAdd_DoPublish(ctx, argv, argc));
+  return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 #if RAY_USE_NEW_GCS
@@ -356,20 +356,21 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   }
 }
 
-int TableAppend_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int /*argc*/) {
+Status TableAppend_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv,
+                             int /*argc*/) {
   RedisModuleString *pubsub_channel_str = argv[2];
   RedisModuleString *id = argv[3];
   RedisModuleString *data = argv[4];
   // Publish a message on the requested pubsub channel if necessary.
   TablePubsub pubsub_channel;
-  REPLY_AND_RETURN_IF_NOT_OK(ParseTablePubsub(&pubsub_channel, pubsub_channel_str));
+  RAY_RETURN_NOT_OK(ParseTablePubsub(&pubsub_channel, pubsub_channel_str));
   if (pubsub_channel != TablePubsub::NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the
     // channel.
     return PublishTableUpdate(ctx, pubsub_channel_str, id,
                               GcsTableNotificationMode::APPEND_OR_ADD, data);
   } else {
-    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return Status::OK();
   }
 }
 
@@ -397,7 +398,8 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
       REDISMODULE_OK) {
     return REDISMODULE_ERR;
   }
-  return TableAppend_DoPublish(ctx, argv, argc);
+  REPLY_AND_RETURN_IF_NOT_OK(TableAppend_DoPublish(ctx, argv, argc));
+  return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 #if RAY_USE_NEW_GCS
@@ -409,13 +411,13 @@ int ChainTableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
 }
 #endif
 
-int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
+Status Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
   RedisModuleString *pubsub_channel_str = argv[2];
   RedisModuleString *id = argv[3];
   RedisModuleString *data = argv[4];
   // Publish a message on the requested pubsub channel if necessary.
   TablePubsub pubsub_channel;
-  REPLY_AND_RETURN_IF_NOT_OK(ParseTablePubsub(&pubsub_channel, pubsub_channel_str));
+  RAY_RETURN_NOT_OK(ParseTablePubsub(&pubsub_channel, pubsub_channel_str));
   if (pubsub_channel != TablePubsub::NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the
     // channel.
@@ -424,14 +426,14 @@ int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
                                      : GcsTableNotificationMode::REMOVE,
                               data);
   } else {
-    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return Status::OK();
   }
 }
 
-int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is_add,
-                bool *changed) {
+Status Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is_add,
+                   bool *changed) {
   if (argc != 5) {
-    return RedisModule_WrongArity(ctx);
+    return Status::RedisError("Wrong arity in Set_DoWrite.");
   }
 
   RedisModuleString *prefix_str = argv[1];
@@ -449,19 +451,19 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
     if (!is_add && *changed) {
       // try to delete the empty set.
       RedisModuleKey *key;
-      REPLY_AND_RETURN_IF_NOT_OK(
-          OpenPrefixedKey(&key, ctx, prefix_str, id, REDISMODULE_WRITE));
+      RAY_RETURN_NOT_OK(OpenPrefixedKey(&key, ctx, prefix_str, id, REDISMODULE_WRITE));
       auto size = RedisModule_ValueLength(key);
       if (size == 0) {
-        REPLY_AND_RETURN_IF_FALSE(RedisModule_DeleteKey(key) == REDISMODULE_OK,
-                                  "ERR Failed to delete empty set.");
+        if (RedisModule_DeleteKey(key) != REDISMODULE_OK) {
+          return Status::RedisError("ERR Failed to delete empty set.");
+        }
       }
     }
-    return REDISMODULE_OK;
+    return Status::OK();
   } else {
-    // the SADD/SREM command failed
-    RedisModule_ReplyWithCallReply(ctx, reply);
-    return REDISMODULE_ERR;
+    size_t reply_size = 0;
+    const char *reply_pointer = RedisModule_CallReplyStringPtr(reply, &reply_size);
+    return Status::RedisError(std::string(reply_pointer, reply_size));
   }
 }
 
@@ -481,11 +483,9 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
 /// \return OK if the add succeeds, or an error message string if the add fails.
 int SetAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   bool changed;
-  if (Set_DoWrite(ctx, argv, argc, /*is_add=*/true, &changed) != REDISMODULE_OK) {
-    return REDISMODULE_ERR;
-  }
+  REPLY_AND_RETURN_IF_NOT_OK(Set_DoWrite(ctx, argv, argc, /*is_add=*/true, &changed));
   if (changed) {
-    return Set_DoPublish(ctx, argv, /*is_add=*/true);
+    REPLY_AND_RETURN_IF_NOT_OK(Set_DoPublish(ctx, argv, /*is_add=*/true));
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
@@ -507,13 +507,67 @@ int SetAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
 /// fails.
 int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   bool changed;
-  if (Set_DoWrite(ctx, argv, argc, /*is_add=*/false, &changed) != REDISMODULE_OK) {
-    return REDISMODULE_ERR;
-  }
+  REPLY_AND_RETURN_IF_NOT_OK(Set_DoWrite(ctx, argv, argc, /*is_add=*/false, &changed));
   if (changed) {
-    return Set_DoPublish(ctx, argv, /*is_add=*/false);
+    REPLY_AND_RETURN_IF_NOT_OK(Set_DoPublish(ctx, argv, /*is_add=*/false));
   } else {
     RAY_LOG(ERROR) << "The entry to remove doesn't exist.";
+  }
+  return RedisModule_ReplyWithSimpleString(ctx, "OK");
+}
+
+/// Replace an entry from the set stored at a key with another entry.
+/// It publishes two notifications about the update to all subscribers, if a pubsub
+/// channel is provided and the replace operation succeeds. If the target removing
+/// entry does not exist, this command returns a failure message, otherwise, OK.
+///
+/// This is called from a client with the command:
+//
+///    RAY.SET_REPLACE <table_prefix> <pubsub_channel> <id> <data>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for this
+/// key should be published to. When publishing to a specific client, the
+/// channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key to remove from.
+/// \param data The data contains the data to remove and data to add.
+/// \return OK if the remove succeeds, or failure message if the operation fails.
+int SetReplace_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+  // Copy the arguements .
+  RedisModuleString *data = argv[4];
+  std::vector<RedisModuleString *> new_argv(argv, argv + argc);
+  // Split the data into 2 parts.
+  size_t data_size = 0;
+  const uint8_t *data_string =
+      reinterpret_cast<const uint8_t *>(RedisModule_StringPtrLen(data, &data_size));
+  auto root = flatbuffers::GetRoot<SetReplaceEntryData>(data_string);
+  // Remove the old data.
+  auto old_data =
+      RedisModule_CreateString(ctx, root->old_data()->data(), root->old_data()->size());
+  new_argv[4] = old_data;
+  bool changed = false;
+  bool is_add = false;
+  REPLY_AND_RETURN_IF_NOT_OK(Set_DoWrite(ctx, new_argv.data(), argc, is_add, &changed));
+
+  if (changed) {
+    REPLY_AND_RETURN_IF_NOT_OK(Set_DoPublish(ctx, new_argv.data(), is_add));
+  } else {
+    static const char *replace_reply = "ERR trying to replace a none-existing entry";
+    return RedisModule_ReplyWithStringBuffer(ctx, replace_reply, strlen(replace_reply));
+  }
+
+  // Add the new data.
+  auto new_data =
+      RedisModule_CreateString(ctx, root->new_data()->data(), root->new_data()->size());
+  new_argv[4] = new_data;
+  is_add = true;
+  REPLY_AND_RETURN_IF_NOT_OK(Set_DoWrite(ctx, new_argv.data(), argc, is_add, &changed));
+
+  if (changed) {
+    REPLY_AND_RETURN_IF_NOT_OK(Set_DoPublish(ctx, new_argv.data(), is_add));
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
@@ -874,6 +928,7 @@ AUTO_MEMORY(TableAdd_RedisCommand);
 AUTO_MEMORY(TableAppend_RedisCommand);
 AUTO_MEMORY(SetAdd_RedisCommand);
 AUTO_MEMORY(SetRemove_RedisCommand);
+AUTO_MEMORY(SetReplace_RedisCommand);
 AUTO_MEMORY(TableLookup_RedisCommand);
 AUTO_MEMORY(TableRequestNotifications_RedisCommand);
 AUTO_MEMORY(TableDelete_RedisCommand);
@@ -913,6 +968,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   }
 
   if (RedisModule_CreateCommand(ctx, "ray.set_remove", SetRemove_RedisCommand,
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.set_replace", SetReplace_RedisCommand,
                                 "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }

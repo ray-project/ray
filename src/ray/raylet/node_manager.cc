@@ -384,8 +384,9 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   auto status = ConnectRemoteNodeManager(client_id, client_data.node_manager_address,
                                          client_data.node_manager_port);
   if (!status.ok()) {
-    // This is not a fatal error for raylet, but it should not happen.
-    // We need to broadcase this message.
+    // This is not a fatal error for raylet, it may happen in a race condition.
+    // For example, the target raylet node just disconnected after this node finished
+    // reading the information from GCS.
     std::string type = "raylet_connection_error";
     std::ostringstream error_message;
     error_message << "Failed to connect to ray node " << client_id

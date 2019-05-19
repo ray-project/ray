@@ -281,6 +281,13 @@ table ClientTableData {
   resources_total_capacity: [double];
 }
 
+table SetReplaceEntryData {
+  // The old packed data to remove.
+  old_data: string;
+  // The new packed data to add.
+  new_data: string;
+}
+
 table HeartbeatTableData {
   // Node manager client id
   client_id: string;
