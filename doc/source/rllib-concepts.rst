@@ -359,7 +359,7 @@ Defining a policy in PyTorch is quite similar to that for TensorFlow (and the pr
 
 You can find the full policy definition in `a3c_torch_policy.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/a3c/a3c_torch_policy.py>`__.
 
-In summary, the main differences between the PyTorch and TensorFlow policy builder functions is that the TF loss and stats functions are evaluated symbolically (when the policy is initialized), whereas for PyTorch these functions are called imperatively each time they are used.
+In summary, the main differences between the PyTorch and TensorFlow policy builder functions is that the TF loss and stats functions are built symbolically when the policy is initialized, whereas for PyTorch these functions are called imperatively each time they are used.
 
 Policy Evaluation
 -----------------
@@ -420,7 +420,7 @@ This is how the example in the previous section looks when written using a polic
 Trainers
 --------
 
-Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the policy evaluators and optimizer, and collection of training metrics. Trainers also implement the `Trainable API <https://ray.readthedocs.io/en/latest/tune-usage.html#training-api>`__ for easy experiment management.
+Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the `Trainable API <https://ray.readthedocs.io/en/latest/tune-usage.html#training-api>`__ for easy experiment management.
 
 Example of three equivalent ways of interacting with the PPO trainer:
 
