@@ -241,14 +241,17 @@ class ValueNetworkMixin(object):
                         "value_function() method.")
                 with tf.variable_scope("value_function"):
                     self.value_function = ModelCatalog.get_model({
-                        "obs": self._obs_input,
-                        "prev_actions": self._prev_action_input,
-                        "prev_rewards": self._prev_reward_input,
+                        "obs": self.get_placeholder(SampleBatch.CUR_OBS),
+                        "prev_actions": self.get_placeholder(
+                            SampleBatch.PREV_ACTIONS),
+                        "prev_rewards": self.get_placeholder(
+                            SampleBatch.PREV_REWARDS),
                         "is_training": self._get_is_training_placeholder(),
                     }, obs_space, action_space, 1, vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
         else:
-            self.value_function = tf.zeros(shape=tf.shape(self._obs_input)[:1])
+            self.value_function = tf.zeros(
+                shape=tf.shape(self.get_placeholder(SampleBatch.CUR_OBS))[:1])
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {
