@@ -30,6 +30,7 @@ if __name__ == "__main__":
 
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_RLLIB_AFFECTED = 0
+    RAY_CI_SGD_AFFECTED = 0
     RAY_CI_JAVA_AFFECTED = 0
     RAY_CI_PYTHON_AFFECTED = 0
     RAY_CI_LINUX_WHEELS_AFFECTED = 0
@@ -52,6 +53,10 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/rllib/"):
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
+            elif changed_file.startswith("python/experimental/sgd"):
+                RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/"):
@@ -84,6 +89,7 @@ if __name__ == "__main__":
     else:
         RAY_CI_TUNE_AFFECTED = 1
         RAY_CI_RLLIB_AFFECTED = 1
+        RAY_CI_SGD_AFFECTED = 1
         RAY_CI_JAVA_AFFECTED = 1
         RAY_CI_PYTHON_AFFECTED = 1
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -91,6 +97,7 @@ if __name__ == "__main__":
 
     print("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
     print("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
+    print("export RAY_CI_SGD_AFFECTED={}".format(RAY_CI_SGD_AFFECTED))
     print("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
     print("export RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
     print("export RAY_CI_LINUX_WHEELS_AFFECTED={}"

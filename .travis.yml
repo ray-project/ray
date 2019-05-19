@@ -173,6 +173,9 @@ script:
   - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_optimizers.py; fi
   - if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/rllib/tests/test_evaluators.py; fi
 
+  # ray distributed SGD tests
+  - if [ $RAY_CI_SGD_AFFECTED == "1" ]; then python -m pytest --durations=5 --timeout=300 python/ray/experimental/sgd/tests; fi
+
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi

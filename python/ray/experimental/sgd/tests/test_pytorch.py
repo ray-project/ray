@@ -3,6 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import platform
+import pytest
 import tempfile
 import time
 import torch
@@ -15,6 +17,10 @@ from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
 
 
+@pytest.mark.skipif(
+    platform.mac_ver()[0] != "",
+    reason="Doesn't work on macOS."
+)
 def test_train(ray_start_2_cpus):
     trainer = PyTorchTrainer(
         model_creator,
@@ -28,6 +34,10 @@ def test_train(ray_start_2_cpus):
     assert loss2 <= loss1
 
 
+@pytest.mark.skipif(
+    platform.mac_ver()[0] != "",
+    reason="Doesn't work on macOS."
+)
 def test_save_and_restore(ray_start_2_cpus):
     trainer1 = PyTorchTrainer(
         model_creator,
