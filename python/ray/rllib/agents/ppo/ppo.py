@@ -63,7 +63,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def make_optimizer(local_evaluator, remote_evaluators, config):
+def choose_policy_optimizer(local_evaluator, remote_evaluators, config):
     if config["simple_optimizer"]:
         return SyncSamplesOptimizer(
             local_evaluator,
@@ -159,7 +159,7 @@ PPOTrainer = build_trainer(
     name="PPOTrainer",
     default_config=DEFAULT_CONFIG,
     default_policy=PPOTFPolicy,
-    make_policy_optimizer=make_optimizer,
+    make_policy_optimizer=choose_policy_optimizer,
     validate_config=validate_config,
     after_optimizer_step=update_kl,
     before_train_step=warn_about_obs_filter,

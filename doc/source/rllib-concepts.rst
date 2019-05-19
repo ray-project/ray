@@ -131,11 +131,11 @@ Let's modify our policy loss to include rewards summed over time. To enable this
 
 The ``postprocess_advantages()`` function above uses calls RLlib's ``compute_advantages`` function to compute advantages for each timestep. If you re-run the trainer with this improved policy, you'll find that it quickly achieves the max reward of 200.
 
-You might be wondering how RLlib makes the advantages placeholder automatically available as ``batch_tensors[Postprocessing.ADVANTAGES]``. When building your policy, RLlib will create a "dummy" trajectory batch where all observations, actions, rewards, etc. are zeros. It then calls your ``postprocess_fn``, and generates TF placeholders based on the numpy shapes of the postprocessed batch. This allows placeholders to be dynamically generated in most scenarios.
+You might be wondering how RLlib makes the advantages placeholder automatically available as ``batch_tensors[Postprocessing.ADVANTAGES]``. When building your policy, RLlib will create a "dummy" trajectory batch where all observations, actions, rewards, etc. are zeros. It then calls your ``postprocess_fn``, and generates TF placeholders based on the numpy shapes of the postprocessed batch. RLlib tracks which placeholders that ``loss_fn`` and ``stats_fn`` access, and then feeds the corresponding sample data into those placeholders during loss optimization.
 
-**Advanced Example: Proximal Policy Optimization**
+**Example 1: Proximal Policy Optimization**
 
-In the above example you saw how to compose a simple policy gradient algorithm with RLlib. In this section, we'll dive into how PPO was built with RLlib and how you can modify it. First, check out the `PPO trainer definition <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/ppo/ppo.py>`__:
+In the above section you saw how to compose a simple policy gradient algorithm with RLlib. In this example, we'll dive into how PPO was built with RLlib and how you can modify it. First, check out the `PPO trainer definition <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/ppo/ppo.py>`__:
 
 .. code-block:: python
 
@@ -143,19 +143,19 @@ In the above example you saw how to compose a simple policy gradient algorithm w
         name="PPOTrainer",
         default_config=DEFAULT_CONFIG,
         default_policy=PPOTFPolicy,
-        make_policy_optimizer=make_optimizer,
+        make_policy_optimizer=choose_policy_optimizer,
         validate_config=validate_config,
         after_optimizer_step=update_kl,
         before_train_step=warn_about_obs_filter,
         after_train_result=warn_about_bad_reward_scales)
 
-Besides some boilerplate for defining the PPO configuration and some warnings, there are two important arguments to take note of here: ``make_policy_optimizer=make_optimizer``, and ``after_optimizer_step=update_kl``.
+Besides some boilerplate for defining the PPO configuration and some warnings, there are two important arguments to take note of here: ``make_policy_optimizer=choose_policy_optimizer``, and ``after_optimizer_step=update_kl``.
 
-The ``make_optimizer`` function chooses which `Policy Optimizer <#policy-optimization>`__ to use for distributed training. You can think of these policy optimizers as coordinating the distributed workflow needed to improve the policy. Depending on the trainer config, PPO can switch between a simple synchronous optimizer (the default), or a multi-GPU optimizer that implements minibatch SGD:
+The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#policy-optimization>`__ to use for distributed training. You can think of these policy optimizers as coordinating the distributed workflow needed to improve the policy. Depending on the trainer config, PPO can switch between a simple synchronous optimizer (the default), or a multi-GPU optimizer that implements minibatch SGD:
 
 .. code-block:: python
 
-    def make_optimizer(workers, config):
+    def choose_policy_optimizer(workers, config):
         if config["simple_optimizer"]:
             return SyncSamplesOptimizer(
                 workers,
@@ -281,13 +281,16 @@ The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://githu
 
 In PPO we run ``setup_mixins`` before the loss function is called (i.e., ``before_loss_init``), but other callbacks you can use include ``before_init`` and ``after_init``.
 
-Finally, we note that you do not have to use ``build_tf_policy`` to define a TensorFlow policy. You can alternatively subclass ``Policy``, ``TFPolicy``, or ``DynamicTFPolicy`` as convenient.
+**Example 2: Deep Q Networks**
 
+(todo)
+
+Finally, note that you do not have to use ``build_tf_policy`` to define a TensorFlow policy. You can alternatively subclass ``Policy``, ``TFPolicy``, or ``DynamicTFPolicy`` as convenient.
 
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a trainer given a Torch policy is exactly the same). Building on the TF example above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/a3c/a3c_torch_policy.py>`__ is defined:
+Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a trainer given a Torch policy is exactly the same). Building on the TF examples above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/a3c/a3c_torch_policy.py>`__ is defined:
 
 .. code-block:: python
 
