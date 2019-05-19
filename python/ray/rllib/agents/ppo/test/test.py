@@ -4,11 +4,13 @@ from __future__ import print_function
 
 import unittest
 import numpy as np
-import tensorflow as tf
 from numpy.testing import assert_allclose
 
 from ray.rllib.models.action_dist import Categorical
 from ray.rllib.agents.ppo.utils import flatten, concatenate
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 # TODO(ekl): move to rllib/models dir

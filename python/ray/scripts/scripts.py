@@ -529,8 +529,8 @@ def attach(cluster_config_file, start, tmux, cluster_name, new):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
+@click.argument("source", required=False, type=str)
+@click.argument("target", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
@@ -543,8 +543,8 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
+@click.argument("source", required=False, type=str)
+@click.argument("target", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
@@ -609,7 +609,10 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     target = os.path.join("~", os.path.basename(script))
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
-    cmd = " ".join(["python", target, args])
+    command_parts = ["python", target]
+    if args is not None:
+        command_parts += [args]
+    cmd = " ".join(command_parts)
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
                  cluster_name, port_forward)
 

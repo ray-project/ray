@@ -33,10 +33,15 @@ def try_import_tf():
         return None
 
     try:
-        import tensorflow as tf
+        import tensorflow.compat.v1 as tf
+        tf.disable_v2_behavior()
         return tf
     except ImportError:
-        return None
+        try:
+            import tensorflow as tf
+            return tf
+        except ImportError:
+            return None
 
 
 __all__ = [

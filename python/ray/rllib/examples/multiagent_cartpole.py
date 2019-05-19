@@ -16,14 +16,14 @@ import argparse
 import gym
 import random
 
-import tensorflow as tf
-import tensorflow.contrib.slim as slim
-
 import ray
 from ray import tune
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
 
@@ -43,12 +43,12 @@ class CustomModel1(Model):
                 tf.VariableScope(tf.AUTO_REUSE, "shared"),
                 reuse=tf.AUTO_REUSE,
                 auxiliary_name_scope=False):
-            last_layer = slim.fully_connected(
-                input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
-        last_layer = slim.fully_connected(
-            last_layer, 64, activation_fn=tf.nn.relu, scope="fc2")
-        output = slim.fully_connected(
-            last_layer, num_outputs, activation_fn=None, scope="fc_out")
+            last_layer = tf.layers.dense(
+                input_dict["obs"], 64, activation=tf.nn.relu, name="fc1")
+        last_layer = tf.layers.dense(
+            last_layer, 64, activation=tf.nn.relu, name="fc2")
+        output = tf.layers.dense(
+            last_layer, num_outputs, activation=None, name="fc_out")
         return output, last_layer
 
 
@@ -59,12 +59,12 @@ class CustomModel2(Model):
                 tf.VariableScope(tf.AUTO_REUSE, "shared"),
                 reuse=tf.AUTO_REUSE,
                 auxiliary_name_scope=False):
-            last_layer = slim.fully_connected(
-                input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
-        last_layer = slim.fully_connected(
-            last_layer, 64, activation_fn=tf.nn.relu, scope="fc2")
-        output = slim.fully_connected(
-            last_layer, num_outputs, activation_fn=None, scope="fc_out")
+            last_layer = tf.layers.dense(
+                input_dict["obs"], 64, activation=tf.nn.relu, name="fc1")
+        last_layer = tf.layers.dense(
+            last_layer, 64, activation=tf.nn.relu, name="fc2")
+        output = tf.layers.dense(
+            last_layer, num_outputs, activation=None, name="fc_out")
         return output, last_layer
 
 

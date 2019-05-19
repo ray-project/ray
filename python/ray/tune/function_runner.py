@@ -5,9 +5,11 @@ from __future__ import print_function
 import logging
 import sys
 import time
+import inspect
 import threading
 from six.moves import queue
 
+from ray.tune import track
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
 from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
@@ -244,6 +246,17 @@ class FunctionRunner(Trainable):
 
 
 def wrap_function(train_func):
+
+    use_track = False
+    try:
+        func_args = inspect.getargspec(train_func).args
+        use_track = ("reporter" not in func_args and len(func_args) == 1)
+        if use_track:
+            logger.info("tune.track signature detected.")
+    except Exception:
+        logger.info(
+            "Function inspection failed - assuming reporter signature.")
+
     class WrappedFunc(FunctionRunner):
         def _trainable_func(self, config, reporter):
             output = train_func(config, reporter)
@@ -253,4 +266,12 @@ def wrap_function(train_func):
             reporter(**{RESULT_DUPLICATE: True})
             return output
 
-    return WrappedFunc
+    class WrappedTrackFunc(FunctionRunner):
+        def _trainable_func(self, config, reporter):
+            track.init(_tune_reporter=reporter)
+            output = train_func(config)
+            reporter(**{RESULT_DUPLICATE: True})
+            track.shutdown()
+            return output
+
+    return WrappedTrackFunc if use_track else WrappedFunc

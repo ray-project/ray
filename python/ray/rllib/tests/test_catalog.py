@@ -1,6 +1,5 @@
 import gym
 import numpy as np
-import tensorflow as tf
 import unittest
 from gym.spaces import Box, Discrete, Tuple
 
@@ -12,6 +11,9 @@ from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
                                             Preprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class CustomPreprocessor(Preprocessor):

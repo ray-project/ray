@@ -7,109 +7,84 @@ import torch.nn.functional as F
 from torch import nn
 
 import ray
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
-from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.sample_batch import SampleBatch
-from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
-from ray.rllib.utils.annotations import override
+from ray.rllib.evaluation.torch_policy_template import build_torch_policy
 
 
-class A3CLoss(nn.Module):
-    def __init__(self, dist_class, vf_loss_coeff=0.5, entropy_coeff=0.01):
-        nn.Module.__init__(self)
-        self.dist_class = dist_class
-        self.vf_loss_coeff = vf_loss_coeff
-        self.entropy_coeff = entropy_coeff
-
-    def forward(self, policy_model, observations, actions, advantages,
-                value_targets):
-        logits, _, values, _ = policy_model({
-            SampleBatch.CUR_OBS: observations
-        }, [])
-        dist = self.dist_class(logits)
-        log_probs = dist.logp(actions)
-        self.entropy = dist.entropy().mean()
-        self.pi_err = -advantages.dot(log_probs.reshape(-1))
-        self.value_err = F.mse_loss(values.reshape(-1), value_targets)
-        overall_err = sum([
-            self.pi_err,
-            self.vf_loss_coeff * self.value_err,
-            -self.entropy_coeff * self.entropy,
-        ])
-
-        return overall_err
+def actor_critic_loss(policy, batch_tensors):
+    logits, _, values, _ = policy.model({
+        SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
+    }, [])
+    dist = policy.dist_class(logits)
+    log_probs = dist.logp(batch_tensors[SampleBatch.ACTIONS])
+    policy.entropy = dist.entropy().mean()
+    policy.pi_err = -batch_tensors[Postprocessing.ADVANTAGES].dot(
+        log_probs.reshape(-1))
+    policy.value_err = F.mse_loss(
+        values.reshape(-1), batch_tensors[Postprocessing.VALUE_TARGETS])
+    overall_err = sum([
+        policy.pi_err,
+        policy.config["vf_loss_coeff"] * policy.value_err,
+        -policy.config["entropy_coeff"] * policy.entropy,
+    ])
+    return overall_err
 
 
-class A3CPostprocessing(object):
-    """Adds the VF preds and advantages fields to the trajectory."""
-
-    @override(TorchPolicyGraph)
-    def extra_action_out(self, model_out):
-        return {SampleBatch.VF_PREDS: model_out[2].cpu().numpy()}
-
-    @override(PolicyGraph)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        completed = sample_batch[SampleBatch.DONES][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            last_r = self._value(sample_batch[SampleBatch.NEXT_OBS][-1])
-        return compute_advantages(sample_batch, last_r, self.config["gamma"],
-                                  self.config["lambda"])
+def loss_and_entropy_stats(policy, batch_tensors):
+    return {
+        "policy_entropy": policy.entropy.item(),
+        "policy_loss": policy.pi_err.item(),
+        "vf_loss": policy.value_err.item(),
+    }
 
 
-class A3CTorchPolicyGraph(A3CPostprocessing, TorchPolicyGraph):
-    """A simple, non-recurrent PyTorch policy example."""
+def add_advantages(policy,
+                   sample_batch,
+                   other_agent_batches=None,
+                   episode=None):
+    completed = sample_batch[SampleBatch.DONES][-1]
+    if completed:
+        last_r = 0.0
+    else:
+        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1])
+    return compute_advantages(sample_batch, last_r, policy.config["gamma"],
+                              policy.config["lambda"])
 
-    def __init__(self, obs_space, action_space, config):
-        config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
-        self.config = config
-        dist_class, self.logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"], torch=True)
-        model = ModelCatalog.get_torch_model(obs_space, self.logit_dim,
-                                             self.config["model"])
-        loss = A3CLoss(dist_class, self.config["vf_loss_coeff"],
-                       self.config["entropy_coeff"])
-        TorchPolicyGraph.__init__(
-            self,
-            obs_space,
-            action_space,
-            model,
-            loss,
-            loss_inputs=[
-                SampleBatch.CUR_OBS, SampleBatch.ACTIONS,
-                Postprocessing.ADVANTAGES, Postprocessing.VALUE_TARGETS
-            ],
-            action_distribution_cls=dist_class)
 
-    @override(TorchPolicyGraph)
-    def optimizer(self):
-        return torch.optim.Adam(self._model.parameters(), lr=self.config["lr"])
+def model_value_predictions(policy, model_out):
+    return {SampleBatch.VF_PREDS: model_out[2].cpu().numpy()}
 
-    @override(TorchPolicyGraph)
-    def extra_grad_process(self):
-        info = {}
-        if self.config["grad_clip"]:
-            total_norm = nn.utils.clip_grad_norm_(self._model.parameters(),
-                                                  self.config["grad_clip"])
-            info["grad_gnorm"] = total_norm
-        return info
 
-    @override(TorchPolicyGraph)
-    def extra_grad_info(self):
-        return {
-            "policy_entropy": self._loss.entropy.item(),
-            "policy_loss": self._loss.pi_err.item(),
-            "vf_loss": self._loss.value_err.item()
-        }
+def apply_grad_clipping(policy):
+    info = {}
+    if policy.config["grad_clip"]:
+        total_norm = nn.utils.clip_grad_norm_(policy.model.parameters(),
+                                              policy.config["grad_clip"])
+        info["grad_gnorm"] = total_norm
+    return info
 
+
+def torch_optimizer(policy, config):
+    return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
+
+
+class ValueNetworkMixin(object):
     def _value(self, obs):
         with self.lock:
             obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
-            _, _, vf, _ = self._model({"obs": obs}, [])
+            _, _, vf, _ = self.model({"obs": obs}, [])
             return vf.detach().cpu().numpy().squeeze()
+
+
+A3CTorchPolicy = build_torch_policy(
+    name="A3CTorchPolicy",
+    get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
+    loss_fn=actor_critic_loss,
+    stats_fn=loss_and_entropy_stats,
+    postprocess_fn=add_advantages,
+    extra_action_out_fn=model_value_predictions,
+    extra_grad_process_fn=apply_grad_clipping,
+    optimizer_fn=torch_optimizer,
+    mixins=[ValueNetworkMixin])

@@ -76,13 +76,13 @@ public class GcsClient {
         NodeInfo nodeInfo = new NodeInfo(
             clientId, data.nodeManagerAddress(), true, resources);
         clients.put(clientId, nodeInfo);
-      } else if (data.entryType() == EntryType.RES_CREATEUPDATE){
+      } else if (data.entryType() == EntryType.RES_CREATEUPDATE) {
         Preconditions.checkState(clients.containsKey(clientId));
         NodeInfo nodeInfo = clients.get(clientId);
         for (int i = 0; i < data.resourcesTotalLabelLength(); i++) {
           nodeInfo.resources.put(data.resourcesTotalLabel(i), data.resourcesTotalCapacity(i));
         }
-      } else if (data.entryType() == EntryType.RES_DELETE){
+      } else if (data.entryType() == EntryType.RES_DELETE) {
         Preconditions.checkState(clients.containsKey(clientId));
         NodeInfo nodeInfo = clients.get(clientId);
         for (int i = 0; i < data.resourcesTotalLabelLength(); i++) {

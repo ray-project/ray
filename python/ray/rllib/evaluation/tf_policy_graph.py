@@ -112,46 +112,20 @@ class TFPolicyGraph(PolicyGraph):
         self._prev_action_input = prev_action_input
         self._prev_reward_input = prev_reward_input
         self._sampler = action_sampler
-        self._loss_inputs = loss_inputs
-        self._loss_input_dict = dict(self._loss_inputs)
         self._is_training = self._get_is_training_placeholder()
         self._action_prob = action_prob
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
-        for i, ph in enumerate(self._state_inputs):
-            self._loss_input_dict["state_in_{}".format(i)] = ph
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
         self._batch_divisibility_req = batch_divisibility_req
+        self._update_ops = update_ops
+        self._stats_fetches = {}
 
-        if self.model:
-            self._loss = self.model.custom_loss(loss, self._loss_input_dict)
-            self._stats_fetches = {"model": self.model.custom_stats()}
+        if loss is not None:
+            self._initialize_loss(loss, loss_inputs)
         else:
-            self._loss = loss
-            self._stats_fetches = {}
-
-        self._optimizer = self.optimizer()
-        self._grads_and_vars = [
-            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
-            if g is not None
-        ]
-        self._grads = [g for (g, v) in self._grads_and_vars]
-        self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-            self._loss, self._sess)
-
-        # gather update ops for any batch norm layers
-        if update_ops:
-            self._update_ops = update_ops
-        else:
-            self._update_ops = tf.get_collection(
-                tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
-        if self._update_ops:
-            logger.debug("Update ops to run on apply gradient: {}".format(
-                self._update_ops))
-        with tf.control_dependencies(self._update_ops):
-            self._apply_op = self.build_apply_op(self._optimizer,
-                                                 self._grads_and_vars)
+            self._loss = None
 
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(
@@ -166,8 +140,44 @@ class TFPolicyGraph(PolicyGraph):
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
 
-        logger.debug("Created {} with loss inputs: {}".format(
-            self, self._loss_input_dict))
+    def _initialize_loss(self, loss, loss_inputs):
+        self._loss_inputs = loss_inputs
+        self._loss_input_dict = dict(self._loss_inputs)
+        for i, ph in enumerate(self._state_inputs):
+            self._loss_input_dict["state_in_{}".format(i)] = ph
+
+        if self.model:
+            self._loss = self.model.custom_loss(loss, self._loss_input_dict)
+            self._stats_fetches.update({"model": self.model.custom_stats()})
+        else:
+            self._loss = loss
+
+        self._optimizer = self.optimizer()
+        self._grads_and_vars = [
+            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
+            if g is not None
+        ]
+        self._grads = [g for (g, v) in self._grads_and_vars]
+        self._variables = ray.experimental.tf_utils.TensorFlowVariables(
+            self._loss, self._sess)
+
+        # gather update ops for any batch norm layers
+        if not self._update_ops:
+            self._update_ops = tf.get_collection(
+                tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
+        if self._update_ops:
+            logger.debug("Update ops to run on apply gradient: {}".format(
+                self._update_ops))
+        with tf.control_dependencies(self._update_ops):
+            self._apply_op = self.build_apply_op(self._optimizer,
+                                                 self._grads_and_vars)
+
+        if log_once("loss_used"):
+            logger.debug(
+                "These tensors were used in the loss_fn:\n\n{}\n".format(
+                    summarize(self._loss_input_dict)))
+
+        self._sess.run(tf.global_variables_initializer())
 
     @override(PolicyGraph)
     def compute_actions(self,
@@ -186,18 +196,21 @@ class TFPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def compute_gradients(self, postprocessed_batch):
+        assert self._loss is not None, "Loss not initialized"
         builder = TFRunBuilder(self._sess, "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
 
     @override(PolicyGraph)
     def apply_gradients(self, gradients):
+        assert self._loss is not None, "Loss not initialized"
         builder = TFRunBuilder(self._sess, "apply_gradients")
         fetches = self._build_apply_gradients(builder, gradients)
         builder.get(fetches)
 
     @override(PolicyGraph)
     def learn_on_batch(self, postprocessed_batch):
+        assert self._loss is not None, "Loss not initialized"
         builder = TFRunBuilder(self._sess, "learn_on_batch")
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         return builder.get(fetches)
@@ -271,7 +284,10 @@ class TFPolicyGraph(PolicyGraph):
     @DeveloperAPI
     def optimizer(self):
         """TF optimizer to use for policy optimization."""
-        return tf.train.AdamOptimizer()
+        if hasattr(self, "config"):
+            return tf.train.AdamOptimizer(self.config["lr"])
+        else:
+            return tf.train.AdamOptimizer()
 
     @DeveloperAPI
     def gradients(self, optimizer, loss):

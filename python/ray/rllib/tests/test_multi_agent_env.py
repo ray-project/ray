@@ -8,7 +8,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
+from ray.rllib.agents.pg.pg_policy_graph import PGTFPolicy
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
                                   AsyncGradientsOptimizer)
@@ -470,7 +470,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch["state_out_0"][1], h)
 
     def testReturningModelBasedRolloutsData(self):
-        class ModelBasedPolicyGraph(PGPolicyGraph):
+        class ModelBasedPolicyGraph(PGTFPolicy):
             def compute_actions(self,
                                 obs_batch,
                                 state_batches,
@@ -584,7 +584,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             }
         else:
             policies = {
-                "p1": (PGPolicyGraph, obs_space, act_space, {}),
+                "p1": (PGTFPolicy, obs_space, act_space, {}),
                 "p2": (DQNPolicyGraph, obs_space, act_space, dqn_config),
             }
         ev = PolicyEvaluator(
@@ -640,7 +640,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = env.observation_space
         policies = {}
         for i in range(20):
-            policies["pg_{}".format(i)] = (PGPolicyGraph, obs_space, act_space,
+            policies["pg_{}".format(i)] = (PGTFPolicy, obs_space, act_space,
                                            {})
         policy_ids = list(policies.keys())
         ev = PolicyEvaluator(

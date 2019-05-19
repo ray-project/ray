@@ -15,7 +15,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
+from ray.rllib.agents.pg.pg_policy_graph import PGTFPolicy
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader
 from ray.rllib.offline.json_writer import _to_json
@@ -159,7 +159,7 @@ class AgentIOTest(unittest.TestCase):
         def gen_policy():
             obs_space = single_env.observation_space
             act_space = single_env.action_space
-            return (PGPolicyGraph, obs_space, act_space, {})
+            return (PGTFPolicy, obs_space, act_space, {})
 
         pg = PGTrainer(
             env="multi_cartpole",

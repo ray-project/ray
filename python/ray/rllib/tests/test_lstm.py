@@ -6,8 +6,6 @@ import gym
 import numpy as np
 import pickle
 import unittest
-import tensorflow as tf
-import tensorflow.contrib.rnn as rnn
 
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
@@ -16,6 +14,9 @@ from ray.rllib.models.lstm import add_time_dimension, chop_into_sequences
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
 from ray.tune.registry import register_env
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class LSTMUtilsTest(unittest.TestCase):
@@ -104,7 +105,7 @@ class RNNSpyModel(Model):
         last_layer = add_time_dimension(features, self.seq_lens)
 
         # Setup the LSTM cell
-        lstm = rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
+        lstm = tf.nn.rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
         self.state_init = [
             np.zeros(lstm.state_size.c, np.float32),
             np.zeros(lstm.state_size.h, np.float32)
@@ -121,7 +122,7 @@ class RNNSpyModel(Model):
         self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
-        state_in = rnn.LSTMStateTuple(c_in, h_in)
+        state_in = tf.nn.rnn_cell.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
             lstm,
             last_layer,
