@@ -140,6 +140,14 @@ class TFPolicyGraph(PolicyGraph):
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
 
+    def get_placeholder(self, name):
+        """Returns the given loss input placeholder by name.
+
+        These are the same placeholders passed in as the loss_inputs arg.
+        """
+
+        return self._loss_input_dict[name]
+
     def _initialize_loss(self, loss, loss_inputs):
         self._loss_inputs = loss_inputs
         self._loss_input_dict = dict(self._loss_inputs)
@@ -173,7 +181,7 @@ class TFPolicyGraph(PolicyGraph):
                                                  self._grads_and_vars)
 
         if log_once("loss_used"):
-            logger.debug(
+            logger.info(
                 "These tensors were used in the loss_fn:\n\n{}\n".format(
                     summarize(self._loss_input_dict)))
 

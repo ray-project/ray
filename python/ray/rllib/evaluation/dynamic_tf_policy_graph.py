@@ -37,6 +37,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                  config,
                  loss_fn,
                  stats_fn=None,
+                 update_ops_fn=None,
                  grad_stats_fn=None,
                  before_loss_init=None,
                  make_action_sampler=None,
@@ -54,6 +55,8 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 TF fetches given the policy graph and batch input tensors
             grad_stats_fn (func): optional function that returns a dict of
                 TF fetches given the policy graph and loss gradient tensors
+            update_ops_fn (func): optional function that returns a list
+                overriding the update ops to run when applying gradients
             before_loss_init (func): optional function to run prior to loss
                 init that takes the same arguments as __init__
             make_action_sampler (func): optional function that returns a
@@ -70,6 +73,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn
         self._grad_stats_fn = grad_stats_fn
+        self._update_ops_fn = update_ops_fn
 
         # Setup standard placeholders
         if existing_inputs is not None:
@@ -85,12 +89,12 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             prev_rewards = tf.placeholder(
                 tf.float32, [None], name="prev_reward")
 
-        input_dict = {
-            "obs": obs,
-            "prev_actions": prev_actions,
-            "prev_rewards": prev_rewards,
+        self.input_dict = UsageTrackingDict({
+            SampleBatch.CUR_OBS: obs,
+            SampleBatch.PREV_ACTIONS: prev_actions,
+            SampleBatch.PREV_REWARDS: prev_rewards,
             "is_training": self._get_is_training_placeholder(),
-        }
+        })
 
         # Create the model network and action outputs
         if make_action_sampler:
@@ -100,7 +104,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             self.dist_class = None
             self.action_dist = None
             action_sampler, action_prob = make_action_sampler(
-                self, input_dict, obs_space, action_space, config)
+                self, self.input_dict, obs_space, action_space, config)
         else:
             self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
@@ -117,7 +121,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 existing_state_in = []
                 existing_seq_lens = None
             self.model = ModelCatalog.get_model(
-                input_dict,
+                self.input_dict,
                 obs_space,
                 action_space,
                 logit_dim,
@@ -190,10 +194,8 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             self.action_space,
             self.config,
             existing_inputs=input_dict)
-        loss = instance._loss_fn(instance, input_dict)
-        if instance._stats_fn:
-            instance._stats_fetches.update(
-                instance._stats_fn(instance, input_dict))
+
+        loss = instance._do_loss_init(input_dict)
         TFPolicyGraph._initialize_loss(
             instance, loss, [(k, existing_inputs[i])
                              for i, (k, _) in enumerate(self._loss_inputs)])
@@ -244,10 +246,14 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             SampleBatch.CUR_OBS: self._obs_input,
         })
         loss_inputs = [
-            (SampleBatch.PREV_ACTIONS, self._prev_action_input),
-            (SampleBatch.PREV_REWARDS, self._prev_reward_input),
             (SampleBatch.CUR_OBS, self._obs_input),
         ]
+        if SampleBatch.PREV_ACTIONS in self.input_dict.accessed_keys:
+            loss_inputs.append((SampleBatch.PREV_ACTIONS,
+                                self._prev_action_input))
+        if SampleBatch.PREV_REWARDS in self.input_dict.accessed_keys:
+            loss_inputs.append((SampleBatch.PREV_REWARDS,
+                                self._prev_reward_input))
 
         for k, v in postprocessed_batch.items():
             if k in batch_tensors:
@@ -264,12 +270,18 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 "Initializing loss function with dummy input:\n\n{}\n".format(
                     summarize(batch_tensors)))
 
-        loss = self._loss_fn(self, batch_tensors)
-        if self._stats_fn:
-            self._stats_fetches.update(self._stats_fn(self, batch_tensors))
+        loss = self._do_loss_init(batch_tensors)
         for k in sorted(batch_tensors.accessed_keys):
             loss_inputs.append((k, batch_tensors[k]))
         TFPolicyGraph._initialize_loss(self, loss, loss_inputs)
         if self._grad_stats_fn:
             self._stats_fetches.update(self._grad_stats_fn(self, self._grads))
         self._sess.run(tf.global_variables_initializer())
+
+    def _do_loss_init(self, batch_tensors):
+        loss = self._loss_fn(self, batch_tensors)
+        if self._stats_fn:
+            self._stats_fetches.update(self._stats_fn(self, batch_tensors))
+        if self._update_ops_fn:
+            self._update_ops = self._update_ops_fn(self)
+        return loss

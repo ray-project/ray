@@ -252,9 +252,9 @@ class ValueNetworkMixin(object):
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {
-            self._obs_input: [ob],
-            self._prev_action_input: [prev_action],
-            self._prev_reward_input: [prev_reward],
+            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
+            self.get_placeholder(SampleBatch.PREV_ACTIONS): [prev_action],
+            self.get_placeholder(SampleBatch.PREV_REWARDS): [prev_reward],
             self.model.seq_lens: [1]
         }
         assert len(args) == len(self.model.state_in), \

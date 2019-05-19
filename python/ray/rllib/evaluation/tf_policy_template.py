@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.evaluation.dynamic_tf_policy_graph import DynamicTFPolicyGraph
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -18,12 +19,15 @@ def build_tf_policy(name,
                     postprocess_fn=None,
                     optimizer_fn=None,
                     gradients_fn=None,
+                    extra_action_feed_fn=None,
+                    extra_learn_fetches_fn=None,
                     before_init=None,
                     before_loss_init=None,
                     after_init=None,
                     make_action_sampler=None,
                     mixins=None,
-                    get_batch_divisibility_req=None):
+                    get_batch_divisibility_req=None,
+                    update_ops_fn=None):
     """Helper function for creating a dynamic tf policy at runtime.
 
     Arguments:
@@ -45,6 +49,10 @@ def build_tf_policy(name,
         gradients_fn (func): optional function that returns a list of gradients
             given a tf optimizer and loss tensor. If not specified, this
             defaults to optimizer.compute_gradients(loss)
+        extra_action_feed_fn (func): optional function that returns a feed dict
+            to also feed to TF when computing actions
+        extra_learn_fetches_fn (func): optional function that returns a dict of
+            extra values to fetch and return when learning on a batch
         before_init (func): optional function to run at the beginning of
             policy init that takes the same arguments as the policy constructor
         before_loss_init (func): optional function to run prior to loss
@@ -60,6 +68,8 @@ def build_tf_policy(name,
             precedence than the DynamicTFPolicyGraph class
         get_batch_divisibility_req (func): optional function that returns
             the divisibility requirement for sample batches
+        update_ops_fn (func): optional function that returns a list overriding
+            the update ops to run when applying gradients
 
     Returns:
         a DynamicTFPolicyGraph instance that uses the specified args
@@ -105,7 +115,9 @@ def build_tf_policy(name,
                 loss_fn,
                 stats_fn=stats_fn,
                 grad_stats_fn=grad_stats_fn,
+                update_ops_fn=update_ops_fn,
                 before_loss_init=before_loss_init_wrapper,
+                make_action_sampler=make_action_sampler,
                 existing_inputs=existing_inputs)
 
             if after_init:
@@ -134,6 +146,23 @@ def build_tf_policy(name,
                 return gradients_fn(self, optimizer, loss)
             else:
                 return TFPolicyGraph.gradients(self, optimizer, loss)
+
+        @override(TFPolicyGraph)
+        def extra_compute_grad_fetches(self):
+            if extra_learn_fetches_fn:
+                # auto-add empty learner stats dict if needed
+                return dict({
+                    LEARNER_STATS_KEY: {}
+                }, **extra_learn_fetches_fn(self))
+            else:
+                return TFPolicyGraph.extra_compute_grad_fetches(self)
+
+        @override(TFPolicyGraph)
+        def extra_compute_action_feed_dict(self):
+            if extra_action_feed_fn:
+                return extra_action_feed_fn(self)
+            else:
+                return TFPolicyGraph.extra_compute_action_feed_dict(self)
 
         @override(TFPolicyGraph)
         def extra_compute_action_fetches(self):
