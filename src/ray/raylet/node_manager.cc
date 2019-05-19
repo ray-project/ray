@@ -1330,7 +1330,7 @@ void NodeManager::ProcessSetResourceRequest(
   }
   auto data_shared_ptr = std::make_shared<ClientTableDataT>(data);
   auto client_table = gcs_client_->client_table();
-  RAY_CHECK_OK(gcs_client_->client_table().Append(
+  RAY_CHECK_OK(gcs_client_->client_table().Add(
       DriverID::nil(), client_table.client_log_key_, data_shared_ptr, nullptr));
 }
 

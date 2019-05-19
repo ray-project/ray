@@ -698,7 +698,7 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 /// it should append an entry to the log indicating that it is dead. A client
 /// that is marked as dead should never again be marked as alive; if it needs
 /// to reconnect, it must connect with a different ClientID.
-class ClientTable : private Set<ClientID, ClientTableData> {
+class ClientTable : public Set<ClientID, ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
       AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;

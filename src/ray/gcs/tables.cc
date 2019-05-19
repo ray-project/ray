@@ -581,25 +581,11 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
         const GcsTableNotificationMode notification_mode,
         const std::vector<ClientTableDataT> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
-      std::unordered_map<std::string, ClientTableDataT> connected_nodes;
-      std::unordered_map<std::string, ClientTableDataT> disconnected_nodes;
-      for (auto &notification : notifications) {
-        // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
-        // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
-        if (notification.entry_type != EntryType::DELETION) {
-          connected_nodes.emplace(notification.client_id, notification);
-        } else {
-          auto iter = connected_nodes.find(notification.client_id);
-          if (iter != connected_nodes.end()) {
-            connected_nodes.erase(iter);
-          }
-          disconnected_nodes.emplace(notification.client_id, notification);
-        }
       // We only handle the message of APPEND_OR_ADD and ignore the deletion message.
-      //if (notification_mode == GcsTableNotificationMode::APPEND_OR_ADD) {
-      //  for (const auto &notification : notifications) {
-      //    HandleNotification(client, notification);
-      //  }
+      if (notification_mode == GcsTableNotificationMode::APPEND_OR_ADD) {
+        for (const auto &notification : notifications) {
+          HandleNotification(client, notification);
+        }
       }
     };
     // Callback to request notifications from the client table once we've
@@ -616,11 +602,8 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto data = std::make_shared<ClientTableDataT>(local_client_);
-  data->entry_type = EntryType::DELETION;
-  auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
-                                       const ClientTableDataT &data) {
-  //auto remove_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
-  //                                        const ClientTableDataT &data) {
+  auto remove_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
+                                          const ClientTableDataT &data) {
     HandleConnected(client, data);
     RAY_CHECK_OK(CancelNotifications(DriverID::nil(), client_log_key_, id));
     if (callback != nullptr) {
@@ -632,8 +615,8 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   };
   // Change is_connected of this entry from true to false.
   auto new_data = std::make_shared<ClientTableDataT>(*data);
-  data->entry_type = EntryType::DELETION;
-  RAY_CHECK_OK(Replace(DriverID::nil(), client_log_key_, data, new_data, nullptr,
+  new_data->entry_type = EntryType::DELETION;
+  RAY_CHECK_OK(Replace(DriverID::nil(), client_log_key_, data, new_data, remove_callback,
                        failure_callback));
   // We successfully added the deletion entry. Mark ourselves as disconnected.
   disconnected_ = true;
@@ -667,7 +650,7 @@ ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
                          << "which may be caused by race condition.";
         };
         auto new_data = std::make_shared<ClientTableDataT>(*data);
-        data->entry_type = EntryType::DELETION;
+        new_data->entry_type = EntryType::DELETION;
         RAY_CHECK_OK(Replace(DriverID::nil(), client_log_key_, data, new_data, nullptr,
                              failure_callback));
       } else {
