@@ -3,8 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import platform
 import pytest
+import sys
 import tempfile
 import time
 import torch
@@ -18,7 +18,7 @@ from ray.experimental.sgd.tests.pytorch_utils import (
 
 
 @pytest.mark.skipif(
-    platform.mac_ver()[0] != "",
+    sys.platform == "darwin",
     reason="Doesn't work on macOS."
 )
 def test_train(ray_start_2_cpus):
@@ -35,7 +35,7 @@ def test_train(ray_start_2_cpus):
 
 
 @pytest.mark.skipif(
-    platform.mac_ver()[0] != "",
+    sys.platform == "darwin",
     reason="Doesn't work on macOS."
 )
 def test_save_and_restore(ray_start_2_cpus):
