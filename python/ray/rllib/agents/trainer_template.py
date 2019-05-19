@@ -56,7 +56,7 @@ def build_trainer(name,
             if validate_config:
                 validate_config(config)
             if get_policy_class is None:
-                policy_graph = default_policy
+                policy = default_policy
             else:
                 policy = get_policy_class(config)
             self.workers = self._make_workers(env_creator, policy, config,

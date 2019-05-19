@@ -47,6 +47,7 @@ __all__ = [
     "PolicyGraph",
     "TFPolicyGraph",
     "RolloutWorker",
+    "PolicyEvaluator",
     "SampleBatch",
     "BaseEnv",
     "MultiAgentEnv",
