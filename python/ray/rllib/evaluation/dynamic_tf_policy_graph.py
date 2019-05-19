@@ -129,7 +129,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             action_prob = self.action_dist.sampled_action_prob()
 
         # Phase 1 init
-        sess = tf.get_default_session()
+        sess = tf.get_default_session() or tf.Session()
         if get_batch_divisibility_req:
             batch_divisibility_req = get_batch_divisibility_req(self)
         else:

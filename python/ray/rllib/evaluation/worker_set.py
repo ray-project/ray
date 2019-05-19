@@ -28,10 +28,14 @@ class WorkerSet(object):
     def __init__(self,
                  env_creator,
                  policy,
-                 trainer_config,
+                 trainer_config=None,
                  num_workers=0,
                  logdir=None,
                  _setup=True):
+        if not trainer_config:
+            from ray.rllib.agents.trainer import COMMON_CONFIG
+            trainer_config = COMMON_CONFIG
+
         self._env_creator = env_creator
         self._policy = policy
         self._remote_config = trainer_config
@@ -164,7 +168,7 @@ class WorkerSet(object):
                     tmp[k] = (policy, v[1], v[2], v[3])
             policy = tmp
 
-        return RolloutWorker(
+        return cls(
             env_creator,
             policy,
             policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
