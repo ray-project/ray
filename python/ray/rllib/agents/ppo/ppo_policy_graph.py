@@ -240,14 +240,9 @@ class ValueNetworkMixin(object):
                         "a custom LSTM model that overrides the "
                         "value_function() method.")
                 with tf.variable_scope("value_function"):
-                    self.value_function = ModelCatalog.get_model({
-                        "obs": self.get_placeholder(SampleBatch.CUR_OBS),
-                        "prev_actions": self.get_placeholder(
-                            SampleBatch.PREV_ACTIONS),
-                        "prev_rewards": self.get_placeholder(
-                            SampleBatch.PREV_REWARDS),
-                        "is_training": self._get_is_training_placeholder(),
-                    }, obs_space, action_space, 1, vf_config).outputs
+                    self.value_function = ModelCatalog.get_model(
+                        self.get_obs_input_dict(), obs_space, action_space, 1,
+                        vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
         else:
             self.value_function = tf.zeros(

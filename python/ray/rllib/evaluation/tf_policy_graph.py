@@ -141,16 +141,24 @@ class TFPolicyGraph(PolicyGraph):
                 "seq_lens tensor must be given if state inputs are defined")
 
     def get_placeholder(self, name):
-        """Returns the given loss input placeholder by name.
+        """Returns the given action or loss input placeholder by name.
 
-        These are the same placeholders passed in as the loss_inputs arg. If
-        the loss has not been initialized, an error is raised.
+        If the loss has not been initialized and a loss input placeholder is
+        requested, an error is raised.
         """
+
+        obs_inputs = {
+            SampleBatch.CUR_OBS: self._obs_input,
+            SampleBatch.PREV_ACTIONS: self._prev_action_input,
+            SampleBatch.PREV_REWARDS: self._prev_reward_input,
+        }
+        if name in obs_inputs:
+            return obs_inputs[name]
 
         if not self.loss_initialized():
             raise RuntimeError(
-                "You cannot call policy.get_placeholder() before the loss "
-                "has been initialized. To avoid this, use "
+                "You cannot call policy.get_placeholder() for non-obs inputs "
+                "before the loss has been initialized. To avoid this, use "
                 "policy.loss_initialized() to check whether this is the case.")
 
         return self._loss_input_dict[name]

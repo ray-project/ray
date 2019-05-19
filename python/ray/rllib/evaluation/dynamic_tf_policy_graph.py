@@ -42,7 +42,8 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                  before_loss_init=None,
                  make_action_sampler=None,
                  existing_inputs=None,
-                 get_batch_divisibility_req=None):
+                 get_batch_divisibility_req=None,
+                 obs_include_prev_action_reward=True):
         """Initialize a dynamic TF policy graph.
 
         Arguments:
@@ -68,33 +69,41 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 defining new ones
             get_batch_divisibility_req (func): optional function that returns
                 the divisibility requirement for sample batches
+            obs_include_prev_action_reward (bool): whether to include the
+                previous action and reward in the model input
         """
         self.config = config
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn
         self._grad_stats_fn = grad_stats_fn
         self._update_ops_fn = update_ops_fn
+        self._obs_include_prev_action_reward = obs_include_prev_action_reward
 
         # Setup standard placeholders
+        prev_actions = None
+        prev_rewards = None
         if existing_inputs is not None:
             obs = existing_inputs[SampleBatch.CUR_OBS]
-            prev_actions = existing_inputs[SampleBatch.PREV_ACTIONS]
-            prev_rewards = existing_inputs[SampleBatch.PREV_REWARDS]
+            if self._obs_include_prev_action_reward:
+                prev_actions = existing_inputs[SampleBatch.PREV_ACTIONS]
+                prev_rewards = existing_inputs[SampleBatch.PREV_REWARDS]
         else:
             obs = tf.placeholder(
                 tf.float32,
                 shape=[None] + list(obs_space.shape),
                 name="observation")
-            prev_actions = ModelCatalog.get_action_placeholder(action_space)
-            prev_rewards = tf.placeholder(
-                tf.float32, [None], name="prev_reward")
+            if self._obs_include_prev_action_reward:
+                prev_actions = ModelCatalog.get_action_placeholder(
+                    action_space)
+                prev_rewards = tf.placeholder(
+                    tf.float32, [None], name="prev_reward")
 
-        self.input_dict = UsageTrackingDict({
+        self.input_dict = {
             SampleBatch.CUR_OBS: obs,
             SampleBatch.PREV_ACTIONS: prev_actions,
             SampleBatch.PREV_REWARDS: prev_rewards,
             "is_training": self._get_is_training_placeholder(),
-        })
+        }
 
         # Create the model network and action outputs
         if make_action_sampler:
@@ -162,6 +171,13 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
         if not existing_inputs:
             self._initialize_loss()
 
+    def get_obs_input_dict(self):
+        """Returns the obs input dict used to build policy models.
+
+        This dict includes the obs, prev actions, prev rewards, etc. tensors.
+        """
+        return self.input_dict
+
     @override(TFPolicyGraph)
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
@@ -218,14 +234,17 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             return np.zeros(shape, dtype=tensor.dtype.as_numpy_dtype)
 
         dummy_batch = {
-            SampleBatch.PREV_ACTIONS: fake_array(self._prev_action_input),
-            SampleBatch.PREV_REWARDS: fake_array(self._prev_reward_input),
             SampleBatch.CUR_OBS: fake_array(self._obs_input),
             SampleBatch.NEXT_OBS: fake_array(self._obs_input),
-            SampleBatch.ACTIONS: fake_array(self._prev_action_input),
-            SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             SampleBatch.DONES: np.array([False], dtype=np.bool),
+            SampleBatch.ACTIONS: np.array([self.action_space.sample()]),
+            SampleBatch.REWARDS: np.array([0], dtype=np.float32),
         }
+        if self._obs_include_prev_action_reward:
+            dummy_batch.update({
+                SampleBatch.PREV_ACTIONS: fake_array(self._prev_action_input),
+                SampleBatch.PREV_REWARDS: fake_array(self._prev_reward_input),
+            })
         state_init = self.get_initial_state()
         for i, h in enumerate(state_init):
             dummy_batch["state_in_{}".format(i)] = np.expand_dims(h, 0)
@@ -240,20 +259,24 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
         postprocessed_batch = self.postprocess_trajectory(
             SampleBatch(dummy_batch))
 
-        batch_tensors = UsageTrackingDict({
-            SampleBatch.PREV_ACTIONS: self._prev_action_input,
-            SampleBatch.PREV_REWARDS: self._prev_reward_input,
-            SampleBatch.CUR_OBS: self._obs_input,
-        })
-        loss_inputs = [
-            (SampleBatch.CUR_OBS, self._obs_input),
-        ]
-        if SampleBatch.PREV_ACTIONS in self.input_dict.accessed_keys:
-            loss_inputs.append((SampleBatch.PREV_ACTIONS,
-                                self._prev_action_input))
-        if SampleBatch.PREV_REWARDS in self.input_dict.accessed_keys:
-            loss_inputs.append((SampleBatch.PREV_REWARDS,
-                                self._prev_reward_input))
+        if self._obs_include_prev_action_reward:
+            batch_tensors = UsageTrackingDict({
+                SampleBatch.PREV_ACTIONS: self._prev_action_input,
+                SampleBatch.PREV_REWARDS: self._prev_reward_input,
+                SampleBatch.CUR_OBS: self._obs_input,
+            })
+            loss_inputs = [
+                (SampleBatch.PREV_ACTIONS, self._prev_action_input),
+                (SampleBatch.PREV_REWARDS, self._prev_reward_input),
+                (SampleBatch.CUR_OBS, self._obs_input),
+            ]
+        else:
+            batch_tensors = UsageTrackingDict({
+                SampleBatch.CUR_OBS: self._obs_input,
+            })
+            loss_inputs = [
+                (SampleBatch.CUR_OBS, self._obs_input),
+            ]
 
         for k, v in postprocessed_batch.items():
             if k in batch_tensors:

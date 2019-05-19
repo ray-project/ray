@@ -700,6 +700,7 @@ DQNPolicyGraph = build_tf_policy(
     update_ops_fn=lambda policy: policy.q_batchnorm_update_ops,
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,
+    obs_include_prev_action_reward=False,
     mixins=[
         ExplorationStateMixin,
         TargetNetworkMixin,

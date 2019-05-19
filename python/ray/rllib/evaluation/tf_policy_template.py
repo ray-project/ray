@@ -27,7 +27,8 @@ def build_tf_policy(name,
                     make_action_sampler=None,
                     mixins=None,
                     get_batch_divisibility_req=None,
-                    update_ops_fn=None):
+                    update_ops_fn=None,
+                    obs_include_prev_action_reward=True):
     """Helper function for creating a dynamic tf policy at runtime.
 
     Arguments:
@@ -70,6 +71,8 @@ def build_tf_policy(name,
             the divisibility requirement for sample batches
         update_ops_fn (func): optional function that returns a list overriding
             the update ops to run when applying gradients
+        obs_include_prev_action_reward (bool): whether to include the
+            previous action and reward in the model input
 
     Returns:
         a DynamicTFPolicyGraph instance that uses the specified args
@@ -118,7 +121,8 @@ def build_tf_policy(name,
                 update_ops_fn=update_ops_fn,
                 before_loss_init=before_loss_init_wrapper,
                 make_action_sampler=make_action_sampler,
-                existing_inputs=existing_inputs)
+                existing_inputs=existing_inputs,
+                obs_include_prev_action_reward=obs_include_prev_action_reward)
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
