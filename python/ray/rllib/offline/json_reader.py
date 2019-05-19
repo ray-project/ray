@@ -88,7 +88,7 @@ class JsonReader(InputReader):
         if isinstance(batch, SampleBatch):
             out = []
             for sub_batch in batch.split_by_episode():
-                out.append(self.ioctx.evaluator.policy_map[DEFAULT_POLICY_ID]
+                out.append(self.ioctx.worker.policy_map[DEFAULT_POLICY_ID]
                            .postprocess_trajectory(sub_batch))
             return SampleBatch.concat_samples(out)
         else:

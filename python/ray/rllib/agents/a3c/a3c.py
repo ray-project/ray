@@ -57,10 +57,8 @@ class A3CTrainer(Trainer):
         if config["entropy_coeff"] < 0:
             raise DeprecationWarning("entropy_coeff must be >= 0")
 
-        self.local_evaluator = self.make_local_evaluator(
-            env_creator, policy_cls)
-        self.remote_evaluators = self.make_remote_evaluators(
-            env_creator, policy_cls, config["num_workers"])
+        self.workers = self._make_workers(env_creator, policy_cls, config,
+                                          config["num_workers"])
         self.optimizer = self._make_optimizer()
 
     @override(Trainer)
@@ -75,6 +73,5 @@ class A3CTrainer(Trainer):
         return result
 
     def _make_optimizer(self):
-        return AsyncGradientsOptimizer(self.local_evaluator,
-                                       self.remote_evaluators,
+        return AsyncGradientsOptimizer(self.workers,
                                        **self.config["optimizer"])

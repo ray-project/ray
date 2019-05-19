@@ -48,7 +48,7 @@ class ApexDDPGTrainer(DDPGTrainer):
         # Ape-X updates based on num steps trained, not sampled
         if self.optimizer.num_steps_trained - self.last_target_update_ts > \
                 self.config["target_network_update_freq"]:
-            self.local_evaluator.foreach_trainable_policy(
+            self.workers.local_worker().foreach_trainable_policy(
                 lambda p, _: p.update_target())
             self.last_target_update_ts = self.optimizer.num_steps_trained
             self.num_target_updates += 1

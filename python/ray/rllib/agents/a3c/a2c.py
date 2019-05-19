@@ -26,6 +26,4 @@ class A2CTrainer(A3CTrainer):
     @override(A3CTrainer)
     def _make_optimizer(self):
         return SyncSamplesOptimizer(
-            self.local_evaluator,
-            self.remote_evaluators,
-            train_batch_size=self.config["train_batch_size"])
+            self.workers, train_batch_size=self.config["train_batch_size"])

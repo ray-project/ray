@@ -45,7 +45,7 @@ def get_learner_stats(grad_info):
 def collect_metrics(local_evaluator=None,
                     remote_evaluators=[],
                     timeout_seconds=180):
-    """Gathers episode metrics from PolicyEvaluator instances."""
+    """Gathers episode metrics from RolloutWorker instances."""
 
     episodes, num_dropped = collect_episodes(
         local_evaluator, remote_evaluators, timeout_seconds=timeout_seconds)

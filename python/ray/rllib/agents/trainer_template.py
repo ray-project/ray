@@ -25,8 +25,7 @@ def build_trainer(name,
         default_config (dict): the default config dict of the algorithm,
             otherwises uses the Trainer default config
         make_policy_optimizer (func): optional function that returns a
-            PolicyOptimizer instance given
-            (local_evaluator, remote_evaluators, config)
+            PolicyOptimizer instance given (WorkerSet, config)
         validate_config (func): optional callback that checks a given config
             for correctness. It may mutate the config as needed.
         get_policy_class (func): optional callback that takes a config and
@@ -59,20 +58,16 @@ def build_trainer(name,
             if get_policy_class is None:
                 policy_graph = default_policy
             else:
-                policy_graph = get_policy_class(config)
-            self.local_evaluator = self.make_local_evaluator(
-                env_creator, policy_graph)
-            self.remote_evaluators = self.make_remote_evaluators(
-                env_creator, policy_graph, config["num_workers"])
+                policy = get_policy_class(config)
+            self.workers = self._make_workers(env_creator, policy, config,
+                                              self.config["num_workers"])
             if make_policy_optimizer:
-                self.optimizer = make_policy_optimizer(
-                    self.local_evaluator, self.remote_evaluators, config)
+                self.optimizer = make_policy_optimizer(self.workers, config)
             else:
                 optimizer_config = dict(
                     config["optimizer"],
                     **{"train_batch_size": config["train_batch_size"]})
-                self.optimizer = SyncSamplesOptimizer(self.local_evaluator,
-                                                      self.remote_evaluators,
+                self.optimizer = SyncSamplesOptimizer(self.workers,
                                                       **optimizer_config)
 
         @override(Trainer)

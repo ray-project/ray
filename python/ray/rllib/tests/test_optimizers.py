@@ -11,7 +11,7 @@ import ray
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOTFPolicy
 from ray.rllib.evaluation import SampleBatch
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.tests.mock_evaluator import _MockEvaluator
@@ -238,12 +238,12 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         def make_sess():
             return tf.Session(config=tf.ConfigProto(device_count={"CPU": 2}))
 
-        local = PolicyEvaluator(
+        local = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_graph=PPOTFPolicy,
             tf_session_creator=make_sess)
         remotes = [
-            PolicyEvaluator.as_remote().remote(
+            RolloutWorker.as_remote().remote(
                 env_creator=lambda _: gym.make("CartPole-v0"),
                 policy_graph=PPOTFPolicy,
                 tf_session_creator=make_sess)
