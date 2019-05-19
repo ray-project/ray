@@ -369,8 +369,9 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular):
     a = Actor.remote()
     a.__ray_terminate__.remote()
     time.sleep(1)
-    assert len(ray.error_info()) == 0, (
-        "Should not have propogated an error - {}".format(ray.error_info()))
+    for error in ray.error_info():
+        assert error["message"].startswith("WARNING"), (
+            "Should not have propogated an error - {}".format(ray.error_info()))
 
 
 @pytest.mark.skip("This test does not work yet.")
