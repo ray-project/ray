@@ -32,6 +32,18 @@ class WorkerSet(object):
                  num_workers=0,
                  logdir=None,
                  _setup=True):
+        """Create a new WorkerSet and initialize its workers.
+
+        Arguments:
+            env_creator (func): Function that returns env given env config.
+            policy (cls): rllib.policy.Policy class.
+            trainer_config (dict): Optional dict that extends the common
+                config of the Trainer class.
+            num_workers (int): Number of remote rollout workers to create.
+            logdir (str): Optional logging directory for workers.
+            _setup (bool): Whether to setup workers. This is only for testing.
+        """
+
         if not trainer_config:
             from ray.rllib.agents.trainer import COMMON_CONFIG
             trainer_config = COMMON_CONFIG
