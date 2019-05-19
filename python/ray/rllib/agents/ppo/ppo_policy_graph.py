@@ -216,7 +216,7 @@ class KLCoeffMixin(object):
             self.kl_coeff_val *= 1.5
         elif sampled_kl < 0.5 * self.kl_target:
             self.kl_coeff_val *= 0.5
-        self.kl_coeff.load(self.kl_coeff_val, session=self._sess)
+        self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
         return self.kl_coeff_val
 
 
@@ -264,7 +264,7 @@ class ValueNetworkMixin(object):
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):
             feed_dict[k] = v
-        vf = self._sess.run(self.value_function, feed_dict)
+        vf = self.get_session().run(self.value_function, feed_dict)
         return vf[0]
 
 

@@ -143,10 +143,25 @@ class TFPolicyGraph(PolicyGraph):
     def get_placeholder(self, name):
         """Returns the given loss input placeholder by name.
 
-        These are the same placeholders passed in as the loss_inputs arg.
+        These are the same placeholders passed in as the loss_inputs arg. If
+        the loss has not been initialized, an error is raised.
         """
 
+        if not self.loss_initialized():
+            raise RuntimeError(
+                "You cannot call policy.get_placeholder() before the loss "
+                "has been initialized. To avoid this, use "
+                "policy.loss_initialized() to check whether this is the case.")
+
         return self._loss_input_dict[name]
+
+    def get_session(self):
+        """Returns a reference to the TF session for this policy."""
+        return self._sess
+
+    def loss_initialized(self):
+        """Returns whether the loss function has been initialized."""
+        return self._loss is not None
 
     def _initialize_loss(self, loss, loss_inputs):
         self._loss_inputs = loss_inputs
@@ -204,21 +219,21 @@ class TFPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def compute_gradients(self, postprocessed_batch):
-        assert self._loss is not None, "Loss not initialized"
+        assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
 
     @override(PolicyGraph)
     def apply_gradients(self, gradients):
-        assert self._loss is not None, "Loss not initialized"
+        assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "apply_gradients")
         fetches = self._build_apply_gradients(builder, gradients)
         builder.get(fetches)
 
     @override(PolicyGraph)
     def learn_on_batch(self, postprocessed_batch):
-        assert self._loss is not None, "Loss not initialized"
+        assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "learn_on_batch")
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         return builder.get(fetches)
