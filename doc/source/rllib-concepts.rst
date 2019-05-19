@@ -84,7 +84,7 @@ We can create a `Trainer <#trainers>`__ and try running this policy on a toy env
 
     # <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>
     MyTrainer = build_trainer(
-        name="MyCustom",
+        name="MyCustomTrainer",
         default_policy=MyTFPolicy)
     
     ray.init()
