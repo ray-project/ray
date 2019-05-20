@@ -30,5 +30,7 @@ public interface RayletClient {
 
   void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId);
 
+  void setResource(String resourceName, double capacity, UniqueId nodeId);
+
   void destroy();
 }
