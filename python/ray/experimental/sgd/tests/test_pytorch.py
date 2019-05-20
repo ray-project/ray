@@ -17,10 +17,7 @@ from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
 
 
-@pytest.mark.skipif(
-    sys.platform == "darwin",
-    reason="Doesn't work on macOS."
-)
+@pytest.mark.skipif(sys.platform == "darwin", reason="Doesn't work on macOS.")
 def test_train(ray_start_2_cpus):
     trainer = PyTorchTrainer(
         model_creator,
@@ -41,10 +38,7 @@ def test_train(ray_start_2_cpus):
     assert validation_loss2 <= validation_loss1
 
 
-@pytest.mark.skipif(
-    sys.platform == "darwin",
-    reason="Doesn't work on macOS."
-)
+@pytest.mark.skipif(sys.platform == "darwin", reason="Doesn't work on macOS.")
 def test_save_and_restore(ray_start_2_cpus):
     trainer1 = PyTorchTrainer(
         model_creator,

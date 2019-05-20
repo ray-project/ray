@@ -44,8 +44,7 @@ class PyTorchTrainer(object):
         if sys.platform == "darwin":
             raise Exception((
                 "Distributed PyTorch is not supported on macOS. For more information, "
-                "see https://github.com/pytorch/examples/issues/467."
-            ))
+                "see https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
         self.config = {} if config is None else config
