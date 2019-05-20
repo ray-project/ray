@@ -15,12 +15,13 @@ def build_tf_policy(name,
                     get_default_config=None,
                     stats_fn=None,
                     grad_stats_fn=None,
-                    extra_action_fetches_fn=None,
                     postprocess_fn=None,
                     optimizer_fn=None,
                     gradients_fn=None,
+                    extra_action_fetches_fn=None,
                     extra_action_feed_fn=None,
                     extra_learn_fetches_fn=None,
+                    extra_learn_feed_fn=None,
                     before_init=None,
                     before_loss_init=None,
                     after_init=None,
@@ -34,15 +35,13 @@ def build_tf_policy(name,
     Arguments:
         name (str): name of the graph (e.g., "PPOPolicy")
         loss_fn (func): function that returns a loss tensor the policy,
-            and dict of experience tensor placeholders
+            and dict of experience tensor placeholdes
         get_default_config (func): optional function that returns the default
             config to merge with any overrides
         stats_fn (func): optional function that returns a dict of
             TF fetches given the policy and batch input tensors
         grad_stats_fn (func): optional function that returns a dict of
             TF fetches given the policy and loss gradient tensors
-        extra_action_fetches_fn (func): optional function that returns
-            a dict of TF fetches given the policy object
         postprocess_fn (func): optional experience postprocessing function
             that takes the same args as PolicyGraph.postprocess_trajectory()
         optimizer_fn (func): optional function that returns a tf.Optimizer
@@ -50,10 +49,14 @@ def build_tf_policy(name,
         gradients_fn (func): optional function that returns a list of gradients
             given a tf optimizer and loss tensor. If not specified, this
             defaults to optimizer.compute_gradients(loss)
+        extra_action_fetches_fn (func): optional function that returns
+            a dict of TF fetches given the policy object
         extra_action_feed_fn (func): optional function that returns a feed dict
             to also feed to TF when computing actions
         extra_learn_fetches_fn (func): optional function that returns a dict of
             extra values to fetch and return when learning on a batch
+        extra_learn_feed_fn (func): optional function that returns a feed dict
+            to also feed to TF when learning on a batch
         before_init (func): optional function to run at the beginning of
             policy init that takes the same arguments as the policy constructor
         before_loss_init (func): optional function to run prior to loss
@@ -152,6 +155,19 @@ def build_tf_policy(name,
                 return TFPolicyGraph.gradients(self, optimizer, loss)
 
         @override(TFPolicyGraph)
+        def extra_compute_action_fetches(self):
+            return dict(
+                TFPolicyGraph.extra_compute_action_fetches(self),
+                **self._extra_action_fetches)
+
+        @override(TFPolicyGraph)
+        def extra_compute_action_feed_dict(self):
+            if extra_action_feed_fn:
+                return extra_action_feed_fn(self)
+            else:
+                return TFPolicyGraph.extra_compute_action_feed_dict(self)
+
+        @override(TFPolicyGraph)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
                 # auto-add empty learner stats dict if needed
@@ -162,17 +178,11 @@ def build_tf_policy(name,
                 return TFPolicyGraph.extra_compute_grad_fetches(self)
 
         @override(TFPolicyGraph)
-        def extra_compute_action_feed_dict(self):
-            if extra_action_feed_fn:
-                return extra_action_feed_fn(self)
+        def extra_compute_grad_feed_dict(self):
+            if extra_learn_feed_fn:
+                return extra_learn_feed_fn(self)
             else:
-                return TFPolicyGraph.extra_compute_action_feed_dict(self)
-
-        @override(TFPolicyGraph)
-        def extra_compute_action_fetches(self):
-            return dict(
-                TFPolicyGraph.extra_compute_action_fetches(self),
-                **self._extra_action_fetches)
+                return TFPolicyGraph.extra_compute_grad_feed_dict(self)
 
     graph_cls.__name__ = name
     graph_cls.__qualname__ = name
