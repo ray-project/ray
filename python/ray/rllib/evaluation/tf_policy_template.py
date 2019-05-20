@@ -13,11 +13,12 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 def build_tf_policy(name,
                     loss_fn,
                     get_default_config=None,
-                    stats_fn=None,
-                    grad_stats_fn=None,
                     postprocess_fn=None,
+                    stats_fn=None,
+                    update_ops_fn=None,
                     optimizer_fn=None,
                     gradients_fn=None,
+                    grad_stats_fn=None,
                     extra_action_fetches_fn=None,
                     extra_action_feed_fn=None,
                     extra_learn_fetches_fn=None,
@@ -28,9 +29,16 @@ def build_tf_policy(name,
                     make_action_sampler=None,
                     mixins=None,
                     get_batch_divisibility_req=None,
-                    update_ops_fn=None,
                     obs_include_prev_action_reward=True):
     """Helper function for creating a dynamic tf policy at runtime.
+
+    Functions will be run in this order to initialize the policy:
+        1. Placeholder setup: postprocess_fn
+        2. Loss init: loss_fn, stats_fn, update_ops_fn
+        3. Optimizer init: optimizer_fn, gradients_fn, grad_stats_fn
+
+    This means that you can e.g., depend on any policy attributes created in
+    the running of `loss_fn` in later functions such as `stats_fn`.
 
     Arguments:
         name (str): name of the graph (e.g., "PPOPolicy")
@@ -38,17 +46,19 @@ def build_tf_policy(name,
             and dict of experience tensor placeholdes
         get_default_config (func): optional function that returns the default
             config to merge with any overrides
-        stats_fn (func): optional function that returns a dict of
-            TF fetches given the policy and batch input tensors
-        grad_stats_fn (func): optional function that returns a dict of
-            TF fetches given the policy and loss gradient tensors
         postprocess_fn (func): optional experience postprocessing function
             that takes the same args as PolicyGraph.postprocess_trajectory()
+        stats_fn (func): optional function that returns a dict of
+            TF fetches given the policy and batch input tensors
+        update_ops_fn (func): optional function that returns a list overriding
+            the update ops to run when applying gradients
         optimizer_fn (func): optional function that returns a tf.Optimizer
             given the policy and config
         gradients_fn (func): optional function that returns a list of gradients
             given a tf optimizer and loss tensor. If not specified, this
             defaults to optimizer.compute_gradients(loss)
+        grad_stats_fn (func): optional function that returns a dict of
+            TF fetches given the policy and loss gradient tensors
         extra_action_fetches_fn (func): optional function that returns
             a dict of TF fetches given the policy object
         extra_action_feed_fn (func): optional function that returns a feed dict
@@ -72,8 +82,6 @@ def build_tf_policy(name,
             precedence than the DynamicTFPolicyGraph class
         get_batch_divisibility_req (func): optional function that returns
             the divisibility requirement for sample batches
-        update_ops_fn (func): optional function that returns a list overriding
-            the update ops to run when applying gradients
         obs_include_prev_action_reward (bool): whether to include the
             previous action and reward in the model input
 
