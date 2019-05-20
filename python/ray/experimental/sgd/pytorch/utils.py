@@ -65,6 +65,36 @@ def train(train_iterator, model, criterion, optimizer):
     return stats
 
 
+def validate(val_loader, model, criterion):
+    batch_time = AverageMeter()
+    losses = AverageMeter()
+
+    # switch to evaluate mode
+    model.eval()
+
+    with torch.no_grad():
+        end = time.time()
+        for i, (features, target) in enumerate(val_loader):
+
+            if torch.cuda.is_available():
+                features = features.cuda(non_blocking=True)
+                target = target.cuda(non_blocking=True)
+
+            # compute output
+            output = model(features)
+            loss = criterion(output, target)
+
+            # measure accuracy and record loss
+            losses.update(loss.item(), features.size(0))
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+    stats = {"batch_time": batch_time.avg, "validation_loss": losses.avg}
+    return stats
+
+
 class TimerStat(object):
     """A running stat for conveniently logging the duration of a code block.
     Example:

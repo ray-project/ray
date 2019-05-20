@@ -28,10 +28,17 @@ def test_train(ray_start_2_cpus):
         optimizer_creator,
         num_replicas=2,
         resources_per_replica=Resources(num_cpus=1))
-    loss1 = trainer.train()["train_loss"]
-    loss2 = trainer.train()["train_loss"]
+    train_loss1 = trainer.train()["train_loss"]
+    validation_loss1 = trainer.validate()["validation_loss"]
 
-    assert loss2 <= loss1
+    train_loss2 = trainer.train()["train_loss"]
+    validation_loss2 = trainer.validate()["validation_loss"]
+
+    print(train_loss1, train_loss2)
+    print(validation_loss1, validation_loss2)
+
+    assert train_loss2 <= train_loss1
+    assert validation_loss2 <= validation_loss1
 
 
 @pytest.mark.skipif(

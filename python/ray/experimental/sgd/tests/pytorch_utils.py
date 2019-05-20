@@ -33,10 +33,10 @@ def optimizer_creator(model, config):
     """Returns criterion, optimizer"""
     criterion = nn.MSELoss()
     optimizer = torch.optim.SGD(
-        model.parameters(), lr=0.1, momentum=1e-6, weight_decay=1e-6)
+        model.parameters(), lr=1e-3, momentum=1e-6, weight_decay=1e-6)
     return criterion, optimizer
 
 
 def data_creator(config):
-    """What should this return?"""
-    return LinearDataset(2, 5), None
+    """Returns training set, validation set"""
+    return LinearDataset(2, 5), LinearDataset(2, 5, size=400)

@@ -80,6 +80,10 @@ class PyTorchTrainer(object):
             worker_stats = ray.get([w.step.remote() for w in self.workers])
         return worker_stats[0]  # TODO: merge worker stats
 
+    def validate(self):
+        """Evaluates the model on the validation data set"""
+        return ray.get(self.workers[0].validate.remote())
+
     def get_model(self):
         """Returns the learned model"""
         model = self.model_creator(self.config)

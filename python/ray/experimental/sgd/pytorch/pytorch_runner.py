@@ -113,18 +113,27 @@ class PyTorchRunner(object):
         logger.debug("Creating dataset")
         self.training_set, self.validation_set = self.data_creator(self.config)
 
+        # TODO: faster DataLoaders by setting num_workers?
         self.train_sampler = torch.utils.data.distributed.DistributedSampler(
             self.training_set)
         self.train_loader = torch.utils.data.DataLoader(
             self.training_set,
             batch_size=self.batch_size,
             shuffle=(self.train_sampler is None),
-            num_workers=2,
+            num_workers=0,
             pin_memory=False,
             sampler=self.train_sampler)
         self._train_iterator = iter(self.train_loader)
 
-        # TODO: set up validation dataset
+        self.validation_sampler = torch.utils.data.distributed.DistributedSampler(
+            self.validation_set)
+        self.validation_loader = torch.utils.data.DataLoader(
+            self.validation_set,
+            batch_size=self.batch_size,
+            shuffle=(self.validation_sampler is None),
+            num_workers=0,
+            pin_memory=False,
+            sampler=self.validation_sampler)
 
     def get_node_ip(self):
         """Returns the IP address of the current node"""
@@ -141,14 +150,20 @@ class PyTorchRunner(object):
                                       self.criterion, self.optimizer)
             train_stats["epoch"] = self.epoch
 
-        # TODO: validation?
-
         self.epoch += 1
         self._train_iterator = iter(self.train_loader)
 
-        # train_stats.update(val_stats)
         train_stats.update(self.stats())
         return train_stats
+
+    def validate(self):
+        """Evaluates the model on the validation data set"""
+        with self._timers["validation"]:
+            validation_stats = utils.validate(self.validation_loader,
+                                              self.model, self.criterion)
+
+        validation_stats.update(self.stats())
+        return validation_stats
 
     def stats(self):
         """Returns a dictionary of statistics collected"""
