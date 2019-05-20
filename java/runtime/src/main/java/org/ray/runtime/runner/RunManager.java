@@ -267,7 +267,8 @@ public class RunManager {
         String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
         String.format("--python_worker_command=%s", buildPythonWorkerCommand()),
         String.format("--java_worker_command=%s", buildWorkerCommandRaylet()),
-        String.format("--redis_password=%s", redisPasswordOption)
+        String.format("--redis_password=%s", redisPasswordOption),
+        String.format("--debug_state_filename=%s", "/tmp/ray/debug_state.txt")
     );
 
     startProcess(command, null, "raylet");
