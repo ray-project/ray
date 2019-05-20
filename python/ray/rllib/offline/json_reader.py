@@ -17,7 +17,7 @@ except ImportError:
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch, SampleBatch, \
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import unpack_if_needed

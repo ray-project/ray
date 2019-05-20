@@ -4,7 +4,7 @@ from __future__ import print_function
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import DQNTrainer
-from ray.rllib.agents.qmix.qmix_policy_graph import QMixPolicyGraph
+from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -95,7 +95,7 @@ class QMixTrainer(DQNTrainer):
 
     _name = "QMIX"
     _default_config = DEFAULT_CONFIG
-    _policy_graph = QMixPolicyGraph
+    _policy = QMixTorchPolicy
     _optimizer_shared_configs = [
         "learning_starts", "buffer_size", "train_batch_size"
     ]

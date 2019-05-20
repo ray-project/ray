@@ -15,7 +15,7 @@ import ray
 from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.tune.util import merge_dicts
 
 EXAMPLE_USAGE = """

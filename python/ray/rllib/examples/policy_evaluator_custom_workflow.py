@@ -1,7 +1,7 @@
 """Example of using policy evaluator classes directly to implement training.
 
 Instead of using the built-in Trainer classes provided by RLlib, here we define
-a custom PolicyGraph class and manually coordinate distributed sample
+a custom Policy class and manually coordinate distributed sample
 collection and policy optimization.
 """
 
@@ -14,7 +14,8 @@ import gym
 
 import ray
 from ray import tune
-from ray.rllib.evaluation import PolicyGraph, PolicyEvaluator, SampleBatch
+from ray.rllib.policy import Policy
+from ray.rllib.evaluation import PolicyEvaluator, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 
 parser = argparse.ArgumentParser()
@@ -23,15 +24,15 @@ parser.add_argument("--num-iters", type=int, default=20)
 parser.add_argument("--num-workers", type=int, default=2)
 
 
-class CustomPolicy(PolicyGraph):
-    """Example of a custom policy graph written from scratch.
+class CustomPolicy(Policy):
+    """Example of a custom policy written from scratch.
 
-    You might find it more convenient to extend TF/TorchPolicyGraph instead
+    You might find it more convenient to extend TF/TorchPolicy instead
     for a real policy.
     """
 
     def __init__(self, observation_space, action_space, config):
-        PolicyGraph.__init__(self, observation_space, action_space, config)
+        Policy.__init__(self, observation_space, action_space, config)
         # example parameter
         self.w = 1.0
 

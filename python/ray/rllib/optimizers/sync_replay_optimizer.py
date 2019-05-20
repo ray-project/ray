@@ -11,7 +11,7 @@ from ray.rllib.optimizers.replay_buffer import ReplayBuffer, \
     PrioritizedReplayBuffer
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.metrics import get_learner_stats
-from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack_if_needed
