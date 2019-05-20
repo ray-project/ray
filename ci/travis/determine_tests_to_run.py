@@ -62,6 +62,7 @@ if __name__ == "__main__":
             elif changed_file.startswith("python/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -75,6 +76,7 @@ if __name__ == "__main__":
             elif changed_file.startswith("src/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -82,6 +84,7 @@ if __name__ == "__main__":
             else:
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
