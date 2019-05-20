@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import threading
 
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils import try_import_tf
 

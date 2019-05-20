@@ -6,7 +6,7 @@ import numpy as np
 import pprint
 import time
 
-from ray.rllib.evaluation.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
 _logged = set()
 _disabled = False
