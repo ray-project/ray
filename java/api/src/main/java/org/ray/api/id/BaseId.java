@@ -9,7 +9,7 @@ public abstract class BaseId implements Serializable {
   private static final long serialVersionUID = 8588849129675565761L;
   private final byte[] id;
   private int hashCodeCache = 0;
-  private boolean isNilCache;
+  private Boolean isNilCache = null;
 
   /**
    * Create a BaseId instance according to the input byte array.
@@ -20,13 +20,6 @@ public abstract class BaseId implements Serializable {
               + " bytes, but got " + id.length + " bytes.");
     }
     this.id = id;
-    isNilCache = true;
-    for (int i = 0; i < size(); ++i) {
-      if (id[i] != (byte) 0xff) {
-        isNilCache = false;
-        break;
-      }
-    }
   }
 
   /**
@@ -47,6 +40,15 @@ public abstract class BaseId implements Serializable {
    * @return True if this id is nil.
    */
   public boolean isNil() {
+    if (isNilCache == null) {
+      isNilCache = true;
+      for (int i = 0; i < size(); ++i) {
+        if (id[i] != (byte) 0xff) {
+          isNilCache = false;
+          break;
+        }
+      }
+    }
     return isNilCache;
   }
 

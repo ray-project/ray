@@ -6,7 +6,7 @@ import java.util.Arrays;
 import java.util.Random;
 
 /**
- * Represents an obejct id of Ray objects.
+ * Represents the id of a Ray object.
  */
 public class ObjectId extends BaseId implements Serializable {
 
@@ -58,6 +58,5 @@ public class ObjectId extends BaseId implements Serializable {
     byte[] taskIdBytes = Arrays.copyOf(getBytes(), TaskId.LENGTH);
     return new TaskId(taskIdBytes);
   }
-
 
 }

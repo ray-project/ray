@@ -15,7 +15,6 @@ import redis
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.utils import _random_string
 from ray.tests.cluster_utils import Cluster
 from ray.tests.utils import (
     relevant_errors,
@@ -667,7 +666,7 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
 
 
 def test_raylet_crash_when_get(ray_start_regular):
-    nonexistent_id = ray.ObjectID(_random_string())
+    nonexistent_id = ray.ObjectID.from_random()
 
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.

@@ -6,6 +6,7 @@ See https://github.com/ray-project/ray/issues/3721.
 
 # WARNING: Any additional ID types defined in this file must be added to the
 # _ID_TYPES list at the bottom of this file.
+import os
 
 from ray.includes.unique_ids cimport (
     CActorCheckpointID,
@@ -108,6 +109,11 @@ cdef class UniqueID(BaseID):
     def nil(cls):
         return cls(CUniqueID.nil().binary())
 
+    
+    @classmethod
+    def from_random(cls):
+        return cls(os.urandom(CUniqueID.size()))
+
     def size(self):
         return CUniqueID.size()
 
@@ -153,6 +159,10 @@ cdef class ObjectID(BaseID):
     def nil(cls):
         return cls(CObjectID.nil().binary())
 
+    @classmethod
+    def from_random(cls):
+        return cls(os.urandom(CObjectID.size()))
+
 
 cdef class TaskID(BaseID):
     cdef CTaskID data
@@ -186,6 +196,10 @@ cdef class TaskID(BaseID):
     @classmethod
     def size(cla):
         return CTaskID.size()
+
+    @classmethod
+    def from_random(cls):
+        return cls(os.urandom(CTaskID.size()))
 
 
 cdef class ClientID(UniqueID):

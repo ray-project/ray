@@ -198,8 +198,7 @@ class Worker(object):
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID(
-                    _random_string(TaskID.size()))
+                self._task_context.current_task_id = TaskID.from_random()
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -1726,7 +1725,7 @@ def connect(node,
     else:
         # This is the code path of driver mode.
         if driver_id is None:
-            driver_id = DriverID(_random_string())
+            driver_id = DriverID.from_random()
 
         if not isinstance(driver_id, DriverID):
             raise TypeError("The type of given driver id must be DriverID.")

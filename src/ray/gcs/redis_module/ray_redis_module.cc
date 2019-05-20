@@ -679,6 +679,8 @@ int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   // The first uint16_t are used to encode the number of ids to delete.
   size_t ids_to_delete = *reinterpret_cast<const uint16_t *>(data_ptr);
   size_t id_length = (len - sizeof(uint16_t)) / ids_to_delete;
+  REPLY_AND_RETURN_IF_FALSE((len - sizeof(uint16_t)) % ids_to_delete == 0,
+                            "The deletion data length must be multiple of the ID size");
   data_ptr += sizeof(uint16_t);
   for (size_t i = 0; i < ids_to_delete; ++i) {
     RedisModuleString *id_data =
