@@ -19,7 +19,7 @@ class TestPerf(unittest.TestCase):
         for _ in range(20):
             ev = RolloutWorker(
                 env_creator=lambda _: gym.make("CartPole-v0"),
-                policy_graph=MockPolicy,
+                policy=MockPolicy,
                 batch_steps=100)
             start = time.time()
             count = 0

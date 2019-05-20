@@ -62,7 +62,7 @@ class EvaluatorInterface(object):
         Returns:
             (grads, info): A list of gradients that can be applied on a
             compatible evaluator. In the multi-agent case, returns a dict
-            of gradients keyed by policy graph ids. An info dictionary of
+            of gradients keyed by policy ids. An info dictionary of
             extra metadata is also returned.
 
         Examples:

@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import time
 
-from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
-from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
+from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
+from ray.rllib.agents.impala.vtrace_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
@@ -105,7 +105,7 @@ class ImpalaTrainer(Trainer):
 
     _name = "IMPALA"
     _default_config = DEFAULT_CONFIG
-    _policy_graph = VTracePolicyGraph
+    _policy = VTraceTFPolicy
 
     @override(Trainer)
     def _init(self, config, env_creator):
@@ -156,9 +156,9 @@ class ImpalaTrainer(Trainer):
                       prev_steps)
         return result
 
-    def _get_policy_graph(self):
+    def _get_policy(self):
         if self.config["vtrace"]:
-            policy_cls = self._policy_graph
+            policy_cls = self._policy
         else:
-            policy_cls = A3CPolicyGraph
+            policy_cls = A3CTFPolicy
         return policy_cls

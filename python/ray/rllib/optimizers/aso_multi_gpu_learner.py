@@ -11,7 +11,7 @@ import math
 from six.moves import queue
 
 from ray.rllib.evaluation.metrics import get_learner_stats
-from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.optimizers.aso_learner import LearnerThread
 from ray.rllib.optimizers.aso_minibatch_buffer import MinibatchBuffer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer

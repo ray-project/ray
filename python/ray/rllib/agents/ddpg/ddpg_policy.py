@@ -7,15 +7,15 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.dqn.dqn_policy_graph import (
-    _huber_loss, _minimize_and_clip, _scope_vars, _postprocess_dqn)
-from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.agents.dqn.dqn_policy import (_huber_loss, _minimize_and_clip,
+                                             _scope_vars, _postprocess_dqn)
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -35,7 +35,7 @@ PRIO_WEIGHTS = "weights"
 class DDPGPostprocessing(object):
     """Implements n-step learning and param noise adjustments."""
 
-    @override(PolicyGraph)
+    @override(Policy)
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
@@ -68,7 +68,7 @@ class DDPGPostprocessing(object):
         return _postprocess_dqn(self, sample_batch)
 
 
-class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
+class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Box):
@@ -281,7 +281,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
                 self.critic_loss = self.twin_q_model.custom_loss(
                     self.critic_loss, input_dict)
 
-        TFPolicyGraph.__init__(
+        TFPolicy.__init__(
             self,
             observation_space,
             action_space,
@@ -301,12 +301,12 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         # Hard initial update
         self.update_target(tau=1.0)
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def optimizer(self):
         # we don't use this because we have two separate optimisers
         return None
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def build_apply_op(self, optimizer, grads_and_vars):
         # for policy gradient, update policy net one time v.s.
         # update critic net `policy_delay` time(s)
@@ -327,7 +327,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
         with tf.control_dependencies([tf.assign_add(self.global_step, 1)]):
             return tf.group(actor_op, critic_op)
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def gradients(self, optimizer, loss):
         if self.config["grad_norm_clipping"] is not None:
             actor_grads_and_vars = _minimize_and_clip(
@@ -360,7 +360,7 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
             + self._critic_grads_and_vars
         return grads_and_vars
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def extra_compute_action_feed_dict(self):
         return {
             # FIXME: what about turning off exploration? Isn't that a good
@@ -370,31 +370,31 @@ class DDPGPolicyGraph(DDPGPostprocessing, TFPolicyGraph):
             self.pure_exploration_phase: self.cur_pure_exploration_phase,
         }
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.td_error,
             LEARNER_STATS_KEY: self.stats,
         }
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def get_weights(self):
         return self.variables.get_weights()
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def set_weights(self, weights):
         self.variables.set_weights(weights)
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_state(self):
         return [
-            TFPolicyGraph.get_state(self), self.cur_noise_scale,
+            TFPolicy.get_state(self), self.cur_noise_scale,
             self.cur_pure_exploration_phase
         ]
 
-    @override(PolicyGraph)
+    @override(Policy)
     def set_state(self, state):
-        TFPolicyGraph.set_state(self, state[0])
+        TFPolicy.set_state(self, state[0])
         self.set_epsilon(state[1])
         self.set_pure_exploration_phase(state[2])
 

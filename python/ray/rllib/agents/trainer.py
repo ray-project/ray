@@ -575,10 +575,10 @@ class Trainer(Trainable):
 
     @PublicAPI
     def get_policy(self, policy_id=DEFAULT_POLICY_ID):
-        """Return policy graph for the specified id, or None.
+        """Return policy for the specified id, or None.
 
         Arguments:
-            policy_id (str): id of policy graph to return.
+            policy_id (str): id of policy to return.
         """
 
         return self.workers.local_worker().get_policy(policy_id)
@@ -659,6 +659,13 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config):
+        if "policy_graphs" in config["multiagent"]:
+            logger.warning(
+                "The `policy_graphs` config has been renamed to `policies`.")
+            # Backwards compatibility
+            config["multiagent"]["policies"] = config["multiagent"][
+                "policy_graphs"]
+            del config["multiagent"]["policy_graphs"]
         if "gpu" in config:
             raise ValueError(
                 "The `gpu` config is deprecated, please use `num_gpus=0|1` "

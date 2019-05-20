@@ -5,7 +5,7 @@ from __future__ import print_function
 from collections import namedtuple
 import logging
 
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class OffPolicyEstimator(object):
         """Creates an off-policy estimator.
 
         Arguments:
-            policy (PolicyGraph): Policy graph to evaluate.
+            policy (Policy): Policy to evaluate.
             gamma (float): Discount of the MDP.
         """
         self.policy = policy
@@ -71,7 +71,7 @@ class OffPolicyEstimator(object):
             raise ValueError(
                 "Off-policy estimation is not possible unless the policy "
                 "returns action probabilities when computing actions (i.e., "
-                "the 'action_prob' key is output by the policy graph). You "
+                "the 'action_prob' key is output by the policy). You "
                 "can set `input_evaluation: []` to resolve this.")
         return info["action_prob"]
 

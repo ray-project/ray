@@ -21,7 +21,7 @@ def build_trainer(name,
 
     Arguments:
         name (str): name of the trainer (e.g., "PPO")
-        default_policy (cls): the default PolicyGraph class to use
+        default_policy (cls): the default Policy class to use
         default_config (dict): the default config dict of the algorithm,
             otherwises uses the Trainer default config
         make_policy_optimizer (func): optional function that returns a
@@ -29,7 +29,7 @@ def build_trainer(name,
         validate_config (func): optional callback that checks a given config
             for correctness. It may mutate the config as needed.
         get_policy_class (func): optional callback that takes a config and
-            returns the policy graph class to override the default with
+            returns the policy class to override the default with
         before_train_step (func): optional callback to run before each train()
             call. It takes the trainer instance as an argument.
         after_optimizer_step (func): optional callback to run after each
@@ -50,7 +50,7 @@ def build_trainer(name,
     class trainer_cls(Trainer):
         _name = name
         _default_config = default_config or Trainer.COMMON_CONFIG
-        _policy_graph = default_policy
+        _policy = default_policy
 
         def _init(self, config, env_creator):
             if validate_config:

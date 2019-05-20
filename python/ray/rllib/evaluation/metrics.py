@@ -7,21 +7,18 @@ import numpy as np
 import collections
 
 import ray
-from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
-# By convention, metrics from optimizing the loss can be reported in the
-# `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
-LEARNER_STATS_KEY = "learner_stats"
-
 
 @DeveloperAPI
 def get_learner_stats(grad_info):
-    """Return optimization stats reported from the policy graph.
+    """Return optimization stats reported from the policy.
 
     Example:
         >>> grad_info = evaluator.learn_on_batch(samples)

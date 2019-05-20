@@ -17,7 +17,7 @@ from six.moves import queue
 
 import ray
 from ray.rllib.evaluation.metrics import get_learner_stats
-from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer

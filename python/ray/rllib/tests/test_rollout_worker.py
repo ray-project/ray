@@ -14,14 +14,14 @@ from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.policy.policy import Policy
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.env.vector_env import VectorEnv
 from ray.tune.registry import register_env
 
 
-class MockPolicyGraph(PolicyGraph):
+class MockPolicy(Policy):
     def compute_actions(self,
                         obs_batch,
                         state_batches,
@@ -39,7 +39,7 @@ class MockPolicyGraph(PolicyGraph):
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
-class BadPolicyGraph(PolicyGraph):
+class BadPolicy(Policy):
     def compute_actions(self,
                         obs_batch,
                         state_batches,
@@ -226,7 +226,7 @@ class TestRolloutWorker(unittest.TestCase):
         # clipping on
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             clip_rewards=True,
             batch_mode="complete_episodes")
         self.assertEqual(max(ev.sample()["rewards"]), 1)
@@ -236,7 +236,7 @@ class TestRolloutWorker(unittest.TestCase):
         # clipping off
         ev2 = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             clip_rewards=False,
             batch_mode="complete_episodes")
         self.assertEqual(max(ev2.sample()["rewards"]), 100)
@@ -246,7 +246,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testHardHorizon(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             batch_mode="complete_episodes",
             batch_steps=10,
             episode_horizon=4,
@@ -260,7 +260,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testSoftHorizon(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             batch_mode="complete_episodes",
             batch_steps=10,
             episode_horizon=4,
@@ -274,11 +274,11 @@ class TestRolloutWorker(unittest.TestCase):
     def testMetrics(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             batch_mode="complete_episodes")
         remote_ev = RolloutWorker.as_remote().remote(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             batch_mode="complete_episodes")
         ev.sample()
         ray.get(remote_ev.sample.remote())
@@ -290,7 +290,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             sample_async=True,
-            policy_graph=MockPolicyGraph)
+            policy=MockPolicy)
         batch = ev.sample()
         for key in ["obs", "actions", "rewards", "dones", "advantages"]:
             self.assertIn(key, batch)
@@ -299,7 +299,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testAutoVectorization(self):
         ev = RolloutWorker(
             env_creator=lambda cfg: MockEnv(episode_length=20, config=cfg),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             batch_mode="truncate_episodes",
             batch_steps=2,
             num_envs=8)
@@ -322,7 +322,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testBatchesLargerWhenVectorized(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=8),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             batch_mode="truncate_episodes",
             batch_steps=4,
             num_envs=4)
@@ -337,7 +337,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testVectorEnvSupport(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             batch_mode="truncate_episodes",
             batch_steps=10)
         for _ in range(8):
@@ -354,7 +354,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testTruncateEpisodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             batch_steps=15,
             batch_mode="truncate_episodes")
         batch = ev.sample()
@@ -363,7 +363,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testCompleteEpisodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             batch_steps=5,
             batch_mode="complete_episodes")
         batch = ev.sample()
@@ -372,7 +372,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testCompleteEpisodesPacking(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             batch_steps=15,
             batch_mode="complete_episodes")
         batch = ev.sample()
@@ -384,7 +384,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testFilterSync(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             sample_async=True,
             observation_filter="ConcurrentMeanStdFilter")
         time.sleep(2)
@@ -397,7 +397,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testGetFilters(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             sample_async=True,
             observation_filter="ConcurrentMeanStdFilter")
         self.sample_and_flush(ev)
@@ -412,7 +412,7 @@ class TestRolloutWorker(unittest.TestCase):
     def testSyncFilter(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_graph=MockPolicyGraph,
+            policy=MockPolicy,
             sample_async=True,
             observation_filter="ConcurrentMeanStdFilter")
         obs_f = self.sample_and_flush(ev)
