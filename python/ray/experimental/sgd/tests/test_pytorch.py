@@ -6,10 +6,9 @@ import os
 import pytest
 import sys
 import tempfile
-import time
 import torch
 
-from ray.tests.conftest import ray_start_2_cpus
+from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch.utils import Resources
 from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer
 
@@ -17,8 +16,9 @@ from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Doesn't work on macOS.")
-def test_train(ray_start_2_cpus):
+@pytest.mark.skipif(  # noqa: F811
+    sys.platform == "darwin", reason="Doesn't work on macOS.")
+def test_train(ray_start_2_cpus):  # noqa: F811
     trainer = PyTorchTrainer(
         model_creator,
         data_creator,
@@ -38,7 +38,8 @@ def test_train(ray_start_2_cpus):
     assert validation_loss2 <= validation_loss1
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Doesn't work on macOS.")
+@pytest.mark.skipif(  # noqa: F811
+    sys.platform == "darwin", reason="Doesn't work on macOS.")
 def test_save_and_restore(ray_start_2_cpus):
     trainer1 = PyTorchTrainer(
         model_creator,

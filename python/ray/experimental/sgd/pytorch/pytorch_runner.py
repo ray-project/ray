@@ -28,16 +28,17 @@ class PyTorchRunner(object):
         """Initializes the runner.
 
         Args:
-            model_creator (dict -> torch.nn.Module): creates the model using the
-                config.
+            model_creator (dict -> torch.nn.Module): creates the model using
+                the config.
             data_creator (dict -> Dataset, Dataset): creates the training and
                 validation data sets using the config.
-            optimizer_creator (model, dict -> loss, optimizer): creates the loss
-                and optimizer using the config.
-            config (dict): configuration passed to 'model_creator', 'data_creator',
-                and 'optimizer_creator'.
+            optimizer_creator (model, dict -> loss, optimizer): creates the
+                loss and optimizer using the config.
+            config (dict): configuration passed to 'model_creator',
+                'data_creator', and 'optimizer_creator'.
             batch_size (int): batch size used for SGD.
-            backend (string): backend used for distributed SGD. "gloo" or "nccl".
+            backend (string): backend used for distributed SGD. "gloo" or
+                "nccl".
         """
 
         self.model_creator = model_creator
@@ -125,8 +126,9 @@ class PyTorchRunner(object):
             sampler=self.train_sampler)
         self._train_iterator = iter(self.train_loader)
 
-        self.validation_sampler = torch.utils.data.distributed.DistributedSampler(
-            self.validation_set)
+        self.validation_sampler = (
+            torch.utils.data.distributed.DistributedSampler(
+                self.validation_set))
         self.validation_loader = torch.utils.data.DataLoader(
             self.validation_set,
             batch_size=self.batch_size,

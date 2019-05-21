@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import sys
 import torch
 
@@ -28,23 +27,25 @@ class PyTorchTrainer(object):
         """Sets up the PyTorch trainer.
 
             Args:
-                model_creator (dict -> torch.nn.Module): creates the model using the
-                    config.
-                data_creator (dict -> Dataset, Dataset): creates the training and
-                    validation data sets using the config.
-                optimizer_creator (model, dict -> loss, optimizer): creates the loss
-                    and optimizer using the config.
-                config (dict): configuration passed to 'model_creator', 'data_creator',
-                    and 'optimizer_creator'.
+                model_creator (dict -> torch.nn.Module): creates the model
+                    using the config.
+                data_creator (dict -> Dataset, Dataset): creates the training
+                    and validation data sets using the config.
+                optimizer_creator (model, dict -> loss, optimizer): creates the
+                    loss and optimizer using the config.
+                config (dict): configuration passed to 'model_creator',
+                    'data_creator', and 'optimizer_creator'.
                 batch_size (int): batch size used for SGD.
-                backend (string): backend used for distributed SGD. "gloo" or "nccl".
+                backend (string): backend used for distributed SGD. "gloo" or
+                    "nccl".
         """
         # TODO: add support for mixed precision
         # TODO: add support for callbacks
         if sys.platform == "darwin":
             raise Exception((
-                "Distributed PyTorch is not supported on macOS. For more information, "
-                "see https://github.com/pytorch/examples/issues/467."))
+                "Distributed PyTorch is not supported on macOS. For more "
+                "information, see "
+                "https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
         self.config = {} if config is None else config
