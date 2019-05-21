@@ -308,6 +308,10 @@ public class RayletClientImpl implements RayletClient {
     return buffer;
   }
 
+  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
+    nativeSetResource(client, resourceName, capacity, nodeId.getBytes());
+  }
+
   public void destroy() {
     nativeDestroy(client);
   }
@@ -357,4 +361,7 @@ public class RayletClientImpl implements RayletClient {
 
   private static native void nativeNotifyActorResumedFromCheckpoint(long conn, byte[] actorId,
       byte[] checkpointId);
+
+  private static native void nativeSetResource(long conn, String resourceName, double capacity,
+                                               byte[] nodeId) throws RayException;
 }
