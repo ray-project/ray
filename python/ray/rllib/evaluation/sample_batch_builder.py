@@ -6,7 +6,7 @@ import collections
 import logging
 import numpy as np
 
-from ray.rllib.evaluation.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import log_once, summarize
 
@@ -79,7 +79,7 @@ class MultiAgentSampleBatchBuilder(object):
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Arguments:
-            policy_map (dict): Maps policy ids to policy graph instances.
+            policy_map (dict): Maps policy ids to policy instances.
             clip_rewards (bool): Whether to clip rewards before postprocessing.
             postp_callback: function to call on each postprocessed batch.
         """

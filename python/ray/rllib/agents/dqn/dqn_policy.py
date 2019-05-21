@@ -7,14 +7,14 @@ import numpy as np
 from scipy.stats import entropy
 
 import ray
-from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog, Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
+from ray.rllib.policy.tf_policy import TFPolicy, \
     LearningRateSchedule
-from ray.rllib.evaluation.tf_policy_template import build_tf_policy
+from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -318,13 +318,13 @@ class ExplorationStateMixin(object):
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
+        return [TFPolicy.get_state(self), self.cur_epsilon]
 
-    @override(PolicyGraph)
+    @override(Policy)
     def set_state(self, state):
-        TFPolicyGraph.set_state(self, state[0])
+        TFPolicy.set_state(self, state[0])
         self.set_epsilon(state[1])
 
 
@@ -610,25 +610,25 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
                 rewards[i] += gamma**j * rewards[i + j]
 
 
-def _postprocess_dqn(policy_graph, batch):
+def _postprocess_dqn(policy, batch):
     # N-step Q adjustments
-    if policy_graph.config["n_step"] > 1:
-        _adjust_nstep(policy_graph.config["n_step"],
-                      policy_graph.config["gamma"], batch[SampleBatch.CUR_OBS],
-                      batch[SampleBatch.ACTIONS], batch[SampleBatch.REWARDS],
-                      batch[SampleBatch.NEXT_OBS], batch[SampleBatch.DONES])
+    if policy.config["n_step"] > 1:
+        _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
+                      batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+                      batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
+                      batch[SampleBatch.DONES])
 
     if PRIO_WEIGHTS not in batch:
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
     # Prioritize on the worker side
-    if batch.count > 0 and policy_graph.config["worker_side_prioritization"]:
-        td_errors = policy_graph.compute_td_error(
+    if batch.count > 0 and policy.config["worker_side_prioritization"]:
+        td_errors = policy.compute_td_error(
             batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (
-            np.abs(td_errors) + policy_graph.config["prioritized_replay_eps"])
+            np.abs(td_errors) + policy.config["prioritized_replay_eps"])
         batch.data[PRIO_WEIGHTS] = new_priorities
 
     return batch
@@ -685,7 +685,7 @@ def _scope_vars(scope, trainable_only=False):
         scope=scope if isinstance(scope, str) else scope.name)
 
 
-DQNPolicyGraph = build_tf_policy(
+DQNTFPolicy = build_tf_policy(
     name="DQNTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_action_sampler=build_q_networks,

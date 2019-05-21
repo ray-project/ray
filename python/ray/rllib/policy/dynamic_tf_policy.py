@@ -6,9 +6,9 @@ from collections import OrderedDict
 import logging
 import numpy as np
 
-from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.sample_batch import SampleBatch
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
@@ -20,8 +20,8 @@ tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class DynamicTFPolicyGraph(TFPolicyGraph):
-    """A TFPolicyGraph that auto-defines placeholders dynamically at runtime.
+class DynamicTFPolicy(TFPolicy):
+    """A TFPolicy that auto-defines placeholders dynamically at runtime.
 
     Initialization of this class occurs in two phases.
       * Phase 1: the model is created and model variables are initialized.
@@ -44,7 +44,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                  existing_inputs=None,
                  get_batch_divisibility_req=None,
                  obs_include_prev_action_reward=True):
-        """Initialize a dynamic TF policy graph.
+        """Initialize a dynamic TF policy.
 
         Arguments:
             observation_space (gym.Space): Observation space of the policy.
@@ -53,9 +53,9 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             loss_fn (func): function that returns a loss tensor the policy
                 graph, and dict of experience tensor placeholders
             stats_fn (func): optional function that returns a dict of
-                TF fetches given the policy graph and batch input tensors
+                TF fetches given the policy and batch input tensors
             grad_stats_fn (func): optional function that returns a dict of
-                TF fetches given the policy graph and loss gradient tensors
+                TF fetches given the policy and loss gradient tensors
             update_ops_fn (func): optional function that returns a list
                 overriding the update ops to run when applying gradients
             before_loss_init (func): optional function to run prior to loss
@@ -64,7 +64,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 tuple of action and action prob tensors. The function takes
                 (policy, input_dict, obs_space, action_space, config) as its
                 arguments
-            existing_inputs (OrderedDict): when copying a policy graph, this
+            existing_inputs (OrderedDict): when copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
             get_batch_divisibility_req (func): optional function that returns
@@ -147,7 +147,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             batch_divisibility_req = get_batch_divisibility_req(self)
         else:
             batch_divisibility_req = 1
-        TFPolicyGraph.__init__(
+        TFPolicy.__init__(
             self,
             obs_space,
             action_space,
@@ -178,7 +178,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
         """
         return self.input_dict
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
 
@@ -212,7 +212,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
             existing_inputs=input_dict)
 
         loss = instance._do_loss_init(input_dict)
-        TFPolicyGraph._initialize_loss(
+        TFPolicy._initialize_loss(
             instance, loss, [(k, existing_inputs[i])
                              for i, (k, _) in enumerate(self._loss_inputs)])
         if instance._grad_stats_fn:
@@ -220,7 +220,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
                 instance._grad_stats_fn(instance, instance._grads))
         return instance
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_initial_state(self):
         if self.model:
             return self.model.state_init
@@ -296,7 +296,7 @@ class DynamicTFPolicyGraph(TFPolicyGraph):
         loss = self._do_loss_init(batch_tensors)
         for k in sorted(batch_tensors.accessed_keys):
             loss_inputs.append((k, batch_tensors[k]))
-        TFPolicyGraph._initialize_loss(self, loss, loss_inputs)
+        TFPolicy._initialize_loss(self, loss, loss_inputs)
         if self._grad_stats_fn:
             self._stats_fetches.update(self._grad_stats_fn(self, self._grads))
         self._sess.run(tf.global_variables_initializer())

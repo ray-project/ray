@@ -124,6 +124,21 @@ public final class Ray extends RayCall {
   }
 
   /**
+   * Update the resource for the specified client.
+   * Set the resource for the specific node.
+   */
+  public static void setResource(UniqueId nodeId, String resourceName, double capacity) {
+    runtime.setResource(resourceName, capacity, nodeId);
+  }
+
+  /**
+   * Set the resource for local node.
+   */
+  public static void setResource(String resourceName, double capacity) {
+    runtime.setResource(resourceName, capacity, UniqueId.NIL);
+  }
+
+  /**
    * Get the runtime context.
    */
   public static RuntimeContext getRuntimeContext() {

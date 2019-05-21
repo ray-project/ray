@@ -9,14 +9,14 @@ from collections import defaultdict
 
 import ray
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.optimizers.rollout import collect_samples, \
     collect_samples_straggler_mitigation
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils import try_import_tf
 
@@ -34,9 +34,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     details, see `multi_gpu_impl.LocalSyncParallelOptimizer`.
 
     This optimizer is Tensorflow-specific and require the underlying
-    PolicyGraph to be a TFPolicyGraph instance that support `.copy()`.
+    Policy to be a TFPolicy instance that support `.copy()`.
 
-    Note that all replicas of the TFPolicyGraph will merge their
+    Note that all replicas of the TFPolicy will merge their
     extra_compute_grad and apply_grad feed_dicts and fetches. This
     may result in unexpected behavior.
     """
@@ -83,7 +83,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             self.local_evaluator.foreach_trainable_policy(lambda p, i: (i, p)))
         logger.debug("Policies to train: {}".format(self.policies))
         for policy_id, policy in self.policies.items():
-            if not isinstance(policy, TFPolicyGraph):
+            if not isinstance(policy, TFPolicy):
                 raise ValueError(
                     "Only TF policies are supported with multi-GPU. Try using "
                     "the simple optimizer instead.")

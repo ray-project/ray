@@ -6,7 +6,7 @@ from __future__ import print_function
 Control the number of agents and policies via --num-agents and --num-policies.
 
 This works with hundreds of agents and policies, but note that initializing
-many TF policy graphs will take some time.
+many TF policies will take some time.
 
 Also, TF evals might slow down with large numbers of policies. To debug TF
 execution, set the TF_TIMELINE_DIR environment variable.
@@ -90,12 +90,12 @@ if __name__ == "__main__":
         }
         return (None, obs_space, act_space, config)
 
-    # Setup PPO with an ensemble of `num_policies` different policy graphs
-    policy_graphs = {
+    # Setup PPO with an ensemble of `num_policies` different policies
+    policies = {
         "policy_{}".format(i): gen_policy(i)
         for i in range(args.num_policies)
     }
-    policy_ids = list(policy_graphs.keys())
+    policy_ids = list(policies.keys())
 
     tune.run(
         "PPO",
@@ -105,7 +105,7 @@ if __name__ == "__main__":
             "log_level": "DEBUG",
             "num_sgd_iter": 10,
             "multiagent": {
-                "policy_graphs": policy_graphs,
+                "policies": policies,
                 "policy_mapping_fn": tune.function(
                     lambda agent_id: random.choice(policy_ids)),
             },
