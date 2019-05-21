@@ -141,15 +141,17 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
       [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids) {
-        std::vector<ClientID> clients_to_request;
-        bool restart_timer;
-        pull_manager_.NewObjectLocations(object_id, client_ids, &clients_to_request,
-                                         &restart_timer);
-        for (const ClientID &client_id : clients_to_request) {
-          SendPullRequest(object_id, client_id);
-        }
-        if (restart_timer) {
-          RestartPullTimer(object_id);
+        if (!client_ids.empty()) {
+          std::vector<ClientID> clients_to_request;
+          bool restart_timer;
+          pull_manager_.NewObjectLocations(object_id, client_ids, &clients_to_request,
+                                           &restart_timer);
+          for (const ClientID &client_id : clients_to_request) {
+            SendPullRequest(object_id, client_id);
+          }
+          if (restart_timer) {
+            RestartPullTimer(object_id);
+          }
         }
       });
 }
@@ -231,6 +233,14 @@ void ObjectManager::RestartPullTimer(const ObjectID &object_id) {
 
 void ObjectManager::AbortObjectCreation(const ObjectID &object_id) {
   // TODO(rkn): Implement this!
+
+  auto it = pull_timers_.find(object_id);
+  if (it != pull_timers_.end()) {
+    auto &pull_timer = it->second;
+    pull_timer.cancel();
+    pull_timers_.erase(object_id);
+  }
+
   RAY_LOG(WARNING) << "We do not handle the abort_creation case yet.";
 }
 
@@ -287,9 +297,6 @@ void ObjectManager::HandleReceiveFinished(const UniqueID &push_id,
     bool restart_timer;
     pull_manager_.ChunkReadSucceeded(push_id, object_id, client_id, chunk_index,
                                      &abort_creation, &restart_timer);
-    if (restart_timer) {
-      RestartPullTimer(object_id);
-    }
   } else {
     std::vector<ClientID> clients_to_cancel;
     pull_manager_.ChunkReadFailed(push_id, object_id, client_id, chunk_index,
@@ -494,6 +501,13 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
                                  &unsubscribe_from_locations);
   for (const ClientID &client_id : clients_to_cancel) {
     SendCancelPullRequest(UniqueID::nil(), object_id, client_id);
+  }
+
+  auto it = pull_timers_.find(object_id);
+  if (it != pull_timers_.end()) {
+    auto &pull_timer = it->second;
+    pull_timer.cancel();
+    pull_timers_.erase(object_id);
   }
 
   if (unsubscribe_from_locations) {
@@ -972,8 +986,6 @@ void ObjectManager::RecordMetrics() const {
   stats::ObjectManagerStats().Record(
       unfulfilled_push_requests_.size(),
       {{stats::ValueTypeKey, "num_unfulfilled_push_requests"}});
-  stats::ObjectManagerStats().Record(pull_requests_.size(),
-                                     {{stats::ValueTypeKey, "num_pull_requests"}});
   stats::ObjectManagerStats().Record(profile_events_.size(),
                                      {{stats::ValueTypeKey, "num_profile_events"}});
   connection_pool_.RecordMetrics();

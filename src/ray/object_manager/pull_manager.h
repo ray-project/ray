@@ -285,7 +285,7 @@ class PullManager {
   /// associated with that pull. NOTE: We use unique_ptr<PullInfo> instead of
   /// PullInfo because the PullInfo object uses the "this" pointer and so cannot
   /// be moved around.
-  std::unordered_map<ObjectID, PullInfo> pulls_;
+  std::unordered_map<ObjectID, std::unique_ptr<PullInfo>> pulls_;
   /// A random number generator.
   std::mt19937_64 gen_;
 };
