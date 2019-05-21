@@ -2636,15 +2636,16 @@ def test_object_id_properties():
     id_dumps = pickle.dumps(object_id)
     id_from_dumps = pickle.loads(id_dumps)
     assert id_from_dumps == object_id
+    file_prefix = "test_object_id_properties"
 
     # Make sure the ids are fork safe.
     def write(index):
         str = ray.ObjectID.from_random().hex()
-        with open("test_object_id_properties%s" % index, "w") as fo:
+        with open("{}{}".format(file_prefix, index), "w") as fo:
             fo.write(str)
 
     def read(index):
-        with open("test_object_id_properties%s" % index, "r") as fi:
+        with open("{}{}".format(file_prefix, index), "r") as fi:
             for line in fi:
                 return line
 
@@ -2653,8 +2654,9 @@ def test_object_id_properties():
         process.start()
     for process in processes:
         process.join()
-    hex = {read(i) for i in range(4)}
-    assert len(hex) == 4
+    hexes = {read(i) for i in range(4)}
+    [os.remove("{}{}".format(file_prefix, i)) for i in range(4)]
+    assert len(hexes) == 4
 
 
 @pytest.fixture
