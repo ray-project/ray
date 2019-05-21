@@ -210,6 +210,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     rayletClient.freePlasmaObjects(objectIds, localOnly, deleteCreatingTasks);
   }
 
+  @Override
+  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
+    Preconditions.checkArgument(Double.compare(capacity, 0) >= 0);
+    if (nodeId == null) {
+      nodeId = UniqueId.NIL;
+    }
+    rayletClient.setResource(resourceName, capacity, nodeId);
+  }
+
   private List<List<UniqueId>> splitIntoBatches(List<UniqueId> objectIds) {
     List<List<UniqueId>> batches = new ArrayList<>();
     int objectsSize = objectIds.size();

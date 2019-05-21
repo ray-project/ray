@@ -116,6 +116,14 @@ JNIEXPORT void JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyActorResumedFromCheckpoint(
     JNIEnv *, jclass, jlong, jbyteArray, jbyteArray);
 
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeSetResource
+ * Signature: (JLjava/lang/String;D[B)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSetResource(
+    JNIEnv *, jclass, jlong, jstring, jdouble, jbyteArray);
+
 #ifdef __cplusplus
 }
 #endif
