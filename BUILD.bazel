@@ -5,6 +5,10 @@ load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
 
+load("@com_github_stackb_rules_protobuf//cpp:cpp_grpc_compile.bzl", "cpp_grpc_compile")
+load("@com_github_stackb_rules_protobuf//java:java_grpc_compile.bzl", "java_grpc_compile")
+load("@com_github_stackb_rules_protobuf//python:python_grpc_compile.bzl", "python_grpc_compile")
+
 COPTS = ["-DRAY_USE_GLOG"]
 
 cc_binary(
@@ -641,6 +645,62 @@ genrule(
             cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/; 
         done &&
         echo $$WORK_DIR > $@
+    """,
+    local = 1,
+)
+
+python_grpc_compile(
+    name = "greeter_python_grpc",
+    deps = ["@com_github_stackb_rules_protobuf//example/proto:greeter_grpc"],
+)
+
+cpp_grpc_compile(
+    name = "greeter_cpp_grpc",
+    deps = ["@com_github_stackb_rules_protobuf//example/proto:greeter_grpc"],
+)
+
+# Java example is not included in this example.
+java_grpc_compile(
+    name = "greeter_java_grpc",
+    deps = ["@com_github_stackb_rules_protobuf//example/proto:greeter_grpc"],
+)
+
+cc_binary(
+    name = "greeter_server",
+    srcs = [
+        ":greeter_cpp_grpc",
+        "src/ray/grpc_example/server_main.cc",
+    ],
+    includes = [
+        "greeter_cpp_grpc",
+    ],
+    deps = [
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc++_reflection",
+    ],
+)
+
+genrule(
+    name = "grpc_example",
+    srcs = [
+        "//:greeter_cpp_grpc",
+        "//:greeter_java_grpc",
+        "//:greeter_python_grpc",
+        "//:greeter_server",
+        "src/ray/grpc_example/greeter_client.py",
+    ],
+    outs = ["grpc_example.out"],
+    cmd = """
+        set -x &&
+        WORK_DIR=$$(pwd) &&
+        mkdir -p $$WORK_DIR/grpc_example/example/proto &&
+        cp -f $(location //:greeter_server) $$WORK_DIR/grpc_example &&
+        cp -f $(location src/ray/grpc_example/greeter_client.py) $$WORK_DIR/grpc_example &&
+        cp -f $(locations //:greeter_cpp_grpc) $$WORK_DIR/grpc_example &&
+        cp -f $(locations //:greeter_python_grpc) $$WORK_DIR/grpc_example/example/proto &&
+        cp -f $(locations //:greeter_java_grpc) $$WORK_DIR/grpc_example &&
+        echo GRPC example path: $$WORK_DIR/grpc_example &&
+        echo $$WORK_DIR/grpc_example > $@
     """,
     local = 1,
 )
