@@ -88,11 +88,11 @@ def compute_put_id(TaskID task_id, int64_t put_index):
     if put_index < 1 or put_index > kMaxTaskPuts:
         raise ValueError("The range of 'put_index' should be [1, %d]"
                          % kMaxTaskPuts)
-    return ObjectID(ComputePutId(task_id.native(), put_index).binary())
+    return ObjectID(CObjectID.for_put(task_id.native(), put_index).binary())
 
 
 def compute_task_id(ObjectID object_id):
-    return TaskID(ComputeTaskId(object_id.native()).binary())
+    return TaskID(object_id.native().task_id().binary())
 
 
 cdef c_bool is_simple_value(value, int *num_elements_contained):

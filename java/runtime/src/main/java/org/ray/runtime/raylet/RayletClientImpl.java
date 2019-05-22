@@ -11,6 +11,8 @@ import java.util.Map;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
+import org.ray.api.id.ObjectId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.generated.Arg;
@@ -20,7 +22,7 @@ import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.UniqueIdUtil;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,18 +52,18 @@ public class RayletClientImpl implements RayletClient {
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
-      timeoutMs, UniqueId currentTaskId) {
+      timeoutMs, TaskId currentTaskId) {
     Preconditions.checkNotNull(waitFor);
     if (waitFor.isEmpty()) {
       return new WaitResult<>(new ArrayList<>(), new ArrayList<>());
     }
 
-    List<UniqueId> ids = new ArrayList<>();
+    List<ObjectId> ids = new ArrayList<>();
     for (RayObject<T> element : waitFor) {
       ids.add(element.getId());
     }
 
-    boolean[] ready = nativeWaitObject(client, UniqueIdUtil.getIdBytes(ids),
+    boolean[] ready = nativeWaitObject(client, IdUtil.getIdBytes(ids),
         numReturns, timeoutMs, false, currentTaskId.getBytes());
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
@@ -101,31 +103,31 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
-      UniqueId currentTaskId) {
+  public void fetchOrReconstruct(List<ObjectId> objectIds, boolean fetchOnly,
+      TaskId currentTaskId) {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("Blocked on objects for task {}, object IDs are {}",
-          UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
+          objectIds.get(0).getTaskId(), objectIds);
     }
-    nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
+    nativeFetchOrReconstruct(client, IdUtil.getIdBytes(objectIds),
         fetchOnly, currentTaskId.getBytes());
   }
 
   @Override
-  public UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex) {
+  public TaskId generateTaskId(UniqueId driverId, TaskId parentTaskId, int taskIndex) {
     byte[] bytes = nativeGenerateTaskId(driverId.getBytes(), parentTaskId.getBytes(), taskIndex);
-    return new UniqueId(bytes);
+    return new TaskId(bytes);
   }
 
   @Override
-  public void notifyUnblocked(UniqueId currentTaskId) {
+  public void notifyUnblocked(TaskId currentTaskId) {
     nativeNotifyUnblocked(client, currentTaskId.getBytes());
   }
 
   @Override
-  public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly,
+  public void freePlasmaObjects(List<ObjectId> objectIds, boolean localOnly,
                                 boolean deleteCreatingTasks) {
-    byte[][] objectIdsArray = UniqueIdUtil.getIdBytes(objectIds);
+    byte[][] objectIdsArray = IdUtil.getIdBytes(objectIds);
     nativeFreePlasmaObjects(client, objectIdsArray, localOnly, deleteCreatingTasks);
   }
 
@@ -144,8 +146,8 @@ public class RayletClientImpl implements RayletClient {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
     UniqueId driverId = UniqueId.fromByteBuffer(info.driverIdAsByteBuffer());
-    UniqueId taskId = UniqueId.fromByteBuffer(info.taskIdAsByteBuffer());
-    UniqueId parentTaskId = UniqueId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
+    TaskId taskId = TaskId.fromByteBuffer(info.taskIdAsByteBuffer());
+    TaskId parentTaskId = TaskId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     int parentCounter = info.parentCounter();
     UniqueId actorCreationId = UniqueId.fromByteBuffer(info.actorCreationIdAsByteBuffer());
     int maxActorReconstructions = info.maxActorReconstructions();
@@ -154,7 +156,7 @@ public class RayletClientImpl implements RayletClient {
     int actorCounter = info.actorCounter();
 
     // Deserialize new actor handles
-    UniqueId[] newActorHandles = UniqueIdUtil.getUniqueIdsFromByteBuffer(
+    UniqueId[] newActorHandles = IdUtil.getUniqueIdsFromByteBuffer(
         info.newActorHandlesAsByteBuffer());
 
     // Deserialize args
@@ -166,8 +168,7 @@ public class RayletClientImpl implements RayletClient {
       if (objectIdsLength > 0) {
         Preconditions.checkArgument(objectIdsLength == 1,
             "This arg has more than one id: {}", objectIdsLength);
-        UniqueId id = UniqueIdUtil.getUniqueIdsFromByteBuffer(arg.objectIdsAsByteBuffer())[0];
-        args[i] = FunctionArg.passByReference(id);
+        args[i] = FunctionArg.passByReference(ObjectId.fromByteBuffer(arg.objectIdsAsByteBuffer()));
       } else {
         ByteBuffer lbb = arg.dataAsByteBuffer();
         Preconditions.checkState(lbb != null && lbb.remaining() > 0);
@@ -177,7 +178,7 @@ public class RayletClientImpl implements RayletClient {
       }
     }
     // Deserialize return ids
-    UniqueId[] returnIds = UniqueIdUtil.getUniqueIdsFromByteBuffer(info.returnsAsByteBuffer());
+    ObjectId[] returnIds = IdUtil.getObjectIdsFromByteBuffer(info.returnsAsByteBuffer());
 
     // Deserialize required resources;
     Map<String, Double> resources = new HashMap<>();
@@ -213,7 +214,7 @@ public class RayletClientImpl implements RayletClient {
 
     // Serialize the new actor handles.
     int newActorHandlesOffset
-        = fbb.createString(UniqueIdUtil.concatUniqueIds(task.newActorHandles));
+        = fbb.createString(IdUtil.concatIds(task.newActorHandles));
 
     // Serialize args
     int[] argsOffsets = new int[task.args.length];
@@ -222,7 +223,7 @@ public class RayletClientImpl implements RayletClient {
       int dataOffset = 0;
       if (task.args[i].id != null) {
         objectIdOffset = fbb.createString(
-            UniqueIdUtil.concatUniqueIds(new UniqueId[]{task.args[i].id}));
+            IdUtil.concatIds(new ObjectId[]{task.args[i].id}));
       } else {
         objectIdOffset = fbb.createString("");
       }
@@ -234,7 +235,7 @@ public class RayletClientImpl implements RayletClient {
     int argsOffset = fbb.createVectorOfTables(argsOffsets);
 
     // Serialize returns
-    int returnsOffset = fbb.createString(UniqueIdUtil.concatUniqueIds(task.returnIds));
+    int returnsOffset = fbb.createString(IdUtil.concatIds(task.returnIds));
 
     // Serialize required resources
     // The required_resources vector indicates the quantities of the different
