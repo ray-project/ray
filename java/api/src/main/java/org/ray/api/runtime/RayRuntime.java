@@ -7,6 +7,7 @@ import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.ObjectId;
+import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtimecontext.RuntimeContext;

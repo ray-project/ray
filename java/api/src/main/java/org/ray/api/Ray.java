@@ -2,6 +2,7 @@ package org.ray.api;
 
 import java.util.List;
 import org.ray.api.id.ObjectId;
+import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
 import org.ray.api.runtimecontext.RuntimeContext;
