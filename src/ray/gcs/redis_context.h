@@ -11,6 +11,12 @@
 
 #include "ray/gcs/format/gcs_generated.h"
 
+extern "C" {
+#include "ray/thirdparty/hiredis/adapters/ae.h"
+#include "ray/thirdparty/hiredis/async.h"
+#include "ray/thirdparty/hiredis/hiredis.h"
+}
+
 struct redisContext;
 struct redisAsyncContext;
 struct aeEventLoop;
@@ -21,6 +27,8 @@ namespace gcs {
 /// Every callback should take in a vector of the results from the Redis
 /// operation.
 using RedisCallback = std::function<void(const std::string &)>;
+
+void GlobalRedisCallback(void *c, void *r, void *privdata);
 
 class RedisCallbackManager {
  public:
@@ -83,7 +91,8 @@ class RedisContext {
   /// at which the data must be appended. For all other commands, set to
   /// -1 for unused. If set, then data must be provided.
   /// \return Status.
-  Status RunAsync(const std::string &command, const UniqueID &id, const uint8_t *data,
+  template <typename ID>
+  Status RunAsync(const std::string &command, const ID &id, const uint8_t *data,
                   int64_t length, const TablePrefix prefix,
                   const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
@@ -112,6 +121,46 @@ class RedisContext {
   redisAsyncContext *async_context_;
   redisAsyncContext *subscribe_context_;
 };
+
+template <typename ID>
+Status RedisContext::RunAsync(const std::string &command, const ID &id,
+                              const uint8_t *data, int64_t length,
+                              const TablePrefix prefix, const TablePubsub pubsub_channel,
+                              RedisCallback redisCallback, int log_length) {
+  int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, false);
+  if (length > 0) {
+    if (log_length >= 0) {
+      std::string redis_command = command + " %d %d %b %b %d";
+      int status = redisAsyncCommand(
+          async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+          reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
+          pubsub_channel, id.data(), id.size(), data, length, log_length);
+      if (status == REDIS_ERR) {
+        return Status::RedisError(std::string(async_context_->errstr));
+      }
+    } else {
+      std::string redis_command = command + " %d %d %b %b";
+      int status = redisAsyncCommand(
+          async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+          reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
+          pubsub_channel, id.data(), id.size(), data, length);
+      if (status == REDIS_ERR) {
+        return Status::RedisError(std::string(async_context_->errstr));
+      }
+    }
+  } else {
+    RAY_CHECK(log_length == -1);
+    std::string redis_command = command + " %d %d %b";
+    int status = redisAsyncCommand(
+        async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+        reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
+        pubsub_channel, id.data(), id.size());
+    if (status == REDIS_ERR) {
+      return Status::RedisError(std::string(async_context_->errstr));
+    }
+  }
+  return Status::OK();
+}
 
 }  // namespace gcs
 

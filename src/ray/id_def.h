@@ -4,8 +4,6 @@
 // Macro definition format: DEFINE_UNIQUE_ID(id_type).
 // NOTE: This file should NOT be included in any file other than id.h.
 
-DEFINE_UNIQUE_ID(TaskID)
-DEFINE_UNIQUE_ID(ObjectID)
 DEFINE_UNIQUE_ID(FunctionID)
 DEFINE_UNIQUE_ID(ActorClassID)
 DEFINE_UNIQUE_ID(ActorID)

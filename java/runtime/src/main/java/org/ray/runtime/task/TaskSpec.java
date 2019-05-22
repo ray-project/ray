@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import org.ray.api.id.ObjectId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
@@ -19,10 +21,10 @@ public class TaskSpec {
   public final UniqueId driverId;
 
   // Task ID of the task.
-  public final UniqueId taskId;
+  public final TaskId taskId;
 
   // Task ID of the parent task.
-  public final UniqueId parentTaskId;
+  public final TaskId parentTaskId;
 
   // A count of the number of tasks submitted by the parent task before this one.
   public final int parentCounter;
@@ -49,7 +51,7 @@ public class TaskSpec {
   public final FunctionArg[] args;
 
   // return ids
-  public final UniqueId[] returnIds;
+  public final ObjectId[] returnIds;
 
   // The task's resource demands.
   public final Map<String, Double> resources;
@@ -62,7 +64,7 @@ public class TaskSpec {
   // is Python, the type is PyFunctionDescriptor.
   private final FunctionDescriptor functionDescriptor;
 
-  private List<UniqueId> executionDependencies;
+  private List<ObjectId> executionDependencies;
 
   public boolean isActorTask() {
     return !actorId.isNil();
@@ -74,8 +76,8 @@ public class TaskSpec {
 
   public TaskSpec(
       UniqueId driverId,
-      UniqueId taskId,
-      UniqueId parentTaskId,
+      TaskId taskId,
+      TaskId parentTaskId,
       int parentCounter,
       UniqueId actorCreationId,
       int maxActorReconstructions,
@@ -84,7 +86,7 @@ public class TaskSpec {
       int actorCounter,
       UniqueId[] newActorHandles,
       FunctionArg[] args,
-      UniqueId[] returnIds,
+      ObjectId[] returnIds,
       Map<String, Double> resources,
       TaskLanguage language,
       FunctionDescriptor functionDescriptor) {
@@ -125,7 +127,7 @@ public class TaskSpec {
     return (PyFunctionDescriptor) functionDescriptor;
   }
 
-  public List<UniqueId> getExecutionDependencies() {
+  public List<ObjectId> getExecutionDependencies() {
     return executionDependencies;
   }
 

@@ -192,15 +192,25 @@ void Log<ID, Data>::Delete(const DriverID &driver_id, const std::vector<ID> &ids
   }
   // Breaking really large deletion commands into batches of smaller size.
   const size_t batch_size =
-      RayConfig::instance().maximum_gcs_deletion_batch_size() * kUniqueIDSize;
+      RayConfig::instance().maximum_gcs_deletion_batch_size() * ID::size();
   for (const auto &pair : sharded_data) {
     std::string current_data = pair.second.str();
     for (size_t cur = 0; cur < pair.second.str().size(); cur += batch_size) {
-      RAY_IGNORE_EXPR(pair.first->RunAsync(
-          "RAY.TABLE_DELETE", UniqueID::nil(),
-          reinterpret_cast<const uint8_t *>(current_data.c_str() + cur),
-          std::min(batch_size, current_data.size() - cur), prefix_, pubsub_channel_,
-          /*redisCallback=*/nullptr));
+      size_t data_field_size = std::min(batch_size, current_data.size() - cur);
+      uint16_t id_count = data_field_size / ID::size();
+      // Send data contains id count and all the id data.
+      std::string send_data(data_field_size + sizeof(id_count), 0);
+      uint8_t *buffer = reinterpret_cast<uint8_t *>(&send_data[0]);
+      *reinterpret_cast<uint16_t *>(buffer) = id_count;
+      RAY_IGNORE_EXPR(
+          std::copy_n(reinterpret_cast<const uint8_t *>(current_data.c_str() + cur),
+                      data_field_size, buffer + sizeof(uint16_t)));
+
+      RAY_IGNORE_EXPR(
+          pair.first->RunAsync("RAY.TABLE_DELETE", UniqueID::nil(),
+                               reinterpret_cast<const uint8_t *>(send_data.c_str()),
+                               send_data.size(), prefix_, pubsub_channel_,
+                               /*redisCallback=*/nullptr));
     }
   }
 }

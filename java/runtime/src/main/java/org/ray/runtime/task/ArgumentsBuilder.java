@@ -5,7 +5,7 @@ import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.util.Serializer;
 
@@ -24,7 +24,7 @@ public class ArgumentsBuilder {
     FunctionArg[] ret = new FunctionArg[args.length];
     for (int i = 0; i < ret.length; i++) {
       Object arg = args[i];
-      UniqueId id = null;
+      ObjectId id = null;
       byte[] data = null;
       if (arg == null) {
         data = Serializer.encode(null);
@@ -59,7 +59,7 @@ public class ArgumentsBuilder {
    */
   public static Object[] unwrap(TaskSpec task, ClassLoader classLoader) {
     Object[] realArgs = new Object[task.args.length];
-    List<UniqueId> idsToFetch = new ArrayList<>();
+    List<ObjectId> idsToFetch = new ArrayList<>();
     List<Integer> indices = new ArrayList<>();
     for (int i = 0; i < task.args.length; i++) {
       FunctionArg arg = task.args[i];

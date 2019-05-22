@@ -7,6 +7,7 @@ import collections
 from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
+from multiprocessing import Process
 import os
 import random
 import re
@@ -28,7 +29,6 @@ import pytest
 import ray
 import ray.tests.cluster_utils
 import ray.tests.utils
-from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)
 
@@ -2630,12 +2630,33 @@ def test_object_id_properties():
         ray.ObjectID(id_bytes + b"1234")
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
         ray.ObjectID(b"0123456789")
-    object_id = ray.ObjectID(_random_string())
+    object_id = ray.ObjectID.from_random()
     assert not object_id.is_nil()
     assert object_id.binary() != id_bytes
     id_dumps = pickle.dumps(object_id)
     id_from_dumps = pickle.loads(id_dumps)
     assert id_from_dumps == object_id
+    file_prefix = "test_object_id_properties"
+
+    # Make sure the ids are fork safe.
+    def write(index):
+        str = ray.ObjectID.from_random().hex()
+        with open("{}{}".format(file_prefix, index), "w") as fo:
+            fo.write(str)
+
+    def read(index):
+        with open("{}{}".format(file_prefix, index), "r") as fi:
+            for line in fi:
+                return line
+
+    processes = [Process(target=write, args=(_, )) for _ in range(4)]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join()
+    hexes = {read(i) for i in range(4)}
+    [os.remove("{}{}".format(file_prefix, i)) for i in range(4)]
+    assert len(hexes) == 4
 
 
 @pytest.fixture
@@ -2768,7 +2789,7 @@ def test_pandas_parquet_serialization():
 
 
 def test_socket_dir_not_existing(shutdown_only):
-    random_name = ray.ObjectID(_random_string()).hex()
+    random_name = ray.ObjectID.from_random().hex()
     temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                            "raylet_socket")
