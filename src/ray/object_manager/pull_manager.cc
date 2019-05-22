@@ -149,13 +149,12 @@ void PullManager::PullObject(const ObjectID &object_id, bool *subscribe_to_locat
       RAY_CHECK(!pull_info->push_id.is_nil());
       RAY_CHECK(!pull_info->client_receiving_from.is_nil());
       pull_info->required = true;
-    } else {
+    } else if (!pull_info->client_receiving_from.is_nil()) {
       // In this case, we are already pulling the object, so there is nothing new
       // to do.
       *subscribe_to_locations = false;
     }
   }
-  auto &pull_info = it->second;
 }
 
 void PullManager::CancelPullObject(const ObjectID &object_id,
@@ -212,7 +211,7 @@ void PullManager::ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &ob
   // TODO (williamma12): The following check may not be true because some client
   // may have sent uncalled for chunks?
   // RAY_CHECK(pull_info->remaining_chunk_ids.erase(chunk_index) == 1);
-  RAY_CHECK(pull_info->received_chunk_ids.insert(chunk_index).second);
+  // RAY_CHECK(pull_info->received_chunk_ids.insert(chunk_index).second);
 
   if (client_id == pull_info->client_receiving_from && push_id == pull_info->push_id) {
     *restart_timer = true;
@@ -255,7 +254,7 @@ void PullManager::ChunkReadFailed(const UniqueID &push_id, const ObjectID &objec
 // The timer for this pull request expired. If the object is required, then we
 // need to reissue some new requests. If it is not required, then we may need to
 // end the pull lifetime.
-void PullManager::TimerExpired(const UniqueID &push_id, const ObjectID &object_id,
+void PullManager::TimerExpired(const ObjectID &object_id,
                                std::vector<ClientID> *clients_to_request,
                                bool *abort_creation, bool *restart_timer) {
   auto it = pulls_.find(object_id);

@@ -261,7 +261,7 @@ class PullManager {
   /// \param[out] restart_timer This will be set to true if the timer for this
   /// object should be restarted and false otherwise.
   /// \return Void.
-  void TimerExpired(const UniqueID &push_id, const ObjectID &object_id,
+  void TimerExpired(const ObjectID &object_id,
                     std::vector<ClientID> *clients_to_request, bool *abort_creation,
                     bool *restart_timer);
 

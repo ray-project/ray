@@ -126,8 +126,9 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   bool start_timer;
   pull_manager_.PullObject(object_id, &subscribe_to_locations, &start_timer);
   if (start_timer) {
-    RAY_CHECK(pull_timers_.find(object_id) == pull_timers_.end());
-    RestartPullTimer(object_id);
+    if (pull_timers_.find(object_id) == pull_timers_.end()) {
+      RestartPullTimer(object_id);
+    }
   }
 
   if (!subscribe_to_locations) {
@@ -141,17 +142,15 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
       [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids) {
-        if (!client_ids.empty()) {
-          std::vector<ClientID> clients_to_request;
-          bool restart_timer;
-          pull_manager_.NewObjectLocations(object_id, client_ids, &clients_to_request,
-                                           &restart_timer);
-          for (const ClientID &client_id : clients_to_request) {
-            SendPullRequest(object_id, client_id);
-          }
-          if (restart_timer) {
-            RestartPullTimer(object_id);
-          }
+        std::vector<ClientID> clients_to_request;
+        bool restart_timer;
+        pull_manager_.NewObjectLocations(object_id, client_ids, &clients_to_request,
+                                         &restart_timer);
+        for (const ClientID &client_id : clients_to_request) {
+          SendPullRequest(object_id, client_id);
+        }
+        if (restart_timer) {
+          RestartPullTimer(object_id);
         }
       });
 }
@@ -213,10 +212,14 @@ void ObjectManager::RestartPullTimer(const ObjectID &object_id) {
       std::vector<ClientID> clients_to_request;
       bool abort_creation;
       bool restart_timer;
-      pull_manager_.TimerExpired(UniqueID::nil(), object_id, &clients_to_request, &abort_creation,
+      pull_manager_.TimerExpired(object_id, &clients_to_request, &abort_creation,
                                  &restart_timer);
       if (abort_creation) {
         AbortObjectCreation(object_id);
+      } else {
+        for (const ClientID &client_id : clients_to_request) {
+          SendPullRequest(object_id, client_id);
+        }
       }
       if (restart_timer) {
         RestartPullTimer(object_id);
@@ -233,13 +236,6 @@ void ObjectManager::RestartPullTimer(const ObjectID &object_id) {
 
 void ObjectManager::AbortObjectCreation(const ObjectID &object_id) {
   // TODO(rkn): Implement this!
-
-  auto it = pull_timers_.find(object_id);
-  if (it != pull_timers_.end()) {
-    auto &pull_timer = it->second;
-    pull_timer.cancel();
-    pull_timers_.erase(object_id);
-  }
 
   RAY_LOG(WARNING) << "We do not handle the abort_creation case yet.";
 }
@@ -362,13 +358,13 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   // was recent, then don't do it again.
   auto &recent_pushes = local_objects_[object_id].recent_pushes;
   auto it = recent_pushes.find(client_id);
+  int64_t current_time = current_sys_time_ms();
   if (it == recent_pushes.end()) {
     // We haven't pushed this specific object to this specific object manager
     // yet (or if we have then the object must have been evicted and recreated
     // locally).
-    recent_pushes[client_id] = current_sys_time_ms();
+    recent_pushes[client_id] = current_time;
   } else {
-    int64_t current_time = current_sys_time_ms();
     if (current_time - it->second <=
         RayConfig::instance().object_manager_repeated_push_delay_ms()) {
       // We pushed this object to the object manager recently, so don't do it
@@ -501,13 +497,6 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
                                  &unsubscribe_from_locations);
   for (const ClientID &client_id : clients_to_cancel) {
     SendCancelPullRequest(UniqueID::nil(), object_id, client_id);
-  }
-
-  auto it = pull_timers_.find(object_id);
-  if (it != pull_timers_.end()) {
-    auto &pull_timer = it->second;
-    pull_timer.cancel();
-    pull_timers_.erase(object_id);
   }
 
   if (unsubscribe_from_locations) {
