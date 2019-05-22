@@ -12,7 +12,11 @@ from ray.experimental.sgd.pytorch import utils
 
 
 class PyTorchTrainer(object):
-    """Train a PyTorch model using distributed PyTorch"""
+    """Train a PyTorch model using distributed PyTorch.
+
+    Launches a set of actors which connect via distributed PyTorch and
+    coordinate gradient updates to train the provided model.
+    """
 
     def __init__(
             self,
@@ -26,26 +30,26 @@ class PyTorchTrainer(object):
             backend="gloo"):
         """Sets up the PyTorch trainer.
 
-            Args:
-                model_creator (dict -> torch.nn.Module): creates the model
-                    using the config.
-                data_creator (dict -> Dataset, Dataset): creates the training
-                    and validation data sets using the config.
-                optimizer_creator (model, dict -> loss, optimizer): creates the
-                    loss and optimizer using the config.
-                config (dict): configuration passed to 'model_creator',
-                    'data_creator', and 'optimizer_creator'.
-                batch_size (int): batch size used for SGD.
-                backend (string): backend used for distributed SGD. "gloo" or
-                    "nccl".
+        Args:
+            model_creator (dict -> torch.nn.Module): creates the model
+                using the config.
+            data_creator (dict -> Dataset, Dataset): creates the training
+                and validation data sets using the config.
+            optimizer_creator (model, dict -> loss, optimizer): creates the
+                loss and optimizer using the config.
+            config (dict): configuration passed to 'model_creator',
+                'data_creator', and 'optimizer_creator'.
+            batch_size (int): batch size used for SGD.
+            backend (string): backend used for distributed SGD. "gloo" or
+                "nccl".
         """
         # TODO: add support for mixed precision
         # TODO: add support for callbacks
         if sys.platform == "darwin":
-            raise Exception((
-                "Distributed PyTorch is not supported on macOS. For more "
-                "information, see "
-                "https://github.com/pytorch/examples/issues/467."))
+            raise Exception(
+                ("Distributed PyTorch is not supported on macOS. For more "
+                 "information, see "
+                 "https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
         self.config = {} if config is None else config
@@ -53,7 +57,7 @@ class PyTorchTrainer(object):
 
         if resources_per_replica is None:
             resources_per_replica = utils.Resources(
-                num_cpus=0, num_gpus=0, resources={})
+                num_cpus=0, num_gpus=1, resources={})
         # TODO: support multiple GPUs
         if resources_per_replica.num_gpus > 1:
             raise ValueError("multi-GPU models are not supported yet")

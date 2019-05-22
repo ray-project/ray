@@ -96,12 +96,18 @@ def validate(val_loader, model, criterion):
 
 class TimerStat(object):
     """A running stat for conveniently logging the duration of a code block.
-    
-    Example:
-        wait_timer = TimerStat()
-        with wait_timer:
-            ray.wait(...)
+
     Note that this class is *not* thread-safe.
+
+    Examples:
+        Time a call to 'time.sleep'.
+
+        >>> import time
+        >>> sleep_timer = TimerStat()
+        >>> with sleep_timer:
+        ...     time.sleep(1)
+        >>> round(sleep_timer.mean)
+        1
     """
 
     def __init__(self, window_size=10):
@@ -183,7 +189,7 @@ class TimerStat(object):
 
 def find_free_port():
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(('', 0))
+        s.bind(("", 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]
 

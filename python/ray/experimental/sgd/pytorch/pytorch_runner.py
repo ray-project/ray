@@ -49,9 +49,11 @@ class PyTorchRunner(object):
         self.backend = backend
         self.verbose = True
 
+        # Determine the device on which the model will run
         self.local_rank = None
         if os.environ.get("CUDA_VISIBLE_DEVICES", None):
             self.local_rank = int(os.environ["CUDA_VISIBLE_DEVICES"])
+
         self.epoch = 0
         self._timers = {
             k: utils.TimerStat(window_size=1)
@@ -186,8 +188,4 @@ class PyTorchRunner(object):
 
     def shutdown(self):
         """Attempts to shut down the worker"""
-        logger.debug("Stopping worker.")
-        try:
-            dist.destroy_process_group()
-        except Exception:
-            logger.exception("Stop failed.")
+        dist.destroy_process_group()
