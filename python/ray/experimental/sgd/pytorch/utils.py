@@ -54,7 +54,6 @@ def train(train_iterator, model, criterion, optimizer):
         batch_time.update(time.time() - end)
         end = time.time()
 
-    # acc = top1.avg if type(top1.avg) == int else top1.avg.cpu()
     stats = {
         "batch_time": batch_time.avg,
         "batch_processed": losses.count,
