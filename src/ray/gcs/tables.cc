@@ -41,9 +41,10 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Append(const DriverID &driver_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_appends_++;
-  auto callback = [this, id, dataT, done](const std::string &data) {
-    // If data is not empty, then Redis failed to append the entry.
-    RAY_CHECK(data.empty()) << "TABLE_APPEND command failed: " << data;
+  auto callback = [this, id, dataT, done](const CallbackReply &reply) {
+    const auto status = reply.ReadAsStatus();
+    // Failed to append the entry.
+    RAY_CHECK(status.ok()) << "Failed to execute command TABLE_APPEND:" << status.ToString();
 
     if (done != nullptr) {
       (done)(client_, id, *dataT);
@@ -62,7 +63,8 @@ Status Log<ID, Data>::AppendAt(const DriverID &driver_id, const ID &id,
                                std::shared_ptr<DataT> &dataT, const WriteCallback &done,
                                const WriteCallback &failure, int log_length) {
   num_appends_++;
-  auto callback = [this, id, dataT, done, failure](const std::string &data) {
+  auto callback = [this, id, dataT, done, failure](const CallbackReply &reply) {
+    const auto data = reply.ReadAsString();
     if (data.empty()) {
       if (done != nullptr) {
         (done)(client_, id, *dataT);
@@ -85,7 +87,8 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
                              const Callback &lookup) {
   num_lookups_++;
-  auto callback = [this, id, lookup](const std::string &data) {
+  auto callback = [this, id, lookup](const CallbackReply &reply) {
+    const auto data = reply.ReadAsString();
     if (lookup != nullptr) {
       std::vector<DataT> results;
       if (!data.empty()) {
@@ -125,7 +128,9 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
                                 const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
       << "Client called Subscribe twice on the same table";
-  auto callback = [this, subscribe, done](const std::string &data) {
+  auto callback = [this, subscribe, done](const CallbackReply &reply) {
+    const auto data = reply.ReadAsPubsubData();
+
     if (data.empty()) {
       // No notification data is provided. This is the callback for the
       // initial subscription request.
@@ -231,7 +236,8 @@ template <typename ID, typename Data>
 Status Table<ID, Data>::Add(const DriverID &driver_id, const ID &id,
                             std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
-  auto callback = [this, id, dataT, done](const std::string &data) {
+  auto callback = [this, id, dataT, done](const CallbackReply &reply) {
+    RAY_IGNORE_EXPR(reply);
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
@@ -296,7 +302,8 @@ template <typename ID, typename Data>
 Status Set<ID, Data>::Add(const DriverID &driver_id, const ID &id,
                           std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
-  auto callback = [this, id, dataT, done](const std::string &data) {
+  auto callback = [this, id, dataT, done](const CallbackReply &reply) {
+    RAY_IGNORE_EXPR(reply);
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
@@ -313,7 +320,8 @@ template <typename ID, typename Data>
 Status Set<ID, Data>::Remove(const DriverID &driver_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_removes_++;
-  auto callback = [this, id, dataT, done](const std::string &data) {
+  auto callback = [this, id, dataT, done](const CallbackReply &reply) {
+    RAY_IGNORE_EXPR(reply);
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }

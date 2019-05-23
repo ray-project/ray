@@ -24,9 +24,31 @@ struct aeEventLoop;
 namespace ray {
 
 namespace gcs {
+
+/// A simple reply wrapper for redis reply.
+class CallbackReply {
+ public:
+  explicit CallbackReply(redisReply *redis_reply);
+
+  bool IsNil() const;
+
+  uint64_t ReadAsInteger() const;
+
+  std::string ReadAsString() const;
+
+  Status ReadAsStatus() const;
+
+  std::string ReadAsPubsubData() const;
+
+  std::vector<std::string> ReadAsStringArray() const;
+
+ private:
+  redisReply *redis_reply_;
+};
+
 /// Every callback should take in a vector of the results from the Redis
 /// operation.
-using RedisCallback = std::function<void(const std::string &)>;
+using RedisCallback = std::function<void(const CallbackReply &)>;
 
 void GlobalRedisCallback(void *c, void *r, void *privdata);
 
