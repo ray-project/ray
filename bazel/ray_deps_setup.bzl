@@ -66,7 +66,7 @@ def ray_deps_setup():
     git_repository(
         name = "com_github_grpc_grpc",
         remote = "https://github.com/grpc/grpc",
-        tag = "v1.20.0",
+        tag = "v1.21.0",
     )
    
     new_git_repository(

@@ -7,6 +7,8 @@ load("@//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_stackb_rules_protobuf//cpp:cpp_grpc_compile.bzl", "cpp_grpc_compile")
 load("@com_github_stackb_rules_protobuf//java:java_grpc_compile.bzl", "java_grpc_compile")
 load("@com_github_stackb_rules_protobuf//python:python_grpc_compile.bzl", "python_grpc_compile")
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load("@com_github_grpc_grpc//bazel:grpc_build_system.bzl", "grpc_proto_library")
 
 COPTS = ["-DRAY_USE_GLOG"]
 
@@ -653,9 +655,21 @@ python_grpc_compile(
     deps = ["@com_github_stackb_rules_protobuf//example/proto:greeter_grpc"],
 )
 
-cpp_grpc_compile(
-    name = "greeter_cpp_grpc",
-    deps = ["@com_github_stackb_rules_protobuf//example/proto:greeter_grpc"],
+proto_library(
+    name = "greeter_proto",
+    srcs = ["src/ray/grpc_example/greeter.proto"],
+)
+
+cc_proto_library(
+    name = "greeter_cc_proto",
+    deps = [":greeter_proto"],
+)
+
+cc_grpc_library(
+    name = "greeter_cpp_grpc_bazel",
+    srcs = [":greeter_proto"],
+    deps = [":greeter_cc_proto"],
+    grpc_only = True,
 )
 
 # Java example is not included in this example.
@@ -668,24 +682,20 @@ cc_binary(
     name = "greeter_server",
     srcs = [
         "src/ray/grpc_example/server_main.cc",
-        ":greeter_cpp_grpc",
-    ],
-    includes = [
-        "greeter_cpp_grpc",
     ],
     deps = [
         "@com_github_grpc_grpc//:grpc++",
-        "@com_github_grpc_grpc//:grpc++_reflection",
+        ":greeter_cpp_grpc_bazel",
     ],
 )
 
 genrule(
     name = "grpc_example",
     srcs = [
-        "//:greeter_cpp_grpc",
         "//:greeter_java_grpc",
         "//:greeter_python_grpc",
         "//:greeter_server",
+        "//:greeter_cpp_grpc_bazel",
         "src/ray/grpc_example/greeter_client.py",
     ],
     outs = ["grpc_example.out"],
@@ -693,9 +703,9 @@ genrule(
         set -x &&
         WORK_DIR=$$(pwd) &&
         mkdir -p $$WORK_DIR/grpc_example/example/proto &&
-        cp -f $(location //:greeter_server) $$WORK_DIR/grpc_example &&
         cp -f $(location src/ray/grpc_example/greeter_client.py) $$WORK_DIR/grpc_example &&
-        cp -f $(locations //:greeter_cpp_grpc) $$WORK_DIR/grpc_example &&
+        cp -f $(location greeter_server) $$WORK_DIR/grpc_example &&
+        cp -f $(locations //:greeter_cpp_grpc_bazel) $$WORK_DIR/grpc_example &&
         cp -f $(locations //:greeter_python_grpc) $$WORK_DIR/grpc_example/example/proto &&
         cp -f $(locations //:greeter_java_grpc) $$WORK_DIR/grpc_example &&
         echo GRPC example path: $$WORK_DIR/grpc_example &&

@@ -12,7 +12,7 @@ def ray_deps_build_all():
   gen_java_deps()
   checkstyle_deps()
   boost_deps()
-  cpp_grpc_compile()
+  #cpp_grpc_compile()
   python_grpc_compile()
   java_grpc_compile()
   grpc_deps()

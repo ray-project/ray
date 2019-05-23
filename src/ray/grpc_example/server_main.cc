@@ -6,8 +6,8 @@
 
 #include <grpc++/grpc++.h>
 
-#include "example/proto/greeter.grpc.pb.h"
-#include "example/proto/greeter.pb.h"
+#include "src/ray/grpc_example/greeter.grpc.pb.h"
+#include "src/ray/grpc_example/greeter.pb.h"
 
 using greeter::Greeter;
 using greeter::HelloReply;
