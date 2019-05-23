@@ -27,7 +27,7 @@ For each session, Ray will place all its temporary files under the
 *session directory*. A *session directory* is a subdirectory of the
 *root temporary path* (``/tmp/ray`` by default),
 so the default session directory is ``/tmp/ray/{ray_session_name}``.
-You can sort by their names to find the latest session.
+You can sort by their names to find the latest session (e.g. ``ls | sort``).
 
 You are allowed to change the *root temporary directory* in one of these ways:
 
@@ -46,7 +46,7 @@ A typical layout of temporary files could look like this:
 
   /tmp
   └── ray
-      └── session_{datetime}_{pid}
+      └── {ray_session_name}
           ├── logs  # for logging
           │   ├── log_monitor.err
           │   ├── log_monitor.out
@@ -66,9 +66,9 @@ A typical layout of temporary files could look like this:
           │   ├── worker-{worker_id}.err  # redirected output of workers
           │   ├── worker-{worker_id}.out
           │   └── {other workers}
-          └── sockets  # for sockets
-              ├── plasma_store  # this could be deleted by Ray's shutdown cleanup.
-              └── raylet  # this could be deleted by Ray's shutdown cleanup.
+          └── sockets  # for sockets; all sockets will be deleted by Ray's shutdown cleanup.
+              ├── plasma_store  # plasma store
+              └── raylet  # raylet
 
 
 Plasma Object Store Socket
