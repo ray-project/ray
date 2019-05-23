@@ -642,7 +642,7 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
     cluster = ray_start_cluster_2_nodes
     cluster.wait_for_nodes()
 
-    client_ids = {item["ClientID"] for item in ray.global_state.client_table()}
+    client_ids = {item["ClientId"] for item in ray.global_state.client_table()}
 
     # Try to make sure that the monitor has received at least one heartbeat
     # from the node.
@@ -666,7 +666,7 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
 
 
 def test_raylet_crash_when_get(ray_start_regular):
-    nonexistent_id = ray.ObjectID.from_random()
+    nonexistent_id = ray.ObjectId.from_random()
 
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.

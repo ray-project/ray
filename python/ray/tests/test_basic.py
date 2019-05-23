@@ -1317,7 +1317,7 @@ def test_identical_function_names(ray_start_regular):
 
 def test_illegal_api_calls(ray_start_regular):
 
-    # Verify that we cannot call put on an ObjectID.
+    # Verify that we cannot call put on an ObjectId.
     x = ray.put(1)
     with pytest.raises(Exception):
         ray.put(x)
@@ -2425,14 +2425,14 @@ def test_global_state_api(shutdown_only):
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
-    nil_id_hex = ray.ObjectID.nil().hex()
+    nil_id_hex = ray.ObjectId.nil().hex()
 
-    assert task_spec["TaskID"] == driver_task_id
-    assert task_spec["ActorID"] == nil_id_hex
+    assert task_spec["TaskId"] == driver_task_id
+    assert task_spec["ActorId"] == nil_id_hex
     assert task_spec["Args"] == []
-    assert task_spec["DriverID"] == driver_id
-    assert task_spec["FunctionID"] == nil_id_hex
-    assert task_spec["ReturnObjectIDs"] == []
+    assert task_spec["DriverId"] == driver_id
+    assert task_spec["FunctionId"] == nil_id_hex
+    assert task_spec["ReturnObjectIds"] == []
 
     client_table = ray.global_state.client_table()
     node_ip_address = ray.worker.global_worker.node_ip_address
@@ -2457,13 +2457,13 @@ def test_global_state_api(shutdown_only):
 
     function_table = ray.global_state.function_table()
     task_spec = task_table[task_id]["TaskSpec"]
-    assert task_spec["ActorID"] == nil_id_hex
+    assert task_spec["ActorId"] == nil_id_hex
     assert task_spec["Args"] == [1, "hi", x_id]
-    assert task_spec["DriverID"] == driver_id
-    assert task_spec["ReturnObjectIDs"] == [result_id]
-    function_table_entry = function_table[task_spec["FunctionID"]]
+    assert task_spec["DriverId"] == driver_id
+    assert task_spec["ReturnObjectIds"] == [result_id]
+    function_table_entry = function_table[task_spec["FunctionId"]]
     assert function_table_entry["Name"] == "ray.tests.test_basic.f"
-    assert function_table_entry["DriverID"] == driver_id
+    assert function_table_entry["DriverId"] == driver_id
     assert function_table_entry["Module"] == "ray.tests.test_basic"
 
     assert task_table[task_id] == ray.global_state.task_table(task_id)
@@ -2604,7 +2604,7 @@ def test_workers(shutdown_only):
 
 
 def test_specific_driver_id():
-    dummy_driver_id = ray.DriverID(b"00112233445566778899")
+    dummy_driver_id = ray.DriverId(b"00112233445566778899")
     ray.init(num_cpus=1, driver_id=dummy_driver_id)
 
     # in driver
@@ -2622,15 +2622,15 @@ def test_specific_driver_id():
 
 def test_object_id_properties():
     id_bytes = b"00112233445566778899"
-    object_id = ray.ObjectID(id_bytes)
+    object_id = ray.ObjectId(id_bytes)
     assert object_id.binary() == id_bytes
-    object_id = ray.ObjectID.nil()
+    object_id = ray.ObjectId.nil()
     assert object_id.is_nil()
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
-        ray.ObjectID(id_bytes + b"1234")
+        ray.ObjectId(id_bytes + b"1234")
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
-        ray.ObjectID(b"0123456789")
-    object_id = ray.ObjectID.from_random()
+        ray.ObjectId(b"0123456789")
+    object_id = ray.ObjectId.from_random()
     assert not object_id.is_nil()
     assert object_id.binary() != id_bytes
     id_dumps = pickle.dumps(object_id)
@@ -2640,7 +2640,7 @@ def test_object_id_properties():
 
     # Make sure the ids are fork safe.
     def write(index):
-        str = ray.ObjectID.from_random().hex()
+        str = ray.ObjectId.from_random().hex()
         with open("{}{}".format(file_prefix, index), "w") as fo:
             fo.write(str)
 
@@ -2717,7 +2717,7 @@ def test_ray_setproctitle(ray_start_2_cpus):
 def test_duplicate_error_messages(shutdown_only):
     ray.init(num_cpus=0)
 
-    driver_id = ray.DriverID.nil()
+    driver_id = ray.DriverId.nil()
     error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
                                                        "message", 0)
 
@@ -2789,7 +2789,7 @@ def test_pandas_parquet_serialization():
 
 
 def test_socket_dir_not_existing(shutdown_only):
-    random_name = ray.ObjectID.from_random().hex()
+    random_name = ray.ObjectId.from_random().hex()
     temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                            "raylet_socket")

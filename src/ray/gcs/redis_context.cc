@@ -244,7 +244,7 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args) {
   return Status::OK();
 }
 
-Status RedisContext::SubscribeAsync(const ClientID &client_id,
+Status RedisContext::SubscribeAsync(const ClientId &client_id,
                                     const TablePubsub pubsub_channel,
                                     const RedisCallback &redisCallback,
                                     int64_t *out_callback_index) {

@@ -16,24 +16,24 @@ from ray.includes.task cimport (
 cdef class Task:
     cdef:
         unique_ptr[CTaskSpecification] task_spec
-        unique_ptr[c_vector[CObjectID]] execution_dependencies
+        unique_ptr[c_vector[CObjectId]] execution_dependencies
 
-    def __init__(self, DriverID driver_id, function_descriptor, arguments,
-                 int num_returns, TaskID parent_task_id, int parent_counter,
-                 ActorID actor_creation_id,
-                 ObjectID actor_creation_dummy_object_id,
-                 int32_t max_actor_reconstructions, ActorID actor_id,
-                 ActorHandleID actor_handle_id, int actor_counter,
+    def __init__(self, DriverId driver_id, function_descriptor, arguments,
+                 int num_returns, TaskId parent_task_id, int parent_counter,
+                 ActorId actor_creation_id,
+                 ObjectId actor_creation_dummy_object_id,
+                 int32_t max_actor_reconstructions, ActorId actor_id,
+                 ActorHandleId actor_handle_id, int actor_counter,
                  new_actor_handles, execution_arguments, resource_map,
                  placement_resource_map):
         cdef:
             unordered_map[c_string, double] required_resources
             unordered_map[c_string, double] required_placement_resources
             c_vector[shared_ptr[CTaskArgument]] task_args
-            c_vector[CActorHandleID] task_new_actor_handles
+            c_vector[CActorHandleId] task_new_actor_handles
             c_vector[c_string] c_function_descriptor
             c_string pickled_str
-            c_vector[CObjectID] references
+            c_vector[CObjectId] references
 
         for item in function_descriptor:
             if not isinstance(item, bytes):
@@ -50,9 +50,9 @@ cdef class Task:
 
         # Parse the arguments from the list.
         for arg in arguments:
-            if isinstance(arg, ObjectID):
-                references = c_vector[CObjectID]()
-                references.push_back((<ObjectID>arg).native())
+            if isinstance(arg, ObjectId):
+                references = c_vector[CObjectId]()
+                references.push_back((<ObjectId>arg).native())
                 task_args.push_back(
                     static_pointer_cast[CTaskArgument,
                                         CTaskArgumentByReference](
@@ -69,7 +69,7 @@ cdef class Task:
 
         for new_actor_handle in new_actor_handles:
             task_new_actor_handles.push_back(
-                (<ActorHandleID?>new_actor_handle).native())
+                (<ActorHandleId?>new_actor_handle).native())
 
         self.task_spec.reset(new CTaskSpecification(
             driver_id.native(), parent_task_id.native(), parent_counter, actor_creation_id.native(),
@@ -79,18 +79,18 @@ cdef class Task:
             c_function_descriptor))
 
         # Set the task's execution dependencies.
-        self.execution_dependencies.reset(new c_vector[CObjectID]())
+        self.execution_dependencies.reset(new c_vector[CObjectId]())
         if execution_arguments is not None:
             for execution_arg in execution_arguments:
                 self.execution_dependencies.get().push_back(
-                    (<ObjectID?>execution_arg).native())
+                    (<ObjectId?>execution_arg).native())
 
     @staticmethod
     cdef make(unique_ptr[CTaskSpecification]& task_spec):
         cdef Task self = Task.__new__(Task)
         self.task_spec.reset(task_spec.release())
         # The created task does not include any execution dependencies.
-        self.execution_dependencies.reset(new c_vector[CObjectID]())
+        self.execution_dependencies.reset(new c_vector[CObjectId]())
         return self
 
     @staticmethod
@@ -107,7 +107,7 @@ cdef class Task:
         # TODO(pcm): Use flatbuffers validation here.
         self.task_spec.reset(new CTaskSpecification(task_spec_str))
         # The created task does not include any execution dependencies.
-        self.execution_dependencies.reset(new c_vector[CObjectID]())
+        self.execution_dependencies.reset(new c_vector[CObjectId]())
         return self
 
     def to_string(self):
@@ -124,15 +124,15 @@ cdef class Task:
 
     def driver_id(self):
         """Return the driver ID for this task."""
-        return DriverID(self.task_spec.get().DriverId().binary())
+        return DriverId(self.task_spec.get().GetDriverId().binary())
 
     def task_id(self):
         """Return the task ID for this task."""
-        return TaskID(self.task_spec.get().TaskId().binary())
+        return TaskId(self.task_spec.get().GetTaskId().binary())
 
     def parent_task_id(self):
         """Return the task ID of the parent task."""
-        return TaskID(self.task_spec.get().ParentTaskId().binary())
+        return TaskId(self.task_spec.get().ParentTaskId().binary())
 
     def parent_counter(self):
         """Return the parent counter of this task."""
@@ -162,7 +162,7 @@ cdef class Task:
                 if count > 0:
                     assert count == 1
                     arg_list.append(
-                        ObjectID(task_spec.ArgId(i, 0).binary()))
+                        ObjectId(task_spec.ArgId(i, 0).binary()))
                 else:
                     serialized_str = (
                         task_spec.ArgVal(i)[:task_spec.ArgValLength(i)])
@@ -178,7 +178,7 @@ cdef class Task:
         cdef CTaskSpecification *task_spec = self.task_spec.get()
         return_id_list = []
         for i in range(task_spec.NumReturns()):
-            return_id_list.append(ObjectID(task_spec.ReturnId(i).binary()))
+            return_id_list.append(ObjectId(task_spec.ReturnId(i).binary()))
         return return_id_list
 
     def required_resources(self):
@@ -207,16 +207,16 @@ cdef class Task:
 
     def actor_creation_id(self):
         """Return the actor creation ID for the task."""
-        return ActorID(self.task_spec.get().ActorCreationId().binary())
+        return ActorId(self.task_spec.get().ActorCreationId().binary())
 
     def actor_creation_dummy_object_id(self):
         """Return the actor creation dummy object ID for the task."""
-        return ObjectID(
+        return ObjectId(
             self.task_spec.get().ActorCreationDummyObjectId().binary())
 
     def actor_id(self):
         """Return the actor ID for this task."""
-        return ActorID(self.task_spec.get().ActorId().binary())
+        return ActorId(self.task_spec.get().GetActorId().binary())
 
     def actor_counter(self):
         """Return the actor counter for this task."""

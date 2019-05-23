@@ -7,7 +7,7 @@ def set_resource(resource_name, capacity, client_id=None):
     This creates, updates or deletes a custom resource for a target clientId.
     If the resource already exists, it's capacity is updated to the new value.
     If the capacity is set to 0, the resource is deleted.
-    If ClientID is not specified or set to None,
+    If ClientId is not specified or set to None,
     the resource is created on the local client where the actor is running.
 
     Args:
@@ -25,9 +25,9 @@ def set_resource(resource_name, capacity, client_id=None):
             specified.
     """
     if client_id is not None:
-        client_id_obj = ray.ClientID(ray.utils.hex_to_binary(client_id))
+        client_id_obj = ray.ClientId(ray.utils.hex_to_binary(client_id))
     else:
-        client_id_obj = ray.ClientID.nil()
+        client_id_obj = ray.ClientId.nil()
     if (capacity < 0) or (capacity != int(capacity)):
         raise ValueError(
             "Capacity {} must be a non-negative integer.".format(capacity))

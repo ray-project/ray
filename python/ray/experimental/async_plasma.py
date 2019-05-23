@@ -71,7 +71,7 @@ class PlasmaObjectFuture(asyncio.Future):
 
     @property
     def ray_object_id(self):
-        return ray.ObjectID(self.object_id.binary())
+        return ray.ObjectId(self.object_id.binary())
 
     def __repr__(self):
         return super().__repr__() + "{object_id=%s}" % self.object_id
@@ -79,12 +79,12 @@ class PlasmaObjectFuture(asyncio.Future):
 
 class PlasmaObjectLinkedList(asyncio.Future):
     """This class is a doubly-linked list.
-    It holds a ObjectID and maintains futures assigned to the ObjectID.
+    It holds a ObjectId and maintains futures assigned to the ObjectId.
 
     Args:
         loop: an event loop.
         plain_object_id (plasma.ObjectID):
-            The plasma ObjectID this class holds.
+            The plasma ObjectId this class holds.
     """
 
     def __init__(self, loop, plain_object_id):
@@ -212,8 +212,8 @@ class PlasmaEventHandler:
         Returns:
             PlasmaObjectFuture: A future object that waits the object_id.
         """
-        if not isinstance(object_id, ray.ObjectID):
-            raise TypeError("Input should be an ObjectID.")
+        if not isinstance(object_id, ray.ObjectId):
+            raise TypeError("Input should be an ObjectId.")
 
         plain_object_id = plasma.ObjectID(object_id.binary())
         fut = PlasmaObjectFuture(loop=self._loop, object_id=plain_object_id)

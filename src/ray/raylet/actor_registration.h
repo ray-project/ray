@@ -40,7 +40,7 @@ class ActorRegistration {
     int64_t task_counter;
     /// The execution dependency returned by the task submitted by this handle
     /// that most recently executed on the actor.
-    ObjectID execution_dependency;
+    ObjectId execution_dependency;
   };
 
   /// Get the actor table data.
@@ -60,17 +60,17 @@ class ActorRegistration {
   ///
   /// \return The actor's node manager location. All tasks for the actor should
   /// be forwarded to this node.
-  const ClientID GetNodeManagerId() const;
+  const ClientId GetNodeManagerId() const;
 
   /// Get the object that represents the actor's initial state. This is the
   /// execution dependency returned by this actor's creation task. If
   /// reconstructed, this will recreate the actor.
   ///
   /// \return The execution dependency returned by the actor's creation task.
-  const ObjectID GetActorCreationDependency() const;
+  const ObjectId GetActorCreationDependency() const;
 
   /// Get actor's driver ID.
-  const DriverID GetDriverId() const;
+  const DriverId GetDriverId() const;
 
   /// Get the max number of times this actor should be reconstructed.
   const int64_t GetMaxReconstructions() const;
@@ -85,7 +85,7 @@ class ActorRegistration {
   ///
   /// \return The execution dependency returned by the most recently executed
   /// task.
-  const ObjectID GetExecutionDependency() const;
+  const ObjectId GetExecutionDependency() const;
 
   /// Get the execution frontier of the actor, indexed by handle. This captures
   /// the execution state of the actor, a summary of which tasks have executed
@@ -93,10 +93,10 @@ class ActorRegistration {
   ///
   /// \return The actor frontier, a map from handle ID to execution state for
   /// that handle.
-  const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier() const;
+  const std::unordered_map<ActorHandleId, FrontierLeaf> &GetFrontier() const;
 
   /// Get all the dummy objects of this actor's tasks.
-  const std::unordered_map<ObjectID, int64_t> &GetDummyObjects() const {
+  const std::unordered_map<ObjectId, int64_t> &GetDummyObjects() const {
     return dummy_objects_;
   }
 
@@ -108,8 +108,8 @@ class ActorRegistration {
   /// state. This is the execution dependency returned by the task.
   /// \return The dummy object that can be released as a result of the executed
   /// task. If no dummy object can be released, then this is nil.
-  ObjectID ExtendFrontier(const ActorHandleID &handle_id,
-                          const ObjectID &execution_dependency);
+  ObjectId ExtendFrontier(const ActorHandleId &handle_id,
+                          const ObjectId &execution_dependency);
 
   /// Add a new handle to the actor frontier. This does nothing if the actor
   /// handle already exists.
@@ -119,7 +119,7 @@ class ActorRegistration {
   /// the first task submitted on the new handle. If the new handle hasn't been
   /// seen yet, then this dependency will be added to the actor frontier and is
   /// not safe to release until the first task has been submitted.
-  void AddHandle(const ActorHandleID &handle_id, const ObjectID &execution_dependency);
+  void AddHandle(const ActorHandleId &handle_id, const ObjectId &execution_dependency);
 
   /// Returns num handles to this actor entry.
   ///
@@ -131,7 +131,7 @@ class ActorRegistration {
   /// \param actor_id ID of this actor.
   /// \param task The task that just finished on the actor.
   /// \return A shared pointer to the generated checkpoint data.
-  std::shared_ptr<ActorCheckpointDataT> GenerateCheckpointData(const ActorID &actor_id,
+  std::shared_ptr<ActorCheckpointDataT> GenerateCheckpointData(const ActorId &actor_id,
                                                                const Task &task);
 
  private:
@@ -141,11 +141,11 @@ class ActorRegistration {
   /// The object representing the state following the actor's most recently
   /// executed task. The next task to execute on the actor should be marked as
   /// execution-dependent on this object.
-  ObjectID execution_dependency_;
+  ObjectId execution_dependency_;
   /// The execution frontier of the actor, which represents which tasks have
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
-  std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
+  std::unordered_map<ActorHandleId, FrontierLeaf> frontier_;
   /// This map is used to track all the unreleased dummy objects for this
   /// actor.  The map key is the dummy object ID, and the map value is the
   /// number of actor handles that depend on that dummy object. When the map
@@ -163,7 +163,7 @@ class ActorRegistration {
   /// 2. Any handles that were forked from H after T finished, and before T's
   /// next task finishes. Such handles depend on D until their first tasks
   /// finish since D will be their first tasks' execution dependencies.
-  std::unordered_map<ObjectID, int64_t> dummy_objects_;
+  std::unordered_map<ObjectId, int64_t> dummy_objects_;
 };
 
 }  // namespace raylet

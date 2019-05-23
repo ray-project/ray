@@ -22,7 +22,7 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
     when the ref count is down to 0.
 
     Args:
-        object_ids (List[ObjectID]): List of object IDs to delete.
+        object_ids (List[ObjectId]): List of object IDs to delete.
         local_only (bool): Whether only deleting the list of objects in local
             object store or all object stores.
         delete_creating_tasks (bool): Whether also delete the object creating
@@ -33,18 +33,18 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
     if ray.worker._mode() == ray.worker.LOCAL_MODE:
         return
 
-    if isinstance(object_ids, ray.ObjectID):
+    if isinstance(object_ids, ray.ObjectId):
         object_ids = [object_ids]
 
     if not isinstance(object_ids, list):
-        raise TypeError("free() expects a list of ObjectID, got {}".format(
+        raise TypeError("free() expects a list of ObjectId, got {}".format(
             type(object_ids)))
 
     # Make sure that the values are object IDs.
     for object_id in object_ids:
-        if not isinstance(object_id, ray.ObjectID):
+        if not isinstance(object_id, ray.ObjectId):
             raise TypeError("Attempting to call `free` on the value {}, "
-                            "which is not an ray.ObjectID.".format(object_id))
+                            "which is not an ray.ObjectId.".format(object_id))
 
     worker.check_connected()
     with profiling.profile("ray.free"):

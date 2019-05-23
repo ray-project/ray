@@ -146,7 +146,7 @@ table RegisterClientReply {
 }
 
 table RegisterNodeManagerRequest {
-  // GCS ClientID of the connecting node manager.
+  // GCS ClientId of the connecting node manager.
   client_id: string;
 }
 

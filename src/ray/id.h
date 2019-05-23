@@ -17,7 +17,7 @@
 
 namespace ray {
 
-class DriverID;
+class DriverId;
 class UniqueID;
 
 // Declaration.
@@ -68,22 +68,22 @@ class UniqueID : public BaseID<UniqueID> {
   uint8_t id_[kUniqueIDSize];
 };
 
-class TaskID : public BaseID<TaskID> {
+class TaskId : public BaseID<TaskId> {
  public:
-  TaskID() : BaseID() {}
-  static size_t size() { return kTaskIDSize; }
-  static TaskID GetDriverTaskID(const DriverID &driver_id);
+  TaskId() : BaseID() {}
+  static size_t size() { return kTaskIdSize; }
+  static TaskId GetDriverTaskId(const DriverId &driver_id);
 
  private:
-  uint8_t id_[kTaskIDSize];
+  uint8_t id_[kTaskIdSize];
 };
 
-class ObjectID : public BaseID<ObjectID> {
+class ObjectId : public BaseID<ObjectId> {
  public:
-  ObjectID() : BaseID() {}
+  ObjectId() : BaseID() {}
   static size_t size() { return kUniqueIDSize; }
   plasma::ObjectID to_plasma_id() const;
-  ObjectID(const plasma::UniqueID &from);
+  ObjectId(const plasma::UniqueID &from);
 
   /// Get the index of this object in the task that created it.
   ///
@@ -95,35 +95,35 @@ class ObjectID : public BaseID<ObjectID> {
   /// Compute the task ID of the task that created the object.
   ///
   /// \return The task ID of the task that created this object.
-  TaskID task_id() const;
+  TaskId task_id() const;
 
   /// Compute the object ID of an object put by the task.
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param index What index of the object put in the task.
   /// \return The computed object ID.
-  static ObjectID for_put(const TaskID &task_id, int64_t put_index);
+  static ObjectId for_put(const TaskId &task_id, int64_t put_index);
 
   /// Compute the object ID of an object returned by the task.
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param return_index What index of the object returned by in the task.
   /// \return The computed object ID.
-  static ObjectID for_task_return(const TaskID &task_id, int64_t return_index);
+  static ObjectId for_task_return(const TaskId &task_id, int64_t return_index);
 
  private:
-  uint8_t id_[kTaskIDSize];
+  uint8_t id_[kTaskIdSize];
   int32_t index_;
 };
 
-static_assert(sizeof(TaskID) == kTaskIDSize + sizeof(size_t),
-              "TaskID size is not as expected");
-static_assert(sizeof(ObjectID) == sizeof(int32_t) + sizeof(TaskID),
-              "ObjectID size is not as expected");
+static_assert(sizeof(TaskId) == kTaskIdSize + sizeof(size_t),
+              "TaskId size is not as expected");
+static_assert(sizeof(ObjectId) == sizeof(int32_t) + sizeof(TaskId),
+              "ObjectId size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
-std::ostream &operator<<(std::ostream &os, const TaskID &id);
-std::ostream &operator<<(std::ostream &os, const ObjectID &id);
+std::ostream &operator<<(std::ostream &os, const TaskId &id);
+std::ostream &operator<<(std::ostream &os, const ObjectId &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                  \
   class RAY_EXPORT type : public UniqueID {                                     \
@@ -156,7 +156,7 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 /// \param parent_task_id The parent task of this task.
 /// \param parent_task_counter The task index of the worker.
 /// \return The task ID generated from the given info.
-const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
+const TaskId GenerateTaskId(const DriverId &driver_id, const TaskId &parent_task_id,
                             int parent_task_counter);
 
 template <typename T>
@@ -264,8 +264,8 @@ namespace std {
   };
 
 DEFINE_UNIQUE_ID(UniqueID);
-DEFINE_UNIQUE_ID(TaskID);
-DEFINE_UNIQUE_ID(ObjectID);
+DEFINE_UNIQUE_ID(TaskId);
+DEFINE_UNIQUE_ID(ObjectId);
 #include "id_def.h"
 
 #undef DEFINE_UNIQUE_ID

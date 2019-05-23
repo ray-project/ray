@@ -87,7 +87,7 @@ values, we can use a blocking `ray.get` call. For example,
 >>> params_id = ps.get_params.remote()  # This returns a future.
 
 >>> params_id
-ObjectID(7268cb8d345ef26632430df6f18cc9690eb6b300)
+ObjectId(7268cb8d345ef26632430df6f18cc9690eb6b300)
 
 >>> ray.get(params_id)  # This blocks until the task finishes.
 array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])

@@ -22,18 +22,18 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   /// Create a connection for sending data to other object managers.
   ///
   /// \param io_service The service to which the created socket should attach.
-  /// \param client_id The ClientID of the remote node.
+  /// \param client_id The ClientId of the remote node.
   /// \param ip The ip address of the remote node server.
   /// \param port The port of the remote node server.
   /// \return A connection to the remote object manager. This is null if the
   /// connection was unsuccessful.
   static std::shared_ptr<SenderConnection> Create(boost::asio::io_service &io_service,
-                                                  const ClientID &client_id,
+                                                  const ClientId &client_id,
                                                   const std::string &ip, uint16_t port);
 
   /// \param socket A reference to the socket created by the static Create method.
-  /// \param client_id The ClientID of the remote node.
-  SenderConnection(std::shared_ptr<TcpServerConnection> conn, const ClientID &client_id);
+  /// \param client_id The ClientId of the remote node.
+  SenderConnection(std::shared_ptr<TcpServerConnection> conn, const ClientId &client_id);
 
   /// Write a message to the client.
   ///
@@ -72,8 +72,8 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
     return conn_->ReadBuffer(buffer);
   }
 
-  /// \return The ClientID of this connection.
-  const ClientID &GetClientId() { return client_id_; }
+  /// \return The ClientId of this connection.
+  const ClientId &GetClientId() { return client_id_; }
 
  private:
   bool operator==(const SenderConnection &rhs) const {
@@ -82,7 +82,7 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
 
   static uint64_t id_counter_;
   uint64_t connection_id_;
-  ClientID client_id_;
+  ClientId client_id_;
   std::shared_ptr<TcpServerConnection> conn_;
 };
 

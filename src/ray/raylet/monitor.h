@@ -34,7 +34,7 @@ class Monitor {
   ///
   /// \param client_id The client ID of the Raylet that sent the heartbeat.
   /// \param heartbeat_data The heartbeat sent by the client.
-  void HandleHeartbeat(const ClientID &client_id,
+  void HandleHeartbeat(const ClientId &client_id,
                        const HeartbeatTableDataT &heartbeat_data);
 
  private:
@@ -46,11 +46,11 @@ class Monitor {
   boost::asio::deadline_timer heartbeat_timer_;
   /// For each Raylet that we receive a heartbeat from, the number of ticks
   /// that may pass before the Raylet will be declared dead.
-  std::unordered_map<ClientID, int64_t> heartbeats_;
+  std::unordered_map<ClientId, int64_t> heartbeats_;
   /// The Raylets that have been marked as dead in the client table.
-  std::unordered_set<ClientID> dead_clients_;
+  std::unordered_set<ClientId> dead_clients_;
   /// A buffer containing heartbeats received from node managers in the last tick.
-  std::unordered_map<ClientID, HeartbeatTableDataT> heartbeat_buffer_;
+  std::unordered_map<ClientId, HeartbeatTableDataT> heartbeat_buffer_;
 };
 
 }  // namespace raylet

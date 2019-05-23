@@ -4,12 +4,12 @@
 // Macro definition format: DEFINE_UNIQUE_ID(id_type).
 // NOTE: This file should NOT be included in any file other than id.h.
 
-DEFINE_UNIQUE_ID(FunctionID)
-DEFINE_UNIQUE_ID(ActorClassID)
-DEFINE_UNIQUE_ID(ActorID)
-DEFINE_UNIQUE_ID(ActorHandleID)
-DEFINE_UNIQUE_ID(ActorCheckpointID)
-DEFINE_UNIQUE_ID(WorkerID)
-DEFINE_UNIQUE_ID(DriverID)
-DEFINE_UNIQUE_ID(ConfigID)
-DEFINE_UNIQUE_ID(ClientID)
+DEFINE_UNIQUE_ID(FunctionId)
+DEFINE_UNIQUE_ID(ActorClassId)
+DEFINE_UNIQUE_ID(ActorId)
+DEFINE_UNIQUE_ID(ActorHandleId)
+DEFINE_UNIQUE_ID(ActorCheckpointId)
+DEFINE_UNIQUE_ID(WorkerId)
+DEFINE_UNIQUE_ID(DriverId)
+DEFINE_UNIQUE_ID(ConfigId)
+DEFINE_UNIQUE_ID(ClientId)

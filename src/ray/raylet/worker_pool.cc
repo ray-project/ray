@@ -214,7 +214,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
 
 std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec) {
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
-  const auto &actor_id = task_spec.ActorId();
+  const auto &actor_id = task_spec.GetActorId();
   std::shared_ptr<Worker> worker = nullptr;
   if (actor_id.is_nil()) {
     if (!state.idle.empty()) {
@@ -257,7 +257,7 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
 }
 
 std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver(
-    const DriverID &driver_id) const {
+    const DriverId &driver_id) const {
   std::vector<std::shared_ptr<Worker>> workers;
 
   for (const auto &entry : states_by_lang_) {

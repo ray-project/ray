@@ -27,7 +27,7 @@ class SingleQuery:
         deadline: The deadline in seconds.
     """
 
-    def __init__(self, data, result_object_id: ray.ObjectID,
+    def __init__(self, data, result_object_id: ray.ObjectId,
                  deadline_s: float):
         self.data = data
         self.result_object_id = result_object_id
@@ -52,7 +52,7 @@ class DeadlineAwareRouter:
         # Runtime Data
         self.query_queues: Dict[str, PriorityQueue] = defaultdict(
             PriorityQueue)
-        self.running_queries: Dict[ray.ObjectID, ray.actor.ActorHandle] = {}
+        self.running_queries: Dict[ray.ObjectId, ray.actor.ActorHandle] = {}
         self.actor_handles: Dict[str, List[ray.actor.ActorHandle]] = (
             defaultdict(list))
 
@@ -117,7 +117,7 @@ class DeadlineAwareRouter:
         """Enqueue a request to one of the actor managed by this router.
 
         Returns:
-            List[ray.ObjectID] with length 1, the object ID wrapped inside is
+            List[ray.ObjectId] with length 1, the object ID wrapped inside is
                 the result object ID when the query is executed.
         """
         assert actor_name in self.managed_actors, (
@@ -125,8 +125,8 @@ class DeadlineAwareRouter:
 
         result_object_id = get_new_oid()
 
-        # Here, 'data_object_id' is either an ObjectID or an actual object.
-        # When it is an ObjectID, this is an optimization to avoid creating
+        # Here, 'data_object_id' is either an ObjectId or an actual object.
+        # When it is an ObjectId, this is an optimization to avoid creating
         # an extra copy of 'data' in the object store.
         data_object_id = ray.worker.global_worker._current_task.arguments()[1]
 
@@ -199,7 +199,7 @@ class DeadlineAwareRouter:
 
         return inputs
 
-    def _mark_running(self, batch_oid: ray.ObjectID,
+    def _mark_running(self, batch_oid: ray.ObjectId,
                       actor_handle: ray.actor.ActorHandle):
         """Mark actor_handle as running identified by batch_oid.
 

@@ -38,7 +38,7 @@ namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Append(const DriverID &driver_id, const ID &id,
+Status Log<ID, Data>::Append(const DriverId &driver_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_appends_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
@@ -58,7 +58,7 @@ Status Log<ID, Data>::Append(const DriverID &driver_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::AppendAt(const DriverID &driver_id, const ID &id,
+Status Log<ID, Data>::AppendAt(const DriverId &driver_id, const ID &id,
                                std::shared_ptr<DataT> &dataT, const WriteCallback &done,
                                const WriteCallback &failure, int log_length) {
   num_appends_++;
@@ -82,7 +82,7 @@ Status Log<ID, Data>::AppendAt(const DriverID &driver_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
+Status Log<ID, Data>::Lookup(const DriverId &driver_id, const ID &id,
                              const Callback &lookup) {
   num_lookups_++;
   auto callback = [this, id, lookup](const std::string &data) {
@@ -107,7 +107,7 @@ Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &client_id,
+Status Log<ID, Data>::Subscribe(const DriverId &driver_id, const ClientId &client_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
   auto subscribe_wrapper = [subscribe](AsyncGcsClient *client, const ID &id,
@@ -120,7 +120,7 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &client_id,
+Status Log<ID, Data>::Subscribe(const DriverId &driver_id, const ClientId &client_id,
                                 const NotificationCallback &subscribe,
                                 const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
@@ -162,8 +162,8 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::RequestNotifications(const DriverID &driver_id, const ID &id,
-                                           const ClientID &client_id) {
+Status Log<ID, Data>::RequestNotifications(const DriverId &driver_id, const ID &id,
+                                           const ClientId &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
   return GetRedisContext(id)->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id,
@@ -172,8 +172,8 @@ Status Log<ID, Data>::RequestNotifications(const DriverID &driver_id, const ID &
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::CancelNotifications(const DriverID &driver_id, const ID &id,
-                                          const ClientID &client_id) {
+Status Log<ID, Data>::CancelNotifications(const DriverId &driver_id, const ID &id,
+                                          const ClientId &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
   return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id,
@@ -182,7 +182,7 @@ Status Log<ID, Data>::CancelNotifications(const DriverID &driver_id, const ID &i
 }
 
 template <typename ID, typename Data>
-void Log<ID, Data>::Delete(const DriverID &driver_id, const std::vector<ID> &ids) {
+void Log<ID, Data>::Delete(const DriverId &driver_id, const std::vector<ID> &ids) {
   if (ids.empty()) {
     return;
   }
@@ -216,7 +216,7 @@ void Log<ID, Data>::Delete(const DriverID &driver_id, const std::vector<ID> &ids
 }
 
 template <typename ID, typename Data>
-void Log<ID, Data>::Delete(const DriverID &driver_id, const ID &id) {
+void Log<ID, Data>::Delete(const DriverId &driver_id, const ID &id) {
   Delete(driver_id, std::vector<ID>({id}));
 }
 
@@ -228,7 +228,7 @@ std::string Log<ID, Data>::DebugString() const {
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Add(const DriverID &driver_id, const ID &id,
+Status Table<ID, Data>::Add(const DriverId &driver_id, const ID &id,
                             std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
@@ -245,7 +245,7 @@ Status Table<ID, Data>::Add(const DriverID &driver_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
+Status Table<ID, Data>::Lookup(const DriverId &driver_id, const ID &id,
                                const Callback &lookup, const FailureCallback &failure) {
   num_lookups_++;
   return Log<ID, Data>::Lookup(driver_id, id,
@@ -265,7 +265,7 @@ Status Table<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &client_id,
+Status Table<ID, Data>::Subscribe(const DriverId &driver_id, const ClientId &client_id,
                                   const Callback &subscribe,
                                   const FailureCallback &failure,
                                   const SubscriptionCallback &done) {
@@ -293,7 +293,7 @@ std::string Table<ID, Data>::DebugString() const {
 }
 
 template <typename ID, typename Data>
-Status Set<ID, Data>::Add(const DriverID &driver_id, const ID &id,
+Status Set<ID, Data>::Add(const DriverId &driver_id, const ID &id,
                           std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
@@ -310,7 +310,7 @@ Status Set<ID, Data>::Add(const DriverID &driver_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Set<ID, Data>::Remove(const DriverID &driver_id, const ID &id,
+Status Set<ID, Data>::Remove(const DriverId &driver_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_removes_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
@@ -334,18 +334,18 @@ std::string Set<ID, Data>::DebugString() const {
   return result.str();
 }
 
-Status ErrorTable::PushErrorToDriver(const DriverID &driver_id, const std::string &type,
+Status ErrorTable::PushErrorToDriver(const DriverId &driver_id, const std::string &type,
                                      const std::string &error_message, double timestamp) {
   auto data = std::make_shared<ErrorTableDataT>();
   data->driver_id = driver_id.binary();
   data->type = type;
   data->error_message = error_message;
   data->timestamp = timestamp;
-  return Append(DriverID(driver_id), driver_id, data, /*done_callback=*/nullptr);
+  return Append(DriverId(driver_id), driver_id, data, /*done_callback=*/nullptr);
 }
 
 std::string ErrorTable::DebugString() const {
-  return Log<DriverID, ErrorTableData>::DebugString();
+  return Log<DriverId, ErrorTableData>::DebugString();
 }
 
 Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
@@ -354,7 +354,7 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
   // call "Pack" and undo the "UnPack".
   profile_events.UnPackTo(data.get());
 
-  return Append(DriverID::nil(), UniqueID::from_random(), data,
+  return Append(DriverId::nil(), UniqueID::from_random(), data,
                 /*done_callback=*/nullptr);
 }
 
@@ -362,11 +362,11 @@ std::string ProfileTable::DebugString() const {
   return Log<UniqueID, ProfileTableData>::DebugString();
 }
 
-Status DriverTable::AppendDriverData(const DriverID &driver_id, bool is_dead) {
+Status DriverTable::AppendDriverData(const DriverId &driver_id, bool is_dead) {
   auto data = std::make_shared<DriverTableDataT>();
   data->driver_id = driver_id.binary();
   data->is_dead = is_dead;
-  return Append(DriverID(driver_id), driver_id, data, /*done_callback=*/nullptr);
+  return Append(DriverId(driver_id), driver_id, data, /*done_callback=*/nullptr);
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
@@ -413,7 +413,7 @@ void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &cal
 
 void ClientTable::HandleNotification(AsyncGcsClient *client,
                                      const ClientTableDataT &data) {
-  ClientID client_id = ClientID::from_binary(data.client_id);
+  ClientId client_id = ClientId::from_binary(data.client_id);
   // It's possible to get duplicate notifications from the client table, so
   // check whether this notification is new.
   auto entry = client_cache_.find(client_id);
@@ -519,16 +519,16 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
 }
 
 void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT &data) {
-  auto connected_client_id = ClientID::from_binary(data.client_id);
+  auto connected_client_id = ClientId::from_binary(data.client_id);
   RAY_CHECK(client_id_ == connected_client_id) << connected_client_id << " "
                                                << client_id_;
 }
 
-const ClientID &ClientTable::GetLocalClientId() const { return client_id_; }
+const ClientId &ClientTable::GetLocalClientId() const { return client_id_; }
 
 const ClientTableDataT &ClientTable::GetLocalClient() const { return local_client_; }
 
-bool ClientTable::IsRemoved(const ClientID &client_id) const {
+bool ClientTable::IsRemoved(const ClientId &client_id) const {
   return removed_clients_.count(client_id) == 1;
 }
 
@@ -578,70 +578,70 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
     // Callback to request notifications from the client table once we've
     // successfully subscribed.
     auto subscription_callback = [this](AsyncGcsClient *c) {
-      RAY_CHECK_OK(RequestNotifications(DriverID::nil(), client_log_key_, client_id_));
+      RAY_CHECK_OK(RequestNotifications(DriverId::nil(), client_log_key_, client_id_));
     };
     // Subscribe to the client table.
-    RAY_CHECK_OK(Subscribe(DriverID::nil(), client_id_, notification_callback,
+    RAY_CHECK_OK(Subscribe(DriverId::nil(), client_id_, notification_callback,
                            subscription_callback));
   };
-  return Append(DriverID::nil(), client_log_key_, data, add_callback);
+  return Append(DriverId::nil(), client_log_key_, data, add_callback);
 }
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto data = std::make_shared<ClientTableDataT>(local_client_);
   data->entry_type = EntryType::DELETION;
-  auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
+  auto add_callback = [this, callback](AsyncGcsClient *client, const ClientId &id,
                                        const ClientTableDataT &data) {
     HandleConnected(client, data);
-    RAY_CHECK_OK(CancelNotifications(DriverID::nil(), client_log_key_, id));
+    RAY_CHECK_OK(CancelNotifications(DriverId::nil(), client_log_key_, id));
     if (callback != nullptr) {
       callback();
     }
   };
-  RAY_RETURN_NOT_OK(Append(DriverID::nil(), client_log_key_, data, add_callback));
+  RAY_RETURN_NOT_OK(Append(DriverId::nil(), client_log_key_, data, add_callback));
   // We successfully added the deletion entry. Mark ourselves as disconnected.
   disconnected_ = true;
   return Status::OK();
 }
 
-ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
+ray::Status ClientTable::MarkDisconnected(const ClientId &dead_client_id) {
   auto data = std::make_shared<ClientTableDataT>();
   data->client_id = dead_client_id.binary();
   data->entry_type = EntryType::DELETION;
-  return Append(DriverID::nil(), client_log_key_, data, nullptr);
+  return Append(DriverId::nil(), client_log_key_, data, nullptr);
 }
 
-void ClientTable::GetClient(const ClientID &client_id,
+void ClientTable::GetClient(const ClientId &client_id,
                             ClientTableDataT &client_info) const {
   RAY_CHECK(!client_id.is_nil());
   auto entry = client_cache_.find(client_id);
   if (entry != client_cache_.end()) {
     client_info = entry->second;
   } else {
-    client_info.client_id = ClientID::nil().binary();
+    client_info.client_id = ClientId::nil().binary();
   }
 }
 
-const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients() const {
+const std::unordered_map<ClientId, ClientTableDataT> &ClientTable::GetAllClients() const {
   return client_cache_;
 }
 
 Status ClientTable::Lookup(const Callback &lookup) {
   RAY_CHECK(lookup != nullptr);
-  return Log::Lookup(DriverID::nil(), client_log_key_, lookup);
+  return Log::Lookup(DriverId::nil(), client_log_key_, lookup);
 }
 
 std::string ClientTable::DebugString() const {
   std::stringstream result;
-  result << Log<ClientID, ClientTableData>::DebugString();
+  result << Log<ClientId, ClientTableData>::DebugString();
   result << ", cache size: " << client_cache_.size()
          << ", num removed: " << removed_clients_.size();
   return result.str();
 }
 
-Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
-                                               const ActorID &actor_id,
-                                               const ActorCheckpointID &checkpoint_id) {
+Status ActorCheckpointIdTable::AddCheckpointId(const DriverId &driver_id,
+                                               const ActorId &actor_id,
+                                               const ActorCheckpointId &checkpoint_id) {
   auto lookup_callback = [this, checkpoint_id, driver_id, actor_id](
       ray::gcs::AsyncGcsClient *client, const UniqueID &id,
       const ActorCheckpointIdDataT &data) {
@@ -653,7 +653,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
     while (copy->timestamps.size() > num_to_keep) {
       // Delete the checkpoint from actor checkpoint table.
       const auto &checkpoint_id =
-          ActorCheckpointID::from_binary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
+          ActorCheckpointId::from_binary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
       RAY_LOG(DEBUG) << "Deleting checkpoint " << checkpoint_id << " for actor "
                      << actor_id;
       copy->timestamps.erase(copy->timestamps.begin());
@@ -674,22 +674,22 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
   return Lookup(driver_id, actor_id, lookup_callback, failure_callback);
 }
 
-template class Log<ObjectID, ObjectTableData>;
-template class Set<ObjectID, ObjectTableData>;
-template class Log<TaskID, ray::protocol::Task>;
-template class Table<TaskID, ray::protocol::Task>;
-template class Table<TaskID, TaskTableData>;
-template class Log<ActorID, ActorTableData>;
-template class Log<TaskID, TaskReconstructionData>;
-template class Table<TaskID, TaskLeaseData>;
-template class Table<ClientID, HeartbeatTableData>;
-template class Table<ClientID, HeartbeatBatchTableData>;
-template class Log<DriverID, ErrorTableData>;
-template class Log<ClientID, ClientTableData>;
-template class Log<DriverID, DriverTableData>;
+template class Log<ObjectId, ObjectTableData>;
+template class Set<ObjectId, ObjectTableData>;
+template class Log<TaskId, ray::protocol::Task>;
+template class Table<TaskId, ray::protocol::Task>;
+template class Table<TaskId, TaskTableData>;
+template class Log<ActorId, ActorTableData>;
+template class Log<TaskId, TaskReconstructionData>;
+template class Table<TaskId, TaskLeaseData>;
+template class Table<ClientId, HeartbeatTableData>;
+template class Table<ClientId, HeartbeatBatchTableData>;
+template class Log<DriverId, ErrorTableData>;
+template class Log<ClientId, ClientTableData>;
+template class Log<DriverId, DriverTableData>;
 template class Log<UniqueID, ProfileTableData>;
-template class Table<ActorCheckpointID, ActorCheckpointData>;
-template class Table<ActorID, ActorCheckpointIdData>;
+template class Table<ActorCheckpointId, ActorCheckpointData>;
+template class Table<ActorId, ActorCheckpointIdData>;
 
 }  // namespace gcs
 

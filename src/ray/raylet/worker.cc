@@ -32,38 +32,38 @@ pid_t Worker::Pid() const { return pid_; }
 
 Language Worker::GetLanguage() const { return language_; }
 
-void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
+void Worker::AssignTaskId(const TaskId &task_id) { assigned_task_id_ = task_id; }
 
-const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
+const TaskId &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
-bool Worker::AddBlockedTaskId(const TaskID &task_id) {
+bool Worker::AddBlockedTaskId(const TaskId &task_id) {
   auto inserted = blocked_task_ids_.insert(task_id);
   return inserted.second;
 }
 
-bool Worker::RemoveBlockedTaskId(const TaskID &task_id) {
+bool Worker::RemoveBlockedTaskId(const TaskId &task_id) {
   auto erased = blocked_task_ids_.erase(task_id);
   return erased == 1;
 }
 
-const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
+const std::unordered_set<TaskId> &Worker::GetBlockedTaskIds() const {
   return blocked_task_ids_;
 }
 
-void Worker::AssignDriverId(const DriverID &driver_id) {
+void Worker::AssignDriverId(const DriverId &driver_id) {
   assigned_driver_id_ = driver_id;
 }
 
-const DriverID &Worker::GetAssignedDriverId() const { return assigned_driver_id_; }
+const DriverId &Worker::GetAssignedDriverId() const { return assigned_driver_id_; }
 
-void Worker::AssignActorId(const ActorID &actor_id) {
+void Worker::AssignActorId(const ActorId &actor_id) {
   RAY_CHECK(actor_id_.is_nil())
       << "A worker that is already an actor cannot be assigned an actor ID again.";
   RAY_CHECK(!actor_id.is_nil());
   actor_id_ = actor_id;
 }
 
-const ActorID &Worker::GetActorId() const { return actor_id_; }
+const ActorId &Worker::GetActorId() const { return actor_id_; }
 
 const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
   return connection_;

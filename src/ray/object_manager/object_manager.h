@@ -56,13 +56,13 @@ struct LocalObjectInfo {
   object_manager::protocol::ObjectInfoT object_info;
   /// A map from the ID of a remote object manager to the timestamp of when
   /// the object was last pushed to that object manager (if a push took place).
-  std::unordered_map<ClientID, int64_t> recent_pushes;
+  std::unordered_map<ClientId, int64_t> recent_pushes;
 };
 
 class ObjectManagerInterface {
  public:
-  virtual ray::Status Pull(const ObjectID &object_id) = 0;
-  virtual void CancelPull(const ObjectID &object_id) = 0;
+  virtual ray::Status Pull(const ObjectId &object_id) = 0;
+  virtual void CancelPull(const ObjectId &object_id) = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -99,7 +99,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param callback The callback to invoke when objects are removed from the local
   /// store.
   /// \return Status of whether adding the subscription succeeded.
-  ray::Status SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
+  ray::Status SubscribeObjDeleted(std::function<void(const ray::ObjectId &)> callback);
 
   /// Consider pushing an object to a remote object manager. This object manager
   /// may choose to ignore the Push call (e.g., if Push is called twice in a row
@@ -108,13 +108,13 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param object_id The object's object id.
   /// \param client_id The remote node's client id.
   /// \return Void.
-  void Push(const ObjectID &object_id, const ClientID &client_id);
+  void Push(const ObjectId &object_id, const ClientId &client_id);
 
-  /// Pull an object from ClientID.
+  /// Pull an object from ClientId.
   ///
   /// \param object_id The object's object id.
   /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id);
+  ray::Status Pull(const ObjectId &object_id);
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -125,7 +125,7 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \param object_id The object's object id.
   /// \return Void.
-  void TryPull(const ObjectID &object_id);
+  void TryPull(const ObjectId &object_id);
 
   /// Add a connection to a remote object manager.
   /// This is invoked by an external server.
@@ -144,16 +144,16 @@ class ObjectManager : public ObjectManagerInterface {
   void ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                             int64_t message_type, const uint8_t *message);
 
-  /// Cancels all requests (Push/Pull) associated with the given ObjectID. This
+  /// Cancels all requests (Push/Pull) associated with the given ObjectId. This
   /// method is idempotent.
   ///
-  /// \param object_id The ObjectID.
+  /// \param object_id The ObjectId.
   /// \return Void.
-  void CancelPull(const ObjectID &object_id);
+  void CancelPull(const ObjectId &object_id);
 
   /// Callback definition for wait.
-  using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
-                                          const std::vector<ray::ObjectID> &remaining)>;
+  using WaitCallback = std::function<void(const std::vector<ray::ObjectId> &found,
+                                          const std::vector<ray::ObjectId> &remaining)>;
   /// Wait until either num_required_objects are located or wait_ms has elapsed,
   /// then invoke the provided callback.
   ///
@@ -165,16 +165,16 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param callback Invoked when either timeout_ms is satisfied OR num_ready_objects
   /// is satisfied.
   /// \return Status of whether the wait successfully initiated.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+  ray::Status Wait(const std::vector<ObjectId> &object_ids, int64_t timeout_ms,
                    uint64_t num_required_objects, bool wait_local,
                    const WaitCallback &callback);
 
   /// Free a list of objects from object store.
   ///
-  /// \param object_ids the The list of ObjectIDs to be deleted.
+  /// \param object_ids the The list of ObjectIds to be deleted.
   /// \param local_only Whether keep this request with local object store
   ///                   or send it to all the object stores.
-  void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
+  void FreeObjects(const std::vector<ObjectId> &object_ids, bool local_only);
 
   /// Return profiling information and reset the profiling information.
   ///
@@ -197,7 +197,7 @@ class ObjectManager : public ObjectManagerInterface {
     PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
     std::unique_ptr<boost::asio::deadline_timer> retry_timer;
     bool timer_set;
-    std::vector<ClientID> client_locations;
+    std::vector<ClientId> client_locations;
   };
 
   struct WaitState {
@@ -214,20 +214,20 @@ class ObjectManager : public ObjectManagerInterface {
     /// The callback invoked when WaitCallback is complete.
     WaitCallback callback;
     /// Ordered input object_ids.
-    std::vector<ObjectID> object_id_order;
+    std::vector<ObjectId> object_id_order;
     /// The objects that have not yet been found.
-    std::unordered_set<ObjectID> remaining;
+    std::unordered_set<ObjectId> remaining;
     /// The objects that have been found.
-    std::unordered_set<ObjectID> found;
+    std::unordered_set<ObjectId> found;
     /// Objects that have been requested either by Lookup or Subscribe.
-    std::unordered_set<ObjectID> requested_objects;
+    std::unordered_set<ObjectId> requested_objects;
     /// The number of required objects.
     uint64_t num_required_objects;
   };
 
   /// Creates a wait request and adds it to active_wait_requests_.
   ray::Status AddWaitRequest(const UniqueID &wait_id,
-                             const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                             const std::vector<ObjectId> &object_ids, int64_t timeout_ms,
                              uint64_t num_required_objects, bool wait_local,
                              const WaitCallback &callback);
 
@@ -243,8 +243,8 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Spread the Free request to all objects managers.
   ///
-  /// \param object_ids the The list of ObjectIDs to be deleted.
-  void SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids);
+  /// \param object_ids the The list of ObjectIds to be deleted.
+  void SpreadFreeObjectRequest(const std::vector<ObjectId> &object_ids);
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
@@ -258,12 +258,12 @@ class ObjectManager : public ObjectManagerInterface {
   void HandleObjectAdded(const object_manager::protocol::ObjectInfoT &object_info);
 
   /// Register object remove with directory.
-  void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
+  void NotifyDirectoryObjectDeleted(const ObjectId &object_id);
 
   /// Part of an asynchronous sequence of Pull methods.
-  /// Uses an existing connection or creates a connection to ClientID.
+  /// Uses an existing connection or creates a connection to ClientId.
   /// Executes on main_service_ thread.
-  void PullEstablishConnection(const ObjectID &object_id, const ClientID &client_id);
+  void PullEstablishConnection(const ObjectId &object_id, const ClientId &client_id);
 
   /// Asynchronously send a pull request via remote object manager connection.
   /// Executes on main_service_ thread.
@@ -271,7 +271,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param object_id The ID of the object request.
   /// \param conn The connection to the remote object manager.
   /// \return Void.
-  void PullSendRequest(const ObjectID &object_id,
+  void PullSendRequest(const ObjectId &object_id,
                        std::shared_ptr<SenderConnection> &conn);
 
   std::shared_ptr<SenderConnection> CreateSenderConnection(
@@ -289,7 +289,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// chunk.
   /// \param status The status of the send (e.g., did it succeed or fail).
   /// \return Void.
-  void HandleSendFinished(const ObjectID &object_id, const ClientID &client_id,
+  void HandleSendFinished(const ObjectId &object_id, const ClientId &client_id,
                           uint64_t chunk_index, double start_time_us, double end_time_us,
                           ray::Status status);
 
@@ -305,28 +305,28 @@ class ObjectManager : public ObjectManagerInterface {
   /// chunk.
   /// \param status The status of the receive (e.g., did it succeed or fail).
   /// \return Void.
-  void HandleReceiveFinished(const ObjectID &object_id, const ClientID &client_id,
+  void HandleReceiveFinished(const ObjectId &object_id, const ClientId &client_id,
                              uint64_t chunk_index, double start_time_us,
                              double end_time_us, ray::Status status);
 
   /// Begin executing a send.
   /// Executes on send_service_ thread pool.
-  ray::Status ExecuteSendObject(const UniqueID &push_id, const ClientID &client_id,
-                                const ObjectID &object_id, uint64_t data_size,
+  ray::Status ExecuteSendObject(const UniqueID &push_id, const ClientId &client_id,
+                                const ObjectId &object_id, uint64_t data_size,
                                 uint64_t metadata_size, uint64_t chunk_index,
                                 const RemoteConnectionInfo &connection_info);
 
   /// This method synchronously sends the object id and object size
   /// to the remote object manager.
   /// Executes on send_service_ thread pool.
-  ray::Status SendObjectHeaders(const UniqueID &push_id, const ObjectID &object_id,
+  ray::Status SendObjectHeaders(const UniqueID &push_id, const ObjectId &object_id,
                                 uint64_t data_size, uint64_t metadata_size,
                                 uint64_t chunk_index,
                                 std::shared_ptr<SenderConnection> &conn);
 
   /// This method initiates the actual object transfer.
   /// Executes on send_service_ thread pool.
-  ray::Status SendObjectData(const ObjectID &object_id,
+  ray::Status SendObjectData(const ObjectId &object_id,
                              const ObjectBufferPool::ChunkInfo &chunk_info,
                              std::shared_ptr<SenderConnection> &conn);
 
@@ -336,7 +336,7 @@ class ObjectManager : public ObjectManagerInterface {
                           const uint8_t *message);
 
   /// Execute a receive on the receive_service_ thread pool.
-  ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
+  ray::Status ExecuteReceiveObject(const ClientId &client_id, const ObjectId &object_id,
                                    uint64_t data_size, uint64_t metadata_size,
                                    uint64_t chunk_index, TcpClientConnection &conn);
 
@@ -353,9 +353,9 @@ class ObjectManager : public ObjectManagerInterface {
   void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                         const uint8_t *message);
   /// Handle Push task timeout.
-  void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
+  void HandlePushTaskTimeout(const ObjectId &object_id, const ClientId &client_id);
 
-  ClientID client_id_;
+  ClientId client_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   ObjectStoreNotificationManager store_notification_;
@@ -389,7 +389,7 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Mapping from locally available objects to information about those objects
   /// including when the object was last pushed to other object managers.
-  std::unordered_map<ObjectID, LocalObjectInfo> local_objects_;
+  std::unordered_map<ObjectId, LocalObjectInfo> local_objects_;
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to
@@ -402,13 +402,13 @@ class ObjectManager : public ObjectManagerInterface {
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
   std::unordered_map<
-      ObjectID,
-      std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
+      ObjectId,
+      std::unordered_map<ClientId, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.
-  std::unordered_map<ObjectID, PullRequest> pull_requests_;
+  std::unordered_map<ObjectId, PullRequest> pull_requests_;
 
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.

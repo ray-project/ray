@@ -9,18 +9,18 @@
 #include "ray/raylet/task_spec.h"
 #include "ray/status.h"
 
-using ray::ActorCheckpointID;
-using ray::ActorID;
-using ray::ClientID;
-using ray::DriverID;
-using ray::ObjectID;
-using ray::TaskID;
+using ray::ActorCheckpointId;
+using ray::ActorId;
+using ray::ClientId;
+using ray::DriverId;
+using ray::ObjectId;
+using ray::TaskId;
 using ray::UniqueID;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
+using WaitResultPair = std::pair<std::vector<ObjectId>, std::vector<ObjectId>>;
 
 class RayletConnection {
  public:
@@ -68,8 +68,8 @@ class RayletClient {
   /// additional message will be sent to register as one.
   /// \param driver_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
-  RayletClient(const std::string &raylet_socket, const ClientID &client_id,
-               bool is_worker, const DriverID &driver_id, const Language &language);
+  RayletClient(const std::string &raylet_socket, const ClientId &client_id,
+               bool is_worker, const DriverId &driver_id, const Language &language);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
@@ -78,7 +78,7 @@ class RayletClient {
   /// \param The execution dependencies.
   /// \param The task specification.
   /// \return ray::Status.
-  ray::Status SubmitTask(const std::vector<ObjectID> &execution_dependencies,
+  ray::Status SubmitTask(const std::vector<ObjectId> &execution_dependencies,
                          const ray::raylet::TaskSpecification &task_spec);
 
   /// Get next task for this client. This will block until the scheduler assigns
@@ -100,13 +100,13 @@ class RayletClient {
   /// \param fetch_only Only fetch objects, do not reconstruct them.
   /// \param current_task_id The task that needs the objects.
   /// \return int 0 means correct, other numbers mean error.
-  ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids, bool fetch_only,
-                                 const TaskID &current_task_id);
+  ray::Status FetchOrReconstruct(const std::vector<ObjectId> &object_ids, bool fetch_only,
+                                 const TaskId &current_task_id);
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
   /// \param current_task_id The task that is no longer blocked.
   /// \return ray::Status.
-  ray::Status NotifyUnblocked(const TaskID &current_task_id);
+  ray::Status NotifyUnblocked(const TaskId &current_task_id);
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
@@ -119,9 +119,9 @@ class RayletClient {
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
   /// \return ray::Status.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids, int num_returns,
+  ray::Status Wait(const std::vector<ObjectId> &object_ids, int num_returns,
                    int64_t timeout_milliseconds, bool wait_local,
-                   const TaskID &current_task_id, WaitResultPair *result);
+                   const TaskId &current_task_id, WaitResultPair *result);
 
   /// Push an error to the relevant driver.
   ///
@@ -130,7 +130,7 @@ class RayletClient {
   /// \param The error message.
   /// \param The timestamp of the error.
   /// \return ray::Status.
-  ray::Status PushError(const DriverID &driver_id, const std::string &type,
+  ray::Status PushError(const DriverId &driver_id, const std::string &type,
                         const std::string &error_message, double timestamp);
 
   /// Store some profile events in the GCS.
@@ -146,7 +146,7 @@ class RayletClient {
   /// or send it to all the object stores.
   /// \param delete_creating_tasks Whether also delete objects' creating tasks from GCS.
   /// \return ray::Status.
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only,
+  ray::Status FreeObjects(const std::vector<ray::ObjectId> &object_ids, bool local_only,
                           bool deleteCreatingTasks);
 
   /// Request raylet backend to prepare a checkpoint for an actor.
@@ -154,39 +154,39 @@ class RayletClient {
   /// \param actor_id ID of the actor.
   /// \param checkpoint_id ID of the new checkpoint (output parameter).
   /// \return ray::Status.
-  ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
-                                     ActorCheckpointID &checkpoint_id);
+  ray::Status PrepareActorCheckpoint(const ActorId &actor_id,
+                                     ActorCheckpointId &checkpoint_id);
 
   /// Notify raylet backend that an actor was resumed from a checkpoint.
   ///
   /// \param actor_id ID of the actor.
   /// \param checkpoint_id ID of the checkpoint from which the actor was resumed.
   /// \return ray::Status.
-  ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
-                                               const ActorCheckpointID &checkpoint_id);
+  ray::Status NotifyActorResumedFromCheckpoint(const ActorId &actor_id,
+                                               const ActorCheckpointId &checkpoint_id);
 
   /// Sets a resource with the specified capacity and client id
   /// \param resource_name Name of the resource to be set
   /// \param capacity Capacity of the resource
-  /// \param client_Id ClientID where the resource is to be set
+  /// \param client_Id ClientId where the resource is to be set
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::ClientID &client_Id);
+                          const ray::ClientId &client_Id);
 
   Language GetLanguage() const { return language_; }
 
-  ClientID GetClientID() const { return client_id_; }
+  ClientId GetClientId() const { return client_id_; }
 
-  DriverID GetDriverID() const { return driver_id_; }
+  DriverId GetDriverId() const { return driver_id_; }
 
   bool IsWorker() const { return is_worker_; }
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  const ClientID client_id_;
+  const ClientId client_id_;
   const bool is_worker_;
-  const DriverID driver_id_;
+  const DriverId driver_id_;
   const Language language_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

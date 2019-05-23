@@ -154,7 +154,7 @@ class Monitor(object):
         driver_task_id_bins = set()
         for task_id_hex, task_info in task_table_objects.items():
             task_table_object = task_info["TaskSpec"]
-            task_driver_id_hex = task_table_object["DriverID"]
+            task_driver_id_hex = task_table_object["DriverId"]
             if driver_id_hex != task_driver_id_hex:
                 # Ignore tasks that aren't from this driver.
                 continue
@@ -169,7 +169,7 @@ class Monitor(object):
                 driver_object_id_bins.add(object_id.binary())
 
         def to_shard_index(id_bin):
-            if len(id_bin) == ray.TaskID.size():
+            if len(id_bin) == ray.TaskId.size():
                 return binary_to_task_id(id_bin).redis_shard_hash() % len(
                     self.state.redis_clients)
             else:
@@ -214,7 +214,7 @@ class Monitor(object):
         driver_data = gcs_entries.Entries(0)
         message = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(
             driver_data, 0)
-        driver_id = message.DriverId()
+        driver_id = message.GetDriverId()
         logger.info("Monitor: "
                     "XRay Driver {} has been removed.".format(
                         binary_to_hex(driver_id)))
@@ -259,8 +259,8 @@ class Monitor(object):
         all_raylet_nodes = self.state.client_table()
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
-            client_id = (raylet_info.get("DBClientID")
-                         or raylet_info["ClientID"])
+            client_id = (raylet_info.get("DBClientId")
+                         or raylet_info["ClientId"])
             ip_address = (raylet_info.get("AuxAddress")
                           or raylet_info["NodeManagerAddress"]).split(":")[0]
             self.raylet_id_to_ip_map[client_id] = ip_address

@@ -22,26 +22,26 @@ inline const char *GetTaskStateString(ray::raylet::TaskState task_state) {
 // Helper function to get tasks for a driver from a given state.
 template <typename TaskQueue>
 inline void GetDriverTasksFromQueue(const TaskQueue &queue,
-                                    const ray::DriverID &driver_id,
-                                    std::unordered_set<ray::TaskID> &task_ids) {
+                                    const ray::DriverId &driver_id,
+                                    std::unordered_set<ray::TaskId> &task_ids) {
   const auto &tasks = queue.GetTasks();
   for (const auto &task : tasks) {
     auto const &spec = task.GetTaskSpecification();
-    if (driver_id == spec.DriverId()) {
-      task_ids.insert(spec.TaskId());
+    if (driver_id == spec.GetDriverId()) {
+      task_ids.insert(spec.GetTaskId());
     }
   }
 }
 
 // Helper function to get tasks for an actor from a given state.
 template <typename TaskQueue>
-inline void GetActorTasksFromQueue(const TaskQueue &queue, const ray::ActorID &actor_id,
-                                   std::unordered_set<ray::TaskID> &task_ids) {
+inline void GetActorTasksFromQueue(const TaskQueue &queue, const ray::ActorId &actor_id,
+                                   std::unordered_set<ray::TaskId> &task_ids) {
   const auto &tasks = queue.GetTasks();
   for (const auto &task : tasks) {
     auto const &spec = task.GetTaskSpecification();
-    if (actor_id == spec.ActorId()) {
-      task_ids.insert(spec.TaskId());
+    if (actor_id == spec.GetActorId()) {
+      task_ids.insert(spec.GetTaskId());
     }
   }
 }
@@ -52,7 +52,7 @@ namespace ray {
 
 namespace raylet {
 
-bool TaskQueue::AppendTask(const TaskID &task_id, const Task &task) {
+bool TaskQueue::AppendTask(const TaskId &task_id, const Task &task) {
   RAY_CHECK(task_map_.find(task_id) == task_map_.end());
   auto list_iterator = task_list_.insert(task_list_.end(), task);
   task_map_[task_id] = list_iterator;
@@ -61,7 +61,7 @@ bool TaskQueue::AppendTask(const TaskID &task_id, const Task &task) {
   return true;
 }
 
-bool TaskQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks) {
+bool TaskQueue::RemoveTask(const TaskId &task_id, std::vector<Task> *removed_tasks) {
   auto task_found_iterator = task_map_.find(task_id);
   if (task_found_iterator == task_map_.end()) {
     return false;
@@ -79,13 +79,13 @@ bool TaskQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tas
   return true;
 }
 
-bool TaskQueue::HasTask(const TaskID &task_id) const {
+bool TaskQueue::HasTask(const TaskId &task_id) const {
   return task_map_.find(task_id) != task_map_.end();
 }
 
 const std::list<Task> &TaskQueue::GetTasks() const { return task_list_; }
 
-const Task &TaskQueue::GetTask(const TaskID &task_id) const {
+const Task &TaskQueue::GetTask(const TaskId &task_id) const {
   auto it = task_map_.find(task_id);
   RAY_CHECK(it != task_map_.end());
   return *it->second;
@@ -95,13 +95,13 @@ const ResourceSet &TaskQueue::GetCurrentResourceLoad() const {
   return current_resource_load_;
 }
 
-bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
+bool ReadyQueue::AppendTask(const TaskId &task_id, const Task &task) {
   const auto &resources = task.GetTaskSpecification().GetRequiredResources();
   tasks_with_resources_[resources].push_back(task_id);
   return TaskQueue::AppendTask(task_id, task);
 }
 
-bool ReadyQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks) {
+bool ReadyQueue::RemoveTask(const TaskId &task_id, std::vector<Task> *removed_tasks) {
   if (task_map_.find(task_id) != task_map_.end()) {
     const auto &resources =
         task_map_[task_id]->GetTaskSpecification().GetRequiredResources();
@@ -110,7 +110,7 @@ bool ReadyQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_ta
   return TaskQueue::RemoveTask(task_id, removed_tasks);
 }
 
-const std::unordered_map<ResourceSet, ordered_set<TaskID>>
+const std::unordered_map<ResourceSet, ordered_set<TaskId>>
     &ReadyQueue::GetTasksWithResources() const {
   return tasks_with_resources_;
 }
@@ -120,12 +120,12 @@ const std::list<Task> &SchedulingQueue::GetTasks(TaskState task_state) const {
   return queue->GetTasks();
 }
 
-const std::unordered_map<ResourceSet, ordered_set<TaskID>>
+const std::unordered_map<ResourceSet, ordered_set<TaskId>>
     &SchedulingQueue::GetReadyTasksWithResources() const {
   return ready_queue_->GetTasksWithResources();
 }
 
-const Task &SchedulingQueue::GetTaskOfState(const TaskID &task_id,
+const Task &SchedulingQueue::GetTaskOfState(const TaskId &task_id,
                                             TaskState task_state) const {
   const auto &queue = GetTaskQueue(task_state);
   return queue->GetTask(task_id);
@@ -136,11 +136,11 @@ ResourceSet SchedulingQueue::GetResourceLoad() const {
   return ready_queue_->GetCurrentResourceLoad();
 }
 
-const std::unordered_set<TaskID> &SchedulingQueue::GetBlockedTaskIds() const {
+const std::unordered_set<TaskId> &SchedulingQueue::GetBlockedTaskIds() const {
   return blocked_task_ids_;
 }
 
-void SchedulingQueue::FilterStateFromQueue(std::unordered_set<ray::TaskID> &task_ids,
+void SchedulingQueue::FilterStateFromQueue(std::unordered_set<ray::TaskId> &task_ids,
                                            TaskState task_state) const {
   auto &queue = GetTaskQueue(task_state);
   for (auto it = task_ids.begin(); it != task_ids.end();) {
@@ -152,7 +152,7 @@ void SchedulingQueue::FilterStateFromQueue(std::unordered_set<ray::TaskID> &task
   }
 }
 
-void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
+void SchedulingQueue::FilterState(std::unordered_set<TaskId> &task_ids,
                                   TaskState filter_state) const {
   switch (filter_state) {
   case TaskState::PLACEABLE:
@@ -213,7 +213,7 @@ const std::shared_ptr<TaskQueue> &SchedulingQueue::GetTaskQueue(
 // Helper function to remove tasks in the given set of task_ids from a
 // queue, and append them to the given vector removed_tasks.
 void SchedulingQueue::RemoveTasksFromQueue(
-    ray::raylet::TaskState task_state, std::unordered_set<ray::TaskID> &task_ids,
+    ray::raylet::TaskState task_state, std::unordered_set<ray::TaskId> &task_ids,
     std::vector<ray::raylet::Task> *removed_tasks) {
   auto &queue = GetTaskQueue(task_state);
   for (auto it = task_ids.begin(); it != task_ids.end();) {
@@ -228,7 +228,7 @@ void SchedulingQueue::RemoveTasksFromQueue(
   }
 }
 
-std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_ids) {
+std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskId> &task_ids) {
   // List of removed tasks to be returned.
   std::vector<Task> removed_tasks;
   // Try to find the tasks to remove from the queues.
@@ -243,9 +243,9 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   return removed_tasks;
 }
 
-Task SchedulingQueue::RemoveTask(const TaskID &task_id, TaskState *removed_task_state) {
+Task SchedulingQueue::RemoveTask(const TaskId &task_id, TaskState *removed_task_state) {
   std::vector<Task> removed_tasks;
-  std::unordered_set<TaskID> task_id_set = {task_id};
+  std::unordered_set<TaskId> task_id_set = {task_id};
   // Try to find the task to remove in the queues.
   for (const auto &task_state : {
            TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
@@ -266,11 +266,11 @@ Task SchedulingQueue::RemoveTask(const TaskID &task_id, TaskState *removed_task_
   // Make sure we got the removed task.
   RAY_CHECK(removed_tasks.size() == 1) << task_id;
   const auto &task = removed_tasks.front();
-  RAY_CHECK(task.GetTaskSpecification().TaskId() == task_id);
+  RAY_CHECK(task.GetTaskSpecification().GetTaskId() == task_id);
   return task;
 }
 
-void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState src_state,
+void SchedulingQueue::MoveTasks(std::unordered_set<TaskId> &task_ids, TaskState src_state,
                                 TaskState dst_state) {
   std::vector<Task> removed_tasks;
 
@@ -331,13 +331,13 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
 void SchedulingQueue::QueueTasks(const std::vector<Task> &tasks, TaskState task_state) {
   auto &queue = GetTaskQueue(task_state);
   for (const auto &task : tasks) {
-    RAY_LOG(DEBUG) << "Added task " << task.GetTaskSpecification().TaskId() << " to "
+    RAY_LOG(DEBUG) << "Added task " << task.GetTaskSpecification().GetTaskId() << " to "
                    << GetTaskStateString(task_state) << " queue";
-    queue->AppendTask(task.GetTaskSpecification().TaskId(), task);
+    queue->AppendTask(task.GetTaskSpecification().GetTaskId(), task);
   }
 }
 
-bool SchedulingQueue::HasTask(const TaskID &task_id) const {
+bool SchedulingQueue::HasTask(const TaskId &task_id) const {
   for (const auto &task_queue : task_queues_) {
     if (task_queue->HasTask(task_id)) {
       return true;
@@ -346,18 +346,18 @@ bool SchedulingQueue::HasTask(const TaskID &task_id) const {
   return false;
 }
 
-std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForDriver(
-    const DriverID &driver_id) const {
-  std::unordered_set<TaskID> task_ids;
+std::unordered_set<TaskId> SchedulingQueue::GetTaskIdsForDriver(
+    const DriverId &driver_id) const {
+  std::unordered_set<TaskId> task_ids;
   for (const auto &task_queue : task_queues_) {
     GetDriverTasksFromQueue(*task_queue, driver_id, task_ids);
   }
   return task_ids;
 }
 
-std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForActor(
-    const ActorID &actor_id) const {
-  std::unordered_set<TaskID> task_ids;
+std::unordered_set<TaskId> SchedulingQueue::GetTaskIdsForActor(
+    const ActorId &actor_id) const {
+  std::unordered_set<TaskId> task_ids;
   int swap = static_cast<int>(TaskState::SWAP);
   int i = 0;
   for (const auto &task_queue : task_queues_) {
@@ -372,31 +372,31 @@ std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForActor(
   return task_ids;
 }
 
-void SchedulingQueue::AddBlockedTaskId(const TaskID &task_id) {
+void SchedulingQueue::AddBlockedTaskId(const TaskId &task_id) {
   RAY_LOG(DEBUG) << "Added blocked task " << task_id;
   auto inserted = blocked_task_ids_.insert(task_id);
   RAY_CHECK(inserted.second);
 }
 
-void SchedulingQueue::RemoveBlockedTaskId(const TaskID &task_id) {
+void SchedulingQueue::RemoveBlockedTaskId(const TaskId &task_id) {
   RAY_LOG(DEBUG) << "Removed blocked task " << task_id;
   auto erased = blocked_task_ids_.erase(task_id);
   RAY_CHECK(erased == 1);
 }
 
-void SchedulingQueue::AddDriverTaskId(const TaskID &driver_id) {
+void SchedulingQueue::AddDriverTaskId(const TaskId &driver_id) {
   RAY_LOG(DEBUG) << "Added driver task " << driver_id;
   auto inserted = driver_task_ids_.insert(driver_id);
   RAY_CHECK(inserted.second);
 }
 
-void SchedulingQueue::RemoveDriverTaskId(const TaskID &driver_id) {
+void SchedulingQueue::RemoveDriverTaskId(const TaskId &driver_id) {
   RAY_LOG(DEBUG) << "Removed driver task " << driver_id;
   auto erased = driver_task_ids_.erase(driver_id);
   RAY_CHECK(erased == 1);
 }
 
-const std::unordered_set<TaskID> &SchedulingQueue::GetDriverTaskIds() const {
+const std::unordered_set<TaskId> &SchedulingQueue::GetDriverTaskIds() const {
   return driver_task_ids_;
 }
 

@@ -71,7 +71,7 @@ namespace ray {
 namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const ClientID &client_id, CommandType command_type,
+                               const ClientId &client_id, CommandType command_type,
                                bool is_test_client = false,
                                const std::string &password = "") {
   primary_context_ = std::make_shared<RedisContext>();
@@ -132,13 +132,13 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 // Use of kChain currently only applies to Table::Add which affects only the
 // task table, and when RAY_USE_NEW_GCS is set at compile time.
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const ClientID &client_id, bool is_test_client = false,
+                               const ClientId &client_id, bool is_test_client = false,
                                const std::string &password = "")
     : AsyncGcsClient(address, port, client_id, CommandType::kChain, is_test_client,
                      password) {}
 #else
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const ClientID &client_id, bool is_test_client = false,
+                               const ClientId &client_id, bool is_test_client = false,
                                const std::string &password = "")
     : AsyncGcsClient(address, port, client_id, CommandType::kRegular, is_test_client,
                      password) {}
@@ -146,19 +146,19 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                CommandType command_type)
-    : AsyncGcsClient(address, port, ClientID::from_random(), command_type) {}
+    : AsyncGcsClient(address, port, ClientId::from_random(), command_type) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                CommandType command_type, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::from_random(), command_type,
+    : AsyncGcsClient(address, port, ClientId::from_random(), command_type,
                      is_test_client) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                const std::string &password = "")
-    : AsyncGcsClient(address, port, ClientID::from_random(), false, password) {}
+    : AsyncGcsClient(address, port, ClientId::from_random(), false, password) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}
+    : AsyncGcsClient(address, port, ClientId::from_random(), is_test_client) {}
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.

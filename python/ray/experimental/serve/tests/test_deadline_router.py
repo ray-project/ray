@@ -57,13 +57,13 @@ def test_throw_assert(router: DeadlineAwareRouter, now: float):
 
 def test_vector_adder(router: DeadlineAwareRouter, now: float):
     result = unwrap(router.call.remote("VAdder", 42, now + 1))
-    assert isinstance(result, ray.ObjectID)
+    assert isinstance(result, ray.ObjectId)
     assert ray.get(result) == 43
 
 
 def test_scaler_adder(router: DeadlineAwareRouter, now: float):
     result = unwrap(router.call.remote("SAdder", 42, now + 1))
-    assert isinstance(result, ray.ObjectID)
+    assert isinstance(result, ray.ObjectId)
     assert ray.get(result) == 44
 
 

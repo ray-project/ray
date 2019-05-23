@@ -63,7 +63,7 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
 
   const auto &object_info =
       flatbuffers::GetRoot<object_manager::protocol::ObjectInfo>(notification_.data());
-  const auto &object_id = from_flatbuf<ObjectID>(*object_info->object_id());
+  const auto &object_id = from_flatbuf<ObjectId>(*object_info->object_id());
   if (object_info->is_deletion()) {
     ProcessStoreRemove(object_id);
   } else {
@@ -82,7 +82,7 @@ void ObjectStoreNotificationManager::ProcessStoreAdd(
   num_adds_processed_++;
 }
 
-void ObjectStoreNotificationManager::ProcessStoreRemove(const ObjectID &object_id) {
+void ObjectStoreNotificationManager::ProcessStoreRemove(const ObjectId &object_id) {
   for (auto &handler : rem_handlers_) {
     handler(object_id);
   }
@@ -95,7 +95,7 @@ void ObjectStoreNotificationManager::SubscribeObjAdded(
 }
 
 void ObjectStoreNotificationManager::SubscribeObjDeleted(
-    std::function<void(const ObjectID &)> callback) {
+    std::function<void(const ObjectId &)> callback) {
   rem_handlers_.push_back(std::move(callback));
 }
 

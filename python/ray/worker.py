@@ -37,12 +37,12 @@ import ray.services as services
 import ray.signature
 
 from ray import (
-    ActorHandleID,
-    ActorID,
-    ClientID,
-    DriverID,
-    ObjectID,
-    TaskID,
+    ActorHandleId,
+    ActorId,
+    ClientId,
+    DriverId,
+    ObjectId,
+    TaskId,
 )
 from ray import import_thread
 from ray import profiling
@@ -146,8 +146,8 @@ class Worker(object):
         self.serialization_context_map = {}
         self.function_actor_manager = FunctionActorManager(self)
         # Identity of the driver that this worker is processing.
-        # It is a DriverID.
-        self.task_driver_id = DriverID.nil()
+        # It is a DriverId.
+        self.task_driver_id = DriverId.nil()
         self._task_context = threading.local()
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
@@ -192,13 +192,13 @@ class Worker(object):
                 # If this is running on the main thread, initialize it to
                 # NIL. The actual value will set when the worker receives
                 # a task from raylet backend.
-                self._task_context.current_task_id = TaskID.nil()
+                self._task_context.current_task_id = TaskId.nil()
             else:
                 # If this is running on a separate thread, then the mapping
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID.from_random()
+                self._task_context.current_task_id = TaskId.from_random()
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -359,7 +359,7 @@ class Worker(object):
         local object store.
 
         Args:
-            object_id (object_id.ObjectID): The object ID of the value to be
+            object_id (object_id.ObjectId): The object ID of the value to be
                 put.
             value: The value to put in the object store.
 
@@ -370,12 +370,12 @@ class Worker(object):
                 full.
         """
         # Make sure that the value is not an object ID.
-        if isinstance(value, ObjectID):
+        if isinstance(value, ObjectId):
             raise TypeError(
-                "Calling 'put' on an ray.ObjectID is not allowed "
-                "(similarly, returning an ray.ObjectID from a remote "
+                "Calling 'put' on an ray.ObjectId is not allowed "
+                "(similarly, returning an ray.ObjectId from a remote "
                 "function is not allowed). If you really want to "
-                "do this, you can wrap the ray.ObjectID in a list and "
+                "do this, you can wrap the ray.ObjectId in a list and "
                 "call 'put' on it (or return it).")
 
         # Serialize and put the object in the object store.
@@ -466,7 +466,7 @@ class Worker(object):
             elif error_type == ErrorType.ACTOR_DIED:
                 return RayActorError()
             elif error_type == ErrorType.OBJECT_UNRECONSTRUCTABLE:
-                return UnreconstructableError(ray.ObjectID(object_id.binary()))
+                return UnreconstructableError(ray.ObjectId(object_id.binary()))
             else:
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
@@ -487,15 +487,15 @@ class Worker(object):
         local object store.
 
         Args:
-            object_ids (List[object_id.ObjectID]): A list of the object IDs
+            object_ids (List[object_id.ObjectId]): A list of the object IDs
                 whose values should be retrieved.
         """
         # Make sure that the values are object IDs.
         for object_id in object_ids:
-            if not isinstance(object_id, ObjectID):
+            if not isinstance(object_id, ObjectId):
                 raise TypeError(
                     "Attempting to call `get` on the value {}, "
-                    "which is not an ray.ObjectID.".format(object_id))
+                    "which is not an ray.ObjectId.".format(object_id))
         # Do an initial fetch for remote objects. We divide the fetch into
         # smaller fetches so as to not block the manager for a prolonged period
         # of time in a single call.
@@ -528,7 +528,7 @@ class Worker(object):
                     for unready_id in unready_ids.keys()
                 ]
                 ray_object_ids_to_fetch = [
-                    ObjectID(unready_id) for unready_id in unready_ids.keys()
+                    ObjectId(unready_id) for unready_id in unready_ids.keys()
                 ]
                 fetch_request_size = ray._config.worker_fetch_request_size()
                 for i in range(0, len(object_ids_to_fetch),
@@ -613,22 +613,22 @@ class Worker(object):
         with profiling.profile("submit_task"):
             if actor_id is None:
                 assert actor_handle_id is None
-                actor_id = ActorID.nil()
-                actor_handle_id = ActorHandleID.nil()
+                actor_id = ActorId.nil()
+                actor_handle_id = ActorHandleId.nil()
             else:
                 assert actor_handle_id is not None
 
             if actor_creation_id is None:
-                actor_creation_id = ActorID.nil()
+                actor_creation_id = ActorId.nil()
 
             if actor_creation_dummy_object_id is None:
-                actor_creation_dummy_object_id = ObjectID.nil()
+                actor_creation_dummy_object_id = ObjectId.nil()
 
             # Put large or complex arguments that are passed by value in the
             # object store first.
             args_for_raylet = []
             for arg in args:
-                if isinstance(arg, ObjectID):
+                if isinstance(arg, ObjectId):
                     args_for_raylet.append(arg)
                 elif ray._raylet.check_simple_value(arg):
                     args_for_raylet.append(arg)
@@ -678,7 +678,7 @@ class Worker(object):
             # Submit the task to raylet.
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())
-            assert isinstance(driver_id, DriverID)
+            assert isinstance(driver_id, DriverId)
             task = ray._raylet.Task(
                 driver_id,
                 function_descriptor_list,
@@ -772,7 +772,7 @@ class Worker(object):
                 arguments are being retrieved.
             serialized_args (List): The arguments to the function. These are
                 either strings representing serialized objects passed by value
-                or they are ray.ObjectIDs.
+                or they are ray.ObjectIds.
 
         Returns:
             The retrieved arguments in addition to the arguments that were
@@ -784,7 +784,7 @@ class Worker(object):
         """
         arguments = []
         for (i, arg) in enumerate(serialized_args):
-            if isinstance(arg, ObjectID):
+            if isinstance(arg, ObjectId):
                 # get the object from the local object store
                 argument = self.get_object([arg])[0]
                 if isinstance(argument, RayError):
@@ -809,7 +809,7 @@ class Worker(object):
             The arguments object_ids and outputs should have the same length.
 
         Args:
-            object_ids (List[ObjectID]): The object IDs that were assigned to
+            object_ids (List[ObjectId]): The object IDs that were assigned to
                 the outputs of the remote function call.
             outputs (Tuple): The value returned by the remote function. If the
                 remote function was supposed to only return one value, then its
@@ -826,7 +826,7 @@ class Worker(object):
                     raise RuntimeError(
                         "Attempting to return 'ray.experimental.NoReturn' "
                         "from a remote function, but the corresponding "
-                        "ObjectID does not exist in the local object store.")
+                        "ObjectId does not exist in the local object store.")
             else:
                 self.put_object(object_ids[i], outputs[i])
 
@@ -992,14 +992,14 @@ class Worker(object):
             with _changeproctitle(title, next_title):
                 self._process_task(task, execution_info)
             # Reset the state fields so the next task can run.
-            self.task_context.current_task_id = TaskID.nil()
+            self.task_context.current_task_id = TaskId.nil()
             self.task_context.task_index = 0
             self.task_context.put_index = 1
             if self.actor_id.is_nil():
                 # Don't need to reset task_driver_id if the worker is an
                 # actor. Because the following tasks should all have the
                 # same driver id.
-                self.task_driver_id = DriverID.nil()
+                self.task_driver_id = DriverId.nil()
                 # Reset signal counters so that the next task can get
                 # all past signals.
                 ray_signal.reset()
@@ -1139,7 +1139,7 @@ def error_info():
     worker = global_worker
     worker.check_connected()
     return (global_state.error_messages(driver_id=worker.task_driver_id) +
-            global_state.error_messages(driver_id=DriverID.nil()))
+            global_state.error_messages(driver_id=DriverId.nil()))
 
 
 def _initialize_serialization(driver_id, worker=global_worker):
@@ -1662,10 +1662,10 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             assert gcs_entry.EntriesLength() == 1
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entry.Entries(0), 0)
-            driver_id = error_data.DriverId()
+            driver_id = error_data.GetDriverId()
             if driver_id not in [
                     worker.task_driver_id.binary(),
-                    DriverID.nil().binary()
+                    DriverId.nil().binary()
             ]:
                 continue
 
@@ -1725,10 +1725,10 @@ def connect(node,
     else:
         # This is the code path of driver mode.
         if driver_id is None:
-            driver_id = DriverID.from_random()
+            driver_id = DriverId.from_random()
 
-        if not isinstance(driver_id, DriverID):
-            raise TypeError("The type of given driver id must be DriverID.")
+        if not isinstance(driver_id, DriverId):
+            raise TypeError("The type of given driver id must be DriverId.")
 
         worker.worker_id = driver_id.binary()
 
@@ -1737,11 +1737,11 @@ def connect(node,
     # responsible for the task so that error messages will be propagated to
     # the correct driver.
     if mode != WORKER_MODE:
-        worker.task_driver_id = DriverID(worker.worker_id)
+        worker.task_driver_id = DriverId(worker.worker_id)
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
-    worker.actor_id = ActorID.nil()
+    worker.actor_id = ActorId.nil()
     worker.node = node
     worker.set_mode(mode)
 
@@ -1866,13 +1866,13 @@ def connect(node,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            TaskID(driver_id_str[:TaskID.size()]),  # parent_task_id.
+            TaskId(driver_id_str[:TaskId.size()]),  # parent_task_id.
             0,  # parent_counter.
-            ActorID.nil(),  # actor_creation_id.
-            ObjectID.nil(),  # actor_creation_dummy_object_id.
+            ActorId.nil(),  # actor_creation_id.
+            ObjectId.nil(),  # actor_creation_dummy_object_id.
             0,  # max_actor_reconstructions.
-            ActorID.nil(),  # actor_id.
-            ActorHandleID.nil(),  # actor_handle_id.
+            ActorId.nil(),  # actor_id.
+            ActorHandleId.nil(),  # actor_handle_id.
             nil_actor_counter,  # actor_counter.
             [],  # new_actor_handles.
             [],  # execution_dependencies.
@@ -1893,9 +1893,9 @@ def connect(node,
 
     worker.raylet_client = ray._raylet.RayletClient(
         node.raylet_socket_name,
-        ClientID(worker.worker_id),
+        ClientId(worker.worker_id),
         (mode == WORKER_MODE),
-        DriverID(driver_id_str),
+        DriverId(driver_id_str),
     )
 
     # Start the import thread
@@ -2128,7 +2128,7 @@ def register_custom_serializer(cls,
 
     if driver_id is None:
         driver_id = worker.task_driver_id
-    assert isinstance(driver_id, DriverID)
+    assert isinstance(driver_id, DriverId)
 
     def register_class_for_serialization(worker_info):
         # TODO(rkn): We need to be more thoughtful about what to do if custom
@@ -2182,7 +2182,7 @@ def get(object_ids):
             # actually be a value not an objectid).
             return object_ids
 
-        is_individual_id = isinstance(object_ids, ray.ObjectID)
+        is_individual_id = isinstance(object_ids, ray.ObjectId)
         if is_individual_id:
             object_ids = [object_ids]
 
@@ -2254,7 +2254,7 @@ def wait(object_ids, num_returns=1, timeout=None):
     the remaining list.
 
     Args:
-        object_ids (List[ObjectID]): List of object IDs for objects that may or
+        object_ids (List[ObjectId]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
@@ -2266,14 +2266,14 @@ def wait(object_ids, num_returns=1, timeout=None):
     """
     worker = global_worker
 
-    if isinstance(object_ids, ObjectID):
+    if isinstance(object_ids, ObjectId):
         raise TypeError(
-            "wait() expected a list of ray.ObjectID, got a single ray.ObjectID"
+            "wait() expected a list of ray.ObjectId, got a single ray.ObjectId"
         )
 
     if not isinstance(object_ids, list):
         raise TypeError(
-            "wait() expected a list of ray.ObjectID, got {}".format(
+            "wait() expected a list of ray.ObjectId, got {}".format(
                 type(object_ids)))
 
     if isinstance(timeout, int) and timeout != 0:
@@ -2287,8 +2287,8 @@ def wait(object_ids, num_returns=1, timeout=None):
 
     if worker.mode != LOCAL_MODE:
         for object_id in object_ids:
-            if not isinstance(object_id, ObjectID):
-                raise TypeError("wait() expected a list of ray.ObjectID, "
+            if not isinstance(object_id, ObjectId):
+                raise TypeError("wait() expected a list of ray.ObjectId, "
                                 "got list containing {}".format(
                                     type(object_id)))
 

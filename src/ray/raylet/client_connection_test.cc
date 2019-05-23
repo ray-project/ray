@@ -180,7 +180,7 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
                                     "reader", {}, error_message_type_);
 
   // If client ID is set, bad message would crash the test.
-  // reader->SetClientID(UniqueID::from_random());
+  // reader->SetClientId(UniqueID::from_random());
 
   // Intentionally write a message with incorrect cookie.
   // Verify it won't crash as long as client ID is not set.

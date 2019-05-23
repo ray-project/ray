@@ -1,5 +1,5 @@
 """
-Helper methods for dealing with ray.ObjectID
+Helper methods for dealing with ray.ObjectId
 """
 
 from __future__ import absolute_import

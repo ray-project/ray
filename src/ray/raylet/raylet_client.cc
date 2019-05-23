@@ -201,8 +201,8 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
-RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &client_id,
-                           bool is_worker, const DriverID &driver_id,
+RayletClient::RayletClient(const std::string &raylet_socket, const ClientId &client_id,
+                           bool is_worker, const DriverId &driver_id,
                            const Language &language)
     : client_id_(client_id),
       is_worker_(is_worker),
@@ -222,7 +222,7 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
 }
 
-ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
+ray::Status RayletClient::SubmitTask(const std::vector<ObjectId> &execution_dependencies,
                                      const ray::raylet::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
@@ -275,9 +275,9 @@ ray::Status RayletClient::TaskDone() {
   return conn_->WriteMessage(MessageType::TaskDone);
 }
 
-ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
+ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectId> &object_ids,
                                              bool fetch_only,
-                                             const TaskID &current_task_id) {
+                                             const TaskId &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = ray::protocol::CreateFetchOrReconstruct(
@@ -287,7 +287,7 @@ ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object
   return status;
 }
 
-ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
+ray::Status RayletClient::NotifyUnblocked(const TaskId &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       ray::protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
@@ -295,9 +295,9 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
+ray::Status RayletClient::Wait(const std::vector<ObjectId> &object_ids, int num_returns,
                                int64_t timeout_milliseconds, bool wait_local,
-                               const TaskID &current_task_id, WaitResultPair *result) {
+                               const TaskId &current_task_id, WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
@@ -312,18 +312,18 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply.get());
   auto found = reply_message->found();
   for (uint i = 0; i < found->size(); i++) {
-    ObjectID object_id = ObjectID::from_binary(found->Get(i)->str());
+    ObjectId object_id = ObjectId::from_binary(found->Get(i)->str());
     result->first.push_back(object_id);
   }
   auto remaining = reply_message->remaining();
   for (uint i = 0; i < remaining->size(); i++) {
-    ObjectID object_id = ObjectID::from_binary(remaining->Get(i)->str());
+    ObjectId object_id = ObjectId::from_binary(remaining->Get(i)->str());
     result->second.push_back(object_id);
   }
   return ray::Status::OK();
 }
 
-ray::Status RayletClient::PushError(const DriverID &driver_id, const std::string &type,
+ray::Status RayletClient::PushError(const DriverId &driver_id, const std::string &type,
                                     const std::string &error_message, double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreatePushErrorRequest(
@@ -348,7 +348,7 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_eve
   return ray::Status::OK();
 }
 
-ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_ids,
+ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectId> &object_ids,
                                       bool local_only, bool delete_creating_tasks) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateFreeObjectsRequest(
@@ -359,8 +359,8 @@ ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_i
   return status;
 }
 
-ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
-                                                 ActorCheckpointID &checkpoint_id) {
+ray::Status RayletClient::PrepareActorCheckpoint(const ActorId &actor_id,
+                                                 ActorCheckpointId &checkpoint_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       ray::protocol::CreatePrepareActorCheckpointRequest(fbb, to_flatbuf(fbb, actor_id));
@@ -373,12 +373,12 @@ ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
   if (!status.ok()) return status;
   auto reply_message =
       flatbuffers::GetRoot<ray::protocol::PrepareActorCheckpointReply>(reply.get());
-  checkpoint_id = ActorCheckpointID::from_binary(reply_message->checkpoint_id()->str());
+  checkpoint_id = ActorCheckpointId::from_binary(reply_message->checkpoint_id()->str());
   return ray::Status::OK();
 }
 
 ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
-    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
+    const ActorId &actor_id, const ActorCheckpointId &checkpoint_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateNotifyActorResumedFromCheckpoint(
       fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, checkpoint_id));
@@ -389,7 +389,7 @@ ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
 
 ray::Status RayletClient::SetResource(const std::string &resource_name,
                                       const double capacity,
-                                      const ray::ClientID &client_Id) {
+                                      const ray::ClientId &client_Id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateSetResourceRequest(
       fbb, fbb.CreateString(resource_name), capacity, to_flatbuf(fbb, client_Id));

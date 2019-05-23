@@ -231,19 +231,19 @@ ClientConnection<T>::ClientConnection(
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names, int64_t error_message_type)
     : ServerConnection<T>(std::move(socket)),
-      client_id_(ClientID::nil()),
+      client_id_(ClientId::nil()),
       message_handler_(message_handler),
       debug_label_(debug_label),
       message_type_enum_names_(message_type_enum_names),
       error_message_type_(error_message_type) {}
 
 template <class T>
-const ClientID &ClientConnection<T>::GetClientId() const {
+const ClientId &ClientConnection<T>::GetClientId() const {
   return client_id_;
 }
 
 template <class T>
-void ClientConnection<T>::SetClientID(const ClientID &client_id) {
+void ClientConnection<T>::SetClientId(const ClientId &client_id) {
   client_id_ = client_id;
 }
 

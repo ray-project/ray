@@ -9,18 +9,18 @@ See https://github.com/ray-project/ray/issues/3721.
 import os
 
 from ray.includes.unique_ids cimport (
-    CActorCheckpointID,
-    CActorClassID,
-    CActorHandleID,
-    CActorID,
-    CClientID,
-    CConfigID,
-    CDriverID,
-    CFunctionID,
-    CObjectID,
-    CTaskID,
+    CActorCheckpointId,
+    CActorClassId,
+    CActorHandleId,
+    CActorId,
+    CClientId,
+    CConfigId,
+    CDriverId,
+    CFunctionId,
+    CObjectId,
+    CTaskId,
     CUniqueID,
-    CWorkerID,
+    CWorkerId,
 )
 
 from ray.utils import decode
@@ -130,18 +130,18 @@ cdef class UniqueID(BaseID):
         return self.data.hash()
 
 
-cdef class ObjectID(BaseID):
-    cdef CObjectID data
+cdef class ObjectId(BaseID):
+    cdef CObjectId data
 
     def __init__(self, id):
         check_id(id)
-        self.data = CObjectID.from_binary(<c_string>id)
+        self.data = CObjectId.from_binary(<c_string>id)
 
-    cdef CObjectID native(self):
-        return <CObjectID>self.data
+    cdef CObjectId native(self):
+        return <CObjectId>self.data
 
     def size(self):
-        return CObjectID.size()
+        return CObjectId.size()
 
     def binary(self):
         return self.data.binary()
@@ -157,25 +157,25 @@ cdef class ObjectID(BaseID):
 
     @classmethod
     def nil(cls):
-        return cls(CObjectID.nil().binary())
+        return cls(CObjectId.nil().binary())
 
     @classmethod
     def from_random(cls):
-        return cls(os.urandom(CObjectID.size()))
+        return cls(os.urandom(CObjectId.size()))
 
 
-cdef class TaskID(BaseID):
-    cdef CTaskID data
+cdef class TaskId(BaseID):
+    cdef CTaskId data
 
     def __init__(self, id):
-        check_id(id, CTaskID.size())
-        self.data = CTaskID.from_binary(<c_string>id)
+        check_id(id, CTaskId.size())
+        self.data = CTaskId.from_binary(<c_string>id)
 
-    cdef CTaskID native(self):
-        return <CTaskID>self.data
+    cdef CTaskId native(self):
+        return <CTaskId>self.data
 
     def size(self):
-        return CTaskID.size()
+        return CTaskId.size()
 
     def binary(self):
         return self.data.binary()
@@ -191,95 +191,95 @@ cdef class TaskID(BaseID):
 
     @classmethod
     def nil(cls):
-        return cls(CTaskID.nil().binary())
+        return cls(CTaskId.nil().binary())
 
     @classmethod
     def size(cla):
-        return CTaskID.size()
+        return CTaskId.size()
 
     @classmethod
     def from_random(cls):
-        return cls(os.urandom(CTaskID.size()))
+        return cls(os.urandom(CTaskId.size()))
 
 
-cdef class ClientID(UniqueID):
-
-    def __init__(self, id):
-        check_id(id)
-        self.data = CClientID.from_binary(<c_string>id)
-
-    cdef CClientID native(self):
-        return <CClientID>self.data
-
-
-cdef class DriverID(UniqueID):
+cdef class ClientId(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CDriverID.from_binary(<c_string>id)
+        self.data = CClientId.from_binary(<c_string>id)
 
-    cdef CDriverID native(self):
-        return <CDriverID>self.data
-
-
-cdef class ActorID(UniqueID):
-
-    def __init__(self, id):
-        check_id(id)
-        self.data = CActorID.from_binary(<c_string>id)
-
-    cdef CActorID native(self):
-        return <CActorID>self.data
+    cdef CClientId native(self):
+        return <CClientId>self.data
 
 
-cdef class ActorHandleID(UniqueID):
+cdef class DriverId(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CActorHandleID.from_binary(<c_string>id)
+        self.data = CDriverId.from_binary(<c_string>id)
 
-    cdef CActorHandleID native(self):
-        return <CActorHandleID>self.data
-
-
-cdef class ActorCheckpointID(UniqueID):
-
-    def __init__(self, id):
-        check_id(id)
-        self.data = CActorCheckpointID.from_binary(<c_string>id)
-
-    cdef CActorCheckpointID native(self):
-        return <CActorCheckpointID>self.data
+    cdef CDriverId native(self):
+        return <CDriverId>self.data
 
 
-cdef class FunctionID(UniqueID):
+cdef class ActorId(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CFunctionID.from_binary(<c_string>id)
+        self.data = CActorId.from_binary(<c_string>id)
 
-    cdef CFunctionID native(self):
-        return <CFunctionID>self.data
+    cdef CActorId native(self):
+        return <CActorId>self.data
 
 
-cdef class ActorClassID(UniqueID):
+cdef class ActorHandleId(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CActorClassID.from_binary(<c_string>id)
+        self.data = CActorHandleId.from_binary(<c_string>id)
 
-    cdef CActorClassID native(self):
-        return <CActorClassID>self.data
+    cdef CActorHandleId native(self):
+        return <CActorHandleId>self.data
+
+
+cdef class ActorCheckpointId(UniqueID):
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CActorCheckpointId.from_binary(<c_string>id)
+
+    cdef CActorCheckpointId native(self):
+        return <CActorCheckpointId>self.data
+
+
+cdef class FunctionId(UniqueID):
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CFunctionId.from_binary(<c_string>id)
+
+    cdef CFunctionId native(self):
+        return <CFunctionId>self.data
+
+
+cdef class ActorClassId(UniqueID):
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CActorClassId.from_binary(<c_string>id)
+
+    cdef CActorClassId native(self):
+        return <CActorClassId>self.data
 
 _ID_TYPES = [
-    ActorCheckpointID,
-    ActorClassID,
-    ActorHandleID,
-    ActorID,
-    ClientID,
-    DriverID,
-    FunctionID,
-    ObjectID,
-    TaskID,
+    ActorCheckpointId,
+    ActorClassId,
+    ActorHandleId,
+    ActorId,
+    ClientId,
+    DriverId,
+    FunctionId,
+    ObjectId,
+    TaskId,
     UniqueID,
 ]

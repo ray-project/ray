@@ -91,7 +91,7 @@ def _task_table_shard(shard_index):
     for key in task_table_keys:
         task_id_binary = key[len(TASK_PREFIX):]
         results[binary_to_hex(task_id_binary)] = ray.global_state._task_table(
-            ray.TaskID(task_id_binary))
+            ray.TaskId(task_id_binary))
 
     return results
 
@@ -103,7 +103,7 @@ def _object_table_shard(shard_index):
     for key in object_table_keys:
         object_id_binary = key[len(OBJECT_LOCATION_PREFIX):]
         results[binary_to_hex(object_id_binary)] = (
-            ray.global_state._object_table(ray.ObjectID(object_id_binary)))
+            ray.global_state._object_table(ray.ObjectId(object_id_binary)))
 
     return results
 

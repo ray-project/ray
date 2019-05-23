@@ -24,7 +24,7 @@ class TaskExecutionSpecification {
   ///
   /// \param dependencies The task's dependencies, determined at execution
   /// time.
-  TaskExecutionSpecification(const std::vector<ObjectID> &&dependencies);
+  TaskExecutionSpecification(const std::vector<ObjectId> &&dependencies);
 
   /// Create a task execution specification.
   ///
@@ -32,7 +32,7 @@ class TaskExecutionSpecification {
   /// time.
   /// \param num_forwards The number of times this task has been forwarded by a
   /// node manager.
-  TaskExecutionSpecification(const std::vector<ObjectID> &&dependencies,
+  TaskExecutionSpecification(const std::vector<ObjectId> &&dependencies,
                              int num_forwards);
 
   /// Create a task execution specification from a serialized flatbuffer.
@@ -54,12 +54,12 @@ class TaskExecutionSpecification {
   ///
   /// \return A vector of object IDs representing this task's execution
   /// dependencies.
-  std::vector<ObjectID> ExecutionDependencies() const;
+  std::vector<ObjectId> ExecutionDependencies() const;
 
   /// Set the task's execution dependencies.
   ///
   /// \param dependencies The value to set the execution dependencies to.
-  void SetExecutionDependencies(const std::vector<ObjectID> &dependencies);
+  void SetExecutionDependencies(const std::vector<ObjectId> &dependencies);
 
   /// Get the number of times this task has been forwarded.
   ///

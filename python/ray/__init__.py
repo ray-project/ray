@@ -50,16 +50,16 @@ modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
 sys.path.append(modin_path)
 
 from ray._raylet import (
-    ActorCheckpointID,
-    ActorClassID,
-    ActorHandleID,
-    ActorID,
-    ClientID,
+    ActorCheckpointId,
+    ActorClassId,
+    ActorHandleId,
+    ActorId,
+    ClientId,
     Config as _Config,
-    DriverID,
-    FunctionID,
-    ObjectID,
-    TaskID,
+    DriverId,
+    FunctionId,
+    ObjectId,
+    TaskId,
     UniqueID,
 )  # noqa: E402
 
@@ -128,15 +128,15 @@ __all__ = [
 
 # ID types
 __all__ += [
-    "ActorCheckpointID",
-    "ActorClassID",
-    "ActorHandleID",
-    "ActorID",
-    "ClientID",
-    "DriverID",
-    "FunctionID",
-    "ObjectID",
-    "TaskID",
+    "ActorCheckpointId",
+    "ActorClassId",
+    "ActorHandleId",
+    "ActorId",
+    "ClientId",
+    "DriverId",
+    "FunctionId",
+    "ObjectId",
+    "TaskId",
     "UniqueID",
 ]
 

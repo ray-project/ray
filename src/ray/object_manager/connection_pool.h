@@ -40,9 +40,9 @@ class ConnectionPool {
   /// Register a receiver connection.
   ///
   /// \param type The type of connection.
-  /// \param client_id The ClientID of the remote object manager.
+  /// \param client_id The ClientId of the remote object manager.
   /// \param conn The actual connection.
-  void RegisterReceiver(ConnectionType type, const ClientID &client_id,
+  void RegisterReceiver(ConnectionType type, const ClientId &client_id,
                         std::shared_ptr<TcpClientConnection> &conn);
 
   /// Remove a receiver connection.
@@ -53,9 +53,9 @@ class ConnectionPool {
   /// Register a receiver connection.
   ///
   /// \param type The type of connection.
-  /// \param client_id The ClientID of the remote object manager.
+  /// \param client_id The ClientId of the remote object manager.
   /// \param conn The actual connection.
-  void RegisterSender(ConnectionType type, const ClientID &client_id,
+  void RegisterSender(ConnectionType type, const ClientId &client_id,
                       std::shared_ptr<SenderConnection> &conn);
 
   /// Remove a sender connection.
@@ -69,10 +69,10 @@ class ConnectionPool {
   /// connection pointer passed in is set to a null pointer.
   ///
   /// \param[in] type The type of connection.
-  /// \param[in] client_id The ClientID of the remote object manager.
+  /// \param[in] client_id The ClientId of the remote object manager.
   /// \param[out] conn An empty pointer to a shared pointer.
   /// \return Void.
-  void GetSender(ConnectionType type, const ClientID &client_id,
+  void GetSender(ConnectionType type, const ClientId &client_id,
                  std::shared_ptr<SenderConnection> *conn);
 
   /// Releases a sender connection, allowing it to be used by another operation.
@@ -103,39 +103,39 @@ class ConnectionPool {
   RAY_DISALLOW_COPY_AND_ASSIGN(ConnectionPool);
 
  private:
-  /// A container type that maps ClientID to a connection type.
+  /// A container type that maps ClientId to a connection type.
   using SenderMapType =
-      std::unordered_map<ray::ClientID, std::vector<std::shared_ptr<SenderConnection>>>;
+      std::unordered_map<ray::ClientId, std::vector<std::shared_ptr<SenderConnection>>>;
   using ReceiverMapType =
-      std::unordered_map<ray::ClientID,
+      std::unordered_map<ray::ClientId,
                          std::vector<std::shared_ptr<TcpClientConnection>>>;
 
-  /// Adds a receiver for ClientID to the given map.
-  void Add(ReceiverMapType &conn_map, const ClientID &client_id,
+  /// Adds a receiver for ClientId to the given map.
+  void Add(ReceiverMapType &conn_map, const ClientId &client_id,
            std::shared_ptr<TcpClientConnection> conn);
 
-  /// Adds a sender for ClientID to the given map.
-  void Add(SenderMapType &conn_map, const ClientID &client_id,
+  /// Adds a sender for ClientId to the given map.
+  void Add(SenderMapType &conn_map, const ClientId &client_id,
            std::shared_ptr<SenderConnection> conn);
 
-  /// Removes the given receiver for ClientID from the given map.
-  void Remove(ReceiverMapType &conn_map, const ClientID &client_id,
+  /// Removes the given receiver for ClientId from the given map.
+  void Remove(ReceiverMapType &conn_map, const ClientId &client_id,
               std::shared_ptr<TcpClientConnection> &conn);
 
-  /// Removes the given sender for ClientID from the given map.
-  void Remove(SenderMapType &conn_map, const ClientID &client_id,
+  /// Removes the given sender for ClientId from the given map.
+  void Remove(SenderMapType &conn_map, const ClientId &client_id,
               const std::shared_ptr<SenderConnection> &conn);
 
-  /// Returns the count of sender connections to ClientID.
-  uint64_t Count(SenderMapType &conn_map, const ClientID &client_id);
+  /// Returns the count of sender connections to ClientId.
+  uint64_t Count(SenderMapType &conn_map, const ClientId &client_id);
 
-  /// Removes a sender connection to ClientID from the pool of available connections.
-  /// This method assumes conn_map has available connections to ClientID.
+  /// Removes a sender connection to ClientId from the pool of available connections.
+  /// This method assumes conn_map has available connections to ClientId.
   std::shared_ptr<SenderConnection> Borrow(SenderMapType &conn_map,
-                                           const ClientID &client_id);
+                                           const ClientId &client_id);
 
-  /// Returns a sender connection to ClientID to the pool of available connections.
-  void Return(SenderMapType &conn_map, const ClientID &client_id,
+  /// Returns a sender connection to ClientId to the pool of available connections.
+  void Return(SenderMapType &conn_map, const ClientId &client_id,
               std::shared_ptr<SenderConnection> conn);
 
   // TODO(hme): Optimize with separate mutex per collection.

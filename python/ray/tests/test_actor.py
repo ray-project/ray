@@ -74,7 +74,7 @@ def ray_checkpointable_actor_cls(request):
                 checkpoint_id, value = lines[-1].split(" ")
                 self.value = int(value)
                 self.resumed_from_checkpoint = True
-                checkpoint_id = ray.ActorCheckpointID(
+                checkpoint_id = ray.ActorCheckpointId(
                     ray.utils.hex_to_binary(checkpoint_id))
                 assert any(checkpoint_id == checkpoint.checkpoint_id
                            for checkpoint in available_checkpoints)
@@ -2605,6 +2605,6 @@ def test_decorated_method(ray_start_regular):
     a = Actor.remote()
 
     object_id, extra = a.decorated_method.remote(3, kwarg=3)
-    assert isinstance(object_id, ray.ObjectID)
+    assert isinstance(object_id, ray.ObjectId)
     assert extra == {"kwarg": 3}
     assert ray.get(object_id) == 7  # 2 * 3 + 1

@@ -27,7 +27,7 @@ def parse_client_table(redis_client):
     Returns:
         A list of information about the nodes in the cluster.
     """
-    NIL_CLIENT_ID = ray.ObjectID.nil().binary()
+    NIL_CLIENT_ID = ray.ObjectId.nil().binary()
     message = redis_client.execute_command("RAY.TABLE_LOOKUP",
                                            ray.gcs_utils.TablePrefix.CLIENT,
                                            "", NIL_CLIENT_ID)
@@ -58,7 +58,7 @@ def parse_client_table(redis_client):
         if client.EntryType() == EntryType.INSERTION:
             ordered_client_ids.append(client_id)
             node_info[client_id] = {
-                "ClientID": client_id,
+                "ClientId": client_id,
                 "EntryType": client.EntryType(),
                 "NodeManagerAddress": decode(
                     client.NodeManagerAddress(), allow_none=True),
@@ -235,9 +235,9 @@ class GlobalState(object):
         Returns:
             A dictionary with information about the object ID in question.
         """
-        # Allow the argument to be either an ObjectID or a hex string.
-        if not isinstance(object_id, ray.ObjectID):
-            object_id = ray.ObjectID(hex_to_binary(object_id))
+        # Allow the argument to be either an ObjectId or a hex string.
+        if not isinstance(object_id, ray.ObjectId):
+            object_id = ray.ObjectId(hex_to_binary(object_id))
 
         # Return information about a single object ID.
         message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
@@ -298,7 +298,7 @@ class GlobalState(object):
         Returns:
             A dictionary with information about the task ID in question.
         """
-        assert isinstance(task_id, ray.TaskID)
+        assert isinstance(task_id, ray.TaskId)
         message = self._execute_command(task_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
                                         "", task_id.binary())
@@ -320,19 +320,19 @@ class GlobalState(object):
             function_descriptor_list)
 
         task_spec_info = {
-            "DriverID": task.driver_id().hex(),
-            "TaskID": task.task_id().hex(),
-            "ParentTaskID": task.parent_task_id().hex(),
+            "DriverId": task.driver_id().hex(),
+            "TaskId": task.task_id().hex(),
+            "ParentTaskId": task.parent_task_id().hex(),
             "ParentCounter": task.parent_counter(),
-            "ActorID": (task.actor_id().hex()),
+            "ActorId": (task.actor_id().hex()),
             "ActorCreationID": task.actor_creation_id().hex(),
-            "ActorCreationDummyObjectID": (
+            "ActorCreationDummyObjectId": (
                 task.actor_creation_dummy_object_id().hex()),
             "ActorCounter": task.actor_counter(),
             "Args": task.arguments(),
-            "ReturnObjectIDs": task.returns(),
+            "ReturnObjectIds": task.returns(),
             "RequiredResources": task.required_resources(),
-            "FunctionID": function_descriptor.function_id.hex(),
+            "FunctionId": function_descriptor.function_id.hex(),
             "FunctionHash": binary_to_hex(function_descriptor.function_hash),
             "ModuleName": function_descriptor.module_name,
             "ClassName": function_descriptor.class_name,
@@ -363,7 +363,7 @@ class GlobalState(object):
         """
         self._check_connected()
         if task_id is not None:
-            task_id = ray.TaskID(hex_to_binary(task_id))
+            task_id = ray.TaskId(hex_to_binary(task_id))
             return self._task_table(task_id)
         else:
             task_table_keys = self._keys(
@@ -376,7 +376,7 @@ class GlobalState(object):
             results = {}
             for task_id_binary in task_ids_binary:
                 results[binary_to_hex(task_id_binary)] = self._task_table(
-                    ray.TaskID(task_id_binary))
+                    ray.TaskId(task_id_binary))
             return results
 
     def function_table(self, function_id=None):
@@ -393,7 +393,7 @@ class GlobalState(object):
         for key in function_table_keys:
             info = self.redis_client.hgetall(key)
             function_info_parsed = {
-                "DriverID": binary_to_hex(info[b"driver_id"]),
+                "DriverId": binary_to_hex(info[b"driver_id"]),
                 "Module": decode(info[b"module"]),
                 "Name": decode(info[b"name"])
             }
@@ -628,7 +628,7 @@ class GlobalState(object):
         """
         client_id_to_address = {}
         for client_info in ray.global_state.client_table():
-            client_id_to_address[client_info["ClientID"]] = "{}:{}".format(
+            client_id_to_address[client_info["ClientId"]] = "{}:{}".format(
                 client_info["NodeManagerAddress"],
                 client_info["ObjectManagerPort"])
 
@@ -781,7 +781,7 @@ class GlobalState(object):
     def _live_client_ids(self):
         """Returns a set of client IDs corresponding to clients still alive."""
         return {
-            client["ClientID"]
+            client["ClientId"]
             for client in self.client_table()
             if (client["EntryType"] != EntryType.DELETION)
         }
@@ -864,7 +864,7 @@ class GlobalState(object):
         Returns:
             A list of the error messages for this driver.
         """
-        assert isinstance(driver_id, ray.DriverID)
+        assert isinstance(driver_id, ray.DriverId)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
             driver_id.binary())
@@ -879,7 +879,7 @@ class GlobalState(object):
         for i in range(gcs_entries.EntriesLength()):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
-            assert driver_id.binary() == error_data.DriverId()
+            assert driver_id.binary() == error_data.GetDriverId()
             error_message = {
                 "type": decode(error_data.Type()),
                 "message": decode(error_data.ErrorMessage()),
@@ -900,7 +900,7 @@ class GlobalState(object):
                 that driver.
         """
         if driver_id is not None:
-            assert isinstance(driver_id, ray.DriverID)
+            assert isinstance(driver_id, ray.DriverId)
             return self._error_messages(driver_id)
 
         error_table_keys = self.redis_client.keys(
@@ -912,7 +912,7 @@ class GlobalState(object):
 
         return {
             binary_to_hex(driver_id): self._error_messages(
-                ray.DriverID(driver_id))
+                ray.DriverId(driver_id))
             for driver_id in driver_ids
         }
 
@@ -943,12 +943,12 @@ class GlobalState(object):
         num_checkpoints = len(checkpoint_ids_str) // ID_SIZE
         assert len(checkpoint_ids_str) % ID_SIZE == 0
         checkpoint_ids = [
-            ray.ActorCheckpointID(
+            ray.ActorCheckpointId(
                 checkpoint_ids_str[(i * ID_SIZE):((i + 1) * ID_SIZE)])
             for i in range(num_checkpoints)
         ]
         return {
-            "ActorID": ray.utils.binary_to_hex(entry.ActorId()),
+            "ActorId": ray.utils.binary_to_hex(entry.GetActorId()),
             "CheckpointIds": checkpoint_ids,
             "Timestamps": [
                 entry.Timestamps(i) for i in range(num_checkpoints)

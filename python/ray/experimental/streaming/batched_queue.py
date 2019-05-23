@@ -17,7 +17,7 @@ logger.setLevel("INFO")
 def plasma_prefetch(object_id):
     """Tells plasma to prefetch the given object_id."""
     local_sched_client = ray.worker.global_worker.raylet_client
-    ray_obj_id = ray.ObjectID(object_id)
+    ray_obj_id = ray.ObjectId(object_id)
     local_sched_client.fetch_or_reconstruct([ray_obj_id], True)
 
 
@@ -154,7 +154,7 @@ class BatchedQueue(object):
                 return
             batch_id = self._batch_id(self.write_batch_offset)
             ray.worker.global_worker.put_object(
-                ray.ObjectID(batch_id), self.write_buffer)
+                ray.ObjectId(batch_id), self.write_buffer)
             logger.debug("[writer] Flush batch {} offset {} size {}".format(
                 self.write_batch_offset, self.write_item_offset,
                 len(self.write_buffer)))

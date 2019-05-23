@@ -17,14 +17,14 @@ const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
 
 const TaskSpecification &Task::GetTaskSpecification() const { return task_spec_; }
 
-void Task::SetExecutionDependencies(const std::vector<ObjectID> &dependencies) {
+void Task::SetExecutionDependencies(const std::vector<ObjectId> &dependencies) {
   task_execution_spec_.SetExecutionDependencies(dependencies);
   ComputeDependencies();
 }
 
 void Task::IncrementNumForwards() { task_execution_spec_.IncrementNumForwards(); }
 
-const std::vector<ObjectID> &Task::GetDependencies() const { return dependencies_; }
+const std::vector<ObjectId> &Task::GetDependencies() const { return dependencies_; }
 
 void Task::ComputeDependencies() {
   dependencies_.clear();
@@ -46,10 +46,10 @@ void Task::CopyTaskExecutionSpec(const Task &task) {
   ComputeDependencies();
 }
 
-std::string SerializeTaskAsString(const std::vector<ObjectID> *dependencies,
+std::string SerializeTaskAsString(const std::vector<ObjectId> *dependencies,
                                   const TaskSpecification *task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
-  std::vector<ObjectID> execution_dependencies(*dependencies);
+  std::vector<ObjectId> execution_dependencies(*dependencies);
   TaskExecutionSpecification execution_spec(std::move(execution_dependencies));
   Task task(execution_spec, *task_spec);
   fbb.Finish(task.ToFlatbuffer(fbb));

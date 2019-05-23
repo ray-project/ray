@@ -38,7 +38,7 @@ uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index, uint64_t data_s
 }
 
 std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::GetChunk(
-    const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
+    const ObjectId &object_id, uint64_t data_size, uint64_t metadata_size,
     uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   if (get_buffer_state_.count(object_id) == 0) {
@@ -67,7 +67,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
       get_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
 }
 
-void ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk_index) {
+void ObjectBufferPool::ReleaseGetChunk(const ObjectId &object_id, uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   GetBufferState &buffer_state = get_buffer_state_[object_id];
   buffer_state.references--;
@@ -77,14 +77,14 @@ void ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk
   }
 }
 
-void ObjectBufferPool::AbortGet(const ObjectID &object_id) {
+void ObjectBufferPool::AbortGet(const ObjectId &object_id) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_ARROW_CHECK_OK(store_client_.Release(object_id.to_plasma_id()));
   get_buffer_state_.erase(object_id);
 }
 
 std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::CreateChunk(
-    const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
+    const ObjectId &object_id, uint64_t data_size, uint64_t metadata_size,
     uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   if (create_buffer_state_.count(object_id) == 0) {
@@ -122,7 +122,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
       create_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
 }
 
-void ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
+void ObjectBufferPool::AbortCreateChunk(const ObjectId &object_id,
                                         const uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] ==
@@ -143,7 +143,7 @@ void ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
   }
 }
 
-void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk_index) {
+void ObjectBufferPool::SealChunk(const ObjectId &object_id, const uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] ==
             CreateChunkState::REFERENCED);
@@ -157,7 +157,7 @@ void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk
   }
 }
 
-void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
+void ObjectBufferPool::AbortCreate(const ObjectId &object_id) {
   const plasma::ObjectID plasma_id = object_id.to_plasma_id();
   RAY_ARROW_CHECK_OK(store_client_.Release(plasma_id));
   RAY_ARROW_CHECK_OK(store_client_.Abort(plasma_id));
@@ -165,7 +165,7 @@ void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
 }
 
 std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
-    const ObjectID &object_id, uint8_t *data, uint64_t data_size) {
+    const ObjectId &object_id, uint8_t *data, uint64_t data_size) {
   uint64_t space_remaining = data_size;
   std::vector<ChunkInfo> chunks;
   int64_t position = 0;
@@ -182,7 +182,7 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
   return chunks;
 }
 
-void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
+void ObjectBufferPool::FreeObjects(const std::vector<ObjectId> &object_ids) {
   std::vector<plasma::ObjectID> plasma_ids;
   plasma_ids.reserve(object_ids.size());
   for (const auto &id : object_ids) {

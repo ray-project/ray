@@ -6,24 +6,24 @@ namespace ray {
 
 namespace raylet {
 
-void TestTaskReturnId(const TaskID &task_id, int64_t return_index) {
+void TestTaskReturnId(const TaskId &task_id, int64_t return_index) {
   // Round trip test for computing the object ID for a task's return value,
   // then computing the task ID that created the object.
-  ObjectID return_id = ObjectID::for_task_return(task_id, return_index);
+  ObjectId return_id = ObjectId::for_task_return(task_id, return_index);
   ASSERT_EQ(return_id.task_id(), task_id);
   ASSERT_EQ(return_id.object_index(), return_index);
 }
 
-void TestTaskPutId(const TaskID &task_id, int64_t put_index) {
+void TestTaskPutId(const TaskId &task_id, int64_t put_index) {
   // Round trip test for computing the object ID for a task's put value, then
   // computing the task ID that created the object.
-  ObjectID put_id = ObjectID::for_put(task_id, put_index);
+  ObjectId put_id = ObjectId::for_put(task_id, put_index);
   ASSERT_EQ(put_id.task_id(), task_id);
   ASSERT_EQ(put_id.object_index(), -1 * put_index);
 }
 
 TEST(TaskSpecTest, TestTaskReturnIds) {
-  TaskID task_id = TaskID::from_random();
+  TaskId task_id = TaskId::from_random();
 
   // Check that we can compute between a task ID and the object IDs of its
   // return values and puts.
@@ -36,15 +36,15 @@ TEST(TaskSpecTest, TestTaskReturnIds) {
 }
 
 TEST(IdPropertyTest, TestIdProperty) {
-  TaskID task_id = TaskID::from_random();
-  ASSERT_EQ(task_id, TaskID::from_binary(task_id.binary()));
-  ObjectID object_id = ObjectID::from_random();
-  ASSERT_EQ(object_id, ObjectID::from_binary(object_id.binary()));
+  TaskId task_id = TaskId::from_random();
+  ASSERT_EQ(task_id, TaskId::from_binary(task_id.binary()));
+  ObjectId object_id = ObjectId::from_random();
+  ASSERT_EQ(object_id, ObjectId::from_binary(object_id.binary()));
 
-  ASSERT_TRUE(TaskID().is_nil());
-  ASSERT_TRUE(TaskID::nil().is_nil());
-  ASSERT_TRUE(ObjectID().is_nil());
-  ASSERT_TRUE(ObjectID::nil().is_nil());
+  ASSERT_TRUE(TaskId().is_nil());
+  ASSERT_TRUE(TaskId::nil().is_nil());
+  ASSERT_TRUE(ObjectId().is_nil());
+  ASSERT_TRUE(ObjectId::nil().is_nil());
 }
 
 }  // namespace raylet

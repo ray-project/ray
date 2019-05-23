@@ -29,15 +29,15 @@ class Worker {
   /// Return the worker's PID.
   pid_t Pid() const;
   Language GetLanguage() const;
-  void AssignTaskId(const TaskID &task_id);
-  const TaskID &GetAssignedTaskId() const;
-  bool AddBlockedTaskId(const TaskID &task_id);
-  bool RemoveBlockedTaskId(const TaskID &task_id);
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
-  void AssignDriverId(const DriverID &driver_id);
-  const DriverID &GetAssignedDriverId() const;
-  void AssignActorId(const ActorID &actor_id);
-  const ActorID &GetActorId() const;
+  void AssignTaskId(const TaskId &task_id);
+  const TaskId &GetAssignedTaskId() const;
+  bool AddBlockedTaskId(const TaskId &task_id);
+  bool RemoveBlockedTaskId(const TaskId &task_id);
+  const std::unordered_set<TaskId> &GetBlockedTaskIds() const;
+  void AssignDriverId(const DriverId &driver_id);
+  const DriverId &GetAssignedDriverId() const;
+  void AssignActorId(const ActorId &actor_id);
+  const ActorId &GetActorId() const;
   /// Return the worker's connection.
   const std::shared_ptr<LocalClientConnection> Connection() const;
 
@@ -59,11 +59,11 @@ class Worker {
   /// Connection state of a worker.
   std::shared_ptr<LocalClientConnection> connection_;
   /// The worker's currently assigned task.
-  TaskID assigned_task_id_;
+  TaskId assigned_task_id_;
   /// Driver ID for the worker's current assigned task.
-  DriverID assigned_driver_id_;
+  DriverId assigned_driver_id_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
-  ActorID actor_id_;
+  ActorId actor_id_;
   /// Whether the worker is dead.
   bool dead_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
@@ -75,7 +75,7 @@ class Worker {
   /// The specific resource IDs that this worker currently owns for the duration
   // of a task.
   ResourceIdSet task_resource_ids_;
-  std::unordered_set<TaskID> blocked_task_ids_;
+  std::unordered_set<TaskId> blocked_task_ids_;
 };
 
 }  // namespace raylet

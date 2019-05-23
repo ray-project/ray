@@ -43,70 +43,70 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
         @staticmethod
         size_t size()
 
-    cdef cppclass CActorCheckpointID "ray::ActorCheckpointID"(CUniqueID):
+    cdef cppclass CActorCheckpointId "ray::ActorCheckpointId"(CUniqueID):
 
         @staticmethod
-        CActorCheckpointID from_binary(const c_string &binary)
+        CActorCheckpointId from_binary(const c_string &binary)
 
-    cdef cppclass CActorClassID "ray::ActorClassID"(CUniqueID):
-
-        @staticmethod
-        CActorClassID from_binary(const c_string &binary)
-
-    cdef cppclass CActorID "ray::ActorID"(CUniqueID):
+    cdef cppclass CActorClassId "ray::ActorClassId"(CUniqueID):
 
         @staticmethod
-        CActorID from_binary(const c_string &binary)
+        CActorClassId from_binary(const c_string &binary)
 
-    cdef cppclass CActorHandleID "ray::ActorHandleID"(CUniqueID):
-
-        @staticmethod
-        CActorHandleID from_binary(const c_string &binary)
-
-    cdef cppclass CClientID "ray::ClientID"(CUniqueID):
+    cdef cppclass CActorId "ray::ActorId"(CUniqueID):
 
         @staticmethod
-        CClientID from_binary(const c_string &binary)
+        CActorId from_binary(const c_string &binary)
 
-    cdef cppclass CConfigID "ray::ConfigID"(CUniqueID):
-
-        @staticmethod
-        CConfigID from_binary(const c_string &binary)
-
-    cdef cppclass CFunctionID "ray::FunctionID"(CUniqueID):
+    cdef cppclass CActorHandleId "ray::ActorHandleId"(CUniqueID):
 
         @staticmethod
-        CFunctionID from_binary(const c_string &binary)
+        CActorHandleId from_binary(const c_string &binary)
 
-    cdef cppclass CDriverID "ray::DriverID"(CUniqueID):
-
-        @staticmethod
-        CDriverID from_binary(const c_string &binary)
-
-    cdef cppclass CTaskID "ray::TaskID"(CBaseID[CTaskID]):
+    cdef cppclass CClientId "ray::ClientId"(CUniqueID):
 
         @staticmethod
-        CTaskID from_binary(const c_string &binary)
+        CClientId from_binary(const c_string &binary)
+
+    cdef cppclass CConfigId "ray::ConfigId"(CUniqueID):
 
         @staticmethod
-        const CTaskID nil()
+        CConfigId from_binary(const c_string &binary)
+
+    cdef cppclass CFunctionId "ray::FunctionId"(CUniqueID):
+
+        @staticmethod
+        CFunctionId from_binary(const c_string &binary)
+
+    cdef cppclass CDriverId "ray::DriverId"(CUniqueID):
+
+        @staticmethod
+        CDriverId from_binary(const c_string &binary)
+
+    cdef cppclass CTaskId "ray::TaskId"(CBaseID[CTaskId]):
+
+        @staticmethod
+        CTaskId from_binary(const c_string &binary)
+
+        @staticmethod
+        const CTaskId nil()
 
         @staticmethod
         size_t size()
 
-    cdef cppclass CObjectID" ray::ObjectID"(CBaseID[CObjectID]):
+    cdef cppclass CObjectId" ray::ObjectId"(CBaseID[CObjectId]):
 
         @staticmethod
-        CObjectID from_binary(const c_string &binary)
+        CObjectId from_binary(const c_string &binary)
 
         @staticmethod
-        const CObjectID nil()
+        const CObjectId nil()
 
         @staticmethod
-        CObjectID for_put(const CTaskID &task_id, int64_t index);
+        CObjectId for_put(const CTaskId &task_id, int64_t index);
 
         @staticmethod
-        CObjectID for_task_return(const CTaskID &task_id, int64_t index);
+        CObjectId for_task_return(const CTaskId &task_id, int64_t index);
 
         @staticmethod
         size_t size()
@@ -115,9 +115,9 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
 
         int64_t object_index() const 
 
-        CTaskID task_id() const
+        CTaskId task_id() const
 
-    cdef cppclass CWorkerID "ray::WorkerID"(CUniqueID):
+    cdef cppclass CWorkerId "ray::WorkerId"(CUniqueID):
 
         @staticmethod
-        CWorkerID from_binary(const c_string &binary)
+        CWorkerId from_binary(const c_string &binary)

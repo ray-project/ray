@@ -35,11 +35,11 @@ def pin_in_object_store(obj):
 def get_pinned_object(pinned_id):
     """Retrieve a pinned object from the object store."""
 
-    from ray import ObjectID
+    from ray import ObjectId
 
     return _from_pinnable(
         ray.get(
-            ObjectID(base64.b64decode(pinned_id[len(PINNED_OBJECT_PREFIX):]))))
+            ObjectId(base64.b64decode(pinned_id[len(PINNED_OBJECT_PREFIX):]))))
 
 
 class warn_if_slow(object):

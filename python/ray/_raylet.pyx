@@ -30,9 +30,9 @@ from ray.includes.libraylet cimport (
     WaitResultPair,
 )
 from ray.includes.unique_ids cimport (
-    CActorCheckpointID,
-    CObjectID,
-    CClientID,
+    CActorCheckpointId,
+    CObjectId,
+    CClientId,
 )
 from ray.includes.task cimport CTaskSpecification
 from ray.includes.ray_config cimport RayConfig
@@ -60,7 +60,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise Exception(message)
 
 
-cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
+cdef c_vector[CObjectId] ObjectIdsToVector(object_ids):
     """A helper function that converts a Python list of object IDs to a vector.
 
     Args:
@@ -70,29 +70,29 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
         The output vector.
     """
     cdef:
-        ObjectID object_id
-        c_vector[CObjectID] result
+        ObjectId object_id
+        c_vector[CObjectId] result
     for object_id in object_ids:
         result.push_back(object_id.native())
     return result
 
 
-cdef VectorToObjectIDs(c_vector[CObjectID] object_ids):
+cdef VectorToObjectIds(c_vector[CObjectId] object_ids):
     result = []
     for i in range(object_ids.size()):
-        result.append(ObjectID(object_ids[i].binary()))
+        result.append(ObjectId(object_ids[i].binary()))
     return result
 
 
-def compute_put_id(TaskID task_id, int64_t put_index):
+def compute_put_id(TaskId task_id, int64_t put_index):
     if put_index < 1 or put_index > kMaxTaskPuts:
         raise ValueError("The range of 'put_index' should be [1, %d]"
                          % kMaxTaskPuts)
-    return ObjectID(CObjectID.for_put(task_id.native(), put_index).binary())
+    return ObjectId(CObjectId.for_put(task_id.native(), put_index).binary())
 
 
-def compute_task_id(ObjectID object_id):
-    return TaskID(object_id.native().task_id().binary())
+def compute_task_id(ObjectId object_id):
+    return TaskId(object_id.native().task_id().binary())
 
 
 cdef c_bool is_simple_value(value, int *num_elements_contained):
@@ -219,9 +219,9 @@ cdef class RayletClient:
     cdef unique_ptr[CRayletClient] client
 
     def __cinit__(self, raylet_socket,
-                  ClientID client_id,
+                  ClientId client_id,
                   c_bool is_worker,
-                  DriverID driver_id):
+                  DriverId driver_id):
         # We know that we are using Python, so just skip the language
         # parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
@@ -250,28 +250,28 @@ cdef class RayletClient:
 
     def fetch_or_reconstruct(self, object_ids,
                              c_bool fetch_only,
-                             TaskID current_task_id=TaskID.nil()):
-        cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
+                             TaskId current_task_id=TaskId.nil()):
+        cdef c_vector[CObjectId] fetch_ids = ObjectIdsToVector(object_ids)
         check_status(self.client.get().FetchOrReconstruct(
             fetch_ids, fetch_only, current_task_id.native()))
 
-    def notify_unblocked(self, TaskID current_task_id):
+    def notify_unblocked(self, TaskId current_task_id):
         check_status(self.client.get().NotifyUnblocked(current_task_id.native()))
 
     def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds,
-             c_bool wait_local, TaskID current_task_id):
+             c_bool wait_local, TaskId current_task_id):
         cdef:
             WaitResultPair result
-            c_vector[CObjectID] wait_ids
-            CTaskID c_task_id = current_task_id.native()
-        wait_ids = ObjectIDsToVector(object_ids)
+            c_vector[CObjectId] wait_ids
+            CTaskId c_task_id = current_task_id.native()
+        wait_ids = ObjectIdsToVector(object_ids)
         with nogil:
             check_status(self.client.get().Wait(wait_ids, num_returns,
                                                 timeout_milliseconds,
                                                 wait_local,
                                                 c_task_id, &result))
-        return (VectorToObjectIDs(result.first),
-                VectorToObjectIDs(result.second))
+        return (VectorToObjectIds(result.first),
+                VectorToObjectIds(result.second))
 
     def resource_ids(self):
         cdef:
@@ -293,7 +293,7 @@ cdef class RayletClient:
             postincrement(iterator)
         return resources_dict
 
-    def push_error(self, DriverID driver_id, error_type, error_message,
+    def push_error(self, DriverId driver_id, error_type, error_message,
                    double timestamp):
         check_status(self.client.get().PushError(driver_id.native(),
                                                  error_type.encode("ascii"),
@@ -351,26 +351,26 @@ cdef class RayletClient:
         check_status(self.client.get().PushProfileEvents(profile_info))
 
     def free_objects(self, object_ids, c_bool local_only, c_bool delete_creating_tasks):
-        cdef c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
+        cdef c_vector[CObjectId] free_ids = ObjectIdsToVector(object_ids)
         check_status(self.client.get().FreeObjects(free_ids, local_only, delete_creating_tasks))
 
-    def prepare_actor_checkpoint(self, ActorID actor_id):
-        cdef CActorCheckpointID checkpoint_id
-        cdef CActorID c_actor_id = actor_id.native()
+    def prepare_actor_checkpoint(self, ActorId actor_id):
+        cdef CActorCheckpointId checkpoint_id
+        cdef CActorId c_actor_id = actor_id.native()
         # PrepareActorCheckpoint will wait for raylet's reply, release
         # the GIL so other Python threads can run.
         with nogil:
             check_status(self.client.get().PrepareActorCheckpoint(
                 c_actor_id, checkpoint_id))
-        return ActorCheckpointID(checkpoint_id.binary())
+        return ActorCheckpointId(checkpoint_id.binary())
 
-    def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
-                                             ActorCheckpointID checkpoint_id):
+    def notify_actor_resumed_from_checkpoint(self, ActorId actor_id,
+                                             ActorCheckpointId checkpoint_id):
         check_status(self.client.get().NotifyActorResumedFromCheckpoint(
             actor_id.native(), checkpoint_id.native()))
 
-    def set_resource(self, basestring resource_name, double capacity, ClientID client_id):
-        self.client.get().SetResource(resource_name.encode("ascii"), capacity, CClientID.from_binary(client_id.binary()))
+    def set_resource(self, basestring resource_name, double capacity, ClientId client_id):
+        self.client.get().SetResource(resource_name.encode("ascii"), capacity, CClientId.from_binary(client_id.binary()))
 
     @property
     def language(self):
@@ -378,11 +378,11 @@ cdef class RayletClient:
 
     @property
     def client_id(self):
-        return ClientID(self.client.get().GetClientID().binary())
+        return ClientId(self.client.get().GetClientId().binary())
 
     @property
     def driver_id(self):
-        return DriverID(self.client.get().GetDriverID().binary())
+        return DriverId(self.client.get().GetDriverId().binary())
 
     @property
     def is_worker(self):

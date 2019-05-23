@@ -48,7 +48,7 @@ def _get_task_id(source):
     if type(source) is ray.actor.ActorHandle:
         return source._ray_actor_id
     else:
-        if type(source) is ray.TaskID:
+        if type(source) is ray.TaskId:
             return source
         else:
             return ray._raylet.compute_task_id(source)

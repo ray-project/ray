@@ -12,7 +12,7 @@ namespace raylet {
 
 TaskArgument::~TaskArgument() {}
 
-TaskArgumentByReference::TaskArgumentByReference(const std::vector<ObjectID> &references)
+TaskArgumentByReference::TaskArgumentByReference(const std::vector<ObjectId> &references)
     : references_(references) {}
 
 flatbuffers::Offset<Arg> TaskArgumentByReference::ToFlatbuffer(
@@ -61,22 +61,22 @@ TaskSpecification::TaskSpecification(const uint8_t *spec, size_t spec_size) {
 }
 
 TaskSpecification::TaskSpecification(
-    const DriverID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
+    const DriverId &driver_id, const TaskId &parent_task_id, int64_t parent_counter,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const Language &language, const std::vector<std::string> &function_descriptor)
-    : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
-                        ObjectID::nil(), 0, ActorID::nil(), ActorHandleID::nil(), -1, {},
+    : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorId::nil(),
+                        ObjectId::nil(), 0, ActorId::nil(), ActorHandleId::nil(), -1, {},
                         task_arguments, num_returns, required_resources,
                         std::unordered_map<std::string, double>(), language,
                         function_descriptor) {}
 
 TaskSpecification::TaskSpecification(
-    const DriverID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
-    const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
-    const int64_t max_actor_reconstructions, const ActorID &actor_id,
-    const ActorHandleID &actor_handle_id, int64_t actor_counter,
-    const std::vector<ActorHandleID> &new_actor_handles,
+    const DriverId &driver_id, const TaskId &parent_task_id, int64_t parent_counter,
+    const ActorId &actor_creation_id, const ObjectId &actor_creation_dummy_object_id,
+    const int64_t max_actor_reconstructions, const ActorId &actor_id,
+    const ActorHandleId &actor_handle_id, int64_t actor_counter,
+    const std::vector<ActorHandleId> &new_actor_handles,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
@@ -84,7 +84,7 @@ TaskSpecification::TaskSpecification(
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
-  TaskID task_id = GenerateTaskId(driver_id, parent_task_id, parent_counter);
+  TaskId task_id = GenerateTaskId(driver_id, parent_task_id, parent_counter);
 
   // Add argument object IDs.
   std::vector<flatbuffers::Offset<Arg>> arguments;
@@ -93,9 +93,9 @@ TaskSpecification::TaskSpecification(
   }
 
   // Generate return ids.
-  std::vector<ray::ObjectID> returns;
+  std::vector<ray::ObjectId> returns;
   for (int64_t i = 1; i < num_returns + 1; ++i) {
-    returns.push_back(ObjectID::for_task_return(task_id, i));
+    returns.push_back(ObjectId::for_task_return(task_id, i));
   }
 
   // Serialize the TaskSpecification.
@@ -124,17 +124,17 @@ const uint8_t *TaskSpecification::data() const { return spec_.data(); }
 size_t TaskSpecification::size() const { return spec_.size(); }
 
 // Task specification getter methods.
-TaskID TaskSpecification::TaskId() const {
+TaskId TaskSpecification::GetTaskId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf<TaskID>(*message->task_id());
+  return from_flatbuf<TaskId>(*message->task_id());
 }
-DriverID TaskSpecification::DriverId() const {
+DriverId TaskSpecification::GetDriverId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf<DriverID>(*message->driver_id());
+  return from_flatbuf<DriverId>(*message->driver_id());
 }
-TaskID TaskSpecification::ParentTaskId() const {
+TaskId TaskSpecification::ParentTaskId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf<TaskID>(*message->parent_task_id());
+  return from_flatbuf<TaskId>(*message->parent_task_id());
 }
 int64_t TaskSpecification::ParentCounter() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
@@ -170,9 +170,9 @@ int64_t TaskSpecification::NumReturns() const {
   return (message->returns()->size() / kUniqueIDSize);
 }
 
-ObjectID TaskSpecification::ReturnId(int64_t return_index) const {
+ObjectId TaskSpecification::ReturnId(int64_t return_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return ids_from_flatbuf<ObjectID>(*message->returns())[return_index];
+  return ids_from_flatbuf<ObjectId>(*message->returns())[return_index];
 }
 
 bool TaskSpecification::ArgByRef(int64_t arg_index) const {
@@ -185,10 +185,10 @@ int TaskSpecification::ArgIdCount(int64_t arg_index) const {
   return (ids->size() / kUniqueIDSize);
 }
 
-ObjectID TaskSpecification::ArgId(int64_t arg_index, int64_t id_index) const {
+ObjectId TaskSpecification::ArgId(int64_t arg_index, int64_t id_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   const auto &object_ids =
-      ids_from_flatbuf<ObjectID>(*message->args()->Get(arg_index)->object_ids());
+      ids_from_flatbuf<ObjectId>(*message->args()->Get(arg_index)->object_ids());
   return object_ids[id_index];
 }
 
@@ -227,14 +227,14 @@ bool TaskSpecification::IsActorCreationTask() const {
 
 bool TaskSpecification::IsActorTask() const { return !ActorId().is_nil(); }
 
-ActorID TaskSpecification::ActorCreationId() const {
+ActorId TaskSpecification::ActorCreationId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf<ActorID>(*message->actor_creation_id());
+  return from_flatbuf<ActorId>(*message->actor_creation_id());
 }
 
-ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
+ObjectId TaskSpecification::ActorCreationDummyObjectId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf<ObjectID>(*message->actor_creation_dummy_object_id());
+  return from_flatbuf<ObjectId>(*message->actor_creation_dummy_object_id());
 }
 
 int64_t TaskSpecification::MaxActorReconstructions() const {
@@ -242,14 +242,14 @@ int64_t TaskSpecification::MaxActorReconstructions() const {
   return message->max_actor_reconstructions();
 }
 
-ActorID TaskSpecification::ActorId() const {
+ActorId TaskSpecification::GetActorId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf<ActorID>(*message->actor_id());
+  return from_flatbuf<ActorId>(*message->actor_id());
 }
 
-ActorHandleID TaskSpecification::ActorHandleId() const {
+ActorHandleId TaskSpecification::GetActorHandleId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf<ActorHandleID>(*message->actor_handle_id());
+  return from_flatbuf<ActorHandleId>(*message->actor_handle_id());
 }
 
 int64_t TaskSpecification::ActorCounter() const {
@@ -257,14 +257,14 @@ int64_t TaskSpecification::ActorCounter() const {
   return message->actor_counter();
 }
 
-ObjectID TaskSpecification::ActorDummyObject() const {
+ObjectId TaskSpecification::ActorDummyObject() const {
   RAY_CHECK(IsActorTask() || IsActorCreationTask());
   return ReturnId(NumReturns() - 1);
 }
 
-std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
+std::vector<ActorHandleId> TaskSpecification::NewActorHandles() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return ids_from_flatbuf<ActorHandleID>(*message->new_actor_handles());
+  return ids_from_flatbuf<ActorHandleId>(*message->new_actor_handles());
 }
 
 }  // namespace raylet

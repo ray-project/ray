@@ -21,7 +21,7 @@ def ray_get_and_free(object_ids):
     multiple readers.
 
     Args:
-        object_ids (ObjectID|List[ObjectID]): Object ids to fetch and free.
+        object_ids (ObjectId|List[ObjectId]): Object ids to fetch and free.
 
     Returns:
         The result of ray.get(object_ids).

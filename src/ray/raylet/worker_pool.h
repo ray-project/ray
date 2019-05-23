@@ -116,7 +116,7 @@ class WorkerPool {
   /// \param driver_id The driver ID.
   /// \return A list containing all the workers which are running tasks for the driver.
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
-      const DriverID &driver_id) const;
+      const DriverId &driver_id) const;
 
   /// Returns debug string for class.
   ///
@@ -147,7 +147,7 @@ class WorkerPool {
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<Worker>> idle;
     /// The pool of idle actor workers.
-    std::unordered_map<ActorID, std::shared_ptr<Worker>> idle_actor;
+    std::unordered_map<ActorId, std::shared_ptr<Worker>> idle_actor;
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
     std::unordered_set<std::shared_ptr<Worker>> registered_workers;

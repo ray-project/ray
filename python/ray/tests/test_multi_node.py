@@ -445,7 +445,7 @@ ray.init(redis_address="{}")
 @ray.remote
 def g(x):
     return
-g.remote(ray.ObjectID(ray.utils.hex_to_binary("{}")))
+g.remote(ray.ObjectId(ray.utils.hex_to_binary("{}")))
 time.sleep(1)
 print("success")
 """.format(redis_address, nonexistent_id_hex)
@@ -456,7 +456,7 @@ print("success")
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
         ray.worker.global_worker.put_object(
-            ray.ObjectID(nonexistent_id_bytes), None)
+            ray.ObjectId(nonexistent_id_bytes), None)
         # Make sure the first driver ran to completion.
         assert "success" in out
 

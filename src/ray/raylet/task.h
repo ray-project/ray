@@ -69,7 +69,7 @@ class Task {
   /// Set the task's execution dependencies.
   ///
   /// \param dependencies The value to set the execution dependencies to.
-  void SetExecutionDependencies(const std::vector<ObjectID> &dependencies);
+  void SetExecutionDependencies(const std::vector<ObjectId> &dependencies);
 
   /// Increment the number of times this task has been forwarded.
   void IncrementNumForwards();
@@ -78,7 +78,7 @@ class Task {
   /// arguments and the mutable execution dependencies.
   ///
   /// \return The object dependencies.
-  const std::vector<ObjectID> &GetDependencies() const;
+  const std::vector<ObjectId> &GetDependencies() const;
 
   /// Update the dynamic/mutable information for this task.
   /// \param task Task structure with updated dynamic information.
@@ -97,10 +97,10 @@ class Task {
   /// A cached copy of the task's object dependencies, including arguments from
   /// the TaskSpecification and execution dependencies from the
   /// TaskExecutionSpecification.
-  std::vector<ObjectID> dependencies_;
+  std::vector<ObjectId> dependencies_;
 };
 
-std::string SerializeTaskAsString(const std::vector<ObjectID> *dependencies,
+std::string SerializeTaskAsString(const std::vector<ObjectId> *dependencies,
                                   const TaskSpecification *task_spec);
 
 }  // namespace raylet

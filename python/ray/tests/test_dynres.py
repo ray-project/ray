@@ -88,7 +88,7 @@ def test_dynamic_res_updation_clientid(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    target_clientid = ray.global_state.client_table()[1]["ClientID"]
+    target_clientid = ray.global_state.client_table()[1]["ClientId"]
 
     @ray.remote
     def set_res(resource_name, resource_capacity, client_id):
@@ -103,7 +103,7 @@ def test_dynamic_res_updation_clientid(ray_start_cluster):
     ray.get(set_res.remote(res_name, new_capacity, target_clientid))
 
     target_client = next(client for client in ray.global_state.client_table()
-                         if client["ClientID"] == target_clientid)
+                         if client["ClientId"] == target_clientid)
     resources = target_client["Resources"]
 
     assert res_name in resources
@@ -122,7 +122,7 @@ def test_dynamic_res_creation_clientid(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    target_clientid = ray.global_state.client_table()[1]["ClientID"]
+    target_clientid = ray.global_state.client_table()[1]["ClientId"]
 
     @ray.remote
     def set_res(resource_name, resource_capacity, res_client_id):
@@ -131,7 +131,7 @@ def test_dynamic_res_creation_clientid(ray_start_cluster):
 
     ray.get(set_res.remote(res_name, res_capacity, target_clientid))
     target_client = next(client for client in ray.global_state.client_table()
-                         if client["ClientID"] == target_clientid)
+                         if client["ClientId"] == target_clientid)
     resources = target_client["Resources"]
 
     assert res_name in resources
@@ -153,7 +153,7 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
     ray.init(redis_address=cluster.redis_address)
 
     target_clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
+        client["ClientId"] for client in ray.global_state.client_table()
     ]
 
     @ray.remote
@@ -174,7 +174,7 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
         for cid in target_clientids:
             target_client = next(client
                                  for client in ray.global_state.client_table()
-                                 if client["ClientID"] == cid)
+                                 if client["ClientId"] == cid)
             resources = target_client["Resources"]
             resources_created.append(resources[res_name] == res_capacity)
         success = all(resources_created)
@@ -196,7 +196,7 @@ def test_dynamic_res_deletion_clientid(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    target_clientid = ray.global_state.client_table()[1]["ClientID"]
+    target_clientid = ray.global_state.client_table()[1]["ClientId"]
 
     # Launch the delete task
     @ray.remote
@@ -207,7 +207,7 @@ def test_dynamic_res_deletion_clientid(ray_start_cluster):
     ray.get(delete_res.remote(res_name, target_clientid))
 
     target_client = next(client for client in ray.global_state.client_table()
-                         if client["ClientID"] == target_clientid)
+                         if client["ClientId"] == target_clientid)
     resources = target_client["Resources"]
     print(ray.global_state.cluster_resources())
     assert res_name not in resources
@@ -229,7 +229,7 @@ def test_dynamic_res_creation_scheduler_consistency(ray_start_cluster):
     ray.init(redis_address=cluster.redis_address)
 
     clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
+        client["ClientId"] for client in ray.global_state.client_table()
     ]
 
     @ray.remote
@@ -268,7 +268,7 @@ def test_dynamic_res_deletion_scheduler_consistency(ray_start_cluster):
     ray.init(redis_address=cluster.redis_address)
 
     clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
+        client["ClientId"] for client in ray.global_state.client_table()
     ]
 
     @ray.remote
@@ -323,7 +323,7 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
     ray.init(redis_address=cluster.redis_address)
 
     clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
+        client["ClientId"] for client in ray.global_state.client_table()
     ]
     target_clientid = clientids[1]
 
@@ -340,9 +340,9 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
     @ray.remote
     def wait_func(running_oid, wait_oid):
         # Signal that the task is running
-        ray.worker.global_worker.put_object(ray.ObjectID(running_oid), 1)
+        ray.worker.global_worker.put_object(ray.ObjectId(running_oid), 1)
         # Make the task wait till signalled by driver
-        ray.get(ray.ObjectID(wait_oid))
+        ray.get(ray.ObjectId(wait_oid))
 
     @ray.remote
     def test_func():
@@ -354,13 +354,13 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
         args=[TASK_RUNNING_OBJECT_ID_STR, WAIT_OBJECT_ID_STR],
         resources={res_name: 4})
     # Wait till wait_func is launched before updating resource
-    ray.get(ray.ObjectID(TASK_RUNNING_OBJECT_ID_STR))
+    ray.get(ray.ObjectId(TASK_RUNNING_OBJECT_ID_STR))
 
     # Update the resource capacity
     ray.get(set_res.remote(res_name, updated_capacity, target_clientid))
 
     # Signal task to complete
-    ray.worker.global_worker.put_object(ray.ObjectID(WAIT_OBJECT_ID_STR), 1)
+    ray.worker.global_worker.put_object(ray.ObjectId(WAIT_OBJECT_ID_STR), 1)
     ray.get(task)
 
     # Check if scheduler state is consistent by launching a task requiring
@@ -404,7 +404,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     ray.init(redis_address=cluster.redis_address)
 
     clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
+        client["ClientId"] for client in ray.global_state.client_table()
     ]
     target_clientid = clientids[1]
 
@@ -421,9 +421,9 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     @ray.remote
     def wait_func(running_oid, wait_oid):
         # Signal that the task is running
-        ray.worker.global_worker.put_object(ray.ObjectID(running_oid), 1)
+        ray.worker.global_worker.put_object(ray.ObjectId(running_oid), 1)
         # Make the task wait till signalled by driver
-        ray.get(ray.ObjectID(wait_oid))
+        ray.get(ray.ObjectId(wait_oid))
 
     @ray.remote
     def test_func():
@@ -435,13 +435,13 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
         args=[TASK_RUNNING_OBJECT_ID_STR, WAIT_OBJECT_ID_STR],
         resources={res_name: 4})
     # Wait till wait_func is launched before updating resource
-    ray.get(ray.ObjectID(TASK_RUNNING_OBJECT_ID_STR))
+    ray.get(ray.ObjectId(TASK_RUNNING_OBJECT_ID_STR))
 
     # Decrease the resource capacity
     ray.get(set_res.remote(res_name, updated_capacity, target_clientid))
 
     # Signal task to complete
-    ray.worker.global_worker.put_object(ray.ObjectID(WAIT_OBJECT_ID_STR), 1)
+    ray.worker.global_worker.put_object(ray.ObjectId(WAIT_OBJECT_ID_STR), 1)
     ray.get(task)
 
     # Check if scheduler state is consistent by launching a task requiring
@@ -483,7 +483,7 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     ray.init(redis_address=cluster.redis_address)
 
     clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
+        client["ClientId"] for client in ray.global_state.client_table()
     ]
     target_clientid = clientids[1]
 
@@ -505,9 +505,9 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     @ray.remote
     def wait_func(running_oid, wait_oid):
         # Signal that the task is running
-        ray.worker.global_worker.put_object(ray.ObjectID(running_oid), 1)
+        ray.worker.global_worker.put_object(ray.ObjectId(running_oid), 1)
         # Make the task wait till signalled by driver
-        ray.get(ray.ObjectID(wait_oid))
+        ray.get(ray.ObjectId(wait_oid))
 
     @ray.remote
     def test_func():
@@ -519,13 +519,13 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
         args=[TASK_RUNNING_OBJECT_ID_STR, WAIT_OBJECT_ID_STR],
         resources={res_name: 4})
     # Wait till wait_func is launched before updating resource
-    ray.get(ray.ObjectID(TASK_RUNNING_OBJECT_ID_STR))
+    ray.get(ray.ObjectId(TASK_RUNNING_OBJECT_ID_STR))
 
     # Delete the resource
     ray.get(delete_res.remote(res_name, target_clientid))
 
     # Signal task to complete
-    ray.worker.global_worker.put_object(ray.ObjectID(WAIT_OBJECT_ID_STR), 1)
+    ray.worker.global_worker.put_object(ray.ObjectId(WAIT_OBJECT_ID_STR), 1)
     ray.get(task)
 
     # Check if scheduler state is consistent by launching a task requiring
@@ -554,7 +554,7 @@ def test_dynamic_res_creation_stress(ray_start_cluster):
     ray.init(redis_address=cluster.redis_address)
 
     clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
+        client["ClientId"] for client in ray.global_state.client_table()
     ]
     target_clientid = clientids[1]
 

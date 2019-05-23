@@ -63,7 +63,7 @@ def push_error_to_driver(worker, error_type, message, driver_id=None):
             is None, then the message will be pushed to all drivers.
     """
     if driver_id is None:
-        driver_id = ray.DriverID.nil()
+        driver_id = ray.DriverId.nil()
     worker.raylet_client.push_error(driver_id, error_type, message,
                                     time.time())
 
@@ -88,7 +88,7 @@ def push_error_to_driver_through_redis(redis_client,
             is None, then the message will be pushed to all drivers.
     """
     if driver_id is None:
-        driver_id = ray.DriverID.nil()
+        driver_id = ray.DriverId.nil()
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
     error_data = ray.gcs_utils.construct_error_message(driver_id, error_type,
@@ -213,11 +213,11 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
 
 
 def binary_to_object_id(binary_object_id):
-    return ray.ObjectID(binary_object_id)
+    return ray.ObjectId(binary_object_id)
 
 
 def binary_to_task_id(binary_task_id):
-    return ray.TaskID(binary_task_id)
+    return ray.TaskId(binary_task_id)
 
 
 def binary_to_hex(identifier):

@@ -162,11 +162,11 @@ class ClientConnection : public ServerConnection<T> {
     return std::static_pointer_cast<ClientConnection<T>>(shared_from_this());
   }
 
-  /// \return The ClientID of the remote client.
-  const ClientID &GetClientId() const;
+  /// \return The ClientId of the remote client.
+  const ClientId &GetClientId() const;
 
-  /// \param client_id The ClientID of the remote client.
-  void SetClientID(const ClientID &client_id);
+  /// \param client_id The ClientId of the remote client.
+  void SetClientId(const ClientId &client_id);
 
   /// Listen for and process messages from the client connection. Once a
   /// message has been fully received, the client manager's
@@ -198,8 +198,8 @@ class ClientConnection : public ServerConnection<T> {
   /// \return Information of remote endpoint.
   std::string RemoteEndpointInfo();
 
-  /// The ClientID of the remote client.
-  ClientID client_id_;
+  /// The ClientId of the remote client.
+  ClientId client_id_;
   /// The handler for a message from the client.
   MessageHandler<T> message_handler_;
   /// A label used for debug messages.

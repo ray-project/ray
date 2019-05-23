@@ -17,8 +17,8 @@ from ray.function_manager import FunctionDescriptor
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
-from ray import (ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID,
-                 DriverID)
+from ray import (ObjectId, ActorId, ActorHandleId, ActorClassId, TaskId,
+                 DriverId)
 
 logger = logging.getLogger(__name__)
 
@@ -30,19 +30,19 @@ def compute_actor_handle_id(actor_handle_id, num_forks):
     handle. The new handle ID is computed as hash(old_handle_id || num_forks).
 
     Args:
-        actor_handle_id (common.ObjectID): The original actor handle ID.
+        actor_handle_id (common.ObjectId): The original actor handle ID.
         num_forks: The number of times the original actor handle has been
                    forked so far.
 
     Returns:
         An ID for the new actor handle.
     """
-    assert isinstance(actor_handle_id, ActorHandleID)
+    assert isinstance(actor_handle_id, ActorHandleId)
     handle_id_hash = hashlib.sha1()
     handle_id_hash.update(actor_handle_id.binary())
     handle_id_hash.update(str(num_forks).encode("ascii"))
     handle_id = handle_id_hash.digest()
-    return ActorHandleID(handle_id)
+    return ActorHandleId(handle_id)
 
 
 def compute_actor_handle_id_non_forked(actor_handle_id, current_task_id):
@@ -65,13 +65,13 @@ def compute_actor_handle_id_non_forked(actor_handle_id, current_task_id):
     Returns:
         An ID for the new actor handle.
     """
-    assert isinstance(actor_handle_id, ActorHandleID)
-    assert isinstance(current_task_id, TaskID)
+    assert isinstance(actor_handle_id, ActorHandleId)
+    assert isinstance(current_task_id, TaskId)
     handle_id_hash = hashlib.sha1()
     handle_id_hash.update(actor_handle_id.binary())
     handle_id_hash.update(current_task_id.binary())
     handle_id = handle_id_hash.digest()
-    return ActorHandleID(handle_id)
+    return ActorHandleId(handle_id)
 
 
 def method(*args, **kwargs):
@@ -124,7 +124,7 @@ class ActorMethod(object):
             invoking the method. The decorator must return a function that
             takes in two arguments ("args" and "kwargs"). In most cases, it
             should call the function that was passed into the decorator and
-            return the resulting ObjectIDs. For an example, see
+            return the resulting ObjectIds. For an example, see
             "test_decorated_method" in "python/ray/tests/test_actor.py".
     """
 
@@ -136,7 +136,7 @@ class ActorMethod(object):
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
         # cases, it should call the function that was passed into the decorator
-        # and return the resulting ObjectIDs.
+        # and return the resulting ObjectIds.
         self._decorator = decorator
 
     def __call__(self, *args, **kwargs):
@@ -307,7 +307,7 @@ class ActorClass(object):
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
-        actor_id = ActorID.from_random()
+        actor_id = ActorId.from_random()
         # The actor cursor is a dummy object representing the most recent
         # actor method invocation. For each subsequent method invocation,
         # the current cursor should be added as a dependency, and then
@@ -374,7 +374,7 @@ class ActorClass(object):
                 num_return_vals=1,
                 resources=resources,
                 placement_resources=actor_placement_resources)
-            assert isinstance(actor_cursor, ObjectID)
+            assert isinstance(actor_cursor, ObjectId)
 
         actor_handle = ActorHandle(
             actor_id, self._modified_class.__module__, self._class_name,
@@ -459,17 +459,17 @@ class ActorHandle(object):
                  actor_method_cpus,
                  actor_driver_id,
                  actor_handle_id=None):
-        assert isinstance(actor_id, ActorID)
-        assert isinstance(actor_driver_id, DriverID)
+        assert isinstance(actor_id, ActorId)
+        assert isinstance(actor_driver_id, DriverId)
         self._ray_actor_id = actor_id
         self._ray_module_name = module_name
         # False if this actor handle was created by forking or pickling. True
         # if it was created by the _serialization_helper function.
         self._ray_original_handle = actor_handle_id is None
         if self._ray_original_handle:
-            self._ray_actor_handle_id = ActorHandleID.nil()
+            self._ray_actor_handle_id = ActorHandleId.nil()
         else:
-            assert isinstance(actor_handle_id, ActorHandleID)
+            assert isinstance(actor_handle_id, ActorHandleId)
             self._ray_actor_handle_id = actor_handle_id
         self._ray_actor_cursor = actor_cursor
         self._ray_actor_counter = 0
@@ -669,7 +669,7 @@ class ActorHandle(object):
             # to release, since it could be unpickled and submit another
             # dependent task at any time. Therefore, we notify the backend of a
             # random handle ID that will never actually be used.
-            new_actor_handle_id = ActorHandleID.from_random()
+            new_actor_handle_id = ActorHandleId.from_random()
         # Notify the backend to expect this new actor handle. The backend will
         # not release the cursor for any new handles until the first task for
         # each of the new handles is submitted.
@@ -779,7 +779,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    class_id = ActorClassID.from_random()
+    class_id = ActorClassId.from_random()
 
     return ActorClass(Class, class_id, max_reconstructions, num_cpus, num_gpus,
                       resources)

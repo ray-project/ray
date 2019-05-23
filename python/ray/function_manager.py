@@ -214,7 +214,7 @@ class FunctionDescriptor(object):
         """Get the function id calculated from this descriptor.
 
         Returns:
-            The value of ray.ObjectID that represents the function id.
+            The value of ray.ObjectId that represents the function id.
         """
         return self._function_id
 
@@ -225,10 +225,10 @@ class FunctionDescriptor(object):
         descriptor.
 
         Returns:
-            ray.ObjectID to represent the function descriptor.
+            ray.ObjectId to represent the function descriptor.
         """
         if self.is_for_driver_task:
-            return ray.FunctionID.nil()
+            return ray.FunctionId.nil()
         function_id_hash = hashlib.sha1()
         # Include the function module and name in the hash.
         function_id_hash.update(self.module_name.encode("ascii"))
@@ -237,7 +237,7 @@ class FunctionDescriptor(object):
         function_id_hash.update(self._function_source_hash)
         # Compute the function ID.
         function_id = function_id_hash.digest()
-        return ray.FunctionID(function_id)
+        return ray.FunctionId(function_id)
 
     def get_function_descriptor_list(self):
         """Return a list of bytes representing the function descriptor.
@@ -306,13 +306,13 @@ class FunctionActorManager(object):
     def increase_task_counter(self, driver_id, function_descriptor):
         function_id = function_descriptor.function_id
         if self._worker.load_code_from_local:
-            driver_id = ray.DriverID.nil()
+            driver_id = ray.DriverId.nil()
         self._num_task_executions[driver_id][function_id] += 1
 
     def get_task_counter(self, driver_id, function_descriptor):
         function_id = function_descriptor.function_id
         if self._worker.load_code_from_local:
-            driver_id = ray.DriverID.nil()
+            driver_id = ray.DriverId.nil()
         return self._num_task_executions[driver_id][function_id]
 
     def export_cached(self):
@@ -398,8 +398,8 @@ class FunctionActorManager(object):
              "driver_id", "function_id", "name", "function", "num_return_vals",
              "module", "resources", "max_calls"
          ])
-        function_id = ray.FunctionID(function_id_str)
-        driver_id = ray.DriverID(driver_id_str)
+        function_id = ray.FunctionId(function_id_str)
+        driver_id = ray.DriverId(driver_id_str)
         function_name = decode(function_name)
         max_calls = int(max_calls)
         module = decode(module)
@@ -466,7 +466,7 @@ class FunctionActorManager(object):
             # Load function from local code.
             # Currently, we don't support isolating code by drivers,
             # thus always set driver ID to NIL here.
-            driver_id = ray.DriverID.nil()
+            driver_id = ray.DriverId.nil()
             if not function_descriptor.is_actor_method():
                 self._load_function_from_local(driver_id, function_descriptor)
         else:
@@ -632,7 +632,7 @@ class FunctionActorManager(object):
         if actor_class is None:
             # Load actor class.
             if self._worker.load_code_from_local:
-                driver_id = ray.DriverID.nil()
+                driver_id = ray.DriverId.nil()
                 # Load actor class from local code.
                 actor_class = self._load_actor_from_local(
                     driver_id, function_descriptor)
@@ -720,7 +720,7 @@ class FunctionActorManager(object):
 
         class_name = ensure_str(class_name)
         module_name = ensure_str(module)
-        driver_id = ray.DriverID(driver_id_str)
+        driver_id = ray.DriverId(driver_id_str)
         actor_method_names = json.loads(ensure_str(actor_method_names))
 
         actor_class = None

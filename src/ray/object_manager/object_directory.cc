@@ -14,12 +14,12 @@ namespace {
 void UpdateObjectLocations(const GcsTableNotificationMode notification_mode,
                            const std::vector<ObjectTableDataT> &location_updates,
                            const ray::gcs::ClientTable &client_table,
-                           std::unordered_set<ClientID> *client_ids) {
+                           std::unordered_set<ClientId> *client_ids) {
   // location_updates contains the updates of locations of the object.
   // with GcsTableNotificationMode, we can determine whether the update mode is
   // addition or deletion.
   for (const auto &object_table_data : location_updates) {
-    ClientID client_id = ClientID::from_binary(object_table_data.manager);
+    ClientId client_id = ClientId::from_binary(object_table_data.manager);
     if (notification_mode != GcsTableNotificationMode::REMOVE) {
       client_ids->insert(client_id);
     } else {
@@ -40,7 +40,7 @@ void UpdateObjectLocations(const GcsTableNotificationMode notification_mode,
 
 void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback = [this](
-      gcs::AsyncGcsClient *client, const ObjectID &object_id,
+      gcs::AsyncGcsClient *client, const ObjectId &object_id,
       const GcsTableNotificationMode notification_mode,
       const std::vector<ObjectTableDataT> &location_updates) {
     // Objects are added to this map in SubscribeObjectLocations.
@@ -71,12 +71,12 @@ void ObjectDirectory::RegisterBackend() {
     }
   };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
-      DriverID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      DriverId::nil(), gcs_client_->client_table().GetLocalClientId(),
       object_notification_callback, nullptr));
 }
 
 ray::Status ObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const ClientID &client_id,
+    const ObjectId &object_id, const ClientId &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
   // Append the addition entry to the object table.
@@ -84,12 +84,12 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   data->manager = client_id.binary();
   data->object_size = object_info.data_size;
   ray::Status status =
-      gcs_client_->object_table().Add(DriverID::nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Add(DriverId::nil(), object_id, data, nullptr);
   return status;
 }
 
 ray::Status ObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const ClientID &client_id,
+    const ObjectId &object_id, const ClientId &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   // Append the eviction entry to the object table.
@@ -97,7 +97,7 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
   data->manager = client_id.binary();
   data->object_size = object_info.data_size;
   ray::Status status =
-      gcs_client_->object_table().Remove(DriverID::nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Remove(DriverId::nil(), object_id, data, nullptr);
   return status;
 };
 
@@ -105,7 +105,7 @@ void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
   ClientTableDataT client_data;
   gcs_client_->client_table().GetClient(connection_info.client_id, client_data);
-  ClientID result_client_id = ClientID::from_binary(client_data.client_id);
+  ClientId result_client_id = ClientId::from_binary(client_data.client_id);
   if (!result_client_id.is_nil()) {
     RAY_CHECK(result_client_id == connection_info.client_id);
     if (client_data.entry_type == EntryType::INSERTION) {
@@ -129,9 +129,9 @@ std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() 
   return remote_connections;
 }
 
-void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
+void ObjectDirectory::HandleClientRemoved(const ClientId &client_id) {
   for (auto &listener : listeners_) {
-    const ObjectID &object_id = listener.first;
+    const ObjectId &object_id = listener.first;
     if (listener.second.current_object_locations.count(client_id) > 0) {
       // If the subscribed object has the removed client as a location, update
       // its locations with an empty update so that the location will be removed.
@@ -150,14 +150,14 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
 }
 
 ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
-                                                      const ObjectID &object_id,
+                                                      const ObjectId &object_id,
                                                       const OnLocationsFound &callback) {
   ray::Status status = ray::Status::OK();
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
     it = listeners_.emplace(object_id, LocationListenerState()).first;
     status = gcs_client_->object_table().RequestNotifications(
-        DriverID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+        DriverId::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
   }
   auto &listener_state = it->second;
   // TODO(hme): Make this fatal after implementing Pull suppression.
@@ -176,7 +176,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
 }
 
 ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                                        const ObjectID &object_id) {
+                                                        const ObjectId &object_id) {
   ray::Status status = ray::Status::OK();
   auto entry = listeners_.find(object_id);
   if (entry == listeners_.end()) {
@@ -185,13 +185,13 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
     status = gcs_client_->object_table().CancelNotifications(
-        DriverID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+        DriverId::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
     listeners_.erase(entry);
   }
   return status;
 }
 
-ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
+ray::Status ObjectDirectory::LookupLocations(const ObjectId &object_id,
                                              const OnLocationsFound &callback) {
   ray::Status status;
   auto it = listeners_.find(object_id);
@@ -208,11 +208,11 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     // SubscribeObjectLocations call, so look up the object's locations
     // directly from the GCS.
     status = gcs_client_->object_table().Lookup(
-        DriverID::nil(), object_id,
-        [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+        DriverId::nil(), object_id,
+        [this, callback](gcs::AsyncGcsClient *client, const ObjectId &object_id,
                          const std::vector<ObjectTableDataT> &location_updates) {
           // Build the set of current locations based on the entries in the log.
-          std::unordered_set<ClientID> client_ids;
+          std::unordered_set<ClientId> client_ids;
           UpdateObjectLocations(GcsTableNotificationMode::APPEND_OR_ADD, location_updates,
                                 gcs_client_->client_table(), &client_ids);
           // It is safe to call the callback directly since this is already running
@@ -223,7 +223,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
   return status;
 }
 
-ray::ClientID ObjectDirectory::GetLocalClientID() {
+ray::ClientId ObjectDirectory::GetLocalClientId() {
   return gcs_client_->client_table().GetLocalClientId();
 }
 

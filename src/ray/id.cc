@@ -26,13 +26,13 @@ std::mt19937 RandomlySeededMersenneTwister() {
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
-plasma::UniqueID ObjectID::to_plasma_id() const {
+plasma::UniqueID ObjectId::to_plasma_id() const {
   plasma::UniqueID result;
   std::memcpy(result.mutable_data(), data(), kUniqueIDSize);
   return result;
 }
 
-ObjectID::ObjectID(const plasma::UniqueID &from) {
+ObjectId::ObjectId(const plasma::UniqueID &from) {
   std::memcpy(this->mutable_data(), from.data(), kUniqueIDSize);
 }
 
@@ -85,35 +85,35 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-TaskID TaskID::GetDriverTaskID(const DriverID &driver_id) {
+TaskId TaskId::GetDriverTaskId(const DriverId &driver_id) {
   std::string driver_id_str = driver_id.binary();
   driver_id_str.resize(size());
-  return TaskID::from_binary(driver_id_str);
+  return TaskId::from_binary(driver_id_str);
 }
 
-TaskID ObjectID::task_id() const {
-  return TaskID::from_binary(
-      std::string(reinterpret_cast<const char *>(id_), TaskID::size()));
+TaskId ObjectId::task_id() const {
+  return TaskId::from_binary(
+      std::string(reinterpret_cast<const char *>(id_), TaskId::size()));
 }
 
-ObjectID ObjectID::for_put(const TaskID &task_id, int64_t put_index) {
+ObjectId ObjectId::for_put(const TaskId &task_id, int64_t put_index) {
   RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts) << "index=" << put_index;
-  ObjectID object_id;
+  ObjectId object_id;
   std::memcpy(object_id.id_, task_id.binary().c_str(), task_id.size());
   object_id.index_ = -put_index;
   return object_id;
 }
 
-ObjectID ObjectID::for_task_return(const TaskID &task_id, int64_t return_index) {
+ObjectId ObjectId::for_task_return(const TaskId &task_id, int64_t return_index) {
   RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns) << "index="
                                                                   << return_index;
-  ObjectID object_id;
+  ObjectId object_id;
   std::memcpy(object_id.id_, task_id.binary().c_str(), task_id.size());
   object_id.index_ = return_index;
   return object_id;
 }
 
-const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
+const TaskId GenerateTaskId(const DriverId &driver_id, const TaskId &parent_task_id,
                             int parent_task_counter) {
   // Compute hashes.
   SHA256_CTX ctx;
@@ -126,7 +126,7 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   // Compute the final task ID from the hash.
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
-  return TaskID::from_binary(std::string(buff, buff + TaskID::size()));
+  return TaskId::from_binary(std::string(buff, buff + TaskId::size()));
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \
@@ -140,7 +140,7 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   }
 
 ID_OSTREAM_OPERATOR(UniqueID);
-ID_OSTREAM_OPERATOR(TaskID);
-ID_OSTREAM_OPERATOR(ObjectID);
+ID_OSTREAM_OPERATOR(TaskId);
+ID_OSTREAM_OPERATOR(ObjectId);
 
 }  // namespace ray

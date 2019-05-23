@@ -38,10 +38,10 @@ enum class CommandType { kRegular, kChain };
 template <typename ID>
 class PubsubInterface {
  public:
-  virtual Status RequestNotifications(const DriverID &driver_id, const ID &id,
-                                      const ClientID &client_id) = 0;
-  virtual Status CancelNotifications(const DriverID &driver_id, const ID &id,
-                                     const ClientID &client_id) = 0;
+  virtual Status RequestNotifications(const DriverId &driver_id, const ID &id,
+                                      const ClientId &client_id) = 0;
+  virtual Status CancelNotifications(const DriverId &driver_id, const ID &id,
+                                     const ClientId &client_id) = 0;
   virtual ~PubsubInterface(){};
 };
 
@@ -51,9 +51,9 @@ class LogInterface {
   using DataT = typename Data::NativeTableType;
   using WriteCallback =
       std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
-  virtual Status Append(const DriverID &driver_id, const ID &id,
+  virtual Status Append(const DriverId &driver_id, const ID &id,
                         std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
-  virtual Status AppendAt(const DriverID &driver_id, const ID &task_id,
+  virtual Status AppendAt(const DriverId &driver_id, const ID &task_id,
                           std::shared_ptr<DataT> &data, const WriteCallback &done,
                           const WriteCallback &failure, int log_length) = 0;
   virtual ~LogInterface(){};
@@ -111,7 +111,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Append(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Append(const DriverId &driver_id, const ID &id, std::shared_ptr<DataT> &data,
                 const WriteCallback &done);
 
   /// Append a log entry to a key if and only if the log has the given number
@@ -126,7 +126,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param log_length The number of entries that the log must have for the
   /// append to succeed.
   /// \return Status
-  Status AppendAt(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status AppendAt(const DriverId &driver_id, const ID &id, std::shared_ptr<DataT> &data,
                   const WriteCallback &done, const WriteCallback &failure,
                   int log_length);
 
@@ -137,7 +137,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param lookup Callback that is called after lookup. If the callback is
   /// called with an empty vector, then there was no data at the key.
   /// \return Status
-  Status Lookup(const DriverID &driver_id, const ID &id, const Callback &lookup);
+  Status Lookup(const DriverId &driver_id, const ID &id, const Callback &lookup);
 
   /// Subscribe to any Append operations to this table. The caller may choose
   /// to subscribe to all Appends, or to subscribe only to keys that it
@@ -155,7 +155,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
+  Status Subscribe(const DriverId &driver_id, const ClientId &client_id,
                    const Callback &subscribe, const SubscriptionCallback &done);
 
   /// Request notifications about a key in this table.
@@ -173,8 +173,8 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// notifications can be requested, a call to `Subscribe` to this
   /// table with the same `client_id` must complete successfully.
   /// \return Status
-  Status RequestNotifications(const DriverID &driver_id, const ID &id,
-                              const ClientID &client_id);
+  Status RequestNotifications(const DriverId &driver_id, const ID &id,
+                              const ClientId &client_id);
 
   /// Cancel notifications about a key in this table.
   ///
@@ -182,22 +182,22 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param id The ID of the key to request notifications for.
   /// \param client_id The client who originally requested notifications.
   /// \return Status
-  Status CancelNotifications(const DriverID &driver_id, const ID &id,
-                             const ClientID &client_id);
+  Status CancelNotifications(const DriverId &driver_id, const ID &id,
+                             const ClientId &client_id);
 
   /// Delete an entire key from redis.
   ///
   /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data to delete from the GCS.
   /// \return Void.
-  void Delete(const DriverID &driver_id, const ID &id);
+  void Delete(const DriverId &driver_id, const ID &id);
 
   /// Delete several keys from redis.
   ///
   /// \param driver_id The ID of the job (= driver).
   /// \param ids The vector of IDs to delete from the GCS.
   /// \return Void.
-  void Delete(const DriverID &driver_id, const std::vector<ID> &ids);
+  void Delete(const DriverId &driver_id, const std::vector<ID> &ids);
 
   /// Returns debug string for class.
   ///
@@ -228,7 +228,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
+  Status Subscribe(const DriverId &driver_id, const ClientId &client_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done);
 
@@ -261,7 +261,7 @@ class TableInterface {
  public:
   using DataT = typename Data::NativeTableType;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const DriverID &driver_id, const ID &task_id,
+  virtual Status Add(const DriverId &driver_id, const ID &task_id,
                      std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
   virtual ~TableInterface(){};
 };
@@ -305,7 +305,7 @@ class Table : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Add(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Add(const DriverId &driver_id, const ID &id, std::shared_ptr<DataT> &data,
              const WriteCallback &done);
 
   /// Lookup an entry asynchronously.
@@ -317,7 +317,7 @@ class Table : private Log<ID, Data>,
   /// \param failure Callback that is called after lookup if there was no data
   /// at the key.
   /// \return Status
-  Status Lookup(const DriverID &driver_id, const ID &id, const Callback &lookup,
+  Status Lookup(const DriverId &driver_id, const ID &id, const Callback &lookup,
                 const FailureCallback &failure);
 
   /// Subscribe to any Add operations to this table. The caller may choose to
@@ -337,15 +337,15 @@ class Table : private Log<ID, Data>,
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
+  Status Subscribe(const DriverId &driver_id, const ClientId &client_id,
                    const Callback &subscribe, const FailureCallback &failure,
                    const SubscriptionCallback &done);
 
-  void Delete(const DriverID &driver_id, const ID &id) {
+  void Delete(const DriverId &driver_id, const ID &id) {
     Log<ID, Data>::Delete(driver_id, id);
   }
 
-  void Delete(const DriverID &driver_id, const std::vector<ID> &ids) {
+  void Delete(const DriverId &driver_id, const std::vector<ID> &ids) {
     Log<ID, Data>::Delete(driver_id, ids);
   }
 
@@ -371,9 +371,9 @@ class SetInterface {
  public:
   using DataT = typename Data::NativeTableType;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const DriverID &driver_id, const ID &id,
+  virtual Status Add(const DriverId &driver_id, const ID &id,
                      std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
-  virtual Status Remove(const DriverID &driver_id, const ID &id,
+  virtual Status Remove(const DriverId &driver_id, const ID &id,
                         std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
   virtual ~SetInterface(){};
 };
@@ -414,7 +414,7 @@ class Set : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Add(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Add(const DriverId &driver_id, const ID &id, std::shared_ptr<DataT> &data,
              const WriteCallback &done);
 
   /// Remove an entry from the set.
@@ -425,10 +425,10 @@ class Set : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Remove(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Remove(const DriverId &driver_id, const ID &id, std::shared_ptr<DataT> &data,
                 const WriteCallback &done);
 
-  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
+  Status Subscribe(const DriverId &driver_id, const ClientId &client_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done) {
     return Log<ID, Data>::Subscribe(driver_id, client_id, subscribe, done);
@@ -451,7 +451,7 @@ class Set : private Log<ID, Data>,
   using Log<ID, Data>::num_lookups_;
 };
 
-class ObjectTable : public Set<ObjectID, ObjectTableData> {
+class ObjectTable : public Set<ObjectId, ObjectTableData> {
  public:
   ObjectTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
               AsyncGcsClient *client)
@@ -463,7 +463,7 @@ class ObjectTable : public Set<ObjectID, ObjectTableData> {
   virtual ~ObjectTable(){};
 };
 
-class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
+class HeartbeatTable : public Table<ClientId, HeartbeatTableData> {
  public:
   HeartbeatTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                  AsyncGcsClient *client)
@@ -474,7 +474,7 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
   virtual ~HeartbeatTable() {}
 };
 
-class HeartbeatBatchTable : public Table<ClientID, HeartbeatBatchTableData> {
+class HeartbeatBatchTable : public Table<ClientId, HeartbeatBatchTableData> {
  public:
   HeartbeatBatchTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                       AsyncGcsClient *client)
@@ -485,7 +485,7 @@ class HeartbeatBatchTable : public Table<ClientID, HeartbeatBatchTableData> {
   virtual ~HeartbeatBatchTable() {}
 };
 
-class DriverTable : public Log<DriverID, DriverTableData> {
+class DriverTable : public Log<DriverId, DriverTableData> {
  public:
   DriverTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
               AsyncGcsClient *client)
@@ -501,10 +501,10 @@ class DriverTable : public Log<DriverID, DriverTableData> {
   /// \param driver_id The driver id.
   /// \param is_dead Whether the driver is dead.
   /// \return The return status.
-  Status AppendDriverData(const DriverID &driver_id, bool is_dead);
+  Status AppendDriverData(const DriverId &driver_id, bool is_dead);
 };
 
-class FunctionTable : public Table<ObjectID, FunctionTableData> {
+class FunctionTable : public Table<ObjectId, FunctionTableData> {
  public:
   FunctionTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                 AsyncGcsClient *client)
@@ -514,14 +514,14 @@ class FunctionTable : public Table<ObjectID, FunctionTableData> {
   };
 };
 
-using ClassTable = Table<ActorClassID, ClassTableData>;
+using ClassTable = Table<ActorClassId, ClassTableData>;
 
 /// Actor table starts with an ALIVE entry, which represents the first time the actor
 /// is created. This may be followed by 0 or more pairs of RECONSTRUCTING, ALIVE entries,
 /// which represent each time the actor fails (RECONSTRUCTING) and gets recreated (ALIVE).
 /// These may be followed by a DEAD entry, which means that the actor has failed and will
 /// not be reconstructed.
-class ActorTable : public Log<ActorID, ActorTableData> {
+class ActorTable : public Log<ActorId, ActorTableData> {
  public:
   ActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
              AsyncGcsClient *client)
@@ -531,7 +531,7 @@ class ActorTable : public Log<ActorID, ActorTableData> {
   }
 };
 
-class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
+class TaskReconstructionLog : public Log<TaskId, TaskReconstructionData> {
  public:
   TaskReconstructionLog(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                         AsyncGcsClient *client)
@@ -540,7 +540,7 @@ class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
   }
 };
 
-class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
+class TaskLeaseTable : public Table<TaskId, TaskLeaseData> {
  public:
   TaskLeaseTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                  AsyncGcsClient *client)
@@ -549,9 +549,9 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
     prefix_ = TablePrefix::TASK_LEASE;
   }
 
-  Status Add(const DriverID &driver_id, const TaskID &id,
+  Status Add(const DriverId &driver_id, const TaskId &id,
              std::shared_ptr<TaskLeaseDataT> &data, const WriteCallback &done) override {
-    RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(driver_id, id, data, done)));
+    RAY_RETURN_NOT_OK((Table<TaskId, TaskLeaseData>::Add(driver_id, id, data, done)));
     // Mark the entry for expiration in Redis. It's okay if this command fails
     // since the lease entry itself contains the expiration period. In the
     // worst case, if the command fails, then a client that looks up the lease
@@ -566,7 +566,7 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
   }
 };
 
-class ActorCheckpointTable : public Table<ActorCheckpointID, ActorCheckpointData> {
+class ActorCheckpointTable : public Table<ActorCheckpointId, ActorCheckpointData> {
  public:
   ActorCheckpointTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                        AsyncGcsClient *client)
@@ -575,7 +575,7 @@ class ActorCheckpointTable : public Table<ActorCheckpointID, ActorCheckpointData
   };
 };
 
-class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
+class ActorCheckpointIdTable : public Table<ActorId, ActorCheckpointIdData> {
  public:
   ActorCheckpointIdTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                          AsyncGcsClient *client)
@@ -590,13 +590,13 @@ class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
   /// \param actor_id ID of the actor.
   /// \param checkpoint_id ID of the checkpoint.
   /// \return Status.
-  Status AddCheckpointId(const DriverID &driver_id, const ActorID &actor_id,
-                         const ActorCheckpointID &checkpoint_id);
+  Status AddCheckpointId(const DriverId &driver_id, const ActorId &actor_id,
+                         const ActorCheckpointId &checkpoint_id);
 };
 
 namespace raylet {
 
-class TaskTable : public Table<TaskID, ray::protocol::Task> {
+class TaskTable : public Table<TaskId, ray::protocol::Task> {
  public:
   TaskTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
             AsyncGcsClient *client)
@@ -614,7 +614,7 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
 
 }  // namespace raylet
 
-class ErrorTable : private Log<DriverID, ErrorTableData> {
+class ErrorTable : private Log<DriverId, ErrorTableData> {
  public:
   ErrorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
              AsyncGcsClient *client)
@@ -635,7 +635,7 @@ class ErrorTable : private Log<DriverID, ErrorTableData> {
   /// \param error_message The error message to push.
   /// \param timestamp The timestamp of the error.
   /// \return Status.
-  Status PushErrorToDriver(const DriverID &driver_id, const std::string &type,
+  Status PushErrorToDriver(const DriverId &driver_id, const std::string &type,
                            const std::string &error_message, double timestamp);
 
   /// Returns debug string for class.
@@ -666,7 +666,7 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
 
 using CustomSerializerTable = Table<UniqueID, CustomSerializerData>;
 
-using ConfigTable = Table<ConfigID, ConfigTableData>;
+using ConfigTable = Table<ConfigId, ConfigTableData>;
 
 /// \class ClientTable
 ///
@@ -676,14 +676,14 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 /// alive. When a client disconnects, or if another client detects its failure,
 /// it should append an entry to the log indicating that it is dead. A client
 /// that is marked as dead should never again be marked as alive; if it needs
-/// to reconnect, it must connect with a different ClientID.
-class ClientTable : public Log<ClientID, ClientTableData> {
+/// to reconnect, it must connect with a different ClientId.
+class ClientTable : public Log<ClientId, ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
-      AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
+      AsyncGcsClient *client, const ClientId &id, const ClientTableDataT &data)>;
   using DisconnectCallback = std::function<void(void)>;
   ClientTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-              AsyncGcsClient *client, const ClientID &client_id)
+              AsyncGcsClient *client, const ClientId &client_id)
       : Log(contexts, client),
         // We set the client log's key equal to nil so that all instances of
         // ClientTable have the same key.
@@ -717,7 +717,7 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   ///
   /// \param dead_client_id The ID of the client to mark as dead.
   /// \return Status
-  ray::Status MarkDisconnected(const ClientID &dead_client_id);
+  ray::Status MarkDisconnected(const ClientId &dead_client_id);
 
   /// Register a callback to call when a new client is added.
   ///
@@ -747,12 +747,12 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// about the client in the cache, then the reference will be modified to
   /// contain that information. Else, the reference will be updated to contain
   /// a nil client ID.
-  void GetClient(const ClientID &client, ClientTableDataT &client_info) const;
+  void GetClient(const ClientId &client, ClientTableDataT &client_info) const;
 
   /// Get the local client's ID.
   ///
   /// \return The local client's ID.
-  const ClientID &GetLocalClientId() const;
+  const ClientId &GetLocalClientId() const;
 
   /// Get the local client's information.
   ///
@@ -763,12 +763,12 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   ///
   /// \param client_id The ID of the client to check.
   /// \return Whether the client with ID client_id is removed.
-  bool IsRemoved(const ClientID &client_id) const;
+  bool IsRemoved(const ClientId &client_id) const;
 
   /// Get the information of all clients.
   ///
   /// \return The client ID to client information map.
-  const std::unordered_map<ClientID, ClientTableDataT> &GetAllClients() const;
+  const std::unordered_map<ClientId, ClientTableDataT> &GetAllClients() const;
 
   /// Lookup the client data in the client table.
   ///
@@ -785,7 +785,7 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// The key at which the log of client information is stored. This key must
   /// be kept the same across all instances of the ClientTable, so that all
   /// clients append and read from the same key.
-  ClientID client_log_key_;
+  ClientId client_log_key_;
 
  private:
   /// Handle a client table notification.
@@ -795,7 +795,7 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// Whether this client has called Disconnect().
   bool disconnected_;
   /// This client's ID.
-  const ClientID client_id_;
+  const ClientId client_id_;
   /// Information about this client.
   ClientTableDataT local_client_;
   /// The callback to call when a new client is added.
@@ -807,9 +807,9 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// The callback to call when a resource is deleted.
   ClientTableCallback resource_deleted_callback_;
   /// A cache for information about all clients.
-  std::unordered_map<ClientID, ClientTableDataT> client_cache_;
+  std::unordered_map<ClientId, ClientTableDataT> client_cache_;
   /// The set of removed clients.
-  std::unordered_set<ClientID> removed_clients_;
+  std::unordered_set<ClientId> removed_clients_;
 };
 
 }  // namespace gcs

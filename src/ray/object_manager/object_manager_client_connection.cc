@@ -5,7 +5,7 @@ namespace ray {
 uint64_t SenderConnection::id_counter_;
 
 std::shared_ptr<SenderConnection> SenderConnection::Create(
-    boost::asio::io_service &io_service, const ClientID &client_id, const std::string &ip,
+    boost::asio::io_service &io_service, const ClientId &client_id, const std::string &ip,
     uint16_t port) {
   boost::asio::ip::tcp::socket socket(io_service);
   Status status = TcpConnect(socket, ip, port);
@@ -19,7 +19,7 @@ std::shared_ptr<SenderConnection> SenderConnection::Create(
 };
 
 SenderConnection::SenderConnection(std::shared_ptr<TcpServerConnection> conn,
-                                   const ClientID &client_id)
+                                   const ClientId &client_id)
     : conn_(conn) {
   client_id_ = client_id;
   connection_id_ = SenderConnection::id_counter_++;

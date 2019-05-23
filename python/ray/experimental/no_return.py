@@ -7,9 +7,9 @@ class NoReturn(object):
     """Do not store the return value in the object store.
 
     If a task returns this object, then Ray will not store this object in the
-    object store. Calling `ray.get` on the task's return ObjectIDs may block
+    object store. Calling `ray.get` on the task's return ObjectIds may block
     indefinitely unless the task manually stores an object for the
-    corresponding ObjectID.
+    corresponding ObjectId.
     """
 
     def __init__(self):

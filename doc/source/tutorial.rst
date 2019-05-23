@@ -69,7 +69,7 @@ objects and object IDs, as shown in the example below.
 .. code-block:: python
 
   x = "example"
-  ray.put(x)  # ObjectID(b49a32d72057bdcfc4dda35584b3d838aad89f5d)
+  ray.put(x)  # ObjectId(b49a32d72057bdcfc4dda35584b3d838aad89f5d)
 
 The command ``ray.put(x)`` would be run by a worker process or by the driver
 process (the driver process is the one running your script). It takes a Python

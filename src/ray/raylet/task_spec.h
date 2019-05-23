@@ -41,7 +41,7 @@ class TaskArgumentByReference : virtual public TaskArgument {
   /// Create a task argument by reference from a list of object IDs.
   ///
   /// \param references A list of object ID references.
-  TaskArgumentByReference(const std::vector<ObjectID> &references);
+  TaskArgumentByReference(const std::vector<ObjectId> &references);
 
   ~TaskArgumentByReference(){};
 
@@ -49,7 +49,7 @@ class TaskArgumentByReference : virtual public TaskArgument {
 
  private:
   /// The object IDs.
-  const std::vector<ObjectID> references_;
+  const std::vector<ObjectId> references_;
 };
 
 /// \class TaskArgumentByValue
@@ -96,7 +96,7 @@ class TaskSpecification {
   /// \param num_returns The number of values returned by the task.
   /// \param required_resources The task's resource demands.
   /// \param language The language of the worker that must execute the function.
-  TaskSpecification(const DriverID &driver_id, const TaskID &parent_task_id,
+  TaskSpecification(const DriverId &driver_id, const TaskId &parent_task_id,
                     int64_t parent_counter,
                     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
                     int64_t num_returns,
@@ -129,11 +129,11 @@ class TaskSpecification {
   /// \param language The language of the worker that must execute the function.
   /// \param function_descriptor The function descriptor.
   TaskSpecification(
-      const DriverID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
-      const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
-      int64_t max_actor_reconstructions, const ActorID &actor_id,
-      const ActorHandleID &actor_handle_id, int64_t actor_counter,
-      const std::vector<ActorHandleID> &new_actor_handles,
+      const DriverId &driver_id, const TaskId &parent_task_id, int64_t parent_counter,
+      const ActorId &actor_creation_id, const ObjectId &actor_creation_dummy_object_id,
+      int64_t max_actor_reconstructions, const ActorId &actor_id,
+      const ActorHandleId &actor_handle_id, int64_t actor_counter,
+      const std::vector<ActorHandleId> &new_actor_handles,
       const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
       int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
@@ -168,9 +168,9 @@ class TaskSpecification {
   }
 
   // TODO(swang): Finalize and document these methods.
-  TaskID TaskId() const;
-  DriverID DriverId() const;
-  TaskID ParentTaskId() const;
+  TaskId GetTaskId() const;
+  DriverId GetDriverId() const;
+  TaskId ParentTaskId() const;
   int64_t ParentCounter() const;
   std::vector<std::string> FunctionDescriptor() const;
   // Output the function descriptor as a string for log purpose.
@@ -179,8 +179,8 @@ class TaskSpecification {
   int64_t NumReturns() const;
   bool ArgByRef(int64_t arg_index) const;
   int ArgIdCount(int64_t arg_index) const;
-  ObjectID ArgId(int64_t arg_index, int64_t id_index) const;
-  ObjectID ReturnId(int64_t return_index) const;
+  ObjectId ArgId(int64_t arg_index, int64_t id_index) const;
+  ObjectId ReturnId(int64_t return_index) const;
   const uint8_t *ArgVal(int64_t arg_index) const;
   size_t ArgValLength(int64_t arg_index) const;
   /// Return the resources that are to be acquired during the execution of this
@@ -205,14 +205,14 @@ class TaskSpecification {
   // Methods specific to actor tasks.
   bool IsActorCreationTask() const;
   bool IsActorTask() const;
-  ActorID ActorCreationId() const;
-  ObjectID ActorCreationDummyObjectId() const;
+  ActorId ActorCreationId() const;
+  ObjectId ActorCreationDummyObjectId() const;
   int64_t MaxActorReconstructions() const;
-  ActorID ActorId() const;
-  ActorHandleID ActorHandleId() const;
+  ActorId GetActorId() const;
+  ActorHandleId GetActorHandleId() const;
   int64_t ActorCounter() const;
-  ObjectID ActorDummyObject() const;
-  std::vector<ActorHandleID> NewActorHandles() const;
+  ObjectId ActorDummyObject() const;
+  std::vector<ActorHandleId> NewActorHandles() const;
 
  private:
   /// Assign the specification data from a pointer.

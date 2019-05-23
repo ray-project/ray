@@ -23,19 +23,19 @@ Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_a
   RAY_CHECK_OK(gcs_client_.Attach(io_service));
 }
 
-void Monitor::HandleHeartbeat(const ClientID &client_id,
+void Monitor::HandleHeartbeat(const ClientId &client_id,
                               const HeartbeatTableDataT &heartbeat_data) {
   heartbeats_[client_id] = num_heartbeats_timeout_;
   heartbeat_buffer_[client_id] = heartbeat_data;
 }
 
 void Monitor::Start() {
-  const auto heartbeat_callback = [this](gcs::AsyncGcsClient *client, const ClientID &id,
+  const auto heartbeat_callback = [this](gcs::AsyncGcsClient *client, const ClientId &id,
                                          const HeartbeatTableDataT &heartbeat_data) {
     HandleHeartbeat(id, heartbeat_data);
   };
   RAY_CHECK_OK(gcs_client_.heartbeat_table().Subscribe(
-      DriverID::nil(), ClientID::nil(), heartbeat_callback, nullptr, nullptr));
+      DriverId::nil(), ClientId::nil(), heartbeat_callback, nullptr, nullptr));
   Tick();
 }
 
@@ -48,7 +48,7 @@ void Monitor::Tick() {
         auto client_id = it->first;
         RAY_LOG(WARNING) << "Client timed out: " << client_id;
         auto lookup_callback = [this, client_id](
-            gcs::AsyncGcsClient *client, const ClientID &id,
+            gcs::AsyncGcsClient *client, const ClientId &id,
             const std::vector<ClientTableDataT> &all_data) {
           bool marked = false;
           for (const auto &data : all_data) {
@@ -68,9 +68,9 @@ void Monitor::Tick() {
             error_message << "The node with client ID " << client_id
                           << " has been marked dead because the monitor"
                           << " has missed too many heartbeats from it.";
-            // We use the nil DriverID to broadcast the message to all drivers.
+            // We use the nil DriverId to broadcast the message to all drivers.
             RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
-                DriverID::nil(), type, error_message.str(), current_time_ms()));
+                DriverId::nil(), type, error_message.str(), current_time_ms()));
           }
         };
         RAY_CHECK_OK(gcs_client_.client_table().Lookup(lookup_callback));
@@ -89,7 +89,7 @@ void Monitor::Tick() {
       batch->batch.push_back(std::unique_ptr<HeartbeatTableDataT>(
           new HeartbeatTableDataT(heartbeat.second)));
     }
-    RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(DriverID::nil(), ClientID::nil(),
+    RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(DriverId::nil(), ClientId::nil(),
                                                          batch, nullptr));
     heartbeat_buffer_.clear();
   }
