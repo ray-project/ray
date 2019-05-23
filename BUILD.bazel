@@ -4,9 +4,6 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
-load("@com_github_stackb_rules_protobuf//cpp:cpp_grpc_compile.bzl", "cpp_grpc_compile")
-load("@com_github_stackb_rules_protobuf//java:java_grpc_compile.bzl", "java_grpc_compile")
-load("@com_github_stackb_rules_protobuf//python:python_grpc_compile.bzl", "python_grpc_compile")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:grpc_build_system.bzl", "grpc_proto_library")
 
@@ -650,11 +647,6 @@ genrule(
     local = 1,
 )
 
-python_grpc_compile(
-    name = "greeter_python_grpc",
-    deps = ["@com_github_stackb_rules_protobuf//example/proto:greeter_grpc"],
-)
-
 proto_library(
     name = "greeter_proto",
     srcs = ["src/ray/grpc_example/greeter.proto"],
@@ -672,12 +664,6 @@ cc_grpc_library(
     grpc_only = True,
 )
 
-# Java example is not included in this example.
-java_grpc_compile(
-    name = "greeter_java_grpc",
-    deps = ["@com_github_stackb_rules_protobuf//example/proto:greeter_grpc"],
-)
-
 cc_binary(
     name = "greeter_server",
     srcs = [
@@ -692,22 +678,14 @@ cc_binary(
 genrule(
     name = "grpc_example",
     srcs = [
-        "//:greeter_java_grpc",
-        "//:greeter_python_grpc",
         "//:greeter_server",
-        "//:greeter_cpp_grpc_bazel",
-        "src/ray/grpc_example/greeter_client.py",
     ],
     outs = ["grpc_example.out"],
     cmd = """
         set -x &&
         WORK_DIR=$$(pwd) &&
-        mkdir -p $$WORK_DIR/grpc_example/example/proto &&
-        cp -f $(location src/ray/grpc_example/greeter_client.py) $$WORK_DIR/grpc_example &&
+        mkdir -p $$WORK_DIR/grpc_example &&
         cp -f $(location greeter_server) $$WORK_DIR/grpc_example &&
-        cp -f $(locations //:greeter_cpp_grpc_bazel) $$WORK_DIR/grpc_example &&
-        cp -f $(locations //:greeter_python_grpc) $$WORK_DIR/grpc_example/example/proto &&
-        cp -f $(locations //:greeter_java_grpc) $$WORK_DIR/grpc_example &&
         echo GRPC example path: $$WORK_DIR/grpc_example &&
         echo $$WORK_DIR/grpc_example > $@
     """,
