@@ -1263,8 +1263,9 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
 
     Lineage uncommitted_lineage(*message);
     const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
-    RAY_LOG(DEBUG) << "Received forwarded task " << task.GetTaskSpecification().GetTaskId()
-                   << " on node " << gcs_client_->client_table().GetLocalClientId()
+    RAY_LOG(DEBUG) << "Received forwarded task "
+                   << task.GetTaskSpecification().GetTaskId() << " on node "
+                   << gcs_client_->client_table().GetLocalClientId()
                    << " spillback=" << task.GetTaskExecutionSpec().NumForwards();
     SubmitTask(task, uncommitted_lineage, /* forwarded = */ true);
   } break;
@@ -1776,8 +1777,8 @@ bool NodeManager::AssignTask(const Task &task) {
   if (spec.IsActorTask()) {
     // An actor task should only be ready to be assigned if it matches the
     // expected task counter.
-    int64_t expected_task_counter =
-        GetExpectedTaskCounter(actor_registry_, spec.GetActorId(), spec.GetActorHandleId());
+    int64_t expected_task_counter = GetExpectedTaskCounter(
+        actor_registry_, spec.GetActorId(), spec.GetActorHandleId());
     RAY_CHECK(spec.ActorCounter() == expected_task_counter)
         << "Expected actor counter: " << expected_task_counter << ", task "
         << spec.GetTaskId() << " has: " << spec.ActorCounter();
@@ -1892,7 +1893,8 @@ bool NodeManager::AssignTask(const Task &task) {
 
           // We started running the task, so the task is ready to write to GCS.
           if (!lineage_cache_.AddReadyTask(assigned_task)) {
-            RAY_LOG(WARNING) << "Task " << spec.GetTaskId() << " already in lineage cache."
+            RAY_LOG(WARNING) << "Task " << spec.GetTaskId()
+                             << " already in lineage cache."
                              << " This is most likely due to reconstruction.";
           }
           // Mark the task as running.

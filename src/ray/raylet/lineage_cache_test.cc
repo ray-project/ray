@@ -284,8 +284,8 @@ TEST_F(LineageCacheTest, TestEvictChain) {
   // the flushed task, but its lineage should not be evicted yet.
   mock_gcs_.Flush();
   ASSERT_EQ(lineage_cache_
-                .GetUncommittedLineageOrDie(tasks.back().GetTaskSpecification().GetTaskId(),
-                                            ClientId::nil())
+                .GetUncommittedLineageOrDie(
+                    tasks.back().GetTaskSpecification().GetTaskId(), ClientId::nil())
                 .GetEntries()
                 .size(),
             tasks.size());
@@ -297,8 +297,8 @@ TEST_F(LineageCacheTest, TestEvictChain) {
       mock_gcs_.RemoteAdd(tasks.at(1).GetTaskSpecification().GetTaskId(), task_data));
   mock_gcs_.Flush();
   ASSERT_EQ(lineage_cache_
-                .GetUncommittedLineageOrDie(tasks.back().GetTaskSpecification().GetTaskId(),
-                                            ClientId::nil())
+                .GetUncommittedLineageOrDie(
+                    tasks.back().GetTaskSpecification().GetTaskId(), ClientId::nil())
                 .GetEntries()
                 .size(),
             tasks.size());
@@ -530,7 +530,8 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   // Flush the last task. The lineage should not get evicted until this task's
   // commit is received.
   auto task_data = std::make_shared<protocol::TaskT>();
-  RAY_CHECK_OK(mock_gcs_.RemoteAdd(last_task.GetTaskSpecification().GetTaskId(), task_data));
+  RAY_CHECK_OK(
+      mock_gcs_.RemoteAdd(last_task.GetTaskSpecification().GetTaskId(), task_data));
   num_tasks_flushed++;
   mock_gcs_.Flush();
   ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);

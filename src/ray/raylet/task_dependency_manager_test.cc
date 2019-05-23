@@ -429,8 +429,8 @@ TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
   for (const auto &task : tasks) {
     // Subscribe to each of the tasks' arguments.
     const auto &arguments = task.GetDependencies();
-    task_dependency_manager_.SubscribeDependencies(task.GetTaskSpecification().GetTaskId(),
-                                                   arguments);
+    task_dependency_manager_.SubscribeDependencies(
+        task.GetTaskSpecification().GetTaskId(), arguments);
     // Mark each task as pending. A lease entry should be added to the GCS for
     // each task.
     EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().GetTaskId(), _, _));
