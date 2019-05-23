@@ -49,11 +49,6 @@ class PyTorchRunner(object):
         self.backend = backend
         self.verbose = True
 
-        # Determine the device on which the model will run
-        self.local_rank = None
-        if os.environ.get("CUDA_VISIBLE_DEVICES", None):
-            self.local_rank = int(os.environ["CUDA_VISIBLE_DEVICES"])
-
         self.epoch = 0
         self._timers = {
             k: utils.TimerStat(window_size=1)
@@ -88,26 +83,15 @@ class PyTorchRunner(object):
                 rank=world_rank,
                 world_size=world_size)
 
-            # This is a hack because set_devices fails otherwise
-            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-                [str(i) for i in range(ray.services._autodetect_num_gpus())])
-
-            if torch.cuda.is_available():
-                torch.cuda.set_device(self.local_rank)
-            if self.verbose:
-                logger.info("Device Set.")
-
     def _setup_training(self):
         logger.debug("Creating model")
         self.model = self.model_creator(self.config)
-        if self.local_rank is None:
+        if torch.cuda.is_available():
+            self.model = torch.nn.parallel.DistributedDataParallel(
+                self.model.cuda())
+        else:
             self.model = torch.nn.parallel.DistributedDataParallelCPU(
                 self.model)
-        else:
-            self.model = torch.nn.parallel.DistributedDataParallel(
-                self.model,
-                device_ids=[self.local_rank],
-                output_device=self.local_rank)
 
         logger.debug("Creating optimizer")
         self.criterion, self.optimizer = self.optimizer_creator(

@@ -70,6 +70,7 @@ class PyTorchTrainer(object):
         self.workers = [
             Runner.remote(model_creator, data_creator, optimizer_creator,
                           self.config, batch_size, backend)
+            for _ in range(num_replicas)
         ]
 
         ip = ray.get(self.workers[0].get_node_ip.remote())
