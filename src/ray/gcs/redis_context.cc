@@ -57,7 +57,7 @@ bool CallbackReply::IsNil() const {
 }
 
 uint64_t CallbackReply::ReadAsInteger() const {
-  RAY_CHECK(REDIS_REPLY_STRING == redis_reply_->type)
+  RAY_CHECK(REDIS_REPLY_INTEGER == redis_reply_->type)
       << "Unexpected type:" << redis_reply_->type;
 
   RAY_CHECK(REDIS_REPLY_INTEGER == redis_reply_->type);
@@ -65,6 +65,11 @@ uint64_t CallbackReply::ReadAsInteger() const {
 }
 
 std::string CallbackReply::ReadAsString() const {
+  if (REDIS_REPLY_NIL == redis_reply_->type ||
+      REDIS_REPLY_STATUS == redis_reply_->type) {
+    return "";
+  }
+
   RAY_CHECK(REDIS_REPLY_STRING == redis_reply_->type)
       << "Unexpected type:" << redis_reply_->type;
   return std::string(redis_reply_->str, redis_reply_->len);
@@ -129,17 +134,6 @@ std::vector<std::string> CallbackReply::ReadAsStringArray() const {
 // asynchronous redis call. It dispatches the appropriate callback
 // that was registered with the RedisCallbackManager.
 void GlobalRedisCallback(void *c, void *r, void *privdata) {
-  if (r == nullptr) {
-    return;
-  }
-  int64_t callback_index = reinterpret_cast<int64_t>(privdata);
-  redisReply *reply = reinterpret_cast<redisReply *>(r);
-  ProcessCallback(callback_index, CallbackReply(reply));
-}
-
-
-// TODO(qwang): Combine this to `GlobalRedisCallback`
-void SubscribeRedisCallback(void *c, void *r, void *privdata) {
   if (r == nullptr) {
     return;
   }
@@ -292,13 +286,13 @@ Status RedisContext::SubscribeAsync(const ClientID &client_id,
     // Subscribe to all messages.
     std::string redis_command = "SUBSCRIBE %d";
     status = redisAsyncCommand(
-        subscribe_context_, reinterpret_cast<redisCallbackFn *>(&SubscribeRedisCallback),
+        subscribe_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel);
   } else {
     // Subscribe only to messages sent to this client.
     std::string redis_command = "SUBSCRIBE %d:%b";
     status = redisAsyncCommand(
-        subscribe_context_, reinterpret_cast<redisCallbackFn *>(&SubscribeRedisCallback),
+        subscribe_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel,
         client_id.data(), client_id.size());
   }

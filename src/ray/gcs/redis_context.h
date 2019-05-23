@@ -30,16 +30,25 @@ class CallbackReply {
  public:
   explicit CallbackReply(redisReply *redis_reply);
 
+  /// Whether this reply is `nil` type reply.
   bool IsNil() const;
 
+  /// Read this reply data as an integer.
   uint64_t ReadAsInteger() const;
 
+  /// Read this reply data as a string.
+  ///
+  /// Note that this will return an empty string if
+  /// the type of this reply is `nil` or `status`.
   std::string ReadAsString() const;
 
+  /// Read this reply data as a status.
   Status ReadAsStatus() const;
 
+  /// Read this reply data as a pub-sub data.
   std::string ReadAsPubsubData() const;
 
+  /// Read this reply data as a string array.
   std::vector<std::string> ReadAsStringArray() const;
 
  private:

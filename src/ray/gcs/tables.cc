@@ -45,7 +45,6 @@ Status Log<ID, Data>::Append(const DriverID &driver_id, const ID &id,
     const auto status = reply.ReadAsStatus();
     // Failed to append the entry.
     RAY_CHECK(status.ok()) << "Failed to execute command TABLE_APPEND:" << status.ToString();
-
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
