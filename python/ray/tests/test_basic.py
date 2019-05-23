@@ -2942,3 +2942,29 @@ def test_get_postprocess(ray_start_regular):
 
     assert ray.get(
         [ray.put(i) for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
+
+
+def test_export_after_shutdown(ray_start_regular):
+    # This test checks that we can use actor and remote function definitions
+    # across multiple Ray sessions.
+
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    class Actor(object):
+        def method(self):
+            pass
+
+    ray.get(f.remote())
+    a = Actor.remote()
+    ray.get(a.method.remote())
+
+    ray.shutdown()
+
+    # Start Ray and use the remote function and actor again.
+    ray.init(num_cpus=1)
+    ray.get(f.remote())
+    a = Actor.remote()
+    ray.get(a.method.remote())
