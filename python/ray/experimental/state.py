@@ -879,7 +879,7 @@ class GlobalState(object):
         for i in range(gcs_entries.EntriesLength()):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
-            assert driver_id.binary() == error_data.GetDriverId()
+            assert driver_id.binary() == error_data.DriverId()
             error_message = {
                 "type": decode(error_data.Type()),
                 "message": decode(error_data.ErrorMessage()),
@@ -948,7 +948,7 @@ class GlobalState(object):
             for i in range(num_checkpoints)
         ]
         return {
-            "ActorId": ray.utils.binary_to_hex(entry.GetActorId()),
+            "ActorId": ray.utils.binary_to_hex(entry.ActorId()),
             "CheckpointIds": checkpoint_ids,
             "Timestamps": [
                 entry.Timestamps(i) for i in range(num_checkpoints)

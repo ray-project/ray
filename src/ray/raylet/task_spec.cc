@@ -225,7 +225,7 @@ bool TaskSpecification::IsActorCreationTask() const {
   return !ActorCreationId().is_nil();
 }
 
-bool TaskSpecification::IsActorTask() const { return !ActorId().is_nil(); }
+bool TaskSpecification::IsActorTask() const { return !GetActorId().is_nil(); }
 
 ActorId TaskSpecification::ActorCreationId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());

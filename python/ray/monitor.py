@@ -214,7 +214,7 @@ class Monitor(object):
         driver_data = gcs_entries.Entries(0)
         message = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(
             driver_data, 0)
-        driver_id = message.GetDriverId()
+        driver_id = message.DriverId()
         logger.info("Monitor: "
                     "XRay Driver {} has been removed.".format(
                         binary_to_hex(driver_id)))
