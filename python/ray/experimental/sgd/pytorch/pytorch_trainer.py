@@ -58,9 +58,6 @@ class PyTorchTrainer(object):
         if resources_per_replica is None:
             resources_per_replica = utils.Resources(
                 num_cpus=0, num_gpus=1, resources={})
-        # TODO: support multiple GPUs
-        if resources_per_replica.num_gpus > 1:
-            raise ValueError("multi-GPU models are not supported yet")
 
         Runner = ray.remote(
             num_cpus=resources_per_replica.num_cpus,
