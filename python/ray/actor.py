@@ -186,8 +186,9 @@ class ActorClass(object):
             task.
         _resources: The default resources required by the actor creation task.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
-        _exported: True if the actor class has been exported and false
-            otherwise.
+        _last_export_session: The index of the last session in which the remote
+            function was exported. This is used to determine if we need to
+            export the remote function again.
         _actor_methods: The actor methods.
         _method_decorators: Optional decorators that should be applied to the
             method invocation function before invoking the actor methods. These
@@ -208,7 +209,7 @@ class ActorClass(object):
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
         self._resources = resources
-        self._exported = False
+        self._last_export_session = None
 
         self._actor_methods = inspect.getmembers(
             self._modified_class, ray.utils.is_function_or_method)
@@ -341,10 +342,14 @@ class ActorClass(object):
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
-            if not self._exported:
+            if (self._last_export_session is None
+                    or self._last_export_session < worker._session_index):
+                # If this actor class was exported in a previous session, we
+                # need to export this function again, because current GCS
+                # doesn't have it.
+                self._last_export_session = worker._session_index
                 worker.function_actor_manager.export_actor_class(
                     self._modified_class, self._actor_method_names)
-                self._exported = True
 
             resources = ray.utils.resources_from_resource_arguments(
                 cpus_to_use, self._num_gpus, self._resources, num_cpus,

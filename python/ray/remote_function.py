@@ -43,6 +43,9 @@ class RemoteFunction(object):
             return the resulting ObjectIDs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
+        _last_export_session: The index of the last session in which the remote
+            function was exported. This is used to determine if we need to
+            export the remote function again.
     """
 
     def __init__(self, function, num_cpus, num_gpus, resources,
@@ -68,7 +71,6 @@ class RemoteFunction(object):
 
         # Export the function.
         worker = ray.worker.get_global_worker()
-        # In which session this function was exported last time.
         self._last_export_session = worker._session_index
         worker.function_actor_manager.export(self)
 
