@@ -4,6 +4,7 @@
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
 
+#include "boost/date_time/posix_time/posix_time.hpp"
 namespace asio = boost::asio;
 
 namespace object_manager_protocol = ray::object_manager::protocol;
@@ -230,8 +231,13 @@ void ObjectManager::RestartPullTimer(const ObjectID &object_id) {
     }
   });
 
-  // This will cancel the old timer if there was an old one.
-  pull_timers_.insert(std::make_pair(object_id, std::move(timer)));
+  // This will cancel and replace the old timer if there was an old one.
+  auto it = pull_timers_.find(object_id);
+  if (it == pull_timers_.end()) {
+    pull_timers_.insert(std::make_pair(object_id, std::move(timer)));
+  } else {
+    it->second = std::move(timer);
+  }
 }
 
 void ObjectManager::AbortObjectCreation(const ObjectID &object_id) {

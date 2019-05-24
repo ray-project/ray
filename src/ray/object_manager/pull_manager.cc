@@ -258,7 +258,6 @@ void PullManager::TimerExpired(const ObjectID &object_id,
                                std::vector<ClientID> *clients_to_request,
                                bool *abort_creation, bool *restart_timer) {
   auto it = pulls_.find(object_id);
-  // RAY_CHECK(it != pulls_.end());
   if (it == pulls_.end()) {
     *abort_creation = true;
     return;
@@ -266,7 +265,7 @@ void PullManager::TimerExpired(const ObjectID &object_id,
   auto &pull_info = it->second;
 
   *clients_to_request = std::vector<ClientID>();
-  if (!pull_info->client_receiving_from.is_nil()) {
+  if (!pull_info->push_id.is_nil()) {
     // We could optionally send a cancellation message to this remote object
     // manager.
     pull_info->client_receiving_from = ClientID::nil();
