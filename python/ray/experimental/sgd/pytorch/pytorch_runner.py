@@ -110,7 +110,6 @@ class PyTorchRunner(object):
             num_workers=0,
             pin_memory=False,
             sampler=self.train_sampler)
-        self._train_iterator = iter(self.train_loader)
 
         self.validation_sampler = (
             torch.utils.data.distributed.DistributedSampler(
@@ -134,12 +133,11 @@ class PyTorchRunner(object):
 
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
         with self._timers["training"]:
-            train_stats = utils.train(self._train_iterator, self.model,
+            train_stats = utils.train(self.train_loader, self.model,
                                       self.criterion, self.optimizer)
             train_stats["epoch"] = self.epoch
 
         self.epoch += 1
-        self._train_iterator = iter(self.train_loader)
 
         train_stats.update(self.stats())
         return train_stats
