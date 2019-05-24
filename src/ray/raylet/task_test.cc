@@ -68,8 +68,8 @@ TEST(TaskSpecTest, TaskInfoSize) {
         to_flatbuf(fbb, TaskID::from_random()), 0, to_flatbuf(fbb, ActorID::nil()),
         to_flatbuf(fbb, ObjectID::nil()), 0, to_flatbuf(fbb, ActorID::nil()),
         to_flatbuf(fbb, ActorHandleID::nil()), 0,
-        ids_to_flatbuf(fbb, std::vector<ObjectID>()), fbb.CreateVector(arguments),
-        1, map_to_flatbuf(fbb, {}), map_to_flatbuf(fbb, {}), Language::PYTHON,
+        ids_to_flatbuf(fbb, std::vector<ObjectID>()), fbb.CreateVector(arguments), 1,
+        map_to_flatbuf(fbb, {}), map_to_flatbuf(fbb, {}), Language::PYTHON,
         string_vec_to_flatbuf(fbb, {"PackageName", "ClassName", "FunctionName"}));
     fbb.Finish(spec);
     RAY_LOG(ERROR) << "Ordinary task info size: " << fbb.GetSize();
@@ -90,8 +90,8 @@ TEST(TaskSpecTest, TaskInfoSize) {
         to_flatbuf(fbb, ActorHandleID::from_random()), 20,
         ids_to_flatbuf(fbb, std::vector<ObjectID>(
                                 {ObjectID::from_random(), ObjectID::from_random()})),
-        fbb.CreateVector(arguments),
-        2, map_to_flatbuf(fbb, {}), map_to_flatbuf(fbb, {}), Language::PYTHON,
+        fbb.CreateVector(arguments), 2, map_to_flatbuf(fbb, {}), map_to_flatbuf(fbb, {}),
+        Language::PYTHON,
         string_vec_to_flatbuf(fbb, {"PackageName", "ClassName", "FunctionName"}));
     fbb.Finish(spec);
     RAY_LOG(ERROR) << "Actor task info size: " << fbb.GetSize();
