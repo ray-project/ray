@@ -390,7 +390,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.increaseTaskCounter(),
         actor.getNewActorHandles().toArray(new UniqueId[0]),
         ArgumentsBuilder.wrap(args, language == TaskLanguage.PYTHON),
-        returnIds,
+        numReturns,
         resources,
         language,
         functionDescriptor

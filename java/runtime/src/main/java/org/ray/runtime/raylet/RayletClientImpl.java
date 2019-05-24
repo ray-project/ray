@@ -178,7 +178,7 @@ public class RayletClientImpl implements RayletClient {
       }
     }
     // Deserialize return ids
-    ObjectId[] returnIds = IdUtil.getObjectIdsFromByteBuffer(info.returnsAsByteBuffer());
+    int numReturns = info.numReturns();
 
     // Deserialize required resources;
     Map<String, Double> resources = new HashMap<>();
@@ -193,7 +193,7 @@ public class RayletClientImpl implements RayletClient {
     );
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
         maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
-        args, returnIds, resources, TaskLanguage.JAVA, functionDescriptor);
+        args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
