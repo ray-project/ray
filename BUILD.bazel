@@ -105,6 +105,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "core_worker_lib",
+    srcs = glob(
+        [
+            "src/ray/core_worker/*.cc",
+        ]
+    ),
+    hdrs = glob([
+        "src/ray/core_worker/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        ":ray_util",
+    ],
+)
+
 cc_test(
     name = "lineage_cache_test",
     srcs = ["src/ray/raylet/lineage_cache_test.cc"],
@@ -279,6 +296,7 @@ cc_library(
     hdrs = [
         "src/ray/common/client_connection.h",
         "src/ray/common/common_protocol.h",
+        "src/ray/common/io.h",
     ],
     copts = COPTS,
     includes = [
@@ -637,8 +655,8 @@ genrule(
         cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
         for f in $(locations //:python_gcs_fbs); do cp -f $$f $$WORK_DIR/python/ray/core/generated/; done &&
         mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
-        for f in $(locations //:python_node_manager_fbs); do 
-            cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/; 
+        for f in $(locations //:python_node_manager_fbs); do
+            cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/;
         done &&
         echo $$WORK_DIR > $@
     """,
