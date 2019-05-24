@@ -234,7 +234,7 @@ def run(run_or_experiment,
         search_alg.add_configurations([experiment])
 
         runner = TrialRunner(
-            search_alg,
+            search_alg=search_alg,
             scheduler=scheduler,
             metadata_checkpoint_dir=checkpoint_dir,
             launch_web_server=with_server,
