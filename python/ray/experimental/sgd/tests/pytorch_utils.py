@@ -9,13 +9,13 @@ import torch.utils.data
 
 
 class LinearDataset(torch.utils.data.Dataset):
-    """y = a * x + b + N(0, 1)"""
+    """y = a * x + b"""
 
     def __init__(self, a, b, size=1000):
         x = np.random.random(size).astype(np.float32) * 10
+        x = np.arange(0, 10, 10 / size, dtype=np.float32)
         self.x = torch.from_numpy(x)
-        self.y = torch.from_numpy(a * x + b +
-                                  np.random.randn(size).astype(np.float32))
+        self.y = torch.from_numpy(a * x + b)
 
     def __getitem__(self, index):
         return self.x[index, None], self.y[index, None]
@@ -25,15 +25,14 @@ class LinearDataset(torch.utils.data.Dataset):
 
 
 def model_creator(config):
-    return nn.Sequential(
-        nn.Linear(1, 16), nn.ReLU(), nn.Linear(16, 1), nn.Sigmoid())
+    return nn.Linear(1, 1)
 
 
 def optimizer_creator(model, config):
     """Returns criterion, optimizer"""
     criterion = nn.MSELoss()
     optimizer = torch.optim.SGD(
-        model.parameters(), lr=1e-6, momentum=1e-6, weight_decay=1e-6)
+        model.parameters(), lr=1e-4)
     return criterion, optimizer
 
 
