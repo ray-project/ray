@@ -246,8 +246,8 @@ class Trial(object):
 
     def __init__(self,
                  trainable_name,
-                 args=None,
-                 kwargs=None,
+                 trainable_args=None,
+                 trainable_kwargs=None,
                  config=None,
                  trial_id=None,
                  local_dir=DEFAULT_RESULTS_DIR,
@@ -265,17 +265,13 @@ class Trial(object):
                  loggers=None,
                  sync_function=None,
                  max_failures=0):
-        """Initialize a new trial.
-
-        The args here take the same meaning as the command line flags defined
-        in ray.tune.config_parser.
-        """
+        """Initialize a new trial."""
 
         Trial._registration_check(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
-        self.args = args or []
-        self.kwargs = kwargs or {}
+        self.trainable_args = trainable_args or []
+        self.trainable_kwargs = trainable_kwargs or {}
         self.config = config or {}
         self.local_dir = os.path.expanduser(local_dir)
         self.experiment_tag = experiment_tag

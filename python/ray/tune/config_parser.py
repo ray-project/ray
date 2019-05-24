@@ -181,8 +181,8 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         # Submitting trial via server in py2.7 creates Unicode, which does not
         # convert to string in a straightforward manner.
         trainable_name=spec["run"],
-        args=spec["args"],
-        kwargs=spec["kwargs"],
+        trainable_args=spec["trainable_args"],
+        trainable_kwargs=spec["trainable_kwargs"],
         # json.load leads to str -> unicode in py2.7
         config=spec.get("config", {}),
         local_dir=os.path.join(args.local_dir, output_path),

@@ -121,10 +121,9 @@ class FunctionRunner(Trainable):
 
     _name = "func"
 
-    def __init__(self, *args, config=None, logger_creator=None, **kwargs):
+    def __init__(self, *args, config=None, logger_creator=None):
         Trainable.__init__(self, config=config, logger_creator=logger_creator)
         self.args = args
-        self.kwargs = kwargs
 
     def _setup(self, config):
         # Semaphore for notifying the reporter to continue with the computation

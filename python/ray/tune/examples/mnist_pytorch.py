@@ -56,7 +56,8 @@ parser.add_argument(
     "--smoke-test", action="store_true", help="Finish quickly for testing")
 
 
-def train_mnist(args, config, reporter):
+def train_mnist(args, config=None, reporter=None):
+    config = config or {}
     vars(args).update(config)
     args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -166,7 +167,7 @@ if __name__ == "__main__":
         grace_period=20)
     tune.run(
         train_mnist,
-        args=[args],
+        trainable_args=[args],
         name="exp",
         scheduler=sched,
         **{
