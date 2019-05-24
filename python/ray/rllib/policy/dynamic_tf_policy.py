@@ -237,7 +237,8 @@ class DynamicTFPolicy(TFPolicy):
             SampleBatch.CUR_OBS: fake_array(self._obs_input),
             SampleBatch.NEXT_OBS: fake_array(self._obs_input),
             SampleBatch.DONES: np.array([False], dtype=np.bool),
-            SampleBatch.ACTIONS: np.array([self.action_space.sample()]),
+            SampleBatch.ACTIONS: fake_array(
+                ModelCatalog.get_action_placeholder(self.action_space)),
             SampleBatch.REWARDS: np.array([0], dtype=np.float32),
         }
         if self._obs_include_prev_action_reward:
