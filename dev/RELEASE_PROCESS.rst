@@ -123,13 +123,20 @@ This document describes the process for creating new releases.
 11. **Bump version on Ray master branch:** Create a pull request to increment the
     version of the master branch. The format of the new version is as follows:
 
-    New minor release (e.g. 0.7.0): Increment the minor version and append ``.dev0`` to
+    New minor release (e.g., 0.7.0): Increment the minor version and append ``.dev0`` to
     the version. For example, if the version of the new release is 0.7.0, the master
     branch needs to be updated to 0.8.0.dev0. `Example PR for minor release`
 
-    New micro release (e.g. 0.7.1): Increment the ``dev`` number, such that the number
+    New micro release (e.g., 0.7.1): Increment the ``dev`` number, such that the number
     after ``dev`` equals the micro version. For example, if the version of the new
     release is 0.7.1, the master branch needs to be updated to 0.8.0.dev1.
+
+12. **Update version numbers throughout codebase:** Suppose we just released 0.7.1. The
+    previous release version number (in this case 0.7.0) and the previous dev version number
+    (in this case 0.8.0.dev0) appear in many places throughout the code base including
+    the installation documentation, the example autoscaler config files, and the testing
+    scripts. Search for all of the occurrences of these version numbers and update them to
+    use the new release and dev version numbers.
 
 .. _documentation: https://ray.readthedocs.io/en/latest/installation.html#trying-snapshots-from-master
 .. _`documentation for building wheels`: https://github.com/ray-project/ray/blob/master/python/README-building-wheels.md
