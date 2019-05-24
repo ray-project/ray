@@ -78,7 +78,7 @@ class TrialRunner(object):
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
     Example:
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         runner.add_trial(Trial(...))
         runner.add_trial(Trial(...))
         while not runner.is_finished():
@@ -228,7 +228,7 @@ class TrialRunner(object):
         ]))
 
         runner = TrialRunner(
-            search_alg or BasicVariantGenerator(),
+            search_alg,
             scheduler=scheduler,
             trial_executor=trial_executor)
 

@@ -977,7 +977,7 @@ class VariantGeneratorTest(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def generate_trials(self, spec, name):
-        suggester = BasicVariantGenerator()
+        suggester =
         suggester.add_configurations({name: spec})
         return suggester.next_trials()
 
@@ -1209,7 +1209,7 @@ class TrialRunnerTest(unittest.TestCase):
         }
 
         for name, spec in experiments.items():
-            trial_generator = BasicVariantGenerator()
+            trial_generator =
             trial_generator.add_configurations({name: spec})
             for trial in trial_generator.next_trials():
                 trial_executor.start_trial(trial)
@@ -1218,7 +1218,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1239,7 +1239,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCustomResources(self):
         ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1260,7 +1260,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testExtraCustomResources(self):
         ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1283,7 +1283,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCustomResources2(self):
         ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         resource1 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 2})
         self.assertTrue(runner.has_resources(resource1))
         resource2 = Resources(cpu=1, gpu=0, custom_resources={"a": 2})
@@ -1295,7 +1295,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFractionalGpus(self):
         ray.init(num_cpus=4, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "resources": Resources(cpu=1, gpu=0.5),
         }
@@ -1318,7 +1318,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1347,7 +1347,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testMultiStepRun(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 5
@@ -1377,7 +1377,7 @@ class TrialRunnerTest(unittest.TestCase):
     def testMultiStepRun2(self):
         """Checks that runner.step throws when overstepping."""
         ray.init(num_cpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1412,7 +1412,7 @@ class TrialRunnerTest(unittest.TestCase):
                 return TrialScheduler.CONTINUE
 
         runner = TrialRunner(
-            BasicVariantGenerator(), scheduler=ChangingScheduler())
+            , scheduler=ChangingScheduler())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1434,7 +1434,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testErrorHandling(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1456,7 +1456,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testThrowOnOverstep(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         runner.step()
         self.assertRaises(TuneError, runner.step)
 
@@ -1550,7 +1550,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFailureRecoveryMaxFailures(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -1579,7 +1579,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1610,7 +1610,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
         }
@@ -1642,7 +1642,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCheckpointingAtEnd(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1663,7 +1663,7 @@ class TrialRunnerTest(unittest.TestCase):
     def testResultDone(self):
         """Tests that last_result is marked `done` after trial is complete."""
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1682,7 +1682,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testPauseThenResume(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1713,7 +1713,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testStepHook(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
 
         def on_step_begin(self):
             self._update_avail_resources()
@@ -1743,7 +1743,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testStopTrial(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 5
@@ -1954,7 +1954,7 @@ class TrialRunnerTest(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
 
         runner = TrialRunner(
-            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+            , metadata_checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",
@@ -2014,7 +2014,7 @@ class TrialRunnerTest(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
 
         runner = TrialRunner(
-            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+            , metadata_checkpoint_dir=tmpdir)
 
         runner.add_trial(
             Trial(
@@ -2070,7 +2070,7 @@ class TrialRunnerTest(unittest.TestCase):
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(
-            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+            , metadata_checkpoint_dir=tmpdir)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
@@ -2092,7 +2092,7 @@ class TrialRunnerTest(unittest.TestCase):
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(
-            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+            , metadata_checkpoint_dir=tmpdir)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
