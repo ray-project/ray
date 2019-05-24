@@ -97,7 +97,7 @@ def training_workflow(config, reporter):
         # Do some arbitrary updates based on the T2 batch
         policy.update_some_value(sum(T2["rewards"]))
 
-        reporter(**collect_metrics(remote_evaluators=workers))
+        reporter(**collect_metrics(remote_workers=workers))
 
 
 if __name__ == "__main__":

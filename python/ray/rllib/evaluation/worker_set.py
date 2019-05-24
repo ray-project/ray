@@ -95,7 +95,7 @@ class WorkerSet(object):
     def stop(self):
         """Stop all rollout workers."""
         self.local_worker().stop()
-        for w in self.remote_evaluators():
+        for w in self.remote_workers():
             w.stop.remote()
             w.__ray_terminate__.remote()
 
