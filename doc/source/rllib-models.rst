@@ -101,7 +101,7 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
             You can find an runnable example in examples/custom_loss.py.
 
             Arguments:
-                policy_loss (Tensor): scalar policy loss from the policy graph.
+                policy_loss (Tensor): scalar policy loss from the policy.
                 loss_inputs (dict): map of input placeholders for rollout data.
 
             Returns:
@@ -134,7 +134,7 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
         },
     })
 
-For a full example of a custom model in code, see the `Carla RLlib model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/models.py>`__ and associated `training scripts <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/carla>`__. You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_nested_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
+For a full example of a custom model in code, see the `custom env example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__. You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_nested_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
 
 Custom Recurrent Models
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -175,7 +175,7 @@ Instead of using the ``use_lstm: True`` option, it can be preferable use a custo
 Batch Normalization
 ~~~~~~~~~~~~~~~~~~~
 
-You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model: `code example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__. RLlib will automatically run the update ops for the batch norm layers during optimization (see `tf_policy_graph.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/tf_policy_graph.py>`__ and `multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/optimizers/multi_gpu_impl.py>`__ for the exact handling of these updates).
+You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model: `code example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__. RLlib will automatically run the update ops for the batch norm layers during optimization (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/policy/tf_policy.py>`__ and `multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/optimizers/multi_gpu_impl.py>`__ for the exact handling of these updates).
 
 Custom Models (PyTorch)
 -----------------------
@@ -263,7 +263,7 @@ You can mix supervised losses into any RLlib algorithm through custom models. Fo
 
 **TensorFlow**: To add a supervised loss to a custom TF model, you need to override the ``custom_loss()`` method. This method takes in the existing policy loss for the algorithm, which you can add your own supervised loss to before returning. For debugging, you can also return a dictionary of scalar tensors in the ``custom_metrics()`` method. Here is a `runnable example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__ of adding an imitation loss to CartPole training that is defined over a `offline dataset <rllib-offline.html#input-pipeline-for-supervised-losses>`__.
 
-**PyTorch**: There is no explicit API for adding losses to custom torch models. However, you can modify the loss in the policy graph definition directly. Like for TF models, offline datasets can be incorporated by creating an input reader and calling ``reader.next()`` in the loss forward pass.
+**PyTorch**: There is no explicit API for adding losses to custom torch models. However, you can modify the loss in the policy definition directly. Like for TF models, offline datasets can be incorporated by creating an input reader and calling ``reader.next()`` in the loss forward pass.
 
 
 Variable-length / Parametric Action Spaces
@@ -312,15 +312,15 @@ Custom models can be used to work with environments where (1) the set of valid a
 
 Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__. Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``vf_share_layers=True``), and several other algorithms.
 
-Customizing Policy Graphs
+Customizing Policies
 -------------------------
 
-For deeper customization of algorithms, you can modify the policy graphs of the trainer classes. Here's an example of extending the DDPG policy graph to specify custom sub-network modules:
+For deeper customization of algorithms, you can modify the policies of the trainer classes. Here's an example of extending the DDPG policy to specify custom sub-network modules:
 
 .. code-block:: python
 
     from ray.rllib.models import ModelCatalog
-    from ray.rllib.agents.ddpg.ddpg_policy_graph import DDPGPolicyGraph as BaseDDPGPolicyGraph
+    from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy as BaseDDPGTFPolicy
 
     class CustomPNetwork(object):
         def __init__(self, dim_actions, hiddens, activation):
@@ -336,7 +336,7 @@ For deeper customization of algorithms, you can modify the policy graphs of the 
             self.value = layers.fully_connected(
                 q_out, num_outputs=1, activation_fn=None)
 
-    class CustomDDPGPolicyGraph(BaseDDPGPolicyGraph):
+    class CustomDDPGTFPolicy(BaseDDPGTFPolicy):
         def _build_p_network(self, obs):
             return CustomPNetwork(
                 self.dim_actions,
@@ -349,26 +349,26 @@ For deeper customization of algorithms, you can modify the policy graphs of the 
                 self.config["critic_hiddens"],
                 self.config["critic_hidden_activation"]).value
 
-Then, you can create an trainer with your custom policy graph by:
+Then, you can create an trainer with your custom policy by:
 
 .. code-block:: python
 
     from ray.rllib.agents.ddpg.ddpg import DDPGTrainer
-    from custom_policy_graph import CustomDDPGPolicyGraph
+    from custom_policy import CustomDDPGTFPolicy
 
-    DDPGTrainer._policy_graph = CustomDDPGPolicyGraph
+    DDPGTrainer._policy = CustomDDPGTFPolicy
     trainer = DDPGTrainer(...)
 
-In this example we overrode existing methods of the existing DDPG policy graph, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
+In this example we overrode existing methods of the existing DDPG policy, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
 
 Model-Based Rollouts
 ~~~~~~~~~~~~~~~~~~~~
 
-With a custom policy graph, you can also perform model-based rollouts and optionally incorporate the results of those rollouts as training data. For example, suppose you wanted to extend PGPolicyGraph for model-based rollouts. This involves overriding the ``compute_actions`` method of that policy graph:
+With a custom policy, you can also perform model-based rollouts and optionally incorporate the results of those rollouts as training data. For example, suppose you wanted to extend PGPolicy for model-based rollouts. This involves overriding the ``compute_actions`` method of that policy:
 
 .. code-block:: python
 
-        class ModelBasedPolicyGraph(PGPolicyGraph):
+        class ModelBasedPolicy(PGPolicy):
              def compute_actions(self,
                                  obs_batch,
                                  state_batches,

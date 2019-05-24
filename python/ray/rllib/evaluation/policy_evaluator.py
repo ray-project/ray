@@ -15,11 +15,10 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.interface import EvaluatorInterface
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
-    DEFAULT_POLICY_ID
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
-from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
@@ -52,9 +51,9 @@ def get_global_evaluator():
 
 @DeveloperAPI
 class PolicyEvaluator(EvaluatorInterface):
-    """Common ``PolicyEvaluator`` implementation that wraps a ``PolicyGraph``.
+    """Common ``PolicyEvaluator`` implementation that wraps a ``Policy``.
 
-    This class wraps a policy graph instance and an environment class to
+    This class wraps a policy instance and an environment class to
     collect experiences from the environment. You can create many replicas of
     this class as Ray actors to scale RL training.
 
@@ -65,7 +64,7 @@ class PolicyEvaluator(EvaluatorInterface):
         >>> # Create a policy evaluator and using it to collect experiences.
         >>> evaluator = PolicyEvaluator(
         ...   env_creator=lambda _: gym.make("CartPole-v0"),
-        ...   policy_graph=PGPolicyGraph)
+        ...   policy=PGTFPolicy)
         >>> print(evaluator.sample())
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
@@ -76,7 +75,7 @@ class PolicyEvaluator(EvaluatorInterface):
         ...   evaluator_cls=PolicyEvaluator,
         ...   evaluator_args={
         ...     "env_creator": lambda _: gym.make("CartPole-v0"),
-        ...     "policy_graph": PGPolicyGraph,
+        ...     "policy": PGTFPolicy,
         ...   },
         ...   num_workers=10)
         >>> for _ in range(10): optimizer.step()
@@ -84,15 +83,15 @@ class PolicyEvaluator(EvaluatorInterface):
         >>> # Creating a multi-agent policy evaluator
         >>> evaluator = PolicyEvaluator(
         ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
-        ...   policy_graphs={
+        ...   policies={
         ...       # Use an ensemble of two policies for car agents
         ...       "car_policy1":
-        ...         (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.99}),
+        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}),
         ...       "car_policy2":
-        ...         (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.95}),
+        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.95}),
         ...       # Use a single shared policy for all traffic lights
         ...       "traffic_light_policy":
-        ...         (PGPolicyGraph, Box(...), Discrete(...), {}),
+        ...         (PGTFPolicy, Box(...), Discrete(...), {}),
         ...   },
         ...   policy_mapping_fn=lambda agent_id:
         ...     random.choice(["car_policy1", "car_policy2"])
@@ -113,7 +112,7 @@ class PolicyEvaluator(EvaluatorInterface):
     @DeveloperAPI
     def __init__(self,
                  env_creator,
-                 policy_graph,
+                 policy,
                  policy_mapping_fn=None,
                  policies_to_train=None,
                  tf_session_creator=None,
@@ -147,9 +146,9 @@ class PolicyEvaluator(EvaluatorInterface):
         Arguments:
             env_creator (func): Function that returns a gym.Env given an
                 EnvContext wrapped configuration.
-            policy_graph (class|dict): Either a class implementing
-                PolicyGraph, or a dictionary of policy id strings to
-                (PolicyGraph, obs_space, action_space, config) tuples. If a
+            policy (class|dict): Either a class implementing
+                Policy, or a dictionary of policy id strings to
+                (Policy, obs_space, action_space, config) tuples. If a
                 dict is specified, then we are in multi-agent mode and a
                 policy_mapping_fn should also be set.
             policy_mapping_fn (func): A function that maps agent ids to
@@ -159,7 +158,7 @@ class PolicyEvaluator(EvaluatorInterface):
             policies_to_train (list): Optional whitelist of policies to train,
                 or None for all policies.
             tf_session_creator (func): A function that returns a TF session.
-                This is optional and only useful with TFPolicyGraph.
+                This is optional and only useful with TFPolicy.
             batch_steps (int): The target number of env transitions to include
                 in each sample batch returned from this evaluator.
             batch_mode (str): One of the following batch modes:
@@ -196,7 +195,7 @@ class PolicyEvaluator(EvaluatorInterface):
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy. In the
                 multi-agent case, this config will be merged with the
-                per-policy configs specified by `policy_graph`.
+                per-policy configs specified by `policy`.
             worker_index (int): For remote evaluators, this should be set to a
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
@@ -301,7 +300,7 @@ class PolicyEvaluator(EvaluatorInterface):
                         vector_index=vector_index, remote=remote_worker_envs)))
 
         self.tf_sess = None
-        policy_dict = _validate_and_canonicalize(policy_graph, self.env)
+        policy_dict = _validate_and_canonicalize(policy, self.env)
         self.policies_to_train = policies_to_train or list(policy_dict.keys())
         if _has_tensorflow_graph(policy_dict):
             if (ray.is_initialized()
@@ -330,7 +329,7 @@ class PolicyEvaluator(EvaluatorInterface):
                      or isinstance(self.env, ExternalMultiAgentEnv))
                     or isinstance(self.env, BaseEnv)):
                 raise ValueError(
-                    "Have multiple policy graphs {}, but the env ".format(
+                    "Have multiple policies {}, but the env ".format(
                         self.policy_map) +
                     "{} is not a subclass of BaseEnv, MultiAgentEnv or "
                     "ExternalMultiAgentEnv?".format(self.env))
@@ -608,17 +607,17 @@ class PolicyEvaluator(EvaluatorInterface):
 
     @DeveloperAPI
     def get_policy(self, policy_id=DEFAULT_POLICY_ID):
-        """Return policy graph for the specified id, or None.
+        """Return policy for the specified id, or None.
 
         Arguments:
-            policy_id (str): id of policy graph to return.
+            policy_id (str): id of policy to return.
         """
 
         return self.policy_map.get(policy_id)
 
     @DeveloperAPI
     def for_policy(self, func, policy_id=DEFAULT_POLICY_ID):
-        """Apply the given function to the specified policy graph."""
+        """Apply the given function to the specified policy."""
 
         return func(self.policy_map[policy_id])
 
@@ -708,7 +707,7 @@ class PolicyEvaluator(EvaluatorInterface):
         preprocessors = {}
         for name, (cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
-            logger.debug("Creating policy graph for {}".format(name))
+            logger.debug("Creating policy for {}".format(name))
             merged_conf = merge_dicts(policy_config, conf)
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
@@ -720,7 +719,7 @@ class PolicyEvaluator(EvaluatorInterface):
             if isinstance(obs_space, gym.spaces.Dict) or \
                     isinstance(obs_space, gym.spaces.Tuple):
                 raise ValueError(
-                    "Found raw Tuple|Dict space as input to policy graph. "
+                    "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
             if tf:
@@ -738,12 +737,12 @@ class PolicyEvaluator(EvaluatorInterface):
             self.sampler.shutdown = True
 
 
-def _validate_and_canonicalize(policy_graph, env):
-    if isinstance(policy_graph, dict):
-        _validate_multiagent_config(policy_graph)
-        return policy_graph
-    elif not issubclass(policy_graph, PolicyGraph):
-        raise ValueError("policy_graph must be a rllib.PolicyGraph class")
+def _validate_and_canonicalize(policy, env):
+    if isinstance(policy, dict):
+        _validate_multiagent_config(policy)
+        return policy
+    elif not issubclass(policy, Policy):
+        raise ValueError("policy must be a rllib.Policy class")
     else:
         if (isinstance(env, MultiAgentEnv)
                 and not hasattr(env, "observation_space")):
@@ -751,38 +750,35 @@ def _validate_and_canonicalize(policy_graph, env):
                 "MultiAgentEnv must have observation_space defined if run "
                 "in a single-agent configuration.")
         return {
-            DEFAULT_POLICY_ID: (policy_graph, env.observation_space,
+            DEFAULT_POLICY_ID: (policy, env.observation_space,
                                 env.action_space, {})
         }
 
 
-def _validate_multiagent_config(policy_graph, allow_none_graph=False):
-    for k, v in policy_graph.items():
+def _validate_multiagent_config(policy, allow_none_graph=False):
+    for k, v in policy.items():
         if not isinstance(k, str):
-            raise ValueError("policy_graph keys must be strs, got {}".format(
+            raise ValueError("policy keys must be strs, got {}".format(
                 type(k)))
         if not isinstance(v, tuple) or len(v) != 4:
             raise ValueError(
-                "policy_graph values must be tuples of "
+                "policy values must be tuples of "
                 "(cls, obs_space, action_space, config), got {}".format(v))
         if allow_none_graph and v[0] is None:
             pass
-        elif not issubclass(v[0], PolicyGraph):
-            raise ValueError(
-                "policy_graph tuple value 0 must be a rllib.PolicyGraph "
-                "class or None, got {}".format(v[0]))
+        elif not issubclass(v[0], Policy):
+            raise ValueError("policy tuple value 0 must be a rllib.Policy "
+                             "class or None, got {}".format(v[0]))
         if not isinstance(v[1], gym.Space):
             raise ValueError(
-                "policy_graph tuple value 1 (observation_space) must be a "
+                "policy tuple value 1 (observation_space) must be a "
                 "gym.Space, got {}".format(type(v[1])))
         if not isinstance(v[2], gym.Space):
-            raise ValueError(
-                "policy_graph tuple value 2 (action_space) must be a "
-                "gym.Space, got {}".format(type(v[2])))
+            raise ValueError("policy tuple value 2 (action_space) must be a "
+                             "gym.Space, got {}".format(type(v[2])))
         if not isinstance(v[3], dict):
-            raise ValueError(
-                "policy_graph tuple value 3 (config) must be a dict, "
-                "got {}".format(type(v[3])))
+            raise ValueError("policy tuple value 3 (config) must be a dict, "
+                             "got {}".format(type(v[3])))
 
 
 def _validate_env(env):
@@ -805,6 +801,6 @@ def _monitor(env, path):
 
 def _has_tensorflow_graph(policy_dict):
     for policy, _, _, _ in policy_dict.values():
-        if issubclass(policy, TFPolicyGraph):
+        if issubclass(policy, TFPolicy):
             return True
     return False

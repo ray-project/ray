@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import time
 
-from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
+from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils.annotations import override
@@ -43,16 +43,16 @@ class A3CTrainer(Trainer):
 
     _name = "A3C"
     _default_config = DEFAULT_CONFIG
-    _policy_graph = A3CPolicyGraph
+    _policy = A3CTFPolicy
 
     @override(Trainer)
     def _init(self, config, env_creator):
         if config["use_pytorch"]:
-            from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
-                A3CTorchPolicyGraph
-            policy_cls = A3CTorchPolicyGraph
+            from ray.rllib.agents.a3c.a3c_torch_policy import \
+                A3CTorchPolicy
+            policy_cls = A3CTorchPolicy
         else:
-            policy_cls = self._policy_graph
+            policy_cls = self._policy
 
         if config["entropy_coeff"] < 0:
             raise DeprecationWarning("entropy_coeff must be >= 0")

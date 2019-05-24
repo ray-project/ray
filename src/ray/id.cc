@@ -26,81 +26,15 @@ std::mt19937 RandomlySeededMersenneTwister() {
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
-UniqueID::UniqueID() {
-  // Set the ID to nil.
-  std::fill_n(id_, kUniqueIDSize, 255);
-}
-
-UniqueID::UniqueID(const std::string &binary) {
-  std::memcpy(&id_, binary.data(), kUniqueIDSize);
-}
-
-UniqueID::UniqueID(const plasma::UniqueID &from) {
-  std::memcpy(&id_, from.data(), kUniqueIDSize);
-}
-
-UniqueID UniqueID::from_random() {
-  std::string data(kUniqueIDSize, 0);
-  // NOTE(pcm): The right way to do this is to have one std::mt19937 per
-  // thread (using the thread_local keyword), but that's not supported on
-  // older versions of macOS (see https://stackoverflow.com/a/29929949)
-  static std::mutex random_engine_mutex;
-  std::lock_guard<std::mutex> lock(random_engine_mutex);
-  static std::mt19937 generator = RandomlySeededMersenneTwister();
-  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
-  for (int i = 0; i < kUniqueIDSize; i++) {
-    data[i] = static_cast<uint8_t>(dist(generator));
-  }
-  return UniqueID::from_binary(data);
-}
-
-UniqueID UniqueID::from_binary(const std::string &binary) { return UniqueID(binary); }
-
-const UniqueID &UniqueID::nil() {
-  static const UniqueID nil_id;
-  return nil_id;
-}
-
-bool UniqueID::is_nil() const {
-  const uint8_t *d = data();
-  for (int i = 0; i < kUniqueIDSize; ++i) {
-    if (d[i] != 255) {
-      return false;
-    }
-  }
-  return true;
-}
-
-const uint8_t *UniqueID::data() const { return id_; }
-
-size_t UniqueID::size() { return kUniqueIDSize; }
-
-std::string UniqueID::binary() const {
-  return std::string(reinterpret_cast<const char *>(id_), kUniqueIDSize);
-}
-
-std::string UniqueID::hex() const {
-  constexpr char hex[] = "0123456789abcdef";
-  std::string result;
-  for (int i = 0; i < kUniqueIDSize; i++) {
-    unsigned int val = id_[i];
-    result.push_back(hex[val >> 4]);
-    result.push_back(hex[val & 0xf]);
-  }
-  return result;
-}
-
-plasma::UniqueID UniqueID::to_plasma_id() const {
+plasma::UniqueID ObjectID::to_plasma_id() const {
   plasma::UniqueID result;
-  std::memcpy(result.mutable_data(), &id_, kUniqueIDSize);
+  std::memcpy(result.mutable_data(), data(), kUniqueIDSize);
   return result;
 }
 
-bool UniqueID::operator==(const UniqueID &rhs) const {
-  return std::memcmp(data(), rhs.data(), kUniqueIDSize) == 0;
+ObjectID::ObjectID(const plasma::UniqueID &from) {
+  std::memcpy(this->mutable_data(), from.data(), kUniqueIDSize);
 }
-
-bool UniqueID::operator!=(const UniqueID &rhs) const { return !(*this == rhs); }
 
 // This code is from https://sites.google.com/site/murmurhash/
 // and is public domain.
@@ -151,60 +85,32 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-size_t UniqueID::hash() const {
-  // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
-  // default value 0)
-  if (!hash_) {
-    hash_ = MurmurHash64A(&id_[0], kUniqueIDSize, 0);
-  }
-  return hash_;
+TaskID TaskID::GetDriverTaskID(const DriverID &driver_id) {
+  std::string driver_id_str = driver_id.binary();
+  driver_id_str.resize(size());
+  return TaskID::from_binary(driver_id_str);
 }
 
-std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
-  if (id.is_nil()) {
-    os << "NIL_ID";
-  } else {
-    os << id.hex();
-  }
-  return os;
+TaskID ObjectID::task_id() const {
+  return TaskID::from_binary(
+      std::string(reinterpret_cast<const char *>(id_), TaskID::size()));
 }
 
-const ObjectID ComputeObjectId(const TaskID &task_id, int64_t object_index) {
-  RAY_CHECK(object_index <= kMaxTaskReturns && object_index >= -kMaxTaskPuts);
-  ObjectID return_id = ObjectID(task_id);
-  int64_t *first_bytes = reinterpret_cast<int64_t *>(&return_id);
-  // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
-  // object ID.
-  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
-  *first_bytes = *first_bytes & (bitmask);
-  // OR the first byte of the object ID with the return index.
-  *first_bytes = *first_bytes | (object_index & ~bitmask);
-  return return_id;
+ObjectID ObjectID::for_put(const TaskID &task_id, int64_t put_index) {
+  RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts) << "index=" << put_index;
+  ObjectID object_id;
+  std::memcpy(object_id.id_, task_id.binary().c_str(), task_id.size());
+  object_id.index_ = -put_index;
+  return object_id;
 }
 
-const TaskID FinishTaskId(const TaskID &task_id) {
-  return TaskID(ComputeObjectId(task_id, 0));
-}
-
-const ObjectID ComputeReturnId(const TaskID &task_id, int64_t return_index) {
-  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns);
-  return ComputeObjectId(task_id, return_index);
-}
-
-const ObjectID ComputePutId(const TaskID &task_id, int64_t put_index) {
-  RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts);
-  // We multiply put_index by -1 to distinguish from return_index.
-  return ComputeObjectId(task_id, -1 * put_index);
-}
-
-const TaskID ComputeTaskId(const ObjectID &object_id) {
-  TaskID task_id = TaskID(object_id);
-  int64_t *first_bytes = reinterpret_cast<int64_t *>(&task_id);
-  // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
-  // object ID.
-  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
-  *first_bytes = *first_bytes & (bitmask);
-  return task_id;
+ObjectID ObjectID::for_task_return(const TaskID &task_id, int64_t return_index) {
+  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns) << "index="
+                                                                  << return_index;
+  ObjectID object_id;
+  std::memcpy(object_id.id_, task_id.binary().c_str(), task_id.size());
+  object_id.index_ = return_index;
+  return object_id;
 }
 
 const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
@@ -220,16 +126,21 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   // Compute the final task ID from the hash.
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
-  return FinishTaskId(TaskID::from_binary(std::string(buff, buff + kUniqueIDSize)));
+  return TaskID::from_binary(std::string(buff, buff + TaskID::size()));
 }
 
-int64_t ComputeObjectIndex(const ObjectID &object_id) {
-  const int64_t *first_bytes = reinterpret_cast<const int64_t *>(&object_id);
-  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
-  int64_t index = *first_bytes & (~bitmask);
-  index <<= (8 * sizeof(int64_t) - kObjectIdIndexSize);
-  index >>= (8 * sizeof(int64_t) - kObjectIdIndexSize);
-  return index;
-}
+#define ID_OSTREAM_OPERATOR(id_type)                              \
+  std::ostream &operator<<(std::ostream &os, const id_type &id) { \
+    if (id.is_nil()) {                                            \
+      os << "NIL_ID";                                             \
+    } else {                                                      \
+      os << id.hex();                                             \
+    }                                                             \
+    return os;                                                    \
+  }
+
+ID_OSTREAM_OPERATOR(UniqueID);
+ID_OSTREAM_OPERATOR(TaskID);
+ID_OSTREAM_OPERATOR(ObjectID);
 
 }  // namespace ray

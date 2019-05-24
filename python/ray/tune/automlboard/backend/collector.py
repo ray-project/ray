@@ -14,7 +14,7 @@ from ray.tune.automlboard.common.utils import parse_json, \
 from ray.tune.automlboard.models.models import JobRecord, \
     TrialRecord, ResultRecord
 from ray.tune.result import DEFAULT_RESULTS_DIR, JOB_META_FILE, \
-    EXPR_PARARM_FILE, EXPR_RESULT_FILE, EXPR_META_FILE
+    EXPR_PARAM_FILE, EXPR_RESULT_FILE, EXPR_META_FILE
 
 
 class CollectorService(object):
@@ -327,7 +327,7 @@ class Collector(Thread):
         if not meta:
             job_id = expr_dir.split("/")[-2]
             trial_id = expr_dir[-8:]
-            params = parse_json(os.path.join(expr_dir, EXPR_PARARM_FILE))
+            params = parse_json(os.path.join(expr_dir, EXPR_PARAM_FILE))
             meta = {
                 "trial_id": trial_id,
                 "job_id": job_id,
@@ -349,7 +349,7 @@ class Collector(Thread):
         if meta.get("end_time", None):
             meta["end_time"] = timestamp2date(meta["end_time"])
 
-        meta["params"] = parse_json(os.path.join(expr_dir, EXPR_PARARM_FILE))
+        meta["params"] = parse_json(os.path.join(expr_dir, EXPR_PARAM_FILE))
 
         return meta
 

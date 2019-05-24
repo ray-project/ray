@@ -435,6 +435,7 @@ class Node(object):
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
             self._temp_dir,
+            self._session_dir,
             self._ray_params.num_cpus,
             self._ray_params.num_gpus,
             self._ray_params.resources,

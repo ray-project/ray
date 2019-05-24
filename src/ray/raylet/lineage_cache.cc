@@ -48,7 +48,7 @@ void LineageEntry::ComputeParentTaskIds() {
   parent_task_ids_.clear();
   // A task's parents are the tasks that created its arguments.
   for (const auto &dependency : task_.GetDependencies()) {
-    parent_task_ids_.insert(ComputeTaskId(dependency));
+    parent_task_ids_.insert(dependency.task_id());
   }
 }
 

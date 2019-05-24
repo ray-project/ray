@@ -15,7 +15,7 @@ try:
 except ImportError:
     smart_open = None
 
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI

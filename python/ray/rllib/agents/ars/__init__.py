@@ -1,6 +1,6 @@
 from ray.rllib.agents.ars.ars import (ARSTrainer, DEFAULT_CONFIG)
-from ray.rllib.utils import renamed_class
+from ray.rllib.utils import renamed_agent
 
-ARSAgent = renamed_class(ARSTrainer)
+ARSAgent = renamed_agent(ARSTrainer)
 
 __all__ = ["ARSAgent", "ARSTrainer", "DEFAULT_CONFIG"]

@@ -27,7 +27,7 @@ class MultiAgentEpisode(object):
         user_data (dict): Dict that you can use for temporary storage.
 
     Use case 1: Model-based rollouts in multi-agent:
-        A custom compute_actions() function in a policy graph can inspect the
+        A custom compute_actions() function in a policy can inspect the
         current episode state and perform a number of rollouts based on the
         policies and state of other agents in the environment.
 
@@ -80,7 +80,7 @@ class MultiAgentEpisode(object):
 
     @DeveloperAPI
     def policy_for(self, agent_id=_DUMMY_AGENT_ID):
-        """Returns the policy graph for the specified agent.
+        """Returns the policy for the specified agent.
 
         If the agent is new, the policy mapping fn will be called to bind the
         agent to a policy for the duration of the episode.
