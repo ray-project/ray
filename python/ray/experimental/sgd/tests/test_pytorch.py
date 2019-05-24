@@ -9,8 +9,7 @@ import tempfile
 import torch
 
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
-from ray.experimental.sgd.pytorch.utils import Resources
-from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer
+from ray.experimental.sgd.pytorch import PyTorchTrainer, Resources
 
 from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
