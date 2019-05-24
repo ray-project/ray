@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import sys
 import torch
 
@@ -39,6 +40,10 @@ class PyTorchTrainer(object):
                 loss and optimizer using the config.
             config (dict): configuration passed to 'model_creator',
                 'data_creator', and 'optimizer_creator'.
+            num_replicas (int): the number of workers used in distributed
+                training.
+            resources_per_replica (Resources): resources used by each worker.
+                Defaults to Resources(num_cpus=1).
             batch_size (int): batch size used for SGD.
             backend (string): backend used for distributed SGD. "gloo" or
                 "nccl".
@@ -57,7 +62,7 @@ class PyTorchTrainer(object):
 
         if resources_per_replica is None:
             resources_per_replica = utils.Resources(
-                num_cpus=0, num_gpus=1, resources={})
+                num_cpus=1, num_gpus=0, resources={})
 
         Runner = ray.remote(
             num_cpus=resources_per_replica.num_cpus,
@@ -80,11 +85,19 @@ class PyTorchTrainer(object):
         """Runs a training epoch"""
         with self.optimizer_timer:
             worker_stats = ray.get([w.step.remote() for w in self.workers])
-        return worker_stats[0]  # TODO: merge worker stats
+
+        train_stats = worker_stats[0].copy()
+        train_stats["train_loss"] = np.mean(
+            [s["train_loss"] for s in worker_stats])
+        return train_stats
 
     def validate(self):
         """Evaluates the model on the validation data set"""
-        return ray.get(self.workers[0].validate.remote())
+        worker_stats = ray.get([w.validate.remote() for w in self.workers])
+        validation_stats = worker_stats[0].copy()
+        validation_stats["validation_loss"] = np.mean(
+            [s["validation_loss"] for s in worker_stats])
+        return validation_stats
 
     def get_model(self):
         """Returns the learned model"""
