@@ -232,7 +232,6 @@ def test_object_transfer_retry(ray_start_cluster):
     def f(size):
         return np.zeros(size, dtype=np.uint8)
 
-    print("WARM UP OBJECT MANAGER")
     # Transfer an object to warm up the object manager.
     ray.get(f.remote(10**6))
 
@@ -241,7 +240,6 @@ def test_object_transfer_retry(ray_start_cluster):
         ray.worker.global_worker.plasma_client.contains(
             ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
 
-    print("GET LOCALLY")
     # Get the objects locally to cause them to be transferred. This is the
     # first time the objects are getting transferred, so it should happen
     # quickly.
@@ -253,7 +251,6 @@ def test_object_transfer_retry(ray_start_cluster):
                       "push delay, so this test may not be testing the thing "
                       "it's supposed to test.")
 
-    print("FLUSH OBJECTS")
     # Cause all objects to be flushed.
     del xs
     x = np.zeros(object_store_memory // 10, dtype=np.uint8)
@@ -268,14 +265,12 @@ def test_object_transfer_retry(ray_start_cluster):
     # quickly.
     assert end_time - start_time < repeated_push_delay
 
-    print("GET AGAIN")
     # Get the objects again and make sure they get transferred.
     xs = ray.get(x_ids)
     end_transfer_time = time.time()
     # We should have had to wait for the repeated push delay.
     assert end_transfer_time - start_time >= repeated_push_delay
 
-    print("FLUSH AGAIN")
     # Flush the objects again and wait longer than the repeated push delay and
     # make sure that the objects are transferred again.
     del xs
@@ -287,7 +282,6 @@ def test_object_transfer_retry(ray_start_cluster):
 
     time.sleep(repeated_push_delay)
 
-    print("GET LOCALLY AGAIN")
     # Get the objects locally to cause them to be transferred. This should
     # happen quickly.
     start_time = time.time()
