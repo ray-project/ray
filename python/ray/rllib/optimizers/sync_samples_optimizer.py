@@ -69,7 +69,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
-        return fetches
+        return self.learner_stats
 
     @override(PolicyOptimizer)
     def stats(self):
