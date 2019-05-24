@@ -72,7 +72,6 @@ class RemoteFunction(object):
         self._function_signature = ray.signature.extract_signature(
             self._function)
 
-        # Export the function.
         self._last_driver_id_exported_for = None
 
     def __call__(self, *args, **kwargs):

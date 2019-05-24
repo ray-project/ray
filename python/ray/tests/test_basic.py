@@ -305,7 +305,7 @@ def test_complex_serialization(ray_start_regular):
 
 def test_nested_functions(ray_start_regular):
     # Make sure that remote functions can use other values that are defined
-    # after they them but before the first function invocation.
+    # after the remote function but before the first function invocation.
     @ray.remote
     def f():
         return g(), ray.get(h.remote())
