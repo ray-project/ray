@@ -68,16 +68,16 @@ class TreeAggregator(Aggregator):
         for i, ev in enumerate(self.workers.remote_workers()):
             assigned_workers[i % self.num_aggregation_workers].append(ev)
 
-        self.workers = aggregators
-        for i, worker in enumerate(self.workers):
-            worker.init.remote(self.broadcasted_weights, assigned_workers[i],
-                               self.max_sample_requests_in_flight_per_worker,
-                               self.replay_proportion,
-                               self.replay_buffer_num_slots,
-                               self.train_batch_size, self.sample_batch_size)
+        self.aggregators = aggregators
+        for i, agg in enumerate(self.aggregators):
+            agg.init.remote(self.broadcasted_weights, assigned_workers[i],
+                            self.max_sample_requests_in_flight_per_worker,
+                            self.replay_proportion,
+                            self.replay_buffer_num_slots,
+                            self.train_batch_size, self.sample_batch_size)
 
         self.agg_tasks = TaskPool()
-        for agg in self.workers:
+        for agg in self.aggregators:
             agg.set_weights.remote(self.broadcasted_weights)
             self.agg_tasks.add(agg, agg.get_train_batches.remote())
 
