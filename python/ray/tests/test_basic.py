@@ -303,6 +303,23 @@ def test_complex_serialization(ray_start_regular):
         assert_equal(obj, ray.get(ray.put(obj)))
 
 
+def test_nested_functions(ray_start_regular):
+    # Make sure that remote functions can use other values that are defined
+    # after the remote function but before the first function invocation.
+    @ray.remote
+    def f():
+        return g(), ray.get(h.remote())
+
+    def g():
+        return 1
+
+    @ray.remote
+    def h():
+        return 2
+
+    assert ray.get(f.remote()) == (1, 2)
+
+
 def test_ray_recursive_objects(ray_start_regular):
     class ClassA(object):
         pass
@@ -2968,3 +2985,17 @@ def test_export_after_shutdown(ray_start_regular):
     ray.get(f.remote())
     a = Actor.remote()
     ray.get(a.method.remote())
+
+    ray.shutdown()
+
+    # Start Ray again and make sure that these definitions can be exported from
+    # workers.
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def export_definitions_from_worker(remote_function, actor_class):
+        ray.get(remote_function.remote())
+        actor_handle = actor_class.remote()
+        ray.get(actor_handle.method.remote())
+
+    ray.get(export_definitions_from_worker.remote(f, Actor))

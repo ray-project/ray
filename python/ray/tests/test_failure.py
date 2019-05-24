@@ -95,7 +95,15 @@ def temporary_helper_function():
     # fail when it is unpickled.
     @ray.remote
     def g():
-        return module.temporary_python_file()
+        try:
+            module.temporary_python_file()
+        except Exception:
+            # This test is not concerned with the error from running this
+            # function. Only from unpickling the remote function.
+            pass
+
+    # Invoke the function so that the definition is exported.
+    g.remote()
 
     wait_for_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR, 2)
     errors = relevant_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR)
@@ -498,6 +506,9 @@ def test_export_large_objects(ray_start_regular):
     @ray.remote
     def f():
         large_object
+
+    # Invoke the function so that the definition is exported.
+    f.remote()
 
     # Make sure that a warning is generated.
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 1)
