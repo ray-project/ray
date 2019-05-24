@@ -6,10 +6,8 @@ See https://github.com/ray-project/ray/issues/3721.
 
 # WARNING: Any additional ID types defined in this file must be added to the
 # _ID_TYPES list at the bottom of this file.
-from ray.includes.common cimport (
-    ComputePutId,
-    ComputeTaskId,
-)
+import os
+
 from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CActorClassID,
@@ -28,12 +26,12 @@ from ray.includes.unique_ids cimport (
 from ray.utils import decode
 
 
-def check_id(b):
+def check_id(b, size=kUniqueIDSize):
     if not isinstance(b, bytes):
         raise TypeError("Unsupported type: " + str(type(b)))
-    if len(b) != kUniqueIDSize:
+    if len(b) != size:
         raise ValueError("ID string needs to have length " +
-                         str(kUniqueIDSize))
+                         str(size))
 
 
 cdef extern from "ray/constants.h" nogil:
@@ -41,28 +39,27 @@ cdef extern from "ray/constants.h" nogil:
     cdef int64_t kMaxTaskPuts
 
 
-cdef class UniqueID:
-    cdef CUniqueID data
+cdef class BaseID:
 
-    def __init__(self, id):
-        check_id(id)
-        self.data = CUniqueID.from_binary(id)
+    # To avoid the error of "Python int too large to convert to C ssize_t",
+    # here `cdef size_t` is required.
+    cdef size_t hash(self):
+        pass
 
-    @classmethod
-    def from_binary(cls, id_bytes):
-        if not isinstance(id_bytes, bytes):
-            raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return cls(id_bytes)
+    def binary(self):
+        pass
 
-    @classmethod
-    def nil(cls):
-        return cls(CUniqueID.nil().binary())
+    def size(self):
+        pass
 
-    def __hash__(self):
-        return self.data.hash()
+    def hex(self):
+        pass
 
     def is_nil(self):
-        return self.data.is_nil()
+        pass
+
+    def __hash__(self):
+        return self.hash()
 
     def __eq__(self, other):
         return type(self) == type(other) and self.binary() == other.binary()
@@ -70,17 +67,8 @@ cdef class UniqueID:
     def __ne__(self, other):
         return self.binary() != other.binary()
 
-    def size(self):
-        return self.data.size()
-
-    def binary(self):
-        return self.data.binary()
-
     def __bytes__(self):
         return self.binary()
-
-    def hex(self):
-        return decode(self.data.hex())
 
     def __hex__(self):
         return self.hex()
@@ -98,11 +86,52 @@ cdef class UniqueID:
         # NOTE: The hash function used here must match the one in
         # GetRedisContext in src/ray/gcs/tables.h. Changes to the
         # hash function should only be made through std::hash in
-        # src/common/common.h
+        # src/common/common.h.
+        # Do not use __hash__ that returns signed uint64_t, which
+        # is different from std::hash in c++ code.
+        return self.hash()
+
+
+cdef class UniqueID(BaseID):
+    cdef CUniqueID data
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CUniqueID.from_binary(id)
+
+    @classmethod
+    def from_binary(cls, id_bytes):
+        if not isinstance(id_bytes, bytes):
+            raise TypeError("Expect bytes, got " + str(type(id_bytes)))
+        return cls(id_bytes)
+
+    @classmethod
+    def nil(cls):
+        return cls(CUniqueID.nil().binary())
+
+    
+    @classmethod
+    def from_random(cls):
+        return cls(os.urandom(CUniqueID.size()))
+
+    def size(self):
+        return CUniqueID.size()
+
+    def binary(self):
+        return self.data.binary()
+
+    def hex(self):
+        return decode(self.data.hex())
+    
+    def is_nil(self):
+        return self.data.is_nil()
+
+    cdef size_t hash(self):
         return self.data.hash()
 
 
-cdef class ObjectID(UniqueID):
+cdef class ObjectID(BaseID):
+    cdef CObjectID data
 
     def __init__(self, id):
         check_id(id)
@@ -111,15 +140,66 @@ cdef class ObjectID(UniqueID):
     cdef CObjectID native(self):
         return <CObjectID>self.data
 
+    def size(self):
+        return CObjectID.size()
 
-cdef class TaskID(UniqueID):
+    def binary(self):
+        return self.data.binary()
+
+    def hex(self):
+        return decode(self.data.hex())
+    
+    def is_nil(self):
+        return self.data.is_nil()
+
+    cdef size_t hash(self):
+        return self.data.hash()
+
+    @classmethod
+    def nil(cls):
+        return cls(CObjectID.nil().binary())
+
+    @classmethod
+    def from_random(cls):
+        return cls(os.urandom(CObjectID.size()))
+
+
+cdef class TaskID(BaseID):
+    cdef CTaskID data
 
     def __init__(self, id):
-        check_id(id)
+        check_id(id, CTaskID.size())
         self.data = CTaskID.from_binary(<c_string>id)
 
     cdef CTaskID native(self):
         return <CTaskID>self.data
+
+    def size(self):
+        return CTaskID.size()
+
+    def binary(self):
+        return self.data.binary()
+
+    def hex(self):
+        return decode(self.data.hex())
+
+    def is_nil(self):
+        return self.data.is_nil()
+
+    cdef size_t hash(self):
+        return self.data.hash()
+
+    @classmethod
+    def nil(cls):
+        return cls(CTaskID.nil().binary())
+
+    @classmethod
+    def size(cla):
+        return CTaskID.size()
+
+    @classmethod
+    def from_random(cls):
+        return cls(os.urandom(CTaskID.size()))
 
 
 cdef class ClientID(UniqueID):

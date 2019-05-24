@@ -1,6 +1,7 @@
 package org.ray.api;
 
 import java.util.List;
+import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
@@ -65,7 +66,7 @@ public final class Ray extends RayCall {
    * @param objectId The ID of the object to get.
    * @return The Java object.
    */
-  public static <T> T get(UniqueId objectId) {
+  public static <T> T get(ObjectId objectId) {
     return runtime.get(objectId);
   }
 
@@ -75,7 +76,7 @@ public final class Ray extends RayCall {
    * @param objectIds The list of object IDs.
    * @return A list of Java objects.
    */
-  public static <T> List<T> get(List<UniqueId> objectIds) {
+  public static <T> List<T> get(List<ObjectId> objectIds) {
     return runtime.get(objectIds);
   }
 
@@ -121,6 +122,21 @@ public final class Ray extends RayCall {
    */
   public static RayRuntime internal() {
     return runtime;
+  }
+
+  /**
+   * Update the resource for the specified client.
+   * Set the resource for the specific node.
+   */
+  public static void setResource(UniqueId nodeId, String resourceName, double capacity) {
+    runtime.setResource(resourceName, capacity, nodeId);
+  }
+
+  /**
+   * Set the resource for local node.
+   */
+  public static void setResource(String resourceName, double capacity) {
+    runtime.setResource(resourceName, capacity, UniqueId.NIL);
   }
 
   /**

@@ -852,7 +852,7 @@ void NodeManager::ProcessClientMessage(
       // Clean up their creating tasks from GCS.
       std::vector<TaskID> creating_task_ids;
       for (const auto &object_id : object_ids) {
-        creating_task_ids.push_back(ComputeTaskId(object_id));
+        creating_task_ids.push_back(object_id.task_id());
       }
       gcs_client_->raylet_task_table().Delete(DriverID::nil(), creating_task_ids);
     }
@@ -887,11 +887,12 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // message is actually the ID of the driver task, while client_id represents the
     // real driver ID, which can associate all the tasks/actors for a given driver,
     // which is set to the worker ID.
-    const DriverID driver_task_id = from_flatbuf<DriverID>(*message->driver_id());
-    worker->AssignTaskId(TaskID(driver_task_id));
+    const DriverID driver_id = from_flatbuf<DriverID>(*message->driver_id());
+    TaskID driver_task_id = TaskID::GetDriverTaskID(driver_id);
+    worker->AssignTaskId(driver_task_id);
     worker->AssignDriverId(from_flatbuf<DriverID>(*message->client_id()));
     worker_pool_.RegisterDriver(std::move(worker));
-    local_queues_.AddDriverTaskId(TaskID(driver_task_id));
+    local_queues_.AddDriverTaskId(driver_task_id);
   }
 }
 

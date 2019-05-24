@@ -171,7 +171,7 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
 }
 
 void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) {
-  TaskID task_id = ComputeTaskId(object_id);
+  TaskID task_id = object_id.task_id();
   auto it = listening_tasks_.find(task_id);
   // Add this object to the list of objects created by the same task.
   if (it == listening_tasks_.end()) {
@@ -185,7 +185,7 @@ void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) 
 }
 
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
-  TaskID task_id = ComputeTaskId(object_id);
+  TaskID task_id = object_id.task_id();
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
     // We already stopped listening for this task.
