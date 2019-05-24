@@ -40,7 +40,7 @@ def test_train(ray_start_2_cpus):  # noqa: F811
 
 @pytest.mark.skipif(  # noqa: F811
     sys.platform == "darwin", reason="Doesn't work on macOS.")
-def test_save_and_restore(ray_start_2_cpus):
+def test_save_and_restore(ray_start_2_cpus):  # noqa: F811
     trainer1 = PyTorchTrainer(
         model_creator,
         data_creator,
