@@ -46,33 +46,29 @@ namespace ray {
 
 namespace gcs {
 
-CallbackReply::CallbackReply(redisReply *redisReply) {
-  RAY_CHECK(nullptr != redisReply);
-  RAY_CHECK(redisReply->type != REDIS_REPLY_ERROR) << "Got an error in redis reply:"
-                                                   << redisReply->str;
-  this->redis_reply_ = redisReply;
+CallbackReply::CallbackReply(redisReply *redis_reply) {
+  RAY_CHECK(nullptr != redis_reply);
+  RAY_CHECK(redis_reply->type != REDIS_REPLY_ERROR) << "Got an error in redis reply: "
+                                                    << redis_reply->str;
+  this->redis_reply_ = redis_reply;
 }
 
 bool CallbackReply::IsNil() const { return REDIS_REPLY_NIL == redis_reply_->type; }
 
-uint64_t CallbackReply::ReadAsInteger() const {
-  RAY_CHECK(REDIS_REPLY_INTEGER == redis_reply_->type) << "Unexpected type:"
+int64_t CallbackReply::ReadAsInteger() const {
+  RAY_CHECK(REDIS_REPLY_INTEGER == redis_reply_->type) << "Unexpected type: "
                                                        << redis_reply_->type;
-  return static_cast<uint64_t>(redis_reply_->integer);
+  return static_cast<int64_t>(redis_reply_->integer);
 }
 
 std::string CallbackReply::ReadAsString() const {
-  if (REDIS_REPLY_NIL == redis_reply_->type || REDIS_REPLY_STATUS == redis_reply_->type) {
-    return "";
-  }
-
-  RAY_CHECK(REDIS_REPLY_STRING == redis_reply_->type) << "Unexpected type:"
+  RAY_CHECK(REDIS_REPLY_STRING == redis_reply_->type) << "Unexpected type: "
                                                       << redis_reply_->type;
   return std::string(redis_reply_->str, redis_reply_->len);
 }
 
 Status CallbackReply::ReadAsStatus() const {
-  RAY_CHECK(REDIS_REPLY_STATUS == redis_reply_->type) << "Unexpected type:"
+  RAY_CHECK(REDIS_REPLY_STATUS == redis_reply_->type) << "Unexpected type: "
                                                       << redis_reply_->type;
   const std::string status_str(redis_reply_->str, redis_reply_->len);
   if ("OK" == status_str) {
@@ -83,7 +79,7 @@ Status CallbackReply::ReadAsStatus() const {
 }
 
 std::string CallbackReply::ReadAsPubsubData() const {
-  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply_->type) << "Unexpected type:"
+  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply_->type) << "Unexpected type: "
                                                      << redis_reply_->type;
 
   std::string data = "";
@@ -105,10 +101,11 @@ std::string CallbackReply::ReadAsPubsubData() const {
   return data;
 }
 
-std::vector<std::string> CallbackReply::ReadAsStringArray() const {
+void CallbackReply::ReadAsStringArray(std::vector<std::string> *array) const {
+  RAY_CHECK(nullptr != array) << "Argument `array` must not be nullptr.";
   RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply_->type);
-  const auto array_size = static_cast<size_t>(redis_reply_->elements);
 
+  const auto array_size = static_cast<size_t>(redis_reply_->elements);
   if (array_size > 0) {
     auto *entry = redis_reply_->element[0];
     const bool is_pubsub_reply =
@@ -116,13 +113,12 @@ std::vector<std::string> CallbackReply::ReadAsStringArray() const {
     RAY_CHECK(!is_pubsub_reply) << "Subpub reply cannot be read as a string array.";
   }
 
-  std::vector<std::string> ret(array_size);
+  array->resize(array_size);
   for (size_t i = 0; i < array_size; ++i) {
     auto *entry = redis_reply_->element[i];
-    RAY_CHECK(REDIS_REPLY_STRING == entry->type) << "Unexcepted type=" << entry->type;
-    ret.push_back(std::string(entry->str, entry->len));
+    RAY_CHECK(REDIS_REPLY_STRING == entry->type) << "Unexcepted type: " << entry->type;
+    array->push_back(std::string(entry->str, entry->len));
   }
-  return ret;
 }
 
 // This is a global redis callback which will be registered for every

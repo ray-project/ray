@@ -34,7 +34,7 @@ class CallbackReply {
   bool IsNil() const;
 
   /// Read this reply data as an integer.
-  uint64_t ReadAsInteger() const;
+  int64_t ReadAsInteger() const;
 
   /// Read this reply data as a string.
   ///
@@ -49,7 +49,10 @@ class CallbackReply {
   std::string ReadAsPubsubData() const;
 
   /// Read this reply data as a string array.
-  std::vector<std::string> ReadAsStringArray() const;
+  ///
+  /// \param array Since the return-value may be large,
+  /// make it as an output parameter.
+  void ReadAsStringArray(std::vector<std::string> *array) const;
 
  private:
   redisReply *redis_reply_;

@@ -121,7 +121,7 @@ class RAY_EXPORT Status {
     return Status(StatusCode::RedisError, msg);
   }
 
-  // Returns true if the status indicates success.
+  // Returns true iff the status indicates success.
   bool ok() const { return (state_ == NULL); }
 
   bool IsOutOfMemory() const { return code() == StatusCode::OutOfMemory; }

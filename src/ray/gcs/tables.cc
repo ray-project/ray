@@ -64,8 +64,8 @@ Status Log<ID, Data>::AppendAt(const DriverID &driver_id, const ID &id,
                                const WriteCallback &failure, int log_length) {
   num_appends_++;
   auto callback = [this, id, dataT, done, failure](const CallbackReply &reply) {
-    const auto data = reply.ReadAsString();
-    if (data.empty()) {
+    const auto status = reply.ReadAsStatus();
+    if (status.ok()) {
       if (done != nullptr) {
         (done)(client_, id, *dataT);
       }
@@ -88,10 +88,10 @@ Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
                              const Callback &lookup) {
   num_lookups_++;
   auto callback = [this, id, lookup](const CallbackReply &reply) {
-    const auto data = reply.ReadAsString();
     if (lookup != nullptr) {
       std::vector<DataT> results;
-      if (!data.empty()) {
+      if (!reply.IsNil()) {
+        const auto data = reply.ReadAsString();
         auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
         RAY_CHECK(from_flatbuf<ID>(*root->id()) == id);
         for (size_t i = 0; i < root->entries()->size(); i++) {
@@ -237,7 +237,6 @@ Status Table<ID, Data>::Add(const DriverID &driver_id, const ID &id,
                             std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
   auto callback = [this, id, dataT, done](const CallbackReply &reply) {
-    RAY_IGNORE_EXPR(reply);
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
@@ -303,7 +302,6 @@ Status Set<ID, Data>::Add(const DriverID &driver_id, const ID &id,
                           std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
   auto callback = [this, id, dataT, done](const CallbackReply &reply) {
-    RAY_IGNORE_EXPR(reply);
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
@@ -321,7 +319,6 @@ Status Set<ID, Data>::Remove(const DriverID &driver_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_removes_++;
   auto callback = [this, id, dataT, done](const CallbackReply &reply) {
-    RAY_IGNORE_EXPR(reply);
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
