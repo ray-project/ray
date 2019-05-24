@@ -32,8 +32,8 @@ class PyTorchRunner(object):
                 the config.
             data_creator (dict -> Dataset, Dataset): creates the training and
                 validation data sets using the config.
-            optimizer_creator (model, dict -> loss, optimizer): creates the
-                loss and optimizer using the config.
+            optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
+                creates the loss and optimizer using the config.
             config (dict): configuration passed to 'model_creator',
                 'data_creator', and 'optimizer_creator'.
             batch_size (int): batch size used for SGD.

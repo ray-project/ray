@@ -31,8 +31,7 @@ def model_creator(config):
 def optimizer_creator(model, config):
     """Returns criterion, optimizer"""
     criterion = nn.MSELoss()
-    optimizer = torch.optim.SGD(
-        model.parameters(), lr=1e-4)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-4)
     return criterion, optimizer
 
 

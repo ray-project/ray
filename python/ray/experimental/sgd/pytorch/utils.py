@@ -8,6 +8,7 @@ import numpy as np
 import socket
 import time
 import torch
+import torch.nn as nn
 
 
 def train(train_iterator, model, criterion, optimizer):
@@ -223,3 +224,17 @@ class Resources(
 
         return super(Resources, cls).__new__(cls, num_cpus, num_gpus,
                                              resources)
+
+
+def sgd_mse_optimizer(model, config):
+    """Returns the mean squared error criterion and SGD optimizer.
+
+    Args:
+        model (torch.nn.Module): the model to optimize.
+        config (dict): configuration for the optimizer.
+            lr (float): the learning rate. defaults to 0.01.
+    """
+    learning_rate = config.get("lr", 0.01)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+    return criterion, optimizer

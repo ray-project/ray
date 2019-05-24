@@ -19,16 +19,15 @@ class PyTorchTrainer(object):
     coordinate gradient updates to train the provided model.
     """
 
-    def __init__(
-            self,
-            model_creator,
-            data_creator,
-            optimizer_creator=None,  # SGD as default TODO: handle this
-            config=None,
-            num_replicas=1,
-            resources_per_replica=None,
-            batch_size=16,
-            backend="gloo"):
+    def __init__(self,
+                 model_creator,
+                 data_creator,
+                 optimizer_creator=utils.sgd_mse_optimizer,
+                 config=None,
+                 num_replicas=1,
+                 resources_per_replica=None,
+                 batch_size=16,
+                 backend="gloo"):
         """Sets up the PyTorch trainer.
 
         Args:
@@ -36,8 +35,8 @@ class PyTorchTrainer(object):
                 using the config.
             data_creator (dict -> Dataset, Dataset): creates the training
                 and validation data sets using the config.
-            optimizer_creator (model, dict -> loss, optimizer): creates the
-                loss and optimizer using the config.
+            optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
+                creates the loss and optimizer using the config.
             config (dict): configuration passed to 'model_creator',
                 'data_creator', and 'optimizer_creator'.
             num_replicas (int): the number of workers used in distributed
