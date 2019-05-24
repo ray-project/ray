@@ -121,7 +121,7 @@ public class TaskSpec {
     this.executionDependencies = new ArrayList<>();
     returnIds = new ObjectId[numReturns];
     for (int i = 0; i < numReturns; ++i) {
-      returnIds[i] = IdUtil.computeReturnId(taskId, i);
+      returnIds[i] = IdUtil.computeReturnId(taskId, i + 1);
     }
   }
 
