@@ -273,7 +273,7 @@ class Trial(object):
         # Trial config
         self.trainable_name = trainable_name
         self.config = config or {}
-        self.local_dir = local_dir # This remains unexpanded for syncing.
+        self.local_dir = local_dir  # This remains unexpanded for syncing.
         self.experiment_tag = experiment_tag
         self.resources = (
             resources
