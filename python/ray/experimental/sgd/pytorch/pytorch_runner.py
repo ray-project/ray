@@ -36,7 +36,7 @@ class PyTorchRunner(object):
                 creates the loss and optimizer using the config.
             config (dict): configuration passed to 'model_creator',
                 'data_creator', and 'optimizer_creator'.
-            batch_size (int): batch size used for SGD.
+            batch_size (int): batch size used in an update.
             backend (string): backend used for distributed SGD. "gloo" or
                 "nccl".
         """

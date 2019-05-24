@@ -43,7 +43,7 @@ class PyTorchTrainer(object):
                 training.
             resources_per_replica (Resources): resources used by each worker.
                 Defaults to Resources(num_cpus=1).
-            batch_size (int): batch size used for SGD.
+            batch_size (int): batch size per replica for an update.
             backend (string): backend used for distributed SGD. "gloo" or
                 "nccl".
         """
