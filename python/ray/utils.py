@@ -216,6 +216,10 @@ def binary_to_object_id(binary_object_id):
     return ray.ObjectID(binary_object_id)
 
 
+def binary_to_task_id(binary_task_id):
+    return ray.TaskID(binary_task_id)
+
+
 def binary_to_hex(identifier):
     hex_identifier = binascii.hexlify(identifier)
     if sys.version_info >= (3, 0):

@@ -8,7 +8,7 @@ import unittest
 
 import ray
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
-from ray.rllib.tests.test_policy_evaluator import MockPolicyGraph
+from ray.rllib.tests.test_policy_evaluator import MockPolicy
 
 
 class TestPerf(unittest.TestCase):
@@ -19,7 +19,7 @@ class TestPerf(unittest.TestCase):
         for _ in range(20):
             ev = PolicyEvaluator(
                 env_creator=lambda _: gym.make("CartPole-v0"),
-                policy_graph=MockPolicyGraph,
+                policy=MockPolicy,
                 batch_steps=100)
             start = time.time()
             count = 0

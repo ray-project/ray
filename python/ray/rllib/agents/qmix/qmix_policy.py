@@ -14,8 +14,8 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.lstm import chop_into_sequences
@@ -130,7 +130,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-class QMixPolicyGraph(PolicyGraph):
+class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 
     You must use MultiAgentEnv.with_agent_groups() to group agents
@@ -213,7 +213,7 @@ class QMixPolicyGraph(PolicyGraph):
             alpha=config["optim_alpha"],
             eps=config["optim_eps"])
 
-    @override(PolicyGraph)
+    @override(Policy)
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -243,7 +243,7 @@ class QMixPolicyGraph(PolicyGraph):
 
         return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
 
-    @override(PolicyGraph)
+    @override(Policy)
     def learn_on_batch(self, samples):
         obs_batch, action_mask = self._unpack_observation(
             samples[SampleBatch.CUR_OBS])
@@ -314,22 +314,22 @@ class QMixPolicyGraph(PolicyGraph):
         }
         return {LEARNER_STATS_KEY: stats}
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_initial_state(self):
         return [
             s.expand([self.n_agents, -1]).numpy()
             for s in self.model.state_init()
         ]
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_weights(self):
         return {"model": self.model.state_dict()}
 
-    @override(PolicyGraph)
+    @override(Policy)
     def set_weights(self, weights):
         self.model.load_state_dict(weights["model"])
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_state(self):
         return {
             "model": self.model.state_dict(),
@@ -340,7 +340,7 @@ class QMixPolicyGraph(PolicyGraph):
             "cur_epsilon": self.cur_epsilon,
         }
 
-    @override(PolicyGraph)
+    @override(Policy)
     def set_state(self, state):
         self.model.load_state_dict(state["model"])
         self.target_model.load_state_dict(state["target_model"])

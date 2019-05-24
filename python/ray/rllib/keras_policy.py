@@ -4,19 +4,19 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.policy.policy import Policy
 
 
 def _sample(probs):
     return [np.random.choice(len(pr), p=pr) for pr in probs]
 
 
-class KerasPolicyGraph(PolicyGraph):
-    """Initialize the Keras Policy Graph.
+class KerasPolicy(Policy):
+    """Initialize the Keras Policy.
 
-    This is a Policy Graph used for models with actor and critics.
+    This is a Policy used for models with actor and critics.
     Note: This class is built for specific usage of Actor-Critic models,
-    and is less general compared to TFPolicyGraph and TorchPolicyGraphs.
+    and is less general compared to TFPolicy and TorchPolicies.
 
     Args:
         observation_space (gym.Space): Observation space of the policy.
@@ -32,7 +32,7 @@ class KerasPolicyGraph(PolicyGraph):
                  config,
                  actor=None,
                  critic=None):
-        PolicyGraph.__init__(self, observation_space, action_space, config)
+        Policy.__init__(self, observation_space, action_space, config)
         self.actor = actor
         self.critic = critic
         self.models = [self.actor, self.critic]

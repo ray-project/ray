@@ -1563,7 +1563,7 @@ def start_raylet_monitor(redis_address,
         "--config_list={}".format(config_str),
     ]
     if redis_password:
-        command += [redis_password]
+        command += ["--redis_password={}".format(redis_password)]
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET_MONITOR,
