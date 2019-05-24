@@ -91,7 +91,7 @@ def run(run_or_experiment,
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
-        ray_redis_address="auto"):
+        ray_auto_init=True):
     """Executes training.
 
     Args:
@@ -191,7 +191,7 @@ def run(run_or_experiment,
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
         reuse_actors=reuse_actors,
-        ray_redis_address=ray_redis_address)
+        ray_auto_init=ray_auto_init)
     experiment = run_or_experiment
     if not isinstance(run_or_experiment, Experiment):
         experiment = Experiment(

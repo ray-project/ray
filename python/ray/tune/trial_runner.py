@@ -18,6 +18,7 @@ from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.sample import function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.util import warn_if_slow
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.web_server import TuneServer
@@ -98,7 +99,7 @@ class TrialRunner(object):
     CKPT_FILE_TMPL = "experiment_state-{}.json"
 
     def __init__(self,
-                 search_alg,
+                 search_alg=None,
                  scheduler=None,
                  launch_web_server=False,
                  metadata_checkpoint_dir=None,
@@ -127,9 +128,9 @@ class TrialRunner(object):
                 time-multiplexing mode).
             trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
         """
-        self._search_alg = search_alg
+        self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
-        self.trial_executor = trial_executor
+        self.trial_executor = trial_executor or RayTrialExecutor()
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -226,7 +227,6 @@ class TrialRunner(object):
             "This will ignore any new changes to the specification."
         ]))
 
-        from ray.tune.suggest import BasicVariantGenerator
         runner = TrialRunner(
             search_alg or BasicVariantGenerator(),
             scheduler=scheduler,
