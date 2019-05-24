@@ -39,9 +39,7 @@ def get_learner_stats(grad_info):
 
 
 @DeveloperAPI
-def collect_metrics(local_worker=None,
-                    remote_workers=[],
-                    timeout_seconds=180):
+def collect_metrics(local_worker=None, remote_workers=[], timeout_seconds=180):
     """Gathers episode metrics from RolloutWorker instances."""
 
     episodes, num_dropped = collect_episodes(
@@ -51,15 +49,13 @@ def collect_metrics(local_worker=None,
 
 
 @DeveloperAPI
-def collect_episodes(local_worker=None,
-                     remote_workers=[],
+def collect_episodes(local_worker=None, remote_workers=[],
                      timeout_seconds=180):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
     if remote_workers:
         pending = [
-            a.apply.remote(lambda ev: ev.get_metrics())
-            for a in remote_workers
+            a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_workers
         ]
         collected, _ = ray.wait(
             pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
