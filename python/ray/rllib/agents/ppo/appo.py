@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.ppo.appo_policy_graph import AsyncPPOTFPolicy
+from ray.rllib.agents.ppo.appo_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents import impala
 from ray.rllib.utils.annotations import override
@@ -57,8 +57,8 @@ class APPOTrainer(impala.ImpalaTrainer):
 
     _name = "APPO"
     _default_config = DEFAULT_CONFIG
-    _policy_graph = AsyncPPOTFPolicy
+    _policy = AsyncPPOTFPolicy
 
     @override(impala.ImpalaTrainer)
-    def _get_policy_graph(self):
+    def _get_policy(self):
         return AsyncPPOTFPolicy

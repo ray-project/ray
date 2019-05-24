@@ -5,7 +5,7 @@ from __future__ import print_function
 import logging
 
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOTFPolicy
+from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 
@@ -143,8 +143,7 @@ def validate_config(config):
         raise ValueError(
             "Episode truncation is not supported without a value "
             "function. Consider setting batch_mode=complete_episodes.")
-    if (config["multiagent"]["policy_graphs"]
-            and not config["simple_optimizer"]):
+    if (config["multiagent"]["policies"] and not config["simple_optimizer"]):
         logger.info(
             "In multi-agent mode, policies will be optimized sequentially "
             "by the multi-GPU optimizer. Consider setting "

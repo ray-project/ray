@@ -17,6 +17,8 @@ import java.util.concurrent.Executors;
 import org.apache.commons.lang3.NotImplementedException;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
+import org.ray.api.id.ObjectId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.Worker;
@@ -33,7 +35,7 @@ public class MockRayletClient implements RayletClient {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MockRayletClient.class);
 
-  private final Map<UniqueId, Set<TaskSpec>> waitingTasks = new ConcurrentHashMap<>();
+  private final Map<ObjectId, Set<TaskSpec>> waitingTasks = new ConcurrentHashMap<>();
   private final MockObjectStore store;
   private final RayDevRuntime runtime;
   private final ExecutorService exec;
@@ -52,7 +54,7 @@ public class MockRayletClient implements RayletClient {
     currentWorker = new ThreadLocal<>();
   }
 
-  public synchronized void onObjectPut(UniqueId id) {
+  public synchronized void onObjectPut(ObjectId id) {
     Set<TaskSpec> tasks = waitingTasks.get(id);
     if (tasks != null) {
       waitingTasks.remove(id);
@@ -98,7 +100,7 @@ public class MockRayletClient implements RayletClient {
   @Override
   public synchronized void submitTask(TaskSpec task) {
     LOGGER.debug("Submitting task: {}.", task);
-    Set<UniqueId> unreadyObjects = getUnreadyObjects(task);
+    Set<ObjectId> unreadyObjects = getUnreadyObjects(task);
     if (unreadyObjects.isEmpty()) {
       // If all dependencies are ready, execute this task.
       exec.submit(() -> {
@@ -109,7 +111,7 @@ public class MockRayletClient implements RayletClient {
           // put the dummy object in object store, so those tasks which depends on it
           // can be executed.
           if (task.isActorCreationTask() || task.isActorTask()) {
-            UniqueId[] returnIds = task.returnIds;
+            ObjectId[] returnIds = task.returnIds;
             store.put(returnIds[returnIds.length - 1].getBytes(),
                     new byte[]{}, new byte[]{});
           }
@@ -119,14 +121,14 @@ public class MockRayletClient implements RayletClient {
       });
     } else {
       // If some dependencies aren't ready yet, put this task in waiting list.
-      for (UniqueId id : unreadyObjects) {
+      for (ObjectId id : unreadyObjects) {
         waitingTasks.computeIfAbsent(id, k -> new HashSet<>()).add(task);
       }
     }
   }
 
-  private Set<UniqueId> getUnreadyObjects(TaskSpec spec) {
-    Set<UniqueId> unreadyObjects = new HashSet<>();
+  private Set<ObjectId> getUnreadyObjects(TaskSpec spec) {
+    Set<ObjectId> unreadyObjects = new HashSet<>();
     // Check whether task arguments are ready.
     for (FunctionArg arg : spec.args) {
       if (arg.id != null) {
@@ -136,7 +138,7 @@ public class MockRayletClient implements RayletClient {
       }
     }
     // Check whether task dependencies are ready.
-    for (UniqueId id : spec.getExecutionDependencies()) {
+    for (ObjectId id : spec.getExecutionDependencies()) {
       if (!store.isObjectReady(id)) {
         unreadyObjects.add(id);
       }
@@ -151,24 +153,24 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
-      UniqueId currentTaskId) {
+  public void fetchOrReconstruct(List<ObjectId> objectIds, boolean fetchOnly,
+      TaskId currentTaskId) {
 
   }
 
   @Override
-  public void notifyUnblocked(UniqueId currentTaskId) {
+  public void notifyUnblocked(TaskId currentTaskId) {
 
   }
 
   @Override
-  public UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex) {
-    return UniqueId.randomId();
+  public TaskId generateTaskId(UniqueId driverId, TaskId parentTaskId, int taskIndex) {
+    return TaskId.randomId();
   }
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
-          timeoutMs, UniqueId currentTaskId) {
+          timeoutMs, TaskId currentTaskId) {
     if (waitFor == null || waitFor.isEmpty()) {
       return new WaitResult<>(ImmutableList.of(), ImmutableList.of());
     }
@@ -191,9 +193,9 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly,
+  public void freePlasmaObjects(List<ObjectId> objectIds, boolean localOnly,
                                 boolean deleteCreatingTasks) {
-    for (UniqueId id : objectIds) {
+    for (ObjectId id : objectIds) {
       store.free(id);
     }
   }
@@ -207,6 +209,11 @@ public class MockRayletClient implements RayletClient {
   @Override
   public void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId) {
     throw new NotImplementedException("Not implemented.");
+  }
+
+  @Override
+  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
+    LOGGER.error("Not implemented under SINGLE_PROCESS mode.");
   }
 
   @Override

@@ -16,8 +16,8 @@ import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.utils import (binary_to_hex, binary_to_object_id, hex_to_binary,
-                       setup_logger)
+from ray.utils import (binary_to_hex, binary_to_object_id, binary_to_task_id,
+                       hex_to_binary, setup_logger)
 
 logger = logging.getLogger(__name__)
 
@@ -169,8 +169,12 @@ class Monitor(object):
                 driver_object_id_bins.add(object_id.binary())
 
         def to_shard_index(id_bin):
-            return binary_to_object_id(id_bin).redis_shard_hash() % len(
-                self.state.redis_clients)
+            if len(id_bin) == ray.TaskID.size():
+                return binary_to_task_id(id_bin).redis_shard_hash() % len(
+                    self.state.redis_clients)
+            else:
+                return binary_to_object_id(id_bin).redis_shard_hash() % len(
+                    self.state.redis_clients)
 
         # Form the redis keys to delete.
         sharded_keys = [[] for _ in range(len(self.state.redis_clients))]

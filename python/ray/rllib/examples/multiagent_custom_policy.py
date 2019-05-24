@@ -22,7 +22,7 @@ import gym
 
 import ray
 from ray import tune
-from ray.rllib.evaluation import PolicyGraph
+from ray.rllib.policy import Policy
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
 
@@ -30,7 +30,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--num-iters", type=int, default=20)
 
 
-class RandomPolicy(PolicyGraph):
+class RandomPolicy(Policy):
     """Hand-coded policy that returns random actions."""
 
     def compute_actions(self,
@@ -65,7 +65,7 @@ if __name__ == "__main__":
         config={
             "env": "multi_cartpole",
             "multiagent": {
-                "policy_graphs": {
+                "policies": {
                     "pg_policy": (None, obs_space, act_space, {}),
                     "random": (RandomPolicy, obs_space, act_space, {}),
                 },

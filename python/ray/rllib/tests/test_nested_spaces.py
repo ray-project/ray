@@ -12,7 +12,7 @@ import unittest
 import ray
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy_graph import PGTFPolicy
+from ray.rllib.agents.pg.pg_policy import PGTFPolicy
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.vector_env import VectorEnv
@@ -331,7 +331,7 @@ class NestedSpacesTest(unittest.TestCase):
                 "sample_batch_size": 5,
                 "train_batch_size": 5,
                 "multiagent": {
-                    "policy_graphs": {
+                    "policies": {
                         "tuple_policy": (
                             PGTFPolicy, TUPLE_SPACE, act_space,
                             {"model": {"custom_model": "tuple_spy"}}),

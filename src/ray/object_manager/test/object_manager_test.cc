@@ -288,7 +288,7 @@ class TestObjectManager : public TestObjectManagerBase {
     // object.
     ObjectID object_1 = WriteDataToClient(client2, data_size);
     ObjectID object_2 = WriteDataToClient(client2, data_size);
-    UniqueID sub_id = ray::ObjectID::from_random();
+    UniqueID sub_id = ray::UniqueID::from_random();
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1, [this, sub_id, object_1, object_2](

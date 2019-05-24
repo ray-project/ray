@@ -167,8 +167,8 @@ If all the agents will be using the same algorithm class to train, then you can 
 
     trainer = pg.PGAgent(env="my_multiagent_env", config={
         "multiagent": {
-            "policy_graphs": {
-                # the first tuple value is None -> uses default policy graph
+            "policies": {
+                # the first tuple value is None -> uses default policy
                 "car1": (None, car_obs_space, car_act_space, {"gamma": 0.85}),
                 "car2": (None, car_obs_space, car_act_space, {"gamma": 0.99}),
                 "traffic_light": (None, tl_obs_space, tl_act_space, {}),
@@ -234,10 +234,10 @@ This can be implemented as a multi-agent environment with three types of agents.
 .. code-block:: python
 
     "multiagent": {
-        "policy_graphs": {
-            "top_level": (custom_policy_graph or None, ...),
-            "mid_level": (custom_policy_graph or None, ...),
-            "low_level": (custom_policy_graph or None, ...),
+        "policies": {
+            "top_level": (custom_policy or None, ...),
+            "mid_level": (custom_policy or None, ...),
+            "low_level": (custom_policy or None, ...),
         },
         "policy_mapping_fn":
             lambda agent_id:
@@ -269,9 +269,9 @@ There is a full example of this in the `example training script <https://github.
 Implementing a Centralized Critic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Implementing a centralized critic that takes as input the observations and actions of other concurrent agents requires the definition of custom policy graphs. It can be done as follows:
+Implementing a centralized critic that takes as input the observations and actions of other concurrent agents requires the definition of custom policies. It can be done as follows:
 
-1. Querying the critic: this can be done in the ``postprocess_trajectory`` method of a custom policy graph, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
+1. Querying the critic: this can be done in the ``postprocess_trajectory`` method of a custom policy, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
 
 .. code-block:: python
 
@@ -286,7 +286,7 @@ Implementing a centralized critic that takes as input the observations and actio
             self.critic_network, feed_dict={"obs": global_obs_batch})
         return sample_batch
 
-2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy graph, the same as with any other value function. For an example of defining loss inputs, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
+2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy, the same as with any other value function. For an example of defining loss inputs, see the `PGPolicy example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy.py>`__.
 
 Grouping Agents
 ~~~~~~~~~~~~~~~

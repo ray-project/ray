@@ -9,7 +9,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOTFPolicy
+from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
@@ -240,12 +240,12 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
         local = PolicyEvaluator(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_graph=PPOTFPolicy,
+            policy=PPOTFPolicy,
             tf_session_creator=make_sess)
         remotes = [
             PolicyEvaluator.as_remote().remote(
                 env_creator=lambda _: gym.make("CartPole-v0"),
-                policy_graph=PPOTFPolicy,
+                policy=PPOTFPolicy,
                 tf_session_creator=make_sess)
         ]
         return local, remotes
