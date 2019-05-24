@@ -653,7 +653,7 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
     cluster = ray_start_cluster_2_nodes
     cluster.wait_for_nodes()
 
-    client_ids = {item["ClientID"] for item in ray.global_state.client_table()}
+    client_ids = {item["ClientID"] for item in ray.nodes()}
 
     # Try to make sure that the monitor has received at least one heartbeat
     # from the node.

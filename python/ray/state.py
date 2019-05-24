@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from collections import defaultdict
 import json
+import logging
 import sys
 import time
 
@@ -17,8 +18,10 @@ from ray.core.generated.EntryType import EntryType
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
+logger = logging.getLogger(__name__)
 
-def parse_client_table(redis_client):
+
+def _parse_client_table(redis_client):
     """Read the client table.
 
     Args:
@@ -128,11 +131,11 @@ class GlobalState(object):
                 yet.
         """
         if self.redis_client is None:
-            raise Exception("The ray.global_state API cannot be used before "
+            raise Exception("The ray global state API cannot be used before "
                             "ray.init has been called.")
 
         if self.redis_clients is None:
-            raise Exception("The ray.global_state API cannot be used before "
+            raise Exception("The ray global state API cannot be used before "
                             "ray.init has been called.")
 
     def disconnect(self):
@@ -408,7 +411,7 @@ class GlobalState(object):
         """
         self._check_connected()
 
-        return parse_client_table(self.redis_client)
+        return _parse_client_table(self.redis_client)
 
     def _profile_table(self, batch_id):
         """Get the profile events for a given batch of profile events.
@@ -461,6 +464,7 @@ class GlobalState(object):
         return profile_events
 
     def profile_table(self):
+        self._check_connected()
         profile_table_keys = self._keys(
             ray.gcs_utils.TablePrefix_PROFILE_string + "*")
         batch_identifiers_binary = [
@@ -561,6 +565,8 @@ class GlobalState(object):
         # TODO(rkn): This should support viewing just a window of time or a
         # limited number of events.
 
+        self._check_connected()
+
         profile_table = self.profile_table()
         all_events = []
 
@@ -626,8 +632,10 @@ class GlobalState(object):
             If filename is not provided, this returns a list of profiling
                 events. Each profile event is a dictionary.
         """
+        self._check_connected()
+
         client_id_to_address = {}
-        for client_info in ray.global_state.client_table():
+        for client_info in self.client_table():
             client_id_to_address[client_info["ClientID"]] = "{}:{}".format(
                 client_info["NodeManagerAddress"],
                 client_info["ObjectManagerPort"])
@@ -703,6 +711,8 @@ class GlobalState(object):
 
     def workers(self):
         """Get a dictionary mapping worker ID to worker information."""
+        self._check_connected()
+
         worker_keys = self.redis_client.keys("Worker*")
         workers_data = {}
 
@@ -722,22 +732,6 @@ class GlobalState(object):
                 workers_data[worker_id]["stdout_file"] = decode(
                     worker_info[b"stdout_file"])
         return workers_data
-
-    def actors(self):
-        actor_keys = self.redis_client.keys("Actor:*")
-        actor_info = {}
-        for key in actor_keys:
-            info = self.redis_client.hgetall(key)
-            actor_id = key[len("Actor:"):]
-            assert len(actor_id) == ID_SIZE
-            actor_info[binary_to_hex(actor_id)] = {
-                "class_id": binary_to_hex(info[b"class_id"]),
-                "driver_id": binary_to_hex(info[b"driver_id"]),
-                "raylet_id": binary_to_hex(info[b"raylet_id"]),
-                "num_gpus": int(info[b"num_gpus"]),
-                "removed": decode(info[b"removed"]) == "True"
-            }
-        return actor_info
 
     def _job_length(self):
         event_log_sets = self.redis_client.keys("event_log*")
@@ -769,6 +763,8 @@ class GlobalState(object):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
+        self._check_connected()
+
         resources = defaultdict(int)
         clients = self.client_table()
         for client in clients:
@@ -798,6 +794,8 @@ class GlobalState(object):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
+        self._check_connected()
+
         available_resources_by_id = {}
 
         subscribe_clients = [
@@ -899,6 +897,8 @@ class GlobalState(object):
             A dictionary mapping driver ID to a list of the error messages for
                 that driver.
         """
+        self._check_connected()
+
         if driver_id is not None:
             assert isinstance(driver_id, ray.DriverID)
             return self._error_messages(driver_id)
@@ -954,3 +954,194 @@ class GlobalState(object):
                 entry.Timestamps(i) for i in range(num_checkpoints)
             ],
         }
+
+
+class DeprecatedGlobalState(object):
+    """A class used to print errors when the old global state API is used."""
+
+    def object_table(self, object_id=None):
+        logger.warning(
+            "ray.global_state.object_table() is deprecated and will be "
+            "removed in a subsequent release. Use ray.objects() instead.")
+        return ray.objects(object_id=object_id)
+
+    def task_table(self, task_id=None):
+        logger.warning(
+            "ray.global_state.task_table() is deprecated and will be "
+            "removed in a subsequent release. Use ray.tasks() instead.")
+        return ray.tasks(task_id=task_id)
+
+    def function_table(self, function_id=None):
+        raise DeprecationWarning(
+            "ray.global_state.function_table() is deprecated.")
+
+    def client_table(self):
+        logger.warning(
+            "ray.global_state.client_table() is deprecated and will be "
+            "removed in a subsequent release. Use ray.nodes() instead.")
+        return ray.nodes()
+
+    def profile_table(self):
+        raise DeprecationWarning(
+            "ray.global_state.profile_table() is deprecated.")
+
+    def chrome_tracing_dump(self, filename=None):
+        logger.warning(
+            "ray.global_state.chrome_tracing_dump() is deprecated and will be "
+            "removed in a subsequent release. Use ray.timeline() instead.")
+        return ray.timeline(filename=filename)
+
+    def chrome_tracing_object_transfer_dump(self, filename=None):
+        logger.warning(
+            "ray.global_state.chrome_tracing_object_transfer_dump() is "
+            "deprecated and will be removed in a subsequent release. Use "
+            "ray.object_transfer_timeline() instead.")
+        return ray.object_transfer_timeline(filename=filename)
+
+    def workers(self):
+        raise DeprecationWarning("ray.global_state.workers() is deprecated.")
+
+    def cluster_resources(self):
+        logger.warning(
+            "ray.global_state.cluster_resources() is deprecated and will be "
+            "removed in a subsequent release. Use ray.cluster_resources() "
+            "instead.")
+        return ray.cluster_resources()
+
+    def available_resources(self):
+        logger.warning(
+            "ray.global_state.available_resources() is deprecated and will be "
+            "removed in a subsequent release. Use ray.available_resources() "
+            "instead.")
+        return ray.available_resources()
+
+    def error_messages(self, driver_id=None):
+        logger.warning(
+            "ray.global_state.error_messages() is deprecated and will be "
+            "removed in a subsequent release. Use ray.errors() "
+            "instead.")
+        return ray.errors(driver_id=driver_id)
+
+
+state = GlobalState()
+"""A global object used to access the cluster's global state."""
+
+global_state = DeprecatedGlobalState()
+
+
+def nodes():
+    """Get a list of the nodes in the cluster.
+
+    Returns:
+        Information about the Ray clients in the cluster.
+    """
+    return state.client_table()
+
+
+def tasks(task_id=None):
+    """Fetch and parse the task table information for one or more task IDs.
+
+    Args:
+        task_id: A hex string of the task ID to fetch information about. If
+            this is None, then the task object table is fetched.
+
+    Returns:
+        Information from the task table.
+    """
+    return state.task_table(task_id=task_id)
+
+
+def objects(object_id=None):
+    """Fetch and parse the object table info for one or more object IDs.
+
+    Args:
+        object_id: An object ID to fetch information about. If this is None,
+            then the entire object table is fetched.
+
+    Returns:
+        Information from the object table.
+    """
+    return state.object_table(object_id=object_id)
+
+
+def timeline(filename=None):
+    """Return a list of profiling events that can viewed as a timeline.
+
+    To view this information as a timeline, simply dump it as a json file by
+    passing in "filename" or using using json.dump, and then load go to
+    chrome://tracing in the Chrome web browser and load the dumped file.
+
+    Args:
+        filename: If a filename is provided, the timeline is dumped to that
+            file.
+
+    Returns:
+        If filename is not provided, this returns a list of profiling events.
+            Each profile event is a dictionary.
+    """
+    return state.chrome_tracing_dump(filename=filename)
+
+
+def object_transfer_timeline(filename=None):
+    """Return a list of transfer events that can viewed as a timeline.
+
+    To view this information as a timeline, simply dump it as a json file by
+    passing in "filename" or using using json.dump, and then load go to
+    chrome://tracing in the Chrome web browser and load the dumped file. Make
+    sure to enable "Flow events" in the "View Options" menu.
+
+    Args:
+        filename: If a filename is provided, the timeline is dumped to that
+            file.
+
+    Returns:
+        If filename is not provided, this returns a list of profiling events.
+            Each profile event is a dictionary.
+    """
+    return state.chrome_tracing_object_transfer_dump(filename=filename)
+
+
+def cluster_resources():
+    """Get the current total cluster resources.
+
+    Note that this information can grow stale as nodes are added to or removed
+    from the cluster.
+
+    Returns:
+        A dictionary mapping resource name to the total quantity of that
+            resource in the cluster.
+    """
+    return state.cluster_resources()
+
+
+def available_resources():
+    """Get the current available cluster resources.
+
+    This is different from `cluster_resources` in that this will return idle
+    (available) resources rather than total resources.
+
+    Note that this information can grow stale as tasks start and finish.
+
+    Returns:
+        A dictionary mapping resource name to the total quantity of that
+            resource in the cluster.
+    """
+    return state.available_resources()
+
+
+def errors(include_cluster_errors=True):
+    """Get error messages from the cluster.
+
+    Args:
+        include_cluster_errors: True if we should include error messages for
+            all drivers, and false if we should only include error messages for
+            this specific driver.
+
+    Returns:
+        Error messages pushed from the cluster.
+    """
+    worker = ray.worker.global_worker
+    error_messages = state.error_messages(driver_id=worker.task_driver_id)
+    if include_cluster_errors:
+        error_messages += state.error_messages(driver_id=ray.DriverID.nil())
+    return error_messages
