@@ -31,7 +31,7 @@ class ClusterState(object):
                 else:
                     workers = {}
                 logger.info("ClusterState: "
-                            "Loaded cluster state: {}".format(workers))
+                            "Loaded cluster state: {}".format(list(workers)))
                 for worker_ip in provider_config["worker_ips"]:
                     if worker_ip not in workers:
                         workers[worker_ip] = {
@@ -56,7 +56,8 @@ class ClusterState(object):
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
                     logger.info("ClusterState: "
-                                "Writing cluster state: {}".format(workers))
+                                "Writing cluster state: {}".format(
+                                    list(workers)))
                     f.write(json.dumps(workers))
 
     def get(self):
@@ -74,11 +75,17 @@ class ClusterState(object):
                 workers[worker_id] = info
                 with open(self.save_path, "w") as f:
                     logger.info("ClusterState: "
-                                "Writing cluster state: {}".format(workers))
+                                "Writing cluster state: {}".format(
+                                    list(workers)))
                     f.write(json.dumps(workers))
 
 
 class LocalNodeProvider(NodeProvider):
+    """NodeProvider for private/local clusters.
+
+    `node_id` is overloaded to also be `node_ip` in this class.
+    """
+
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.state = ClusterState("/tmp/cluster-{}.lock".format(cluster_name),

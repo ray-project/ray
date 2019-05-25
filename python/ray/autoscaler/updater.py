@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
+CONTROL_PATH_MAX_LENGTH = 70
 
 
 def get_default_ssh_options(private_key, connect_timeout, ssh_control_path):
@@ -56,7 +57,7 @@ class NodeUpdater(object):
                  use_internal_ip=False):
 
         ssh_control_path = "/tmp/{}_ray_ssh_sockets/{}".format(
-            getuser(), cluster_name)
+            getuser(), cluster_name)[:CONTROL_PATH_MAX_LENGTH]
 
         self.daemon = True
         self.process_runner = process_runner
@@ -222,7 +223,6 @@ class NodeUpdater(object):
         # Run init commands
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "setting-up"})
-
         m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
             with open("/dev/null", "w") as redirect:
