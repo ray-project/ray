@@ -2,7 +2,7 @@ import unittest
 import traceback
 
 import gym
-from gym.spaces import Box, Discrete, Tuple, Dict
+from gym.spaces import Box, Discrete, Tuple, Dict, MultiDiscrete
 from gym.envs.registration import EnvSpec
 import numpy as np
 import sys
@@ -17,6 +17,7 @@ from ray.tune.registry import register_env
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
         [Discrete(2),
          Discrete(3),
