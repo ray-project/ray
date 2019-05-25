@@ -109,5 +109,5 @@ if __name__ == "__main__":
         parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
-    scheduler = AsyncHyperBandScheduler(reward_attr="hartmann6")
+    scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="max")
     run(easy_objective, name="ax", search_alg=algo, **config)

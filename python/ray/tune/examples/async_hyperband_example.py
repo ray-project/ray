@@ -59,7 +59,8 @@ if __name__ == "__main__":
     # which is automatically filled by Tune.
     ahb = AsyncHyperBandScheduler(
         time_attr="training_iteration",
-        reward_attr="episode_reward_mean",
+        metric="episode_reward_mean",
+        mode="max",
         grace_period=5,
         max_t=100)
 

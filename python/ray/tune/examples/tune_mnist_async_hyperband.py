@@ -240,7 +240,8 @@ if __name__ == "__main__":
         name="tune_mnist_test",
         scheduler=AsyncHyperBandScheduler(
             time_attr="timesteps_total",
-            reward_attr="mean_accuracy",
+            metric="mean_accuracy",
+            mode="max",
             max_t=600,
         ),
         **mnist_spec)
