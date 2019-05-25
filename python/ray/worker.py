@@ -795,12 +795,13 @@ class Worker(object):
                 arguments[i] = arg
 
         # get the objects from the local object store
-        values = self.get_object(object_ids)
-        for i, value in enumerate(values):
-            if isinstance(value, RayError):
-                raise value
-            else:
-                arguments[object_indices[i]] = value
+        if len(object_ids) > 0:
+            values = self.get_object(object_ids)
+            for i, value in enumerate(values):
+                if isinstance(value, RayError):
+                    raise value
+                else:
+                    arguments[object_indices[i]] = value
 
         return arguments
 
