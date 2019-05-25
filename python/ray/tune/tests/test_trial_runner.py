@@ -1954,7 +1954,7 @@ class TrialRunnerTest(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
 
         runner = TrialRunner(
-            , metadata_checkpoint_dir=tmpdir)
+            metadata_checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",
