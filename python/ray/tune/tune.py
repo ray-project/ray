@@ -168,6 +168,9 @@ def run(run_or_experiment,
         trial_executor (TrialExecutor): Manage the execution of trials.
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
+        ray_auto_init (bool): Automatically starts a local Ray cluster
+            if using a RayTrialExecutor (which is the default) and
+            if Ray is not initialized. Defaults to True.
 
     Returns:
         List of Trial objects.
