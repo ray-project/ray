@@ -4,7 +4,7 @@ from __future__ import print_function
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import DQNTrainer
-from ray.rllib.agents.ddpg.ddpg_policy_graph import DDPGPolicyGraph
+from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
@@ -163,7 +163,7 @@ class DDPGTrainer(DQNTrainer):
     """DDPG implementation in TensorFlow."""
     _name = "DDPG"
     _default_config = DEFAULT_CONFIG
-    _policy_graph = DDPGPolicyGraph
+    _policy = DDPGTFPolicy
 
     @override(DQNTrainer)
     def _train(self):

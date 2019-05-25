@@ -8,6 +8,7 @@ import copy
 from datetime import datetime
 import logging
 import json
+import uuid
 import time
 import tempfile
 import os
@@ -27,7 +28,7 @@ import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
                              TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL,
                              EPISODE_REWARD_MEAN, MEAN_LOSS, MEAN_ACCURACY)
-from ray.utils import _random_string, binary_to_hex, hex_to_binary
+from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
@@ -341,19 +342,22 @@ class Trial(object):
 
     @classmethod
     def generate_id(cls):
-        return binary_to_hex(_random_string())[:8]
+        return str(uuid.uuid1().hex)[:8]
+
+    @classmethod
+    def create_logdir(cls, identifier, local_dir):
+        if not os.path.exists(local_dir):
+            os.makedirs(local_dir)
+        return tempfile.mkdtemp(
+            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
+            dir=local_dir)
 
     def init_logger(self):
         """Init logger."""
 
         if not self.result_logger:
-            if not os.path.exists(self.local_dir):
-                os.makedirs(self.local_dir)
             if not self.logdir:
-                self.logdir = tempfile.mkdtemp(
-                    prefix="{}_{}".format(
-                        str(self)[:MAX_LEN_IDENTIFIER], date_str()),
-                    dir=self.local_dir)
+                self.logdir = Trial.create_logdir(str(self), self.local_dir)
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 

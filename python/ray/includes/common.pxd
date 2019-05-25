@@ -81,15 +81,9 @@ cdef extern from "ray/status.h" namespace "ray::StatusCode" nogil:
 
 
 cdef extern from "ray/id.h" namespace "ray" nogil:
-    const CTaskID FinishTaskId(const CTaskID &task_id)
-    const CObjectID ComputeReturnId(const CTaskID &task_id,
-                                    int64_t return_index)
-    const CObjectID ComputePutId(const CTaskID &task_id, int64_t put_index)
-    const CTaskID ComputeTaskId(const CObjectID &object_id)
     const CTaskID GenerateTaskId(const CDriverID &driver_id,
                                  const CTaskID &parent_task_id,
                                  int parent_task_counter)
-    int64_t ComputeObjectIndex(const CObjectID &object_id)
 
 
 cdef extern from "ray/gcs/format/gcs_generated.h" nogil:

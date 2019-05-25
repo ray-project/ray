@@ -4,18 +4,20 @@ from __future__ import print_function
 
 import gym
 import numpy as np
-import tensorflow as tf
 import time
 import unittest
 
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
+from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.tests.mock_evaluator import _MockEvaluator
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class AsyncOptimizerTest(unittest.TestCase):
@@ -238,12 +240,12 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
         local = PolicyEvaluator(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_graph=PPOPolicyGraph,
+            policy=PPOTFPolicy,
             tf_session_creator=make_sess)
         remotes = [
             PolicyEvaluator.as_remote().remote(
                 env_creator=lambda _: gym.make("CartPole-v0"),
-                policy_graph=PPOPolicyGraph,
+                policy=PPOTFPolicy,
                 tf_session_creator=make_sess)
         ]
         return local, remotes

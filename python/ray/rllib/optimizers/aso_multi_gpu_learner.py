@@ -11,12 +11,15 @@ import math
 from six.moves import queue
 
 from ray.rllib.evaluation.metrics import get_learner_stats
-from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.optimizers.aso_learner import LearnerThread
 from ray.rllib.optimizers.aso_minibatch_buffer import MinibatchBuffer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +41,6 @@ class TFMultiGPULearner(LearnerThread):
                  learner_queue_size=16,
                  num_data_load_threads=16,
                  _fake_gpus=False):
-        # Multi-GPU requires TensorFlow to function.
-        import tensorflow as tf
-
         LearnerThread.__init__(self, local_evaluator, minibatch_buffer_size,
                                num_sgd_iter, learner_queue_size)
         self.lr = lr

@@ -9,13 +9,15 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.ray.api.Checkpointable.Checkpoint;
+import org.ray.api.id.BaseId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.runtime.generated.ActorCheckpointIdData;
 import org.ray.runtime.generated.ClientTableData;
 import org.ray.runtime.generated.EntryType;
 import org.ray.runtime.generated.TablePrefix;
-import org.ray.runtime.util.UniqueIdUtil;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,13 +78,13 @@ public class GcsClient {
         NodeInfo nodeInfo = new NodeInfo(
             clientId, data.nodeManagerAddress(), true, resources);
         clients.put(clientId, nodeInfo);
-      } else if (data.entryType() == EntryType.RES_CREATEUPDATE){
+      } else if (data.entryType() == EntryType.RES_CREATEUPDATE) {
         Preconditions.checkState(clients.containsKey(clientId));
         NodeInfo nodeInfo = clients.get(clientId);
         for (int i = 0; i < data.resourcesTotalLabelLength(); i++) {
           nodeInfo.resources.put(data.resourcesTotalLabel(i), data.resourcesTotalCapacity(i));
         }
-      } else if (data.entryType() == EntryType.RES_DELETE){
+      } else if (data.entryType() == EntryType.RES_DELETE) {
         Preconditions.checkState(clients.containsKey(clientId));
         NodeInfo nodeInfo = clients.get(clientId);
         for (int i = 0; i < data.resourcesTotalLabelLength(); i++) {
@@ -112,7 +114,7 @@ public class GcsClient {
   /**
    * Query whether the raylet task exists in Gcs.
    */
-  public boolean rayletTaskExistsInGcs(UniqueId taskId) {
+  public boolean rayletTaskExistsInGcs(TaskId taskId) {
     byte[] key = ArrayUtils.addAll(TablePrefix.name(TablePrefix.RAYLET_TASK).getBytes(),
         taskId.getBytes());
     RedisClient client = getShardClient(taskId);
@@ -132,7 +134,7 @@ public class GcsClient {
     if (result != null) {
       ActorCheckpointIdData data =
           ActorCheckpointIdData.getRootAsActorCheckpointIdData(ByteBuffer.wrap(result));
-      UniqueId[] checkpointIds = UniqueIdUtil.getUniqueIdsFromByteBuffer(
+      UniqueId[] checkpointIds = IdUtil.getUniqueIdsFromByteBuffer(
           data.checkpointIdsAsByteBuffer());
 
       for (int i = 0; i < checkpointIds.length; i++) {
@@ -143,8 +145,8 @@ public class GcsClient {
     return checkpoints;
   }
 
-  private RedisClient getShardClient(UniqueId key) {
-    return shards.get((int) Long.remainderUnsigned(UniqueIdUtil.murmurHashCode(key),
+  private RedisClient getShardClient(BaseId key) {
+    return shards.get((int) Long.remainderUnsigned(IdUtil.murmurHashCode(key),
         shards.size()));
   }
 

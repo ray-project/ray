@@ -43,6 +43,12 @@ class RemoteFunction(object):
             return the resulting ObjectIDs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
+        _last_driver_id_exported_for: The ID of the driver ID of the last Ray
+            session during which this remote function definition was exported.
+            This is an imperfect mechanism used to determine if we need to
+            export the remote function again. It is imperfect in the sense that
+            the actor class definition could be exported multiple times by
+            different workers.
     """
 
     def __init__(self, function, num_cpus, num_gpus, resources,
@@ -66,11 +72,7 @@ class RemoteFunction(object):
         self._function_signature = ray.signature.extract_signature(
             self._function)
 
-        # Export the function.
-        worker = ray.worker.get_global_worker()
-        # In which session this function was exported last time.
-        self._last_export_session = worker._session_index
-        worker.function_actor_manager.export(self)
+        self._last_driver_id_exported_for = None
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
@@ -109,10 +111,11 @@ class RemoteFunction(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        if self._last_export_session < worker._session_index:
+        if (self._last_driver_id_exported_for is None
+                or self._last_driver_id_exported_for != worker.task_driver_id):
             # If this function was exported in a previous session, we need to
             # export this function again, because current GCS doesn't have it.
-            self._last_export_session = worker._session_index
+            self._last_driver_id_exported_for = worker.task_driver_id
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs

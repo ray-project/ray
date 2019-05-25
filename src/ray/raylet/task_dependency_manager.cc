@@ -24,7 +24,7 @@ bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
 }
 
 bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id) const {
-  const TaskID task_id = ComputeTaskId(object_id);
+  const TaskID task_id = object_id.task_id();
   auto task_entry = required_tasks_.find(task_id);
   // If there are no subscribed tasks that are dependent on the object, then do
   // nothing.
@@ -82,7 +82,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
 
   // Find any tasks that are dependent on the newly available object.
   std::vector<TaskID> ready_task_ids;
-  auto creating_task_entry = required_tasks_.find(ComputeTaskId(object_id));
+  auto creating_task_entry = required_tasks_.find(object_id.task_id());
   if (creating_task_entry != required_tasks_.end()) {
     auto object_entry = creating_task_entry->second.find(object_id);
     if (object_entry != creating_task_entry->second.end()) {
@@ -113,7 +113,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
 
   // Find any tasks that are dependent on the missing object.
   std::vector<TaskID> waiting_task_ids;
-  TaskID creating_task_id = ComputeTaskId(object_id);
+  TaskID creating_task_id = object_id.task_id();
   auto creating_task_entry = required_tasks_.find(creating_task_id);
   if (creating_task_entry != required_tasks_.end()) {
     auto object_entry = creating_task_entry->second.find(object_id);
@@ -149,7 +149,7 @@ bool TaskDependencyManager::SubscribeDependencies(
     auto inserted = task_entry.object_dependencies.insert(object_id);
     if (inserted.second) {
       // Get the ID of the task that creates the dependency.
-      TaskID creating_task_id = ComputeTaskId(object_id);
+      TaskID creating_task_id = object_id.task_id();
       // Determine whether the dependency can be fulfilled by the local node.
       if (local_objects_.count(object_id) == 0) {
         // The object is not local.
@@ -186,7 +186,7 @@ bool TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
     // Remove the task from the list of tasks that are dependent on this
     // object.
     // Get the ID of the task that creates the dependency.
-    TaskID creating_task_id = ComputeTaskId(object_id);
+    TaskID creating_task_id = object_id.task_id();
     auto creating_task_entry = required_tasks_.find(creating_task_id);
     std::vector<TaskID> &dependent_tasks = creating_task_entry->second[object_id];
     auto it = std::find(dependent_tasks.begin(), dependent_tasks.end(), task_id);
@@ -324,7 +324,7 @@ void TaskDependencyManager::RemoveTasksAndRelatedObjects(
 
   // Cancel all of the objects that were required by the removed tasks.
   for (const auto &object_id : required_objects) {
-    TaskID creating_task_id = ComputeTaskId(object_id);
+    TaskID creating_task_id = object_id.task_id();
     required_tasks_.erase(creating_task_id);
     HandleRemoteDependencyCanceled(object_id);
   }

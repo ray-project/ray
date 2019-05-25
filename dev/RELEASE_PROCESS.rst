@@ -41,12 +41,12 @@ This document describes the process for creating new releases.
 
 6. **Download all the wheels:** Now the release is ready to begin final
    testing. The wheels are automatically uploaded to S3, even on the release
-   branch. The wheels can ``pip install``ed from the following URLs:
+   branch. To test, ``pip install`` from the following URLs:
 
    .. code-block:: bash
 
        export RAY_HASH=...  # e.g., 618147f57fb40368448da3b2fb4fd213828fa12b
-       export RAY_VERSION=...  # e.g., 0.6.6
+       export RAY_VERSION=...  # e.g., 0.7.0
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp27-cp27mu-manylinux1_x86_64.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-manylinux1_x86_64.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux1_x86_64.whl
@@ -120,10 +120,28 @@ This document describes the process for creating new releases.
       git pull origin master --tags
       git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
 
+11. **Bump version on Ray master branch:** Create a pull request to increment the
+    version of the master branch. The format of the new version is as follows:
+
+    New minor release (e.g., 0.7.0): Increment the minor version and append ``.dev0`` to
+    the version. For example, if the version of the new release is 0.7.0, the master
+    branch needs to be updated to 0.8.0.dev0. `Example PR for minor release`
+
+    New micro release (e.g., 0.7.1): Increment the ``dev`` number, such that the number
+    after ``dev`` equals the micro version. For example, if the version of the new
+    release is 0.7.1, the master branch needs to be updated to 0.8.0.dev1.
+
+12. **Update version numbers throughout codebase:** Suppose we just released 0.7.1. The
+    previous release version number (in this case 0.7.0) and the previous dev version number
+    (in this case 0.8.0.dev0) appear in many places throughout the code base including
+    the installation documentation, the example autoscaler config files, and the testing
+    scripts. Search for all of the occurrences of these version numbers and update them to
+    use the new release and dev version numbers.
+
 .. _documentation: https://ray.readthedocs.io/en/latest/installation.html#trying-snapshots-from-master
 .. _`documentation for building wheels`: https://github.com/ray-project/ray/blob/master/python/README-building-wheels.md
 .. _`ci/stress_tests/run_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/ci/stress_tests/run_stress_tests.sh
 .. _`ci/stress_tests/run_application_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/ci/stress_tests/run_application_stress_tests.sh
 .. _`this example`: https://github.com/ray-project/ray/pull/4226
-.. _`these wheels here`: https://ray.readthedocs.io/en/latest/installation.html
 .. _`GitHub website`: https://github.com/ray-project/ray/releases
+.. _`Example PR for minor release`: https://github.com/ray-project/ray/pull/4845

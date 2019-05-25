@@ -1,6 +1,6 @@
-"""Adapted from A3CPolicyGraph to add V-trace.
+"""Adapted from A3CTFPolicy to add V-trace.
 
-Keep in sync with changes to A3CPolicyGraph and VtraceSurrogatePolicyGraph."""
+Keep in sync with changes to A3CTFPolicy and VtraceSurrogatePolicy."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -11,14 +11,13 @@ import ray
 import numpy as np
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.sample_batch import SampleBatch
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_policy import TFPolicy, \
     LearningRateSchedule
 from ray.rllib.models.action_dist import MultiCategorical
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
 
@@ -40,6 +39,7 @@ class VTraceLoss(object):
                  rewards,
                  values,
                  bootstrap_value,
+                 dist_class,
                  valid_mask,
                  vf_loss_coeff=0.5,
                  entropy_coeff=0.01,
@@ -52,7 +52,7 @@ class VTraceLoss(object):
         handle episode cut boundaries.
 
         Args:
-            actions: An int32 tensor of shape [T, B, ACTION_SPACE].
+            actions: An int|float32 tensor of shape [T, B, ACTION_SPACE].
             actions_logp: A float32 tensor of shape [T, B].
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
@@ -70,6 +70,7 @@ class VTraceLoss(object):
             rewards: A float32 tensor of shape [T, B].
             values: A float32 tensor of shape [T, B].
             bootstrap_value: A float32 tensor of shape [B].
+            dist_class: action distribution class for logits.
             valid_mask: A bool tensor of valid RNN input elements (#2992).
         """
 
@@ -78,11 +79,12 @@ class VTraceLoss(object):
             self.vtrace_returns = vtrace.multi_from_logits(
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
-                actions=tf.unstack(tf.cast(actions, tf.int32), axis=2),
+                actions=tf.unstack(actions, axis=2),
                 discounts=tf.to_float(~dones) * discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
+                dist_class=dist_class,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
@@ -108,13 +110,13 @@ class VTraceLoss(object):
 class VTracePostprocessing(object):
     """Adds the policy logits to the trajectory."""
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def extra_compute_action_fetches(self):
         return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self),
+            TFPolicy.extra_compute_action_fetches(self),
             **{BEHAVIOUR_LOGITS: self.model.outputs})
 
-    @override(PolicyGraph)
+    @override(Policy)
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
@@ -124,8 +126,7 @@ class VTracePostprocessing(object):
         return sample_batch
 
 
-class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
-                        TFPolicyGraph):
+class VTraceTFPolicy(LearningRateSchedule, VTracePostprocessing, TFPolicy):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -140,30 +141,28 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
 
         if isinstance(action_space, gym.spaces.Discrete):
             is_multidiscrete = False
-            actions_shape = [None]
             output_hidden_shape = [action_space.n]
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
             is_multidiscrete = True
-            actions_shape = [None, len(action_space.nvec)]
             output_hidden_shape = action_space.nvec.astype(np.int32)
         else:
-            raise UnsupportedSpaceException(
-                "Action space {} is not supported for IMPALA.".format(
-                    action_space))
+            is_multidiscrete = False
+            output_hidden_shape = 1
 
         # Create input placeholders
+        dist_class, logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"])
         if existing_inputs:
             actions, dones, behaviour_logits, rewards, observations, \
                 prev_actions, prev_rewards = existing_inputs[:7]
             existing_state_in = existing_inputs[7:-1]
             existing_seq_lens = existing_inputs[-1]
         else:
-            actions = tf.placeholder(tf.int64, actions_shape, name="ac")
+            actions = ModelCatalog.get_action_placeholder(action_space)
             dones = tf.placeholder(tf.bool, [None], name="dones")
             rewards = tf.placeholder(tf.float32, [None], name="rewards")
             behaviour_logits = tf.placeholder(
-                tf.float32, [None, sum(output_hidden_shape)],
-                name="behaviour_logits")
+                tf.float32, [None, logit_dim], name="behaviour_logits")
             observations = tf.placeholder(
                 tf.float32, [None] + list(observation_space.shape))
             existing_state_in = None
@@ -174,8 +173,6 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
             behaviour_logits, output_hidden_shape, axis=1)
 
         # Setup the policy
-        dist_class, logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
         self.model = ModelCatalog.get_model(
@@ -261,6 +258,7 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
             rewards=make_time_major(rewards, drop_last=True),
             values=make_time_major(values, drop_last=True),
             bootstrap_value=make_time_major(values)[-1],
+            dist_class=dist_class,
             valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=self.config["vf_loss_coeff"],
             entropy_coeff=self.config["entropy_coeff"],
@@ -279,17 +277,14 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
                 self.KL_stats.update({
                     "mean_KL_{}".format(i): tf.reduce_mean(kl),
                     "max_KL_{}".format(i): tf.reduce_max(kl),
-                    "median_KL_{}".format(i): tf.contrib.distributions.
-                    percentile(kl, 50.0),
                 })
         else:
             self.KL_stats = {
                 "mean_KL": tf.reduce_mean(kls[0]),
                 "max_KL": tf.reduce_max(kls[0]),
-                "median_KL": tf.contrib.distributions.percentile(kls[0], 50.0),
             }
 
-        # Initialize TFPolicyGraph
+        # Initialize TFPolicy
         loss_in = [
             (SampleBatch.ACTIONS, actions),
             (SampleBatch.DONES, dones),
@@ -301,7 +296,7 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
         ]
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
-        TFPolicyGraph.__init__(
+        TFPolicy.__init__(
             self,
             observation_space,
             action_space,
@@ -336,15 +331,15 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
             }, **self.KL_stats),
         }
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def copy(self, existing_inputs):
-        return VTracePolicyGraph(
+        return VTraceTFPolicy(
             self.observation_space,
             self.action_space,
             self.config,
             existing_inputs=existing_inputs)
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def optimizer(self):
         if self.config["opt_type"] == "adam":
             return tf.train.AdamOptimizer(self.cur_lr)
@@ -353,17 +348,17 @@ class VTracePolicyGraph(LearningRateSchedule, VTracePostprocessing,
                                              self.config["momentum"],
                                              self.config["epsilon"])
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def gradients(self, optimizer, loss):
         grads = tf.gradients(loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_initial_state(self):
         return self.model.state_init

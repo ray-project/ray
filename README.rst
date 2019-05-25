@@ -6,12 +6,12 @@
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest
 
-.. image:: https://img.shields.io/badge/pypi-0.6.6-blue.svg
+.. image:: https://img.shields.io/badge/pypi-0.7.0-blue.svg
     :target: https://pypi.org/project/ray/
 
 |
 
-**Ray is a flexible, high-performance distributed execution framework.**
+**Ray is a fast and simple framework for building and running distributed applications.**
 
 
 Ray is easy to install: ``pip install ray``
