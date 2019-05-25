@@ -76,12 +76,11 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         self._counter = 0  # for
         self._num_stopped = 0
         self._metric = metric
-        self._time_attr = time_attr
-
         if mode == "max":
             self._metric_op = 1.
         elif mode == "min":
             self._metric_op = -1.
+        self._time_attr = time_attr
 
     def on_trial_add(self, trial_runner, trial):
         sizes = np.array([len(b._rungs) for b in self._brackets])

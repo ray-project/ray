@@ -48,7 +48,8 @@ if __name__ == "__main__":
     algo = SkOptSearch(
         optimizer, ["width", "height"],
         max_concurrent=4,
-        reward_attr="neg_mean_loss",
+        metric="neg_mean_loss",
+        mode="min",
         points_to_evaluate=previously_run_params,
         evaluated_rewards=known_rewards)
     scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
@@ -63,7 +64,8 @@ if __name__ == "__main__":
     algo = SkOptSearch(
         optimizer, ["width", "height"],
         max_concurrent=4,
-        reward_attr="neg_mean_loss",
+        metric="neg_mean_loss",
+        mode="min",
         points_to_evaluate=previously_run_params)
     scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
     run(easy_objective,

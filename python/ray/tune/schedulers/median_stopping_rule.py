@@ -61,14 +61,13 @@ class MedianStoppingRule(FIFOScheduler):
         self._grace_period = grace_period
         self._min_samples_required = min_samples_required
         self._metric = metric
-        self._time_attr = time_attr
-        self._hard_stop = hard_stop
-        self._verbose = verbose
-
         if mode == "max":
             self._metric_op = 1.
         elif mode == "min":
             self._metric_op = -1.
+        self._time_attr = time_attr
+        self._hard_stop = hard_stop
+        self._verbose = verbose
 
     def on_trial_result(self, trial_runner, trial, result):
         """Callback for early stopping.
