@@ -33,8 +33,6 @@ class _LocalWrapper(object):
         return self._result
 
 
-def _auto_init_ray():
-    pass
 
 
 class RayTrialExecutor(TrialExecutor):

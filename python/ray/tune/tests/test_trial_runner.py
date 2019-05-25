@@ -977,7 +977,7 @@ class VariantGeneratorTest(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def generate_trials(self, spec, name):
-        suggester =
+        suggester = BasicVariantGenerator()
         suggester.add_configurations({name: spec})
         return suggester.next_trials()
 
@@ -1209,7 +1209,7 @@ class TrialRunnerTest(unittest.TestCase):
         }
 
         for name, spec in experiments.items():
-            trial_generator =
+            trial_generator = BasicVariantGenerator()
             trial_generator.add_configurations({name: spec})
             for trial in trial_generator.next_trials():
                 trial_executor.start_trial(trial)
@@ -2014,7 +2014,7 @@ class TrialRunnerTest(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
 
         runner = TrialRunner(
-            , metadata_checkpoint_dir=tmpdir)
+            metadata_checkpoint_dir=tmpdir)
 
         runner.add_trial(
             Trial(
@@ -2070,7 +2070,7 @@ class TrialRunnerTest(unittest.TestCase):
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(
-            , metadata_checkpoint_dir=tmpdir)
+            metadata_checkpoint_dir=tmpdir)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
@@ -2092,7 +2092,7 @@ class TrialRunnerTest(unittest.TestCase):
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(
-            , metadata_checkpoint_dir=tmpdir)
+            metadata_checkpoint_dir=tmpdir)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
