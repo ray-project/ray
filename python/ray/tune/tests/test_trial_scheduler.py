@@ -163,6 +163,34 @@ class EarlyStoppingSuite(unittest.TestCase):
             rule.on_trial_result(None, t2, result2(6, 0)),
             TrialScheduler.CONTINUE)
 
+    def testAlternateMetricsMin(self):
+        def result2(t, rew):
+            return dict(training_iteration=t, neg_mean_loss=rew)
+
+        rule = MedianStoppingRule(
+            grace_period=0,
+            min_samples_required=1,
+            time_attr="training_iteration",
+            metric="mean_loss",
+            mode="min")
+        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
+        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        for i in range(10):
+            self.assertEqual(
+                rule.on_trial_result(None, t1, result2(i, i * 100)),
+                TrialScheduler.CONTINUE)
+        for i in range(5):
+            self.assertEqual(
+                rule.on_trial_result(None, t2, result2(i, 450)),
+                TrialScheduler.CONTINUE)
+        rule.on_trial_complete(None, t1, result2(10, 1000))
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result2(5, 450)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result2(6, 0)),
+            TrialScheduler.CONTINUE)
+
 
 class _MockTrialExecutor(TrialExecutor):
     def start_trial(self, trial, checkpoint_obj=None):
@@ -504,6 +532,36 @@ class HyperbandSuite(unittest.TestCase):
 
         sched = HyperBandScheduler(
             time_attr="time_total_s", metric="neg_mean_loss", mode="max")
+        stats = self.default_statistics()
+
+        for i in range(stats["max_trials"]):
+            t = Trial("__fake")
+            sched.on_trial_add(None, t)
+        runner = _MockTrialRunner(sched)
+
+        big_bracket = sched._hyperbands[0][-1]
+
+        for trl in big_bracket.current_trials():
+            runner._launch_trial(trl)
+        current_length = len(big_bracket.current_trials())
+
+        # Provides results from 0 to 8 in order, keeping the last one running
+        for i, trl in enumerate(big_bracket.current_trials()):
+            action = sched.on_trial_result(runner, trl, result2(1, i))
+            runner.process_action(trl, action)
+
+        new_length = len(big_bracket.current_trials())
+        self.assertEqual(action, TrialScheduler.CONTINUE)
+        self.assertEqual(new_length, self.downscale(current_length, sched))
+
+    def testAlternateMetricsMin(self):
+        """Checking that alternate metrics will pass."""
+
+        def result2(t, rew):
+            return dict(time_total_s=t, neg_mean_loss=rew)
+
+        sched = HyperBandScheduler(
+            time_attr="time_total_s", metric="mean_loss", mode="min")
         stats = self.default_statistics()
 
         for i in range(stats["max_trials"]):
@@ -1025,6 +1083,36 @@ class AsyncHyperBandSuite(unittest.TestCase):
             time_attr="training_iteration",
             metric="neg_mean_loss",
             mode="max",
+            brackets=1)
+        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
+        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        scheduler.on_trial_add(None, t1)
+        scheduler.on_trial_add(None, t2)
+        for i in range(10):
+            self.assertEqual(
+                scheduler.on_trial_result(None, t1, result2(i, i * 100)),
+                TrialScheduler.CONTINUE)
+        for i in range(5):
+            self.assertEqual(
+                scheduler.on_trial_result(None, t2, result2(i, 450)),
+                TrialScheduler.CONTINUE)
+        scheduler.on_trial_complete(None, t1, result2(10, 1000))
+        self.assertEqual(
+            scheduler.on_trial_result(None, t2, result2(5, 450)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t2, result2(6, 0)),
+            TrialScheduler.CONTINUE)
+
+    def testAlternateMetricsMin(self):
+        def result2(t, rew):
+            return dict(training_iteration=t, neg_mean_loss=rew)
+
+        scheduler = AsyncHyperBandScheduler(
+            grace_period=1,
+            time_attr="training_iteration",
+            metric="mean_loss",
+            mode="min",
             brackets=1)
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5

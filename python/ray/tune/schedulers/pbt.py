@@ -124,7 +124,7 @@ class PopulationBasedTraining(FIFOScheduler):
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
         mode (str): One of {min, max}. Determines whether objective is minimizing
-            maximizing the metric attribute
+            or maximizing the metric attribute
         perturbation_interval (float): Models will be considered for
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
@@ -168,6 +168,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def __init__(self,
                  time_attr="time_total_s",
+                 reward_attr=None,
                  metric="episode_reward_mean",
                  mode="max",
                  perturbation_interval=60.0,
@@ -179,6 +180,15 @@ class PopulationBasedTraining(FIFOScheduler):
             raise TuneError(
                 "You must specify at least one of `hyperparam_mutations` or "
                 "`custom_explore_fn` to use PBT.")
+
+        assert mode in ["min", "max"], "mode must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning("`reward_attr` will be depreciated!"
+                           "Consider using `metric` and `mode`.")
+
         FIFOScheduler.__init__(self)
         self._metric = metric
         self._time_attr = time_attr

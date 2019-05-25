@@ -26,7 +26,7 @@ class MedianStoppingRule(FIFOScheduler):
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
         mode (str): One of {min, max}. Determines whether objective is minimizing
-            maximizing the metric attribute
+            or maximizing the metric attribute
         grace_period (float): Only stop trials at least this old in time.
             The units are the same as the attribute named by `time_attr`.
         min_samples_required (int): Min samples to compute median over.
@@ -39,12 +39,21 @@ class MedianStoppingRule(FIFOScheduler):
 
     def __init__(self,
                  time_attr="time_total_s",
+                 reward_attr=None,
                  metric="episode_reward_mean",
                  mode="max",
                  grace_period=60.0,
                  min_samples_required=3,
                  hard_stop=True,
                  verbose=True):
+        assert mode in ["min", "max"], "mode must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning("`reward_attr` will be depreciated!"
+                           "Consider using `metric` and `mode`.")
+
         FIFOScheduler.__init__(self)
         self._stopped_trials = set()
         self._completed_trials = set()
