@@ -45,6 +45,17 @@ class Trainable(object):
     just a ``my_train(config, reporter)`` function to the config.
     The function will be automatically converted to this interface
     (sans checkpoint functionality).
+
+    Attributes:
+        config (dict):
+        logdir (str):
+        _iteration (int):
+        _time_total (int)
+        _timesteps_total (int)
+        _episodes_total (int)
+        _time_since_restore (int)
+        _timesteps_since_restore (int)
+        _iterations_since_restore (int)
     """
 
     def __init__(self, config=None, logger_creator=None):
