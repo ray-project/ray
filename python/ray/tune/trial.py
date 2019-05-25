@@ -273,7 +273,7 @@ class Trial(object):
         # Trial config
         self.trainable_name = trainable_name
         self.config = config or {}
-        self.local_dir = os.path.expanduser(local_dir)
+        self.local_dir = local_dir  # This remains unexpanded for syncing.
         self.experiment_tag = experiment_tag
         self.resources = (
             resources
@@ -346,6 +346,7 @@ class Trial(object):
 
     @classmethod
     def create_logdir(cls, identifier, local_dir):
+        local_dir = os.path.expanduser(local_dir)
         if not os.path.exists(local_dir):
             os.makedirs(local_dir)
         return tempfile.mkdtemp(
