@@ -80,8 +80,8 @@ def ray_deps_setup():
    
     http_archive(
         name = "io_opencensus_cpp",
-        strip_prefix = "opencensus-cpp-1f12445bd9b04c8d8ce3cb5c15c76e39e1e97781",
-        urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/1f12445bd9b04c8d8ce3cb5c15c76e39e1e97781.zip"],
+        strip_prefix = "opencensus-cpp-3aa11f20dd610cb8d2f7c62e58d1e69196aadf11",
+        urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/3aa11f20dd610cb8d2f7c62e58d1e69196aadf11.zip"],
     )
    
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
