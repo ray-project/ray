@@ -29,7 +29,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
         mode (str): One of {min, max}. Determines whether objective is minimizing
-            maximizing the metric attribute
+            or maximizing the metric attribute
         max_t (float): max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
         grace_period (float): Only stop trials at least this old in time.
@@ -42,6 +42,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
     def __init__(self,
                  time_attr="training_iteration",
+                 reward_attr=None,
                  metric="episode_reward_mean",
                  mode="max",
                  max_t=100,
@@ -54,6 +55,13 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         assert reduction_factor > 1, "Reduction Factor not valid!"
         assert brackets > 0, "brackets must be positive!"
         assert mode in ["min", "max"], "mode must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning("`reward_attr` will be depreciated!"
+                           "Consider using `metric` and `mode`.")
+
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
         self._max_t = max_t
