@@ -68,7 +68,8 @@ if __name__ == "__main__":
         space,
         name="SigOpt Example Experiment",
         max_concurrent=1,
-        reward_attr="neg_mean_loss")
+        metric="neg_mean_loss",
+        mode="max")
     scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
     run(easy_objective,
         name="my_exp",

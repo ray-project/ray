@@ -55,7 +55,8 @@ if __name__ == "__main__":
         optimizer,
         parameter_names,
         max_concurrent=4,
-        reward_attr="neg_mean_loss")
+        metric="neg_mean_loss",
+        mode="min")
     scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
     run(easy_objective,
         name="nevergrad",

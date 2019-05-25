@@ -66,7 +66,8 @@ if __name__ == "__main__":
     algo = HyperOptSearch(
         space,
         max_concurrent=4,
-        reward_attr="neg_mean_loss",
+        metric="neg_mean_loss",
+        mode="min",
         points_to_evaluate=current_best_params)
     scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
     run(easy_objective, search_alg=algo, scheduler=scheduler, **config)

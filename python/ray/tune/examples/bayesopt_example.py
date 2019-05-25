@@ -46,7 +46,8 @@ if __name__ == "__main__":
     algo = BayesOptSearch(
         space,
         max_concurrent=4,
-        reward_attr="neg_mean_loss",
+        metric="neg_mean_loss",
+        mode="max",
         utility_kwargs={
             "kind": "ucb",
             "kappa": 2.5,

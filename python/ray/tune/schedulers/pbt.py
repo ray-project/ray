@@ -191,6 +191,10 @@ class PopulationBasedTraining(FIFOScheduler):
 
         FIFOScheduler.__init__(self)
         self._metric = metric
+        if mode == "max":
+            self._metric_op = 1.
+        elif mode == "min":
+            self._metric_op = -1.
         self._time_attr = time_attr
         self._perturbation_interval = perturbation_interval
         self._hyperparam_mutations = hyperparam_mutations
@@ -198,11 +202,6 @@ class PopulationBasedTraining(FIFOScheduler):
         self._trial_state = {}
         self._custom_explore_fn = custom_explore_fn
         self._log_config = log_config
-
-        if mode == "max":
-            self._metric_op = 1.
-        elif mode == "min":
-            self._metric_op = -1.
 
         # Metrics
         self._num_checkpoints = 0
