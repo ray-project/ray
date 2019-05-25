@@ -95,8 +95,8 @@ Offline Datasets
 * `Input API <rllib-offline.html#input-api>`__
 * `Output API <rllib-offline.html#output-api>`__
 
-Concepts and Custom Algorithms
-------------------------------
+Building Custom Algorithms
+--------------------------
 *  `Policies <rllib-concepts.html>`__
 
    -  `Building Policies in TensorFlow <rllib-concepts.html#building-policies-in-tensorflow>`__
