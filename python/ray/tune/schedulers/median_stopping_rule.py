@@ -22,9 +22,11 @@ class MedianStoppingRule(FIFOScheduler):
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The training result objective value attribute. As
-            with `time_attr`, this may refer to any objective value that
-            is supposed to increase with time.
+        metric (str): The training result objective value attribute. As
+            with `time_attr`, this may refer to any objective value. Stopping
+            procedures will use this attribute.
+        mode (str): One of {min, max}. Determines whether objective is minimizing
+            maximizing the metric attribute
         grace_period (float): Only stop trials at least this old in time.
             The units are the same as the attribute named by `time_attr`.
         min_samples_required (int): Min samples to compute median over.
@@ -37,7 +39,8 @@ class MedianStoppingRule(FIFOScheduler):
 
     def __init__(self,
                  time_attr="time_total_s",
-                 reward_attr="episode_reward_mean",
+                 metric="episode_reward_mean",
+                 mode="max",
                  grace_period=60.0,
                  min_samples_required=3,
                  hard_stop=True,
@@ -48,10 +51,15 @@ class MedianStoppingRule(FIFOScheduler):
         self._results = collections.defaultdict(list)
         self._grace_period = grace_period
         self._min_samples_required = min_samples_required
-        self._reward_attr = reward_attr
+        self._metric = metric
         self._time_attr = time_attr
         self._hard_stop = hard_stop
         self._verbose = verbose
+
+        if mode == "max":
+            self._metric_op = 1.
+        elif mode == "min":
+            self._metric_op = -1.
 
     def on_trial_result(self, trial_runner, trial, result):
         """Callback for early stopping.
@@ -110,11 +118,11 @@ class MedianStoppingRule(FIFOScheduler):
         results = self._results[trial]
         # TODO(ekl) we could do interpolation to be more precise, but for now
         # assume len(results) is large and the time diffs are roughly equal
-        return np.mean([
-            r[self._reward_attr] for r in results
+        return self._metric_op * np.mean([
+            r[self._metric] for r in results
             if r[self._time_attr] <= t_max
         ])
 
     def _best_result(self, trial):
         results = self._results[trial]
-        return max(r[self._reward_attr] for r in results)
+        return max(self._metric_op * r[self._metric] for r in results)

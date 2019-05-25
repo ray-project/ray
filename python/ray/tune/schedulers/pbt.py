@@ -120,9 +120,11 @@ class PopulationBasedTraining(FIFOScheduler):
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The training result objective value attribute. As
+        metric (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
+        mode (str): One of {min, max}. Determines whether objective is minimizing
+            maximizing the metric attribute
         perturbation_interval (float): Models will be considered for
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
@@ -149,7 +151,8 @@ class PopulationBasedTraining(FIFOScheduler):
     Example:
         >>> pbt = PopulationBasedTraining(
         >>>     time_attr="training_iteration",
-        >>>     reward_attr="episode_reward_mean",
+        >>>     metric="episode_reward_mean",
+        >>>     mode="max",
         >>>     perturbation_interval=10,  # every 10 `time_attr` units
         >>>                                # (training_iterations in this case)
         >>>     hyperparam_mutations={
@@ -165,7 +168,8 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def __init__(self,
                  time_attr="time_total_s",
-                 reward_attr="episode_reward_mean",
+                 metric="episode_reward_mean",
+                 mode="max",
                  perturbation_interval=60.0,
                  hyperparam_mutations={},
                  resample_probability=0.25,
@@ -176,7 +180,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 "You must specify at least one of `hyperparam_mutations` or "
                 "`custom_explore_fn` to use PBT.")
         FIFOScheduler.__init__(self)
-        self._reward_attr = reward_attr
+        self._metric = metric
         self._time_attr = time_attr
         self._perturbation_interval = perturbation_interval
         self._hyperparam_mutations = hyperparam_mutations
@@ -184,6 +188,11 @@ class PopulationBasedTraining(FIFOScheduler):
         self._trial_state = {}
         self._custom_explore_fn = custom_explore_fn
         self._log_config = log_config
+
+        if mode == "max":
+            self._metric_op = 1.
+        elif mode == "min":
+            self._metric_op = -1.
 
         # Metrics
         self._num_checkpoints = 0
@@ -199,7 +208,7 @@ class PopulationBasedTraining(FIFOScheduler):
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
-        score = result[self._reward_attr]
+        score = self.metric_op * result[self._metric]
         state.last_score = score
         state.last_perturbation_time = time
         lower_quantile, upper_quantile = self._quantiles()
