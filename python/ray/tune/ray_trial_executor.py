@@ -33,8 +33,6 @@ class _LocalWrapper(object):
         return self._result
 
 
-
-
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 

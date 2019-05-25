@@ -1411,8 +1411,7 @@ class TrialRunnerTest(unittest.TestCase):
                     executor.start_trial(trial)
                 return TrialScheduler.CONTINUE
 
-        runner = TrialRunner(
-            , scheduler=ChangingScheduler())
+        runner = TrialRunner(scheduler=ChangingScheduler())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1953,8 +1952,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(
-            metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",
@@ -2013,8 +2011,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(
-            metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
 
         runner.add_trial(
             Trial(
@@ -2069,8 +2066,7 @@ class TrialRunnerTest(unittest.TestCase):
             },
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(
-            metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
@@ -2091,8 +2087,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init()
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(
-            metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()

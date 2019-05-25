@@ -118,10 +118,6 @@ class TrialRunner(object):
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
-            queue_trials (bool): Whether to queue trials when the cluster does
-                not currently have enough resources to launch one. This should
-                be set to True when running on an autoscaling cluster to enable
-                automatic scale-up.
             reuse_actors (bool): Whether to reuse actors between different
                 trials when possible. This can drastically speed up experiments
                 that start and stop actors often (e.g., PBT in
@@ -139,7 +135,6 @@ class TrialRunner(object):
         self._total_time = 0
         self._iteration = 0
         self._verbose = verbose
-        self._queue_trials = queue_trials
 
         self._server = None
         self._server_port = server_port
@@ -228,9 +223,7 @@ class TrialRunner(object):
         ]))
 
         runner = TrialRunner(
-            search_alg,
-            scheduler=scheduler,
-            trial_executor=trial_executor)
+            search_alg, scheduler=scheduler, trial_executor=trial_executor)
 
         runner.__setstate__(runner_state["runner_data"])
 
