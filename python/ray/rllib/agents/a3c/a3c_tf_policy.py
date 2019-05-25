@@ -35,7 +35,7 @@ class A3CLoss(object):
         log_prob = action_dist.logp(actions)
 
         # The "policy gradients" loss
-        self.pi_loss = -tf.reduce_sum(log_prob * advantages)
+        self.pi_loss = -tf.reduce_sum(log_prob * tf.stop_gradient(advantages))
 
         delta = vf - v_target
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
