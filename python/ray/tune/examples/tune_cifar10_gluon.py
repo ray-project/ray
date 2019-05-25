@@ -192,7 +192,8 @@ if __name__ == "__main__":
     elif args.scheduler == "asynchyperband":
         sched = AsyncHyperBandScheduler(
             time_attr="training_iteration",
-            reward_attr="neg_mean_loss",
+            metric="neg_mean_loss",
+            mode="max",
             max_t=400,
             grace_period=60)
     else:

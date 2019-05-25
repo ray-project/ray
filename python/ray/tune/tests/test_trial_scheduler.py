@@ -143,7 +143,8 @@ class EarlyStoppingSuite(unittest.TestCase):
             grace_period=0,
             min_samples_required=1,
             time_attr="training_iteration",
-            reward_attr="neg_mean_loss")
+            metric="neg_mean_loss",
+            mode="max")
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
         for i in range(10):
@@ -502,7 +503,7 @@ class HyperbandSuite(unittest.TestCase):
             return dict(time_total_s=t, neg_mean_loss=rew)
 
         sched = HyperBandScheduler(
-            time_attr="time_total_s", reward_attr="neg_mean_loss")
+            time_attr="time_total_s", metric="neg_mean_loss", mode="max")
         stats = self.default_statistics()
 
         for i in range(stats["max_trials"]):
@@ -1022,7 +1023,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
         scheduler = AsyncHyperBandScheduler(
             grace_period=1,
             time_attr="training_iteration",
-            reward_attr="neg_mean_loss",
+            metric="neg_mean_loss",
+            mode="max",
             brackets=1)
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5

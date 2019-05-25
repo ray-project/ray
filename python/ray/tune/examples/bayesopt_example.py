@@ -52,7 +52,7 @@ if __name__ == "__main__":
             "kappa": 2.5,
             "xi": 0.0
         })
-    scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
+    scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
     run(easy_objective,
         name="my_exp",
         search_alg=algo,
