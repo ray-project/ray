@@ -106,6 +106,10 @@ public class TaskSpec {
     this.newActorHandles = newActorHandles;
     this.args = args;
     this.numReturns = numReturns;
+    returnIds = new ObjectId[numReturns];
+    for (int i = 0; i < numReturns; ++i) {
+      returnIds[i] = IdUtil.computeReturnId(taskId, i + 1);
+    }
     this.resources = resources;
     this.language = language;
     if (language == TaskLanguage.JAVA) {
@@ -119,10 +123,6 @@ public class TaskSpec {
     }
     this.functionDescriptor = functionDescriptor;
     this.executionDependencies = new ArrayList<>();
-    returnIds = new ObjectId[numReturns];
-    for (int i = 0; i < numReturns; ++i) {
-      returnIds[i] = IdUtil.computeReturnId(taskId, i + 1);
-    }
   }
 
   public JavaFunctionDescriptor getJavaFunctionDescriptor() {
