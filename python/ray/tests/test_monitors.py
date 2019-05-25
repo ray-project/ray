@@ -46,13 +46,6 @@ def _test_cleanup_on_driver_exit(num_redis_shards):
         # Two new objects.
         ray.get(ray.put(1111))
         ray.get(ray.put(1111))
-        attempts = 0
-        while (2, 1, summary_start[2]) != StateSummary():
-            time.sleep(0.1)
-            attempts += 1
-            if attempts == max_attempts_before_failing:
-                success.value = False
-                break
 
         @ray.remote
         def f():
@@ -61,7 +54,7 @@ def _test_cleanup_on_driver_exit(num_redis_shards):
 
         # 1 new function.
         attempts = 0
-        while (2, 1, summary_start[2] + 1) != StateSummary():
+        while (2, 1, summary_start[2]) != StateSummary():
             time.sleep(0.1)
             attempts += 1
             if attempts == max_attempts_before_failing:

@@ -1,6 +1,6 @@
 package org.ray.api.exception;
 
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.ObjectId;
 
 /**
  * Indicates that an object is lost (either evicted or explicitly deleted) and cannot be
@@ -11,9 +11,9 @@ import org.ray.api.id.UniqueId;
  */
 public class UnreconstructableException extends RayException {
 
-  public final UniqueId objectId;
+  public final ObjectId objectId;
 
-  public UnreconstructableException(UniqueId objectId) {
+  public UnreconstructableException(ObjectId objectId) {
     super(String.format(
         "Object %s is lost (either evicted or explicitly deleted) and cannot be reconstructed.",
         objectId));

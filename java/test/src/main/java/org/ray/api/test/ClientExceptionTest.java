@@ -6,7 +6,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.exception.RayException;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.ObjectId;
 import org.ray.runtime.RayObjectImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +20,7 @@ public class ClientExceptionTest extends BaseTest {
   @Test
   public void testWaitAndCrash() {
     TestUtils.skipTestUnderSingleProcess();
-    UniqueId randomId = UniqueId.randomId();
+    ObjectId randomId = ObjectId.randomId();
     RayObject<String> notExisting = new RayObjectImpl(randomId);
 
     Thread thread = new Thread(() -> {

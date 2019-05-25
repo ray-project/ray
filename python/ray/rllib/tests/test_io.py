@@ -15,7 +15,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy_graph import PGTFPolicy
+from ray.rllib.agents.pg.pg_policy import PGTFPolicy
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader
 from ray.rllib.offline.json_writer import _to_json
@@ -167,7 +167,7 @@ class AgentIOTest(unittest.TestCase):
                 "num_workers": 0,
                 "output": self.test_dir,
                 "multiagent": {
-                    "policy_graphs": {
+                    "policies": {
                         "policy_1": gen_policy(),
                         "policy_2": gen_policy(),
                     },
@@ -188,7 +188,7 @@ class AgentIOTest(unittest.TestCase):
                 "input_evaluation": ["simulation"],
                 "train_batch_size": 2000,
                 "multiagent": {
-                    "policy_graphs": {
+                    "policies": {
                         "policy_1": gen_policy(),
                         "policy_2": gen_policy(),
                     },

@@ -12,7 +12,7 @@ import time
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.action_dist import TupleActions
@@ -20,7 +20,7 @@ from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.evaluation.policy_graph import clip_action
+from ray.rllib.policy.policy import clip_action
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +236,7 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
     Args:
         base_env (BaseEnv): env implementing BaseEnv.
         extra_batch_callback (fn): function to send extra batch data to.
-        policies (dict): Map of policy ids to PolicyGraph instances.
+        policies (dict): Map of policy ids to Policy instances.
         policy_mapping_fn (func): Function that maps agent ids to policy ids.
             This is called when an agent first enters the environment. The
             agent is then "bound" to the returned policy for the episode.
@@ -528,7 +528,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
         policy = _get_or_raise(policies, policy_id)
         if builder and (policy.compute_actions.__code__ is
-                        TFPolicyGraph.compute_actions.__code__):
+                        TFPolicy.compute_actions.__code__):
             # TODO(ekl): how can we make info batch available to TF code?
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder, [t.obs for t in eval_data],

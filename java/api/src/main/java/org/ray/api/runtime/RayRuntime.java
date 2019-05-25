@@ -6,6 +6,7 @@ import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
+import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
@@ -35,7 +36,7 @@ public interface RayRuntime {
    * @param objectId The ID of the object to get.
    * @return The Java object.
    */
-  <T> T get(UniqueId objectId);
+  <T> T get(ObjectId objectId);
 
   /**
    * Get a list of objects from the object store.
@@ -43,7 +44,7 @@ public interface RayRuntime {
    * @param objectIds The list of object IDs.
    * @return A list of Java objects.
    */
-  <T> List<T> get(List<UniqueId> objectIds);
+  <T> List<T> get(List<ObjectId> objectIds);
 
   /**
    * Wait for a list of RayObjects to be locally available, until specified number of objects are
@@ -63,7 +64,16 @@ public interface RayRuntime {
    * @param localOnly Whether only free objects for local object store or not.
    * @param deleteCreatingTasks Whether also delete objects' creating tasks from GCS.
    */
-  void free(List<UniqueId> objectIds, boolean localOnly, boolean deleteCreatingTasks);
+  void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks);
+
+  /**
+   * Set the resource for the specific node.
+   *
+   * @param resourceName The name of resource.
+   * @param capacity The capacity of the resource.
+   * @param nodeId The node that we want to set its resource.
+   */
+  void setResource(String resourceName, double capacity, UniqueId nodeId);
 
   /**
    * Invoke a remote function.

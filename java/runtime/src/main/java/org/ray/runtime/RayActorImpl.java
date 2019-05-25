@@ -7,6 +7,7 @@ import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.List;
 import org.ray.api.RayActor;
+import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.Sha1Digestor;
 
@@ -30,7 +31,7 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
    * The unique id of the last return of the last task.
    * It's used as a dependency for the next task.
    */
-  protected UniqueId taskCursor;
+  protected ObjectId taskCursor;
   /**
    * The number of times that this actor handle has been forked.
    * It's used to make sure ids of actor handles are unique.
@@ -72,7 +73,7 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
     return handleId;
   }
 
-  public void setTaskCursor(UniqueId taskCursor) {
+  public void setTaskCursor(ObjectId taskCursor) {
     this.taskCursor = taskCursor;
   }
 
@@ -84,7 +85,7 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
     this.newActorHandles.clear();
   }
 
-  public UniqueId getTaskCursor() {
+  public ObjectId getTaskCursor() {
     return taskCursor;
   }
 
@@ -121,7 +122,7 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.id = (UniqueId) in.readObject();
     this.handleId = (UniqueId) in.readObject();
-    this.taskCursor = (UniqueId) in.readObject();
+    this.taskCursor = (ObjectId) in.readObject();
     this.taskCounter = (int) in.readObject();
     this.numForks = (int) in.readObject();
   }

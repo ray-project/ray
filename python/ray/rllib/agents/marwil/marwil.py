@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.trainer import Trainer, with_common_config
-from ray.rllib.agents.marwil.marwil_policy_graph import MARWILPolicyGraph
+from ray.rllib.agents.marwil.marwil_policy import MARWILPolicy
 from ray.rllib.optimizers import SyncBatchReplayOptimizer
 from ray.rllib.utils.annotations import override
 
@@ -44,14 +44,14 @@ class MARWILTrainer(Trainer):
 
     _name = "MARWIL"
     _default_config = DEFAULT_CONFIG
-    _policy_graph = MARWILPolicyGraph
+    _policy = MARWILPolicy
 
     @override(Trainer)
     def _init(self, config, env_creator):
         self.local_evaluator = self.make_local_evaluator(
-            env_creator, self._policy_graph)
+            env_creator, self._policy)
         self.remote_evaluators = self.make_remote_evaluators(
-            env_creator, self._policy_graph, config["num_workers"])
+            env_creator, self._policy, config["num_workers"])
         self.optimizer = SyncBatchReplayOptimizer(
             self.local_evaluator,
             self.remote_evaluators,
