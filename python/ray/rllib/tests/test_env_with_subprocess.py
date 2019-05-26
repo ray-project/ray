@@ -80,6 +80,7 @@ if __name__ == "__main__":
             },
         },
     })
+    time.sleep(5.0)
     leaked = leaked_processes()
     assert not leaked, "LEAKED PROCESSES: {}".format(leaked)
     assert not os.path.exists(UNIQUE_FILE_0), "atexit handler not called"
