@@ -13,6 +13,7 @@ import gym
 import ray
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.models.action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
@@ -255,7 +256,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             rewards=make_time_major(rewards, drop_last=True),
             values=make_time_major(values, drop_last=True),
             bootstrap_value=make_time_major(values)[-1],
-            dist_class=policy.dist_class,
+            dist_class=Categorical if is_multidiscrete else policy.dist_class,
             valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
             entropy_coeff=policy.config["entropy_coeff"],
