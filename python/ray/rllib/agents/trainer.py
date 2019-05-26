@@ -61,7 +61,10 @@ COMMON_CONFIG = {
         "on_episode_end": None,       # arg: {"env": .., "episode": ...}
         "on_sample_end": None,        # arg: {"samples": .., "evaluator": ...}
         "on_train_result": None,      # arg: {"trainer": ..., "result": ...}
-        "on_postprocess_traj": None,  # arg: {"batch": ..., "episode": ...}
+        "on_postprocess_traj": None,  # arg: {"agent_id": ..., "episode": ...,
+                                      #       "pre_batch": ...,
+                                      #       "post_batch": ...,
+                                      #       "all_pre_batches": ...}
     },
     # Whether to attempt to continue training if a worker crashes.
     "ignore_worker_failures": False,
