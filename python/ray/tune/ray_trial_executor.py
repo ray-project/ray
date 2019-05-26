@@ -356,7 +356,7 @@ class RayTrialExecutor(TrialExecutor):
     def _update_avail_resources(self, num_retries=5):
         for i in range(num_retries):
             try:
-                resources = ray.global_state.cluster_resources()
+                resources = ray.cluster_resources()
             except Exception:
                 # TODO(rliaw): Remove this when local mode is fixed.
                 # https://github.com/ray-project/ray/issues/4147

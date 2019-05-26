@@ -25,7 +25,6 @@ import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.experimental.signal as ray_signal
 import ray.experimental.no_return
-import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
@@ -35,6 +34,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature
+import ray.state
 
 from ray import (
     ActorHandleID,
@@ -1108,8 +1108,6 @@ We use a global Worker object to ensure that there is a single worker object
 per worker process.
 """
 
-global_state = state.GlobalState()
-
 _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
@@ -1132,14 +1130,6 @@ def print_failed_task(task_status):
         Error Message: \n{}
     """.format(task_status["function_name"], task_status["operationid"],
                task_status["error_message"]))
-
-
-def error_info():
-    """Return information about failed tasks."""
-    worker = global_worker
-    worker.check_connected()
-    return (global_state.error_messages(driver_id=worker.task_driver_id) +
-            global_state.error_messages(driver_id=DriverID.nil()))
 
 
 def _initialize_serialization(driver_id, worker=global_worker):
@@ -1488,7 +1478,7 @@ def shutdown(exiting_interpreter=False):
     disconnect()
 
     # Disconnect global state from GCS.
-    global_state.disconnect()
+    ray.state.state.disconnect()
 
     # Shut down the Ray processes.
     global _global_node
@@ -1644,7 +1634,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     try:
         # Get the exports that occurred before the call to subscribe.
-        error_messages = global_state.error_messages(worker.task_driver_id)
+        error_messages = ray.errors(include_cluster_errors=False)
         for error_message in error_messages:
             logger.error(error_message)
 
@@ -1774,7 +1764,7 @@ def connect(node,
     worker.lock = threading.RLock()
 
     # Create an object for interfacing with the global state.
-    global_state._initialize_global_state(
+    ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 
     # Register the worker with Redis.
@@ -1881,11 +1871,12 @@ def connect(node,
         )
 
         # Add the driver task to the task table.
-        global_state._execute_command(driver_task.task_id(), "RAY.TABLE_ADD",
-                                      ray.gcs_utils.TablePrefix.RAYLET_TASK,
-                                      ray.gcs_utils.TablePubsub.RAYLET_TASK,
-                                      driver_task.task_id().binary(),
-                                      driver_task._serialized_raylet_task())
+        ray.state.state._execute_command(driver_task.task_id(),
+                                         "RAY.TABLE_ADD",
+                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
+                                         ray.gcs_utils.TablePubsub.RAYLET_TASK,
+                                         driver_task.task_id().binary(),
+                                         driver_task._serialized_raylet_task())
 
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.

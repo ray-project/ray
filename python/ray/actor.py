@@ -811,7 +811,7 @@ def exit_actor():
         worker.raylet_client.disconnect()
         ray.disconnect()
         # Disconnect global state from GCS.
-        ray.global_state.disconnect()
+        ray.state.state.disconnect()
         sys.exit(0)
         assert False, "This process should have terminated."
     else:
@@ -931,7 +931,7 @@ def get_checkpoints_for_actor(actor_id):
     """Get the available checkpoints for the given actor ID, return a list
     sorted by checkpoint timestamp in descending order.
     """
-    checkpoint_info = ray.worker.global_state.actor_checkpoint_info(actor_id)
+    checkpoint_info = ray.state.state.actor_checkpoint_info(actor_id)
     if checkpoint_info is None:
         return []
     checkpoints = [
