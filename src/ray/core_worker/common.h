@@ -4,7 +4,7 @@
 #include <string>
 
 #include "ray/id.h"
-#include "ray/common/io.h"
+#include "ray/common/buffer.h"
 
 namespace ray {
 
@@ -17,17 +17,17 @@ enum class Language { PYTHON, JAVA };
 /// Information about a remote function.
 struct RayFunction {
   /// Language of the remote function.
-  Language language;
+  const Language language;
   /// Function descriptor of the remote function.
-  std::vector<std::string> function_descriptors;
+  const std::vector<std::string> function_descriptors;
 };
 
 /// Argument of a task.
 struct Arg {
   /// Id of the argument, if passed by reference, otherwise nullptr.
-  std::shared_ptr<ObjectID> id;
+  const std::shared_ptr<ObjectID> id;
   /// Data of the argument, if passed by value, otherwise nullptr.
-  std::shared_ptr<Buffer> *data;
+  const std::shared_ptr<Buffer> data;
 };
 
 }  // namespace ray

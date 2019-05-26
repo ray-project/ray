@@ -2,7 +2,7 @@
 #define RAY_CORE_WORKER_TASK_INTERFACE_H
 
 #include "common.h"
-#include "ray/common/io.h"
+#include "ray/common/buffer.h"
 #include "ray/id.h"
 #include "ray/status.h"
 
@@ -13,18 +13,18 @@ class CoreWorker;
 /// Options of a task call.
 struct CallOptions {
   /// Number of returns of this task.
-  int num_returns = 1;
+  const int num_returns = 1;
   /// Resources required by this task.
-  std::unordered_map<std::string, double> resources;
+  const std::unordered_map<std::string, double> resources;
 };
 
 /// Options of an actor creation task.
 struct ActorCreationOptions {
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
-  uint64_t max_reconstructions = 0;
+  const uint64_t max_reconstructions = 0;
   /// Resources required by the whole lifetime of this actor.
-  std::unordered_map<std::string, double> resources;
+  const std::unordered_map<std::string, double> resources;
 };
 
 /// A handle to an actor.
@@ -40,8 +40,8 @@ class ActorHandle {
   const ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
 
  private:
-  class ActorID actor_id_;
-  class ActorHandleID actor_handle_id_;
+  const class ActorID actor_id_;
+  const class ActorHandleID actor_handle_id_;
 };
 
 /// The interface that contains all `CoreWorker` methods that are related to task
@@ -84,7 +84,7 @@ class CoreWorkerTaskInterface {
                        std::vector<ObjectID> *return_ids);
 
  private:
-  CoreWorker *core_worker_;
+  const CoreWorker *core_worker_;
 };
 
 }  // namespace ray

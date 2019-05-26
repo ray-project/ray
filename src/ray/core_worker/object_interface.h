@@ -2,7 +2,7 @@
 #define RAY_CORE_WORKER_OBJECT_INTERFACE_H
 
 #include "common.h"
-#include "ray/common/io.h"
+#include "ray/common/buffer.h"
 #include "ray/id.h"
 #include "ray/status.h"
 
@@ -52,7 +52,7 @@ class CoreWorkerObjectInterface {
                 bool delete_creating_tasks);
 
  private:
-  CoreWorker *core_worker_;
+  const CoreWorker *core_worker_;
 };
 
 }  // namespace ray

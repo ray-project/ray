@@ -2,7 +2,7 @@
 #define RAY_CORE_WORKER_TASK_EXECUTION_H
 
 #include "common.h"
-#include "ray/common/io.h"
+#include "ray/common/buffer.h"
 
 namespace ray {
 
@@ -23,7 +23,7 @@ class CoreWorkerTaskExecutionInterface {
   void StartWorker(const TaskExecutor &executor);
 
  private:
-  CoreWorker *core_worker_;
+  const CoreWorker *core_worker_;
 };
 
 }  // namespace ray

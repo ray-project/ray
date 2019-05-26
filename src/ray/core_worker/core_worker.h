@@ -3,7 +3,7 @@
 
 #include "common.h"
 #include "object_interface.h"
-#include "ray/common/io.h"
+#include "ray/common/buffer.h"
 #include "task_execution.h"
 #include "task_interface.h"
 
@@ -41,15 +41,15 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; };
 
  private:
-  WorkerType worker_type_;
+  const WorkerType worker_type_;
 
-  Language language_;
+  const Language language_;
 
-  CoreWorkerTaskInterface task_interface_;
+  const CoreWorkerTaskInterface task_interface_;
 
-  CoreWorkerObjectInterface object_interface_;
+  const CoreWorkerObjectInterface object_interface_;
 
-  CoreWorkerTaskExecutionInterface task_execution_interface_;
+  const CoreWorkerTaskExecutionInterface task_execution_interface_;
 };
 
 }  // namespace ray

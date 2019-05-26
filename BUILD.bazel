@@ -296,7 +296,7 @@ cc_library(
     hdrs = [
         "src/ray/common/client_connection.h",
         "src/ray/common/common_protocol.h",
-        "src/ray/common/io.h",
+        "src/ray/common/buffer.h",
     ],
     copts = COPTS,
     includes = [
