@@ -211,8 +211,8 @@ void ObjectManager::RestartPullTimer(const ObjectID &object_id) {
   timer.async_wait([this, object_id](const boost::system::error_code &error) {
     if (!error) {
       std::vector<ClientID> clients_to_request;
-      bool abort_creation;
-      bool restart_timer;
+      bool abort_creation = false;
+      bool restart_timer = false;
       pull_manager_.TimerExpired(object_id, &clients_to_request, &abort_creation,
                                  &restart_timer);
       if (abort_creation) {
@@ -234,7 +234,8 @@ void ObjectManager::RestartPullTimer(const ObjectID &object_id) {
   // This will cancel and replace the old timer if there was an old one.
   auto it = pull_timers_.find(object_id);
   if (it == pull_timers_.end()) {
-    pull_timers_.insert(std::make_pair(object_id, std::move(timer)));
+    auto insertion_it = pull_timers_.insert(std::make_pair(object_id, std::move(timer)));
+    RAY_CHECK(insertion_it.second);
   } else {
     it->second = std::move(timer);
   }
