@@ -54,7 +54,8 @@ COMMON_CONFIG = {
     # Callbacks that will be run during various phases of training. These all
     # take a single "info" dict as an argument. For episode callbacks, custom
     # metrics can be attached to the episode by updating the episode object's
-    # custom metrics dict (see examples/custom_metrics_and_callbacks.py).
+    # custom metrics dict (see examples/custom_metrics_and_callbacks.py). You
+    # may also mutate the passed in batch data in your callback.
     "callbacks": {
         "on_episode_start": None,     # arg: {"env": .., "episode": ...}
         "on_episode_step": None,      # arg: {"env": .., "episode": ...}
