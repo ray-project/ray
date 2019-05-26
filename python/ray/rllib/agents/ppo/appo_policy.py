@@ -220,10 +220,8 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(
         policy.model.outputs, output_hidden_shape, axis=1)
-    prev_dist_inputs = unpacked_behaviour_logits if is_multidiscrete else \
-        behaviour_logits
     action_dist = policy.action_dist
-    prev_action_dist = policy.dist_class(prev_dist_inputs)
+    prev_action_dist = policy.dist_class(behaviour_logits)
     values = policy.value_function
 
     if policy.model.state_in:
