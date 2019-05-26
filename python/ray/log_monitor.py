@@ -189,8 +189,9 @@ class LogMonitor(object):
                 # the worker.
                 if next_line.startswith("Ray driver id: "):
                     driver_id = next_line.split(" ")[-1]
-                    driver_switches.append((idx, driver_id))
-                    if len(driver_id) != 2 * ray_constants.ID_SIZE:
+                    if len(driver_id) == 2 * ray_constants.ID_SIZE:
+                        driver_switches.append((idx, driver_id))
+                    else:
                         logger.warning(
                             "The driver ID %s does not have the right length. "
                             "The log file %s may have been corrupted.",
