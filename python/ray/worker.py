@@ -794,7 +794,7 @@ class Worker(object):
                 # pass the argument by value
                 arguments[i] = arg
 
-        # get the objects from the local object store
+        # Get the objects from the local object store.
         if len(object_ids) > 0:
             values = self.get_object(object_ids)
             for i, value in enumerate(values):
