@@ -30,7 +30,6 @@ import ray
 import ray.tests.cluster_utils
 import ray.tests.utils
 from ray.tests.utils import CaptureOutputAndError
-from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)
 
