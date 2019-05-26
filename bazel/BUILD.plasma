@@ -44,9 +44,9 @@ cc_library(
         "cpp/src/arrow/util/logging.h",
         "cpp/src/arrow/util/macros.h",
         "cpp/src/arrow/util/memory.h",
+        "cpp/src/arrow/util/stl.h",
         "cpp/src/arrow/util/string_builder.h",
         "cpp/src/arrow/util/string_view.h",
-        "cpp/src/arrow/util/stl.h",
         "cpp/src/arrow/util/thread-pool.h",
         "cpp/src/arrow/util/type_traits.h",
         "cpp/src/arrow/util/visibility.h",
@@ -57,8 +57,8 @@ cc_library(
     ],
     strip_include_prefix = "cpp/src",
     deps = [
-      "@boost//:filesystem",
-    ]
+        "@boost//:filesystem",
+    ],
 )
 
 cc_library(
