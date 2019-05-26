@@ -5,7 +5,7 @@ from __future__ import print_function
 import time
 
 from ray.rllib.agents.trainer import Trainer, with_common_config
-from ray.rllib.agents.dqn.dqn import OffPolicyCriticTrainer
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.sac.sac_policy_graph import SACPolicyGraph
 from ray.rllib.utils.annotations import override
 
@@ -114,16 +114,22 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+
+    # TODO(ekl) these are unused; remove them from sac config
+    "per_worker_exploration": False,
+    "exploration_fraction": 0.1,
+    "schedule_max_timesteps": 100000,
+    "exploration_final_eps": 0.02,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-class SACTrainer(OffPolicyCriticTrainer):
+class SACTrainer(DQNTrainer):
     """Soft Actor-Critic implementation in TensorFlow."""
     _agent_name = "SAC"
     _default_config = DEFAULT_CONFIG
-    _policy_graph = SACPolicyGraph
+    _policy = SACPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
 
     @property

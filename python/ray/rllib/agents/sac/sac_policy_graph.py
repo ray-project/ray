@@ -15,9 +15,9 @@ from ray.rllib.evaluation import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.annotations import override
-from ray.rllib.agents.dqn.dqn_policy_graph import _adjust_nstep
-
-from .models import GaussianLatentSpacePolicy, q_network_model
+from ray.rllib.agents.dqn.dqn_policy import _adjust_nstep
+from ray.rllib.agents.sac.models import GaussianLatentSpacePolicy, \
+    q_network_model
 
 PRIO_WEIGHTS = "weights"
 
