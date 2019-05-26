@@ -1,4 +1,4 @@
-"""Note: Keep in sync with changes to VTracePolicyGraph."""
+"""Note: Keep in sync with changes to VTraceTFPolicy."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -8,13 +8,13 @@ import gym
 
 import ray
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.policy.policy import Policy
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
+from ray.rllib.policy.tf_policy import TFPolicy, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
@@ -47,13 +47,13 @@ class A3CLoss(object):
 class A3CPostprocessing(object):
     """Adds the VF preds and advantages fields to the trajectory."""
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def extra_compute_action_fetches(self):
         return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self),
+            TFPolicy.extra_compute_action_fetches(self),
             **{SampleBatch.VF_PREDS: self.vf})
 
-    @override(PolicyGraph)
+    @override(Policy)
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
@@ -73,7 +73,7 @@ class A3CPostprocessing(object):
                                   self.config["lambda"])
 
 
-class A3CPolicyGraph(LearningRateSchedule, A3CPostprocessing, TFPolicyGraph):
+class A3CTFPolicy(LearningRateSchedule, A3CPostprocessing, TFPolicy):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
@@ -114,7 +114,7 @@ class A3CPolicyGraph(LearningRateSchedule, A3CPostprocessing, TFPolicyGraph):
                             self.vf, self.config["vf_loss_coeff"],
                             self.config["entropy_coeff"])
 
-        # Initialize TFPolicyGraph
+        # Initialize TFPolicy
         loss_in = [
             (SampleBatch.CUR_OBS, self.observations),
             (SampleBatch.ACTIONS, actions),
@@ -125,7 +125,7 @@ class A3CPolicyGraph(LearningRateSchedule, A3CPostprocessing, TFPolicyGraph):
         ]
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
-        TFPolicyGraph.__init__(
+        TFPolicy.__init__(
             self,
             observation_space,
             action_space,
@@ -157,18 +157,18 @@ class A3CPolicyGraph(LearningRateSchedule, A3CPostprocessing, TFPolicyGraph):
 
         self.sess.run(tf.global_variables_initializer())
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_initial_state(self):
         return self.model.state_init
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def gradients(self, optimizer, loss):
         grads = tf.gradients(loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
 

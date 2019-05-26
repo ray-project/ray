@@ -676,13 +676,15 @@ int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   size_t len = 0;
   const char *data_ptr = nullptr;
   data_ptr = RedisModule_StringPtrLen(data, &len);
-  REPLY_AND_RETURN_IF_FALSE(
-      len % kUniqueIDSize == 0,
-      "The deletion data length must be a multiple of the UniqueID size.");
-  size_t ids_to_delete = len / kUniqueIDSize;
+  // The first uint16_t are used to encode the number of ids to delete.
+  size_t ids_to_delete = *reinterpret_cast<const uint16_t *>(data_ptr);
+  size_t id_length = (len - sizeof(uint16_t)) / ids_to_delete;
+  REPLY_AND_RETURN_IF_FALSE((len - sizeof(uint16_t)) % ids_to_delete == 0,
+                            "The deletion data length must be multiple of the ID size");
+  data_ptr += sizeof(uint16_t);
   for (size_t i = 0; i < ids_to_delete; ++i) {
     RedisModuleString *id_data =
-        RedisModule_CreateString(ctx, data_ptr + i * kUniqueIDSize, kUniqueIDSize);
+        RedisModule_CreateString(ctx, data_ptr + i * id_length, id_length);
     RAY_IGNORE_EXPR(DeleteKeyHelper(ctx, prefix_str, id_data));
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");

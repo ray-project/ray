@@ -7,6 +7,7 @@ import collections
 from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
+from multiprocessing import Process
 import os
 import random
 import re
@@ -28,7 +29,6 @@ import pytest
 import ray
 import ray.tests.cluster_utils
 import ray.tests.utils
-from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +301,23 @@ def test_complex_serialization(ray_start_regular):
     for obj in RAY_TEST_OBJECTS:
         assert_equal(obj, ray.get(f.remote(obj)))
         assert_equal(obj, ray.get(ray.put(obj)))
+
+
+def test_nested_functions(ray_start_regular):
+    # Make sure that remote functions can use other values that are defined
+    # after the remote function but before the first function invocation.
+    @ray.remote
+    def f():
+        return g(), ray.get(h.remote())
+
+    def g():
+        return 1
+
+    @ray.remote
+    def h():
+        return 2
+
+    assert ray.get(f.remote()) == (1, 2)
 
 
 def test_ray_recursive_objects(ray_start_regular):
@@ -2630,12 +2647,33 @@ def test_object_id_properties():
         ray.ObjectID(id_bytes + b"1234")
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
         ray.ObjectID(b"0123456789")
-    object_id = ray.ObjectID(_random_string())
+    object_id = ray.ObjectID.from_random()
     assert not object_id.is_nil()
     assert object_id.binary() != id_bytes
     id_dumps = pickle.dumps(object_id)
     id_from_dumps = pickle.loads(id_dumps)
     assert id_from_dumps == object_id
+    file_prefix = "test_object_id_properties"
+
+    # Make sure the ids are fork safe.
+    def write(index):
+        str = ray.ObjectID.from_random().hex()
+        with open("{}{}".format(file_prefix, index), "w") as fo:
+            fo.write(str)
+
+    def read(index):
+        with open("{}{}".format(file_prefix, index), "r") as fi:
+            for line in fi:
+                return line
+
+    processes = [Process(target=write, args=(_, )) for _ in range(4)]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join()
+    hexes = {read(i) for i in range(4)}
+    [os.remove("{}{}".format(file_prefix, i)) for i in range(4)]
+    assert len(hexes) == 4
 
 
 @pytest.fixture
@@ -2768,7 +2806,7 @@ def test_pandas_parquet_serialization():
 
 
 def test_socket_dir_not_existing(shutdown_only):
-    random_name = ray.ObjectID(_random_string()).hex()
+    random_name = ray.ObjectID.from_random().hex()
     temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                            "raylet_socket")
@@ -2921,3 +2959,43 @@ def test_get_postprocess(ray_start_regular):
 
     assert ray.get(
         [ray.put(i) for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
+
+
+def test_export_after_shutdown(ray_start_regular):
+    # This test checks that we can use actor and remote function definitions
+    # across multiple Ray sessions.
+
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    class Actor(object):
+        def method(self):
+            pass
+
+    ray.get(f.remote())
+    a = Actor.remote()
+    ray.get(a.method.remote())
+
+    ray.shutdown()
+
+    # Start Ray and use the remote function and actor again.
+    ray.init(num_cpus=1)
+    ray.get(f.remote())
+    a = Actor.remote()
+    ray.get(a.method.remote())
+
+    ray.shutdown()
+
+    # Start Ray again and make sure that these definitions can be exported from
+    # workers.
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def export_definitions_from_worker(remote_function, actor_class):
+        ray.get(remote_function.remote())
+        actor_handle = actor_class.remote()
+        ray.get(actor_handle.method.remote())
+
+    ray.get(export_definitions_from_worker.remote(f, Actor))

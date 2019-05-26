@@ -266,7 +266,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
 TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   // Create a task with 3 arguments.
   auto task1 = ExampleTask({}, 0);
-  ObjectID put_id = ComputePutId(task1.GetTaskSpecification().TaskId(), 1);
+  ObjectID put_id = ObjectID::for_put(task1.GetTaskSpecification().TaskId(), 1);
   auto task2 = ExampleTask({put_id}, 0);
 
   // No objects have been registered in the task dependency manager, so the put

@@ -4,7 +4,7 @@
 #include <limits.h>
 #include <stdint.h>
 
-/// Length of Ray IDs in bytes.
+/// Length of Ray full-length IDs in bytes.
 constexpr int64_t kUniqueIDSize = 20;
 
 /// An ObjectID's bytes are split into the task ID itself and the index of the
@@ -12,6 +12,9 @@ constexpr int64_t kUniqueIDSize = 20;
 constexpr int kObjectIdIndexSize = 32;
 static_assert(kObjectIdIndexSize % CHAR_BIT == 0,
               "ObjectID prefix not a multiple of bytes");
+
+/// Length of Ray TaskID in bytes. 32-bit integer is used for object index.
+constexpr int64_t kTaskIDSize = kUniqueIDSize - kObjectIdIndexSize / 8;
 
 /// The maximum number of objects that can be returned by a task when finishing
 /// execution. An ObjectID's bytes are split into the task ID itself and the

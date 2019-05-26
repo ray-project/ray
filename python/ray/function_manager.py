@@ -342,7 +342,7 @@ class FunctionActorManager(object):
             # and export it later.
             self._functions_to_export.append(remote_function)
             return
-        if self._worker.mode != ray.worker.SCRIPT_MODE:
+        if self._worker.mode == ray.worker.LOCAL_MODE:
             # Don't need to export if the worker is not a driver.
             return
         self._do_export(remote_function)

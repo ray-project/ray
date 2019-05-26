@@ -198,7 +198,7 @@ class Worker(object):
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID(_random_string())
+                self._task_context.current_task_id = TaskID.from_random()
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -1725,7 +1725,7 @@ def connect(node,
     else:
         # This is the code path of driver mode.
         if driver_id is None:
-            driver_id = DriverID(_random_string())
+            driver_id = DriverID.from_random()
 
         if not isinstance(driver_id, DriverID):
             raise TypeError("The type of given driver id must be DriverID.")
@@ -1834,6 +1834,7 @@ def connect(node,
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
+    driver_id_str = _random_string()
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -1865,7 +1866,7 @@ def connect(node,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            TaskID(_random_string()),  # parent_task_id.
+            TaskID(driver_id_str[:TaskID.size()]),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
@@ -1894,7 +1895,7 @@ def connect(node,
         node.raylet_socket_name,
         ClientID(worker.worker_id),
         (mode == WORKER_MODE),
-        DriverID(worker.current_task_id.binary()),
+        DriverID(driver_id_str),
     )
 
     # Start the import thread

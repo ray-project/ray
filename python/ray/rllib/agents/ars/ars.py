@@ -17,7 +17,7 @@ from ray.rllib.agents import Trainer, with_common_config
 from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
 from ray.rllib.agents.ars import utils
-from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils import FilterManager

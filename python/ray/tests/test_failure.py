@@ -15,7 +15,6 @@ import redis
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.utils import _random_string
 from ray.tests.cluster_utils import Cluster
 from ray.tests.utils import (
     relevant_errors,
@@ -96,7 +95,15 @@ def temporary_helper_function():
     # fail when it is unpickled.
     @ray.remote
     def g():
-        return module.temporary_python_file()
+        try:
+            module.temporary_python_file()
+        except Exception:
+            # This test is not concerned with the error from running this
+            # function. Only from unpickling the remote function.
+            pass
+
+    # Invoke the function so that the definition is exported.
+    g.remote()
 
     wait_for_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR, 2)
     errors = relevant_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR)
@@ -500,6 +507,9 @@ def test_export_large_objects(ray_start_regular):
     def f():
         large_object
 
+    # Invoke the function so that the definition is exported.
+    f.remote()
+
     # Make sure that a warning is generated.
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 1)
 
@@ -667,7 +677,7 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
 
 
 def test_raylet_crash_when_get(ray_start_regular):
-    nonexistent_id = ray.ObjectID(_random_string())
+    nonexistent_id = ray.ObjectID.from_random()
 
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.

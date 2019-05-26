@@ -95,7 +95,7 @@ TaskSpecification::TaskSpecification(
   // Generate return ids.
   std::vector<ray::ObjectID> returns;
   for (int64_t i = 1; i < num_returns + 1; ++i) {
-    returns.push_back(ComputeReturnId(task_id, i));
+    returns.push_back(ObjectID::for_task_return(task_id, i));
   }
 
   // Serialize the TaskSpecification.

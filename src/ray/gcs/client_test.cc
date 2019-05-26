@@ -89,7 +89,7 @@ void TestTableLookup(const DriverID &driver_id,
   data->task_specification = "123";
 
   // Check that we added the correct task.
-  auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
+  auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
                                       const protocol::TaskT &d) {
     ASSERT_EQ(id, task_id);
     ASSERT_EQ(data->task_specification, d.task_specification);
@@ -104,7 +104,7 @@ void TestTableLookup(const DriverID &driver_id,
   };
 
   // Check that the lookup does not return an empty entry.
-  auto failure_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
+  auto failure_callback = [](gcs::AsyncGcsClient *client, const TaskID &id) {
     RAY_CHECK(false);
   };
 
@@ -139,7 +139,7 @@ void TestLogLookup(const DriverID &driver_id,
     auto data = std::make_shared<TaskReconstructionDataT>();
     data->node_manager_id = node_manager_id;
     // Check that we added the correct object entries.
-    auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
+    auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
                                         const TaskReconstructionDataT &d) {
       ASSERT_EQ(id, task_id);
       ASSERT_EQ(data->node_manager_id, d.node_manager_id);
@@ -150,7 +150,7 @@ void TestLogLookup(const DriverID &driver_id,
 
   // Check that lookup returns the added object entries.
   auto lookup_callback = [task_id, node_manager_ids](
-      gcs::AsyncGcsClient *client, const UniqueID &id,
+      gcs::AsyncGcsClient *client, const TaskID &id,
       const std::vector<TaskReconstructionDataT> &data) {
     ASSERT_EQ(id, task_id);
     for (const auto &entry : data) {
@@ -181,11 +181,11 @@ void TestTableLookupFailure(const DriverID &driver_id,
   TaskID task_id = TaskID::from_random();
 
   // Check that the lookup does not return data.
-  auto lookup_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id,
+  auto lookup_callback = [](gcs::AsyncGcsClient *client, const TaskID &id,
                             const protocol::TaskT &d) { RAY_CHECK(false); };
 
   // Check that the lookup returns an empty entry.
-  auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const UniqueID &id) {
+  auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id) {
     ASSERT_EQ(id, task_id);
     test->Stop();
   };
@@ -215,7 +215,7 @@ void TestLogAppendAt(const DriverID &driver_id,
   }
 
   // Check that we added the correct task.
-  auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const UniqueID &id,
+  auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
                                     const TaskReconstructionDataT &d) {
     ASSERT_EQ(id, task_id);
     test->IncrementNumCallbacks();
@@ -241,7 +241,7 @@ void TestLogAppendAt(const DriverID &driver_id,
       /*done callback=*/nullptr, failure_callback, /*log_length=*/1));
 
   auto lookup_callback = [node_manager_ids](
-      gcs::AsyncGcsClient *client, const UniqueID &id,
+      gcs::AsyncGcsClient *client, const TaskID &id,
       const std::vector<TaskReconstructionDataT> &data) {
     std::vector<std::string> appended_managers;
     for (const auto &entry : data) {
@@ -271,7 +271,7 @@ void TestSet(const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsClient> cli
     auto data = std::make_shared<ObjectTableDataT>();
     data->manager = manager;
     // Check that we added the correct object entries.
-    auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
+    auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const ObjectID &id,
                                           const ObjectTableDataT &d) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data->manager, d.manager);
@@ -297,7 +297,7 @@ void TestSet(const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsClient> cli
     data->manager = manager;
     // Check that we added the correct object entries.
     auto remove_entry_callback = [object_id, data](
-        gcs::AsyncGcsClient *client, const UniqueID &id, const ObjectTableDataT &d) {
+        gcs::AsyncGcsClient *client, const ObjectID &id, const ObjectTableDataT &d) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data->manager, d.manager);
       test->IncrementNumCallbacks();
@@ -338,7 +338,7 @@ void TestDeleteKeysFromLog(
     task_id = TaskID::from_random();
     ids.push_back(task_id);
     // Check that we added the correct object entries.
-    auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
+    auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
                                         const TaskReconstructionDataT &d) {
       ASSERT_EQ(id, task_id);
       ASSERT_EQ(data->node_manager_id, d.node_manager_id);
@@ -350,7 +350,7 @@ void TestDeleteKeysFromLog(
   for (const auto &task_id : ids) {
     // Check that lookup returns the added object entries.
     auto lookup_callback = [task_id, data_vector](
-        gcs::AsyncGcsClient *client, const UniqueID &id,
+        gcs::AsyncGcsClient *client, const TaskID &id,
         const std::vector<TaskReconstructionDataT> &data) {
       ASSERT_EQ(id, task_id);
       ASSERT_EQ(data.size(), 1);
@@ -386,7 +386,7 @@ void TestDeleteKeysFromTable(const DriverID &driver_id,
     task_id = TaskID::from_random();
     ids.push_back(task_id);
     // Check that we added the correct object entries.
-    auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
+    auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
                                         const protocol::TaskT &d) {
       ASSERT_EQ(id, task_id);
       ASSERT_EQ(data->task_specification, d.task_specification);
@@ -434,7 +434,7 @@ void TestDeleteKeysFromSet(const DriverID &driver_id,
     object_id = ObjectID::from_random();
     ids.push_back(object_id);
     // Check that we added the correct object entries.
-    auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
+    auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const ObjectID &id,
                                           const ObjectTableDataT &d) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data->manager, d.manager);
@@ -607,7 +607,7 @@ void TestLogSubscribeAll(const DriverID &driver_id,
   }
   // Callback for a notification.
   auto notification_callback = [driver_ids](gcs::AsyncGcsClient *client,
-                                            const UniqueID &id,
+                                            const DriverID &id,
                                             const std::vector<DriverTableDataT> data) {
     ASSERT_EQ(id, driver_ids[test->NumCallbacks()]);
     // Check that we get notifications in the same order as the writes.
@@ -657,7 +657,7 @@ void TestSetSubscribeAll(const DriverID &driver_id,
 
   // Callback for a notification.
   auto notification_callback = [object_ids, managers](
-      gcs::AsyncGcsClient *client, const UniqueID &id,
+      gcs::AsyncGcsClient *client, const ObjectID &id,
       const GcsTableNotificationMode notification_mode,
       const std::vector<ObjectTableDataT> data) {
     if (test->NumCallbacks() < 3 * 3) {
@@ -752,7 +752,7 @@ void TestTableSubscribeId(const DriverID &driver_id,
   // The failure callback should be called once since both keys start as empty.
   bool failure_notification_received = false;
   auto failure_callback = [task_id2, &failure_notification_received](
-      gcs::AsyncGcsClient *client, const UniqueID &id) {
+      gcs::AsyncGcsClient *client, const TaskID &id) {
     ASSERT_EQ(id, task_id2);
     // The failure notification should be the first notification received.
     ASSERT_EQ(test->NumCallbacks(), 0);
@@ -962,7 +962,7 @@ void TestTableSubscribeCancel(const DriverID &driver_id,
 
   // The failure callback should not be called since all keys are non-empty
   // when notifications are requested.
-  auto failure_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
+  auto failure_callback = [](gcs::AsyncGcsClient *client, const TaskID &id) {
     RAY_CHECK(false);
   };
 

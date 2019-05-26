@@ -1,6 +1,7 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.config.WorkerMode;
@@ -14,7 +15,7 @@ public class WorkerContext {
 
   private UniqueId workerId;
 
-  private ThreadLocal<UniqueId> currentTaskId;
+  private ThreadLocal<TaskId> currentTaskId;
 
   /**
    * Number of objects that have been put from current task.
@@ -46,17 +47,17 @@ public class WorkerContext {
     mainThreadId = Thread.currentThread().getId();
     taskIndex = ThreadLocal.withInitial(() -> 0);
     putIndex = ThreadLocal.withInitial(() -> 0);
-    currentTaskId = ThreadLocal.withInitial(UniqueId::randomId);
+    currentTaskId = ThreadLocal.withInitial(TaskId::randomId);
     this.runMode = runMode;
     currentTask = ThreadLocal.withInitial(() -> null);
     currentClassLoader = null;
     if (workerMode == WorkerMode.DRIVER) {
       workerId = driverId;
-      currentTaskId.set(UniqueId.randomId());
+      currentTaskId.set(TaskId.randomId());
       currentDriverId = driverId;
     } else {
       workerId = UniqueId.randomId();
-      this.currentTaskId.set(UniqueId.NIL);
+      this.currentTaskId.set(TaskId.NIL);
       this.currentDriverId = UniqueId.NIL;
     }
   }
@@ -65,7 +66,7 @@ public class WorkerContext {
    * @return For the main thread, this method returns the ID of this worker's current running task;
    *     for other threads, this method returns a random ID.
    */
-  public UniqueId getCurrentTaskId() {
+  public TaskId getCurrentTaskId() {
     return currentTaskId.get();
   }
 

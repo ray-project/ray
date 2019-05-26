@@ -7,13 +7,13 @@ import numpy as np
 from scipy.stats import entropy
 
 import ray
-from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog, Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tf_policy import TFPolicy, \
     LearningRateSchedule
 from ray.rllib.utils import try_import_tf
 
@@ -105,14 +105,14 @@ class QLoss(object):
 class DQNPostprocessing(object):
     """Implements n-step learning and param noise adjustments."""
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def extra_compute_action_fetches(self):
         return dict(
-            TFPolicyGraph.extra_compute_action_fetches(self), **{
+            TFPolicy.extra_compute_action_fetches(self), **{
                 "q_values": self.q_values,
             })
 
-    @override(PolicyGraph)
+    @override(Policy)
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
@@ -345,7 +345,7 @@ class QValuePolicy(object):
         self.action_prob = None
 
 
-class DQNPolicyGraph(LearningRateSchedule, DQNPostprocessing, TFPolicyGraph):
+class DQNTFPolicy(LearningRateSchedule, DQNPostprocessing, TFPolicy):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Discrete):
@@ -446,7 +446,7 @@ class DQNPolicyGraph(LearningRateSchedule, DQNPostprocessing, TFPolicyGraph):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
-        # initialize TFPolicyGraph
+        # initialize TFPolicy
         self.sess = tf.get_default_session()
         self.loss_inputs = [
             (SampleBatch.CUR_OBS, self.obs_t),
@@ -459,7 +459,7 @@ class DQNPolicyGraph(LearningRateSchedule, DQNPostprocessing, TFPolicyGraph):
 
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
-        TFPolicyGraph.__init__(
+        TFPolicy.__init__(
             self,
             observation_space,
             action_space,
@@ -477,12 +477,12 @@ class DQNPolicyGraph(LearningRateSchedule, DQNPostprocessing, TFPolicyGraph):
             "cur_lr": tf.cast(self.cur_lr, tf.float64),
         }, **self.loss.stats)
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def optimizer(self):
         return tf.train.AdamOptimizer(
             learning_rate=self.cur_lr, epsilon=self.config["adam_epsilon"])
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def gradients(self, optimizer, loss):
         if self.config["grad_norm_clipping"] is not None:
             grads_and_vars = _minimize_and_clip(
@@ -496,27 +496,27 @@ class DQNPolicyGraph(LearningRateSchedule, DQNPostprocessing, TFPolicyGraph):
         grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
         return grads_and_vars
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def extra_compute_action_feed_dict(self):
         return {
             self.stochastic: True,
             self.eps: self.cur_epsilon,
         }
 
-    @override(TFPolicyGraph)
+    @override(TFPolicy)
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.loss.td_error,
             LEARNER_STATS_KEY: self.stats_fetches,
         }
 
-    @override(PolicyGraph)
+    @override(Policy)
     def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
+        return [TFPolicy.get_state(self), self.cur_epsilon]
 
-    @override(PolicyGraph)
+    @override(Policy)
     def set_state(self, state):
-        TFPolicyGraph.set_state(self, state[0])
+        TFPolicy.set_state(self, state[0])
         self.set_epsilon(state[1])
 
     def _build_parameter_noise(self, pnet_params):
@@ -633,25 +633,25 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
                 rewards[i] += gamma**j * rewards[i + j]
 
 
-def _postprocess_dqn(policy_graph, batch):
+def _postprocess_dqn(policy, batch):
     # N-step Q adjustments
-    if policy_graph.config["n_step"] > 1:
-        _adjust_nstep(policy_graph.config["n_step"],
-                      policy_graph.config["gamma"], batch[SampleBatch.CUR_OBS],
-                      batch[SampleBatch.ACTIONS], batch[SampleBatch.REWARDS],
-                      batch[SampleBatch.NEXT_OBS], batch[SampleBatch.DONES])
+    if policy.config["n_step"] > 1:
+        _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
+                      batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+                      batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
+                      batch[SampleBatch.DONES])
 
     if PRIO_WEIGHTS not in batch:
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
     # Prioritize on the worker side
-    if batch.count > 0 and policy_graph.config["worker_side_prioritization"]:
-        td_errors = policy_graph.compute_td_error(
+    if batch.count > 0 and policy.config["worker_side_prioritization"]:
+        td_errors = policy.compute_td_error(
             batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (
-            np.abs(td_errors) + policy_graph.config["prioritized_replay_eps"])
+            np.abs(td_errors) + policy.config["prioritized_replay_eps"])
         batch.data[PRIO_WEIGHTS] = new_priorities
 
     return batch
