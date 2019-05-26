@@ -8,7 +8,7 @@ Policies
 
 Policy classes encapsulate the core numerical components of RL algorithms. This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given postprocessed experiences. For a simple example, see the policy gradients `graph definition <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy.py>`__.
 
-Most interaction with deep learning frameworks is isolated to the `Policy interface <https://github.com/ray-project/ray/blob/master/python/ray/rllib/policy/policy.py>`__, allowing RLlib to support multiple frameworks. To simplify the definition of policies, RLlib includes `Tensorflow <https://github.com/ray-project/ray/blob/master/python/ray/rllib/policy/tf_policy_template.py>`__ and `PyTorch-specific <https://github.com/ray-project/ray/blob/master/python/ray/rllib/policy/torch_policy_template.py>`__ templates. You can also write your own from scratch. Here is an example:
+Most interaction with deep learning frameworks is isolated to the `Policy interface <https://github.com/ray-project/ray/blob/master/python/ray/rllib/policy/policy.py>`__, allowing RLlib to support multiple frameworks. To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ templates. You can also write your own from scratch. Here is an example:
 
 .. code-block:: python
 
@@ -45,6 +45,63 @@ Most interaction with deep learning frameworks is isolated to the `Policy interf
 
         def set_weights(self, weights):
             self.w = weights["w"]
+
+
+The above basic policy, when run, will produce batches of observations with the basic ``obs``, ``new_obs``, ``actions``, ``rewards``, ``dones``, and ``infos`` columns. There are two more mechanisms to pass along and emit extra information:
+
+**Policy recurrent state**: Suppose you want to compute actions based on the current timestep of the episode. While it is possible to have the environment provide this as part of the observation, we can instead compute and store it as part of the Policy recurrent state:
+
+.. code-block:: python
+
+    def get_initial_state(self):
+        """Returns initial RNN state for the current policy."""
+        return [0]  # list of single state element (t=0)
+                    # you could also return multiple values, e.g., [0, "foo"]
+
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
+                        info_batch=None,
+                        episodes=None,
+                        **kwargs):
+        assert len(state_batches) == len(self.get_initial_state())
+        new_state_batches = [[
+            t + 1 for t in state_batches[0]
+        ]]
+        return ..., new_state_batches, {}
+
+    def learn_on_batch(self, samples):
+        # can access array of the state elements at each timestep
+        # or state_in_1, 2, etc. if there are multiple state elements
+        assert "state_in_0" in samples.keys()
+        assert "state_out_0" in samples.keys()
+
+
+**Extra action info output**: You can also emit extra outputs at each step which will be available for learning on. For example, you might want to output the behaviour policy logits as extra action info, which can be used for importance weighting, but in general arbitrary values can be stored here (as long as they are convertible to numpy arrays):
+
+.. code-block:: python
+
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
+                        info_batch=None,
+                        episodes=None,
+                        **kwargs):
+        action_info_batch = {
+            "some_value": ["foo" for _ in obs_batch],
+            "other_value": [12345 for _ in obs_batch],
+        }
+        return ..., [], action_info_batch
+
+    def learn_on_batch(self, samples):
+        # can access array of the extra values at each timestep
+        assert "some_value" in samples.keys()
+        assert "other_value" in samples.keys()
+
 
 Building Policies in TensorFlow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -427,7 +484,7 @@ Trainers
 
 Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the `Trainable API <https://ray.readthedocs.io/en/latest/tune-usage.html#training-api>`__ for easy experiment management.
 
-Example of three equivalent ways of interacting with the PPO trainer:
+Example of three equivalent ways of interacting with the PPO trainer, all of which log results in ``~/ray_results``:
 
 .. code-block:: python
 
