@@ -27,6 +27,26 @@ The Ray API
 
 .. autofunction:: ray.method
 
+Inspect the Cluster State
+-------------------------
+
+.. autofunction:: ray.nodes()
+
+.. autofunction:: ray.tasks()
+
+.. autofunction:: ray.objects()
+
+.. autofunction:: ray.timeline()
+
+.. autofunction:: ray.object_transfer_timeline()
+
+.. autofunction:: ray.cluster_resources()
+
+.. autofunction:: ray.available_resources()
+
+.. autofunction:: ray.errors()
+
+
 The Ray Command Line API
 ------------------------
 

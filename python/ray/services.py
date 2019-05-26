@@ -101,7 +101,7 @@ def get_address_info_from_redis_helper(redis_address,
     # Redis) must have run "CONFIG SET protected-mode no".
     redis_client = create_redis_client(redis_address, password=redis_password)
 
-    client_table = ray.experimental.state.parse_client_table(redis_client)
+    client_table = ray.state._parse_client_table(redis_client)
     if len(client_table) == 0:
         raise Exception(
             "Redis has started but no raylets have registered yet.")

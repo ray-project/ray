@@ -935,7 +935,7 @@ def test_many_fractional_resources(shutdown_only):
     stop_time = time.time() + 10
     correct_available_resources = False
     while time.time() < stop_time:
-        if ray.global_state.available_resources() == {
+        if ray.available_resources() == {
                 "CPU": 2.0,
                 "GPU": 2.0,
                 "Custom": 2.0,
@@ -1176,7 +1176,7 @@ def test_profiling_api(ray_start_2_cpus):
         if time.time() - start_time > timeout_seconds:
             raise Exception("Timed out while waiting for information in "
                             "profile table.")
-        profile_data = ray.global_state.chrome_tracing_dump()
+        profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
             "worker_idle",
@@ -1252,7 +1252,7 @@ def test_object_transfer_dump(ray_start_cluster):
     # The profiling information only flushes once every second.
     time.sleep(1.1)
 
-    transfer_dump = ray.global_state.chrome_tracing_object_transfer_dump()
+    transfer_dump = ray.object_transfer_timeline()
     # Make sure the transfer dump can be serialized with JSON.
     json.loads(json.dumps(transfer_dump))
     assert len(transfer_dump) >= num_nodes**2
@@ -1559,12 +1559,12 @@ def test_free_objects_multi_node(ray_start_cluster):
 
     # Case3: These cases test the deleting creating tasks for the object.
     (a, b, c) = run_one_test(actors, False, False)
-    task_table = ray.global_state.task_table()
+    task_table = ray.tasks()
     for obj in [a, b, c]:
         assert ray._raylet.compute_task_id(obj).hex() in task_table
 
     (a, b, c) = run_one_test(actors, False, True)
-    task_table = ray.global_state.task_table()
+    task_table = ray.tasks()
     for obj in [a, b, c]:
         assert ray._raylet.compute_task_id(obj).hex() not in task_table
 
@@ -2026,7 +2026,7 @@ def test_multiple_raylets(ray_start_cluster):
                 results.append(run_on_0_2.remote())
         return names, results
 
-    client_table = ray.global_state.client_table()
+    client_table = ray.nodes()
     store_names = []
     store_names += [
         client["ObjectStoreSocketName"] for client in client_table
@@ -2214,13 +2214,13 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
 
     def test():
-        resources = ray.global_state.available_resources()
+        resources = ray.available_resources()
         MAX_RETRY_ATTEMPTS = 5
         retry_count = 0
 
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
-            resources = ray.global_state.available_resources()
+            resources = ray.available_resources()
             retry_count += 1
 
         if retry_count >= MAX_RETRY_ATTEMPTS:
@@ -2394,7 +2394,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 def wait_for_num_tasks(num_tasks, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if len(ray.global_state.task_table()) >= num_tasks:
+        if len(ray.tasks()) >= num_tasks:
             return
         time.sleep(0.1)
     raise Exception("Timed out while waiting for global state.")
@@ -2403,7 +2403,7 @@ def wait_for_num_tasks(num_tasks, timeout=10):
 def wait_for_num_objects(num_objects, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if len(ray.global_state.object_table()) >= num_objects:
+        if len(ray.objects()) >= num_objects:
             return
         time.sleep(0.1)
     raise Exception("Timed out while waiting for global state.")
@@ -2414,31 +2414,27 @@ def wait_for_num_objects(num_objects, timeout=10):
     reason="New GCS API doesn't have a Python API yet.")
 def test_global_state_api(shutdown_only):
     with pytest.raises(Exception):
-        ray.global_state.object_table()
+        ray.objects()
 
     with pytest.raises(Exception):
-        ray.global_state.task_table()
+        ray.tasks()
 
     with pytest.raises(Exception):
-        ray.global_state.client_table()
-
-    with pytest.raises(Exception):
-        ray.global_state.function_table()
+        ray.nodes()
 
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
     resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
-    assert ray.global_state.cluster_resources() == resources
+    assert ray.cluster_resources() == resources
 
-    assert ray.global_state.object_table() == {}
+    assert ray.objects() == {}
 
-    driver_id = ray.experimental.state.binary_to_hex(
-        ray.worker.global_worker.worker_id)
+    driver_id = ray.utils.binary_to_hex(ray.worker.global_worker.worker_id)
     driver_task_id = ray.worker.global_worker.current_task_id.hex()
 
     # One task is put in the task table which corresponds to this driver.
     wait_for_num_tasks(1)
-    task_table = ray.global_state.task_table()
+    task_table = ray.tasks()
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
@@ -2451,7 +2447,7 @@ def test_global_state_api(shutdown_only):
     assert task_spec["FunctionID"] == nil_id_hex
     assert task_spec["ReturnObjectIDs"] == []
 
-    client_table = ray.global_state.client_table()
+    client_table = ray.nodes()
     node_ip_address = ray.worker.global_worker.node_ip_address
 
     assert len(client_table) == 1
@@ -2466,24 +2462,19 @@ def test_global_state_api(shutdown_only):
 
     # Wait for one additional task to complete.
     wait_for_num_tasks(1 + 1)
-    task_table = ray.global_state.task_table()
+    task_table = ray.tasks()
     assert len(task_table) == 1 + 1
     task_id_set = set(task_table.keys())
     task_id_set.remove(driver_task_id)
     task_id = list(task_id_set)[0]
 
-    function_table = ray.global_state.function_table()
     task_spec = task_table[task_id]["TaskSpec"]
     assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == [1, "hi", x_id]
     assert task_spec["DriverID"] == driver_id
     assert task_spec["ReturnObjectIDs"] == [result_id]
-    function_table_entry = function_table[task_spec["FunctionID"]]
-    assert function_table_entry["Name"] == "ray.tests.test_basic.f"
-    assert function_table_entry["DriverID"] == driver_id
-    assert function_table_entry["Module"] == "ray.tests.test_basic"
 
-    assert task_table[task_id] == ray.global_state.task_table(task_id)
+    assert task_table[task_id] == ray.tasks(task_id)
 
     # Wait for two objects, one for the x_id and one for result_id.
     wait_for_num_objects(2)
@@ -2492,7 +2483,7 @@ def test_global_state_api(shutdown_only):
         timeout = 10
         start_time = time.time()
         while time.time() - start_time < timeout:
-            object_table = ray.global_state.object_table()
+            object_table = ray.objects()
             tables_ready = (object_table[x_id]["ManagerIDs"] is not None and
                             object_table[result_id]["ManagerIDs"] is not None)
             if tables_ready:
@@ -2501,11 +2492,11 @@ def test_global_state_api(shutdown_only):
         raise Exception("Timed out while waiting for object table to "
                         "update.")
 
-    object_table = ray.global_state.object_table()
+    object_table = ray.objects()
     assert len(object_table) == 2
 
-    assert object_table[x_id] == ray.global_state.object_table(x_id)
-    object_table_entry = ray.global_state.object_table(result_id)
+    assert object_table[x_id] == ray.objects(x_id)
+    object_table_entry = ray.objects(result_id)
     assert object_table[result_id] == object_table_entry
 
 
@@ -2610,14 +2601,6 @@ def test_workers(shutdown_only):
     worker_ids = set()
     while len(worker_ids) != num_workers:
         worker_ids = set(ray.get([f.remote() for _ in range(10)]))
-
-    worker_info = ray.global_state.workers()
-    assert len(worker_info) >= num_workers
-    for worker_id, info in worker_info.items():
-        assert "node_ip_address" in info
-        assert "plasma_store_socket" in info
-        assert "stderr_file" in info
-        assert "stdout_file" in info
 
 
 def test_specific_driver_id():
@@ -2816,7 +2799,7 @@ def test_socket_dir_not_existing(shutdown_only):
 def test_raylet_is_robust_to_random_messages(ray_start_regular):
     node_manager_address = None
     node_manager_port = None
-    for client in ray.global_state.client_table():
+    for client in ray.nodes():
         if "NodeManagerAddress" in client:
             node_manager_address = client["NodeManagerAddress"]
             node_manager_port = client["NodeManagerPort"]
@@ -2908,7 +2891,7 @@ def test_shutdown_disconnect_global_state():
     ray.shutdown()
 
     with pytest.raises(Exception) as e:
-        ray.global_state.object_table()
+        ray.objects()
     assert str(e.value).endswith("ray.init has been called.")
 
 
@@ -2922,8 +2905,8 @@ def test_redis_lru_with_set(ray_start_object_store_memory):
     removed = False
     start_time = time.time()
     while time.time() < start_time + 10:
-        if ray.global_state.redis_clients[0].delete(b"OBJECT" +
-                                                    x_id.binary()) == 1:
+        if ray.state.state.redis_clients[0].delete(b"OBJECT" +
+                                                   x_id.binary()) == 1:
             removed = True
             break
     assert removed
