@@ -66,6 +66,9 @@ from ray._raylet import (
 _config = _Config()
 
 from ray.profiling import profile  # noqa: E402
+from ray.state import (global_state, nodes, tasks, objects, timeline,
+                       object_transfer_timeline, cluster_resources,
+                       available_resources, errors)  # noqa: E402
 from ray.worker import (
     LOCAL_MODE,
     PYTHON_MODE,
@@ -73,12 +76,10 @@ from ray.worker import (
     WORKER_MODE,
     connect,
     disconnect,
-    error_info,
     get,
     get_gpu_ids,
     get_resource_ids,
     get_webui_url,
-    global_state,
     init,
     is_initialized,
     put,
@@ -95,9 +96,18 @@ from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
 
 # Ray version string.
-__version__ = "0.7.0"
+__version__ = "0.8.0.dev0"
 
 __all__ = [
+    "global_state",
+    "nodes",
+    "tasks",
+    "objects",
+    "timeline",
+    "object_transfer_timeline",
+    "cluster_resources",
+    "available_resources",
+    "errors",
     "LOCAL_MODE",
     "PYTHON_MODE",
     "SCRIPT_MODE",
@@ -108,12 +118,10 @@ __all__ = [
     "actor",
     "connect",
     "disconnect",
-    "error_info",
     "get",
     "get_gpu_ids",
     "get_resource_ids",
     "get_webui_url",
-    "global_state",
     "init",
     "internal",
     "is_initialized",

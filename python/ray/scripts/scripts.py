@@ -746,7 +746,7 @@ def timeline(redis_address):
     ray.init(redis_address=redis_address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = "/tmp/ray-timeline-{}.json".format(time)
-    ray.global_state.chrome_tracing_dump(filename=filename)
+    ray.timeline(filename=filename)
     size = os.path.getsize(filename)
     logger.info("Trace file written to {} ({} bytes).".format(filename, size))
     logger.info(

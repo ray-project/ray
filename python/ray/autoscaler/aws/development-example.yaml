@@ -94,6 +94,7 @@ setup_commands:
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Build Ray.
     - git clone https://github.com/ray-project/ray || true
+    - ray/ci/travis/install-bazel.sh
     - pip install boto3==1.4.8 cython==0.29.0
     - cd ray/python; pip install -e . --verbose
 
