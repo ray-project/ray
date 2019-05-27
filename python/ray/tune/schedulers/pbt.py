@@ -123,8 +123,8 @@ class PopulationBasedTraining(FIFOScheduler):
         metric (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
-        mode (str): One of {min, max}. Determines whether objective is minimizing
-            or maximizing the metric attribute
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute
         perturbation_interval (float): Models will be considered for
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
@@ -186,8 +186,10 @@ class PopulationBasedTraining(FIFOScheduler):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
-                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         FIFOScheduler.__init__(self)
         self._metric = metric
@@ -217,7 +219,7 @@ class PopulationBasedTraining(FIFOScheduler):
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
-        score = self.metric_op * result[self._metric]
+        score = self._metric_op * result[self._metric]
         state.last_score = score
         state.last_perturbation_time = time
         lower_quantile, upper_quantile = self._quantiles()

@@ -31,8 +31,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument("--smoke-test",
+                        action="store_true",
+                        help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     ray.init()
 
@@ -45,11 +46,10 @@ if __name__ == "__main__":
     })
 
     config = {"stop": {"training_iteration": 100}}
-    algo = GeneticSearch(
-        space,
-        reward_attr="neg_mean_loss",
-        max_generation=2 if args.smoke_test else 10,
-        population_size=10 if args.smoke_test else 50)
+    algo = GeneticSearch(space,
+                         reward_attr="neg_mean_loss",
+                         max_generation=2 if args.smoke_test else 10,
+                         population_size=10 if args.smoke_test else 50)
     scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
     run(michalewicz_function,
         name="my_exp",

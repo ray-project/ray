@@ -25,8 +25,8 @@ class MedianStoppingRule(FIFOScheduler):
         metric (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
-        mode (str): One of {min, max}. Determines whether objective is minimizing
-            or maximizing the metric attribute
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute
         grace_period (float): Only stop trials at least this old in time.
             The units are the same as the attribute named by `time_attr`.
         min_samples_required (int): Min samples to compute median over.
@@ -51,8 +51,10 @@ class MedianStoppingRule(FIFOScheduler):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
-                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         FIFOScheduler.__init__(self)
         self._stopped_trials = set()
@@ -126,10 +128,8 @@ class MedianStoppingRule(FIFOScheduler):
         results = self._results[trial]
         # TODO(ekl) we could do interpolation to be more precise, but for now
         # assume len(results) is large and the time diffs are roughly equal
-        return self._metric_op * np.mean([
-            r[self._metric] for r in results
-            if r[self._time_attr] <= t_max
-        ])
+        return self._metric_op * np.mean(
+            [r[self._metric] for r in results if r[self._time_attr] <= t_max])
 
     def _best_result(self, trial):
         results = self._results[trial]

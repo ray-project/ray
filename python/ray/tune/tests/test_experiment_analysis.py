@@ -34,12 +34,11 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         ray.shutdown()
 
     def run_test_exp(self):
-        ahb = AsyncHyperBandScheduler(
-            time_attr="training_iteration",
-            metric=self.metric,
-            mode="max",
-            grace_period=5,
-            max_t=100)
+        ahb = AsyncHyperBandScheduler(time_attr="training_iteration",
+                                      metric=self.metric,
+                                      mode="max",
+                                      grace_period=5,
+                                      max_t=100)
 
         run(MyTrainableClass,
             name=self.test_name,
@@ -51,10 +50,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
                 },
                 "num_samples": 10,
                 "config": {
-                    "width": sample_from(
-                        lambda spec: 10 + int(90 * random.random())),
-                    "height": sample_from(
-                        lambda spec: int(100 * random.random())),
+                    "width": sample_from(lambda spec: 10 + int(90 * random.
+                                                               random())),
+                    "height": sample_from(lambda spec: int(100 * random.random(
+                    ))),
                 },
             })
 

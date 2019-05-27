@@ -27,9 +27,10 @@ def _validate_warmstart(parameter_names, points_to_evaluate,
                     format(point))
 
             if not len(point) == len(parameter_names):
-                raise ValueError("Dim of point {}".format(point) +
-                                 " and parameter_names {}".format(
-                                     parameter_names) + " do not match.")
+                raise ValueError(
+                    "Dim of point {}".format(point) +
+                    " and parameter_names {}".format(parameter_names) +
+                    " do not match.")
 
     if points_to_evaluate and evaluated_rewards:
         if not isinstance(evaluated_rewards, list):
@@ -56,8 +57,8 @@ class SkOptSearch(SuggestionAlgorithm):
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
         metric (str): The training result objective value attribute.
-        mode (str): One of {min, max}. Determines whether objective is minimizing
-            or maximizing the metric attribute
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute
         points_to_evaluate (list of lists): A list of points you'd like to run
             first before sampling from the optimiser, e.g. these could be
             parameter configurations you already know work well to help
@@ -103,8 +104,10 @@ class SkOptSearch(SuggestionAlgorithm):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
-                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._initial_points = []
         if points_to_evaluate and evaluated_rewards:
@@ -150,7 +153,8 @@ class SkOptSearch(SuggestionAlgorithm):
         """
         skopt_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            self._skopt_opt.tell(skopt_trial_info, self._metric_op * result[self._metric])
+            self._skopt_opt.tell(skopt_trial_info,
+                                 self._metric_op * result[self._metric])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)

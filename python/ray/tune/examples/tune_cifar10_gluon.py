@@ -15,74 +15,69 @@ from gluoncv.data import transforms as gcv_transforms
 
 # Training settings
 parser = argparse.ArgumentParser(description="CIFAR-10 Example")
-parser.add_argument(
-    "--model",
-    required=True,
-    type=str,
-    default="resnet50_v1b",
-    help="name of the pretrained model from gluoncv model zoo"
-    "(default: resnet50_v1b).")
-parser.add_argument(
-    "--batch_size",
-    type=int,
-    default=64,
-    metavar="N",
-    help="input batch size for training (default: 64)")
-parser.add_argument(
-    "--epochs",
-    type=int,
-    default=1,
-    metavar="N",
-    help="number of epochs to train (default: 1)")
+parser.add_argument("--model",
+                    required=True,
+                    type=str,
+                    default="resnet50_v1b",
+                    help="name of the pretrained model from gluoncv model zoo"
+                    "(default: resnet50_v1b).")
+parser.add_argument("--batch_size",
+                    type=int,
+                    default=64,
+                    metavar="N",
+                    help="input batch size for training (default: 64)")
+parser.add_argument("--epochs",
+                    type=int,
+                    default=1,
+                    metavar="N",
+                    help="number of epochs to train (default: 1)")
 parser.add_argument(
     "--num_gpus",
     default=0,
     type=int,
     help="number of gpus to use, 0 indicates cpu only (default: 0)")
-parser.add_argument(
-    "--num_workers",
-    default=4,
-    type=int,
-    help="number of preprocessing workers (default: 4)")
-parser.add_argument(
-    "--classes",
-    type=int,
-    default=10,
-    metavar="N",
-    help="number of outputs (default: 10)")
-parser.add_argument(
-    "--lr",
-    default=0.001,
-    type=float,
-    help="initial learning rate (default: 0.001)")
-parser.add_argument(
-    "--momentum",
-    default=0.9,
-    type=float,
-    help="initial momentum (default: 0.9)")
-parser.add_argument(
-    "--wd", default=1e-4, type=float, help="weight decay (default: 1e-4)")
-parser.add_argument(
-    "--expname", type=str, default="cifar10exp", help="experiments location")
-parser.add_argument(
-    "--num_samples",
-    type=int,
-    default=20,
-    metavar="N",
-    help="number of samples (default: 20)")
-parser.add_argument(
-    "--scheduler",
-    type=str,
-    default="fifo",
-    help="FIFO or AsyncHyperBandScheduler.")
-parser.add_argument(
-    "--seed",
-    type=int,
-    default=1,
-    metavar="S",
-    help="random seed (default: 1)")
-parser.add_argument(
-    "--smoke_test", action="store_true", help="Finish quickly for testing")
+parser.add_argument("--num_workers",
+                    default=4,
+                    type=int,
+                    help="number of preprocessing workers (default: 4)")
+parser.add_argument("--classes",
+                    type=int,
+                    default=10,
+                    metavar="N",
+                    help="number of outputs (default: 10)")
+parser.add_argument("--lr",
+                    default=0.001,
+                    type=float,
+                    help="initial learning rate (default: 0.001)")
+parser.add_argument("--momentum",
+                    default=0.9,
+                    type=float,
+                    help="initial momentum (default: 0.9)")
+parser.add_argument("--wd",
+                    default=1e-4,
+                    type=float,
+                    help="weight decay (default: 1e-4)")
+parser.add_argument("--expname",
+                    type=str,
+                    default="cifar10exp",
+                    help="experiments location")
+parser.add_argument("--num_samples",
+                    type=int,
+                    default=20,
+                    metavar="N",
+                    help="number of samples (default: 20)")
+parser.add_argument("--scheduler",
+                    type=str,
+                    default="fifo",
+                    help="FIFO or AsyncHyperBandScheduler.")
+parser.add_argument("--seed",
+                    type=int,
+                    default=1,
+                    metavar="S",
+                    help="random seed (default: 1)")
+parser.add_argument("--smoke_test",
+                    action="store_true",
+                    help="Finish quickly for testing")
 args = parser.parse_args()
 
 
@@ -144,10 +139,14 @@ def train_cifar10(args, config, reporter):
 
     def train(epoch):
         for i, batch in enumerate(train_data):
-            data = gluon.utils.split_and_load(
-                batch[0], ctx_list=ctx, batch_axis=0, even_split=False)
-            label = gluon.utils.split_and_load(
-                batch[1], ctx_list=ctx, batch_axis=0, even_split=False)
+            data = gluon.utils.split_and_load(batch[0],
+                                              ctx_list=ctx,
+                                              batch_axis=0,
+                                              even_split=False)
+            label = gluon.utils.split_and_load(batch[1],
+                                               ctx_list=ctx,
+                                               batch_axis=0,
+                                               even_split=False)
             with ag.record():
                 outputs = [finetune_net(X) for X in data]
                 loss = [L(yhat, y) for yhat, y in zip(outputs, label)]
@@ -160,10 +159,14 @@ def train_cifar10(args, config, reporter):
     def test():
         test_loss = 0
         for i, batch in enumerate(test_data):
-            data = gluon.utils.split_and_load(
-                batch[0], ctx_list=ctx, batch_axis=0, even_split=False)
-            label = gluon.utils.split_and_load(
-                batch[1], ctx_list=ctx, batch_axis=0, even_split=False)
+            data = gluon.utils.split_and_load(batch[0],
+                                              ctx_list=ctx,
+                                              batch_axis=0,
+                                              even_split=False)
+            label = gluon.utils.split_and_load(batch[1],
+                                               ctx_list=ctx,
+                                               batch_axis=0,
+                                               even_split=False)
             outputs = [finetune_net(X) for X in data]
             loss = [L(yhat, y) for yhat, y in zip(outputs, label)]
 
@@ -190,17 +193,16 @@ if __name__ == "__main__":
     if args.scheduler == "fifo":
         sched = FIFOScheduler()
     elif args.scheduler == "asynchyperband":
-        sched = AsyncHyperBandScheduler(
-            time_attr="training_iteration",
-            metric="mean_loss",
-            mode="min",
-            max_t=400,
-            grace_period=60)
+        sched = AsyncHyperBandScheduler(time_attr="training_iteration",
+                                        metric="mean_loss",
+                                        mode="min",
+                                        max_t=400,
+                                        grace_period=60)
     else:
         raise NotImplementedError
     tune.register_trainable(
-        "TRAIN_FN",
-        lambda config, reporter: train_cifar10(args, config, reporter))
+        "TRAIN_FN", lambda config, reporter: train_cifar10(
+            args, config, reporter))
     tune.run(
         "TRAIN_FN",
         name=args.expname,
@@ -217,9 +219,9 @@ if __name__ == "__main__":
             },
             "num_samples": 1 if args.smoke_test else args.num_samples,
             "config": {
-                "lr": tune.sample_from(
-                    lambda spec: np.power(10.0, np.random.uniform(-4, -1))),
-                "momentum": tune.sample_from(
-                    lambda spec: np.random.uniform(0.85, 0.95)),
+                "lr": tune.sample_from(lambda spec: np.power(
+                    10.0, np.random.uniform(-4, -1))),
+                "momentum": tune.sample_from(lambda spec: np.random.uniform(
+                    0.85, 0.95)),
             }
         })
