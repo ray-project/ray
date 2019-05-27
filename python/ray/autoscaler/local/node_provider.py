@@ -28,6 +28,11 @@ class ClusterState(object):
             with self.file_lock:
                 if os.path.exists(self.save_path):
                     workers = json.loads(open(self.save_path).read())
+                    head_config = workers.get(provider_config["head_ip"])
+                    if not head_config or head_config.get(
+                        "tags", {}).get(TAG_RAY_NODE_TYPE) != "head":
+                        workers = {}
+                        logger.info("Head IP changed - recreating cluster.")
                 else:
                     workers = {}
                 logger.info("ClusterState: "
@@ -55,9 +60,9 @@ class ClusterState(object):
                         TAG_RAY_NODE_TYPE] == "head"
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
-                    logger.info("ClusterState: "
+                    logger.debug("ClusterState: "
                                 "Writing cluster state: {}".format(
-                                    list(workers)))
+                                    workers))
                     f.write(json.dumps(workers))
 
     def get(self):

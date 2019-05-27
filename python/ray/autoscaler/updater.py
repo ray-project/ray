@@ -54,6 +54,7 @@ class NodeUpdater(object):
                  setup_commands,
                  runtime_hash,
                  process_runner=subprocess,
+                 verbose=False,
                  use_internal_ip=False):
 
         ssh_control_path = "/tmp/{}_ray_ssh_sockets/{}".format(
@@ -69,6 +70,7 @@ class NodeUpdater(object):
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
+        self.verbose = verbose
         self.file_mounts = {
             remote: os.path.expanduser(local)
             for remote, local in file_mounts.items()
@@ -200,9 +202,10 @@ class NodeUpdater(object):
                 with open("/dev/null", "w") as redirect:
                     self.ssh_cmd(
                         "mkdir -p {}".format(os.path.dirname(remote_path)),
-                        redirect=redirect,
+                        redirect=None if self.verbose else redirect,
                     )
-                    sync_cmd(local_path, remote_path, redirect=redirect)
+                    sync_cmd(local_path, remote_path,
+                        redirect=None if self.verbose else redirect)
 
     def do_update(self):
         self.provider.set_node_tags(self.node_id,
@@ -227,13 +230,13 @@ class NodeUpdater(object):
         with LogTimer("NodeUpdater: {}".format(m)):
             with open("/dev/null", "w") as redirect:
                 for cmd in self.initialization_commands:
-                    self.ssh_cmd(cmd, redirect=redirect)
+                    self.ssh_cmd(cmd, redirect=None if self.verbose else redirect)
 
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
             with open("/dev/null", "w") as redirect:
                 for cmd in self.setup_commands:
-                    self.ssh_cmd(cmd, redirect=redirect)
+                    self.ssh_cmd(cmd, redirect=None if self.verbose else redirect)
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         logger.info("NodeUpdater: "
