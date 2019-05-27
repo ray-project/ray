@@ -207,12 +207,8 @@ def wait_for_success_output(process_handle, timeout=10):
     while time.time() - start_time < timeout:
         output_line = ray.utils.decode(
             process_handle.stdout.readline()).strip()
-        error_line = ray.utils.decode(
-            process_handle.stderr.readline()).strip()
         if output_line == "success":
             return
-        elif error_line:
-            raise Exception("Logging failed")
     raise Exception("Timed out waiting for process to print success.")
 
 
@@ -229,7 +225,6 @@ import time
 ray.init(redis_address="{}")
 
 log_range = {}
-total_range = {}
 
 @ray.remote
 def f():
@@ -247,29 +242,26 @@ with CaptureOutputAndError(captured):
 output_lines = captured["out"]
 output = [line.split(" ")[1] for line in output_lines.splitlines()]
 
-if output != list(range(*log_range)):
-    raise Exception("Driver log does not match expected output")
+assert output == [str(i) for i in range(*log_range)]
 
 error_lines = captured["err"]
-if len(error_lines) != 0:
-    raise Exception("stderr is non-empty")
+assert len(error_lines) == 0
 
 print("success")
 """
 
-    LOG_SIZE = 100
+    LOG_SIZE = 30
     NUM_DRIVERS = 3
     procs = [None] * NUM_DRIVERS
 
-    for idx in range(NUM_DRIVERS):
-        i = idx
+    for i in range(NUM_DRIVERS):
         script = driver_script.format(redis_address, (i * LOG_SIZE,
-                                                      (i + 1) * LOG_SIZE),
-                                      (0, NUM_DRIVERS * LOG_SIZE))
-        procs[idx] = run_string_as_driver_nonblocking(script)
+                                                      (i + 1) * LOG_SIZE))
+        procs[i] = run_string_as_driver_nonblocking(script)
 
     for index in range(NUM_DRIVERS):
-        wait_for_success_output(procs[index])
+        out, _ = procs[index].communicate()
+        assert "success" in str(out)
 
 
 @pytest.mark.parametrize(
@@ -312,6 +304,17 @@ print("success")
 
     driver_script2 = (driver_script1 +
                       "import sys\nsys.stdout.flush()\ntime.sleep(10 ** 6)\n")
+
+    def wait_for_success_output(process_handle, timeout=10):
+        # Wait until the process prints "success" and then return.
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            output_line = ray.utils.decode(
+                process_handle.stdout.readline()).strip()
+            print(output_line)
+            if output_line == "success":
+                return
+        raise Exception("Timed out waiting for process to print success.")
 
     # Make sure we can run this driver repeatedly, which means that resources
     # are getting released in between.

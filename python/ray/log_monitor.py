@@ -172,6 +172,9 @@ class LogMonitor(object):
             assert not file_info.file_handle.closed
 
             lines_to_publish = []
+
+            # List of tuples (index, driver_id), each representing the location
+            # in the log file where a new driver begins logging to the file 
             driver_switches = []
             if file_info.current_driver_id is not None:
                 driver_switches.append((-1, file_info.current_driver_id))
@@ -190,7 +193,7 @@ class LogMonitor(object):
                 if next_line.startswith("Ray driver id: "):
                     driver_id = next_line.split(" ")[-1]
                     if len(driver_id) == 2 * ray_constants.ID_SIZE:
-                        driver_switches.append((idx, driver_id))
+                        driver_switches.append((index, driver_id))
                     else:
                         logger.warning(
                             "The driver ID %s does not have the right length. "
@@ -215,7 +218,6 @@ class LogMonitor(object):
                         lines_to_publish[0].startswith("Ray worker pid: ")):
                     file_info.worker_pid = int(
                         lines_to_publish[0].split(" ")[-1])
-                    driver_switches[0] = (0, driver_switches[0][1])
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
