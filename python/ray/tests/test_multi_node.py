@@ -10,8 +10,7 @@ import time
 import ray
 from ray.utils import _random_string
 from ray.tests.utils import (run_and_get_output, run_string_as_driver,
-                             run_string_as_driver_nonblocking,
-                             wait_for_success_output)
+                             run_string_as_driver_nonblocking)
 
 
 def test_error_isolation(call_ray_start):
@@ -202,6 +201,21 @@ ray.get([a.log.remote(), f.remote()])
         assert out.count(log_message) == 4
 
 
+def wait_for_success_output(process_handle, timeout=10):
+    # Wait until the process prints "success" and then return.
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        output_line = ray.utils.decode(
+            process_handle.stdout.readline()).strip()
+        error_line = ray.utils.decode(
+            process_handle.stderr.readline()).strip()
+        if output_line == "success":
+            return
+        elif error_line:
+            raise Exception("Logging failed")
+    raise Exception("Timed out waiting for process to print success.")
+
+
 def test_logging_to_multiple_drivers(call_ray_start):
     redis_address = call_ray_start
 
@@ -211,11 +225,8 @@ import ray
 from ray.tests.utils import CaptureOutputAndError
 import sys
 import time
-import atexit
 
-atexit.register(lambda: print("error"))
-
-ray.init(redis_address="{}", log_to_driver=True)
+ray.init(redis_address="{}")
 
 log_range = {}
 total_range = {}
@@ -236,17 +247,12 @@ with CaptureOutputAndError(captured):
 output_lines = captured["out"]
 output = [line.split(" ")[1] for line in output_lines.splitlines()]
 
-for i in range(*total_range):
-    if i >= log_range[0] and i < log_range[1]:
-        if str(i) != output[i - log_range[0]]:
-            sys.exit()
-    else:
-        if str(i) in output:
-            sys.exit()
+if output != list(range(*log_range)):
+    raise Exception("Driver log does not match expected output")
 
 error_lines = captured["err"]
 if len(error_lines) != 0:
-    sys.exit()
+    raise Exception("stderr is non-empty")
 
 print("success")
 """
@@ -262,8 +268,8 @@ print("success")
                                       (0, NUM_DRIVERS * LOG_SIZE))
         procs[idx] = run_string_as_driver_nonblocking(script)
 
-    for idx in range(NUM_DRIVERS):
-        wait_for_success_output(procs[idx])
+    for index in range(NUM_DRIVERS):
+        wait_for_success_output(procs[index])
 
 
 @pytest.mark.parametrize(

@@ -177,19 +177,19 @@ class LogMonitor(object):
                 driver_switches.append((-1, file_info.current_driver_id))
 
             max_num_lines_to_read = 100
-            for idx in range(max_num_lines_to_read):
+            for index in range(max_num_lines_to_read):
                 next_line = file_info.file_handle.readline()
                 if next_line == "":
                     break
                 if next_line[-1] == "\n":
                     next_line = next_line[:-1]
 
-                # Record when a worker starts executing a task from a drver
+                # Record when a worker starts executing a task from a driver
                 # different from the driver for the previous task executed by
                 # the worker.
                 if next_line.startswith("Ray driver id: "):
                     driver_id = next_line.split(" ")[-1]
-                    driver_switches.append((idx, driver_id))
+                    driver_switches.append((index, driver_id))
                     if len(driver_id) != 2 * ray_constants.ID_SIZE:
                         logger.warning(
                             "The driver ID %s does not have the right length. "
@@ -201,7 +201,7 @@ class LogMonitor(object):
             if len(driver_switches):
                 file_info.current_driver_id = driver_switches[-1][1]
 
-            driver_switches.append((len(lines_to_publish), -1))
+            driver_switches.append((len(lines_to_publish), None))
 
             # Publish the lines if this is a worker process.
             filename = file_info.filename.split("/")[-1]
@@ -214,17 +214,16 @@ class LogMonitor(object):
                         lines_to_publish[0].startswith("Ray worker pid: ")):
                     file_info.worker_pid = int(
                         lines_to_publish[0].split(" ")[-1])
-                    if driver_switches[0][0] == -1:
-                        driver_switches[0] = (0, driver_switches[0][1])
+                    driver_switches[0] = (0, driver_switches[0][1])
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
 
             # Publish to each active / previously active driver
-            for idx in range(len(driver_switches) - 1):
-                driver_id = driver_switches[idx][1]
-                start = driver_switches[idx][0] + 1
-                end = driver_switches[idx + 1][0]
+            for index in range(len(driver_switches) - 1):
+                driver_id = driver_switches[index][1]
+                start = driver_switches[index][0] + 1
+                end = driver_switches[index + 1][0]
                 publish_to_driver = lines_to_publish[start:end]
 
                 if len(publish_to_driver) > 0 and is_worker:
