@@ -19,7 +19,7 @@ def test_error_isolation(call_ray_start):
     ray.init(redis_address=redis_address)
 
     # There shouldn't be any errors yet.
-    assert len(ray.error_info()) == 0
+    assert len(ray.errors()) == 0
 
     error_string1 = "error_string1"
     error_string2 = "error_string2"
@@ -33,13 +33,13 @@ def test_error_isolation(call_ray_start):
         ray.get(f.remote())
 
     # Wait for the error to appear in Redis.
-    while len(ray.error_info()) != 1:
+    while len(ray.errors()) != 1:
         time.sleep(0.1)
         print("Waiting for error to appear.")
 
     # Make sure we got the error.
-    assert len(ray.error_info()) == 1
-    assert error_string1 in ray.error_info()[0]["message"]
+    assert len(ray.errors()) == 1
+    assert error_string1 in ray.errors()[0]["message"]
 
     # Start another driver and make sure that it does not receive this
     # error. Make the other driver throw an error, and make sure it
@@ -51,7 +51,7 @@ import time
 ray.init(redis_address="{}")
 
 time.sleep(1)
-assert len(ray.error_info()) == 0
+assert len(ray.errors()) == 0
 
 @ray.remote
 def f():
@@ -62,12 +62,12 @@ try:
 except Exception as e:
     pass
 
-while len(ray.error_info()) != 1:
-    print(len(ray.error_info()))
+while len(ray.errors()) != 1:
+    print(len(ray.errors()))
     time.sleep(0.1)
-assert len(ray.error_info()) == 1
+assert len(ray.errors()) == 1
 
-assert "{}" in ray.error_info()[0]["message"]
+assert "{}" in ray.errors()[0]["message"]
 
 print("success")
 """.format(redis_address, error_string2, error_string2)
@@ -78,8 +78,8 @@ print("success")
 
     # Make sure that the other error message doesn't show up for this
     # driver.
-    assert len(ray.error_info()) == 1
-    assert error_string1 in ray.error_info()[0]["message"]
+    assert len(ray.errors()) == 1
+    assert error_string1 in ray.errors()[0]["message"]
 
 
 def test_remote_function_isolation(call_ray_start):

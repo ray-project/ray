@@ -141,7 +141,7 @@ class Cluster(object):
 
         start_time = time.time()
         while time.time() - start_time < timeout:
-            clients = ray.experimental.state.parse_client_table(redis_client)
+            clients = ray.state._parse_client_table(redis_client)
             object_store_socket_names = [
                 client["ObjectStoreSocketName"] for client in clients
             ]
@@ -174,7 +174,7 @@ class Cluster(object):
 
         start_time = time.time()
         while time.time() - start_time < timeout:
-            clients = ray.experimental.state.parse_client_table(redis_client)
+            clients = ray.state._parse_client_table(redis_client)
             live_clients = [
                 client for client in clients
                 if client["EntryType"] == EntryType.INSERTION

@@ -164,7 +164,7 @@ def temporary_helper_function():
             return 1
 
     # There should be no errors yet.
-    assert len(ray.error_info()) == 0
+    assert len(ray.errors()) == 0
 
     # Create an actor.
     foo = Foo.remote()
@@ -376,8 +376,9 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular):
     a = Actor.remote()
     a.__ray_terminate__.remote()
     time.sleep(1)
-    assert len(ray.error_info()) == 0, (
-        "Should not have propogated an error - {}".format(ray.error_info()))
+    assert len(
+        ray.errors()) == 0, ("Should not have propogated an error - {}".format(
+            ray.errors()))
 
 
 @pytest.mark.skip("This test does not work yet.")
@@ -653,7 +654,7 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
     cluster = ray_start_cluster_2_nodes
     cluster.wait_for_nodes()
 
-    client_ids = {item["ClientID"] for item in ray.global_state.client_table()}
+    client_ids = {item["ClientID"] for item in ray.nodes()}
 
     # Try to make sure that the monitor has received at least one heartbeat
     # from the node.

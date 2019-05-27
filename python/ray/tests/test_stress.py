@@ -393,7 +393,7 @@ def wait_for_errors(error_check):
     errors = []
     time_left = 100
     while time_left > 0:
-        errors = ray.error_info()
+        errors = ray.errors()
         if error_check(errors):
             break
         time_left -= 1
