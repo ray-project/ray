@@ -4,7 +4,7 @@ namespace ray {
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            const std::vector<Arg> args,
-                                           const CallOptions &task_options,
+                                           const TaskOptions &task_options,
                                            std::vector<ObjectID> *return_ids) {
   return Status::OK();
 }
@@ -18,7 +18,7 @@ Status CoreWorkerTaskInterface::CreateActor(
 Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                                 const RayFunction &function,
                                                 const std::vector<Arg> args,
-                                                const CallOptions &task_options,
+                                                const TaskOptions &task_options,
                                                 std::vector<ObjectID> *return_ids) {
   return Status::OK();
 }
