@@ -110,6 +110,9 @@ cc_library(
     srcs = glob(
         [
             "src/ray/core_worker/*.cc",
+        ],
+        exclude = [
+            "src/ray/core_worker/*_test.cc",
         ]
     ),
     hdrs = glob([
@@ -119,6 +122,16 @@ cc_library(
     deps = [
         ":ray_common",
         ":ray_util",
+    ],
+)
+
+cc_test(
+    name = "core_worker_test",
+    srcs = ["src/ray/core_worker/core_worker_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

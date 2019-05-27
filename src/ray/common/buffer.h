@@ -1,5 +1,5 @@
-#ifndef RAY_COMMON_IO_H
-#define RAY_COMMON_IO_H
+#ifndef RAY_COMMON_BUFFER_H
+#define RAY_COMMON_BUFFER_H
 
 #include <cstdint>
 #include <cstdio>
@@ -21,7 +21,10 @@ class Buffer {
 /// Represents a byte buffer in local memory.
 class LocalMemoryBuffer : public Buffer {
  public:
+  LocalMemoryBuffer(uint8_t *data, size_t length) : data_(data), length_(length) {}
+
   uint8_t *Data() { return data_; }
+
   size_t Length() { return length_; }
 
  private:
@@ -31,4 +34,4 @@ class LocalMemoryBuffer : public Buffer {
 
 }  // namespace ray
 
-#endif  // RAY_COMMON_IO_H
+#endif  // RAY_COMMON_BUFFER_H

@@ -19,7 +19,7 @@ struct RayFunction {
   /// Language of the remote function.
   const Language language;
   /// Function descriptor of the remote function.
-  const std::vector<std::string> function_descriptors;
+  const std::vector<std::string> function_descriptor;
 };
 
 /// Argument of a task.

@@ -28,6 +28,12 @@ class CoreWorker {
   /// Connect this worker to Raylet.
   Status Connect() { return Status::OK(); }
 
+  /// Type of this worker.
+  WorkerType WorkerType() const { return worker_type_; }
+
+  /// Language of this worker.
+  Language Language() const { return language_; }
+
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
   CoreWorkerTaskInterface &Tasks() { return task_interface_; }
@@ -42,19 +48,19 @@ class CoreWorker {
 
  private:
   /// Type of this worker.
-  const WorkerType worker_type_;
+  const enum WorkerType worker_type_;
 
   /// Language of this worker.
-  const Language language_;
+  const enum Language language_;
 
   /// The `CoreWorkerTaskInterface` instance.
-  const CoreWorkerTaskInterface task_interface_;
+  CoreWorkerTaskInterface task_interface_;
 
   /// The `CoreWorkerObjectInterface` instance.
-  const CoreWorkerObjectInterface object_interface_;
+  CoreWorkerObjectInterface object_interface_;
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
-  const CoreWorkerTaskExecutionInterface task_execution_interface_;
+  CoreWorkerTaskExecutionInterface task_execution_interface_;
 };
 
 }  // namespace ray
