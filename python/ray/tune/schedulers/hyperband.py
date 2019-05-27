@@ -66,8 +66,8 @@ class HyperBandScheduler(FIFOScheduler):
         metric (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
-        mode (str): One of {min, max}. Determines whether objective is minimizing
-            or maximizing the metric attribute
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute
         max_t (int): max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
             The scheduler will terminate trials after this time has passed.
@@ -87,8 +87,10 @@ class HyperBandScheduler(FIFOScheduler):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
-                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         FIFOScheduler.__init__(self)
         self._eta = 3
@@ -96,7 +98,7 @@ class HyperBandScheduler(FIFOScheduler):
         self._max_t_attr = max_t
         # bracket max trials
         self._get_n0 = lambda s: int(
-            np.ceil(self._s_max_1/(s+1) * self._eta**s))
+            np.ceil(self._s_max_1 / (s + 1) * self._eta**s))
         # bracket initial iterations
         self._get_r0 = lambda s: int((max_t * self._eta**(-s)))
         self._hyperbands = [[]]  # list of hyperband iterations
@@ -190,7 +192,8 @@ class HyperBandScheduler(FIFOScheduler):
                 bracket.cleanup_full(trial_runner)
                 return TrialScheduler.STOP
 
-            good, bad = bracket.successive_halving(self._metric, self._metric_op)
+            good, bad = bracket.successive_halving(self._metric,
+                                                   self._metric_op)
             # kill bad trials
             self._num_stopped += len(bad)
             for t in bad:
@@ -243,8 +246,8 @@ class HyperBandScheduler(FIFOScheduler):
             # band will have None entries if no resources
             # are to be allocated to that bracket.
             scrubbed = [b for b in hyperband if b is not None]
-            for bracket in sorted(
-                    scrubbed, key=lambda b: b.completion_percentage()):
+            for bracket in sorted(scrubbed,
+                                  key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
                     if (trial.status == Trial.PENDING
                             and trial_runner.has_resources(trial.resources)):
@@ -349,7 +352,8 @@ class Bracket():
         self._r = int(min(self._r, self._max_t_attr - self._cumul_r))
         self._cumul_r += self._r
         sorted_trials = sorted(
-            self._live_trials, key=lambda t: metric_op * self._live_trials[t][metric])
+            self._live_trials,
+            key=lambda t: metric_op * self._live_trials[t][metric])
 
         good, bad = sorted_trials[-self._n:], sorted_trials[:-self._n]
         return good, bad

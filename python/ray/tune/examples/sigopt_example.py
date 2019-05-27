@@ -16,10 +16,9 @@ def easy_objective(config, reporter):
     import time
     time.sleep(0.2)
     for i in range(config["iterations"]):
-        reporter(
-            timesteps_total=i,
-            neg_mean_loss=-(config["height"] - 14)**2 +
-            abs(config["width"] - 3))
+        reporter(timesteps_total=i,
+                 neg_mean_loss=-(config["height"] - 14)**2 +
+                 abs(config["width"] - 3))
         time.sleep(0.02)
 
 
@@ -31,8 +30,9 @@ if __name__ == "__main__":
         "SigOpt API key must be stored as environment variable at SIGOPT_KEY"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument("--smoke-test",
+                        action="store_true",
+                        help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     ray.init()
 
@@ -64,12 +64,11 @@ if __name__ == "__main__":
             "timesteps_total": 100
         },
     }
-    algo = SigOptSearch(
-        space,
-        name="SigOpt Example Experiment",
-        max_concurrent=1,
-        metric="mean_loss",
-        mode="min")
+    algo = SigOptSearch(space,
+                        name="SigOpt Example Experiment",
+                        max_concurrent=1,
+                        metric="mean_loss",
+                        mode="min")
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
     run(easy_objective,
         name="my_exp",

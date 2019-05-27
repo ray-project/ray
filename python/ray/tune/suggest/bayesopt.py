@@ -26,8 +26,8 @@ class BayesOptSearch(SuggestionAlgorithm):
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
         metric (str): The training result objective value attribute.
-        mode (str): One of {min, max}. Determines whether objective is minimizing
-            or maximizing the metric attribute
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute
         utility_kwargs (dict): Parameters to define the utility function. Must
             provide values for the keys `kind`, `kappa`, and `xi`.
         random_state (int): Used to initialize BayesOpt.
@@ -63,8 +63,10 @@ class BayesOptSearch(SuggestionAlgorithm):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
-                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._max_concurrent = max_concurrent
         self._metric = metric
@@ -74,8 +76,10 @@ class BayesOptSearch(SuggestionAlgorithm):
             self._metric_op = -1.
         self._live_trial_mapping = {}
 
-        self.optimizer = byo.BayesianOptimization(
-            f=None, pbounds=space, verbose=verbose, random_state=random_state)
+        self.optimizer = byo.BayesianOptimization(f=None,
+                                                  pbounds=space,
+                                                  verbose=verbose,
+                                                  random_state=random_state)
 
         self.utility = byo.UtilityFunction(**utility_kwargs)
 
@@ -101,9 +105,9 @@ class BayesOptSearch(SuggestionAlgorithm):
                           early_terminated=False):
         """Passes the result to BayesOpt unless early terminated or errored"""
         if result:
-            self.optimizer.register(
-                params=self._live_trial_mapping[trial_id],
-                target=self._metric_op * result[self._metric])
+            self.optimizer.register(params=self._live_trial_mapping[trial_id],
+                                    target=self._metric_op *
+                                    result[self._metric])
 
         del self._live_trial_mapping[trial_id]
 

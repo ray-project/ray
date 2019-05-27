@@ -32,8 +32,8 @@ class NevergradSearch(SuggestionAlgorithm):
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
         metric (str): The training result objective value attribute.
-        mode (str): One of {min, max}. Determines whether objective is minimizing
-            or maximizing the metric attribute
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute
 
     Example:
         >>> from nevergrad.optimization import optimizerlib
@@ -72,8 +72,10 @@ class NevergradSearch(SuggestionAlgorithm):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
-                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
@@ -138,7 +140,8 @@ class NevergradSearch(SuggestionAlgorithm):
         """
         ng_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            self._nevergrad_opt.tell(ng_trial_info, self._metric_op * result[self._metric])
+            self._nevergrad_opt.tell(ng_trial_info,
+                                     self._metric_op * result[self._metric])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)

@@ -29,8 +29,8 @@ class SigOptSearch(SuggestionAlgorithm):
         max_concurrent (int): Number of maximum concurrent trials supported
             based on the user's SigOpt plan. Defaults to 1.
         metric (str): The training result objective value attribute.
-        mode (str): One of {min, max}. Determines whether objective is minimizing
-            or maximizing the metric attribute
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute
 
     Example:
         >>> space = [
@@ -73,8 +73,10 @@ class SigOptSearch(SuggestionAlgorithm):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
-                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._max_concurrent = max_concurrent
         self._metric = metric

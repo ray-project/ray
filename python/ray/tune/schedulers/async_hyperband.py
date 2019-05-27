@@ -28,8 +28,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         metric (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
-        mode (str): One of {min, max}. Determines whether objective is minimizing
-            or maximizing the metric attribute
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute
         max_t (float): max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
         grace_period (float): Only stop trials at least this old in time.
@@ -59,8 +59,10 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
-                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
@@ -168,8 +170,9 @@ class _Bracket():
 
 
 if __name__ == "__main__":
-    sched = AsyncHyperBandScheduler(
-        grace_period=1, max_t=10, reduction_factor=2)
+    sched = AsyncHyperBandScheduler(grace_period=1,
+                                    max_t=10,
+                                    reduction_factor=2)
     print(sched.debug_string())
     bracket = sched._brackets[0]
     print(bracket.cutoff({str(i): i for i in range(20)}))

@@ -23,26 +23,24 @@ assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
 
 cluster = Cluster()
 for i in range(num_nodes):
-    cluster.add_node(
-        redis_port=6379 if i == 0 else None,
-        num_redis_shards=num_redis_shards if i == 0 else None,
-        num_cpus=10,
-        num_gpus=0,
-        resources={str(i): 2},
-        object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory)
+    cluster.add_node(redis_port=6379 if i == 0 else None,
+                     num_redis_shards=num_redis_shards if i == 0 else None,
+                     num_cpus=10,
+                     num_gpus=0,
+                     resources={str(i): 2},
+                     object_store_memory=object_store_memory,
+                     redis_max_memory=redis_max_memory)
 ray.init(redis_address=cluster.redis_address)
 
 # Run the workload.
 
-pbt = PopulationBasedTraining(
-    time_attr="training_iteration",
-    metric="episode_reward_mean",
-    mode="max",
-    perturbation_interval=10,
-    hyperparam_mutations={
-        "lr": [0.1, 0.01, 0.001, 0.0001],
-    })
+pbt = PopulationBasedTraining(time_attr="training_iteration",
+                              metric="episode_reward_mean",
+                              mode="max",
+                              perturbation_interval=10,
+                              hyperparam_mutations={
+                                  "lr": [0.1, 0.01, 0.001, 0.0001],
+                              })
 
 run_experiments(
     {
