@@ -40,7 +40,7 @@ class NevergradSearch(SuggestionAlgorithm):
         >>> instrumentation = 1
         >>> optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
         >>> algo = NevergradSearch(optimizer, ["lr"], max_concurrent=4,
-        >>>                        metric="neg_mean_loss", mode="max")
+        >>>                        metric="mean_loss", mode="min")
 
     Note:
         In nevergrad v0.2.0+, optimizers can be instrumented.
@@ -53,7 +53,7 @@ class NevergradSearch(SuggestionAlgorithm):
         >>> instrumentation = inst.Instrumentation(lr=lr)
         >>> optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
         >>> algo = NevergradSearch(optimizer, None, max_concurrent=4,
-        >>>                        metric="neg_mean_loss", mode="max")
+        >>>                        metric="mean_loss", mode="min")
 
     """
 

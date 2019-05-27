@@ -53,7 +53,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>>     'activation': 0, # The index of "relu"
         >>> }]
         >>> algo = HyperOptSearch(
-        >>>     space, max_concurrent=4, metric="neg_mean_loss", mode="max",
+        >>>     space, max_concurrent=4, metric="mean_loss", mode="min",
         >>>     points_to_evaluate=current_best_params)
     """
 

@@ -46,14 +46,14 @@ if __name__ == "__main__":
     algo = BayesOptSearch(
         space,
         max_concurrent=4,
-        metric="neg_mean_loss",
-        mode="max",
+        metric="mean_loss",
+        mode="min",
         utility_kwargs={
             "kind": "ucb",
             "kappa": 2.5,
             "xi": 0.0
         })
-    scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
+    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
     run(easy_objective,
         name="my_exp",
         search_alg=algo,

@@ -180,7 +180,7 @@ if __name__ == "__main__":
 
     ray.init(redis_address=args.redis_address)
     sched = HyperBandScheduler(
-        time_attr="training_iteration", metric="neg_mean_loss", mode="max")
+        time_attr="training_iteration", metric="mean_loss", mode="min")
     tune.run(
         TrainMNIST,
         scheduler=sched,

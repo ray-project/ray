@@ -39,7 +39,7 @@ class BayesOptSearch(SuggestionAlgorithm):
         >>>     'height': (-100, 100),
         >>> }
         >>> algo = BayesOptSearch(
-        >>>     space, max_concurrent=4, metric="neg_mean_loss", mode="max")
+        >>>     space, max_concurrent=4, metric="mean_loss", mode="min")
     """
 
     def __init__(self,

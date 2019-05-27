@@ -53,7 +53,7 @@ class SigOptSearch(SuggestionAlgorithm):
         >>> ]
         >>> algo = SigOptSearch(
         >>>     space, name="SigOpt Example Experiment",
-        >>>     max_concurrent=1, metric="neg_mean_loss", mode="max")
+        >>>     max_concurrent=1, metric="mean_loss", mode="min")
     """
 
     def __init__(self,

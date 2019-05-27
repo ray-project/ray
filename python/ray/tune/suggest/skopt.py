@@ -77,8 +77,8 @@ class SkOptSearch(SuggestionAlgorithm):
         >>> algo = SkOptSearch(optimizer,
         >>>     ["width", "height"],
         >>>     max_concurrent=4,
-        >>>     metric="neg_mean_loss",
-        >>>     mode="max",
+        >>>     metric="mean_loss",
+        >>>     mode="min",
         >>>     points_to_evaluate=current_best_params)
     """
 
