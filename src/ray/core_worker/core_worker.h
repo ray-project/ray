@@ -9,6 +9,54 @@
 
 namespace ray {
 
+// Task related context for worker. 
+// TODO: This is actually shared between TaskInterface and TaskExecutionInterface,
+// consider combine TaskInterface and TaskExecutionInterface, and make
+// this structure to be part of the combined one.
+struct TaskContext {
+  TaskContext(WorkerType worker_type)
+    : worker_type(worker_type),
+      task_index(0) {
+    if (worker_type == WorkerType::DRIVER) {
+      current_driver_id = DriverID::from_random();
+      current_task_id = TaskID::from_random();
+    } else {
+      current_driver_id = DriverID::nil();
+      current_task_id = TaskID::nil();
+    }
+  }
+
+  int GetNextTaskIndex() {
+    return ++task_index;
+  }
+
+  const DriverID &GetCurrentDriverID() {
+    return current_driver_id;
+  }
+
+  const TaskID &GetCurrentTaskID() {
+    return current_task_id;
+  }
+
+  void SetCurrentTask(const TaskSpecification &spec) {
+    current_driver_id = spec.DriverId();
+    current_task_id = spec.TaskId();
+    task_index = 0;
+  }
+
+  /// The type of the worker (Driver/Worker).
+  const WorkerType worker_type;
+
+  /// The driver ID for current task.
+  static thread_local DriverID current_driver_id;
+
+  /// The task ID for current task.
+  static thread_local TaskID current_task_id;
+
+  /// Number of tasks that have been submitted from current task.
+  int task_index;
+};
+
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
@@ -40,6 +88,11 @@ class CoreWorker {
   /// task execution.
   CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
+  /// Return the type of the worker.
+  const WorkerType GetWorkerType() const { return worker_type_; }
+
+  TaskContext &GetTaskContext() { return context_; }
+
  private:
   /// Type of this worker.
   const WorkerType worker_type_;
@@ -55,6 +108,9 @@ class CoreWorker {
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
   const CoreWorkerTaskExecutionInterface task_execution_interface_;
+
+  /// Task context shared by task_interface_ and task_execution_interface_.
+  TaskContext context_;
 };
 
 }  // namespace ray

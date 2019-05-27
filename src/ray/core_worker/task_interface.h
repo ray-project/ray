@@ -31,7 +31,10 @@ struct ActorCreationOptions {
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id)
-      : actor_id_(actor_id), actor_handle_id_(actor_handle_id){};
+      : actor_id_(actor_id),
+        actor_handle_id_(actor_handle_id),
+        actor_cursor_(actor_id),
+        task_counter_(0) {}
 
   /// ID of the actor.
   const ActorID &ActorID() const { return actor_id_; };
@@ -39,11 +42,24 @@ class ActorHandle {
   /// ID of this actor handle.
   const ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
 
+  /// Cursor of this actor. 
+  const ObjectID &ActorCursor() const { return actor_cursor_; };
+
+  /// Set actor cursor.
+  void SetActorCursor(const ObjectID &actor_cursor) { actor_cursor_ = actor_cursor; };
+
+  /// Increase task counter.
+  int IncreaseTaskCounter() { return task_counter_++; }
+
  private:
   /// ID of the actor.
   const class ActorID actor_id_;
   /// ID of this actor handle.
   const class ActorHandleID actor_handle_id_;
+  /// ID of this actor cursor.
+  ObjectID actor_cursor_;
+  /// Counter for tasks from this handle.
+  int task_counter_;
 };
 
 /// The interface that contains all `CoreWorker` methods that are related to task
@@ -51,7 +67,7 @@ class ActorHandle {
 class CoreWorkerTaskInterface {
  public:
   CoreWorkerTaskInterface(std::shared_ptr<CoreWorker> core_worker)
-      : core_worker_(core_worker){}
+      : core_worker_(core_worker) {}
 
   /// Call a normal task.
   ///
@@ -87,6 +103,12 @@ class CoreWorkerTaskInterface {
                        std::vector<ObjectID> *return_ids);
 
  private:
+  /// Helper function to build task arguments.
+  /// \param[in] args The arguments for a specific task.
+  /// \param[out] task_arguments The arguments as requiredd by task spec.
+  void BuildArguments(const std::vector<Arg> &args,
+      std::vector<std::shared_ptr<TaskArgument>> *task_arguments);
+
   /// Pointer to the CoreWorker instance.
   const std::shared_ptr<CoreWorker> core_worker_;
 };
