@@ -123,8 +123,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
     return ray::Status::OK();
   }
 
-  bool subscribe_to_locations;
-  bool start_timer;
+  bool subscribe_to_locations = false;
+  bool start_timer = false;
   pull_manager_.PullObject(object_id, &subscribe_to_locations, &start_timer);
   if (start_timer) {
     if (pull_timers_.find(object_id) == pull_timers_.end()) {
@@ -144,7 +144,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
       object_directory_pull_callback_id_, object_id,
       [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids) {
         std::vector<ClientID> clients_to_request;
-        bool restart_timer;
+        bool restart_timer = false;
         pull_manager_.NewObjectLocations(object_id, client_ids, &clients_to_request,
                                          &restart_timer);
         for (const ClientID &client_id : clients_to_request) {
@@ -211,7 +211,7 @@ void ObjectManager::RestartPullTimer(const ObjectID &object_id) {
   timer.async_wait([this, object_id](const boost::system::error_code &error) {
     if (!error) {
       std::vector<ClientID> clients_to_request;
-      bool abort_creation = false;
+      bool abort_creation = true;
       bool restart_timer = false;
       pull_manager_.TimerExpired(object_id, &clients_to_request, &abort_creation,
                                  &restart_timer);
@@ -295,9 +295,9 @@ void ObjectManager::HandleReceiveFinished(const UniqueID &push_id,
                                           const ClientID &client_id, uint64_t chunk_index,
                                           double start_time, double end_time,
                                           ray::Status status) {
-  bool abort_creation;
+  bool abort_creation = true;
   if (status.ok()) {
-    bool restart_timer;
+    bool restart_timer = false;
     pull_manager_.ChunkReadSucceeded(push_id, object_id, client_id, chunk_index,
                                      &abort_creation, &restart_timer);
   } else {
@@ -499,7 +499,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
 
 void ObjectManager::CancelPull(const ObjectID &object_id) {
   std::vector<ClientID> clients_to_cancel;
-  bool unsubscribe_from_locations;
+  bool unsubscribe_from_locations = false;
   pull_manager_.CancelPullObject(object_id, &clients_to_cancel,
                                  &unsubscribe_from_locations);
   for (const ClientID &client_id : clients_to_cancel) {
@@ -814,7 +814,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   uint64_t metadata_size = object_header->metadata_size();
   int64_t num_chunks = buffer_pool_.GetNumChunks(data_size + metadata_size);
   std::vector<ClientID> clients_to_cancel;
-  bool start_timer;
+  bool start_timer = false;
   pull_manager_.ReceivePushRequest(push_id, object_id, client_id, chunk_index, num_chunks,
                                    &clients_to_cancel, &start_timer);
   for (const ClientID &client_id : clients_to_cancel) {
