@@ -13,7 +13,8 @@ class CoreWorker;
 /// The interface that contains all `CoreWorker` methods that are related to object store.
 class CoreWorkerObjectInterface {
  public:
-  CoreWorkerObjectInterface(CoreWorker *core_worker) { core_worker_ = core_worker; };
+  CoreWorkerObjectInterface(std::shared_ptr<CoreWorker> core_worker)
+      : core_worker_(core_worker) {}
 
   /// Put an object into object store.
   ///
@@ -52,7 +53,8 @@ class CoreWorkerObjectInterface {
                 bool delete_creating_tasks);
 
  private:
-  const CoreWorker *core_worker_;
+  /// Pointer to the CoreWorker instance.
+  const std::shared_ptr<CoreWorker> core_worker_;
 };
 
 }  // namespace ray

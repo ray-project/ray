@@ -40,7 +40,9 @@ class ActorHandle {
   const ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
 
  private:
+  /// ID of the actor.
   const class ActorID actor_id_;
+  /// ID of this actor handle.
   const class ActorHandleID actor_handle_id_;
 };
 
@@ -48,7 +50,8 @@ class ActorHandle {
 /// submission.
 class CoreWorkerTaskInterface {
  public:
-  CoreWorkerTaskInterface(CoreWorker *core_worker) { core_worker_ = core_worker; }
+  CoreWorkerTaskInterface(std::shared_ptr<CoreWorker> core_worker)
+      : core_worker_(core_worker){}
 
   /// Call a normal task.
   ///
@@ -84,7 +87,8 @@ class CoreWorkerTaskInterface {
                        std::vector<ObjectID> *return_ids);
 
  private:
-  const CoreWorker *core_worker_;
+  /// Pointer to the CoreWorker instance.
+  const std::shared_ptr<CoreWorker> core_worker_;
 };
 
 }  // namespace ray

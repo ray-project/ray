@@ -26,7 +26,7 @@ class CoreWorker {
         task_execution_interface_(this){};
 
   /// Connect this worker to Raylet.
-  Status Connect() { return Status::OK(); };
+  Status Connect() { return Status::OK(); }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
@@ -34,21 +34,26 @@ class CoreWorker {
 
   /// Return the `CoreWorkerObjectInterface` that contains methods related to object
   /// store.
-  CoreWorkerObjectInterface &Objects() { return object_interface_; };
+  CoreWorkerObjectInterface &Objects() { return object_interface_; }
 
   /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
   /// task execution.
-  CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; };
+  CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
  private:
+  /// Type of this worker.
   const WorkerType worker_type_;
 
+  /// Language of this worker.
   const Language language_;
 
+  /// The `CoreWorkerTaskInterface` instance.
   const CoreWorkerTaskInterface task_interface_;
 
+  /// The `CoreWorkerObjectInterface` instance.
   const CoreWorkerObjectInterface object_interface_;
 
+  /// The `CoreWorkerTaskExecutionInterface` instance.
   const CoreWorkerTaskExecutionInterface task_execution_interface_;
 };
 

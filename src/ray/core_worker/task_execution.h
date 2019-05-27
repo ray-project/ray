@@ -8,7 +8,7 @@ namespace ray {
 
 class CoreWorkerTaskExecutionInterface {
  public:
-  CoreWorkerTaskExecutionInterface(CoreWorker *core_worker_)
+  CoreWorkerTaskExecutionInterface(std::shared_ptr<CoreWorker> core_worker)
       : core_worker_(core_worker) {}
 
   /// The callback provided app-language workers that executes tasks.
@@ -23,7 +23,8 @@ class CoreWorkerTaskExecutionInterface {
   void StartWorker(const TaskExecutor &executor);
 
  private:
-  const CoreWorker *core_worker_;
+  /// Pointer to the CoreWorker instance.
+  const std::shared_ptr<CoreWorker> core_worker_;
 };
 
 }  // namespace ray
