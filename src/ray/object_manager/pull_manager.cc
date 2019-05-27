@@ -56,7 +56,6 @@ void PullManager::ReceivePushRequest(const UniqueID &push_id, const ObjectID &ob
     pull_info->client_receiving_from = client_id;
     pull_info->InitializeChunksIfNecessary(num_chunks);
   } else {
-    // TODO (williamma12): Handle case where pushid of the pullInfo might be nil
     auto &pull_info = it->second;
     if (pull_info->client_receiving_from.is_nil()) {
       pull_info->push_id = push_id;
@@ -208,10 +207,6 @@ void PullManager::ChunkReadSucceeded(const UniqueID &push_id, const ObjectID &ob
 
   pull_info->num_in_progress_chunk_ids--;
   RAY_CHECK(pull_info->num_in_progress_chunk_ids >= 0);
-  // TODO (williamma12): The following check may not be true because some client
-  // may have sent uncalled for chunks?
-  // RAY_CHECK(pull_info->remaining_chunk_ids.erase(chunk_index) == 1);
-  // RAY_CHECK(pull_info->received_chunk_ids.insert(chunk_index).second);
 
   if (client_id == pull_info->client_receiving_from && push_id == pull_info->push_id) {
     *restart_timer = true;
@@ -260,6 +255,7 @@ void PullManager::TimerExpired(const ObjectID &object_id,
   auto it = pulls_.find(object_id);
   if (it == pulls_.end()) {
     *abort_creation = true;
+    *restart_timer = false;
     return;
   }
   auto &pull_info = it->second;
@@ -286,6 +282,8 @@ void PullManager::TimerExpired(const ObjectID &object_id,
 
   if (pull_info->required) {
     *restart_timer = true;
+  } else {
+    *restart_timer = false;
   }
 
   if (pull_info->LifetimeEnded()) {

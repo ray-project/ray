@@ -281,7 +281,6 @@ void ObjectManager::HandleSendFinished(const UniqueID &push_id, const ObjectID &
   profile_event.event_type = "transfer_send";
   profile_event.start_time = start_time;
   profile_event.end_time = end_time;
-  // TODO(williamma12): Add push_id to the extra_data json list.
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
   profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
