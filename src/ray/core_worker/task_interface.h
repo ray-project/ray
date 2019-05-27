@@ -103,11 +103,6 @@ class CoreWorkerTaskInterface {
                        std::vector<ObjectID> *return_ids);
 
  private:
-  /// Helper function to build task arguments.
-  /// \param[in] args The arguments for a specific task.
-  /// \param[out] task_arguments The arguments as requiredd by task spec.
-  void BuildArguments(const std::vector<Arg> &args,
-      std::vector<std::shared_ptr<TaskArgument>> *task_arguments);
 
   /// Pointer to the CoreWorker instance.
   const std::shared_ptr<CoreWorker> core_worker_;
