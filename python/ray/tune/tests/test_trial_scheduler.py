@@ -165,7 +165,7 @@ class EarlyStoppingSuite(unittest.TestCase):
 
     def testAlternateMetricsMin(self):
         def result2(t, rew):
-            return dict(training_iteration=t, neg_mean_loss=rew)
+            return dict(training_iteration=t, mean_loss=-rew)
 
         rule = MedianStoppingRule(
             grace_period=0,
@@ -558,7 +558,7 @@ class HyperbandSuite(unittest.TestCase):
         """Checking that alternate metrics will pass."""
 
         def result2(t, rew):
-            return dict(time_total_s=t, neg_mean_loss=rew)
+            return dict(time_total_s=t, mean_loss=-rew)
 
         sched = HyperBandScheduler(
             time_attr="time_total_s", metric="mean_loss", mode="min")
@@ -1106,7 +1106,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
     def testAlternateMetricsMin(self):
         def result2(t, rew):
-            return dict(training_iteration=t, neg_mean_loss=rew)
+            return dict(training_iteration=t, mean_loss=-rew)
 
         scheduler = AsyncHyperBandScheduler(
             grace_period=1,
