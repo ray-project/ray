@@ -49,53 +49,58 @@ class Cifar10Model(Trainable):
     def _build_model(self, input_shape):
         x = Input(shape=(32, 32, 3))
         y = x
-        y = Convolution2D(filters=64,
-                          kernel_size=3,
-                          strides=1,
-                          padding="same",
-                          activation="relu",
-                          kernel_initializer="he_normal")(y)
-        y = Convolution2D(filters=64,
-                          kernel_size=3,
-                          strides=1,
-                          padding="same",
-                          activation="relu",
-                          kernel_initializer="he_normal")(y)
+        y = Convolution2D(
+            filters=64,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            activation="relu",
+            kernel_initializer="he_normal")(y)
+        y = Convolution2D(
+            filters=64,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            activation="relu",
+            kernel_initializer="he_normal")(y)
         y = MaxPooling2D(pool_size=2, strides=2, padding="same")(y)
 
-        y = Convolution2D(filters=128,
-                          kernel_size=3,
-                          strides=1,
-                          padding="same",
-                          activation="relu",
-                          kernel_initializer="he_normal")(y)
-        y = Convolution2D(filters=128,
-                          kernel_size=3,
-                          strides=1,
-                          padding="same",
-                          activation="relu",
-                          kernel_initializer="he_normal")(y)
+        y = Convolution2D(
+            filters=128,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            activation="relu",
+            kernel_initializer="he_normal")(y)
+        y = Convolution2D(
+            filters=128,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            activation="relu",
+            kernel_initializer="he_normal")(y)
         y = MaxPooling2D(pool_size=2, strides=2, padding="same")(y)
 
-        y = Convolution2D(filters=256,
-                          kernel_size=3,
-                          strides=1,
-                          padding="same",
-                          activation="relu",
-                          kernel_initializer="he_normal")(y)
-        y = Convolution2D(filters=256,
-                          kernel_size=3,
-                          strides=1,
-                          padding="same",
-                          activation="relu",
-                          kernel_initializer="he_normal")(y)
+        y = Convolution2D(
+            filters=256,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            activation="relu",
+            kernel_initializer="he_normal")(y)
+        y = Convolution2D(
+            filters=256,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            activation="relu",
+            kernel_initializer="he_normal")(y)
         y = MaxPooling2D(pool_size=2, strides=2, padding="same")(y)
 
         y = Flatten()(y)
         y = Dropout(self.config["dropout"])(y)
-        y = Dense(units=10,
-                  activation="softmax",
-                  kernel_initializer="he_normal")(y)
+        y = Dense(
+            units=10, activation="softmax", kernel_initializer="he_normal")(y)
 
         model = Model(inputs=x, outputs=y, name="model1")
         return model
@@ -105,11 +110,12 @@ class Cifar10Model(Trainable):
         x_train = self.train_data[0]
         model = self._build_model(x_train.shape[1:])
 
-        opt = tf.keras.optimizers.Adadelta(lr=self.config["lr"],
-                                           decay=self.config["decay"])
-        model.compile(loss="categorical_crossentropy",
-                      optimizer=opt,
-                      metrics=["accuracy"])
+        opt = tf.keras.optimizers.Adadelta(
+            lr=self.config["lr"], decay=self.config["decay"])
+        model.compile(
+            loss="categorical_crossentropy",
+            optimizer=opt,
+            metrics=["accuracy"])
         self.model = model
 
     def _train(self):
@@ -140,14 +146,13 @@ class Cifar10Model(Trainable):
         )
 
         aug_gen.fit(x_train)
-        gen = aug_gen.flow(x_train,
-                           y_train,
-                           batch_size=self.config["batch_size"])
-        self.model.fit_generator(generator=gen,
-                                 steps_per_epoch=50000 //
-                                 self.config["batch_size"],
-                                 epochs=self.config["epochs"],
-                                 validation_data=None)
+        gen = aug_gen.flow(
+            x_train, y_train, batch_size=self.config["batch_size"])
+        self.model.fit_generator(
+            generator=gen,
+            steps_per_epoch=50000 // self.config["batch_size"],
+            epochs=self.config["epochs"],
+            validation_data=None)
 
         # loss, accuracy
         _, accuracy = self.model.evaluate(x_test, y_test, verbose=0)
@@ -170,9 +175,8 @@ class Cifar10Model(Trainable):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--smoke-test",
-                        action="store_true",
-                        help="Finish quickly for testing")
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
     train_spec = {

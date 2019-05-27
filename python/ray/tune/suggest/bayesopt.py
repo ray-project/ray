@@ -76,10 +76,8 @@ class BayesOptSearch(SuggestionAlgorithm):
             self._metric_op = -1.
         self._live_trial_mapping = {}
 
-        self.optimizer = byo.BayesianOptimization(f=None,
-                                                  pbounds=space,
-                                                  verbose=verbose,
-                                                  random_state=random_state)
+        self.optimizer = byo.BayesianOptimization(
+            f=None, pbounds=space, verbose=verbose, random_state=random_state)
 
         self.utility = byo.UtilityFunction(**utility_kwargs)
 
@@ -105,9 +103,9 @@ class BayesOptSearch(SuggestionAlgorithm):
                           early_terminated=False):
         """Passes the result to BayesOpt unless early terminated or errored"""
         if result:
-            self.optimizer.register(params=self._live_trial_mapping[trial_id],
-                                    target=self._metric_op *
-                                    result[self._metric])
+            self.optimizer.register(
+                params=self._live_trial_mapping[trial_id],
+                target=self._metric_op * result[self._metric])
 
         del self._live_trial_mapping[trial_id]
 

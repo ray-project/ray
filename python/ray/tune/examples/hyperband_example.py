@@ -48,19 +48,19 @@ class MyTrainableClass(Trainable):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--smoke-test",
-                        action="store_true",
-                        help="Finish quickly for testing")
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     ray.init()
 
     # Hyperband early stopping, configured with `episode_reward_mean` as the
     # objective and `training_iteration` as the time unit,
     # which is automatically filled by Tune.
-    hyperband = HyperBandScheduler(time_attr="training_iteration",
-                                   metric="episode_reward_mean",
-                                   mode="max",
-                                   max_t=100)
+    hyperband = HyperBandScheduler(
+        time_attr="training_iteration",
+        metric="episode_reward_mean",
+        mode="max",
+        max_t=100)
 
     exp = Experiment(
         name="hyperband_test",

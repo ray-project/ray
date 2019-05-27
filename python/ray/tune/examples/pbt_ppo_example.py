@@ -65,11 +65,11 @@ if __name__ == "__main__":
                 "clip_param": 0.2,
                 "lr": 1e-4,
                 # These params start off randomly drawn from a set.
-                "num_sgd_iter": sample_from(lambda spec: random.choice(
-                    [10, 20, 30])),
-                "sgd_minibatch_size": sample_from(lambda spec: random.choice(
-                    [128, 512, 2048])),
-                "train_batch_size": sample_from(lambda spec: random.choice(
-                    [10000, 20000, 40000]))
+                "num_sgd_iter": sample_from(
+                    lambda spec: random.choice([10, 20, 30])),
+                "sgd_minibatch_size": sample_from(
+                    lambda spec: random.choice([128, 512, 2048])),
+                "train_batch_size": sample_from(
+                    lambda spec: random.choice([10000, 20000, 40000]))
             },
         })

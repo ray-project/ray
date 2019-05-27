@@ -170,9 +170,8 @@ class _Bracket():
 
 
 if __name__ == "__main__":
-    sched = AsyncHyperBandScheduler(grace_period=1,
-                                    max_t=10,
-                                    reduction_factor=2)
+    sched = AsyncHyperBandScheduler(
+        grace_period=1, max_t=10, reduction_factor=2)
     print(sched.debug_string())
     bracket = sched._brackets[0]
     print(bracket.cutoff({str(i): i for i in range(20)}))

@@ -27,10 +27,9 @@ def _validate_warmstart(parameter_names, points_to_evaluate,
                     format(point))
 
             if not len(point) == len(parameter_names):
-                raise ValueError(
-                    "Dim of point {}".format(point) +
-                    " and parameter_names {}".format(parameter_names) +
-                    " do not match.")
+                raise ValueError("Dim of point {}".format(point) +
+                                 " and parameter_names {}".format(
+                                     parameter_names) + " do not match.")
 
     if points_to_evaluate and evaluated_rewards:
         if not isinstance(evaluated_rewards, list):

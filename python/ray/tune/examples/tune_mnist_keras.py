@@ -13,9 +13,8 @@ from ray.tune.examples.utils import (TuneKerasCallback, get_mnist_data,
                                      set_keras_threads)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--smoke-test",
-                    action="store_true",
-                    help="Finish quickly for testing")
+parser.add_argument(
+    "--smoke-test", action="store_true", help="Finish quickly for testing")
 args, _ = parser.parse_known_args()
 
 
@@ -29,10 +28,9 @@ def train_mnist(config, reporter):
 
     model = Sequential()
     model.add(
-        Conv2D(32,
-               kernel_size=(3, 3),
-               activation="relu",
-               input_shape=input_shape))
+        Conv2D(
+            32, kernel_size=(3, 3), activation="relu",
+            input_shape=input_shape))
     model.add(Conv2D(64, (3, 3), activation="relu"))
     model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Dropout(0.5))
@@ -41,18 +39,20 @@ def train_mnist(config, reporter):
     model.add(Dropout(0.5))
     model.add(Dense(num_classes, activation="softmax"))
 
-    model.compile(loss=keras.losses.categorical_crossentropy,
-                  optimizer=keras.optimizers.SGD(lr=config["lr"],
-                                                 momentum=config["momentum"]),
-                  metrics=["accuracy"])
+    model.compile(
+        loss=keras.losses.categorical_crossentropy,
+        optimizer=keras.optimizers.SGD(
+            lr=config["lr"], momentum=config["momentum"]),
+        metrics=["accuracy"])
 
-    model.fit(x_train,
-              y_train,
-              batch_size=batch_size,
-              epochs=epochs,
-              verbose=0,
-              validation_data=(x_test, y_test),
-              callbacks=[TuneKerasCallback(reporter)])
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=batch_size,
+        epochs=epochs,
+        verbose=0,
+        validation_data=(x_test, y_test),
+        callbacks=[TuneKerasCallback(reporter)])
 
 
 if __name__ == "__main__":
@@ -62,11 +62,12 @@ if __name__ == "__main__":
     mnist.load_data()  # we do this on the driver because it's not threadsafe
 
     ray.init()
-    sched = AsyncHyperBandScheduler(time_attr="timesteps_total",
-                                    metric="mean_accuracy",
-                                    mode="max",
-                                    max_t=400,
-                                    grace_period=20)
+    sched = AsyncHyperBandScheduler(
+        time_attr="timesteps_total",
+        metric="mean_accuracy",
+        mode="max",
+        max_t=400,
+        grace_period=20)
 
     tune.run(
         train_mnist,
@@ -84,8 +85,8 @@ if __name__ == "__main__":
         config={
             "threads": 2,
             "lr": tune.sample_from(lambda spec: np.random.uniform(0.001, 0.1)),
-            "momentum": tune.sample_from(lambda spec: np.random.uniform(
-                0.1, 0.9)),
-            "hidden": tune.sample_from(lambda spec: np.random.randint(32, 512)
-                                       ),
+            "momentum": tune.sample_from(
+                lambda spec: np.random.uniform(0.1, 0.9)),
+            "hidden": tune.sample_from(
+                lambda spec: np.random.randint(32, 512)),
         })

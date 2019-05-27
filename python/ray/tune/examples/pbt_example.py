@@ -86,9 +86,8 @@ class PBTBenchmarkExample(Trainable):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--smoke-test",
-                        action="store_true",
-                        help="Finish quickly for testing")
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     if args.smoke_test:
         ray.init(num_cpus=2)  # force pausing to happen for test

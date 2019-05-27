@@ -109,10 +109,8 @@ def conv2d(x, W):
 
 def max_pool_2x2(x):
     """max_pool_2x2 downsamples a feature map by 2X."""
-    return tf.nn.max_pool(x,
-                          ksize=[1, 2, 2, 1],
-                          strides=[1, 2, 2, 1],
-                          padding="SAME")
+    return tf.nn.max_pool(
+        x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
 
 
 def weight_variable(shape):
@@ -138,8 +136,8 @@ class TrainMNIST(Trainable):
         # Import data
         for _ in range(10):
             try:
-                self.mnist = input_data.read_data_sets("/tmp/mnist_ray_demo",
-                                                       one_hot=True)
+                self.mnist = input_data.read_data_sets(
+                    "/tmp/mnist_ray_demo", one_hot=True)
                 break
             except Exception as e:
                 print("Error loading data, retrying", e)
@@ -167,8 +165,8 @@ class TrainMNIST(Trainable):
         self.train_step = train_step
 
         with tf.name_scope("accuracy"):
-            correct_prediction = tf.equal(tf.argmax(y_conv, 1),
-                                          tf.argmax(self.y_, 1))
+            correct_prediction = tf.equal(
+                tf.argmax(y_conv, 1), tf.argmax(self.y_, 1))
             correct_prediction = tf.cast(correct_prediction, tf.float32)
         self.accuracy = tf.reduce_mean(correct_prediction)
 
@@ -180,28 +178,29 @@ class TrainMNIST(Trainable):
     def _train(self):
         for i in range(10):
             batch = self.mnist.train.next_batch(50)
-            self.sess.run(self.train_step,
-                          feed_dict={
-                              self.x: batch[0],
-                              self.y_: batch[1],
-                              self.keep_prob: 0.5
-                          })
+            self.sess.run(
+                self.train_step,
+                feed_dict={
+                    self.x: batch[0],
+                    self.y_: batch[1],
+                    self.keep_prob: 0.5
+                })
 
         batch = self.mnist.train.next_batch(50)
-        train_accuracy = self.sess.run(self.accuracy,
-                                       feed_dict={
-                                           self.x: batch[0],
-                                           self.y_: batch[1],
-                                           self.keep_prob: 1.0
-                                       })
+        train_accuracy = self.sess.run(
+            self.accuracy,
+            feed_dict={
+                self.x: batch[0],
+                self.y_: batch[1],
+                self.keep_prob: 1.0
+            })
 
         self.iterations += 1
         return {"mean_accuracy": train_accuracy}
 
     def _save(self, checkpoint_dir):
-        prefix = self.saver.save(self.sess,
-                                 checkpoint_dir + "/save",
-                                 global_step=self.iterations)
+        prefix = self.saver.save(
+            self.sess, checkpoint_dir + "/save", global_step=self.iterations)
         return {"prefix": prefix}
 
     def _restore(self, ckpt_data):
@@ -212,9 +211,8 @@ class TrainMNIST(Trainable):
 # !!! Example of using the ray.tune Python API !!!
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--smoke-test",
-                        action="store_true",
-                        help="Finish quickly for testing")
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     mnist_spec = {
         "stop": {
@@ -222,8 +220,8 @@ if __name__ == "__main__":
             "time_total_s": 600,
         },
         "config": {
-            "learning_rate": sample_from(lambda spec: 10**np.random.uniform(
-                -5, -3)),
+            "learning_rate": sample_from(
+                lambda spec: 10**np.random.uniform(-5, -3)),
             "activation": grid_search(["relu", "elu", "tanh"]),
         },
         "num_samples": 10,
@@ -234,12 +232,14 @@ if __name__ == "__main__":
         mnist_spec["num_samples"] = 2
 
     ray.init()
-    hyperband = HyperBandScheduler(time_attr="training_iteration",
-                                   metric="mean_accuracy",
-                                   mode="max",
-                                   max_t=10)
+    hyperband = HyperBandScheduler(
+        time_attr="training_iteration",
+        metric="mean_accuracy",
+        mode="max",
+        max_t=10)
 
-    tune.run(TrainMNIST,
-             name="mnist_hyperband_test",
-             scheduler=hyperband,
-             **mnist_spec)
+    tune.run(
+        TrainMNIST,
+        name="mnist_hyperband_test",
+        scheduler=hyperband,
+        **mnist_spec)

@@ -114,10 +114,8 @@ def conv2d(x, W):
 
 def max_pool_2x2(x):
     """max_pool_2x2 downsamples a feature map by 2X."""
-    return tf.nn.max_pool(x,
-                          ksize=[1, 2, 2, 1],
-                          strides=[1, 2, 2, 1],
-                          padding="SAME")
+    return tf.nn.max_pool(
+        x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
 
 
 def weight_variable(shape):
@@ -151,8 +149,8 @@ def main(_):
     y_conv, keep_prob = deepnn(x)
 
     with tf.name_scope("loss"):
-        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_,
-                                                                logits=y_conv)
+        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
+            labels=y_, logits=y_conv)
     cross_entropy = tf.reduce_mean(cross_entropy)
 
     with tf.name_scope("adam_optimizer"):
@@ -181,8 +179,8 @@ def main(_):
 
                 # !!! Report status to ray.tune !!!
                 if status_reporter:
-                    status_reporter(timesteps_total=i,
-                                    mean_accuracy=train_accuracy)
+                    status_reporter(
+                        timesteps_total=i, mean_accuracy=train_accuracy)
 
                 print("step %d, training accuracy %g" % (i, train_accuracy))
             train_step.run(feed_dict={
@@ -204,10 +202,11 @@ def train(config={"activation": "relu"}, reporter=None):
     status_reporter = reporter
     activation_fn = getattr(tf.nn, config["activation"])
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir",
-                        type=str,
-                        default="/tmp/tensorflow/mnist/input_data",
-                        help="Directory for storing input data")
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default="/tmp/tensorflow/mnist/input_data",
+        help="Directory for storing input data")
     FLAGS, unparsed = parser.parse_known_args()
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
 
@@ -215,9 +214,8 @@ def train(config={"activation": "relu"}, reporter=None):
 # !!! Example of using the ray.tune Python API !!!
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--smoke-test",
-                        action="store_true",
-                        help="Finish quickly for testing")
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
     mnist_spec = {
