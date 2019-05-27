@@ -126,10 +126,16 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   bool subscribe_to_locations;
   bool start_timer;
   pull_manager_.PullObject(object_id, &subscribe_to_locations, &start_timer);
+  // TODO(williamma12): Try canceling timers.
+  // We only start the timer if one does not exist because we do not remove the
+  // timers when we cancel a pull.
+  // if (start_timer && pull_timers_.find(object_id) == pull_timers_.end()) {
+  //   RestartPullTimer(object_id);
+  // }
+  // TEMP: CANCEL TIMERS WHEN REMOVING PULLS
   if (start_timer) {
-    if (pull_timers_.find(object_id) == pull_timers_.end()) {
-      RestartPullTimer(object_id);
-    }
+    RAY_CHECK(pull_timers_.find(object_id) == pull_timers_.end());
+    RestartPullTimer(object_id);
   }
 
   if (!subscribe_to_locations) {
@@ -299,6 +305,10 @@ void ObjectManager::HandleReceiveFinished(const UniqueID &push_id,
     bool restart_timer;
     pull_manager_.ChunkReadSucceeded(push_id, object_id, client_id, chunk_index,
                                      &abort_creation, &restart_timer);
+    auto it = pull_timers_.find(object_id);
+    if (restart_timer && it != pull_timers_.end()) {
+      RestartPullTimer(object_id);
+    }
   } else {
     std::vector<ClientID> clients_to_cancel;
     pull_manager_.ChunkReadFailed(push_id, object_id, client_id, chunk_index,
@@ -309,13 +319,20 @@ void ObjectManager::HandleReceiveFinished(const UniqueID &push_id,
   }
   if (abort_creation) {
     AbortObjectCreation(object_id);
+
+    // TEMP: CANCEL TIMERS WHEN REMOVING PULLS
+    pull_timers_.erase(object_id);
+    // auto it = pull_timers_.find(object_id);
+    // if (it != pull_timers_.end()) {
+    //   it->second.cancel();
+    //   pull_timers_.erase(object_id);
+    // }
   }
 
   ProfileEventT profile_event;
   profile_event.event_type = "transfer_receive";
   profile_event.start_time = start_time;
   profile_event.end_time = end_time;
-  // TODO(williamma12): Add push_id to the extra_data json list.
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
   profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
@@ -504,6 +521,14 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
   for (const ClientID &client_id : clients_to_cancel) {
     SendCancelPullRequest(UniqueID::nil(), object_id, client_id);
   }
+
+  // TEMP: CANCEL TIMERS WHEN REMOVING PULLS
+  pull_timers_.erase(object_id);
+  // auto it = pull_timers_.find(object_id);
+  // if (it != pull_timers_.end()) {
+  //   it->second.cancel();
+  //   pull_timers.erase(object_id);
+  // }
 
   if (unsubscribe_from_locations) {
     RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
