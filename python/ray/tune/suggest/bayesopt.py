@@ -18,7 +18,7 @@ class BayesOptSearch(SuggestionAlgorithm):
     """A wrapper around BayesOpt to provide trial suggestions.
 
     Requires BayesOpt to be installed. You can install BayesOpt with the
-    command: `pip install bayesian-optimization`.
+    command: `pip install inclubayesian-optimization`.
 
     Parameters:
         space (dict): Continuous search space. Parameters will be sampled from
@@ -63,8 +63,8 @@ class BayesOptSearch(SuggestionAlgorithm):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` will be depreciated!"
-                           "Consider using `metric` and `mode`.")
+            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
+                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._max_concurrent = max_concurrent
         self._metric = metric

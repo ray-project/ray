@@ -40,7 +40,7 @@ class NevergradSearch(SuggestionAlgorithm):
         >>> instrumentation = 1
         >>> optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
         >>> algo = NevergradSearch(optimizer, ["lr"], max_concurrent=4,
-        >>>                        metric="neg_mean_loss", mode="min")
+        >>>                        metric="neg_mean_loss", mode="max")
 
     Note:
         In nevergrad v0.2.0+, optimizers can be instrumented.
@@ -53,7 +53,7 @@ class NevergradSearch(SuggestionAlgorithm):
         >>> instrumentation = inst.Instrumentation(lr=lr)
         >>> optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
         >>> algo = NevergradSearch(optimizer, None, max_concurrent=4,
-        >>>                        metric="neg_mean_loss", mode="min")
+        >>>                        metric="neg_mean_loss", mode="max")
 
     """
 
@@ -63,25 +63,26 @@ class NevergradSearch(SuggestionAlgorithm):
                  max_concurrent=10,
                  reward_attr=None,
                  metric="episode_reward_mean",
-                 mode="min",
+                 mode="max",
                  **kwargs):
         assert ng is not None, "Nevergrad must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         assert mode in ["min", "max"], "mode must be 'min' or 'max'!"
 
         if reward_attr is not None:
-            mode = "min"
+            mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` will be depreciated!"
-                           "Consider using `metric` and `mode`.")
+            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
+                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
         self._metric = metric
+        # nevergrad.tell internally minimizes, so "max" => -1
         if mode == "max":
-            self._metric_op = 1.
-        elif mode == "min":
             self._metric_op = -1.
+        elif mode == "min":
+            self._metric_op = 1.
         self._nevergrad_opt = optimizer
         self._live_trial_mapping = {}
         super(NevergradSearch, self).__init__(**kwargs)

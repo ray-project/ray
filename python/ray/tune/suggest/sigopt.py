@@ -73,8 +73,8 @@ class SigOptSearch(SuggestionAlgorithm):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` will be depreciated!"
-                           "Consider using `metric` and `mode`.")
+            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
+                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._max_concurrent = max_concurrent
         self._metric = metric

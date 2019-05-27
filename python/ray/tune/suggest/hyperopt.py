@@ -6,8 +6,8 @@ import numpy as np
 import copy
 import logging
 try:
-    hyperopt_logger = logging.getLogger("hyperopt")
-    hyperopt_logger.setLevel(logging.WARNING)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.WARNING)
     import hyperopt as hpo
 except ImportError:
     hpo = None
@@ -53,7 +53,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>>     'activation': 0, # The index of "relu"
         >>> }]
         >>> algo = HyperOptSearch(
-        >>>     space, max_concurrent=4, metric="neg_mean_loss", mode="min",
+        >>>     space, max_concurrent=4, metric="neg_mean_loss", mode="max",
         >>>     points_to_evaluate=current_best_params)
     """
 
@@ -62,7 +62,7 @@ class HyperOptSearch(SuggestionAlgorithm):
                  max_concurrent=10,
                  reward_attr=None,
                  metric="episode_reward_mean",
-                 mode="min",
+                 mode="max",
                  points_to_evaluate=None,
                  **kwargs):
         assert hpo is not None, "HyperOpt must be installed!"
@@ -71,17 +71,18 @@ class HyperOptSearch(SuggestionAlgorithm):
         assert mode in ["min", "max"], "mode must be 'min' or 'max'!"
 
         if reward_attr is not None:
-            mode = "min"
+            mode = "max"
             metric = reward_attr
-            hyperopt_logger.warning("`reward_attr` will be depreciated!"
-                                    "Consider using `metric` and `mode`.")
+            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
+                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._max_concurrent = max_concurrent
         self._metric = metric
+        # hyperopt internally minimizes, so "max" => -1
         if mode == "max":
-            self._metric_op = 1.
-        elif mode == "min":
             self._metric_op = -1.
+        elif mode == "min":
+            self._metric_op = 1.
         self.algo = hpo.tpe.suggest
         self.domain = hpo.Domain(lambda spc: spc, space)
         if points_to_evaluate is None:

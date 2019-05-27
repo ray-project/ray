@@ -78,7 +78,7 @@ class SkOptSearch(SuggestionAlgorithm):
         >>>     ["width", "height"],
         >>>     max_concurrent=4,
         >>>     metric="neg_mean_loss",
-        >>>     mode="min",
+        >>>     mode="max",
         >>>     points_to_evaluate=current_best_params)
     """
 
@@ -88,7 +88,7 @@ class SkOptSearch(SuggestionAlgorithm):
                  max_concurrent=10,
                  reward_attr=None,
                  metric="episode_reward_mean",
-                 mode="min",
+                 mode="max",
                  points_to_evaluate=None,
                  evaluated_rewards=None,
                  **kwargs):
@@ -101,10 +101,10 @@ class SkOptSearch(SuggestionAlgorithm):
         assert mode in ["min", "max"], "mode must be 'min' or 'max'!"
 
         if reward_attr is not None:
-            mode = "min"
+            mode = "max"
             metric = reward_attr
-            logger.warning("`reward_attr` will be depreciated!"
-                           "Consider using `metric` and `mode`.")
+            logger.warning("`reward_attr` is deprecated and will be removed in a future version of Tune. "
+                           "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._initial_points = []
         if points_to_evaluate and evaluated_rewards:
@@ -114,10 +114,11 @@ class SkOptSearch(SuggestionAlgorithm):
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
         self._metric = metric
+        # Skopt internally minimizes, so "max" => -1
         if mode == "max":
-            self._metric_op = 1.
-        elif mode == "min":
             self._metric_op = -1.
+        elif mode == "min":
+            self._metric_op = 1.
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
         super(SkOptSearch, self).__init__(**kwargs)
