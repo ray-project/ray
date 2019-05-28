@@ -60,7 +60,7 @@ class CoreWorkerTaskInterface {
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
   Status SubmitTask(const RayFunction &function, const std::vector<Arg> &args,
-                  const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
+                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
 
   /// Create an actor.
   ///
@@ -82,8 +82,8 @@ class CoreWorkerTaskInterface {
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
   Status SubmitActorTask(ActorHandle &actor_handle, const RayFunction &function,
-                       const std::vector<Arg> &args, const TaskOptions &task_options,
-                       std::vector<ObjectID> *return_ids);
+                         const std::vector<Arg> &args, const TaskOptions &task_options,
+                         std::vector<ObjectID> *return_ids);
 
  private:
   /// Back pointer to the CoreWorker instance, this is used for referencing other sub

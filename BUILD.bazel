@@ -113,7 +113,7 @@ cc_library(
         ],
         exclude = [
             "src/ray/core_worker/*_test.cc",
-        ]
+        ],
     ),
     hdrs = glob([
         "src/ray/core_worker/*.h",
@@ -307,9 +307,9 @@ cc_library(
         "src/ray/common/common_protocol.cc",
     ],
     hdrs = [
+        "src/ray/common/buffer.h",
         "src/ray/common/client_connection.h",
         "src/ray/common/common_protocol.h",
-        "src/ray/common/buffer.h",
     ],
     copts = COPTS,
     includes = [

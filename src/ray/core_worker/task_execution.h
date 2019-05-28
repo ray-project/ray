@@ -9,7 +9,8 @@ namespace ray {
 
 class CoreWorker;
 
-/// The interface that contains all `CoreWorker` methods that are related to task execution.
+/// The interface that contains all `CoreWorker` methods that are related to task
+/// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
   CoreWorkerTaskExecutionInterface(CoreWorker *core_worker) : core_worker_(core_worker) {}
