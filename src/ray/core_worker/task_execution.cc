@@ -16,7 +16,7 @@ void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
 
       RayFunction func{ spec.GetLanguage(), spec.FunctionDescriptor() };
 
-      std::vector<Arg> args;
+      std::vector<TaskArg> args;
       RAY_CHECK_OK(GetArgsFromObjectStore(spec, &args)); 
 
       auto status = executor(func, args);
@@ -31,7 +31,7 @@ void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
-    const TaskSpecification &spec, std::vector<Arg> *args) {
+    const TaskSpecification &spec, std::vector<TaskArg> *args) {
   
   auto num_args = spec.NumArgs();
   (*args).resize(num_args);

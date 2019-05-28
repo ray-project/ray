@@ -10,8 +10,8 @@ namespace ray {
 
 class CoreWorker;
 
-/// Options of a task call.
-struct CallOptions {
+/// Options of a non-actor-creation task.
+struct TaskOptions {
   /// Number of returns of this task.
   const int num_returns = 1;
   /// Resources required by this task.
@@ -66,18 +66,17 @@ class ActorHandle {
 /// submission.
 class CoreWorkerTaskInterface {
  public:
-  CoreWorkerTaskInterface(std::shared_ptr<CoreWorker> core_worker)
-      : core_worker_(core_worker) {}
+  CoreWorkerTaskInterface(CoreWorker &core_worker) : core_worker_(core_worker) {}
 
-  /// Call a normal task.
+  /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
-  /// \param[in] call_options Options for this task.
+  /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
-  Status CallTask(const RayFunction &function, const std::vector<Arg> args,
-                  const CallOptions &call_options, std::vector<ObjectID> *return_ids);
+  Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
 
   /// Create an actor.
   ///
@@ -86,26 +85,26 @@ class CoreWorkerTaskInterface {
   /// \param[in] actor_creation_options Options for this actor creation task.
   /// \param[out] actor_handle Handle to the actor.
   /// \return Status.
-  Status CreateActor(const RayFunction &function, const std::vector<Arg> args,
+  Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
                      ActorHandle *actor_handle);
 
-  /// Call an actor task.
+  /// Submit an actor task.
   ///
   /// \param[in] actor_handle Handle to the actor.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
-  /// \param[in] call_options Options for this task.
+  /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
-  Status CallActorTask(ActorHandle &actor_handle, const RayFunction &function,
-                       const std::vector<Arg> args, const CallOptions &call_options,
-                       std::vector<ObjectID> *return_ids);
+  Status SubmitActorTask(ActorHandle &actor_handle, const RayFunction &function,
+                         const std::vector<TaskArg> &args,
+                         const TaskOptions &task_options,
+                         std::vector<ObjectID> *return_ids);
 
  private:
-
-  /// Pointer to the CoreWorker instance.
-  const std::shared_ptr<CoreWorker> core_worker_;
+  /// Reference to the parent CoreWorker instance.
+  CoreWorker &core_worker_;
 };
 
 }  // namespace ray

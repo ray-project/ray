@@ -2,10 +2,10 @@
 
 namespace ray {
 
-Status CoreWorkerTaskInterface::CallTask(const RayFunction &function,
-                                         const std::vector<Arg> &args,
-                                         const CallOptions &call_options,
-                                         std::vector<ObjectID> *return_ids) {
+Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
+                                           const std::vector<TaskArg> &args,
+                                           const CallOptions &call_options,
+                                           std::vector<ObjectID> *return_ids) {
   
   auto &context = core_worker_->GetContext();
   const auto task_id = GenerateTaskId(context.GetCurrentDriverID(),
@@ -37,7 +37,7 @@ Status CoreWorkerTaskInterface::CallTask(const RayFunction &function,
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
-    const RayFunction &function, const std::vector<Arg> args,
+    const RayFunction &function, const std::vector<TaskArg> &args,
     const ActorCreationOptions &actor_creation_options, ActorHandle *actor_handle) {
 
   auto &context = core_worker_->GetContext();
@@ -74,9 +74,9 @@ Status CoreWorkerTaskInterface::CreateActor(
   return SubmitTask(execution_dependencies, spec);
 }
 
-Status CoreWorkerTaskInterface::CallActorTask(ActorHandle &actor_handle,
+Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                               const RayFunction &function,
-                                              const std::vector<Arg> &args,
+                                              const std::vector<TaskArg> &args,
                                               const CallOptions &call_options,
                                               std::vector<ObjectID> *return_ids) {
 

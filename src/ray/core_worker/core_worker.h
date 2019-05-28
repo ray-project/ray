@@ -69,12 +69,18 @@ class CoreWorker {
   CoreWorker(const WorkerType worker_type, const Language language)
       : worker_type_(worker_type),
         language_(language),
-        task_interface_(this),
-        object_interface_(this),
-        task_execution_interface_(this){};
+        task_interface_(*this),
+        object_interface_(*this),
+        task_execution_interface_(*this){};
 
   /// Connect this worker to Raylet.
   Status Connect() { return Status::OK(); }
+
+  /// Type of this worker.
+  WorkerType WorkerType() const { return worker_type_; }
+
+  /// Language of this worker.
+  Language Language() const { return language_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
@@ -95,19 +101,19 @@ class CoreWorker {
 
  private:
   /// Type of this worker.
-  const WorkerType worker_type_;
+  const enum WorkerType worker_type_;
 
   /// Language of this worker.
-  const Language language_;
+  const enum Language language_;
 
   /// The `CoreWorkerTaskInterface` instance.
-  const CoreWorkerTaskInterface task_interface_;
+  CoreWorkerTaskInterface task_interface_;
 
   /// The `CoreWorkerObjectInterface` instance.
-  const CoreWorkerObjectInterface object_interface_;
+  CoreWorkerObjectInterface object_interface_;
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
-  const CoreWorkerTaskExecutionInterface task_execution_interface_;
+  CoreWorkerTaskExecutionInterface task_execution_interface_;
 
   /// Task context shared by task_interface_ and task_execution_interface_.
   TaskContext context_;

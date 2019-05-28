@@ -1,5 +1,5 @@
-#ifndef RAY_COMMON_IO_H
-#define RAY_COMMON_IO_H
+#ifndef RAY_COMMON_BUFFER_H
+#define RAY_COMMON_BUFFER_H
 
 #include <cstdint>
 #include <cstdio>
@@ -10,25 +10,34 @@ namespace ray {
 class Buffer {
  public:
   /// Pointer to the data.
-  virtual uint8_t *Data() = 0;
+  virtual uint8_t *Data() const = 0;
 
-  /// Length of this buffer.
-  virtual size_t Length() = 0;
+  /// Size of this buffer.
+  virtual size_t Size() const = 0;
 
   virtual ~Buffer();
+
+  bool operator==(const Buffer &rhs) const {
+    return this->Data() == rhs.Data() && this->Size() == rhs.Size();
+  }
 };
 
 /// Represents a byte buffer in local memory.
 class LocalMemoryBuffer : public Buffer {
  public:
-  uint8_t *Data() { return data_; }
-  size_t Length() { return length_; }
+  LocalMemoryBuffer(uint8_t *data, size_t size) : data_(data), size_(size) {}
+
+  uint8_t *Data() const override { return data_; }
+
+  size_t Size() const override { return size_; }
 
  private:
+  /// Pointer to the data.
   uint8_t *data_;
-  size_t length_;
+  /// Size of the buffer.
+  size_t size_;
 };
 
 }  // namespace ray
 
-#endif  // RAY_COMMON_IO_H
+#endif  // RAY_COMMON_BUFFER_H
