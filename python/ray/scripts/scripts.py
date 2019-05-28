@@ -340,6 +340,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if include_java is not None:
             raise ValueError("--include-java should only be set for the head "
                              "node.")
+        if load_code_from_local is not None:
+            raise ValueError("--load-code-from-local should be only be set "
+                             "for the head node.")
 
         redis_ip_address, redis_port = redis_address.split(":")
 

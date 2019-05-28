@@ -93,6 +93,10 @@ def include_java_from_redis(redis_client):
     return redis_client.hgetall("HEAD_ONLY_FIELDS")[b"INCLUDE_JAVA"] == b"1"
 
 
+def load_code_from_local_from_redis(redis_client):
+    return redis_client.hgetall("HEAD_ONLY_FIELDS")[b"LOAD_CODE_FROM_LOCAL"] == b"1"
+
+
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
@@ -508,7 +512,8 @@ def start_redis(node_ip_address,
                 password=None,
                 use_credis=None,
                 redis_max_memory=None,
-                include_java=False):
+                include_java=False,
+                load_code_from_local=False):
     """Start the Redis global state store.
 
     Args:
@@ -615,7 +620,9 @@ def start_redis(node_ip_address,
     # can access it and know whether or not to enable cross-languages.
     primary_redis_client.hset("HEAD_ONLY_FIELDS",
                               "INCLUDE_JAVA",
-                              1 if include_java else 0)
+                              1 if include_java else 0,
+                              "LOAD_CODE_FROM_LOCAL",
+                              1 if load_code_from_local else 0)
 
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)

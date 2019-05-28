@@ -137,6 +137,8 @@ class Node(object):
                 ray.services.get_webui_url_from_redis(redis_client))
             ray_params.include_java = (
                 ray.services.include_java_from_redis(redis_client))
+            ray_params.load_code_from_local = (
+                ray.services.load_code_from_local_from_redis(redis_client))
 
         # Start processes.
         if head:
