@@ -32,7 +32,9 @@ class LocalMemoryBuffer : public Buffer {
   size_t Size() const override { return size_; }
 
  private:
+  /// Pointer to the data.
   uint8_t *data_;
+  /// Size of the buffer.
   size_t size_;
 };
 
