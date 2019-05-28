@@ -139,6 +139,9 @@ class Resources(
         return Resources(cpu, gpu, extra_cpu, extra_gpu, new_custom_res,
                          extra_custom_res)
 
+    def to_json(self):
+        return resources_to_json(self)
+
 
 def json_to_resources(data):
     if data is None or data == "null":
