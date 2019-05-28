@@ -31,7 +31,6 @@ cc_library(
         "cpp/src/arrow/util/io-util.cc",
         "cpp/src/arrow/util/logging.cc",
         "cpp/src/arrow/util/memory.cc",
-        "cpp/src/arrow/util/string_builder.cc",
         "cpp/src/arrow/util/thread-pool.cc",
     ],
     hdrs = [

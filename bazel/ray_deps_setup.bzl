@@ -35,8 +35,8 @@ def ray_deps_setup():
 
     git_repository(
         name = "com_github_nelhage_rules_boost",
-        commit = "5171b9724fbb39c5fdad37b9ca9b544e8858d8ac",
-        remote = "https://github.com/ray-project/rules_boost",
+        commit = "6d6fd834281cb8f8e758dd9ad76df86304bf1869",
+        remote = "https://github.com/nelhage/rules_boost",
     )
 
     git_repository(
@@ -67,8 +67,8 @@ def ray_deps_setup():
     new_git_repository(
         name = "plasma",
         build_file = "@//bazel:BUILD.plasma",
-        commit = "9fcc12fc094b85ec2e3e9798bae5c8151d14df5e",
-        remote = "https://github.com/apache/arrow",
+        commit = "126a60e35a163b95d48ecc8762521f9a1e5b1ac3",
+        remote = "https://github.com/shengjun1985/arrow",
     )
 
     new_git_repository(
