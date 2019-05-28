@@ -15,7 +15,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
-from ray.rllib.tests.mock_evaluator import _MockEvaluator
+from ray.rllib.tests.mock_worker import _MockWorker
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -27,8 +27,8 @@ class AsyncOptimizerTest(unittest.TestCase):
 
     def testBasic(self):
         ray.init(num_cpus=4)
-        local = _MockEvaluator()
-        remotes = ray.remote(_MockEvaluator)
+        local = _MockWorker()
+        remotes = ray.remote(_MockWorker)
         remote_workers = [remotes.remote() for i in range(5)]
         workers = WorkerSet._from_existing(local, remote_workers)
         test_optimizer = AsyncGradientsOptimizer(workers, grads_per_step=10)
