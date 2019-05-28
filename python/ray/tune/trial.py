@@ -275,9 +275,17 @@ class Trial(object):
         self.config = config or {}
         self.local_dir = local_dir  # This remains unexpanded for syncing.
         self.experiment_tag = experiment_tag
-        self.resources = (
-            resources
-            or self._get_trainable_cls().default_resource_request(self.config))
+        trainable_cls = self._get_trainable_cls()
+        self.resources = trainable_cls.default_resource_request(self.config)
+        if self.resources:
+            if resources:
+                raise ValueError(
+                    "Resources for {} have been automatically set to {} "
+                    "by its `default_resource_request()` method. Please "
+                    "clear the `resources_per_trial` option.".format(
+                        trainable_cls, self.resources))
+        else:
+            self.resources = Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
         self.loggers = loggers

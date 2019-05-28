@@ -96,7 +96,7 @@ class Trainable(object):
         allocation, so the user does not need to.
         """
 
-        return Resources(cpu=1, gpu=0)
+        return None
 
     @classmethod
     def resource_help(cls, config):
