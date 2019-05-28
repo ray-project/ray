@@ -23,7 +23,7 @@ struct RayFunction {
 };
 
 /// Argument of a task.
-struct Arg {
+struct TaskArg {
   /// Id of the argument, if passed by reference, otherwise nullptr.
   const std::shared_ptr<ObjectID> id;
   /// Data of the argument, if passed by value, otherwise nullptr.

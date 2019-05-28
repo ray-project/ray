@@ -59,7 +59,7 @@ class CoreWorkerTaskInterface {
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
-  Status SubmitTask(const RayFunction &function, const std::vector<Arg> &args,
+  Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
                     const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
 
   /// Create an actor.
@@ -69,7 +69,7 @@ class CoreWorkerTaskInterface {
   /// \param[in] actor_creation_options Options for this actor creation task.
   /// \param[out] actor_handle Handle to the actor.
   /// \return Status.
-  Status CreateActor(const RayFunction &function, const std::vector<Arg> &args,
+  Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
                      ActorHandle *actor_handle);
 
@@ -82,7 +82,8 @@ class CoreWorkerTaskInterface {
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
   Status SubmitActorTask(ActorHandle &actor_handle, const RayFunction &function,
-                         const std::vector<Arg> &args, const TaskOptions &task_options,
+                         const std::vector<TaskArg> &args,
+                         const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
  private:
