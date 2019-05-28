@@ -80,18 +80,18 @@ def ray_deps_setup():
    
     http_archive(
         name = "io_opencensus_cpp",
-        strip_prefix = "opencensus-cpp-0.3.0",
-        urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/v0.3.0.zip"],
+        strip_prefix = "opencensus-cpp-3aa11f20dd610cb8d2f7c62e58d1e69196aadf11",
+        urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/3aa11f20dd610cb8d2f7c62e58d1e69196aadf11.zip"],
     )
    
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
     git_repository(
         name = "com_google_absl",
-        commit = "88a152ae747c3c42dc9167d46c590929b048d436",
+        commit = "5b65c4af5107176555b23a638e5947686410ac1f",
         remote = "https://github.com/abseil/abseil-cpp.git",
     )
-   
+
     # OpenCensus depends on jupp0r/prometheus-cpp
     http_archive(
         name = "com_github_jupp0r_prometheus_cpp",
