@@ -10,17 +10,22 @@
 namespace ray {
 
 // Task related context for worker. 
-// TODO: This is actually shared between TaskInterface and TaskExecutionInterface,
-// consider combine TaskInterface and TaskExecutionInterface, and make
-// this structure to be part of the combined one.
-struct TaskContext {
-  TaskContext(WorkerType worker_type)
+struct WorkerContext {
+  WorkerContext(WorkerType worker_type, const DriverID &driver_id)
     : worker_type(worker_type),
-      task_index(0) {
+      task_index(0),
+      put_index(0) {
+
+    if (driver_id.is_nil()) {
+      driver_id = DriverID::from_random();
+    }
+
     if (worker_type == WorkerType::DRIVER) {
-      current_driver_id = DriverID::from_random();
+      worker_id = driver_id;
+      current_driver_id = driver_id;
       current_task_id = TaskID::from_random();
     } else {
+      worker_id = ClientID::from_random();
       current_driver_id = DriverID::nil();
       current_task_id = TaskID::nil();
     }
@@ -28,6 +33,10 @@ struct TaskContext {
 
   int GetNextTaskIndex() {
     return ++task_index;
+  }
+
+  int GetNextPutIndex() {
+    return ++put_index;
   }
 
   const DriverID &GetCurrentDriverID() {
@@ -42,10 +51,14 @@ struct TaskContext {
     current_driver_id = spec.DriverId();
     current_task_id = spec.TaskId();
     task_index = 0;
+    put_index = 0;
   }
 
   /// The type of the worker (Driver/Worker).
   const WorkerType worker_type;
+
+  /// The ID for this worker (aka ClientID).
+  ClientID worker_id;
 
   /// The driver ID for current task.
   static thread_local DriverID current_driver_id;
@@ -54,7 +67,10 @@ struct TaskContext {
   static thread_local TaskID current_task_id;
 
   /// Number of tasks that have been submitted from current task.
-  int task_index;
+  static thread_local int task_index;
+
+  /// Number of objects that have been put from current task.
+  static thread_local int put_index;  
 };
 
 /// The root class that contains all the core and language-independent functionalities
@@ -66,12 +82,20 @@ class CoreWorker {
   ///
   /// \param[in] worker_type Type of this worker.
   /// \param[in] langauge Language of this worker.
-  CoreWorker(const WorkerType worker_type, const Language language)
+  CoreWorker(const WorkerType worker_type,
+      const Language language,
+      const std::string &store_socket,
+      const std::string &raylet_socket,
+      DriverID driver_id = DriverID::nil())
       : worker_type_(worker_type),
         language_(language),
         task_interface_(*this),
         object_interface_(*this),
-        task_execution_interface_(*this){};
+        task_execution_interface_(*this),
+        context_(worker_type, driver_id),
+        store_client_(store_socket),
+        raylet_client_(raylet_socket, context_.worker_id, (worker_type == WorkerType::Worker),
+            context_.current_driver_id, language) {}
 
   /// Connect this worker to Raylet.
   Status Connect() { return Status::OK(); }
@@ -94,10 +118,7 @@ class CoreWorker {
   /// task execution.
   CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
-  /// Return the type of the worker.
-  const WorkerType GetWorkerType() const { return worker_type_; }
-
-  TaskContext &GetTaskContext() { return context_; }
+  WorkerContext &GetWorkerContext() { return context_; }
 
  private:
   /// Type of this worker.
@@ -116,7 +137,13 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface task_execution_interface_;
 
   /// Task context shared by task_interface_ and task_execution_interface_.
-  TaskContext context_;
+  WorkerContext context_;
+
+  /// Plasma store client.
+  PlasmaClient store_client_;
+
+  /// Raylet client.
+  RayletClient raylet_client_;
 };
 
 }  // namespace ray
