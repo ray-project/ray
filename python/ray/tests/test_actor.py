@@ -2439,7 +2439,7 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that checkpointing errors were pushed to the driver.
-    errors = ray.error_info()
+    errors = ray.errors()
     assert len(errors) > 0
     for error in errors:
         # An error for the actor process dying may also get pushed.
@@ -2483,7 +2483,7 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that checkpointing errors were pushed to the driver.
-    errors = ray.error_info()
+    errors = ray.errors()
     assert len(errors) > 0
     for error in errors:
         # An error for the actor process dying may also get pushed.

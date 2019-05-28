@@ -1532,7 +1532,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        with patch("ray.global_state.cluster_resources") as resource_mock:
+        with patch("ray.cluster_resources") as resource_mock:
             resource_mock.return_value = {"CPU": 1, "GPU": 1}
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)

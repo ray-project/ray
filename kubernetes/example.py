@@ -14,7 +14,7 @@ if __name__ == "__main__":
 
     # Wait for all 4 nodes to join the cluster.
     while True:
-        num_nodes = len(ray.global_state.client_table())
+        num_nodes = len(ray.nodes())
         if num_nodes < 4:
             print("{} nodes have joined so far. Waiting for more."
                   .format(num_nodes))

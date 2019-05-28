@@ -51,11 +51,13 @@ def easy_objective(config, reporter):
 
 if __name__ == "__main__":
     import argparse
+    from ax.service.ax_client import AxClient
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
+
     ray.init()
 
     config = {
@@ -101,13 +103,14 @@ if __name__ == "__main__":
             "bounds": [0.0, 1.0],
         },
     ]
-    algo = AxSearch(
+    client = AxClient(enforce_sequential_optimization=False)
+    client.create_experiment(
         parameters=parameters,
         objective_name="hartmann6",
-        max_concurrent=4,
         minimize=True,  # Optional, defaults to False.
         parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
+    algo = AxSearch(client, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler(reward_attr="hartmann6")
     run(easy_objective, name="ax", search_alg=algo, **config)

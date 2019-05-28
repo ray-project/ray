@@ -98,10 +98,10 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    rllib-models.rst
    rllib-algorithms.rst
    rllib-offline.rst
-   rllib-dev.rst
    rllib-concepts.rst
-   rllib-package-ref.rst
    rllib-examples.rst
+   rllib-dev.rst
+   rllib-package-ref.rst
 
 .. toctree::
    :maxdepth: 1
