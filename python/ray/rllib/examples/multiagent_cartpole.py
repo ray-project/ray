@@ -30,6 +30,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--num-iters", type=int, default=20)
+parser.add_argument("--simple", action="store_true")
 
 
 class CustomModel1(Model):
@@ -103,6 +104,7 @@ if __name__ == "__main__":
         config={
             "env": "multi_cartpole",
             "log_level": "DEBUG",
+            "simple_optimizer": args.simple,
             "num_sgd_iter": 10,
             "multiagent": {
                 "policies": policies,
