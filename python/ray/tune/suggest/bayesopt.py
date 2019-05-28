@@ -18,7 +18,7 @@ class BayesOptSearch(SuggestionAlgorithm):
     """A wrapper around BayesOpt to provide trial suggestions.
 
     Requires BayesOpt to be installed. You can install BayesOpt with the
-    command: `pip install inclubayesian-optimization`.
+    command: `pip install bayesian-optimization`.
 
     Parameters:
         space (dict): Continuous search space. Parameters will be sampled from
@@ -27,7 +27,7 @@ class BayesOptSearch(SuggestionAlgorithm):
             to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute
+            minimizing or maximizing the metric attribute.
         utility_kwargs (dict): Parameters to define the utility function. Must
             provide values for the keys `kind`, `kappa`, and `xi`.
         random_state (int): Used to initialize BayesOpt.

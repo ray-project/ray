@@ -6,14 +6,16 @@ import numpy as np
 import copy
 import logging
 try:
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.WARNING)
+    hyperopt_logger = logging.getLogger("hyperopt")
+    hyperopt_logger.setLevel(logging.WARNING)
     import hyperopt as hpo
 except ImportError:
     hpo = None
 
 from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
+
+logger = logging.getLogger(__name__)
 
 
 class HyperOptSearch(SuggestionAlgorithm):
@@ -32,7 +34,7 @@ class HyperOptSearch(SuggestionAlgorithm):
             to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute
+            minimizing or maximizing the metric attribute.
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want hyperopt to run first to help the TPE algorithm

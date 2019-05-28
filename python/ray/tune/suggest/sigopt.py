@@ -30,7 +30,7 @@ class SigOptSearch(SuggestionAlgorithm):
             based on the user's SigOpt plan. Defaults to 1.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute
+            minimizing or maximizing the metric attribute.
 
     Example:
         >>> space = [

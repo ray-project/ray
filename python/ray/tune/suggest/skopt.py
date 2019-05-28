@@ -57,7 +57,7 @@ class SkOptSearch(SuggestionAlgorithm):
             to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute
+            minimizing or maximizing the metric attribute.
         points_to_evaluate (list of lists): A list of points you'd like to run
             first before sampling from the optimiser, e.g. these could be
             parameter configurations you already know work well to help

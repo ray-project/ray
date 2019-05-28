@@ -120,11 +120,10 @@ class PopulationBasedTraining(FIFOScheduler):
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        metric (str): The training result objective value attribute. As
-            with `time_attr`, this may refer to any objective value. Stopping
+        metric (str): The training result objective value attribute. Stopping
             procedures will use this attribute.
         mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute
+            minimizing or maximizing the metric attribute.
         perturbation_interval (float): Models will be considered for
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this

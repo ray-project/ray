@@ -33,7 +33,7 @@ class NevergradSearch(SuggestionAlgorithm):
             to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute
+            minimizing or maximizing the metric attribute.
 
     Example:
         >>> from nevergrad.optimization import optimizerlib

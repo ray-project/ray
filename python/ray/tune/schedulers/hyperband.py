@@ -63,11 +63,10 @@ class HyperBandScheduler(FIFOScheduler):
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        metric (str): The training result objective value attribute. As
-            with `time_attr`, this may refer to any objective value. Stopping
+        metric (str): The training result objective value attribute. Stopping
             procedures will use this attribute.
         mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute
+            minimizing or maximizing the metric attribute.
         max_t (int): max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
             The scheduler will terminate trials after this time has passed.
