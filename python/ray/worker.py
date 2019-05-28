@@ -1423,6 +1423,9 @@ def init(redis_address=None,
         if _internal_config is not None:
             raise Exception("When connecting to an existing cluster, "
                             "_internal_config must not be provided.")
+        if load_code_from_local is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "load_code_from_local must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(

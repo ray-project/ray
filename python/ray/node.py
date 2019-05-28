@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 PY3 = sys.version_info.major >= 3
 
 
+# Helper function to get head only fields from the given redis instance.
+def get_head_only_fields_from_redis(redis_client):
+    return redis_client.hgetall(ray_constants.HEAD_ONLY_FIELDS)
+
+
 class Node(object):
     """An encapsulation of the Ray processes on a single node.
 
@@ -135,10 +140,11 @@ class Node(object):
         else:
             self._webui_url = (
                 ray.services.get_webui_url_from_redis(redis_client))
-            ray_params.include_java = (
-                ray.services.include_java_from_redis(redis_client))
-            ray_params.load_code_from_local = (
-                ray.services.load_code_from_local_from_redis(redis_client))
+            head_only_fields = get_head_only_fields_from_redis(redis_client)
+            assert ray_constants.INCLUDE_JAVA in head_only_fields
+            assert ray_constants.LOAD_CODE_FROM_LOCAL in head_only_fields
+            ray_params.include_java = (b"1" == head_only_fields[ray_constants.INCLUDE_JAVA])
+            ray_params.load_code_from_local = (b"1" == head_only_fields[ray_constants.LOAD_CODE_FROM_LOCAL])
 
         # Start processes.
         if head:
@@ -353,6 +359,7 @@ class Node(object):
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
              include_java=self._ray_params.include_java,
+             load_code_from_local=self._ray_params.load_code_from_local,
              redis_max_memory=self._ray_params.redis_max_memory)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)

@@ -81,22 +81,6 @@ def new_port():
     return random.randint(10000, 65535)
 
 
-def include_java_from_redis(redis_client):
-    """This is used for query include_java bool from redis.
-
-    Args:
-        redis_client (StrictRedis): The redis client to GCS.
-
-    Returns:
-        True if this cluster backend enables Java worker.
-    """
-    return redis_client.hgetall("HEAD_ONLY_FIELDS")[b"INCLUDE_JAVA"] == b"1"
-
-
-def load_code_from_local_from_redis(redis_client):
-    return redis_client.hgetall("HEAD_ONLY_FIELDS")[b"LOAD_CODE_FROM_LOCAL"] == b"1"
-
-
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
@@ -616,12 +600,14 @@ def start_redis(node_ip_address,
     primary_redis_client.set("RedirectOutput", 1
                              if redirect_worker_output else 0)
 
-    # put the include_java bool to primary redis-server, so that other nodes
+    # Put the INCLUDE_JAVA bool to primary redis-server, so that other nodes
     # can access it and know whether or not to enable cross-languages.
-    primary_redis_client.hset("HEAD_ONLY_FIELDS",
-                              "INCLUDE_JAVA",
-                              1 if include_java else 0,
-                              "LOAD_CODE_FROM_LOCAL",
+    primary_redis_client.hset(ray_constants.HEAD_ONLY_FIELDS,
+                              ray_constants.INCLUDE_JAVA, 1 if include_java else 0)
+    # Put the LOAD_CODE_FROM_LOCAL bool to primary redis-server, so that other nodes
+    # can access it.
+    primary_redis_client.hset(ray_constants.HEAD_ONLY_FIELDS,
+                              ray_constants.LOAD_CODE_FROM_LOCAL,
                               1 if load_code_from_local else 0)
 
     # Store version information in the primary Redis shard.

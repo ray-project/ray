@@ -125,3 +125,7 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is raw binary.
 RAW_BUFFER_METADATA = b"RAW"
+
+HEAD_ONLY_FIELDS = b"HEAD_ONLY_FIELDS"
+INCLUDE_JAVA = b"INCLUDE_JAVA"
+LOAD_CODE_FROM_LOCAL = b"LOAD_CODE_FROM_LOCAL"

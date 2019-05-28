@@ -213,7 +213,7 @@ def cli(logging_level, logging_format):
 @click.option(
     "--load-code-from-local",
     is_flag=True,
-    default=False,
+    default=None,
     help="Specify whether load code from local file or GCS serialization.")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
@@ -341,7 +341,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             raise ValueError("--include-java should only be set for the head "
                              "node.")
         if load_code_from_local is not None:
-            raise ValueError("--load-code-from-local should be only be set "
+            raise ValueError("--load-code-from-local should only be set "
                              "for the head node.")
 
         redis_ip_address, redis_port = redis_address.split(":")
