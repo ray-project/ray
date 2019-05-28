@@ -13,7 +13,7 @@ class CoreWorker;
 /// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
-  CoreWorkerTaskExecutionInterface(CoreWorker *core_worker) : core_worker_(core_worker) {}
+  CoreWorkerTaskExecutionInterface(CoreWorker &core_worker) : core_worker_(core_worker) {}
 
   /// The callback provided app-language workers that executes tasks.
   ///
@@ -27,9 +27,8 @@ class CoreWorkerTaskExecutionInterface {
   void Start(const TaskExecutor &executor);
 
  private:
-  /// Back pointer to the CoreWorker instance, this is used for referencing other sub
-  /// interfaces.
-  CoreWorker *core_worker_;
+  /// Reference to the parent CoreWorker instance.
+  CoreWorker &core_worker_;
 };
 
 }  // namespace ray

@@ -21,9 +21,9 @@ class CoreWorker {
   CoreWorker(const WorkerType worker_type, const Language language)
       : worker_type_(worker_type),
         language_(language),
-        task_interface_(this),
-        object_interface_(this),
-        task_execution_interface_(this){};
+        task_interface_(*this),
+        object_interface_(*this),
+        task_execution_interface_(*this){};
 
   /// Connect this worker to Raylet.
   Status Connect() { return Status::OK(); }

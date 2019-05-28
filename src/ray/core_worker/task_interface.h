@@ -50,7 +50,7 @@ class ActorHandle {
 /// submission.
 class CoreWorkerTaskInterface {
  public:
-  CoreWorkerTaskInterface(CoreWorker *core_worker) : core_worker_(core_worker) {}
+  CoreWorkerTaskInterface(CoreWorker &core_worker) : core_worker_(core_worker) {}
 
   /// Submit a normal task.
   ///
@@ -87,9 +87,8 @@ class CoreWorkerTaskInterface {
                          std::vector<ObjectID> *return_ids);
 
  private:
-  /// Back pointer to the CoreWorker instance, this is used for referencing other sub
-  /// interfaces.
-  CoreWorker *core_worker_;
+  /// Reference to the parent CoreWorker instance.
+  CoreWorker &core_worker_;
 };
 
 }  // namespace ray

@@ -13,7 +13,7 @@ class CoreWorker;
 /// The interface that contains all `CoreWorker` methods that are related to object store.
 class CoreWorkerObjectInterface {
  public:
-  CoreWorkerObjectInterface(CoreWorker *core_worker) : core_worker_(core_worker) {}
+  CoreWorkerObjectInterface(CoreWorker &core_worker) : core_worker_(core_worker) {}
 
   /// Put an object into object store.
   ///
@@ -52,9 +52,8 @@ class CoreWorkerObjectInterface {
                 bool delete_creating_tasks);
 
  private:
-  /// Back pointer to the CoreWorker instance, this is used for referencing other sub
-  /// interfaces.
-  CoreWorker *core_worker_;
+  /// Reference to the parent CoreWorker instance.
+  CoreWorker &core_worker_;
 };
 
 }  // namespace ray
