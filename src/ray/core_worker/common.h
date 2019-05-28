@@ -23,11 +23,47 @@ struct RayFunction {
 };
 
 /// Argument of a task.
-struct TaskArg {
+class TaskArg {
+ public:
+  /// Create a pass-by-reference task argument.
+  ///
+  /// \param[in] object_id Id of the argument.
+  /// \return The task argument.
+  static TaskArg PassByReference(const ObjectID &object_id) {
+    return TaskArg(std::make_shared<ObjectID>(object_id), nullptr);
+  }
+
+  /// Create a pass-by-reference task argument.
+  ///
+  /// \param[in] object_id Id of the argument.
+  /// \return The task argument.
+  static TaskArg PassByValue(const std::shared_ptr<Buffer> &data) {
+    return TaskArg(nullptr, data);
+  }
+
+  /// Return true if this argument is passed by reference, false if passed by value.
+  bool IsPassedByReference() const { return id_ != nullptr; }
+
+  /// Get the reference object ID.
+  ObjectID &GetReference() {
+    RAY_CHECK(id_ != nullptr) << "This argument isn't passed by reference.";
+    return *id_;
+  }
+
+  /// Get the value.
+  std::shared_ptr<Buffer> GetValue() {
+    RAY_CHECK(data_ != nullptr) << "This argument isn't passed by value.";
+    return data_;
+  }
+
+ private:
+  TaskArg(const std::shared_ptr<ObjectID> id, const std::shared_ptr<Buffer> data)
+      : id_(id), data_(data) {}
+
   /// Id of the argument, if passed by reference, otherwise nullptr.
-  const std::shared_ptr<ObjectID> id;
+  const std::shared_ptr<ObjectID> id_;
   /// Data of the argument, if passed by value, otherwise nullptr.
-  const std::shared_ptr<Buffer> data;
+  const std::shared_ptr<Buffer> data_;
 };
 
 }  // namespace ray

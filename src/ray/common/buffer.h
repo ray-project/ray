@@ -10,12 +10,16 @@ namespace ray {
 class Buffer {
  public:
   /// Pointer to the data.
-  virtual uint8_t *Data() = 0;
+  virtual uint8_t *Data() const = 0;
 
   /// Size of this buffer.
-  virtual size_t Size() = 0;
+  virtual size_t Size() const = 0;
 
   virtual ~Buffer();
+
+  bool operator==(const Buffer &rhs) const {
+    return this->Data() == rhs.Data() && this->Size() == rhs.Size();
+  }
 };
 
 /// Represents a byte buffer in local memory.
@@ -23,9 +27,9 @@ class LocalMemoryBuffer : public Buffer {
  public:
   LocalMemoryBuffer(uint8_t *data, size_t size) : data_(data), size_(size) {}
 
-  uint8_t *Data() override { return data_; }
+  uint8_t *Data() const override { return data_; }
 
-  size_t Size() override { return size_; }
+  size_t Size() const override { return size_; }
 
  private:
   uint8_t *data_;
