@@ -252,10 +252,11 @@ void PullManager::ChunkReadFailed(const UniqueID &push_id, const ObjectID &objec
 void PullManager::TimerExpired(const ObjectID &object_id,
                                std::vector<ClientID> *clients_to_request,
                                bool *abort_creation, bool *restart_timer) {
-  *abort_creation = true;
+  *abort_creation = false;
   *restart_timer = false;
   auto it = pulls_.find(object_id);
   if (it == pulls_.end()) {
+    *abort_creation = true;
     return;
   }
   auto &pull_info = it->second;
