@@ -90,7 +90,7 @@ def include_java_from_redis(redis_client):
     Returns:
         True if this cluster backend enables Java worker.
     """
-    return redis_client.get("INCLUDE_JAVA") == b"1"
+    return redis_client.hgetall("HEAD_ONLY_FIELDS")[b"INCLUDE_JAVA"] == b"1"
 
 
 def get_address_info_from_redis_helper(redis_address,
@@ -613,7 +613,9 @@ def start_redis(node_ip_address,
 
     # put the include_java bool to primary redis-server, so that other nodes
     # can access it and know whether or not to enable cross-languages.
-    primary_redis_client.set("INCLUDE_JAVA", 1 if include_java else 0)
+    primary_redis_client.hset("HEAD_ONLY_FIELDS",
+                              "INCLUDE_JAVA",
+                              1 if include_java else 0)
 
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
