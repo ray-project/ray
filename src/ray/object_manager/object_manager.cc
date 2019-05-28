@@ -321,12 +321,11 @@ void ObjectManager::HandleReceiveFinished(const UniqueID &push_id,
     AbortObjectCreation(object_id);
 
     // TEMP: CANCEL TIMERS WHEN REMOVING PULLS
-    pull_timers_.erase(object_id);
-    // auto it = pull_timers_.find(object_id);
-    // if (it != pull_timers_.end()) {
-    //   it->second.cancel();
-    //   pull_timers_.erase(object_id);
-    // }
+    auto it = pull_timers_.find(object_id);
+    if (it != pull_timers_.end()) {
+      it->second.cancel();
+      pull_timers_.erase(object_id);
+    }
   }
 
   ProfileEventT profile_event;
@@ -523,12 +522,11 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
   }
 
   // TEMP: CANCEL TIMERS WHEN REMOVING PULLS
-  pull_timers_.erase(object_id);
-  // auto it = pull_timers_.find(object_id);
-  // if (it != pull_timers_.end()) {
-  //   it->second.cancel();
-  //   pull_timers.erase(object_id);
-  // }
+  auto it = pull_timers_.find(object_id);
+  if (it != pull_timers_.end()) {
+    it->second.cancel();
+    pull_timers_.erase(object_id);
+  }
 
   if (unsubscribe_from_locations) {
     RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
