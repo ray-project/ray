@@ -168,6 +168,13 @@ void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
     const std::string &resource_label = resource_pair.first;
     const FractionalResourceQuantity &resource_capacity = resource_pair.second;
+
+    // It is valid to request 0 resources from a non-existent resource,
+    // so if that happens, we skip all the checking logic and updating below.
+    if (resource_capacity == 0) {
+      continue;
+    }
+
     RAY_CHECK(resource_capacity_.count(resource_label) == 1)
         << "Attempt to acquire unknown resource: " << resource_label;
     resource_capacity_[resource_label] -= resource_capacity;
