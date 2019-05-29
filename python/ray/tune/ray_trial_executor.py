@@ -39,6 +39,7 @@ class RayTrialExecutor(TrialExecutor):
     def __init__(self,
                  queue_trials=False,
                  reuse_actors=False,
+                 ray_auto_init=False,
                  refresh_period=RESOURCE_REFRESH_PERIOD):
         super(RayTrialExecutor, self).__init__(queue_trials)
         self._running = {}
@@ -55,6 +56,12 @@ class RayTrialExecutor(TrialExecutor):
         self._refresh_period = refresh_period
         self._last_resource_refresh = float("-inf")
         self._last_nontrivial_wait = time.time()
+        if not ray.is_initialized() and ray_auto_init:
+            logger.info("Initializing Ray automatically."
+                        "For cluster usage or custom Ray initialization, "
+                        "call `ray.init(...)` before `tune.run`.")
+            ray.init()
+
         if ray.is_initialized():
             self._update_avail_resources()
 
