@@ -603,12 +603,13 @@ def start_redis(node_ip_address,
     # Put the INCLUDE_JAVA bool to primary redis-server, so that other nodes
     # can access it and know whether or not to enable cross-languages.
     primary_redis_client.hset(ray_constants.HEAD_ONLY_FIELDS,
-                              ray_constants.INCLUDE_JAVA, 1 if include_java else 0)
-    # Put the LOAD_CODE_FROM_LOCAL bool to primary redis-server, so that other nodes
-    # can access it.
+                              ray_constants.INCLUDE_JAVA,
+                              (1 if include_java else 0))
+    # Put the LOAD_CODE_FROM_LOCAL bool to primary redis-server,
+    #  so that other nodes can access it.
     primary_redis_client.hset(ray_constants.HEAD_ONLY_FIELDS,
                               ray_constants.LOAD_CODE_FROM_LOCAL,
-                              1 if load_code_from_local else 0)
+                              (1 if load_code_from_local else 0))
 
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)

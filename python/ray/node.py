@@ -143,8 +143,10 @@ class Node(object):
             head_only_fields = get_head_only_fields_from_redis(redis_client)
             assert ray_constants.INCLUDE_JAVA in head_only_fields
             assert ray_constants.LOAD_CODE_FROM_LOCAL in head_only_fields
-            ray_params.include_java = (b"1" == head_only_fields[ray_constants.INCLUDE_JAVA])
-            ray_params.load_code_from_local = (b"1" == head_only_fields[ray_constants.LOAD_CODE_FROM_LOCAL])
+            ray_params.include_java = (
+                b"1" == head_only_fields[ray_constants.INCLUDE_JAVA])
+            ray_params.load_code_from_local = (
+                b"1" == head_only_fields[ray_constants.LOAD_CODE_FROM_LOCAL])
 
         # Start processes.
         if head:
