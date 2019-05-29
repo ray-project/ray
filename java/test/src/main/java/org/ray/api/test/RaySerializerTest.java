@@ -1,0 +1,34 @@
+package org.ray.api.test;
+
+import com.google.gson.internal.LinkedTreeMap;
+import java.util.Map;
+import org.ray.api.RayPyActor;
+import org.ray.api.id.UniqueId;
+import org.ray.runtime.RayPyActorImpl;
+import org.ray.runtime.util.Serializer;
+import org.testng.Assert;
+import org.testng.annotations.Test;
+
+public class RaySerializerTest {
+
+  @Test
+  public void testLinkedTreeMapSer() {
+    Map<String, String> conf = new LinkedTreeMap();
+    conf.put("aaa", "bbb");
+    byte[] bytes = Serializer.encode(conf);
+    Map<String, String> result = Serializer.decode(bytes);
+    Assert.assertEquals(conf, result);
+  }
+
+  @Test
+  public void testSerializePyActor() {
+    final UniqueId pyActorId = UniqueId.randomId();
+    RayPyActor pyActor = new RayPyActorImpl(pyActorId, "test", "RaySerializerTest");
+    byte[] bytes = Serializer.encode(pyActor);
+    RayPyActor result = Serializer.decode(bytes);
+    Assert.assertEquals(result.getId(), pyActorId);
+    Assert.assertEquals(result.getModuleName(), "test");
+    Assert.assertEquals(result.getClassName(), "RaySerializerTest");
+  }
+
+}
