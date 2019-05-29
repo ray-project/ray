@@ -126,7 +126,6 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   bool subscribe_to_locations;
   bool start_timer;
   pull_manager_.PullObject(object_id, &subscribe_to_locations, &start_timer);
-  // TODO(williamma12): Try canceling timers.
   // We only start the timer if one does not exist because we do not remove the
   // timers when we cancel a pull.
   // if (start_timer && pull_timers_.find(object_id) == pull_timers_.end()) {
@@ -230,6 +229,10 @@ void ObjectManager::RestartPullTimer(const ObjectID &object_id) {
       }
       if (restart_timer) {
         RestartPullTimer(object_id);
+      } else {
+        // If we do not need to restart the timer, we remove the timer from 
+        // pull_timers.
+        pull_timers_.erase(object_id);
       }
     } else {
       // Check that the error was due to the timer being canceled.
