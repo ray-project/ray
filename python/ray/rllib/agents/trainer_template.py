@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils.annotations import override, DeveloperAPI
 
@@ -44,13 +44,12 @@ def build_trainer(name,
         a Trainer instance that uses the specified args.
     """
 
-    if name.endswith("Trainer"):
-        raise ValueError("Algorithm name should not include *Trainer suffix",
-                         name)
+    if not name.endswith("Trainer"):
+        raise ValueError("Algorithm name should have *Trainer suffix", name)
 
     class trainer_cls(Trainer):
         _name = name
-        _default_config = default_config or Trainer.COMMON_CONFIG
+        _default_config = default_config or COMMON_CONFIG
         _policy = default_policy
 
         def _init(self, config, env_creator):
@@ -92,6 +91,6 @@ def build_trainer(name,
                 after_train_result(self, res)
             return res
 
-    trainer_cls.__name__ = name + "Trainer"
-    trainer_cls.__qualname__ = name + "Trainer"
+    trainer_cls.__name__ = name
+    trainer_cls.__qualname__ = name
     return trainer_cls

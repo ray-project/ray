@@ -29,7 +29,7 @@ def get_policy_class(config):
 
 
 PGTrainer = build_trainer(
-    name="PG",
+    name="PGTrainer",
     default_config=DEFAULT_CONFIG,
     default_policy=PGTFPolicy,
     get_policy_class=get_policy_class)
