@@ -174,7 +174,7 @@ class LogMonitor(object):
             lines_to_publish = []
 
             # List of tuples (index, driver_id), each representing the location
-            # in the log file where a new driver begins logging to the file 
+            # in the log file where a new driver begins logging to the file
             driver_switches = []
             if file_info.current_driver_id is not None:
                 driver_switches.append((-1, file_info.current_driver_id))
