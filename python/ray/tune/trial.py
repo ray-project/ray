@@ -279,7 +279,12 @@ class Trial(object):
         self.local_dir = local_dir  # This remains unexpanded for syncing.
         self.experiment_tag = experiment_tag
         trainable_cls = self._get_trainable_cls()
-        self.resources = trainable_cls.default_resource_request(self.config)
+        if trainable_cls and hasattr(trainable_cls,
+                                     "default_resource_request"):
+            self.resources = trainable_cls.default_resource_request(
+                self.config)
+        else:
+            self.resources = None
         if self.resources:
             if resources:
                 raise ValueError(
