@@ -33,7 +33,7 @@ class ActorHandle {
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id)
       : actor_id_(actor_id),
         actor_handle_id_(actor_handle_id),
-        actor_cursor_(actor_id),
+        actor_cursor_(ObjectID::from_binary(actor_id.binary())), // TODO
         task_counter_(0) {}
 
   /// ID of the actor.
@@ -42,6 +42,7 @@ class ActorHandle {
   /// ID of this actor handle.
   const ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
 
+ private:
   /// Cursor of this actor. 
   const ObjectID &ActorCursor() const { return actor_cursor_; };
 
@@ -50,6 +51,11 @@ class ActorHandle {
 
   /// Increase task counter.
   int IncreaseTaskCounter() { return task_counter_++; }
+
+  class ActorHandleID GetNewActorHandle() {
+    // TODO: implement this.
+    return ActorHandleID();
+  }
 
  private:
   /// ID of the actor.
@@ -60,6 +66,8 @@ class ActorHandle {
   ObjectID actor_cursor_;
   /// Counter for tasks from this handle.
   int task_counter_;
+
+  friend class CoreWorkerTaskInterface;
 };
 
 /// The interface that contains all `CoreWorker` methods that are related to task
@@ -87,7 +95,7 @@ class CoreWorkerTaskInterface {
   /// \return Status.
   Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     ActorHandle *actor_handle);
+                     std::unique_ptr<ActorHandle> *actor_handle);
 
   /// Submit an actor task.
   ///

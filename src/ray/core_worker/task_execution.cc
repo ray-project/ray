@@ -1,37 +1,38 @@
 #include "task_execution.h"
+#include "context.h"
+#include "core_worker.h"
 
 namespace ray {
 
 void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
 
-  auto &context = core_worker_->GetContext();
-  const auto task_id = GenerateTaskId(context.GetCurrentDriverID(),
-      context.GetCurrentTaskID(), context.GetNextTaskIndex());
+  auto &context = core_worker_.GetContext();
+  //const auto task_id = GenerateTaskId(context.GetCurrentDriverID(),
+  //    context.GetCurrentTaskID(), context.GetNextTaskIndex());
 
   while (true) {
-    const auto &tasks = GetTasks();
+    std::unique_ptr<raylet::TaskSpecification> task_spec;
+    RAY_CHECK_OK(core_worker_.raylet_client_->GetTask(&task_spec));
 
-    for (const auto &spec : tasks) {
-      context_.SetCurrentTask(spec);
+    auto& spec = *task_spec;
+    context.SetCurrentTask(spec);
 
-      RayFunction func{ spec.GetLanguage(), spec.FunctionDescriptor() };
+    RayFunction func{ spec.GetLanguage(), spec.FunctionDescriptor() };
 
-      std::vector<TaskArg> args;
-      RAY_CHECK_OK(GetArgsFromObjectStore(spec, &args)); 
+    std::vector<std::shared_ptr<Buffer>> args;
+    RAY_CHECK_OK(BuildArgsForExecutor(spec, &args)); 
 
-      auto status = executor(func, args);
-      if (status.ok()) {
-         // TODO:
-         // 1. Check and handle failure.
-         // 2. Save or load checkpoint. 
-      }
-
+    auto status = executor(func, args);
+    if (status.ok()) {
+        // TODO:
+        // 1. Check and handle failure.
+        // 2. Save or load checkpoint. 
     }
   }
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
-    const TaskSpecification &spec, std::vector<TaskArg> *args) {
+    const raylet::TaskSpecification &spec, std::vector<std::shared_ptr<Buffer>> *args) {
   
   auto num_args = spec.NumArgs();
   (*args).resize(num_args);
@@ -48,12 +49,12 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
       indices.push_back(i);
     } else {
       // pass by value.
-      (*args)[i] = std::make_shared<LocalMemoryBuffer>({ spec.ArgVal(i), spec.ArgValLength(i) });
+      (*args)[i] = std::make_shared<LocalMemoryBuffer>(spec.ArgVal(i), spec.ArgValLength(i));
     }
   } 
 
-  std::vector<Buffer> results;
-  auto status = core_worker_->object_interface_.Get(object_ids_to_fetch, -1, &results);
+  std::vector<std::shared_ptr<Buffer>> results;
+  auto status = core_worker_.object_interface_.Get(object_ids_to_fetch, -1, &results);
   if (status.ok()) {
     for (int i = 0; i < results.size(); i++) {
       (*args)[indices[i]] = results[i];

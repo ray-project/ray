@@ -8,7 +8,8 @@ namespace ray {
 
 class CoreWorkerTest : public ::testing::Test {
  public:
-  CoreWorkerTest() : core_worker_(WorkerType::WORKER, Language::PYTHON) {}
+  CoreWorkerTest()
+    : core_worker_(WorkerType::WORKER, Language::PYTHON, "", "") {}
 
  protected:
   CoreWorker core_worker_;
@@ -33,6 +34,22 @@ TEST_F(CoreWorkerTest, TestTaskArg) {
 TEST_F(CoreWorkerTest, TestAttributeGetters) {
   ASSERT_EQ(core_worker_.WorkerType(), WorkerType::WORKER);
   ASSERT_EQ(core_worker_.Language(), Language::PYTHON);
+}
+
+TEST_F(CoreWorkerTest, TestWorkerContext) {
+  auto driver_id = DriverID::from_random();
+  WorkerContext context(WorkerType::WORKER, driver_id);
+  ASSERT_EQ(context.worker_type == WorkerType::WORKER);
+
+  ASSERT_EQ(context.task_index == 0);
+  ASSERT_EQ(context.put_index == 0);
+
+  auto thread_fun = [&context]() {
+    // TODO
+  };
+  std::thread async_thread(thread_func);
+
+  async_thread.join();
 }
 
 }  // namespace ray
