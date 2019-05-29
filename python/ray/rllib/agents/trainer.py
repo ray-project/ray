@@ -355,7 +355,8 @@ class Trainer(Trainable):
             raise RuntimeError("Failed to recover from worker crash")
 
         if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
-                and hasattr(self, "workers")):
+                and hasattr(self, "workers")
+                and isinstance(self.workers, WorkerSet)):
             FilterManager.synchronize(
                 self.workers.local_worker().filters,
                 self.workers.remote_workers(),
