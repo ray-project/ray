@@ -125,22 +125,22 @@ std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
-#define DEFINE_UNIQUE_ID(type)                                                  \
-  class RAY_EXPORT type : public UniqueID {                                     \
-   public:                                                                      \
-    explicit type(const UniqueID &from) {                                       \
-      std::memcpy(&id_, from.Data(), kUniqueIDSize);                            \
-    }                                                                           \
-    type() : UniqueID() {}                                                      \
-    static type FromRandom() { return type(UniqueID::FromRandom()); }           \
-    static type FromBinary(const std::string &binary) { return type(binary); }  \
-    static type Nil() { return type(UniqueID::Nil()); }                         \
-    static size_t Size() { return kUniqueIDSize; }                              \
-                                                                                \
-   private:                                                                     \
-    explicit type(const std::string &binary) {                                  \
-      std::memcpy(&id_, binary.data(), kUniqueIDSize);                          \
-    }                                                                           \
+#define DEFINE_UNIQUE_ID(type)                                                 \
+  class RAY_EXPORT type : public UniqueID {                                    \
+   public:                                                                     \
+    explicit type(const UniqueID &from) {                                      \
+      std::memcpy(&id_, from.Data(), kUniqueIDSize);                           \
+    }                                                                          \
+    type() : UniqueID() {}                                                     \
+    static type FromRandom() { return type(UniqueID::FromRandom()); }          \
+    static type FromBinary(const std::string &binary) { return type(binary); } \
+    static type Nil() { return type(UniqueID::Nil()); }                        \
+    static size_t Size() { return kUniqueIDSize; }                             \
+                                                                               \
+   private:                                                                    \
+    explicit type(const std::string &binary) {                                 \
+      std::memcpy(&id_, binary.data(), kUniqueIDSize);                         \
+    }                                                                          \
   };
 
 #include "id_def.h"

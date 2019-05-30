@@ -84,12 +84,12 @@ TEST(TaskSpecTest, TaskInfoSize) {
     // General task.
     auto spec = CreateTaskInfo(
         fbb, to_flatbuf(fbb, DriverID::FromRandom()), to_flatbuf(fbb, task_id),
-        to_flatbuf(fbb, TaskID::FromRandom()), 10,
-        to_flatbuf(fbb, ActorID::FromRandom()), to_flatbuf(fbb, ObjectID::FromRandom()),
-        10000000, to_flatbuf(fbb, ActorID::FromRandom()),
+        to_flatbuf(fbb, TaskID::FromRandom()), 10, to_flatbuf(fbb, ActorID::FromRandom()),
+        to_flatbuf(fbb, ObjectID::FromRandom()), 10000000,
+        to_flatbuf(fbb, ActorID::FromRandom()),
         to_flatbuf(fbb, ActorHandleID::FromRandom()), 20,
-        ids_to_flatbuf(fbb, std::vector<ObjectID>(
-                                {ObjectID::FromRandom(), ObjectID::FromRandom()})),
+        ids_to_flatbuf(
+            fbb, std::vector<ObjectID>({ObjectID::FromRandom(), ObjectID::FromRandom()})),
         fbb.CreateVector(arguments), 2, map_to_flatbuf(fbb, {}), map_to_flatbuf(fbb, {}),
         Language::PYTHON,
         string_vec_to_flatbuf(fbb, {"PackageName", "ClassName", "FunctionName"}));

@@ -104,8 +104,8 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
-    RAY_ARROW_CHECK_OK(client.Create(object_id.ToPlasmaId(), data_size, metadata,
-                                     metadata_size, &data));
+    RAY_ARROW_CHECK_OK(
+        client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
     RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
     return object_id;
   }

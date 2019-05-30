@@ -214,9 +214,7 @@ Language TaskSpecification::GetLanguage() const {
   return message->language();
 }
 
-bool TaskSpecification::IsActorCreationTask() const {
-  return !ActorCreationId().IsNil();
-}
+bool TaskSpecification::IsActorCreationTask() const { return !ActorCreationId().IsNil(); }
 
 bool TaskSpecification::IsActorTask() const { return !ActorId().IsNil(); }
 

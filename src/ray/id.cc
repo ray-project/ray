@@ -131,7 +131,7 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \
   std::ostream &operator<<(std::ostream &os, const id_type &id) { \
-    if (id.IsNil()) {                                            \
+    if (id.IsNil()) {                                             \
       os << "NIL_ID";                                             \
     } else {                                                      \
       os << id.Hex();                                             \
