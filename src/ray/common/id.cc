@@ -6,7 +6,7 @@
 #include <mutex>
 #include <random>
 
-#include "ray/constants.h"
+#include "ray/common/constants.h"
 #include "ray/common/status.h"
 
 extern "C" {
