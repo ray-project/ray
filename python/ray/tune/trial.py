@@ -293,7 +293,7 @@ class Trial(object):
                     "clear the `resources_per_trial` option.".format(
                         trainable_cls, self.resources))
         else:
-            self.resources = Resources(cpu=1, gpu=0)
+            self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
         self.loggers = loggers
