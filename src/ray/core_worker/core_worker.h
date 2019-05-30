@@ -23,16 +23,16 @@ class CoreWorker {
         language_(language),
         task_interface_(*this),
         object_interface_(*this),
-        task_execution_interface_(*this){};
+        task_execution_interface_(*this) {}
 
   /// Connect this worker to Raylet.
   Status Connect() { return Status::OK(); }
 
   /// Type of this worker.
-  WorkerType WorkerType() const { return worker_type_; }
+  enum WorkerType WorkerType() const { return worker_type_; }
 
   /// Language of this worker.
-  Language Language() const { return language_; }
+  enum Language Language() const { return language_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
