@@ -5,7 +5,6 @@ def gen_java_deps():
         artifacts = [
             "com.beust:jcommander:1.72",
             "com.github.davidmoten:flatbuffers-java:1.9.0.1",
-            "com.google.code.gson:gson:2.8.5",
             "com.google.guava:guava:27.0.1-jre",
             "com.puppycrawl.tools:checkstyle:8.15",
             "com.sun.xml.bind:jaxb-core:2.3.0",
