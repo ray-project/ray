@@ -58,15 +58,6 @@ class CoreWorker {
   /// Language of this worker.
   const enum Language language_;
 
-  /// The `CoreWorkerTaskInterface` instance.
-  CoreWorkerTaskInterface task_interface_;
-
-  /// The `CoreWorkerObjectInterface` instance.
-  CoreWorkerObjectInterface object_interface_;
-
-  /// The `CoreWorkerTaskExecutionInterface` instance.
-  CoreWorkerTaskExecutionInterface task_execution_interface_;
-
   /// Worker context per thread.
   static thread_local std::unique_ptr<WorkerContext> context_;
 
@@ -78,6 +69,15 @@ class CoreWorker {
 
   /// ID of the driver (valid when this worker is a driver).
   DriverID driver_id_;
+
+  /// The `CoreWorkerTaskInterface` instance.
+  CoreWorkerTaskInterface task_interface_;
+
+  /// The `CoreWorkerObjectInterface` instance.
+  CoreWorkerObjectInterface object_interface_;
+
+  /// The `CoreWorkerTaskExecutionInterface` instance.
+  CoreWorkerTaskExecutionInterface task_execution_interface_;
 
   friend class CoreWorkerTaskInterface;
   friend class CoreWorkerObjectInterface;

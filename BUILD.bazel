@@ -77,6 +77,7 @@ cc_library(
             "src/ray/raylet/mock_gcs_client.cc",
             "src/ray/raylet/monitor_main.cc",
             "src/ray/raylet/*_test.cc",
+            "src/ray/raylet/main.cc",
         ],
     ),
     hdrs = glob([
@@ -131,6 +132,7 @@ cc_test(
     srcs = ["src/ray/core_worker/core_worker_test.cc"],
     copts = COPTS,
     deps = [
+        ":gcs",
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],

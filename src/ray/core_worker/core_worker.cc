@@ -3,6 +3,8 @@
 
 namespace ray {
 
+thread_local std::unique_ptr<WorkerContext> CoreWorker::context_ = nullptr;
+
 CoreWorker::CoreWorker(
   const enum WorkerType worker_type,
   const enum Language language,
@@ -11,12 +13,12 @@ CoreWorker::CoreWorker(
   DriverID driver_id)
   : worker_type_(worker_type),
     language_(language),
+    store_socket_(store_socket),
+    driver_id_(driver_id),
     task_interface_(*this),
     object_interface_(*this),
-    task_execution_interface_(*this),
-    store_socket_(store_socket),
-    driver_id_(driver_id) {
-    
+    task_execution_interface_(*this) {
+  
     ::Language lang = ::Language::PYTHON;
     if (language == Language::JAVA) {
       lang = ::Language::JAVA;

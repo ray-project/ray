@@ -23,7 +23,6 @@ class PlasmaBuffer : public Buffer {
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(CoreWorker &core_worker)
   : core_worker_(core_worker) {
-
   RAY_ARROW_CHECK_OK(store_client_.Connect(core_worker_.store_socket_));
 }
 
@@ -48,6 +47,8 @@ Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id)
 Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
                                       std::vector<std::shared_ptr<Buffer>> *results) {
+  (*results).resize(ids.size(), nullptr);                                    
+
   auto &context = core_worker_.GetContext();
   bool was_blocked = false;
 
@@ -97,7 +98,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     for (int i = 0; i < object_buffers.size(); i++) {
       if (object_buffers[i].data != nullptr) {
         const auto &object_id = unready_ids[i];
-        (*results)[i] = std::make_shared<PlasmaBuffer>(object_buffers[i].data);
+        (*results)[unready[object_id]] = std::make_shared<PlasmaBuffer>(object_buffers[i].data);
         unready.erase(object_id);
       }
     }

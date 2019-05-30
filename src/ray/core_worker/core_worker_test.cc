@@ -5,17 +5,124 @@
 #include "core_worker.h"
 #include "context.h"
 #include "ray/common/buffer.h"
+#include "ray/raylet/raylet_client.h"
+
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/bind.hpp>
+
+#include "ray/thirdparty/hiredis/async.h"
+#include "ray/thirdparty/hiredis/hiredis.h"
 
 namespace ray {
 
+std::string store_executable;
+std::string raylet_executable;
+
+ray::ObjectID RandomObjectID() { return ObjectID::from_random(); }
+
+static void flushall_redis(void) {
+  redisContext *context = redisConnect("127.0.0.1", 6379);
+  freeReplyObject(redisCommand(context, "FLUSHALL"));
+  freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
+  freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));  
+  redisFree(context);
+}
+
 class CoreWorkerTest : public ::testing::Test {
  public:
-  CoreWorkerTest()
-    : core_worker_(WorkerType::WORKER, Language::PYTHON, "", "") {}
+  CoreWorkerTest() {
+    // start plasma store.
+    raylet_store_socket_name_1_ = StartStore();
+    raylet_store_socket_name_2_ = StartStore();
+
+    // start raylet on head node
+    raylet_socket_name_1_ = StartRaylet(raylet_store_socket_name_1_, "127.0.0.1",
+                                        "127.0.0.1", "\"CPU,4.0,resA,100\"");
+
+    // start raylet on non-head node
+    raylet_socket_name_2_ = StartRaylet(raylet_store_socket_name_2_, "127.0.0.1",
+                                        "127.0.0.1", "\"CPU,4.0,resB,100\"");
+    client_id_1_ = ClientID::from_random();
+    client_id_2_ = ClientID::from_random();
+  }
+
+  ~CoreWorkerTest() {
+    StopRaylet(raylet_socket_name_1_);
+    StopRaylet(raylet_socket_name_2_);
+    StopStore(raylet_store_socket_name_1_);
+    StopStore(raylet_store_socket_name_2_);
+  }
+
+  std::string StartStore() {
+    std::string store_socket_name = "/tmp/store" + RandomObjectID().hex();
+    std::string store_pid = store_socket_name + ".pid";
+    std::string plasma_command = store_executable + " -m 10000000 -s " +
+                                 store_socket_name +
+                                 " 1> /dev/null 2> /dev/null & echo $! > " + store_pid;
+    RAY_LOG(INFO) << plasma_command;
+    RAY_CHECK(system(plasma_command.c_str()) == 0);
+    usleep(200 * 1000);
+    return store_socket_name;
+  }
+
+  void StopStore(std::string store_socket_name) {
+    std::string store_pid = store_socket_name + ".pid";
+    std::string kill_9 = "kill -9 `cat " + store_pid + "`";
+    RAY_LOG(INFO) << kill_9;
+    ASSERT_TRUE(system(kill_9.c_str()) == 0);
+    ASSERT_TRUE(system(("rm -rf " + store_socket_name).c_str()) == 0);
+    ASSERT_TRUE(system(("rm -rf " + store_socket_name + ".pid").c_str()) == 0);
+  }
+
+  std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
+                          std::string redis_address, std::string resource) {
+    std::string raylet_socket_name = "/tmp/raylet" + RandomObjectID().hex();
+    std::string ray_start_cmd = raylet_executable;
+    ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
+        .append(" --store_socket_name=" + store_socket_name)
+        .append(" --object_manager_port=0 --node_manager_port=0")
+        .append(" --node_ip_address=" + node_ip_address)
+        .append(" --redis_address=" + redis_address)
+        .append(" --redis_port=6379")
+        .append(" --num_initial_workers=0")
+        .append(" --maximum_startup_concurrency=10")
+        .append(" --static_resource_list=" + resource)
+        .append(" --python_worker_command=NoneCmd")
+        .append(" & echo $! > " + raylet_socket_name + ".pid");
+
+    RAY_LOG(INFO) << "Ray Start command: " << ray_start_cmd;
+    RAY_CHECK(system(ray_start_cmd.c_str()) == 0);
+    usleep(200 * 1000);
+    return raylet_socket_name;
+  }
+
+  void StopRaylet(std::string raylet_socket_name) {
+    std::string raylet_pid = raylet_socket_name + ".pid";
+    std::string kill_9 = "kill -9 `cat " + raylet_pid + "`";
+    RAY_LOG(INFO) << kill_9;
+    ASSERT_TRUE(system(kill_9.c_str()) == 0);
+    ASSERT_TRUE(system(("rm -rf " + raylet_socket_name).c_str()) == 0);
+    ASSERT_TRUE(system(("rm -rf " + raylet_socket_name + ".pid").c_str()) == 0);
+  }
+
+  void SetUp() { flushall_redis(); }
+
+  void TearDown() {}
 
  protected:
-  CoreWorker core_worker_;
+  boost::asio::io_service main_service_1_;
+  boost::asio::io_service main_service_2_;
+
+  std::string raylet_socket_name_1_;
+  std::string raylet_socket_name_2_;
+  std::string raylet_store_socket_name_1_;
+  std::string raylet_store_socket_name_2_;
+
+  ClientID client_id_1_;
+  ClientID client_id_2_;
 };
+
 
 TEST_F(CoreWorkerTest, TestTaskArg) {
   // Test by-reference argument.
@@ -34,8 +141,10 @@ TEST_F(CoreWorkerTest, TestTaskArg) {
 }
 
 TEST_F(CoreWorkerTest, TestAttributeGetters) {
-  ASSERT_EQ(core_worker_.WorkerType(), WorkerType::WORKER);
-  ASSERT_EQ(core_worker_.Language(), Language::PYTHON);
+  CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
+      raylet_store_socket_name_1_, raylet_socket_name_1_);
+  ASSERT_EQ(core_worker.WorkerType(), WorkerType::DRIVER);
+  ASSERT_EQ(core_worker.Language(), Language::PYTHON);
 }
 
 TEST_F(CoreWorkerTest, TestWorkerContext) {
@@ -55,4 +164,72 @@ TEST_F(CoreWorkerTest, TestWorkerContext) {
   async_thread.join();
 }
 
+TEST_F(CoreWorkerTest, TestObjectInterface) {
+  CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
+      raylet_store_socket_name_1_, raylet_socket_name_1_);
+
+  uint8_t array1[] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+  uint8_t array2[] = { 10, 11, 12, 13, 14, 15 }; 
+
+  std::vector<LocalMemoryBuffer> buffers;
+  buffers.emplace_back(array1, sizeof(array1));
+  buffers.emplace_back(array2, sizeof(array2));
+
+  std::vector<ObjectID> ids(buffers.size());
+  for (int i = 0; i < ids.size(); i++) {
+    core_worker.Objects().Put(buffers[i], &ids[i]);
+  }
+
+  // Test Get().
+  std::vector<std::shared_ptr<Buffer>> results;
+  core_worker.Objects().Get(ids, 0, &results);
+
+  ASSERT_EQ(results.size(), 2);
+  for (int i = 0; i < ids.size(); i++) {
+    // RAY_LOG(INFO) << i << "  " << results[i]->Size() << "   " << buffers[i].Size();
+    ASSERT_EQ(results[i]->Size(), buffers[i].Size());
+    ASSERT_EQ(memcmp(results[i]->Data(), buffers[i].Data(), buffers[i].Size()), 0);
+  }
+
+  // Test Wait().
+  ObjectID non_existent_id = ObjectID::from_random();
+  std::vector<ObjectID> all_ids(ids);
+  all_ids.push_back(non_existent_id);
+
+  std::vector<bool> wait_results;
+  core_worker.Objects().Wait(all_ids, 2, -1, &wait_results);
+  ASSERT_EQ(wait_results.size(), 3);
+  ASSERT_EQ(wait_results[0], true);
+  ASSERT_EQ(wait_results[1], true);
+  ASSERT_EQ(wait_results[2], false);
+
+  core_worker.Objects().Wait(all_ids, 3, 100, &wait_results);
+  ASSERT_EQ(wait_results.size(), 3);
+  ASSERT_EQ(wait_results[0], true);
+  ASSERT_EQ(wait_results[1], true);
+  ASSERT_EQ(wait_results[2], false);  
+
+  // Test Delete().
+  // clear the reference held by PlasmaBuffer.
+  results.clear();
+  core_worker.Objects().Delete(ids, true, false);
+
+  // Note that Delete() calls RayletClient::FreeObjects and would not
+  // wait for objects being deleted, so wait a while for plasma store
+  // to process the command.
+  usleep(200 * 1000);
+  core_worker.Objects().Get(ids, 0, &results);
+  ASSERT_EQ(results.size(), 2);
+  ASSERT_TRUE(!results[0] || !results[0]->Data());
+  ASSERT_TRUE(!results[1] || !results[1]->Data());
+}
+
+
 }  // namespace ray
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  ray::store_executable = std::string(argv[1]);
+  ray::raylet_executable = std::string(argv[2]);
+  return RUN_ALL_TESTS();
+}
