@@ -158,7 +158,9 @@ class TFPolicy(Policy):
             raise RuntimeError(
                 "You cannot call policy.get_placeholder() for non-obs inputs "
                 "before the loss has been initialized. To avoid this, use "
-                "policy.loss_initialized() to check whether this is the case.")
+                "policy.loss_initialized() to check whether this is the "
+                "case, or move the call to later (e.g., from stats_fn to "
+                "grad_stats_fn).")
 
         return self._loss_input_dict[name]
 
