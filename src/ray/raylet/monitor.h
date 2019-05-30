@@ -4,8 +4,8 @@
 #include <memory>
 #include <unordered_set>
 
-#include "ray/gcs/client.h"
 #include "ray/common/id.h"
+#include "ray/gcs/client.h"
 
 namespace ray {
 

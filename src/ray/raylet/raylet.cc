@@ -37,7 +37,7 @@ static const std::vector<std::string> object_manager_message_enum =
     GenerateEnumNames(ray::object_manager::protocol::EnumNamesMessageType(),
                       static_cast<int>(ray::object_manager::protocol::MessageType::MIN),
                       static_cast<int>(ray::object_manager::protocol::MessageType::MAX));
-}
+}  // namespace
 
 namespace ray {
 

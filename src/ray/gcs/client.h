@@ -4,10 +4,10 @@
 #include <map>
 #include <string>
 
-#include "ray/gcs/asio.h"
-#include "ray/gcs/tables.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/gcs/asio.h"
+#include "ray/gcs/tables.h"
 #include "ray/util/logging.h"
 
 namespace ray {

@@ -10,7 +10,7 @@
 namespace {
 std::string store_executable;
 int64_t wait_timeout_ms;
-}
+}  // namespace
 
 namespace ray {
 

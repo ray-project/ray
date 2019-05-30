@@ -6,8 +6,8 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
-#include "ray/stats/stats.h"
 #include "ray/common/status.h"
+#include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 
 namespace {

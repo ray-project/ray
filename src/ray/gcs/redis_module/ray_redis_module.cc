@@ -2,9 +2,9 @@
 #include <sstream>
 
 #include "ray/common/common_protocol.h"
-#include "ray/gcs/format/gcs_generated.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/gcs/format/gcs_generated.h"
 #include "ray/util/logging.h"
 #include "redis_string.h"
 #include "redismodule.h"
