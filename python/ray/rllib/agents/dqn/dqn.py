@@ -275,11 +275,11 @@ class DQNTrainer(Trainer):
     def _evaluate(self):
         logger.info("Evaluating current policy for {} episodes".format(
             self.config["evaluation_num_episodes"]))
-        self.evaluation_ev.restore(self.workers.local_worker().save())
-        self.evaluation_ev.foreach_policy(lambda p, _: p.set_epsilon(0))
+        self.evaluation_worker.restore(self.workers.local_worker().save())
+        self.evaluation_worker.foreach_policy(lambda p, _: p.set_epsilon(0))
         for _ in range(self.config["evaluation_num_episodes"]):
-            self.evaluation_ev.sample()
-        metrics = collect_metrics(self.evaluation_ev)
+            self.evaluation_worker.sample()
+        metrics = collect_metrics(self.evaluation_worker)
         return {"evaluation": metrics}
 
     def _make_exploration_schedule(self, worker_index):
