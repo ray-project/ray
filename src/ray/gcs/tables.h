@@ -451,6 +451,111 @@ class Set : private Log<ID, Data>,
   using Log<ID, Data>::num_lookups_;
 };
 
+template <typename ID, typename Data>
+class HashInterface {
+ public:
+  using DataT = typename Data::NativeTableType;
+  using DataMap = std::unordered_map<std::string, std::shared_ptr<DataT>>;
+  using HashCallback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataMap &pairs)>;
+  using HashRemoveCallback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const std::vector<std::string> &keys)>;
+  using HashNotificationCallback = std::function<void(
+      AsyncGcsClient *client, const ID &id,
+      const GcsTableNotificationMode notification_mode, const DataMap &data)>;
+  using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
+  virtual Status Update(const DriverID &driver_id, const ID &id,
+                        const DataMap &pairs, const HashCallback &done) = 0;
+  virtual Status RemoveEntry(const DriverID &driver_id, const ID &id, const std::vector<std::string> &keys, const HashRemoveCallback &remove_callback) = 0;
+
+  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
+                   const HashNotificationCallback &subscribe,
+                   const SubscriptionCallback &done);
+  
+  virtual ~HashInterface(){};
+};
+
+template <typename ID, typename Data>
+class Hash : private Log<ID, Data>,
+             public HashInterface<ID, Data>,
+             virtual public PubsubInterface<ID> {
+ public:
+  using DataT = typename Log<ID, Data>::DataT;
+  using DataMap = std::unordered_map<std::string, std::shared_ptr<DataT>>;
+  //using Callback = typename Log<ID, Data>::Callback;
+  using HashCallback = typename HashInterface<ID, Data>::HashCallback;
+  using HashRemoveCallback = typename HashInterface<ID, Data>::HashRemoveCallback;
+  using HashNotificationCallback = typename HashInterface<ID, Data>::HashNotificationCallback;
+  using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
+
+  Hash(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
+      : Log<ID, Data>(contexts, client) {}
+
+  using Log<ID, Data>::RequestNotifications;
+  using Log<ID, Data>::CancelNotifications;
+  using Log<ID, Data>::Lookup;
+  using Log<ID, Data>::Delete;
+
+  /// Add an entry to the set.
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param data Data to add to the set.
+  /// \param done Callback that is called once the data has been written to the
+  /// GCS.
+  /// \return Status
+  Status Update(const DriverID &driver_id, const ID &id,
+                const DataMap &pairs, const HashCallback &done);
+
+  /// Remove an entry from the set.
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param id The ID of the data that is removed from the GCS.
+  /// \param data Data to remove from the set.
+  /// \param done Callback that is called once the data has been written to the
+  /// GCS.
+  /// \return Status
+  //Status Remove(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  //              const WriteCallback &done);
+  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
+                   const HashNotificationCallback &subscribe,
+                   const SubscriptionCallback &done);
+
+  Status Lookup(const DriverID &driver_id, const ID &id, const HashCallback &lookup);
+
+  Status RemoveEntry(const DriverID &driver_id, const ID &id, const std::vector<std::string> &keys, const HashRemoveCallback &remove_callback);
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
+ protected:
+  using Log<ID, Data>::shard_contexts_;
+  using Log<ID, Data>::client_;
+  using Log<ID, Data>::pubsub_channel_;
+  using Log<ID, Data>::prefix_;
+  using Log<ID, Data>::subscribe_callback_index_;
+  using Log<ID, Data>::GetRedisContext;
+
+  int64_t num_adds_ = 0;
+  int64_t num_removes_ = 0;
+  using Log<ID, Data>::num_lookups_;
+};
+
+class DynamicResourceTable : public Hash<ClientID, RayResource> {
+ public:
+  DynamicResourceTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                       AsyncGcsClient *client)
+      : Hash(contexts, client) {
+    pubsub_channel_ = TablePubsub::DYNAMIC_RESOURCE;
+    prefix_ = TablePrefix::DYNAMIC_RESOURCE;
+  };
+
+  virtual ~DynamicResourceTable() {};
+};
+
+
 class ObjectTable : public Set<ObjectID, ObjectTableData> {
  public:
   ObjectTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,

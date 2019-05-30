@@ -1307,6 +1307,144 @@ TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
   TestClientTableMarkDisconnected(driver_id_, client_);
 }
 
+void TestHashTable(const DriverID &driver_id,
+                   std::shared_ptr<gcs::AsyncGcsClient> client) {
+  const int expected_count = 14;
+  ClientID client_id = ClientID::FromRandom();
+  // Prepare the first resource set: data_map1.
+  auto cpu_data = std::make_shared<RayResourceT>();
+  cpu_data->resource_name = "CPU";
+  cpu_data->resource_capacity = 100;
+  auto gpu_data = std::make_shared<RayResourceT>();
+  gpu_data->resource_name = "GPU";
+  gpu_data->resource_capacity = 2;
+  DynamicResourceTable::DataMap data_map1;
+  data_map1.emplace("CPU", cpu_data);
+  data_map1.emplace("GPU", gpu_data);
+  // Prepare the second resource set: data_map2.
+  auto data_cpu = std::make_shared<RayResourceT>();
+  data_cpu->resource_name = "CPU";
+  data_cpu->resource_capacity = 50;
+  auto data_gpu = std::make_shared<RayResourceT>();
+  data_gpu->resource_name = "GPU";
+  data_gpu->resource_capacity = 10;
+  auto data_custom = std::make_shared<RayResourceT>();
+  data_custom->resource_name = "CUSTOM";
+  data_custom->resource_capacity = 2;
+  DynamicResourceTable::DataMap data_map2;
+  data_map2.emplace("CPU", data_cpu);
+  data_map2.emplace("GPU", data_gpu);
+  data_map2.emplace("CUSTOM", data_custom);
+  data_map2["CPU"]->resource_capacity = 50;
+  // This is a common comparison function for the test.
+  auto lookup_compare = [](const DynamicResourceTable::DataMap &data1,
+                           const DynamicResourceTable::DataMap &data2) {
+    ASSERT_EQ(data1.size(), data2.size());
+    for (const auto &data : data1) {
+      auto iter = data2.find(data.first);
+      ASSERT_TRUE(iter != data2.end());
+      ASSERT_EQ(iter->second->resource_name, data.second->resource_name);
+      ASSERT_EQ(iter->second->resource_capacity, data.second->resource_capacity);
+    }
+  };
+  auto subscribe_callback = [](AsyncGcsClient *client) {
+    ASSERT_TRUE(true);
+    test->IncrementNumCallbacks();
+  };
+  auto notification_callback = [data_map1, data_map2, lookup_compare](
+      AsyncGcsClient *client, const ClientID &id,
+      const GcsTableNotificationMode notification_mode, const DynamicResourceTable::DataMap &data) {
+    if (notification_mode == GcsTableNotificationMode::REMOVE) {
+        ASSERT_EQ(data.size(), 2);
+        ASSERT_TRUE(data.find("GPU") != data.end());
+        ASSERT_TRUE(data.find("CUSTOM") != data.end() || data.find("CPU") != data.end());
+        // The key "None-Existent" will not appear in the notification.
+    } else {
+      if (data.size() == 2) {
+        lookup_compare(data_map1, data);
+      } else if(data.size() == 3) {
+        lookup_compare(data_map2, data);
+      } else {
+        ASSERT_TRUE(false);
+      }
+    }
+    test->IncrementNumCallbacks();
+    // It is not sure which of the notification and lookup callback will come first.
+    if (test->NumCallbacks() == expected_count) {
+      test->Stop();
+    }
+  };
+  // Step 0: Subscribe the change of the hash table.
+  RAY_CHECK_OK(client->dynamic_resource_table().Subscribe(driver_id, ClientID::Nil(), notification_callback, subscribe_callback));
+  RAY_CHECK_OK(client->dynamic_resource_table().RequestNotifications(driver_id, client_id, client->client_table().GetLocalClientId()));
+
+  // Step 1: Add elements to the hash table.
+  auto update_callback1 = [data_map1, lookup_compare](AsyncGcsClient *client, const ClientID &id, const DynamicResourceTable::DataMap &callback_data) {
+    lookup_compare(data_map1, callback_data);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->dynamic_resource_table().Update(driver_id, client_id, data_map1, update_callback1));
+  auto lookup_callback1 = [data_map1](AsyncGcsClient *client, const ClientID &id, const DynamicResourceTable::DataMap &callback_data) {
+    ASSERT_EQ(data_map1.size(), callback_data.size());
+    ASSERT_TRUE(data_map1.find("CPU") != data_map1.end());
+    ASSERT_TRUE(callback_data.find("CPU") != callback_data.end());
+    ASSERT_EQ(callback_data.find("CPU")->second->resource_capacity, data_map1.find("CPU")->second->resource_capacity);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback1));
+
+  // Step 2: Decreace one element, increace one and add a new one.
+  RAY_CHECK_OK(client->dynamic_resource_table().Update(driver_id, client_id, data_map2, nullptr));
+  auto lookup_callback2 = [data_map2, lookup_compare](AsyncGcsClient *client, const ClientID &id, const DynamicResourceTable::DataMap &callback_data) {
+    lookup_compare(data_map2, callback_data);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback2));
+  std::vector<std::string> delete_keys({"GPU", "CUSTOM", "None-Existent"});
+  auto remove_callback = [delete_keys](AsyncGcsClient *client, const ClientID &id, const std::vector<std::string> &callback_data) {
+    for (int i = 0; i < callback_data.size(); ++i) {
+      ASSERT_EQ(callback_data[i], delete_keys[i]);
+    }
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->dynamic_resource_table().RemoveEntry(driver_id, client_id, delete_keys, remove_callback));
+  DynamicResourceTable::DataMap data_map3(data_map2);
+  data_map3.erase("GPU");
+  data_map3.erase("CUSTOM");
+  auto lookup_callback3 = [data_map3, lookup_compare](AsyncGcsClient *client, const ClientID &id, const DynamicResourceTable::DataMap &callback_data) {
+    lookup_compare(data_map3, callback_data);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback3));
+
+  // Step 3: Restore the elemets to the status at the beginning.
+  RAY_CHECK_OK(client->dynamic_resource_table().Update(driver_id, client_id, data_map1, update_callback1));
+  auto lookup_callback4 = [data_map1, lookup_compare](AsyncGcsClient *client, const ClientID &id, const DynamicResourceTable::DataMap &callback_data) {
+    lookup_compare(data_map1, callback_data);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback4));
+
+  // Step 4: Removing all elements will remove the home Hash table from GCS.
+  RAY_CHECK_OK(client->dynamic_resource_table().RemoveEntry(driver_id, client_id, {"GPU", "CPU", "CUSTOM", "None-Existent"}, nullptr));
+  auto lookup_callback5 = [](AsyncGcsClient *client, const ClientID &id, const DynamicResourceTable::DataMap &callback_data) {
+    ASSERT_EQ(callback_data.size(), 0);
+    test->IncrementNumCallbacks();
+    // It is not sure which of the notification and lookup callback will come first.
+    if (test->NumCallbacks() == expected_count) {
+      test->Stop();
+    }
+  };
+  RAY_CHECK_OK(client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback5));
+  test->Start();
+  ASSERT_EQ(test->NumCallbacks(), expected_count);
+}
+
+TEST_F(TestGcsWithAsio, TestHashTable) {
+  test = this;
+  TestHashTable(driver_id_, client_);
+}
+
 #undef TEST_MACRO
 
 }  // namespace gcs
