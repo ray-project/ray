@@ -2,7 +2,7 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/client.h"
-#include "ray/ray_config.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/util.h"
 
 namespace {

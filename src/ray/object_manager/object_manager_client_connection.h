@@ -12,7 +12,7 @@
 
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
-#include "ray/ray_config.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 

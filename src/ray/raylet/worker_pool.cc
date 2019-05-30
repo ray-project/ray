@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <thread>
 
-#include "ray/ray_config.h"
+#include "ray/common/ray_config.h"
 #include "ray/stats/stats.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
