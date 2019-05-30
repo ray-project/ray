@@ -281,16 +281,13 @@ cc_library(
     name = "ray_util",
     srcs = glob(
         [
-            "src/ray/*.cc",
             "src/ray/util/*.cc",
         ],
         exclude = [
-            "src/ray/util/logging_test.cc",
-            "src/ray/util/signal_test.cc",
+            "src/ray/util/*_test.cc",
         ],
     ),
     hdrs = glob([
-        "src/ray/*.h",
         "src/ray/util/*.h",
     ]),
     copts = COPTS,
@@ -317,7 +314,7 @@ cc_library(
     hdrs = glob(
         [
             "src/ray/common/*.h",
-        ]
+        ],
     ),
     copts = COPTS,
     includes = [
