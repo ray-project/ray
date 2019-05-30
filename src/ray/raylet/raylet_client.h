@@ -58,8 +58,7 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-class 
-RayletClient {
+class RayletClient {
  public:
   /// Connect to the raylet.
   ///
