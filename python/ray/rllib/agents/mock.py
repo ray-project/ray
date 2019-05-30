@@ -20,6 +20,7 @@ class _MockTrainer(Trainer):
         "num_workers": 0,
     })
 
+    @classmethod
     def default_resource_request(cls, config):
         return None
 
