@@ -71,7 +71,7 @@ def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
     cluster = start_connected_cluster
     nodes = []
-    assert ray.global_state.cluster_resources()["CPU"] == 1
+    assert ray.cluster_resources()["CPU"] == 1
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {"stopping_criterion": {"training_iteration": 10}}
 
@@ -82,17 +82,17 @@ def test_counting_resources(start_connected_cluster):
     runner.step()  # run 1
     nodes += [cluster.add_node(num_cpus=1)]
     cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources()["CPU"] == 2
+    assert ray.cluster_resources()["CPU"] == 2
     cluster.remove_node(nodes.pop())
     cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources()["CPU"] == 1
+    assert ray.cluster_resources()["CPU"] == 1
     runner.step()  # run 2
     assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 1
 
     for i in range(5):
         nodes += [cluster.add_node(num_cpus=1)]
     cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources()["CPU"] == 6
+    assert ray.cluster_resources()["CPU"] == 6
 
     runner.step()  # 1 result
     assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 2
@@ -120,7 +120,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     cluster.remove_node(node)
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources()["CPU"] == 1
+    assert ray.cluster_resources()["CPU"] == 1
 
     for i in range(3):
         runner.step()

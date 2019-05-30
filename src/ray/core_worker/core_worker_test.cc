@@ -147,23 +147,6 @@ TEST_F(CoreWorkerTest, TestAttributeGetters) {
   ASSERT_EQ(core_worker.Language(), Language::PYTHON);
 }
 
-TEST_F(CoreWorkerTest, TestWorkerContext) {
-  auto driver_id = DriverID::from_random();
-  WorkerContext context(WorkerType::WORKER, driver_id);
-  ASSERT_EQ(context.worker_type, WorkerType::WORKER);
-
-  ASSERT_EQ(context.task_index, 0);
-  ASSERT_EQ(context.put_index, 0);
-
-  auto thread_func = [&context]() {
-    // TODO
-    ASSERT_EQ(context.task_index, 0);
-  };
-  std::thread async_thread(thread_func);
-
-  async_thread.join();
-}
-
 TEST_F(CoreWorkerTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
       raylet_store_socket_name_1_, raylet_socket_name_1_);

@@ -28,10 +28,10 @@ class CoreWorker {
       DriverID driver_id = DriverID::nil());
 
   /// Type of this worker.
-  WorkerType WorkerType() const { return worker_type_; }
+  enum WorkerType WorkerType() const { return worker_type_; }
 
   /// Language of this worker.
-  Language Language() const { return language_; }
+  enum Language Language() const { return language_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
