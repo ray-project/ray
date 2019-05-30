@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -74,9 +76,15 @@ def build_trainer(name,
             if before_train_step:
                 before_train_step(self)
             prev_steps = self.optimizer.num_steps_sampled
-            fetches = self.optimizer.step()
-            if after_optimizer_step:
-                after_optimizer_step(self, fetches)
+
+            start = time.time()
+            while True:
+                fetches = self.optimizer.step()
+                if after_optimizer_step:
+                    after_optimizer_step(self, fetches)
+                if time.time() - start > self.config["min_iter_time_s"]:
+                    break
+
             res = self.collect_metrics()
             res.update(
                 timesteps_this_iter=self.optimizer.num_steps_sampled -

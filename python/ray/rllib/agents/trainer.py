@@ -176,6 +176,8 @@ COMMON_CONFIG = {
     # but optimal value could be obtained by measuring your environment
     # step / reset and model inference perf.
     "remote_env_batch_wait_ms": 0,
+    # Minimum time per iteration
+    "min_iter_time_s": 0,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
