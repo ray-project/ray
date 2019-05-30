@@ -120,7 +120,7 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        ":ray_buffer",
+        ":ray_common",
         ":ray_util",
     ],
 )
@@ -130,7 +130,6 @@ cc_test(
     srcs = ["src/ray/core_worker/core_worker_test.cc"],
     copts = COPTS,
     deps = [
-        ":ray_buffer",
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -302,20 +301,8 @@ cc_library(
 )
 
 cc_library(
-    name = "ray_buffer",
-    srcs = [
-        "src/ray/common/buffer.cc",
-    ],
-    hdrs = [
-        "src/ray/common/buffer.h",
-    ],
-    copts = COPTS,
-)
-
-cc_library(
     name = "ray_common",
     srcs = [
-        "src/ray/common/buffer.cc",
         "src/ray/common/client_connection.cc",
         "src/ray/common/common_protocol.cc",
     ],

@@ -31,7 +31,7 @@ struct ActorCreationOptions {
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id)
-      : actor_id_(actor_id), actor_handle_id_(actor_handle_id) {}
+      : actor_id_(actor_id), actor_handle_id_(actor_handle_id){}
 
   /// ID of the actor.
   const class ActorID &ActorID() const { return actor_id_; }
