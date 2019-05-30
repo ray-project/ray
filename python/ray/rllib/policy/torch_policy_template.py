@@ -24,7 +24,7 @@ def build_torch_policy(name,
     """Helper function for creating a torch policy at runtime.
 
     Arguments:
-        name (str): name of the policy (e.g., "PPOTFPolicy")
+        name (str): name of the policy (e.g., "PPOTorchPolicy")
         loss_fn (func): function that returns a loss tensor the policy,
             and dict of experience tensor placeholders
         get_default_config (func): optional function that returns the default
@@ -54,9 +54,6 @@ def build_torch_policy(name,
     Returns:
         a TorchPolicy instance that uses the specified args
     """
-
-    if not name.endswith("TorchPolicy"):
-        raise ValueError("Name should match *TorchPolicy", name)
 
     base = TorchPolicy
     while mixins:

@@ -45,9 +45,6 @@ def build_trainer(name,
         a Trainer instance that uses the specified args.
     """
 
-    if not name.endswith("Trainer"):
-        raise ValueError("Algorithm name should have *Trainer suffix", name)
-
     class trainer_cls(Trainer):
         _name = name
         _default_config = default_config or COMMON_CONFIG

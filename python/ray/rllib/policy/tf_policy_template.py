@@ -65,9 +65,6 @@ def build_tf_policy(name,
         a DynamicTFPolicy instance that uses the specified args
     """
 
-    if not name.endswith("TFPolicy"):
-        raise ValueError("Name should match *TFPolicy", name)
-
     base = DynamicTFPolicy
     while mixins:
 
