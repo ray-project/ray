@@ -5,7 +5,6 @@
 #include <sstream>
 
 #include "ray/common/ray_config.h"
-#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/util.h"
 
 namespace ray {

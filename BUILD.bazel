@@ -322,7 +322,6 @@ cc_library(
     ],
     deps = [
         ":gcs_fbs",
-        ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
         "@plasma//:plasma_client",
