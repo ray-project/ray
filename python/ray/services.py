@@ -1231,7 +1231,7 @@ def build_java_worker_command(
     """
     assert java_worker_options is not None
 
-    command = "java ".format(java_worker_options)
+    command = "java "
     if redis_address is not None:
         command += "-Dray.redis.address={} ".format(redis_address)
 
