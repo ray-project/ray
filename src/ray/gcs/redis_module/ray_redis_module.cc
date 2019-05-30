@@ -351,7 +351,7 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     // The requested index did not match the current length of the log. Return
     // an error message as a string.
     static const char *reply = "ERR entry exists";
-    RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
+    RedisModule_ReplyWithSimpleString(ctx, reply);
     return REDISMODULE_ERR;
   }
 }
