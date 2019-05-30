@@ -309,7 +309,7 @@ cc_library(
         ],
         exclude = [
             "src/ray/common/*_test.cc",
-        ]
+        ],
     ),
     hdrs = glob(
         [
