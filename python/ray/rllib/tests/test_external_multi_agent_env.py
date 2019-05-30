@@ -11,6 +11,7 @@ import ray
 from ray.rllib.agents.pg.pg_policy import PGTFPolicy
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.tests.test_external_env import make_simple_serving
@@ -75,7 +76,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
             policy=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
             batch_steps=100)
-        optimizer = SyncSamplesOptimizer(ev, [])
+        optimizer = SyncSamplesOptimizer(WorkerSet._from_existing(ev), [])
         for i in range(100):
             optimizer.step()
             result = collect_metrics(ev)

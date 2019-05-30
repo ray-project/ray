@@ -123,10 +123,10 @@ class WorkerSet(object):
         return local_result + remote_results
 
     @staticmethod
-    def _from_existing(local_worker, remote_workers):
+    def _from_existing(local_worker, remote_workers=None):
         workers = WorkerSet(None, None, {}, _setup=False)
         workers._local_worker = local_worker
-        workers._remote_workers = remote_workers
+        workers._remote_workers = remote_workers or []
         return workers
 
     def _make_worker(self, cls, env_creator, policy, worker_index, config):
