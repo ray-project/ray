@@ -11,6 +11,7 @@ import logging
 import numpy as np
 import os
 import six
+import socket
 import subprocess
 import sys
 import threading
@@ -542,3 +543,15 @@ def try_to_create_directory(directory_path, warn_if_exist=True):
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     try_make_directory_shared(directory_path)
+
+
+def get_next_available_socket(start_address):
+    port = start_address
+    while True:
+        try:
+            port_test_socket = socket.socket()
+            port_test_socket.bind(("127.0.0.1", port))
+            port_test_socket.close()
+            break
+        except socket.error:
+            port += 1
