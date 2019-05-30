@@ -9,7 +9,6 @@ import torch.distributed as dist
 import torch.utils.data
 
 import ray
-
 from ray.experimental.sgd.pytorch import utils
 
 logger = logging.getLogger(__name__)
@@ -33,12 +32,11 @@ class PyTorchRunner(object):
             data_creator (dict -> Dataset, Dataset): creates the training and
                 validation data sets using the config.
             optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
-                creates the loss and optimizer using the config.
+                creates the loss and optimizer using the model and the config.
             config (dict): configuration passed to 'model_creator',
                 'data_creator', and 'optimizer_creator'.
             batch_size (int): batch size used in an update.
-            backend (string): backend used for distributed SGD. "gloo" or
-                "nccl".
+            backend (string): backend used by distributed PyTorch.
         """
 
         self.model_creator = model_creator
@@ -97,17 +95,20 @@ class PyTorchRunner(object):
         self.criterion, self.optimizer = self.optimizer_creator(
             self.model, self.config)
 
+        if torch.cuda.is_available():
+            self.criterion = self.criterion.cuda()
+
         logger.debug("Creating dataset")
         self.training_set, self.validation_set = self.data_creator(self.config)
 
-        # TODO: faster DataLoaders by setting num_workers?
+        # TODO: make num_workers configurable
         self.train_sampler = torch.utils.data.distributed.DistributedSampler(
             self.training_set)
         self.train_loader = torch.utils.data.DataLoader(
             self.training_set,
             batch_size=self.batch_size,
             shuffle=(self.train_sampler is None),
-            num_workers=0,
+            num_workers=2,
             pin_memory=False,
             sampler=self.train_sampler)
 
@@ -118,7 +119,7 @@ class PyTorchRunner(object):
             self.validation_set,
             batch_size=self.batch_size,
             shuffle=(self.validation_sampler is None),
-            num_workers=0,
+            num_workers=2,
             pin_memory=False,
             sampler=self.validation_sampler)
 

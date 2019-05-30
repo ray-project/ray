@@ -36,7 +36,7 @@ class PyTorchTrainer(object):
             data_creator (dict -> Dataset, Dataset): creates the training
                 and validation data sets using the config.
             optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
-                creates the loss and optimizer using the config.
+                creates the loss and optimizer using the model and the config.
             config (dict): configuration passed to 'model_creator',
                 'data_creator', and 'optimizer_creator'.
             num_replicas (int): the number of workers used in distributed
@@ -44,8 +44,7 @@ class PyTorchTrainer(object):
             resources_per_replica (Resources): resources used by each worker.
                 Defaults to Resources(num_cpus=1).
             batch_size (int): batch size per replica for an update.
-            backend (string): backend used for distributed SGD. "gloo" or
-                "nccl".
+            backend (string): backend used by distributed PyTorch.
         """
         # TODO: add support for mixed precision
         # TODO: add support for callbacks
@@ -77,8 +76,12 @@ class PyTorchTrainer(object):
         ip = ray.get(self.workers[0].get_node_ip.remote())
         port = utils.find_free_port()
         address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-        for i, worker in enumerate(self.workers):
+
+        # Get setup tasks in order to throw errors on failure
+        ray.get([
             worker.setup.remote(address, i, len(self.workers))
+            for i, worker in enumerate(self.workers)
+        ])
 
     def train(self):
         """Runs a training epoch"""

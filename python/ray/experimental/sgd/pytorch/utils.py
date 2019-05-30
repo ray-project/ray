@@ -218,7 +218,7 @@ class Resources(
         namedtuple("Resources", ["num_cpus", "num_gpus", "resources"])):
     __slots__ = ()
 
-    def __new__(cls, num_cpus=0, num_gpus=0, resources=None):
+    def __new__(cls, num_cpus=1, num_gpus=0, resources=None):
         if resources is None:
             resources = {}
 
