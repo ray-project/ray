@@ -1,7 +1,9 @@
+#include <thread>
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include "core_worker.h"
+#include "context.h"
 #include "ray/common/buffer.h"
 
 namespace ray {
@@ -39,13 +41,14 @@ TEST_F(CoreWorkerTest, TestAttributeGetters) {
 TEST_F(CoreWorkerTest, TestWorkerContext) {
   auto driver_id = DriverID::from_random();
   WorkerContext context(WorkerType::WORKER, driver_id);
-  ASSERT_EQ(context.worker_type == WorkerType::WORKER);
+  ASSERT_EQ(context.worker_type, WorkerType::WORKER);
 
-  ASSERT_EQ(context.task_index == 0);
-  ASSERT_EQ(context.put_index == 0);
+  ASSERT_EQ(context.task_index, 0);
+  ASSERT_EQ(context.put_index, 0);
 
-  auto thread_fun = [&context]() {
+  auto thread_func = [&context]() {
     // TODO
+    ASSERT_EQ(context.task_index, 0);
   };
   std::thread async_thread(thread_func);
 

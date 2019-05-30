@@ -58,6 +58,9 @@ class CoreWorkerObjectInterface {
 
   /// Plasma store client.
   plasma::PlasmaClient store_client_;
+
+  /// Default timeout of a get.
+  static const int c_get_timeout_ms_;
 };
 
 }  // namespace ray

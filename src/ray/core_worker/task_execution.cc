@@ -49,7 +49,8 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
       indices.push_back(i);
     } else {
       // pass by value.
-      (*args)[i] = std::make_shared<LocalMemoryBuffer>(spec.ArgVal(i), spec.ArgValLength(i));
+      (*args)[i] = std::make_shared<LocalMemoryBuffer>(
+          const_cast<uint8_t*>(spec.ArgVal(i)), spec.ArgValLength(i));
     }
   } 
 
