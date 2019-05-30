@@ -11,7 +11,7 @@
 #include <boost/enable_shared_from_this.hpp>
 
 #include "ray/common/client_connection.h"
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/ray_config.h"
 
 namespace ray {

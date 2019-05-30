@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "ray/gcs/format/gcs_generated.h"
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/raylet/scheduling_resources.h"
 
 extern "C" {

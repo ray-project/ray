@@ -8,7 +8,7 @@
 #include <boost/asio/error.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/status.h"
 
 namespace ray {

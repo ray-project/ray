@@ -2,7 +2,7 @@
 #define RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H
 
 // clang-format off
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/reconstruction_policy.h"

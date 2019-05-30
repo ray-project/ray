@@ -80,7 +80,7 @@ cdef extern from "ray/status.h" namespace "ray::StatusCode" nogil:
     cdef StatusCode StatusCode_RedisError "RedisError"
 
 
-cdef extern from "ray/id.h" namespace "ray" nogil:
+cdef extern from "ray/common/id.h" namespace "ray" nogil:
     const CTaskID GenerateTaskId(const CDriverID &driver_id,
                                  const CTaskID &parent_task_id,
                                  int parent_task_counter)

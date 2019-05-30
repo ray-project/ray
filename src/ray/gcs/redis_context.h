@@ -5,7 +5,7 @@
 #include <memory>
 #include <unordered_map>
 
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/status.h"
 #include "ray/util/logging.h"
 

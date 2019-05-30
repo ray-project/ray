@@ -2,7 +2,7 @@
 
 #include <jni.h>
 
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/util/logging.h"
 

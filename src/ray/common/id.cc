@@ -1,4 +1,4 @@
-#include "ray/id.h"
+#include "ray/common/id.h"
 
 #include <limits.h>
 
@@ -10,7 +10,7 @@
 #include "ray/status.h"
 
 extern "C" {
-#include "thirdparty/sha256.h"
+#include "ray/thirdparty/sha256.h"
 }
 
 // Definitions for computing hash digests.

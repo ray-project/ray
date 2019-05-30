@@ -7,7 +7,7 @@
 #include <unordered_set>
 
 #include "ray/constants.h"
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
