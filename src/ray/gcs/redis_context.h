@@ -134,7 +134,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id,
       int status = redisAsyncCommand(
           async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
           reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-          pubsub_channel, id.data(), id.size(), data, length, log_length);
+          pubsub_channel, id.Data(), id.Size(), data, length, log_length);
       if (status == REDIS_ERR) {
         return Status::RedisError(std::string(async_context_->errstr));
       }
@@ -143,7 +143,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id,
       int status = redisAsyncCommand(
           async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
           reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-          pubsub_channel, id.data(), id.size(), data, length);
+          pubsub_channel, id.Data(), id.Size(), data, length);
       if (status == REDIS_ERR) {
         return Status::RedisError(std::string(async_context_->errstr));
       }
@@ -154,7 +154,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id,
     int status = redisAsyncCommand(
         async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-        pubsub_channel, id.data(), id.size());
+        pubsub_channel, id.Data(), id.Size());
     if (status == REDIS_ERR) {
       return Status::RedisError(std::string(async_context_->errstr));
     }
