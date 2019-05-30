@@ -145,8 +145,6 @@ void PullManager::PullObject(const ObjectID &object_id, bool *subscribe_to_locat
       // In this case, we are already receiving the object, but it was not
       // required before.
       auto &pull_info = it->second;
-      RAY_CHECK(!pull_info->push_id.is_nil());
-      RAY_CHECK(!pull_info->client_receiving_from.is_nil());
       pull_info->required = true;
     } else if (!pull_info->client_receiving_from.is_nil()) {
       // In this case, we are already pulling the object, so there is nothing new
