@@ -13,7 +13,7 @@
 #include <boost/bind.hpp>
 
 #include "ray/common/id.h"
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include <mutex>
 #include "ray/object_manager/format/object_manager_generated.h"

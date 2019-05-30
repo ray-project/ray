@@ -8,7 +8,7 @@
 
 #include "ray/constants.h"
 #include "ray/common/id.h"
-#include "ray/status.h"
+#include "ray/common/status.h"
 #include "ray/util/logging.h"
 
 #include "ray/gcs/format/gcs_generated.h"

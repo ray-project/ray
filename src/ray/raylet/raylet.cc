@@ -5,7 +5,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <iostream>
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 namespace {
 

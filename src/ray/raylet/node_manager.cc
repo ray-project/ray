@@ -2,7 +2,7 @@
 
 #include <fstream>
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"

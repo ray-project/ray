@@ -12,7 +12,7 @@
 #include "ray/gcs/client.h"
 #include "ray/common/id.h"
 #include "ray/object_manager/format/object_manager_generated.h"
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 namespace ray {
 

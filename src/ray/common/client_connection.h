@@ -9,7 +9,7 @@
 #include <boost/enable_shared_from_this.hpp>
 
 #include "ray/common/id.h"
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 namespace ray {
 

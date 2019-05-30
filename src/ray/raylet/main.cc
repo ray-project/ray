@@ -3,7 +3,7 @@
 #include "ray/ray_config.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "gflags/gflags.h"
 

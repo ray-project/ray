@@ -3,7 +3,7 @@
 #include <sstream>
 
 #include "ray/stats/stats.h"
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 namespace {
 

@@ -7,7 +7,7 @@
 #include <random>
 
 #include "ray/constants.h"
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
