@@ -12,9 +12,9 @@ class WorkerContext {
  public:
   WorkerContext(WorkerType worker_type, const DriverID &driver_id);
 
-  int GetNextTaskIndex();
+  const WorkerType GetWorkerType() const;
 
-  int GetNextPutIndex();
+  const ClientID &GetWorkerID() const;
 
   const DriverID &GetCurrentDriverID();
 
@@ -22,7 +22,11 @@ class WorkerContext {
 
   void SetCurrentTask(const raylet::TaskSpecification &spec);
 
- public:
+  int GetNextTaskIndex();
+
+  int GetNextPutIndex();
+
+ private:
   /// Type of the worker.
   const WorkerType worker_type;
 
@@ -33,9 +37,8 @@ class WorkerContext {
   DriverID current_driver_id;
 
  private:
-  WorkerThreadContext& GetThreadContext();
 
-  static WorkerThreadContext& GetThreadContext(const enum WorkerType worker_type, DriverID driver_id);
+  static WorkerThreadContext& GetThreadContext();
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context;

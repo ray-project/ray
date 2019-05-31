@@ -33,8 +33,8 @@ Status CoreWorker::Connect() {
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-      raylet_socket_, worker_context_.worker_id, (worker_type_ == WorkerType::WORKER),
-      worker_context_.current_driver_id, lang));
+      raylet_socket_, worker_context_.GetWorkerID(), (worker_type_ == WorkerType::WORKER),
+      worker_context_.GetCurrentDriverID(), lang));
   return Status::OK();
 }
 

@@ -148,6 +148,31 @@ TEST_F(SingleNodeTest, TestAttributeGetters) {
   ASSERT_EQ(core_worker.Language(), Language::PYTHON);
 }
 
+TEST_F(SingleNodeTest, TestWorkerContext) {
+  auto driver_id = DriverID::from_random();
+
+  WorkerContext context(WorkerType::WORKER, driver_id);
+  ASSERT_TRUE(context.GetCurrentTaskID().is_nil());
+  ASSERT_EQ(context.GetNextTaskIndex(), 1);
+  ASSERT_EQ(context.GetNextTaskIndex(), 2);
+  ASSERT_EQ(context.GetNextPutIndex(), 1);
+  ASSERT_EQ(context.GetNextPutIndex(), 2);
+
+  auto thread_func = [&context] () {
+    // Verify that task_index, put_index are thread-local.
+    ASSERT_TRUE(!context.GetCurrentTaskID().is_nil());
+    ASSERT_EQ(context.GetNextTaskIndex(), 1);
+    ASSERT_EQ(context.GetNextPutIndex(), 1);
+  };
+
+  std::thread async_thread(thread_func);
+  async_thread.join();
+
+  // Verify that these fields are thread-local.
+  ASSERT_EQ(context.GetNextTaskIndex(), 3);
+  ASSERT_EQ(context.GetNextPutIndex(), 3);
+}
+
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
       raylet_store_socket_names_[0], raylet_socket_names_[0],

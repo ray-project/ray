@@ -5,21 +5,10 @@ namespace ray {
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
-  WorkerThreadContext(WorkerType worker_type, const DriverID &driver_id)
-    : task_index(0),
-      put_index(0) {
-
-    auto initial_driver_id = driver_id;
-    if (initial_driver_id.is_nil()) {
-      initial_driver_id = DriverID::from_random();
-    }
-  
-    if (worker_type == WorkerType::DRIVER) {
-      current_task_id = TaskID::from_random();
-    } else {
-      current_task_id = TaskID::nil();
-    }
-  }
+  WorkerThreadContext()
+    : current_task_id(TaskID::from_random()),
+      task_index(0),
+      put_index(0) {}
 
   int GetNextTaskIndex() {
     return ++task_index;
@@ -29,23 +18,15 @@ struct WorkerThreadContext {
     return ++put_index;
   }
 
-  const DriverID &GetCurrentDriverID() {
-    return current_driver_id;
-  }
-
   const TaskID &GetCurrentTaskID() {
     return current_task_id;
   }
 
   void SetCurrentTask(const raylet::TaskSpecification &spec) {
-    current_driver_id = spec.DriverId();
     current_task_id = spec.TaskId();
     task_index = 0;
     put_index = 0;
   }
-
-  /// The driver ID for current task.
-  DriverID current_driver_id;
 
   /// The task ID for current task.
   TaskID current_task_id;
@@ -65,7 +46,22 @@ WorkerContext::WorkerContext(WorkerType worker_type, const DriverID &driver_id)
         ClientID::from_binary(driver_id.binary()) :
         ClientID::from_random()),
     current_driver_id(worker_type == WorkerType::DRIVER ?
-        driver_id : DriverID::nil()) {}
+        driver_id : DriverID::nil()) {
+
+  // For worker main thread which initializes the WorkerContext,
+  // set task_id according to whether current worker is a driver.
+  // (For other threads it's set to randmom ID via GetThreadContext).
+  GetThreadContext().current_task_id = (worker_type == WorkerType::DRIVER) ?
+      TaskID::from_random() : TaskID::nil();
+}
+
+const WorkerType WorkerContext::GetWorkerType() const {
+  return worker_type;
+}
+
+const ClientID &WorkerContext::GetWorkerID() const {
+  return worker_id;
+}
 
 int WorkerContext::GetNextTaskIndex() {
   return GetThreadContext().GetNextTaskIndex();
@@ -76,7 +72,7 @@ int WorkerContext::GetNextPutIndex() {
 }
 
 const DriverID &WorkerContext::GetCurrentDriverID() {
-  return GetThreadContext().GetCurrentDriverID();
+  return current_driver_id;
 }
 
 const TaskID &WorkerContext::GetCurrentTaskID() {
@@ -84,18 +80,14 @@ const TaskID &WorkerContext::GetCurrentTaskID() {
 }
 
 void WorkerContext::SetCurrentTask(const raylet::TaskSpecification &spec) {
+  current_driver_id = spec.DriverId();
   GetThreadContext().SetCurrentTask(spec);
 }
 
 WorkerThreadContext& WorkerContext::GetThreadContext() {
-  return GetThreadContext(worker_type, current_driver_id);
-}
-
-WorkerThreadContext& WorkerContext::GetThreadContext(
-    const enum WorkerType worker_type, DriverID driver_id) {
   if (thread_context == nullptr) {
     thread_context = std::unique_ptr<WorkerThreadContext>(
-        new WorkerThreadContext(worker_type, driver_id));
+        new WorkerThreadContext());
   }
 
   return *thread_context;
