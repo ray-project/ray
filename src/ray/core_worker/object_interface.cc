@@ -6,22 +6,19 @@
 namespace ray {
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(CoreWorker &core_worker)
-  : core_worker_(core_worker) {
-  RAY_ARROW_CHECK_OK(store_client_.Connect(core_worker_.store_socket_));
-}
+  : core_worker_(core_worker) {}
 
 Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id) {
-  auto &context = core_worker_.GetContext();
-  ObjectID put_id = ObjectID::for_put(context.GetCurrentTaskID(),
-      context.GetNextPutIndex());
+  ObjectID put_id = ObjectID::for_put(core_worker_.worker_context_.GetCurrentTaskID(),
+      core_worker_.worker_context_.GetNextPutIndex());
   *object_id = put_id;
 
   auto plasma_id = put_id.to_plasma_id();
   std::shared_ptr<arrow::Buffer> data;
-  RAY_ARROW_RETURN_NOT_OK(store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
+  RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
   memcpy(data->mutable_data(), buffer.Data(), buffer.Size());
-  RAY_ARROW_RETURN_NOT_OK(store_client_.Seal(plasma_id));
-  RAY_ARROW_RETURN_NOT_OK(store_client_.Release(plasma_id));
+  RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Seal(plasma_id));
+  RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Release(plasma_id));
   return Status::OK();
 }
 
@@ -30,7 +27,6 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       std::vector<std::shared_ptr<Buffer>> *results) {
   (*results).resize(ids.size(), nullptr);                                    
 
-  auto &context = core_worker_.GetContext();
   bool was_blocked = false;
 
   std::unordered_map<ObjectID, int> unready;
@@ -57,7 +53,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
     // TODO: can call `fetchOrReconstruct` in batches as an optimization.
     RAY_CHECK_OK(core_worker_.raylet_client_->FetchOrReconstruct(
-        unready_ids, fetch_only, context.GetCurrentTaskID()));
+        unready_ids, fetch_only, core_worker_.worker_context_.GetCurrentTaskID()));
 
     // Get the objects from the object store, and parse the result.
     int64_t get_timeout;
@@ -75,7 +71,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     }
 
     std::vector<plasma::ObjectBuffer> object_buffers;
-    auto status = store_client_.Get(plasma_ids, get_timeout, &object_buffers);
+    auto status = core_worker_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
   
     for (int i = 0; i < object_buffers.size(); i++) {
       if (object_buffers[i].data != nullptr) {
@@ -90,7 +86,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   }
 
   if (was_blocked) {
-    RAY_CHECK_OK(core_worker_.raylet_client_->NotifyUnblocked(context.GetCurrentTaskID()));
+    RAY_CHECK_OK(core_worker_.raylet_client_->NotifyUnblocked(core_worker_.worker_context_.GetCurrentTaskID()));
   }
 
   return Status::OK();
@@ -99,10 +95,9 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
                                        int num_objects, int64_t timeout_ms,
                                        std::vector<bool> *results) {
-  auto &context = core_worker_.GetContext();
   WaitResultPair result_pair;
   auto status = core_worker_.raylet_client_->Wait(object_ids, num_objects, timeout_ms,
-      false, context.GetCurrentTaskID(), &result_pair);
+      false, core_worker_.worker_context_.GetCurrentTaskID(), &result_pair);
   std::unordered_set<ObjectID> ready_ids;
   for (const auto &entry : result_pair.first) {
     ready_ids.insert(entry);

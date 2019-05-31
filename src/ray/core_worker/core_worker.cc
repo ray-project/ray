@@ -3,8 +3,6 @@
 
 namespace ray {
 
-thread_local std::unique_ptr<WorkerContext> CoreWorker::context_ = nullptr;
-
 CoreWorker::CoreWorker(
   const enum WorkerType worker_type,
   const enum Language language,
@@ -13,38 +11,31 @@ CoreWorker::CoreWorker(
   DriverID driver_id)
   : worker_type_(worker_type),
     language_(language),
+    worker_context_(worker_type, driver_id),
     store_socket_(store_socket),
-    driver_id_(driver_id),
+    raylet_socket_(raylet_socket),
     task_interface_(*this),
     object_interface_(*this),
-    task_execution_interface_(*this) {
-  
-    ::Language lang = ::Language::PYTHON;
-    if (language == Language::JAVA) {
-      lang = ::Language::JAVA;
-    }
-  
-    auto &context = GetContext();
-  
-    ClientID worker_id;
-    if (worker_type == WorkerType::DRIVER) {
-      // TODO: this is a hack. Need a consistent approach.
-      worker_id = ClientID::from_binary(driver_id.binary());
-    } else {
-      worker_id = ClientID::from_random();
-    }
+    task_execution_interface_(*this) {}
 
-    raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-        raylet_socket, worker_id, (worker_type == WorkerType::WORKER),
-        context.current_driver_id, lang));
-}
+Status CoreWorker::Connect() {
+  // connect to plasma.
+  RAY_ARROW_RETURN_NOT_OK(store_client_.Connect(store_socket_));
 
-WorkerContext& CoreWorker::GetPerThreadContext(const enum WorkerType worker_type, DriverID driver_id) {
-  if (context_ == nullptr) {
-    context_ = std::unique_ptr<WorkerContext>(new WorkerContext(worker_type, driver_id));
+  // connect to raylet.
+  ::Language lang = ::Language::PYTHON;
+  if (language_ == Language::JAVA) {
+    lang = ::Language::JAVA;
   }
 
-  return *context_;
+  // TODO: currently RayletClient would crash in its constructor if it cannot
+  // connect to Raylet after a number of retries, this needs to be changed
+  // so that the worker (java/python .etc) can retrieve and handle the error
+  // instead of crashing.
+  raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
+      raylet_socket_, worker_context_.worker_id, (worker_type_ == WorkerType::WORKER),
+      worker_context_.current_driver_id, lang));
+  return Status::OK();
 }
 
 }  // namespace ray

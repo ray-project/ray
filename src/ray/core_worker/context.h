@@ -6,60 +6,40 @@
 
 namespace ray {
 
-// Context for core worker.
-struct WorkerContext {
-  WorkerContext(WorkerType worker_type, const DriverID &driver_id)
-    : task_index(0),
-      put_index(0) {
+struct WorkerThreadContext;
 
-    auto initial_driver_id = driver_id;
-    if (initial_driver_id.is_nil()) {
-      initial_driver_id = DriverID::from_random();
-    }
-  
-    if (worker_type == WorkerType::DRIVER) {
-      current_driver_id = initial_driver_id;
-      current_task_id = TaskID::from_random();
-    } else {
-      current_driver_id = DriverID::nil();
-      current_task_id = TaskID::nil();
-    }
-  }
+class WorkerContext {
+ public:
+  WorkerContext(WorkerType worker_type, const DriverID &driver_id);
 
-  int GetNextTaskIndex() {
-    return ++task_index;
-  }
+  int GetNextTaskIndex();
 
-  int GetNextPutIndex() {
-    return ++put_index;
-  }
+  int GetNextPutIndex();
 
-  const DriverID &GetCurrentDriverID() {
-    return current_driver_id;
-  }
+  const DriverID &GetCurrentDriverID();
 
-  const TaskID &GetCurrentTaskID() {
-    return current_task_id;
-  }
+  const TaskID &GetCurrentTaskID();
 
-  void SetCurrentTask(const raylet::TaskSpecification &spec) {
-    current_driver_id = spec.DriverId();
-    current_task_id = spec.TaskId();
-    task_index = 0;
-    put_index = 0;
-  }
+  void SetCurrentTask(const raylet::TaskSpecification &spec);
 
-  /// The driver ID for current task.
+ public:
+  /// Type of the worker.
+  const WorkerType worker_type;
+
+  /// ID for this worker.
+  const ClientID worker_id;
+
+  /// Driver ID for this worker.
   DriverID current_driver_id;
 
-  /// The task ID for current task.
-  TaskID current_task_id;
+ private:
+  WorkerThreadContext& GetThreadContext();
 
-  /// Number of tasks that have been submitted from current task.
-  int task_index;
+  static WorkerThreadContext& GetThreadContext(const enum WorkerType worker_type, DriverID driver_id);
 
-  /// Number of objects that have been put from current task.
-  int put_index;  
+  /// Per-thread worker context.
+  static thread_local std::unique_ptr<WorkerThreadContext> thread_context;
+
 };
 
 }  // namespace ray

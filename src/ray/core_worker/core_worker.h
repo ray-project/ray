@@ -6,11 +6,10 @@
 #include "ray/common/buffer.h"
 #include "task_execution.h"
 #include "task_interface.h"
+#include "context.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
-
-struct WorkerContext;
 
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
@@ -26,6 +25,9 @@ class CoreWorker {
       const std::string &store_socket,
       const std::string &raylet_socket,
       DriverID driver_id = DriverID::nil());
+
+  /// Connect to raylet.
+  Status Connect();
 
   /// Type of this worker.
   enum WorkerType WorkerType() const { return worker_type_; }
@@ -46,11 +48,6 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
  private:
-  /// Get worker context.
-  WorkerContext& GetContext() { return GetPerThreadContext(worker_type_, driver_id_); }
-
-  /// Get per thread worker context.
-  static WorkerContext& GetPerThreadContext(const enum WorkerType worker_type, DriverID driver_id);
 
   /// Type of this worker.
   const enum WorkerType worker_type_;
@@ -59,16 +56,19 @@ class CoreWorker {
   const enum Language language_;
 
   /// Worker context per thread.
-  static thread_local std::unique_ptr<WorkerContext> context_;
+  WorkerContext worker_context_;
 
   /// Plasma store socket name.
   std::string store_socket_;
 
+  /// raylet socket name.
+  std::string raylet_socket_;
+
+  /// Plasma store client.
+  plasma::PlasmaClient store_client_;
+
   /// Raylet client.
   std::unique_ptr<RayletClient> raylet_client_;
-
-  /// ID of the driver (valid when this worker is a driver).
-  DriverID driver_id_;
 
   /// The `CoreWorkerTaskInterface` instance.
   CoreWorkerTaskInterface task_interface_;

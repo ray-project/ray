@@ -142,14 +142,17 @@ TEST_F(SingleNodeTest, TestTaskArg) {
 
 TEST_F(SingleNodeTest, TestAttributeGetters) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
-      raylet_store_socket_names_[0], raylet_socket_names_[0]);
+      raylet_store_socket_names_[0], raylet_socket_names_[0],
+      DriverID::from_random());
   ASSERT_EQ(core_worker.WorkerType(), WorkerType::DRIVER);
   ASSERT_EQ(core_worker.Language(), Language::PYTHON);
 }
 
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
-      raylet_store_socket_names_[0], raylet_socket_names_[0]);
+      raylet_store_socket_names_[0], raylet_socket_names_[0],
+      DriverID::from_random());
+  RAY_CHECK_OK(core_worker.Connect());
 
   uint8_t array1[] = { 1, 2, 3, 4, 5, 6, 7, 8 };
   uint8_t array2[] = { 10, 11, 12, 13, 14, 15 }; 
@@ -181,15 +184,11 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   std::vector<bool> wait_results;
   core_worker.Objects().Wait(all_ids, 2, -1, &wait_results);
   ASSERT_EQ(wait_results.size(), 3);
-  ASSERT_EQ(wait_results[0], true);
-  ASSERT_EQ(wait_results[1], true);
-  ASSERT_EQ(wait_results[2], false);
+  ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
   core_worker.Objects().Wait(all_ids, 3, 100, &wait_results);
   ASSERT_EQ(wait_results.size(), 3);
-  ASSERT_EQ(wait_results[0], true);
-  ASSERT_EQ(wait_results[1], true);
-  ASSERT_EQ(wait_results[2], false);  
+  ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
   // Test Delete().
   // clear the reference held by PlasmaBuffer.
