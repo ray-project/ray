@@ -443,6 +443,11 @@ You can find the full policy definition in `a3c_torch_policy.py <https://github.
 
 In summary, the main differences between the PyTorch and TensorFlow policy builder functions is that the TF loss and stats functions are built symbolically when the policy is initialized, whereas for PyTorch these functions are called imperatively each time they are used.
 
+Extending Existing Policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+(todo)
+
 Policy Evaluation
 -----------------
 
