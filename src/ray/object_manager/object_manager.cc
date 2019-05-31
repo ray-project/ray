@@ -514,7 +514,7 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
   pull_manager_.CancelPullObject(object_id, &clients_to_cancel,
                                  &unsubscribe_from_locations);
   for (const ClientID &client_id : clients_to_cancel) {
-    SendCancelPullRequest(UniqueID::nil(), object_id, client_id);
+    SendCancelPullRequest(UniqueID::Nil(), object_id, client_id);
   }
 
   auto it = pull_timers_.find(object_id);
@@ -824,8 +824,8 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   // Serialize.
   auto object_header =
       flatbuffers::GetRoot<object_manager_protocol::PushRequestMessage>(message);
-  UniqueID push_id = UniqueID::from_binary(object_header->push_id()->str());
-  const ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
+  UniqueID push_id = UniqueID::FromBinary(object_header->push_id()->str());
+  const ObjectID object_id = ObjectID::FromBinary(object_header->object_id()->str());
   uint64_t chunk_index = object_header->chunk_index();
   uint64_t data_size = object_header->data_size();
   uint64_t metadata_size = object_header->metadata_size();
@@ -835,7 +835,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   pull_manager_.ReceivePushRequest(push_id, object_id, client_id, chunk_index, num_chunks,
                                    &clients_to_cancel, &start_timer);
   for (const ClientID &client_id : clients_to_cancel) {
-    SendCancelPullRequest(UniqueID::nil(), object_id, client_id);
+    SendCancelPullRequest(UniqueID::Nil(), object_id, client_id);
   }
   if (start_timer) {
     RestartPullTimer(object_id);
@@ -917,7 +917,7 @@ void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &con
   std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*free_request->object_ids());
   // This RPC should come from another Object Manager.
   // Keep this request local.
-  bool local_only;
+  bool local_only = true;
   FreeObjects(object_ids, local_only);
   conn->ProcessMessages();
 }

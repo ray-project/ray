@@ -21,7 +21,7 @@ void PullInfo::InitializeChunksIfNecessary(int64_t num_chunks) {
 }
 
 bool PullInfo::LifetimeEnded() {
-  return !required && client_receiving_from.is_nil() && num_in_progress_chunk_ids == 0;
+  return !required && client_receiving_from.IsNil() && num_in_progress_chunk_ids == 0;
 }
 
 PullManager::PullManager(const ClientID &client_id)
@@ -57,7 +57,7 @@ void PullManager::ReceivePushRequest(const UniqueID &push_id, const ObjectID &ob
     pull_info->InitializeChunksIfNecessary(num_chunks);
   } else {
     auto &pull_info = it->second;
-    if (pull_info->client_receiving_from.is_nil()) {
+    if (pull_info->client_receiving_from.IsNil()) {
       pull_info->push_id = push_id;
       pull_info->client_receiving_from = client_id;
       pull_info->InitializeChunksIfNecessary(num_chunks);
@@ -104,7 +104,7 @@ void PullManager::NewObjectLocations(
 
   // If we are already receiving the object, don't request it from any more
   // object managers.
-  if (!pull_info->client_receiving_from.is_nil()) {
+  if (!pull_info->client_receiving_from.IsNil()) {
     return;
   }
 
@@ -136,8 +136,8 @@ void PullManager::PullObject(const ObjectID &object_id, bool *subscribe_to_locat
     it = insertion_it.first;
     auto &pull_info = it->second;
     RAY_CHECK(pull_info->required);
-    RAY_CHECK(pull_info->push_id.is_nil());
-    RAY_CHECK(pull_info->client_receiving_from.is_nil());
+    RAY_CHECK(pull_info->push_id.IsNil());
+    RAY_CHECK(pull_info->client_receiving_from.IsNil());
   } else {
     auto &pull_info = it->second;
 
@@ -146,7 +146,7 @@ void PullManager::PullObject(const ObjectID &object_id, bool *subscribe_to_locat
       // required before.
       auto &pull_info = it->second;
       pull_info->required = true;
-    } else if (!pull_info->client_receiving_from.is_nil()) {
+    } else if (!pull_info->client_receiving_from.IsNil()) {
       // In this case, we are already pulling the object, so there is nothing new
       // to do.
       *subscribe_to_locations = false;
@@ -182,11 +182,11 @@ void PullManager::CancelPullObject(const ObjectID &object_id,
   for (auto const &client_id : pull_info->clients_requested_from) {
     clients_to_cancel->push_back(client_id);
   }
-  if (!pull_info->client_receiving_from.is_nil()) {
+  if (!pull_info->client_receiving_from.IsNil()) {
     clients_to_cancel->push_back(pull_info->client_receiving_from);
   }
-  pull_info->client_receiving_from = ClientID::nil();
-  pull_info->push_id = UniqueID::nil();
+  pull_info->client_receiving_from = ClientID::Nil();
+  pull_info->push_id = UniqueID::Nil();
 
   if (pull_info->LifetimeEnded()) {
     pulls_.erase(object_id);
@@ -232,8 +232,8 @@ void PullManager::ChunkReadFailed(const UniqueID &push_id, const ObjectID &objec
   *clients_to_cancel = std::vector<ClientID>();
   if (client_id == pull_info->client_receiving_from && push_id == pull_info->push_id &&
       pull_info->received_chunk_ids.count(chunk_index) == 0) {
-    pull_info->client_receiving_from = ClientID::nil();
-    pull_info->push_id = UniqueID::nil();
+    pull_info->client_receiving_from = ClientID::Nil();
+    pull_info->push_id = UniqueID::Nil();
     clients_to_cancel->push_back(pull_info->client_receiving_from);
   }
 
@@ -260,11 +260,11 @@ void PullManager::TimerExpired(const ObjectID &object_id,
   auto &pull_info = it->second;
 
   *clients_to_request = std::vector<ClientID>();
-  if (!pull_info->push_id.is_nil()) {
+  if (!pull_info->push_id.IsNil()) {
     // We could optionally send a cancellation message to this remote object
     // manager.
-    pull_info->client_receiving_from = ClientID::nil();
-    pull_info->push_id = UniqueID::nil();
+    pull_info->client_receiving_from = ClientID::Nil();
+    pull_info->push_id = UniqueID::Nil();
   }
 
   if (pull_info->required && !pull_info->clients_with_object.empty()) {
