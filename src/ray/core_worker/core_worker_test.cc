@@ -19,7 +19,7 @@ namespace ray {
 std::string store_executable;
 std::string raylet_executable;
 
-ray::ObjectID RandomObjectID() { return ObjectID::from_random(); }
+ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
 
 static void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
@@ -61,7 +61,7 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartStore() {
-    std::string store_socket_name = "/tmp/store" + RandomObjectID().hex();
+    std::string store_socket_name = "/tmp/store" + RandomObjectID().Hex();
     std::string store_pid = store_socket_name + ".pid";
     std::string plasma_command = store_executable + " -m 10000000 -s " +
                                  store_socket_name +
@@ -83,7 +83,7 @@ class CoreWorkerTest : public ::testing::Test {
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
                           std::string redis_address, std::string resource) {
-    std::string raylet_socket_name = "/tmp/raylet" + RandomObjectID().hex();
+    std::string raylet_socket_name = "/tmp/raylet" + RandomObjectID().Hex();
     std::string ray_start_cmd = raylet_executable;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
@@ -150,16 +150,16 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
 
 TEST_F(ZeroNodeTest, TestAttributeGetters) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
-      "", "", DriverID::from_random());
+      "", "", DriverID::FromRandom());
   ASSERT_EQ(core_worker.WorkerType(), WorkerType::DRIVER);
   ASSERT_EQ(core_worker.Language(), Language::PYTHON);
 }
 
 TEST_F(ZeroNodeTest, TestWorkerContext) {
-  auto driver_id = DriverID::from_random();
+  auto driver_id = DriverID::FromRandom();
 
   WorkerContext context(WorkerType::WORKER, driver_id);
-  ASSERT_TRUE(context.GetCurrentTaskID().is_nil());
+  ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
   ASSERT_EQ(context.GetNextTaskIndex(), 1);
   ASSERT_EQ(context.GetNextTaskIndex(), 2);
   ASSERT_EQ(context.GetNextPutIndex(), 1);
@@ -167,7 +167,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 
   auto thread_func = [&context] () {
     // Verify that task_index, put_index are thread-local.
-    ASSERT_TRUE(!context.GetCurrentTaskID().is_nil());
+    ASSERT_TRUE(!context.GetCurrentTaskID().IsNil());
     ASSERT_EQ(context.GetNextTaskIndex(), 1);
     ASSERT_EQ(context.GetNextPutIndex(), 1);
   };
@@ -183,7 +183,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
       raylet_store_socket_names_[0], raylet_socket_names_[0],
-      DriverID::from_random());
+      DriverID::FromRandom());
   RAY_CHECK_OK(core_worker.Connect());
 
   uint8_t array1[] = { 1, 2, 3, 4, 5, 6, 7, 8 };
@@ -209,7 +209,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   }
 
   // Test Wait().
-  ObjectID non_existent_id = ObjectID::from_random();
+  ObjectID non_existent_id = ObjectID::FromRandom();
   std::vector<ObjectID> all_ids(ids);
   all_ids.push_back(non_existent_id);
 

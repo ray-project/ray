@@ -9,11 +9,11 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(CoreWorker &core_worker)
   : core_worker_(core_worker) {}
 
 Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id) {
-  ObjectID put_id = ObjectID::for_put(core_worker_.worker_context_.GetCurrentTaskID(),
+  ObjectID put_id = ObjectID::ForPut(core_worker_.worker_context_.GetCurrentTaskID(),
       core_worker_.worker_context_.GetNextPutIndex());
   *object_id = put_id;
 
-  auto plasma_id = put_id.to_plasma_id();
+  auto plasma_id = put_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> data;
   RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
   memcpy(data->mutable_data(), buffer.Data(), buffer.Size());
@@ -67,7 +67,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
     std::vector<plasma::ObjectID> plasma_ids;
     for (const auto &id : unready_ids) {
-      plasma_ids.push_back(id.to_plasma_id());
+      plasma_ids.push_back(id.ToPlasmaId());
     }
 
     std::vector<plasma::ObjectBuffer> object_buffers;

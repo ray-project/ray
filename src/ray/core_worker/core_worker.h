@@ -24,7 +24,7 @@ class CoreWorker {
       const Language language,
       const std::string &store_socket,
       const std::string &raylet_socket,
-      DriverID driver_id = DriverID::nil());
+      DriverID driver_id = DriverID::Nil());
 
   /// Connect to raylet.
   Status Connect();
