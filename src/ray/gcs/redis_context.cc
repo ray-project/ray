@@ -103,6 +103,7 @@ std::string CallbackReply::ReadAsPubsubData() const {
 
 void CallbackReply::ReadAsStringArray(std::vector<std::string> *array) const {
   RAY_CHECK(nullptr != array) << "Argument `array` must not be nullptr.";
+  RAY_CHECK(array->empty()) << "Argument `array` must be empty.";
   RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply_->type);
 
   const auto array_size = static_cast<size_t>(redis_reply_->elements);
@@ -112,8 +113,7 @@ void CallbackReply::ReadAsStringArray(std::vector<std::string> *array) const {
         strcmp(entry->str, "subscribe") == 0 || strcmp(entry->str, "message") == 0;
     RAY_CHECK(!is_pubsub_reply) << "Subpub reply cannot be read as a string array.";
   }
-
-  array->resize(array_size);
+  // array->reverse(array_size);
   for (size_t i = 0; i < array_size; ++i) {
     auto *entry = redis_reply_->element[i];
     RAY_CHECK(REDIS_REPLY_STRING == entry->type) << "Unexcepted type: " << entry->type;
@@ -259,6 +259,25 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args) {
   if (status == REDIS_ERR) {
     return Status::RedisError(std::string(async_context_->errstr));
   }
+  return Status::OK();
+}
+
+Status RedisContext::RunArgvAsyncWithCallback(const std::vector<std::string> &args,
+                                              RedisCallback redisCallback) {
+  int64_t callback_index =
+    redisCallback != nullptr ? RedisCallbackManager::instance().add(redisCallback, false) : -1;
+  std::vector<const char *> argv;
+  std::vector<size_t> argc;
+  for (size_t i = 0; i < args.size(); ++i) {
+    argv.push_back(args[i].data());
+    argc.push_back(args[i].size());
+  }
+  int status = redisAsyncCommandArgv(async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+      reinterpret_cast<void *>(callback_index), args.size(), argv.data(), argc.data());
+//  std::string a("ACTOR");
+//  Status status = redisAsyncCommandArgv(async_context_, &GlobalRedisCallback,
+//                                               reinterpret_cast<void *>(callback_index),
+//                                               2, "SMEMBERS %b", a.c_str(), a.size());
   return Status::OK();
 }
 

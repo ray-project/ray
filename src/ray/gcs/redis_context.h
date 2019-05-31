@@ -115,6 +115,7 @@ class RedisContext {
   ///
   /// \param command The command to run. This must match a registered Ray Redis
   /// command. These are strings of the format "RAY.TABLE_*".
+  /// \param driver_id The id of this driver.
   /// \param id The table key to run the operation at.
   /// \param data The data to add to the table key, if any.
   /// \param length The length of the data to be added, if data is provided.
@@ -126,7 +127,8 @@ class RedisContext {
   /// -1 for unused. If set, then data must be provided.
   /// \return Status.
   template <typename ID>
-  Status RunAsync(const std::string &command, const ID &id, const uint8_t *data,
+  Status RunAsync(const std::string &command, const DriverID &driver_id,
+                  const ID &id, const uint8_t *data,
                   int64_t length, const TablePrefix prefix,
                   const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
@@ -136,6 +138,10 @@ class RedisContext {
   /// \param args The vector of command args to pass to Redis.
   /// \return Status.
   Status RunArgvAsync(const std::vector<std::string> &args);
+
+
+  Status RunArgvAsyncWithCallback(const std::vector<std::string> &args,
+                                  RedisCallback redisCallback);
 
   /// Subscribe to a specific Pub-Sub channel.
   ///
@@ -157,38 +163,41 @@ class RedisContext {
 };
 
 template <typename ID>
-Status RedisContext::RunAsync(const std::string &command, const ID &id,
+Status RedisContext::RunAsync(const std::string &command,
+                              const DriverID &driver_id, const ID &id,
                               const uint8_t *data, int64_t length,
                               const TablePrefix prefix, const TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
   int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, false);
   if (length > 0) {
     if (log_length >= 0) {
-      std::string redis_command = command + " %d %d %b %b %d";
+      std::string redis_command = command + " %d %d %b %b %b %d";
       int status = redisAsyncCommand(
           async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
           reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-          pubsub_channel, id.Data(), id.Size(), data, length, log_length);
+          pubsub_channel, driver_id.Data(), driver_id.Size(), id.Data(), id.Size(),
+          data, length, log_length);
       if (status == REDIS_ERR) {
         return Status::RedisError(std::string(async_context_->errstr));
       }
     } else {
-      std::string redis_command = command + " %d %d %b %b";
+      std::string redis_command = command + " %d %d %b %b %b";
       int status = redisAsyncCommand(
           async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
           reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-          pubsub_channel, id.Data(), id.Size(), data, length);
+          pubsub_channel, driver_id.Data(), driver_id.Size(), id.Data(), id.Size(),
+          data, length);
       if (status == REDIS_ERR) {
         return Status::RedisError(std::string(async_context_->errstr));
       }
     }
   } else {
     RAY_CHECK(log_length == -1);
-    std::string redis_command = command + " %d %d %b";
+    std::string redis_command = command + " %d %d %b %b";
     int status = redisAsyncCommand(
         async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-        pubsub_channel, id.Data(), id.Size());
+        pubsub_channel, driver_id.Data(), driver_id.Size(), id.Data(), id.Size());
     if (status == REDIS_ERR) {
       return Status::RedisError(std::string(async_context_->errstr));
     }

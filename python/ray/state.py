@@ -33,7 +33,7 @@ def _parse_client_table(redis_client):
     NIL_CLIENT_ID = ray.ObjectID.nil().binary()
     message = redis_client.execute_command("RAY.TABLE_LOOKUP",
                                            ray.gcs_utils.TablePrefix.CLIENT,
-                                           "", NIL_CLIENT_ID)
+                                           "", ray.ObjectID.nil().binary(), NIL_CLIENT_ID)
 
     # Handle the case where no clients are returned. This should only
     # occur potentially immediately after the cluster is started.
@@ -245,6 +245,7 @@ class GlobalState(object):
         # Return information about a single object ID.
         message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.OBJECT, "",
+                                        ray.ObjectID.nil().binary(),
                                         object_id.binary())
         if message is None:
             return {}
@@ -304,7 +305,7 @@ class GlobalState(object):
         assert isinstance(task_id, ray.TaskID)
         message = self._execute_command(task_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
-                                        "", task_id.binary())
+                                        "", ray.ObjectID.nil().binary(), task_id.binary())
         if message is None:
             return {}
         gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
@@ -426,7 +427,7 @@ class GlobalState(object):
         # events and should also support returning a window of events.
         message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.PROFILE, "",
-                                        batch_id.binary())
+                                        ray.ObjectID.nil().binary(), batch_id.binary())
 
         if message is None:
             return []
@@ -865,7 +866,7 @@ class GlobalState(object):
         assert isinstance(driver_id, ray.DriverID)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
-            driver_id.binary())
+            ray.ObjectID.nil().binary(), driver_id.binary())
 
         # If there are no errors, return early.
         if message is None:
@@ -930,6 +931,7 @@ class GlobalState(object):
             "RAY.TABLE_LOOKUP",
             ray.gcs_utils.TablePrefix.ACTOR_CHECKPOINT_ID,
             "",
+            ray.ObjectID.nil().binary(),
             actor_id.binary(),
         )
         if message is None:

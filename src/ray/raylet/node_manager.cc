@@ -274,6 +274,11 @@ void NodeManager::HandleDriverTableUpdate(
       // at reconstruction. Note that at this time the workers are likely
       // alive because of the delay in killing workers.
       CleanUpTasksForDeadDriver(driver_id);
+
+      // Clean up GCS
+      CleanUpGcsData(driver_id);
+
+      // TODO(qwang): Clean up other data cached in node_manager, object manager.
     }
   }
 }
@@ -643,7 +648,7 @@ void NodeManager::PublishActorStateTransition(
       RAY_CHECK_OK(redis_context->RunArgvAsync(args));
     }
   };
-  RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(DriverID::Nil(), actor_id,
+  RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(DriverID::FromBinary(data.driver_id), actor_id,
                                                    actor_notification, success_callback,
                                                    failure_callback, log_length));
 }
@@ -738,6 +743,35 @@ void NodeManager::CleanUpTasksForDeadDriver(const DriverID &driver_id) {
   // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
   // call it last.
   local_queues_.RemoveTasks(tasks_to_remove);
+}
+
+// TODO(qwang): Do this as batch.
+void NodeManager::CleanUpGcsData(const DriverID &driver_id) {
+  {
+    // Clean up actors from GCS.
+    auto cb = [driver_id, this](const std::vector <ActorID> &ids) {
+      this->gcs_client_->actor_table().Delete(driver_id, ids);
+    };
+    gcs_client_->actor_table().GetAllActorIdsByDriverId(driver_id, std::move(cb));
+  }
+
+  {
+    // Clean up tasks from GCS.
+    auto cb = [driver_id, this] (const std::vector<TaskID> &ids) {
+      this->gcs_client_->raylet_task_table().Delete(driver_id, ids);
+    };
+    gcs_client_->raylet_task_table().GetAllTaskIdsByDriverId(driver_id, std::move(cb));
+  }
+
+  {
+    // Clean up objects from GCS.
+    auto cb = [driver_id, this] (const std::vector<ObjectID> &ids) {
+      // Free objects from object manager.
+      // Note that this also can removed the objects from GCS.
+      object_manager_.FreeObjects(ids, false);
+    };
+    gcs_client_->object_table().GetAllObjectIdsByDriverId(driver_id, std::move(cb));
+  }
 }
 
 void NodeManager::ProcessNewClient(LocalClientConnection &client) {
@@ -934,7 +968,8 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
                           const ActorTableDataT &data) {
       // If the disconnected actor was local, only this node will try to update actor
       // state. So the update shouldn't fail.
-      RAY_LOG(FATAL) << "Failed to update state for actor " << id;
+      RAY_LOG(WARNING) << "Failed to update state for actor " << id
+                       << ", maybe since the driver of this actor exited.";
     };
   }
   PublishActorStateTransition(actor_id, new_actor_data, failure_callback);
@@ -1536,6 +1571,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                         "likely due to spurious reconstruction.";
     return;
   }
+
+  object_directory_->BindTaskIdToDriver(task_id, spec.DriverId());
 
   // Add the task and its uncommitted lineage to the lineage cache.
   if (!lineage_cache_.AddWaitingTask(task, uncommitted_lineage)) {

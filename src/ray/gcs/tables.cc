@@ -53,7 +53,7 @@ Status Log<ID, Data>::Append(const DriverID &driver_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return GetRedisContext(id)->RunAsync(GetLogAppendCommand(command_type_), id,
+  return GetRedisContext(id)->RunAsync(GetLogAppendCommand(command_type_), driver_id, id,
                                        fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
                                        pubsub_channel_, std::move(callback));
 }
@@ -78,7 +78,7 @@ Status Log<ID, Data>::AppendAt(const DriverID &driver_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return GetRedisContext(id)->RunAsync(GetLogAppendCommand(command_type_), id,
+  return GetRedisContext(id)->RunAsync(GetLogAppendCommand(command_type_), driver_id, id,
                                        fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
                                        pubsub_channel_, std::move(callback), log_length);
 }
@@ -105,7 +105,7 @@ Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
     }
   };
   std::vector<uint8_t> nil;
-  return GetRedisContext(id)->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_LOOKUP", driver_id, id, nil.data(), nil.size(),
                                        prefix_, pubsub_channel_, std::move(callback));
 }
 
@@ -171,7 +171,7 @@ Status Log<ID, Data>::RequestNotifications(const DriverID &driver_id, const ID &
                                            const ClientID &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
-  return GetRedisContext(id)->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id,
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", driver_id, id,
                                        client_id.Data(), client_id.Size(), prefix_,
                                        pubsub_channel_, nullptr);
 }
@@ -181,7 +181,7 @@ Status Log<ID, Data>::CancelNotifications(const DriverID &driver_id, const ID &i
                                           const ClientID &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
-  return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id,
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", driver_id, id,
                                        client_id.Data(), client_id.Size(), prefix_,
                                        pubsub_channel_, nullptr);
 }
@@ -212,7 +212,7 @@ void Log<ID, Data>::Delete(const DriverID &driver_id, const std::vector<ID> &ids
                       data_field_size, buffer + sizeof(uint16_t)));
 
       RAY_IGNORE_EXPR(
-          pair.first->RunAsync("RAY.TABLE_DELETE", UniqueID::Nil(),
+          pair.first->RunAsync("RAY.TABLE_DELETE", driver_id, UniqueID::Nil(),
                                reinterpret_cast<const uint8_t *>(send_data.c_str()),
                                send_data.size(), prefix_, pubsub_channel_,
                                /*redisCallback=*/nullptr));
@@ -244,7 +244,7 @@ Status Table<ID, Data>::Add(const DriverID &driver_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return GetRedisContext(id)->RunAsync(GetTableAddCommand(command_type_), id,
+  return GetRedisContext(id)->RunAsync(GetTableAddCommand(command_type_), driver_id, id,
                                        fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
                                        pubsub_channel_, std::move(callback));
 }
@@ -309,7 +309,7 @@ Status Set<ID, Data>::Add(const DriverID &driver_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return GetRedisContext(id)->RunAsync("RAY.SET_ADD", id, fbb.GetBufferPointer(),
+  return GetRedisContext(id)->RunAsync("RAY.SET_ADD", driver_id, id, fbb.GetBufferPointer(),
                                        fbb.GetSize(), prefix_, pubsub_channel_,
                                        std::move(callback));
 }
@@ -326,7 +326,7 @@ Status Set<ID, Data>::Remove(const DriverID &driver_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return GetRedisContext(id)->RunAsync("RAY.SET_REMOVE", id, fbb.GetBufferPointer(),
+  return GetRedisContext(id)->RunAsync("RAY.SET_REMOVE", driver_id, id, fbb.GetBufferPointer(),
                                        fbb.GetSize(), prefix_, pubsub_channel_,
                                        std::move(callback));
 }
@@ -677,6 +677,68 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
     RAY_CHECK_OK(Add(driver_id, actor_id, data, nullptr));
   };
   return Lookup(driver_id, actor_id, lookup_callback, failure_callback);
+}
+
+Status ActorTable::GetAllActorIdsByDriverId(const DriverID &driver_id,
+                                            GetAllActorsCallback callback) {
+  const std::string key = "INDEX_ACTOR_" + driver_id.Binary();
+  // Do this on primary.
+  // TODO(qwang): GetRedisContext(driver_id) should be replaced by primary_
+  auto cb =  [callback](const CallbackReply &reply) {
+    std::vector<std::string> result;
+    reply.ReadAsStringArray(&result);
+    std::vector<ActorID> actor_ids;
+    for (const auto &item : result) {
+      actor_ids.push_back(ActorID::FromBinary(item));
+    }
+    callback(actor_ids);
+  };
+
+  return GetRedisContext(ActorID::Nil())->RunArgvAsyncWithCallback({"SMEMBERS", key}, std::move(cb));
+}
+
+Status raylet::TaskTable::GetAllTaskIdsByDriverId(const DriverID &driver_id,
+                                                  GetAllTasksCallback callback) {
+  const std::string key = "INDEX_RAYLET_TASK_" + driver_id.Binary();
+  // Do this on all shards.
+  auto cb = [callback](const CallbackReply &reply) {
+    std::vector<std::string> result;
+    reply.ReadAsStringArray(&result);
+    std::vector<TaskID> task_ids;
+    for (const auto &item : result) {
+      task_ids.push_back(TaskID::FromBinary(item));
+    }
+    callback(task_ids);
+  };
+
+  Status status = Status::OK();
+  for (auto shard : shard_contexts_) {
+    status = shard->RunArgvAsyncWithCallback({"SMEMBERS", key}, cb);
+  }
+
+  return status;
+}
+
+Status ObjectTable::GetAllObjectIdsByDriverId(const DriverID &driver_id,
+                                              GetAllObjectsCallback callback) {
+  const std::string key = "INDEX_OBJECT_" + driver_id.Binary();
+  // Do this on all shards.
+  auto cb = [callback](const CallbackReply &reply) {
+    std::vector<std::string> result;
+    reply.ReadAsStringArray(&result);
+    std::vector<ObjectID> object_ids;
+    for (const auto &item : result) {
+      object_ids.push_back(ObjectID::FromBinary(item));
+    }
+    callback(object_ids);
+  };
+
+  Status status = Status::OK();
+  for (auto shard : shard_contexts_) {
+    status = shard->RunArgvAsyncWithCallback({"SMEMBERS", key}, cb);
+  }
+
+  return status;
 }
 
 template class Log<ObjectID, ObjectTableData>;

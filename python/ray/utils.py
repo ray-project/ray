@@ -96,7 +96,7 @@ def push_error_to_driver_through_redis(redis_client,
     redis_client.execute_command("RAY.TABLE_APPEND",
                                  ray.gcs_utils.TablePrefix.ERROR_INFO,
                                  ray.gcs_utils.TablePubsub.ERROR_INFO,
-                                 driver_id.binary(), error_data)
+                                 driver_id.binary, driver_id.binary(), error_data)
 
 
 def is_cython(obj):

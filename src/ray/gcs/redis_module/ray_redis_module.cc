@@ -104,6 +104,39 @@ Status ParseTablePrefix(const RedisModuleString *table_prefix_str, TablePrefix *
   }
 }
 
+/// TODO(qwang): Add more
+/// Update index for tables.
+Status UpdateTableIndex(RedisModuleCtx *ctx,
+                        RedisModuleString *prefix_enum,
+                        RedisModuleString *driver_id,
+                        RedisModuleString *id,
+                        bool is_add = true) {
+  TablePrefix prefix;
+  if (!ParseTablePrefix(prefix_enum, &prefix).ok()) {
+    return Status::RedisError("Failed to parse table prefix.");
+  }
+
+//  if (prefix == TablePrefix::OBJECT) {
+//    GetDriverIdOfObject(ctx, id);
+//  }
+
+  if (prefix != TablePrefix::ACTOR && prefix != TablePrefix::RAYLET_TASK && prefix != TablePrefix::OBJECT) {
+    RAY_LOG(DEBUG) << "Ignore this update index since the prefix is not ACTOR, and it's " << EnumNameTablePrefix(prefix);
+    return Status::OK();
+  }
+
+  RedisModuleString *key_str = RedisString_Format(ctx, "INDEX_%s_%S", EnumNameTablePrefix(prefix), driver_id);
+  RedisModuleCallReply *reply =
+    RedisModule_Call(ctx, is_add ? "SADD" : "SREM", "ss", key_str, id);
+  if (RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
+    //*changed = RedisModule_CallReplyInteger(reply) > 0;
+    //TODO(qwang): Should we remove empty set here?
+    return Status::RedisError("Failed to update index.");
+  } else {
+    return Status::OK();
+  }
+}
+
 /// Format the string for a table key. `prefix_enum` must be a valid
 /// TablePrefix as a RedisModuleString. `keyname` is usually a UniqueID as a
 /// RedisModuleString.
@@ -239,12 +272,20 @@ int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_st
 
 int TableAdd_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
                      RedisModuleString **mutated_key_str) {
-  if (argc != 5) {
+  if (argc != 6) {
     return RedisModule_WrongArity(ctx);
   }
   RedisModuleString *prefix_str = argv[1];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *data = argv[4];
+  RedisModuleString *driver_id_str = argv[3];
+  RedisModuleString *id = argv[4];
+  RedisModuleString *data = argv[5];
+
+  const auto status = UpdateTableIndex(ctx, prefix_str, driver_id_str, id);
+  if (!status.ok()) {
+    const std::string reply = "Failed to update table index with error: " + status.ToString();
+    RedisModule_ReplyWithError(ctx, reply.c_str());
+    return REDISMODULE_ERR;
+  }
 
   RedisModuleKey *key;
   REPLY_AND_RETURN_IF_NOT_OK(OpenPrefixedKey(
@@ -254,12 +295,12 @@ int TableAdd_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
 }
 
 int TableAdd_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  if (argc != 5) {
+  if (argc != 6) {
     return RedisModule_WrongArity(ctx);
   }
   RedisModuleString *pubsub_channel_str = argv[2];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *data = argv[4];
+  RedisModuleString *id = argv[4];
+  RedisModuleString *data = argv[5];
 
   TablePubsub pubsub_channel;
   REPLY_AND_RETURN_IF_NOT_OK(ParseTablePubsub(&pubsub_channel, pubsub_channel_str));
@@ -279,7 +320,7 @@ int TableAdd_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 ///
 /// This is called from a client with the command:
 ///
-///    RAY.TABLE_ADD <table_prefix> <pubsub_channel> <id> <data>
+///    RAY.TABLE_ADD <table_prefix> <pubsub_channel> <driver_id> <id> <data>
 ///
 /// \param table_prefix The prefix string for keys in this table.
 /// \param pubsub_channel The pubsub channel name that notifications for
@@ -302,16 +343,17 @@ int ChainTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
 int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
                         RedisModuleString **mutated_key_str) {
-  if (argc < 5 || argc > 6) {
+  if (argc < 6 || argc > 7) {
     return RedisModule_WrongArity(ctx);
   }
 
   RedisModuleString *prefix_str = argv[1];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *data = argv[4];
+  RedisModuleString *driver_id_str = argv[3];
+  RedisModuleString *id = argv[4];
+  RedisModuleString *data = argv[5];
   RedisModuleString *index_str = nullptr;
-  if (argc == 6) {
-    index_str = argv[5];
+  if (argc == 7) {
+    index_str = argv[6];
   }
 
   // Set the keys in the table.
@@ -339,7 +381,14 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   // of the log, or if no index was requested.
   if (index == RedisModule_ValueLength(key)) {
     // The requested index matches the current length of the log or no index
-    // was requested. Perform the append.
+    // was requested. Update index and perform the append.
+    const auto status = UpdateTableIndex(ctx, prefix_str, driver_id_str, id);
+    if (!status.ok()) {
+      const std::string reply = "Failed to update table index with error: " + status.ToString();
+      RedisModule_ReplyWithError(ctx, reply.c_str());
+      return REDISMODULE_ERR;
+    }
+
     if (RedisModule_ListPush(key, REDISMODULE_LIST_TAIL, data) == REDISMODULE_OK) {
       return REDISMODULE_OK;
     } else {
@@ -358,8 +407,8 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
 
 int TableAppend_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int /*argc*/) {
   RedisModuleString *pubsub_channel_str = argv[2];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *data = argv[4];
+  RedisModuleString *id = argv[4];
+  RedisModuleString *data = argv[5];
   // Publish a message on the requested pubsub channel if necessary.
   TablePubsub pubsub_channel;
   REPLY_AND_RETURN_IF_NOT_OK(ParseTablePubsub(&pubsub_channel, pubsub_channel_str));
@@ -378,13 +427,14 @@ int TableAppend_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int /*a
 ///
 /// This is called from a client with the command:
 //
-///    RAY.TABLE_APPEND <table_prefix> <pubsub_channel> <id> <data>
+///    RAY.TABLE_APPEND <table_prefix> <pubsub_channel> <driver_id> <id> <data>
 ///                     <index (optional)>
 ///
 /// \param table_prefix The prefix string for keys in this table.
 /// \param pubsub_channel The pubsub channel name that notifications for this
 /// key should be published to. When publishing to a specific client, the
 /// channel name should be <pubsub_channel>:<client_id>.
+/// \param driver_id The ID of this driver.
 /// \param id The ID of the key to append to.
 /// \param data The data to append to the key.
 /// \param index If this is set, then the data must be appended at this index.
@@ -410,9 +460,10 @@ int ChainTableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
 #endif
 
 int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
+  // TODO(qwang): Check argc
   RedisModuleString *pubsub_channel_str = argv[2];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *data = argv[4];
+  RedisModuleString *id = argv[4];
+  RedisModuleString *data = argv[5];
   // Publish a message on the requested pubsub channel if necessary.
   TablePubsub pubsub_channel;
   REPLY_AND_RETURN_IF_NOT_OK(ParseTablePubsub(&pubsub_channel, pubsub_channel_str));
@@ -428,15 +479,25 @@ int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
   }
 }
 
+// TODO(qwang): extra the common code.
 int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is_add,
                 bool *changed) {
-  if (argc != 5) {
+  if (argc != 6) {
     return RedisModule_WrongArity(ctx);
   }
 
   RedisModuleString *prefix_str = argv[1];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *data = argv[4];
+  RedisModuleString *driver_id_str = argv[3];
+  RedisModuleString *id = argv[4];
+  RedisModuleString *data = argv[5];
+
+  // Update the index.
+  auto status = UpdateTableIndex(ctx, prefix_str, driver_id_str, id);
+  if (!status.ok()) {
+    const std::string reply = "Failed to update table index with error: " + status.ToString();
+    RedisModule_ReplyWithError(ctx, reply.c_str());
+    return REDISMODULE_ERR;
+  }
 
   RedisModuleString *key_string = PrefixedKeyString(ctx, prefix_str, id);
   // TODO(kfstorm): According to https://redis.io/topics/modules-intro,
@@ -604,12 +665,12 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
 /// \return nil if the key is empty, the current value if the key type is a
 ///         string, or an array of the current values if the key type is a set.
 int TableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  if (argc < 4) {
+  if (argc < 5) {
     return RedisModule_WrongArity(ctx);
   }
 
   RedisModuleString *prefix_str = argv[1];
-  RedisModuleString *id = argv[3];
+  RedisModuleString *id = argv[4];
 
   // Lookup the data at the key.
   RedisModuleKey *table_key;
@@ -659,7 +720,7 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
 ///
 /// This is called from a client with the command:
 //
-///    RAY.TABLE_DELETE <table_prefix> <pubsub_channel> <id> <data>
+///    RAY.TABLE_DELETE <table_prefix> <pubsub_channel> <driver_id> <id> <data>
 ///
 /// \param table_prefix The prefix string for keys in this table.
 /// \param pubsub_channel Unused but follow the interface.
@@ -667,11 +728,11 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
 /// \param data The list of Unique Ids, kUniqueIDSize bytes for each.
 /// \return Always return OK unless the arguments are invalid.
 int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  if (argc != 5) {
+  if (argc != 6) {
     return RedisModule_WrongArity(ctx);
   }
   RedisModuleString *prefix_str = argv[1];
-  RedisModuleString *data = argv[4];
+  RedisModuleString *data = argv[5];
 
   size_t len = 0;
   const char *data_ptr = nullptr;
@@ -696,7 +757,7 @@ int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 ///
 /// This is called from a client with the command:
 //
-///    RAY.TABLE_REQUEST_NOTIFICATIONS <table_prefix> <pubsub_channel> <id>
+///    RAY.TABLE_REQUEST_NOTIFICATIONS <table_prefix> <pubsub_channel> <driver_id> <id>
 ///        <client_id>
 ///
 /// \param table_prefix The prefix string for keys in this table.
@@ -709,14 +770,14 @@ int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 ///         string, or an array of the current values if the key type is a set.
 int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
                                            int argc) {
-  if (argc != 5) {
+  if (argc != 6) {
     return RedisModule_WrongArity(ctx);
   }
 
   RedisModuleString *prefix_str = argv[1];
   RedisModuleString *pubsub_channel_str = argv[2];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *client_id = argv[4];
+  RedisModuleString *id = argv[4];
+  RedisModuleString *client_id = argv[5];
   RedisModuleString *client_channel;
   REPLY_AND_RETURN_IF_NOT_OK(
       FormatPubsubChannel(&client_channel, ctx, pubsub_channel_str, client_id));
@@ -749,7 +810,7 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleStrin
 ///
 /// This is called from a client with the command:
 //
-///    RAY.TABLE_CANCEL_NOTIFICATIONS <table_prefix> <pubsub_channel> <id>
+///    RAY.TABLE_CANCEL_NOTIFICATIONS <table_prefix> <pubsub_channel> <driver_id> <id>
 ///        <client_id>
 ///
 /// \param table_prefix The prefix string for keys in this table.
@@ -761,13 +822,13 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleStrin
 /// \return OK.
 int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
                                           int argc) {
-  if (argc < 5) {
+  if (argc < 6) {
     return RedisModule_WrongArity(ctx);
   }
 
   RedisModuleString *pubsub_channel_str = argv[2];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *client_id = argv[4];
+  RedisModuleString *id = argv[4];
+  RedisModuleString *client_id = argv[5];
   RedisModuleString *client_channel;
   REPLY_AND_RETURN_IF_NOT_OK(
       FormatPubsubChannel(&client_channel, ctx, pubsub_channel_str, client_id));

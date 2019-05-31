@@ -328,6 +328,12 @@ class NodeManager {
   /// \return Void.
   void CleanUpTasksForDeadDriver(const DriverID &driver_id);
 
+  /// Clean up the data in Gcs when a driver dies.
+  ///
+  /// \param driver_id The driver that died.
+  /// \retrurn Void.
+  void CleanUpGcsData(const DriverID &driver_id);
+
   /// Handle an object becoming local. This updates any local accounting, but
   /// does not write to any global accounting in the GCS.
   ///

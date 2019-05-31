@@ -124,6 +124,10 @@ class ObjectDirectoryInterface {
   ///
   /// \return string.
   virtual std::string DebugString() const = 0;
+
+  virtual void BindTaskIdToDriver(const TaskID &task_id, const DriverID &driver_id) = 0;
+
+  virtual void CleanTaskBinding(const TaskID &task_id) = 0;
 };
 
 /// Ray ObjectDirectory declaration.
@@ -171,6 +175,10 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// ObjectDirectory should not be copied.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
 
+  void BindTaskIdToDriver(const TaskID &task_id, const DriverID &driver_id) override;
+
+  void CleanTaskBinding(const TaskID &task_id) override;
+
  private:
   /// Callbacks associated with a call to GetLocations.
   struct LocationListenerState {
@@ -192,6 +200,9 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
+  /// Map from task ID to driver ID. Used to bind object to driver.
+  /// This will help to keep GCS TPS lower.
+  std::unordered_map<TaskID, DriverID> task_driver_binding_;
 };
 
 }  // namespace ray

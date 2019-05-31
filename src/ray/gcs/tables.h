@@ -460,6 +460,9 @@ class ObjectTable : public Set<ObjectID, ObjectTableData> {
     prefix_ = TablePrefix::OBJECT;
   };
 
+  using GetAllObjectsCallback =  std::function<void (const std::vector<ObjectID> &)>;
+  Status GetAllObjectIdsByDriverId(const DriverID &driver_id, GetAllObjectsCallback callback);
+
   virtual ~ObjectTable(){};
 };
 
@@ -529,6 +532,9 @@ class ActorTable : public Log<ActorID, ActorTableData> {
     pubsub_channel_ = TablePubsub::ACTOR;
     prefix_ = TablePrefix::ACTOR;
   }
+
+  using GetAllActorsCallback =  std::function<void (const std::vector<ActorID> &)>;
+  Status GetAllActorIdsByDriverId(const DriverID &driver_id, GetAllActorsCallback callback);
 };
 
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
@@ -610,6 +616,10 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
       : TaskTable(contexts, client) {
     command_type_ = command_type;
   };
+
+  using GetAllTasksCallback =  std::function<void (const std::vector<TaskID> &)>;
+  Status GetAllTaskIdsByDriverId(const DriverID &driver_id, GetAllTasksCallback callback);
+
 };
 
 }  // namespace raylet

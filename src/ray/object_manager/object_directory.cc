@@ -83,8 +83,12 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.Binary();
   data->object_size = object_info.data_size;
+
+  auto iter = task_driver_binding_.find(object_id.TaskId());
+  RAY_CHECK(iter != task_driver_binding_.end()) << "The task must be in task_driver_binging_";
+
   ray::Status status =
-      gcs_client_->object_table().Add(DriverID::Nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Add(iter->second, object_id, data, nullptr);
   return status;
 }
 
@@ -96,8 +100,10 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.Binary();
   data->object_size = object_info.data_size;
+  auto iter = task_driver_binding_.find(object_id.TaskId());
+  RAY_CHECK(iter != task_driver_binding_.end()) << "The task must be in task_driver_binging_";
   ray::Status status =
-      gcs_client_->object_table().Remove(DriverID::Nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Remove(iter->second, object_id, data, nullptr);
   return status;
 };
 
@@ -232,6 +238,14 @@ std::string ObjectDirectory::DebugString() const {
   result << "ObjectDirectory:";
   result << "\n- num listeners: " << listeners_.size();
   return result.str();
+}
+
+void ObjectDirectory::BindTaskIdToDriver(const TaskID &task_id, const DriverID &driver_id) {
+  task_driver_binding_[task_id] = driver_id;
+}
+
+void ObjectDirectory::CleanTaskBinding(const TaskID &task_id) {
+  task_driver_binding_.erase(task_id);
 }
 
 }  // namespace ray

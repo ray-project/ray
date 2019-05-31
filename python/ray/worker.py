@@ -1884,6 +1884,7 @@ def connect(node,
                                          "RAY.TABLE_ADD",
                                          ray.gcs_utils.TablePrefix.RAYLET_TASK,
                                          ray.gcs_utils.TablePubsub.RAYLET_TASK,
+                                         driver_task.driver_id().binary(),
                                          driver_task.task_id().binary(),
                                          driver_task._serialized_raylet_task())
 
