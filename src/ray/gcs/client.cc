@@ -146,19 +146,19 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                CommandType command_type)
-    : AsyncGcsClient(address, port, ClientID::from_random(), command_type) {}
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), command_type) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                CommandType command_type, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::from_random(), command_type,
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), command_type,
                      is_test_client) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                const std::string &password = "")
-    : AsyncGcsClient(address, port, ClientID::from_random(), false, password) {}
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), false, password) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), is_test_client) {}
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.

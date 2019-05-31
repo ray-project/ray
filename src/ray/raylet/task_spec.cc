@@ -65,8 +65,8 @@ TaskSpecification::TaskSpecification(
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const Language &language, const std::vector<std::string> &function_descriptor)
-    : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
-                        ObjectID::nil(), 0, ActorID::nil(), ActorHandleID::nil(), -1, {},
+    : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::Nil(),
+                        ObjectID::Nil(), 0, ActorID::Nil(), ActorHandleID::Nil(), -1, {},
                         task_arguments, num_returns, required_resources,
                         std::unordered_map<std::string, double>(), language,
                         function_descriptor) {}
@@ -165,8 +165,7 @@ int64_t TaskSpecification::NumReturns() const {
 }
 
 ObjectID TaskSpecification::ReturnId(int64_t return_index) const {
-  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return ObjectID::for_task_return(TaskId(), return_index + 1);
+  return ObjectID::ForTaskReturn(TaskId(), return_index + 1);
 }
 
 bool TaskSpecification::ArgByRef(int64_t arg_index) const {
@@ -215,11 +214,9 @@ Language TaskSpecification::GetLanguage() const {
   return message->language();
 }
 
-bool TaskSpecification::IsActorCreationTask() const {
-  return !ActorCreationId().is_nil();
-}
+bool TaskSpecification::IsActorCreationTask() const { return !ActorCreationId().IsNil(); }
 
-bool TaskSpecification::IsActorTask() const { return !ActorId().is_nil(); }
+bool TaskSpecification::IsActorTask() const { return !ActorId().IsNil(); }
 
 ActorID TaskSpecification::ActorCreationId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());

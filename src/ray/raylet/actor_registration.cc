@@ -14,28 +14,28 @@ ActorRegistration::ActorRegistration(const ActorTableDataT &actor_table_data)
 ActorRegistration::ActorRegistration(const ActorTableDataT &actor_table_data,
                                      const ActorCheckpointDataT &checkpoint_data)
     : actor_table_data_(actor_table_data),
-      execution_dependency_(ObjectID::from_binary(checkpoint_data.execution_dependency)) {
+      execution_dependency_(ObjectID::FromBinary(checkpoint_data.execution_dependency)) {
   // Restore `frontier_`.
   for (size_t i = 0; i < checkpoint_data.handle_ids.size(); i++) {
-    auto handle_id = ActorHandleID::from_binary(checkpoint_data.handle_ids[i]);
+    auto handle_id = ActorHandleID::FromBinary(checkpoint_data.handle_ids[i]);
     auto &frontier_entry = frontier_[handle_id];
     frontier_entry.task_counter = checkpoint_data.task_counters[i];
     frontier_entry.execution_dependency =
-        ObjectID::from_binary(checkpoint_data.frontier_dependencies[i]);
+        ObjectID::FromBinary(checkpoint_data.frontier_dependencies[i]);
   }
   // Restore `dummy_objects_`.
   for (size_t i = 0; i < checkpoint_data.unreleased_dummy_objects.size(); i++) {
-    auto dummy = ObjectID::from_binary(checkpoint_data.unreleased_dummy_objects[i]);
+    auto dummy = ObjectID::FromBinary(checkpoint_data.unreleased_dummy_objects[i]);
     dummy_objects_[dummy] = checkpoint_data.num_dummy_object_dependencies[i];
   }
 }
 
 const ClientID ActorRegistration::GetNodeManagerId() const {
-  return ClientID::from_binary(actor_table_data_.node_manager_id);
+  return ClientID::FromBinary(actor_table_data_.node_manager_id);
 }
 
 const ObjectID ActorRegistration::GetActorCreationDependency() const {
-  return ObjectID::from_binary(actor_table_data_.actor_creation_dummy_object_id);
+  return ObjectID::FromBinary(actor_table_data_.actor_creation_dummy_object_id);
 }
 
 const ObjectID ActorRegistration::GetExecutionDependency() const {
@@ -43,7 +43,7 @@ const ObjectID ActorRegistration::GetExecutionDependency() const {
 }
 
 const DriverID ActorRegistration::GetDriverId() const {
-  return DriverID::from_binary(actor_table_data_.driver_id);
+  return DriverID::FromBinary(actor_table_data_.driver_id);
 }
 
 const int64_t ActorRegistration::GetMaxReconstructions() const {
@@ -65,7 +65,7 @@ ObjectID ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
   // Release the reference to the previous cursor for this
   // actor handle, if there was one.
   ObjectID object_to_release;
-  if (!frontier_entry.execution_dependency.is_nil()) {
+  if (!frontier_entry.execution_dependency.IsNil()) {
     auto it = dummy_objects_.find(frontier_entry.execution_dependency);
     RAY_CHECK(it != dummy_objects_.end());
     it->second--;
@@ -110,16 +110,16 @@ std::shared_ptr<ActorCheckpointDataT> ActorRegistration::GenerateCheckpointData(
 
   // Use actor's current state to generate checkpoint data.
   auto checkpoint_data = std::make_shared<ActorCheckpointDataT>();
-  checkpoint_data->actor_id = actor_id.binary();
-  checkpoint_data->execution_dependency = copy.GetExecutionDependency().binary();
+  checkpoint_data->actor_id = actor_id.Binary();
+  checkpoint_data->execution_dependency = copy.GetExecutionDependency().Binary();
   for (const auto &frontier : copy.GetFrontier()) {
-    checkpoint_data->handle_ids.push_back(frontier.first.binary());
+    checkpoint_data->handle_ids.push_back(frontier.first.Binary());
     checkpoint_data->task_counters.push_back(frontier.second.task_counter);
     checkpoint_data->frontier_dependencies.push_back(
-        frontier.second.execution_dependency.binary());
+        frontier.second.execution_dependency.Binary());
   }
   for (const auto &entry : copy.GetDummyObjects()) {
-    checkpoint_data->unreleased_dummy_objects.push_back(entry.first.binary());
+    checkpoint_data->unreleased_dummy_objects.push_back(entry.first.Binary());
     checkpoint_data->num_dummy_object_dependencies.push_back(entry.second);
   }
   return checkpoint_data;
