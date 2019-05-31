@@ -64,7 +64,7 @@ void ObjectManager::StopIOService() {
 void ObjectManager::HandleObjectAdded(
     const object_manager::protocol::ObjectInfoT &object_info) {
   // Notify the object directory that the object has been added to this node.
-  ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+  ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
   RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
@@ -272,7 +272,7 @@ void ObjectManager::PullSendRequest(const ObjectID &object_id,
 
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
-      fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
+      fbb, fbb.CreateString(client_id_.Binary()), fbb.CreateString(object_id.Binary()));
   fbb.Finish(message);
   conn->WriteMessageAsync(
       static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
@@ -315,7 +315,7 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
   profile_event.end_time = end_time;
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
-  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"," +
+  profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
                              std::to_string(chunk_index) + ",\"" + status.ToString() +
                              "\"]";
   profile_events_.push_back(profile_event);
@@ -335,7 +335,7 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
   profile_event.end_time = end_time;
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
-  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"," +
+  profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
                              std::to_string(chunk_index) + ",\"" + status.ToString() +
                              "\"]";
   profile_events_.push_back(profile_event);
@@ -408,7 +408,7 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
     uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
     uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
-    UniqueID push_id = UniqueID::from_random();
+    UniqueID push_id = UniqueID::FromRandom();
     for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
       send_service_.post([this, push_id, client_id, object_id, data_size, metadata_size,
                           chunk_index, connection_info]() {
@@ -527,7 +527,7 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
 ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
                                 int64_t timeout_ms, uint64_t num_required_objects,
                                 bool wait_local, const WaitCallback &callback) {
-  UniqueID wait_id = UniqueID::from_random();
+  UniqueID wait_id = UniqueID::FromRandom();
   RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << client_id_;
   RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, timeout_ms, num_required_objects,
                                    wait_local, callback));
@@ -773,7 +773,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
   // TODO: trash connection on failure.
   auto info =
       flatbuffers::GetRoot<object_manager_protocol::ConnectClientMessage>(message);
-  ClientID client_id = ClientID::from_binary(info->client_id()->str());
+  ClientID client_id = ClientID::FromBinary(info->client_id()->str());
   bool is_transfer = info->is_transfer();
   conn->SetClientID(client_id);
   if (is_transfer) {
@@ -798,14 +798,14 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
                                        const uint8_t *message) {
   // Serialize and push object to requesting client.
   auto pr = flatbuffers::GetRoot<object_manager_protocol::PullRequestMessage>(message);
-  ObjectID object_id = ObjectID::from_binary(pr->object_id()->str());
-  ClientID client_id = ClientID::from_binary(pr->client_id()->str());
+  ObjectID object_id = ObjectID::FromBinary(pr->object_id()->str());
+  ClientID client_id = ClientID::FromBinary(pr->client_id()->str());
 
   ProfileEventT profile_event;
   profile_event.event_type = "receive_pull_request";
   profile_event.start_time = current_sys_time_seconds();
   profile_event.end_time = profile_event.start_time;
-  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"]";
+  profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"]";
   profile_events_.push_back(profile_event);
 
   Push(object_id, client_id);
@@ -817,7 +817,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   // Serialize.
   auto object_header =
       flatbuffers::GetRoot<object_manager_protocol::PushRequestMessage>(message);
-  const ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
+  const ObjectID object_id = ObjectID::FromBinary(object_header->object_id()->str());
   uint64_t chunk_index = object_header->chunk_index();
   uint64_t data_size = object_header->data_size();
   uint64_t metadata_size = object_header->metadata_size();
@@ -941,7 +941,7 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
 ProfileTableDataT ObjectManager::GetAndResetProfilingInfo() {
   ProfileTableDataT profile_info;
   profile_info.component_type = "object_manager";
-  profile_info.component_id = client_id_.binary();
+  profile_info.component_id = client_id_.Binary();
 
   for (auto const &profile_event : profile_events_) {
     profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));

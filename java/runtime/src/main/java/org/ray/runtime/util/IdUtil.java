@@ -161,7 +161,7 @@ public class IdUtil {
   }
 
   /**
-   * This method is the same as `hash()` method of `ID` class in ray/src/ray/id.h
+   * This method is the same as `Hash()` method of `ID` class in ray/src/ray/id.h
    */
   private static long murmurHash64A(byte[] data, int length, int seed) {
     final long m = 0xc6a4a7935bd1e995L;

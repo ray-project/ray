@@ -72,11 +72,11 @@ class WorkerPoolTest : public ::testing::Test {
 };
 
 static inline TaskSpecification ExampleTaskSpec(
-    const ActorID actor_id = ActorID::nil(),
+    const ActorID actor_id = ActorID::Nil(),
     const Language &language = Language::PYTHON) {
   std::vector<std::string> function_descriptor(3);
-  return TaskSpecification(DriverID::nil(), TaskID::nil(), 0, ActorID::nil(),
-                           ObjectID::nil(), 0, actor_id, ActorHandleID::nil(), 0, {}, {},
+  return TaskSpecification(DriverID::Nil(), TaskID::Nil(), 0, ActorID::Nil(),
+                           ObjectID::Nil(), 0, actor_id, ActorHandleID::Nil(), 0, {}, {},
                            0, {}, {}, language, function_descriptor);
 }
 
@@ -155,7 +155,7 @@ TEST_F(WorkerPoolTest, PopActorWorker) {
   // Assign an actor ID to the worker.
   const auto task_spec = ExampleTaskSpec();
   auto actor = worker_pool_.PopWorker(task_spec);
-  auto actor_id = ActorID::from_random();
+  auto actor_id = ActorID::FromRandom();
   actor->AssignActorId(actor_id);
   worker_pool_.PushWorker(actor);
 
@@ -173,10 +173,10 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   auto py_worker = CreateWorker(1234, Language::PYTHON);
   worker_pool_.PushWorker(py_worker);
   // Check that no worker will be popped if the given task is a Java task
-  const auto java_task_spec = ExampleTaskSpec(ActorID::nil(), Language::JAVA);
+  const auto java_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JAVA);
   ASSERT_EQ(worker_pool_.PopWorker(java_task_spec), nullptr);
   // Check that the worker can be popped if the given task is a Python task
-  const auto py_task_spec = ExampleTaskSpec(ActorID::nil(), Language::PYTHON);
+  const auto py_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON);
   ASSERT_NE(worker_pool_.PopWorker(py_task_spec), nullptr);
 
   // Create a Java Worker, and add it to the pool

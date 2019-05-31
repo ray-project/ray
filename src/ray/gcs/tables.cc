@@ -172,7 +172,7 @@ Status Log<ID, Data>::RequestNotifications(const DriverID &driver_id, const ID &
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
   return GetRedisContext(id)->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id,
-                                       client_id.data(), client_id.size(), prefix_,
+                                       client_id.Data(), client_id.Size(), prefix_,
                                        pubsub_channel_, nullptr);
 }
 
@@ -182,7 +182,7 @@ Status Log<ID, Data>::CancelNotifications(const DriverID &driver_id, const ID &i
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
   return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id,
-                                       client_id.data(), client_id.size(), prefix_,
+                                       client_id.Data(), client_id.Size(), prefix_,
                                        pubsub_channel_, nullptr);
 }
 
@@ -193,16 +193,16 @@ void Log<ID, Data>::Delete(const DriverID &driver_id, const std::vector<ID> &ids
   }
   std::unordered_map<RedisContext *, std::ostringstream> sharded_data;
   for (const auto &id : ids) {
-    sharded_data[GetRedisContext(id).get()] << id.binary();
+    sharded_data[GetRedisContext(id).get()] << id.Binary();
   }
   // Breaking really large deletion commands into batches of smaller size.
   const size_t batch_size =
-      RayConfig::instance().maximum_gcs_deletion_batch_size() * ID::size();
+      RayConfig::instance().maximum_gcs_deletion_batch_size() * ID::Size();
   for (const auto &pair : sharded_data) {
     std::string current_data = pair.second.str();
     for (size_t cur = 0; cur < pair.second.str().size(); cur += batch_size) {
       size_t data_field_size = std::min(batch_size, current_data.size() - cur);
-      uint16_t id_count = data_field_size / ID::size();
+      uint16_t id_count = data_field_size / ID::Size();
       // Send data contains id count and all the id data.
       std::string send_data(data_field_size + sizeof(id_count), 0);
       uint8_t *buffer = reinterpret_cast<uint8_t *>(&send_data[0]);
@@ -212,7 +212,7 @@ void Log<ID, Data>::Delete(const DriverID &driver_id, const std::vector<ID> &ids
                       data_field_size, buffer + sizeof(uint16_t)));
 
       RAY_IGNORE_EXPR(
-          pair.first->RunAsync("RAY.TABLE_DELETE", UniqueID::nil(),
+          pair.first->RunAsync("RAY.TABLE_DELETE", UniqueID::Nil(),
                                reinterpret_cast<const uint8_t *>(send_data.c_str()),
                                send_data.size(), prefix_, pubsub_channel_,
                                /*redisCallback=*/nullptr));
@@ -342,7 +342,7 @@ std::string Set<ID, Data>::DebugString() const {
 Status ErrorTable::PushErrorToDriver(const DriverID &driver_id, const std::string &type,
                                      const std::string &error_message, double timestamp) {
   auto data = std::make_shared<ErrorTableDataT>();
-  data->driver_id = driver_id.binary();
+  data->driver_id = driver_id.Binary();
   data->type = type;
   data->error_message = error_message;
   data->timestamp = timestamp;
@@ -359,7 +359,7 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
   // call "Pack" and undo the "UnPack".
   profile_events.UnPackTo(data.get());
 
-  return Append(DriverID::nil(), UniqueID::from_random(), data,
+  return Append(DriverID::Nil(), UniqueID::FromRandom(), data,
                 /*done_callback=*/nullptr);
 }
 
@@ -369,7 +369,7 @@ std::string ProfileTable::DebugString() const {
 
 Status DriverTable::AppendDriverData(const DriverID &driver_id, bool is_dead) {
   auto data = std::make_shared<DriverTableDataT>();
-  data->driver_id = driver_id.binary();
+  data->driver_id = driver_id.Binary();
   data->is_dead = is_dead;
   return Append(DriverID(driver_id), driver_id, data, /*done_callback=*/nullptr);
 }
@@ -378,7 +378,7 @@ void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callbac
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && (entry.second.entry_type == EntryType::INSERTION)) {
+    if (!entry.first.IsNil() && (entry.second.entry_type == EntryType::INSERTION)) {
       client_added_callback_(client_, entry.first, entry.second);
     }
   }
@@ -388,7 +388,7 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && entry.second.entry_type == EntryType::DELETION) {
+    if (!entry.first.IsNil() && entry.second.entry_type == EntryType::DELETION) {
       client_removed_callback_(client_, entry.first, entry.second);
     }
   }
@@ -399,7 +399,7 @@ void ClientTable::RegisterResourceCreateUpdatedCallback(
   resource_createupdated_callback_ = callback;
   // Call the callback for any clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() &&
+    if (!entry.first.IsNil() &&
         (entry.second.entry_type == EntryType::RES_CREATEUPDATE)) {
       resource_createupdated_callback_(client_, entry.first, entry.second);
     }
@@ -410,7 +410,7 @@ void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &cal
   resource_deleted_callback_ = callback;
   // Call the callback for any clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && entry.second.entry_type == EntryType::RES_DELETE) {
+    if (!entry.first.IsNil() && entry.second.entry_type == EntryType::RES_DELETE) {
       resource_deleted_callback_(client_, entry.first, entry.second);
     }
   }
@@ -418,7 +418,7 @@ void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &cal
 
 void ClientTable::HandleNotification(AsyncGcsClient *client,
                                      const ClientTableDataT &data) {
-  ClientID client_id = ClientID::from_binary(data.client_id);
+  ClientID client_id = ClientID::FromBinary(data.client_id);
   // It's possible to get duplicate notifications from the client table, so
   // check whether this notification is new.
   auto entry = client_cache_.find(client_id);
@@ -524,7 +524,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
 }
 
 void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT &data) {
-  auto connected_client_id = ClientID::from_binary(data.client_id);
+  auto connected_client_id = ClientID::FromBinary(data.client_id);
   RAY_CHECK(client_id_ == connected_client_id) << connected_client_id << " "
                                                << client_id_;
 }
@@ -583,13 +583,13 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
     // Callback to request notifications from the client table once we've
     // successfully subscribed.
     auto subscription_callback = [this](AsyncGcsClient *c) {
-      RAY_CHECK_OK(RequestNotifications(DriverID::nil(), client_log_key_, client_id_));
+      RAY_CHECK_OK(RequestNotifications(DriverID::Nil(), client_log_key_, client_id_));
     };
     // Subscribe to the client table.
-    RAY_CHECK_OK(Subscribe(DriverID::nil(), client_id_, notification_callback,
+    RAY_CHECK_OK(Subscribe(DriverID::Nil(), client_id_, notification_callback,
                            subscription_callback));
   };
-  return Append(DriverID::nil(), client_log_key_, data, add_callback);
+  return Append(DriverID::Nil(), client_log_key_, data, add_callback);
 }
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
@@ -598,12 +598,12 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
                                        const ClientTableDataT &data) {
     HandleConnected(client, data);
-    RAY_CHECK_OK(CancelNotifications(DriverID::nil(), client_log_key_, id));
+    RAY_CHECK_OK(CancelNotifications(DriverID::Nil(), client_log_key_, id));
     if (callback != nullptr) {
       callback();
     }
   };
-  RAY_RETURN_NOT_OK(Append(DriverID::nil(), client_log_key_, data, add_callback));
+  RAY_RETURN_NOT_OK(Append(DriverID::Nil(), client_log_key_, data, add_callback));
   // We successfully added the deletion entry. Mark ourselves as disconnected.
   disconnected_ = true;
   return Status::OK();
@@ -611,19 +611,19 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
 
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   auto data = std::make_shared<ClientTableDataT>();
-  data->client_id = dead_client_id.binary();
+  data->client_id = dead_client_id.Binary();
   data->entry_type = EntryType::DELETION;
-  return Append(DriverID::nil(), client_log_key_, data, nullptr);
+  return Append(DriverID::Nil(), client_log_key_, data, nullptr);
 }
 
 void ClientTable::GetClient(const ClientID &client_id,
                             ClientTableDataT &client_info) const {
-  RAY_CHECK(!client_id.is_nil());
+  RAY_CHECK(!client_id.IsNil());
   auto entry = client_cache_.find(client_id);
   if (entry != client_cache_.end()) {
     client_info = entry->second;
   } else {
-    client_info.client_id = ClientID::nil().binary();
+    client_info.client_id = ClientID::Nil().Binary();
   }
 }
 
@@ -633,7 +633,7 @@ const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients
 
 Status ClientTable::Lookup(const Callback &lookup) {
   RAY_CHECK(lookup != nullptr);
-  return Log::Lookup(DriverID::nil(), client_log_key_, lookup);
+  return Log::Lookup(DriverID::Nil(), client_log_key_, lookup);
 }
 
 std::string ClientTable::DebugString() const {
@@ -653,12 +653,12 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
     std::shared_ptr<ActorCheckpointIdDataT> copy =
         std::make_shared<ActorCheckpointIdDataT>(data);
     copy->timestamps.push_back(current_sys_time_ms());
-    copy->checkpoint_ids += checkpoint_id.binary();
+    copy->checkpoint_ids += checkpoint_id.Binary();
     auto num_to_keep = RayConfig::instance().num_actor_checkpoints_to_keep();
     while (copy->timestamps.size() > num_to_keep) {
       // Delete the checkpoint from actor checkpoint table.
       const auto &checkpoint_id =
-          ActorCheckpointID::from_binary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
+          ActorCheckpointID::FromBinary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
       RAY_LOG(DEBUG) << "Deleting checkpoint " << checkpoint_id << " for actor "
                      << actor_id;
       copy->timestamps.erase(copy->timestamps.begin());
@@ -671,9 +671,9 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
       ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
     std::shared_ptr<ActorCheckpointIdDataT> data =
         std::make_shared<ActorCheckpointIdDataT>();
-    data->actor_id = id.binary();
+    data->actor_id = id.Binary();
     data->timestamps.push_back(current_sys_time_ms());
-    data->checkpoint_ids = checkpoint_id.binary();
+    data->checkpoint_ids = checkpoint_id.Binary();
     RAY_CHECK_OK(Add(driver_id, actor_id, data, nullptr));
   };
   return Lookup(driver_id, actor_id, lookup_callback, failure_callback);
