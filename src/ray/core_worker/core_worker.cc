@@ -25,8 +25,17 @@ CoreWorker::CoreWorker(
     }
   
     auto &context = GetContext();
+  
+    ClientID worker_id;
+    if (worker_type == WorkerType::DRIVER) {
+      // TODO: this is a hack. Need a consistent approach.
+      worker_id = ClientID::from_binary(driver_id.binary());
+    } else {
+      worker_id = ClientID::from_random();
+    }
+
     raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-        raylet_socket, context.worker_id, (worker_type == WorkerType::WORKER),
+        raylet_socket, worker_id, (worker_type == WorkerType::WORKER),
         context.current_driver_id, lang));
 }
 

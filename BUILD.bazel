@@ -323,6 +323,7 @@ cc_library(
         ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
+        "@plasma//:plasma_client",
     ],
 )
 

@@ -1,25 +1,9 @@
 #include "object_interface.h"
 #include "context.h"
 #include "core_worker.h"
+#include "ray/ray_config.h"
 
 namespace ray {
-
-const int CoreWorkerObjectInterface::c_get_timeout_ms_ = 1000;
-
-/// Represents a byte buffer for plasma object.
-class PlasmaBuffer : public Buffer {
- public:
-  PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer) : buffer_(buffer) {}
-
-  uint8_t *Data() const override { return const_cast<uint8_t*>(buffer_->data()); }
-
-  size_t Size() const override { return buffer_->size(); }
-
- private:
-  /// shared_ptr to arrow buffer which can potentially hold a reference
-  /// for the object (when it's a plasma::PlasmaBuffer).
-  std::shared_ptr<arrow::Buffer> buffer_;
-};
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(CoreWorker &core_worker)
   : core_worker_(core_worker) {
@@ -34,13 +18,10 @@ Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id)
 
   auto plasma_id = put_id.to_plasma_id();
   std::shared_ptr<arrow::Buffer> data;
-  auto status = store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data);
-  if (!status.ok()) {
-    return ray::Status::IOError(status.message());
-  }
+  RAY_ARROW_RETURN_NOT_OK(store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
   memcpy(data->mutable_data(), buffer.Data(), buffer.Size());
-  RAY_ARROW_CHECK_OK(store_client_.Seal(plasma_id));
-  RAY_ARROW_CHECK_OK(store_client_.Release(plasma_id));
+  RAY_ARROW_RETURN_NOT_OK(store_client_.Seal(plasma_id));
+  RAY_ARROW_RETURN_NOT_OK(store_client_.Release(plasma_id));
   return Status::OK();
 }
 
@@ -79,12 +60,13 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
         unready_ids, fetch_only, context.GetCurrentTaskID()));
 
     // Get the objects from the object store, and parse the result.
-    int64_t get_timeout = (remaining_timeout < 0 || remaining_timeout > c_get_timeout_ms_) ?
-        c_get_timeout_ms_ : remaining_timeout;
-    should_break = (get_timeout == remaining_timeout);
-  
-    if (remaining_timeout >= c_get_timeout_ms_) {
-      remaining_timeout -= c_get_timeout_ms_;
+    int64_t get_timeout;
+    if (remaining_timeout >= 0) {
+      get_timeout = std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
+      remaining_timeout -= get_timeout;
+      should_break = remaining_timeout <= 0;
+    } else {
+      get_timeout = RayConfig::instance().get_timeout_milliseconds();
     }
 
     std::vector<plasma::ObjectID> plasma_ids;
@@ -126,6 +108,8 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
     ready_ids.insert(entry);
   }
 
+  // TODO: change RayletClient::Wait() to return a bit set, so that we don't need
+  // to do this translation.
   (*results).resize(object_ids.size());
   for (int i = 0; i < object_ids.size(); i++) {
     (*results)[i] = ready_ids.count(object_ids[i]) > 0;

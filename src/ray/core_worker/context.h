@@ -9,8 +9,7 @@ namespace ray {
 // Context for core worker.
 struct WorkerContext {
   WorkerContext(WorkerType worker_type, const DriverID &driver_id)
-    : worker_type(worker_type),
-      task_index(0),
+    : task_index(0),
       put_index(0) {
 
     auto initial_driver_id = driver_id;
@@ -19,12 +18,9 @@ struct WorkerContext {
     }
   
     if (worker_type == WorkerType::DRIVER) {
-      // TODO: this is a hack. Need a consistent approach.
-      worker_id = ClientID::from_binary(initial_driver_id.binary());
       current_driver_id = initial_driver_id;
       current_task_id = TaskID::from_random();
     } else {
-      worker_id = ClientID::from_random();
       current_driver_id = DriverID::nil();
       current_task_id = TaskID::nil();
     }
@@ -52,12 +48,6 @@ struct WorkerContext {
     task_index = 0;
     put_index = 0;
   }
-
-  /// The type of the worker (Driver/Worker).
-  const WorkerType worker_type;
-
-  /// The ID for this worker (aka ClientID).
-  ClientID worker_id;
 
   /// The driver ID for current task.
   DriverID current_driver_id;

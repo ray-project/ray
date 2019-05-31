@@ -31,27 +31,30 @@ static void flushall_redis(void) {
 
 class CoreWorkerTest : public ::testing::Test {
  public:
-  CoreWorkerTest() {
+  CoreWorkerTest(int num_nodes)
+    : raylet_socket_names_(num_nodes),
+      raylet_store_socket_names_(num_nodes) {
+    RAY_CHECK(num_nodes > 0);
     // start plasma store.
-    raylet_store_socket_name_1_ = StartStore();
-    raylet_store_socket_name_2_ = StartStore();
+    for (auto &store_socket : raylet_store_socket_names_) {
+      store_socket = StartStore();
+    }
 
     // start raylet on head node
-    raylet_socket_name_1_ = StartRaylet(raylet_store_socket_name_1_, "127.0.0.1",
-                                        "127.0.0.1", "\"CPU,4.0,resA,100\"");
-
-    // start raylet on non-head node
-    raylet_socket_name_2_ = StartRaylet(raylet_store_socket_name_2_, "127.0.0.1",
-                                        "127.0.0.1", "\"CPU,4.0,resB,100\"");
-    client_id_1_ = ClientID::from_random();
-    client_id_2_ = ClientID::from_random();
+    for (int i = 0; i < num_nodes; i++) {
+      raylet_socket_names_[i] = StartRaylet(raylet_store_socket_names_[i],
+         "127.0.0.1", "127.0.0.1", "\"CPU,4.0,resA,100\"");
+    }
   }
 
   ~CoreWorkerTest() {
-    StopRaylet(raylet_socket_name_1_);
-    StopRaylet(raylet_socket_name_2_);
-    StopStore(raylet_store_socket_name_1_);
-    StopStore(raylet_store_socket_name_2_);
+    for (const auto &raylet_socket : raylet_socket_names_) {
+      StopRaylet(raylet_socket);
+    }
+
+    for (const auto &store_socket : raylet_store_socket_names_) {
+      StopStore(store_socket);
+    }
   }
 
   std::string StartStore() {
@@ -111,20 +114,17 @@ class CoreWorkerTest : public ::testing::Test {
   void TearDown() {}
 
  protected:
-  boost::asio::io_service main_service_1_;
-  boost::asio::io_service main_service_2_;
 
-  std::string raylet_socket_name_1_;
-  std::string raylet_socket_name_2_;
-  std::string raylet_store_socket_name_1_;
-  std::string raylet_store_socket_name_2_;
-
-  ClientID client_id_1_;
-  ClientID client_id_2_;
+  std::vector<std::string> raylet_socket_names_;
+  std::vector<std::string> raylet_store_socket_names_;
 };
 
+class SingleNodeTest : public CoreWorkerTest {
+ public:
+  SingleNodeTest() : CoreWorkerTest(1) {}
+};
 
-TEST_F(CoreWorkerTest, TestTaskArg) {
+TEST_F(SingleNodeTest, TestTaskArg) {
   // Test by-reference argument.
   ObjectID id = ObjectID::from_random();
   TaskArg by_ref = TaskArg::PassByReference(id);
@@ -140,16 +140,16 @@ TEST_F(CoreWorkerTest, TestTaskArg) {
   ASSERT_EQ(*data, *buffer);
 }
 
-TEST_F(CoreWorkerTest, TestAttributeGetters) {
+TEST_F(SingleNodeTest, TestAttributeGetters) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
-      raylet_store_socket_name_1_, raylet_socket_name_1_);
+      raylet_store_socket_names_[0], raylet_socket_names_[0]);
   ASSERT_EQ(core_worker.WorkerType(), WorkerType::DRIVER);
   ASSERT_EQ(core_worker.Language(), Language::PYTHON);
 }
 
-TEST_F(CoreWorkerTest, TestObjectInterface) {
+TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
-      raylet_store_socket_name_1_, raylet_socket_name_1_);
+      raylet_store_socket_names_[0], raylet_socket_names_[0]);
 
   uint8_t array1[] = { 1, 2, 3, 4, 5, 6, 7, 8 };
   uint8_t array2[] = { 10, 11, 12, 13, 14, 15 }; 
@@ -169,7 +169,6 @@ TEST_F(CoreWorkerTest, TestObjectInterface) {
 
   ASSERT_EQ(results.size(), 2);
   for (int i = 0; i < ids.size(); i++) {
-    // RAY_LOG(INFO) << i << "  " << results[i]->Size() << "   " << buffers[i].Size();
     ASSERT_EQ(results[i]->Size(), buffers[i].Size());
     ASSERT_EQ(memcmp(results[i]->Data(), buffers[i].Data(), buffers[i].Size()), 0);
   }
