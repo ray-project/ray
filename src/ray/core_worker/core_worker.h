@@ -2,12 +2,12 @@
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
 #include "common.h"
+#include "context.h"
 #include "object_interface.h"
 #include "ray/common/buffer.h"
+#include "ray/raylet/raylet_client.h"
 #include "task_execution.h"
 #include "task_interface.h"
-#include "context.h"
-#include "ray/raylet/raylet_client.h"
 
 namespace ray {
 
@@ -20,11 +20,9 @@ class CoreWorker {
   ///
   /// \param[in] worker_type Type of this worker.
   /// \param[in] langauge Language of this worker.
-  CoreWorker(const WorkerType worker_type,
-      const Language language,
-      const std::string &store_socket,
-      const std::string &raylet_socket,
-      DriverID driver_id = DriverID::Nil());
+  CoreWorker(const WorkerType worker_type, const Language language,
+             const std::string &store_socket, const std::string &raylet_socket,
+             DriverID driver_id = DriverID::Nil());
 
   /// Connect to raylet.
   Status Connect();
@@ -48,7 +46,6 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
  private:
-
   /// Type of this worker.
   const enum WorkerType worker_type_;
 

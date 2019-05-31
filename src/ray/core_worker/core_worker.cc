@@ -3,20 +3,17 @@
 
 namespace ray {
 
-CoreWorker::CoreWorker(
-  const enum WorkerType worker_type,
-  const enum Language language,
-  const std::string &store_socket,
-  const std::string &raylet_socket,
-  DriverID driver_id)
-  : worker_type_(worker_type),
-    language_(language),
-    worker_context_(worker_type, driver_id),
-    store_socket_(store_socket),
-    raylet_socket_(raylet_socket),
-    task_interface_(*this),
-    object_interface_(*this),
-    task_execution_interface_(*this) {}
+CoreWorker::CoreWorker(const enum WorkerType worker_type, const enum Language language,
+                       const std::string &store_socket, const std::string &raylet_socket,
+                       DriverID driver_id)
+    : worker_type_(worker_type),
+      language_(language),
+      worker_context_(worker_type, driver_id),
+      store_socket_(store_socket),
+      raylet_socket_(raylet_socket),
+      task_interface_(*this),
+      object_interface_(*this),
+      task_execution_interface_(*this) {}
 
 Status CoreWorker::Connect() {
   // connect to plasma.

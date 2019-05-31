@@ -2,8 +2,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include "core_worker.h"
 #include "context.h"
+#include "core_worker.h"
 #include "ray/common/buffer.h"
 #include "ray/raylet/raylet_client.h"
 
@@ -25,7 +25,7 @@ static void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
-  freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));  
+  freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
   redisFree(context);
 }
 
@@ -45,8 +45,8 @@ class CoreWorkerTest : public ::testing::Test {
 
     // start raylet on each node
     for (int i = 0; i < num_nodes; i++) {
-      raylet_socket_names_[i] = StartRaylet(raylet_store_socket_names_[i],
-         "127.0.0.1", "127.0.0.1", "\"CPU,4.0\"");
+      raylet_socket_names_[i] = StartRaylet(raylet_store_socket_names_[i], "127.0.0.1",
+                                            "127.0.0.1", "\"CPU,4.0\"");
     }
   }
 
@@ -117,7 +117,6 @@ class CoreWorkerTest : public ::testing::Test {
   void TearDown() {}
 
  protected:
-
   std::vector<std::string> raylet_socket_names_;
   std::vector<std::string> raylet_store_socket_names_;
 };
@@ -149,8 +148,8 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
 }
 
 TEST_F(ZeroNodeTest, TestAttributeGetters) {
-  CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
-      "", "", DriverID::FromRandom());
+  CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON, "", "",
+                         DriverID::FromRandom());
   ASSERT_EQ(core_worker.WorkerType(), WorkerType::DRIVER);
   ASSERT_EQ(core_worker.Language(), Language::PYTHON);
 }
@@ -165,7 +164,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   ASSERT_EQ(context.GetNextPutIndex(), 1);
   ASSERT_EQ(context.GetNextPutIndex(), 2);
 
-  auto thread_func = [&context] () {
+  auto thread_func = [&context]() {
     // Verify that task_index, put_index are thread-local.
     ASSERT_TRUE(!context.GetCurrentTaskID().IsNil());
     ASSERT_EQ(context.GetNextTaskIndex(), 1);
@@ -182,12 +181,12 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
-      raylet_store_socket_names_[0], raylet_socket_names_[0],
-      DriverID::FromRandom());
+                         raylet_store_socket_names_[0], raylet_socket_names_[0],
+                         DriverID::FromRandom());
   RAY_CHECK_OK(core_worker.Connect());
 
-  uint8_t array1[] = { 1, 2, 3, 4, 5, 6, 7, 8 };
-  uint8_t array2[] = { 10, 11, 12, 13, 14, 15 }; 
+  uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  uint8_t array2[] = {10, 11, 12, 13, 14, 15};
 
   std::vector<LocalMemoryBuffer> buffers;
   buffers.emplace_back(array1, sizeof(array1));
@@ -236,7 +235,6 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
 }
-
 
 }  // namespace ray
 

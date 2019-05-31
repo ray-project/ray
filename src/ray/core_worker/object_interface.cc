@@ -6,16 +6,17 @@
 namespace ray {
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(CoreWorker &core_worker)
-  : core_worker_(core_worker) {}
+    : core_worker_(core_worker) {}
 
 Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id) {
   ObjectID put_id = ObjectID::ForPut(core_worker_.worker_context_.GetCurrentTaskID(),
-      core_worker_.worker_context_.GetNextPutIndex());
+                                     core_worker_.worker_context_.GetNextPutIndex());
   *object_id = put_id;
 
   auto plasma_id = put_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> data;
-  RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
+  RAY_ARROW_RETURN_NOT_OK(
+      core_worker_.store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
   memcpy(data->mutable_data(), buffer.Data(), buffer.Size());
   RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Seal(plasma_id));
   RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Release(plasma_id));
@@ -25,7 +26,7 @@ Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id)
 Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
                                       std::vector<std::shared_ptr<Buffer>> *results) {
-  (*results).resize(ids.size(), nullptr);                                    
+  (*results).resize(ids.size(), nullptr);
 
   bool was_blocked = false;
 
@@ -58,7 +59,8 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     // Get the objects from the object store, and parse the result.
     int64_t get_timeout;
     if (remaining_timeout >= 0) {
-      get_timeout = std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
+      get_timeout =
+          std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
       remaining_timeout -= get_timeout;
       should_break = remaining_timeout <= 0;
     } else {
@@ -71,12 +73,14 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     }
 
     std::vector<plasma::ObjectBuffer> object_buffers;
-    auto status = core_worker_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
-  
+    auto status =
+        core_worker_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
+
     for (int i = 0; i < object_buffers.size(); i++) {
       if (object_buffers[i].data != nullptr) {
         const auto &object_id = unready_ids[i];
-        (*results)[unready[object_id]] = std::make_shared<PlasmaBuffer>(object_buffers[i].data);
+        (*results)[unready[object_id]] =
+            std::make_shared<PlasmaBuffer>(object_buffers[i].data);
         unready.erase(object_id);
       }
     }
@@ -86,7 +90,8 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   }
 
   if (was_blocked) {
-    RAY_CHECK_OK(core_worker_.raylet_client_->NotifyUnblocked(core_worker_.worker_context_.GetCurrentTaskID()));
+    RAY_CHECK_OK(core_worker_.raylet_client_->NotifyUnblocked(
+        core_worker_.worker_context_.GetCurrentTaskID()));
   }
 
   return Status::OK();
@@ -96,8 +101,9 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
                                        int num_objects, int64_t timeout_ms,
                                        std::vector<bool> *results) {
   WaitResultPair result_pair;
-  auto status = core_worker_.raylet_client_->Wait(object_ids, num_objects, timeout_ms,
-      false, core_worker_.worker_context_.GetCurrentTaskID(), &result_pair);
+  auto status = core_worker_.raylet_client_->Wait(
+      object_ids, num_objects, timeout_ms, false,
+      core_worker_.worker_context_.GetCurrentTaskID(), &result_pair);
   std::unordered_set<ObjectID> ready_ids;
   for (const auto &entry : result_pair.first) {
     ready_ids.insert(entry);
@@ -115,7 +121,8 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
 
 Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids,
                                          bool local_only, bool delete_creating_tasks) {
-  return core_worker_.raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
+  return core_worker_.raylet_client_->FreeObjects(object_ids, local_only,
+                                                  delete_creating_tasks);
 }
 
 }  // namespace ray

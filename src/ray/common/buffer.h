@@ -6,7 +6,7 @@
 #include "plasma/client.h"
 
 namespace arrow {
-  class Buffer;
+class Buffer;
 }
 
 namespace ray {
@@ -20,7 +20,7 @@ class Buffer {
   /// Size of this buffer.
   virtual size_t Size() const = 0;
 
-  virtual ~Buffer() {};
+  virtual ~Buffer(){};
 
   bool operator==(const Buffer &rhs) const {
     return this->Data() == rhs.Data() && this->Size() == rhs.Size();
@@ -50,7 +50,7 @@ class PlasmaBuffer : public Buffer {
  public:
   PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer) : buffer_(buffer) {}
 
-  uint8_t *Data() const override { return const_cast<uint8_t*>(buffer_->data()); }
+  uint8_t *Data() const override { return const_cast<uint8_t *>(buffer_->data()); }
 
   size_t Size() const override { return buffer_->size(); }
 

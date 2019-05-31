@@ -2,10 +2,10 @@
 #define RAY_CORE_WORKER_OBJECT_INTERFACE_H
 
 #include "common.h"
+#include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/id.h"
 #include "ray/status.h"
-#include "plasma/client.h"
 
 namespace ray {
 
@@ -55,7 +55,6 @@ class CoreWorkerObjectInterface {
  private:
   /// Reference to the parent CoreWorker instance.
   CoreWorker &core_worker_;
-
 };
 
 }  // namespace ray

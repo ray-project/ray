@@ -37,12 +37,10 @@ class WorkerContext {
   DriverID current_driver_id;
 
  private:
-
-  static WorkerThreadContext& GetThreadContext();
+  static WorkerThreadContext &GetThreadContext();
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
-
 };
 
 }  // namespace ray
