@@ -154,9 +154,7 @@ class PyTorchRunner(object):
 
     def stats(self):
         """Returns a dictionary of statistics collected"""
-        stats = {
-            "epoch": self.epoch
-        }
+        stats = {"epoch": self.epoch}
         for k, t in self._timers.items():
             stats[k + "_time_mean"] = t.mean
             stats[k + "_time_total"] = t.sum
