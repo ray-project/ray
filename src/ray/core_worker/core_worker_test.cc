@@ -43,10 +43,10 @@ class CoreWorkerTest : public ::testing::Test {
       store_socket = StartStore();
     }
 
-    // start raylet on head node
+    // start raylet on each node
     for (int i = 0; i < num_nodes; i++) {
       raylet_socket_names_[i] = StartRaylet(raylet_store_socket_names_[i],
-         "127.0.0.1", "127.0.0.1", "\"CPU,4.0,resA,100\"");
+         "127.0.0.1", "127.0.0.1", "\"CPU,4.0\"");
     }
   }
 
