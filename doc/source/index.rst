@@ -42,7 +42,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 
 - `Tune`_: Scalable Hyperparameter Search
 - `RLlib`_: Scalable Reinforcement Learning
-- `Distributed Training <distributed_sgd.html>`__
+- `Distributed Training <distributed_training.html>`__
 
 .. _`Tune`: tune.html
 .. _`RLlib`: rllib.html
@@ -107,6 +107,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    :maxdepth: 1
    :caption: Other Libraries
 
+   distributed_training.rst
    distributed_sgd.rst
    pandas_on_ray.rst
 
