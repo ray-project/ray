@@ -19,7 +19,7 @@ void UpdateObjectLocations(const GcsTableNotificationMode notification_mode,
   // with GcsTableNotificationMode, we can determine whether the update mode is
   // addition or deletion.
   for (const auto &object_table_data : location_updates) {
-    ClientID client_id = ClientID::from_binary(object_table_data.manager);
+    ClientID client_id = ClientID::FromBinary(object_table_data.manager);
     if (notification_mode != GcsTableNotificationMode::REMOVE) {
       client_ids->insert(client_id);
     } else {
@@ -71,7 +71,7 @@ void ObjectDirectory::RegisterBackend() {
     }
   };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
-      DriverID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      DriverID::Nil(), gcs_client_->client_table().GetLocalClientId(),
       object_notification_callback, nullptr));
 }
 
@@ -81,10 +81,10 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
   // Append the addition entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
-  data->manager = client_id.binary();
+  data->manager = client_id.Binary();
   data->object_size = object_info.data_size;
   ray::Status status =
-      gcs_client_->object_table().Add(DriverID::nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Add(DriverID::Nil(), object_id, data, nullptr);
   return status;
 }
 
@@ -94,10 +94,10 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   // Append the eviction entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
-  data->manager = client_id.binary();
+  data->manager = client_id.Binary();
   data->object_size = object_info.data_size;
   ray::Status status =
-      gcs_client_->object_table().Remove(DriverID::nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Remove(DriverID::Nil(), object_id, data, nullptr);
   return status;
 };
 
@@ -105,8 +105,8 @@ void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
   ClientTableDataT client_data;
   gcs_client_->client_table().GetClient(connection_info.client_id, client_data);
-  ClientID result_client_id = ClientID::from_binary(client_data.client_id);
-  if (!result_client_id.is_nil()) {
+  ClientID result_client_id = ClientID::FromBinary(client_data.client_id);
+  if (!result_client_id.IsNil()) {
     RAY_CHECK(result_client_id == connection_info.client_id);
     if (client_data.entry_type == EntryType::INSERTION) {
       connection_info.ip = client_data.node_manager_address;
@@ -157,7 +157,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   if (it == listeners_.end()) {
     it = listeners_.emplace(object_id, LocationListenerState()).first;
     status = gcs_client_->object_table().RequestNotifications(
-        DriverID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+        DriverID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId());
   }
   auto &listener_state = it->second;
   // TODO(hme): Make this fatal after implementing Pull suppression.
@@ -185,7 +185,7 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
     status = gcs_client_->object_table().CancelNotifications(
-        DriverID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+        DriverID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId());
     listeners_.erase(entry);
   }
   return status;
@@ -208,7 +208,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     // SubscribeObjectLocations call, so look up the object's locations
     // directly from the GCS.
     status = gcs_client_->object_table().Lookup(
-        DriverID::nil(), object_id,
+        DriverID::Nil(), object_id,
         [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
                          const std::vector<ObjectTableDataT> &location_updates) {
           // Build the set of current locations based on the entries in the log.

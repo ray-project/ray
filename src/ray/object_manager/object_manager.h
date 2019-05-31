@@ -394,7 +394,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to
   /// subscribe multiple times to the same object during Pull.
-  UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
+  UniqueID object_directory_pull_callback_id_ = UniqueID::FromRandom();
 
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
