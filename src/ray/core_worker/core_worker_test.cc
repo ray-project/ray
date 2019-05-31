@@ -16,7 +16,7 @@ class CoreWorkerTest : public ::testing::Test {
 
 TEST_F(CoreWorkerTest, TestTaskArg) {
   // Test by-reference argument.
-  ObjectID id = ObjectID::from_random();
+  ObjectID id = ObjectID::FromRandom();
   TaskArg by_ref = TaskArg::PassByReference(id);
   ASSERT_TRUE(by_ref.IsPassedByReference());
   ASSERT_EQ(by_ref.GetReference(), id);
