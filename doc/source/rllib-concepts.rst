@@ -148,7 +148,7 @@ We can create a `Trainer <#trainers>`__ and try running this policy on a toy env
     tune.run(MyTrainer, config={"env": "CartPole-v0", "num_workers": 2})
 
 
-If you run the above snippet, you'll probably notice that CartPole doesn't learn so well:
+If you run the above snippet `(runnable file here) <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_tf_policy.py>`__, you'll probably notice that CartPole doesn't learn so well:
 
 .. code-block:: bash
 
@@ -349,7 +349,7 @@ Finally, note that you do not have to use ``build_tf_policy`` to define a Tensor
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a trainer given a Torch policy is exactly the same). Here's a simple example of a trivial torch policy:
+Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a trainer given a Torch policy is exactly the same). Here's a simple example of a trivial torch policy `(runnable file here) <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_torch_policy.py>`__:
 
 .. code-block:: python
 
