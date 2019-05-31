@@ -38,7 +38,7 @@ struct WorkerThreadContext {
   int put_index;  
 };
 
-thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context = nullptr;
+thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ = nullptr;
 
 WorkerContext::WorkerContext(WorkerType worker_type, const DriverID &driver_id)
   : worker_type(worker_type),
@@ -85,12 +85,12 @@ void WorkerContext::SetCurrentTask(const raylet::TaskSpecification &spec) {
 }
 
 WorkerThreadContext& WorkerContext::GetThreadContext() {
-  if (thread_context == nullptr) {
-    thread_context = std::unique_ptr<WorkerThreadContext>(
+  if (thread_context_ == nullptr) {
+    thread_context_ = std::unique_ptr<WorkerThreadContext>(
         new WorkerThreadContext());
   }
 
-  return *thread_context;
+  return *thread_context_;
 }
 
 }  // namespace ray

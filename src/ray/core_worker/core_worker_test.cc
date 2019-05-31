@@ -31,10 +31,13 @@ static void flushall_redis(void) {
 
 class CoreWorkerTest : public ::testing::Test {
  public:
-  CoreWorkerTest(int num_nodes)
-    : raylet_socket_names_(num_nodes),
-      raylet_store_socket_names_(num_nodes) {
-    RAY_CHECK(num_nodes > 0);
+  CoreWorkerTest(int num_nodes) {
+    RAY_CHECK(num_nodes >= 0);
+    if (num_nodes > 0) {
+      raylet_socket_names_.resize(num_nodes);
+      raylet_store_socket_names_.resize(num_nodes);
+    }
+
     // start plasma store.
     for (auto &store_socket : raylet_store_socket_names_) {
       store_socket = StartStore();
@@ -119,12 +122,17 @@ class CoreWorkerTest : public ::testing::Test {
   std::vector<std::string> raylet_store_socket_names_;
 };
 
+class ZeroNodeTest : public CoreWorkerTest {
+ public:
+  ZeroNodeTest() : CoreWorkerTest(0) {}
+};
+
 class SingleNodeTest : public CoreWorkerTest {
  public:
   SingleNodeTest() : CoreWorkerTest(1) {}
 };
 
-TEST_F(SingleNodeTest, TestTaskArg) {
+TEST_F(ZeroNodeTest, TestTaskArg) {
   // Test by-reference argument.
   ObjectID id = ObjectID::from_random();
   TaskArg by_ref = TaskArg::PassByReference(id);
@@ -140,15 +148,14 @@ TEST_F(SingleNodeTest, TestTaskArg) {
   ASSERT_EQ(*data, *buffer);
 }
 
-TEST_F(SingleNodeTest, TestAttributeGetters) {
+TEST_F(ZeroNodeTest, TestAttributeGetters) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
-      raylet_store_socket_names_[0], raylet_socket_names_[0],
-      DriverID::from_random());
+      "", "", DriverID::from_random());
   ASSERT_EQ(core_worker.WorkerType(), WorkerType::DRIVER);
   ASSERT_EQ(core_worker.Language(), Language::PYTHON);
 }
 
-TEST_F(SingleNodeTest, TestWorkerContext) {
+TEST_F(ZeroNodeTest, TestWorkerContext) {
   auto driver_id = DriverID::from_random();
 
   WorkerContext context(WorkerType::WORKER, driver_id);
@@ -226,8 +233,8 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   usleep(200 * 1000);
   core_worker.Objects().Get(ids, 0, &results);
   ASSERT_EQ(results.size(), 2);
-  ASSERT_TRUE(!results[0] || !results[0]->Data());
-  ASSERT_TRUE(!results[1] || !results[1]->Data());
+  ASSERT_TRUE(!results[0]);
+  ASSERT_TRUE(!results[1]);
 }
 
 

@@ -41,7 +41,7 @@ class WorkerContext {
   static WorkerThreadContext& GetThreadContext();
 
   /// Per-thread worker context.
-  static thread_local std::unique_ptr<WorkerThreadContext> thread_context;
+  static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
 
 };
 
