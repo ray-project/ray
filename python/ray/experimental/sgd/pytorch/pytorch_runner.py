@@ -154,7 +154,9 @@ class PyTorchRunner(object):
 
     def stats(self):
         """Returns a dictionary of statistics collected"""
-        stats = {}
+        stats = {
+            "epoch": self.epoch
+        }
         for k, t in self._timers.items():
             stats[k + "_time_mean"] = t.mean
             stats[k + "_time_total"] = t.sum
@@ -162,12 +164,20 @@ class PyTorchRunner(object):
         return stats
 
     def get_state(self):
-        """Returns the state of the model"""
-        return self.model.state_dict()
+        """Returns the state of the runner"""
+        return {
+            "epoch": self.epoch,
+            "model": self.model.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "stats": self.stats()
+        }
 
-    def set_state(self, state_dict):
+    def set_state(self, state):
         """Sets the state of the model"""
-        self.model.load_state_dict(state_dict)
+        # TODO: restore timer stats
+        self.model.load_state_dict(state["model"])
+        self.optimizer.load_state_dict(state["optimizer"])
+        self.epoch = state["stats"]["epoch"]
 
     def shutdown(self):
         """Attempts to shut down the worker"""

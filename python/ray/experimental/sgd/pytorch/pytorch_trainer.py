@@ -27,7 +27,7 @@ class PyTorchTrainer(object):
                  num_replicas=1,
                  resources_per_replica=None,
                  batch_size=16,
-                 backend="gloo"):
+                 backend="auto"):
         """Sets up the PyTorch trainer.
 
         Args:
@@ -43,7 +43,7 @@ class PyTorchTrainer(object):
                 training.
             resources_per_replica (Resources): resources used by each worker.
                 Defaults to Resources(num_cpus=1).
-            batch_size (int): batch size per replica for an update.
+            batch_size (int): batch size for an update.
             backend (string): backend used by distributed PyTorch.
         """
         # TODO: add support for mixed precision
@@ -62,15 +62,23 @@ class PyTorchTrainer(object):
             resources_per_replica = utils.Resources(
                 num_cpus=1, num_gpus=0, resources={})
 
+        if backend == "auto":
+            backend = "nccl" if resources_per_replica.num_gpus > 0 else "gloo"
+
         Runner = ray.remote(
             num_cpus=resources_per_replica.num_cpus,
             num_gpus=resources_per_replica.num_gpus,
             resources=resources_per_replica.resources)(PyTorchRunner)
 
+        def calc_batch_size(i):
+            if i < batch_size % num_replicas:
+                return batch_size // num_replicas + 1
+            return batch_size // num_replicas
+
         self.workers = [
             Runner.remote(model_creator, data_creator, optimizer_creator,
-                          self.config, batch_size, backend)
-            for _ in range(num_replicas)
+                          self.config, calc_batch_size(i), backend)
+            for i in range(num_replicas)
         ]
 
         ip = ray.get(self.workers[0].get_node_ip.remote())
@@ -107,9 +115,12 @@ class PyTorchTrainer(object):
         state = ray.get(self.workers[0].get_state.remote())
 
         # Remove module. prefix added by distrbuted pytorch
-        state = {k.replace("module.", ""): v for k, v in state.items()}
+        state_dict = {
+            k.replace("module.", ""): v
+            for k, v in state["model"].items()
+        }
 
-        model.load_state_dict(state)
+        model.load_state_dict(state_dict)
         return model
 
     def save(self, ckpt):
