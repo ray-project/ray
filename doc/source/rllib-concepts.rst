@@ -349,7 +349,27 @@ Finally, note that you do not have to use ``build_tf_policy`` to define a Tensor
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a trainer given a Torch policy is exactly the same). Building on the TF examples above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/a3c/a3c_torch_policy.py>`__ is defined:
+Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a trainer given a Torch policy is exactly the same). Here's a simple example of a trivial torch policy:
+
+.. code-block:: python
+
+    from ray.rllib.policy.sample_batch import SampleBatch
+    from ray.rllib.policy.torch_policy_template import build_torch_policy
+
+    def policy_gradient_loss(policy, batch_tensors):
+        logits, _, values, _ = policy.model({
+            SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
+        }, [])
+        action_dist = policy.dist_class(logits)
+        log_probs = action_dist.logp(batch_tensors[SampleBatch.ACTIONS])
+        return -batch_tensors[SampleBatch.REWARDS].dot(log_probs)
+
+    # <class 'ray.rllib.policy.torch_policy_template.MyTorchPolicy'>
+    MyTorchPolicy = build_torch_policy(
+        name="MyTorchPolicy",
+        loss_fn=policy_gradient_loss)
+
+Now, building on the TF examples above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/a3c/a3c_torch_policy.py>`__ is defined:
 
 .. code-block:: python
 
