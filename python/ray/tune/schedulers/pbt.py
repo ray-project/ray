@@ -130,8 +130,9 @@ class PopulationBasedTraining(FIFOScheduler):
             You must specify at least one of `hyperparam_mutations` or
             `custom_explore_fn`.
         quantile_fraction (float): Parameters are transferred from the top
-            `quantile_fraction` fraction of trials to the bottom `quantile_fraction`
-             fraction. Needs to be between 0 and 0.5.
+            `quantile_fraction` fraction of trials to the bottom
+            `quantile_fraction` fraction. Needs to be between 0 and 0.5.
+            Setting it to 0 essentially implies doing no exploitation at all.
         resample_probability (float): The probability of resampling from the
             original distribution when applying `hyperparam_mutations`. If not
             resampled, the value will be perturbed by a factor of 1.2 or 0.8
@@ -175,6 +176,10 @@ class PopulationBasedTraining(FIFOScheduler):
             raise TuneError(
                 "You must specify at least one of `hyperparam_mutations` or "
                 "`custom_explore_fn` to use PBT.")
+        if quantile_fraction > 0.5 or quantile_fraction < 0:
+            raise TuneError(
+                "You must set `quantile_fraction` to a value between 0 and"
+                "0.5. Current value: '{}'".format(quantile_fraction))
         FIFOScheduler.__init__(self)
         self._reward_attr = reward_attr
         self._time_attr = time_attr
@@ -316,8 +321,10 @@ class PopulationBasedTraining(FIFOScheduler):
         if len(trials) <= 1:
             return [], []
         else:
-            return (trials[:int(math.ceil(len(trials) * self._quantile_fraction))],
-                    trials[int(math.floor(-len(trials) * self._quantile_fraction)):])
+            return (
+                trials[:int(math.ceil(len(trials) * self._quantile_fraction))],
+                trials[int(math.floor(-len(trials) *
+                                      self._quantile_fraction)):])
 
     def choose_trial_to_run(self, trial_runner):
         """Ensures all trials get fair share of time (as defined by time_attr).
