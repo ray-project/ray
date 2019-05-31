@@ -458,20 +458,22 @@ class HashInterface {
   using DataMap = std::unordered_map<std::string, std::shared_ptr<DataT>>;
   using HashCallback =
       std::function<void(AsyncGcsClient *client, const ID &id, const DataMap &pairs)>;
-  using HashRemoveCallback =
-      std::function<void(AsyncGcsClient *client, const ID &id, const std::vector<std::string> &keys)>;
+  using HashRemoveCallback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                                const std::vector<std::string> &keys)>;
   using HashNotificationCallback = std::function<void(
       AsyncGcsClient *client, const ID &id,
       const GcsTableNotificationMode notification_mode, const DataMap &data)>;
   using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
-  virtual Status Update(const DriverID &driver_id, const ID &id,
-                        const DataMap &pairs, const HashCallback &done) = 0;
-  virtual Status RemoveEntry(const DriverID &driver_id, const ID &id, const std::vector<std::string> &keys, const HashRemoveCallback &remove_callback) = 0;
+  virtual Status Update(const DriverID &driver_id, const ID &id, const DataMap &pairs,
+                        const HashCallback &done) = 0;
+  virtual Status RemoveEntry(const DriverID &driver_id, const ID &id,
+                             const std::vector<std::string> &keys,
+                             const HashRemoveCallback &remove_callback) = 0;
 
   Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
                    const HashNotificationCallback &subscribe,
                    const SubscriptionCallback &done);
-  
+
   virtual ~HashInterface(){};
 };
 
@@ -482,10 +484,11 @@ class Hash : private Log<ID, Data>,
  public:
   using DataT = typename Log<ID, Data>::DataT;
   using DataMap = std::unordered_map<std::string, std::shared_ptr<DataT>>;
-  //using Callback = typename Log<ID, Data>::Callback;
+  // using Callback = typename Log<ID, Data>::Callback;
   using HashCallback = typename HashInterface<ID, Data>::HashCallback;
   using HashRemoveCallback = typename HashInterface<ID, Data>::HashRemoveCallback;
-  using HashNotificationCallback = typename HashInterface<ID, Data>::HashNotificationCallback;
+  using HashNotificationCallback =
+      typename HashInterface<ID, Data>::HashNotificationCallback;
   using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
 
   Hash(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
@@ -504,8 +507,8 @@ class Hash : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Update(const DriverID &driver_id, const ID &id,
-                const DataMap &pairs, const HashCallback &done);
+  Status Update(const DriverID &driver_id, const ID &id, const DataMap &pairs,
+                const HashCallback &done);
 
   /// Remove an entry from the set.
   ///
@@ -515,7 +518,7 @@ class Hash : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  //Status Remove(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  // Status Remove(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
   //              const WriteCallback &done);
   Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
                    const HashNotificationCallback &subscribe,
@@ -523,7 +526,9 @@ class Hash : private Log<ID, Data>,
 
   Status Lookup(const DriverID &driver_id, const ID &id, const HashCallback &lookup);
 
-  Status RemoveEntry(const DriverID &driver_id, const ID &id, const std::vector<std::string> &keys, const HashRemoveCallback &remove_callback);
+  Status RemoveEntry(const DriverID &driver_id, const ID &id,
+                     const std::vector<std::string> &keys,
+                     const HashRemoveCallback &remove_callback);
 
   /// Returns debug string for class.
   ///
@@ -552,9 +557,8 @@ class DynamicResourceTable : public Hash<ClientID, RayResource> {
     prefix_ = TablePrefix::DYNAMIC_RESOURCE;
   };
 
-  virtual ~DynamicResourceTable() {};
+  virtual ~DynamicResourceTable(){};
 };
-
 
 class ObjectTable : public Set<ObjectID, ObjectTableData> {
  public:

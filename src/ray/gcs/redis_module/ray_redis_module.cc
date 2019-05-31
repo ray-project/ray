@@ -180,12 +180,11 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
 }
 
 int PublishDataHelper(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
-                       RedisModuleString *id, RedisModuleString *data_buffer) {
-
+                      RedisModuleString *id, RedisModuleString *data_buffer) {
   // Write the data back to any subscribers that are listening to all table
   // notifications.
-  RedisModuleCallReply *reply = RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str,
-                                                 data_buffer);
+  RedisModuleCallReply *reply =
+      RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, data_buffer);
   if (reply == NULL) {
     return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
   }
@@ -202,8 +201,8 @@ int PublishDataHelper(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str
       // will be garbage collected by redis.
       auto channel =
           RedisModule_CreateString(ctx, client_channel.data(), client_channel.size());
-      RedisModuleCallReply *reply = RedisModule_Call(
-          ctx, "PUBLISH", "ss", channel, data_buffer);
+      RedisModuleCallReply *reply =
+          RedisModule_Call(ctx, "PUBLISH", "ss", channel, data_buffer);
       if (reply == NULL) {
         return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
       }
@@ -233,7 +232,8 @@ int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_st
       CreateGcsTableEntry(fbb, notification_mode, RedisStringToFlatbuf(fbb, id),
                           fbb.CreateVector(&data_flatbuf, 1));
   fbb.Finish(message);
-  auto data_buffer = RedisModule_CreateString(ctx, reinterpret_cast<char *>(fbb.GetBufferPointer()), fbb.GetSize());
+  auto data_buffer = RedisModule_CreateString(
+      ctx, reinterpret_cast<char *>(fbb.GetBufferPointer()), fbb.GetSize());
   return PublishDataHelper(ctx, pubsub_channel_str, id, data_buffer);
 }
 
@@ -524,7 +524,8 @@ int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
-int Hash_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, GcsTableNotificationMode notification_mode) {
+int Hash_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv,
+                   GcsTableNotificationMode notification_mode) {
   RedisModuleString *pubsub_channel_str = argv[2];
   RedisModuleString *id = argv[3];
   RedisModuleString *data = argv[4];
@@ -541,12 +542,12 @@ int Hash_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, GcsTableNotifi
 }
 
 /// Do the hash table write operation. This is called from by HashUpdate_RedisCommand.
-/// 
+///
 /// \param notification_mode Output the mode of the operation: APPEND_OR_ADD or REMOVE.
 /// \param deleted_data Output data if the deleted data is not the same as required.
 int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
                        GcsTableNotificationMode *notification_mode,
-                       RedisModuleString *& deleted_data) {
+                       RedisModuleString *&deleted_data) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -561,7 +562,7 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   REPLY_AND_RETURN_IF_FALSE(
       type == REDISMODULE_KEYTYPE_HASH || type == REDISMODULE_KEYTYPE_EMPTY,
       "HashUpdate_DoWrite entries must be a hash or an empty hash");
-  
+
   size_t update_data_len = 0;
   const char *update_data_buf = RedisModule_StringPtrLen(update_data, &update_data_len);
 
@@ -572,12 +573,14 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     size_t total_size = data_vec->entries()->size();
     REPLY_AND_RETURN_IF_FALSE(total_size % 2 == 0, "Invalid Hash Update data vector.");
     for (int i = 0; i < total_size; i += 2) {
-      RedisModuleString *entry_key =
-          RedisModule_CreateString(ctx, data_vec->entries()->Get(i)->data(), data_vec->entries()->Get(i)->size());
+      RedisModuleString *entry_key = RedisModule_CreateString(
+          ctx, data_vec->entries()->Get(i)->data(), data_vec->entries()->Get(i)->size());
       RedisModuleString *entry_value =
-          RedisModule_CreateString(ctx, data_vec->entries()->Get(i + 1)->data(), data_vec->entries()->Get(i + 1)->size());
+          RedisModule_CreateString(ctx, data_vec->entries()->Get(i + 1)->data(),
+                                   data_vec->entries()->Get(i + 1)->size());
       // Returning 0 if key exists(still updated), 1 if the key is created.
-      RAY_IGNORE_EXPR(RedisModule_HashSet(key, REDISMODULE_HASH_NONE, entry_key, entry_value, NULL));
+      RAY_IGNORE_EXPR(
+          RedisModule_HashSet(key, REDISMODULE_HASH_NONE, entry_key, entry_value, NULL));
     }
   } else {
     // This code path means the command wants to remove the entries.
@@ -586,9 +589,10 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     std::vector<bool> deleted_flags(total_size, true);
     int remove_count = 0;
     for (int i = 0; i < total_size; i++) {
-      RedisModuleString *entry_key =
-          RedisModule_CreateString(ctx, data_vec->entries()->Get(i)->data(), data_vec->entries()->Get(i)->size());
-      int deleted_num = RedisModule_HashSet(key, REDISMODULE_HASH_NONE, entry_key, REDISMODULE_HASH_DELETE, NULL);
+      RedisModuleString *entry_key = RedisModule_CreateString(
+          ctx, data_vec->entries()->Get(i)->data(), data_vec->entries()->Get(i)->size());
+      int deleted_num = RedisModule_HashSet(key, REDISMODULE_HASH_NONE, entry_key,
+                                            REDISMODULE_HASH_DELETE, NULL);
       deleted_flags[i] = deleted_num != 0;
       remove_count += deleted_num;
     }
@@ -598,14 +602,17 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
       std::vector<flatbuffers::Offset<flatbuffers::String>> data;
       for (size_t i = 0; i < total_size; i++) {
         if (deleted_flags[i]) {
-          data.push_back(fbb.CreateString(data_vec->entries()->Get(i)->data(), data_vec->entries()->Get(i)->size()));
+          data.push_back(fbb.CreateString(data_vec->entries()->Get(i)->data(),
+                                          data_vec->entries()->Get(i)->size()));
         }
       }
-      auto message =
-          CreateGcsTableEntry(fbb, data_vec->notification_mode(),
-                              fbb.CreateString(data_vec->id()->data(), data_vec->id()->size()), fbb.CreateVector(data));
+      auto message = CreateGcsTableEntry(
+          fbb, data_vec->notification_mode(),
+          fbb.CreateString(data_vec->id()->data(), data_vec->id()->size()),
+          fbb.CreateVector(data));
       fbb.Finish(message);
-      deleted_data = RedisModule_CreateString(ctx, reinterpret_cast<char *>(fbb.GetBufferPointer()), fbb.GetSize());
+      deleted_data = RedisModule_CreateString(
+          ctx, reinterpret_cast<char *>(fbb.GetBufferPointer()), fbb.GetSize());
     } else {
       deleted_data = nullptr;
     }
@@ -637,11 +644,10 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
 int HashUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   GcsTableNotificationMode mode;
   RedisModuleString *deleted_data = nullptr;
-  if (HashUpdate_DoWrite(ctx, argv, argc, &mode, deleted_data) !=
-      REDISMODULE_OK) {
+  if (HashUpdate_DoWrite(ctx, argv, argc, &mode, deleted_data) != REDISMODULE_OK) {
     return REDISMODULE_ERR;
   }
-  if (deleted_data == nullptr){
+  if (deleted_data == nullptr) {
     // The deleted elements are the same as required.
     return Hash_DoPublish(ctx, argv, mode);
   } else {
