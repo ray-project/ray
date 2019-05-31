@@ -154,7 +154,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
             io_service_,
             [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
-            reconstruction_timeout_ms_, ClientID::from_random(), mock_gcs_,
+            reconstruction_timeout_ms_, ClientID::FromRandom(), mock_gcs_,
             mock_object_directory_, mock_gcs_)),
         timer_canceled_(false) {
     mock_gcs_.Subscribe(
@@ -223,8 +223,8 @@ class ReconstructionPolicyTest : public ::testing::Test {
 };
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
-  TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ObjectID::for_task_return(task_id, 1);
+  TaskID task_id = TaskID::FromRandom();
+  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -241,9 +241,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
-  TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ObjectID::for_task_return(task_id, 1);
-  mock_object_directory_->SetObjectLocations(object_id, {ClientID::from_random()});
+  TaskID task_id = TaskID::FromRandom();
+  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  mock_object_directory_->SetObjectLocations(object_id, {ClientID::FromRandom()});
 
   // Listen for both objects.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -264,9 +264,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
-  TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ObjectID::for_task_return(task_id, 1);
-  ClientID client_id = ClientID::from_random();
+  TaskID task_id = TaskID::FromRandom();
+  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  ClientID client_id = ClientID::FromRandom();
   mock_object_directory_->SetObjectLocations(object_id, {client_id});
 
   // Listen for both objects.
@@ -288,9 +288,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
 
 TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
   // Create two object IDs produced by the same task.
-  TaskID task_id = TaskID::from_random();
-  ObjectID object_id1 = ObjectID::for_task_return(task_id, 1);
-  ObjectID object_id2 = ObjectID::for_task_return(task_id, 2);
+  TaskID task_id = TaskID::FromRandom();
+  ObjectID object_id1 = ObjectID::ForTaskReturn(task_id, 1);
+  ObjectID object_id2 = ObjectID::ForTaskReturn(task_id, 2);
 
   // Listen for both objects.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id1);
@@ -308,17 +308,17 @@ TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
-  TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ObjectID::for_task_return(task_id, 1);
+  TaskID task_id = TaskID::FromRandom();
+  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
   // Run the test for much longer than the reconstruction timeout.
   int64_t test_period = 2 * reconstruction_timeout_ms_;
 
   // Acquire the task lease for a period longer than the test period.
   auto task_lease_data = std::make_shared<TaskLeaseDataT>();
-  task_lease_data->node_manager_id = ClientID::from_random().binary();
+  task_lease_data->node_manager_id = ClientID::FromRandom().Binary();
   task_lease_data->acquired_at = current_sys_time_ms();
   task_lease_data->timeout = 2 * test_period;
-  mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
+  mock_gcs_.Add(DriverID::Nil(), task_id, task_lease_data);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -334,18 +334,18 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
-  TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ObjectID::for_task_return(task_id, 1);
+  TaskID task_id = TaskID::FromRandom();
+  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
   // Send the reconstruction manager heartbeats about the object.
   SetPeriodicTimer(reconstruction_timeout_ms_ / 2, [this, task_id]() {
     auto task_lease_data = std::make_shared<TaskLeaseDataT>();
-    task_lease_data->node_manager_id = ClientID::from_random().binary();
+    task_lease_data->node_manager_id = ClientID::FromRandom().Binary();
     task_lease_data->acquired_at = current_sys_time_ms();
     task_lease_data->timeout = reconstruction_timeout_ms_;
-    mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
+    mock_gcs_.Add(DriverID::Nil(), task_id, task_lease_data);
   });
   // Run the test for much longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 2);
@@ -361,8 +361,8 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
-  TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ObjectID::for_task_return(task_id, 1);
+  TaskID task_id = TaskID::FromRandom();
+  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -387,17 +387,17 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
-  TaskID task_id = TaskID::from_random();
-  ObjectID object_id = ObjectID::for_task_return(task_id, 1);
+  TaskID task_id = TaskID::FromRandom();
+  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
 
   // Log a reconstruction attempt to simulate a different node attempting the
   // reconstruction first. This should suppress this node's first attempt at
   // reconstruction.
   auto task_reconstruction_data = std::make_shared<TaskReconstructionDataT>();
-  task_reconstruction_data->node_manager_id = ClientID::from_random().binary();
+  task_reconstruction_data->node_manager_id = ClientID::FromRandom().Binary();
   task_reconstruction_data->num_reconstructions = 0;
   RAY_CHECK_OK(
-      mock_gcs_.AppendAt(DriverID::nil(), task_id, task_reconstruction_data, nullptr,
+      mock_gcs_.AppendAt(DriverID::Nil(), task_id, task_reconstruction_data, nullptr,
                          /*failure_callback=*/
                          [](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
                             const TaskReconstructionDataT &data) { ASSERT_TRUE(false); },

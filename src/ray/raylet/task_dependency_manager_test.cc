@@ -43,7 +43,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
         gcs_mock_(),
         initial_lease_period_ms_(100),
         task_dependency_manager_(object_manager_mock_, reconstruction_policy_mock_,
-                                 io_service_, ClientID::nil(), initial_lease_period_ms_,
+                                 io_service_, ClientID::Nil(), initial_lease_period_ms_,
                                  gcs_mock_) {}
 
   void Run(uint64_t timeout_ms) {
@@ -75,7 +75,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
     task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
   }
   std::vector<std::string> function_descriptor(3);
-  auto spec = TaskSpecification(DriverID::nil(), TaskID::from_random(), 0, task_arguments,
+  auto spec = TaskSpecification(DriverID::Nil(), TaskID::FromRandom(), 0, task_arguments,
                                 num_returns, required_resources, Language::PYTHON,
                                 function_descriptor);
   auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
@@ -105,9 +105,9 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
   for (int i = 0; i < num_arguments; i++) {
-    arguments.push_back(ObjectID::from_random());
+    arguments.push_back(ObjectID::FromRandom());
   }
-  TaskID task_id = TaskID::from_random();
+  TaskID task_id = TaskID::FromRandom();
   // No objects have been registered in the task dependency manager, so all
   // arguments should be remote.
   for (const auto &argument_id : arguments) {
@@ -139,12 +139,12 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
 
 TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribe) {
   // Create a task with 3 arguments.
-  TaskID task_id = TaskID::from_random();
+  TaskID task_id = TaskID::FromRandom();
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
   for (int i = 0; i < num_arguments; i++) {
     // Add the new argument to the list of dependencies to subscribe to.
-    ObjectID argument_id = ObjectID::from_random();
+    ObjectID argument_id = ObjectID::FromRandom();
     arguments.push_back(argument_id);
     // Subscribe to the task's dependencies. All arguments except the last are
     // duplicates of previous subscription calls. Each argument should only be
@@ -176,7 +176,7 @@ TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribe) {
 
 TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
   // Create 3 tasks that are dependent on the same object.
-  ObjectID argument_id = ObjectID::from_random();
+  ObjectID argument_id = ObjectID::FromRandom();
   std::vector<TaskID> dependent_tasks;
   int num_dependent_tasks = 3;
   // The object should only be requested from the object manager once for all
@@ -184,7 +184,7 @@ TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
   EXPECT_CALL(object_manager_mock_, Pull(argument_id));
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
   for (int i = 0; i < num_dependent_tasks; i++) {
-    TaskID task_id = TaskID::from_random();
+    TaskID task_id = TaskID::FromRandom();
     dependent_tasks.push_back(task_id);
     // Subscribe to each of the task's dependencies.
     bool ready = task_dependency_manager_.SubscribeDependencies(task_id, {argument_id});
@@ -266,7 +266,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
 TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   // Create a task with 3 arguments.
   auto task1 = ExampleTask({}, 0);
-  ObjectID put_id = ObjectID::for_put(task1.GetTaskSpecification().TaskId(), 1);
+  ObjectID put_id = ObjectID::ForPut(task1.GetTaskSpecification().TaskId(), 1);
   auto task2 = ExampleTask({put_id}, 0);
 
   // No objects have been registered in the task dependency manager, so the put
@@ -326,9 +326,9 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
   for (int i = 0; i < num_arguments; i++) {
-    arguments.push_back(ObjectID::from_random());
+    arguments.push_back(ObjectID::FromRandom());
   }
-  TaskID task_id = TaskID::from_random();
+  TaskID task_id = TaskID::FromRandom();
   // No objects have been registered in the task dependency manager, so all
   // arguments should be remote.
   for (const auto &argument_id : arguments) {

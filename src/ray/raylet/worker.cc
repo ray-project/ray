@@ -57,9 +57,9 @@ void Worker::AssignDriverId(const DriverID &driver_id) {
 const DriverID &Worker::GetAssignedDriverId() const { return assigned_driver_id_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {
-  RAY_CHECK(actor_id_.is_nil())
+  RAY_CHECK(actor_id_.IsNil())
       << "A worker that is already an actor cannot be assigned an actor ID again.";
-  RAY_CHECK(!actor_id.is_nil());
+  RAY_CHECK(!actor_id.IsNil());
   actor_id_ = actor_id;
 }
 

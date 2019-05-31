@@ -54,14 +54,20 @@ COMMON_CONFIG = {
     # Callbacks that will be run during various phases of training. These all
     # take a single "info" dict as an argument. For episode callbacks, custom
     # metrics can be attached to the episode by updating the episode object's
-    # custom metrics dict (see examples/custom_metrics_and_callbacks.py).
+    # custom metrics dict (see examples/custom_metrics_and_callbacks.py). You
+    # may also mutate the passed in batch data in your callback.
     "callbacks": {
         "on_episode_start": None,     # arg: {"env": .., "episode": ...}
         "on_episode_step": None,      # arg: {"env": .., "episode": ...}
         "on_episode_end": None,       # arg: {"env": .., "episode": ...}
         "on_sample_end": None,        # arg: {"samples": .., "evaluator": ...}
         "on_train_result": None,      # arg: {"trainer": ..., "result": ...}
-        "on_postprocess_traj": None,  # arg: {"batch": ..., "episode": ...}
+        "on_postprocess_traj": None,  # arg: {
+                                      #   "agent_id": ..., "episode": ...,
+                                      #   "pre_batch": (before processing),
+                                      #   "post_batch": (after processing),
+                                      #   "all_pre_batches": (other agent ids),
+                                      # }
     },
     # Whether to attempt to continue training if a worker crashes.
     "ignore_worker_failures": False,

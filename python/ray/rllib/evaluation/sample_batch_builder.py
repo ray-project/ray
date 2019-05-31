@@ -165,7 +165,13 @@ class MultiAgentSampleBatchBuilder(object):
             self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
                 post_batch)
             if self.postp_callback:
-                self.postp_callback({"episode": episode, "batch": post_batch})
+                self.postp_callback({
+                    "episode": episode,
+                    "agent_id": agent_id,
+                    "pre_batch": pre_batches[agent_id],
+                    "post_batch": post_batch,
+                    "all_pre_batches": pre_batches,
+                })
 
         self.agent_builders.clear()
         self.agent_to_policy.clear()
