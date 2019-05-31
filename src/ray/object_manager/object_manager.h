@@ -396,8 +396,7 @@ class ObjectManager : public ObjectManagerInterface {
   void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                         const uint8_t *message);
   /// Handle Push task timeout.
-  void HandlePushTaskTimeout(const ObjectID &object_id,
-                             const ClientID &client_id);
+  void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 
   ClientID client_id_;
   const ObjectManagerConfig config_;

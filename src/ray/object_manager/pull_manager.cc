@@ -44,8 +44,8 @@ void PullManager::ReceivePushRequest(const UniqueID &push_id, const ObjectID &ob
   auto it = pulls_.find(object_id);
   if (it == pulls_.end()) {
     *start_timer = true;
-    auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, std::unique_ptr<PullInfo>(new PullInfo(false))));
+    auto insertion_it = pulls_.insert(
+        std::make_pair(object_id, std::unique_ptr<PullInfo>(new PullInfo(false))));
 
     RAY_CHECK(insertion_it.second);
     it = insertion_it.first;
@@ -131,8 +131,8 @@ void PullManager::PullObject(const ObjectID &object_id, bool *subscribe_to_locat
 
   if (it == pulls_.end()) {
     *start_timer = true;
-    auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, std::unique_ptr<PullInfo>(new PullInfo(true))));
+    auto insertion_it = pulls_.insert(
+        std::make_pair(object_id, std::unique_ptr<PullInfo>(new PullInfo(true))));
     it = insertion_it.first;
     auto &pull_info = it->second;
     RAY_CHECK(pull_info->required);
