@@ -484,7 +484,6 @@ class Hash : private Log<ID, Data>,
  public:
   using DataT = typename Log<ID, Data>::DataT;
   using DataMap = std::unordered_map<std::string, std::shared_ptr<DataT>>;
-  // using Callback = typename Log<ID, Data>::Callback;
   using HashCallback = typename HashInterface<ID, Data>::HashCallback;
   using HashRemoveCallback = typename HashInterface<ID, Data>::HashRemoveCallback;
   using HashNotificationCallback =
@@ -496,36 +495,51 @@ class Hash : private Log<ID, Data>,
 
   using Log<ID, Data>::RequestNotifications;
   using Log<ID, Data>::CancelNotifications;
-  using Log<ID, Data>::Lookup;
-  using Log<ID, Data>::Delete;
 
-  /// Add an entry to the set.
+  /// Add entries of a hash table.
   ///
   /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data that is added to the GCS.
-  /// \param data Data to add to the set.
-  /// \param done Callback that is called once the data has been written to the
-  /// GCS.
+  /// \param pairs Map data to add to the hash table.
+  /// \param done HashCallback that is called once the request data has been written to
+  /// the GCS.
   /// \return Status
   Status Update(const DriverID &driver_id, const ID &id, const DataMap &pairs,
                 const HashCallback &done);
 
-  /// Remove an entry from the set.
+  /// Subscribe to any Update or Remove operations to this hash table.
   ///
-  /// \param driver_id The ID of the job (= driver).
-  /// \param id The ID of the data that is removed from the GCS.
-  /// \param data Data to remove from the set.
-  /// \param done Callback that is called once the data has been written to the
-  /// GCS.
+  /// \param driver_id The ID of the driver.
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each Update to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
+  /// \param subscribe HashNotificationCallback that is called on each received message.
+  /// \param done SubscriptionCallback that is called when subscription is complete and
+  /// we are ready to receive messages.
   /// \return Status
-  // Status Remove(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
-  //              const WriteCallback &done);
   Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
                    const HashNotificationCallback &subscribe,
                    const SubscriptionCallback &done);
 
+  /// Lookup the map data of a hash table.
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param id The ID of the data that is looked up in the GCS.
+  /// \param lookup HashCallback that is called after lookup. If the callback is
+  /// called with an empty hash table, then there was no data in the callback.
+  /// \return Status
   Status Lookup(const DriverID &driver_id, const ID &id, const HashCallback &lookup);
 
+  /// Remove an entries from the hash table.
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param id The ID of the data that is removed from the GCS.
+  /// \param keys The entry keys of the hash table.
+  /// \param remove_callback HashRemoveCallback that is called once the data has been
+  /// written to the GCS no matter whether the key exists in the hash table.
+  /// \return Status
   Status RemoveEntry(const DriverID &driver_id, const ID &id,
                      const std::vector<std::string> &keys,
                      const HashRemoveCallback &remove_callback);

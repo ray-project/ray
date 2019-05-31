@@ -351,7 +351,6 @@ Status Hash<ID, Data>::Update(const DriverID &driver_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<flatbuffers::Offset<flatbuffers::String>> data_vec;
   data_vec.reserve(data_map.size() * 2);
-  // auto id_offset = fbb.CreateString(id.Binary());
   for (auto const &pair : data_map) {
     // Add the key.
     data_vec.push_back(fbb.CreateString(pair.first));
@@ -364,7 +363,6 @@ Status Hash<ID, Data>::Update(const DriverID &driver_id, const ID &id,
     data_vec.push_back(fbb.CreateString(data));
   }
 
-  fbb.ForceDefaults(true);
   fbb.Finish(CreateGcsTableEntry(fbb, GcsTableNotificationMode::APPEND_OR_ADD,
                                  fbb.CreateString(id.Binary()),
                                  fbb.CreateVector(data_vec)));
@@ -386,13 +384,11 @@ Status Hash<ID, Data>::RemoveEntry(const DriverID &driver_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<flatbuffers::Offset<flatbuffers::String>> data_vec;
   data_vec.reserve(keys.size());
-  // auto id_offset = fbb.CreateString(id.Binary());
   // Add the keys.
   for (auto const &key : keys) {
     data_vec.push_back(fbb.CreateString(key));
   }
 
-  fbb.ForceDefaults(true);
   fbb.Finish(CreateGcsTableEntry(fbb, GcsTableNotificationMode::REMOVE,
                                  fbb.CreateString(id.Binary()),
                                  fbb.CreateVector(data_vec)));
@@ -427,9 +423,6 @@ Status Hash<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
           auto result = std::make_shared<DataT>();
           auto data_root =
               flatbuffers::GetRoot<Data>(root->entries()->Get(i + 1)->data());
-          std::string temp_data(
-              reinterpret_cast<const char *>(root->entries()->Get(i + 1)->data()),
-              root->entries()->Get(i + 1)->size());
           data_root->UnPackTo(result.get());
           results.emplace(key, std::move(result));
         }
@@ -450,7 +443,6 @@ Status Hash<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clie
       << "Client called Subscribe twice on the same table";
   auto callback = [this, subscribe, done](const CallbackReply &reply) {
     const auto data = reply.ReadAsPubsubData();
-
     if (data.empty()) {
       // No notification data is provided. This is the callback for the
       // initial subscription request.
@@ -474,16 +466,13 @@ Status Hash<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clie
             data_map.emplace(key, std::shared_ptr<DataT>());
           }
         } else {
-          // RAY_CHECK(root->entries()->size() % 2 == 0);
+          RAY_CHECK(root->entries()->size() % 2 == 0);
           for (size_t i = 0; i < root->entries()->size(); i += 2) {
             std::string key(root->entries()->Get(i)->data(),
                             root->entries()->Get(i)->size());
             auto result = std::make_shared<DataT>();
             auto data_root =
                 flatbuffers::GetRoot<Data>(root->entries()->Get(i + 1)->data());
-            std::string temp_data(
-                reinterpret_cast<const char *>(root->entries()->Get(i + 1)->data()),
-                root->entries()->Get(i + 1)->size());
             data_root->UnPackTo(result.get());
             data_map.emplace(key, std::move(result));
           }

@@ -179,6 +179,14 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
   return fbb.CreateString(redis_string_str, redis_string_size);
 }
 
+/// This the helper method to publish formated data to target channel.
+///
+/// \param pubsub_channel_str The pubsub channel name that notifications for
+/// this key should be published to. When publishing to a specific client, the
+/// channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key that the notification is about.
+/// \param data_buffer The data to publish, which is an GcsTableEntry buffer.
+/// \return OK if there is no error during a publish.
 int PublishDataHelper(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
                       RedisModuleString *id, RedisModuleString *data_buffer) {
   // Write the data back to any subscribers that are listening to all table
@@ -561,7 +569,7 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   int type = RedisModule_KeyType(key);
   REPLY_AND_RETURN_IF_FALSE(
       type == REDISMODULE_KEYTYPE_HASH || type == REDISMODULE_KEYTYPE_EMPTY,
-      "HashUpdate_DoWrite entries must be a hash or an empty hash");
+      "HashUpdate_DoWrite: entries must be a hash or an empty hash");
 
   size_t update_data_len = 0;
   const char *update_data_buf = RedisModule_StringPtrLen(update_data, &update_data_len);
@@ -573,6 +581,7 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     size_t total_size = data_vec->entries()->size();
     REPLY_AND_RETURN_IF_FALSE(total_size % 2 == 0, "Invalid Hash Update data vector.");
     for (int i = 0; i < total_size; i += 2) {
+      // Reconstruct a key-value pair from a flattened list.
       RedisModuleString *entry_key = RedisModule_CreateString(
           ctx, data_vec->entries()->Get(i)->data(), data_vec->entries()->Get(i)->size());
       RedisModuleString *entry_value =
@@ -598,6 +607,7 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     }
     if (remove_count != deleted_flags.size()) {
       // Not all keys in data_vec have been removed.
+      // Prepare the notification data of deleted keys.
       flatbuffers::FlatBufferBuilder fbb;
       std::vector<flatbuffers::Offset<flatbuffers::String>> data;
       for (size_t i = 0; i < total_size; i++) {
@@ -651,6 +661,7 @@ int HashUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
     // The deleted elements are the same as required.
     return Hash_DoPublish(ctx, argv, mode);
   } else {
+    // Replace the data with the deleted-keys.
     std::vector<RedisModuleString *> new_argv(argv, argv + argc);
     new_argv[4] = deleted_data;
     return Hash_DoPublish(ctx, new_argv.data(), mode);

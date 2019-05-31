@@ -1311,7 +1311,7 @@ void TestHashTable(const DriverID &driver_id,
                    std::shared_ptr<gcs::AsyncGcsClient> client) {
   const int expected_count = 14;
   ClientID client_id = ClientID::FromRandom();
-  // Prepare the first resource set: data_map1.
+  // Prepare the first resource map: data_map1.
   auto cpu_data = std::make_shared<RayResourceT>();
   cpu_data->resource_name = "CPU";
   cpu_data->resource_capacity = 100;
@@ -1321,7 +1321,8 @@ void TestHashTable(const DriverID &driver_id,
   DynamicResourceTable::DataMap data_map1;
   data_map1.emplace("CPU", cpu_data);
   data_map1.emplace("GPU", gpu_data);
-  // Prepare the second resource set: data_map2.
+  // Prepare the second resource map: data_map2 which decreases CPU,
+  // increases GPU and add a new CUSTOM compared to data_map1.
   auto data_cpu = std::make_shared<RayResourceT>();
   data_cpu->resource_name = "CPU";
   data_cpu->resource_capacity = 50;
@@ -1337,8 +1338,8 @@ void TestHashTable(const DriverID &driver_id,
   data_map2.emplace("CUSTOM", data_custom);
   data_map2["CPU"]->resource_capacity = 50;
   // This is a common comparison function for the test.
-  auto lookup_compare = [](const DynamicResourceTable::DataMap &data1,
-                           const DynamicResourceTable::DataMap &data2) {
+  auto compare_test = [](const DynamicResourceTable::DataMap &data1,
+                         const DynamicResourceTable::DataMap &data2) {
     ASSERT_EQ(data1.size(), data2.size());
     for (const auto &data : data1) {
       auto iter = data2.find(data.first);
@@ -1351,7 +1352,7 @@ void TestHashTable(const DriverID &driver_id,
     ASSERT_TRUE(true);
     test->IncrementNumCallbacks();
   };
-  auto notification_callback = [data_map1, data_map2, lookup_compare](
+  auto notification_callback = [data_map1, data_map2, compare_test](
       AsyncGcsClient *client, const ClientID &id,
       const GcsTableNotificationMode notification_mode,
       const DynamicResourceTable::DataMap &data) {
@@ -1362,15 +1363,15 @@ void TestHashTable(const DriverID &driver_id,
       // The key "None-Existent" will not appear in the notification.
     } else {
       if (data.size() == 2) {
-        lookup_compare(data_map1, data);
+        compare_test(data_map1, data);
       } else if (data.size() == 3) {
-        lookup_compare(data_map2, data);
+        compare_test(data_map2, data);
       } else {
         ASSERT_TRUE(false);
       }
     }
     test->IncrementNumCallbacks();
-    // It is not sure which of the notification and lookup callback will come first.
+    // It is not sure which of the notification or lookup callback will come first.
     if (test->NumCallbacks() == expected_count) {
       test->Stop();
     }
@@ -1382,22 +1383,18 @@ void TestHashTable(const DriverID &driver_id,
       driver_id, client_id, client->client_table().GetLocalClientId()));
 
   // Step 1: Add elements to the hash table.
-  auto update_callback1 = [data_map1, lookup_compare](
+  auto update_callback1 = [data_map1, compare_test](
       AsyncGcsClient *client, const ClientID &id,
       const DynamicResourceTable::DataMap &callback_data) {
-    lookup_compare(data_map1, callback_data);
+    compare_test(data_map1, callback_data);
     test->IncrementNumCallbacks();
   };
   RAY_CHECK_OK(client->dynamic_resource_table().Update(driver_id, client_id, data_map1,
                                                        update_callback1));
-  auto lookup_callback1 = [data_map1](
+  auto lookup_callback1 = [data_map1, compare_test](
       AsyncGcsClient *client, const ClientID &id,
       const DynamicResourceTable::DataMap &callback_data) {
-    ASSERT_EQ(data_map1.size(), callback_data.size());
-    ASSERT_TRUE(data_map1.find("CPU") != data_map1.end());
-    ASSERT_TRUE(callback_data.find("CPU") != callback_data.end());
-    ASSERT_EQ(callback_data.find("CPU")->second->resource_capacity,
-              data_map1.find("CPU")->second->resource_capacity);
+    compare_test(data_map1, callback_data);
     test->IncrementNumCallbacks();
   };
   RAY_CHECK_OK(
@@ -1406,10 +1403,10 @@ void TestHashTable(const DriverID &driver_id,
   // Step 2: Decreace one element, increace one and add a new one.
   RAY_CHECK_OK(
       client->dynamic_resource_table().Update(driver_id, client_id, data_map2, nullptr));
-  auto lookup_callback2 = [data_map2, lookup_compare](
+  auto lookup_callback2 = [data_map2, compare_test](
       AsyncGcsClient *client, const ClientID &id,
       const DynamicResourceTable::DataMap &callback_data) {
-    lookup_compare(data_map2, callback_data);
+    compare_test(data_map2, callback_data);
     test->IncrementNumCallbacks();
   };
   RAY_CHECK_OK(
@@ -1418,6 +1415,7 @@ void TestHashTable(const DriverID &driver_id,
   auto remove_callback = [delete_keys](AsyncGcsClient *client, const ClientID &id,
                                        const std::vector<std::string> &callback_data) {
     for (int i = 0; i < callback_data.size(); ++i) {
+      // All deleting keys exist in this argument even if the key doesn't exist.
       ASSERT_EQ(callback_data[i], delete_keys[i]);
     }
     test->IncrementNumCallbacks();
@@ -1427,22 +1425,22 @@ void TestHashTable(const DriverID &driver_id,
   DynamicResourceTable::DataMap data_map3(data_map2);
   data_map3.erase("GPU");
   data_map3.erase("CUSTOM");
-  auto lookup_callback3 = [data_map3, lookup_compare](
+  auto lookup_callback3 = [data_map3, compare_test](
       AsyncGcsClient *client, const ClientID &id,
       const DynamicResourceTable::DataMap &callback_data) {
-    lookup_compare(data_map3, callback_data);
+    compare_test(data_map3, callback_data);
     test->IncrementNumCallbacks();
   };
   RAY_CHECK_OK(
       client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback3));
 
-  // Step 3: Restore the elemets to the status at the beginning.
+  // Step 3: Reset the the resources to data_map1.
   RAY_CHECK_OK(client->dynamic_resource_table().Update(driver_id, client_id, data_map1,
                                                        update_callback1));
-  auto lookup_callback4 = [data_map1, lookup_compare](
+  auto lookup_callback4 = [data_map1, compare_test](
       AsyncGcsClient *client, const ClientID &id,
       const DynamicResourceTable::DataMap &callback_data) {
-    lookup_compare(data_map1, callback_data);
+    compare_test(data_map1, callback_data);
     test->IncrementNumCallbacks();
   };
   RAY_CHECK_OK(
@@ -1455,7 +1453,7 @@ void TestHashTable(const DriverID &driver_id,
                              const DynamicResourceTable::DataMap &callback_data) {
     ASSERT_EQ(callback_data.size(), 0);
     test->IncrementNumCallbacks();
-    // It is not sure which of the notification and lookup callback will come first.
+    // It is not sure which of notification or lookup callback will come first.
     if (test->NumCallbacks() == expected_count) {
       test->Stop();
     }
