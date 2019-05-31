@@ -35,11 +35,13 @@ MyTrainer = build_trainer(
     default_policy=MyTFPolicy,
 )
 
-ray.init()
-tune.run(
-    MyTrainer,
-    stop={"training_iteration": args.iters},
-    config={
-        "env": "CartPole-v0",
-        "num_workers": 2,
-    })
+if __name__ == "__main__":
+    ray.init()
+    args = parser.parse_args()
+    tune.run(
+        MyTrainer,
+        stop={"training_iteration": args.iters},
+        config={
+            "env": "CartPole-v0",
+            "num_workers": 2,
+        })
