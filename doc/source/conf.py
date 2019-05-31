@@ -53,6 +53,9 @@ MOCK_MODULES = [
     "tensorflow.python",
     "tensorflow.python.client",
     "tensorflow.python.util",
+    "torch",
+    "torch.distributed",
+    "torch.utils.data",
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
