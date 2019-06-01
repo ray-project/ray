@@ -103,6 +103,8 @@ Concepts and Building Custom Algorithms
 
    -  `Building Policies in PyTorch <rllib-concepts.html#building-policies-in-pytorch>`__
 
+   -  `Extending Existing Policies <rllib-concepts.html#extending-existing-policies>`__
+
 *  `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
 *  `Policy Optimization <rllib-concepts.html#policy-optimization>`__
 *  `Trainers <rllib-concepts.html#trainers>`__
