@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 import sys
 import torch
+import warnings
 
 import ray
 
@@ -70,14 +71,20 @@ class PyTorchTrainer(object):
             num_gpus=resources_per_replica.num_gpus,
             resources=resources_per_replica.resources)(PyTorchRunner)
 
-        def calc_batch_size(i):
-            if i < batch_size % num_replicas:
-                return batch_size // num_replicas + 1
-            return batch_size // num_replicas
+        batch_size_per_replica = batch_size // num_replicas
+        if batch_size % num_replicas > 0:
+            new_batch_size = batch_size_per_replica * num_replicas
+            warnings.warn(
+                ("Changing batch size from {old_batch_size} to "
+                 "{new_batch_size} to evenly distribute batches across "
+                 "{num_replicas} replicas.").format(
+                     old_batch_size=batch_size,
+                     new_batch_size=new_batch_size,
+                     num_replicas=num_replicas))
 
         self.workers = [
             Runner.remote(model_creator, data_creator, optimizer_creator,
-                          self.config, calc_batch_size(i), backend)
+                          self.config, batch_size_per_replica, backend)
             for i in range(num_replicas)
         ]
 

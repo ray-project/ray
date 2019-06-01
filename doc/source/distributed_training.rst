@@ -2,7 +2,7 @@ Distributed Training (Experimental)
 ===================================
 
 
-Ray includes abstractions for distirbuted model training that integrate with
+Ray includes abstractions for distributed model training that integrate with
 deep learning frameworks, such as PyTorch.
 
 Ray Train is built on top of the Ray task and actor abstractions to provide
