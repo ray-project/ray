@@ -351,7 +351,7 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     // The requested index did not match the current length of the log. Return
     // an error message as a string.
     static const char *reply = "ERR entry exists";
-    RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
+    RedisModule_ReplyWithSimpleString(ctx, reply);
     return REDISMODULE_ERR;
   }
 }
@@ -648,7 +648,7 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
     const char *redis_string_str = RedisModule_StringPtrLen(id_data, &redis_string_size);
     auto id_binary = std::string(redis_string_str, redis_string_size);
     ostream << "Undesired type for RAY.TableDelete: " << key_type
-            << " id:" << ray::UniqueID::from_binary(id_binary);
+            << " id:" << ray::UniqueID::FromBinary(id_binary);
     RAY_LOG(ERROR) << ostream.str();
     return Status::RedisError(ostream.str());
   }

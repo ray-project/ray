@@ -80,7 +80,7 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
 cdef VectorToObjectIDs(c_vector[CObjectID] object_ids):
     result = []
     for i in range(object_ids.size()):
-        result.append(ObjectID(object_ids[i].binary()))
+        result.append(ObjectID(object_ids[i].Binary()))
     return result
 
 
@@ -88,11 +88,11 @@ def compute_put_id(TaskID task_id, int64_t put_index):
     if put_index < 1 or put_index > kMaxTaskPuts:
         raise ValueError("The range of 'put_index' should be [1, %d]"
                          % kMaxTaskPuts)
-    return ObjectID(CObjectID.for_put(task_id.native(), put_index).binary())
+    return ObjectID(CObjectID.ForPut(task_id.native(), put_index).Binary())
 
 
 def compute_task_id(ObjectID object_id):
-    return TaskID(object_id.native().task_id().binary())
+    return TaskID(object_id.native().TaskId().Binary())
 
 
 cdef c_bool is_simple_value(value, int *num_elements_contained):
@@ -362,7 +362,7 @@ cdef class RayletClient:
         with nogil:
             check_status(self.client.get().PrepareActorCheckpoint(
                 c_actor_id, checkpoint_id))
-        return ActorCheckpointID(checkpoint_id.binary())
+        return ActorCheckpointID(checkpoint_id.Binary())
 
     def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
                                              ActorCheckpointID checkpoint_id):
@@ -370,7 +370,7 @@ cdef class RayletClient:
             actor_id.native(), checkpoint_id.native()))
 
     def set_resource(self, basestring resource_name, double capacity, ClientID client_id):
-        self.client.get().SetResource(resource_name.encode("ascii"), capacity, CClientID.from_binary(client_id.binary()))
+        self.client.get().SetResource(resource_name.encode("ascii"), capacity, CClientID.FromBinary(client_id.binary()))
 
     @property
     def language(self):
@@ -378,11 +378,11 @@ cdef class RayletClient:
 
     @property
     def client_id(self):
-        return ClientID(self.client.get().GetClientID().binary())
+        return ClientID(self.client.get().GetClientID().Binary())
 
     @property
     def driver_id(self):
-        return DriverID(self.client.get().GetDriverID().binary())
+        return DriverID(self.client.get().GetDriverID().Binary())
 
     @property
     def is_worker(self):

@@ -124,15 +124,15 @@ cdef class Task:
 
     def driver_id(self):
         """Return the driver ID for this task."""
-        return DriverID(self.task_spec.get().DriverId().binary())
+        return DriverID(self.task_spec.get().DriverId().Binary())
 
     def task_id(self):
         """Return the task ID for this task."""
-        return TaskID(self.task_spec.get().TaskId().binary())
+        return TaskID(self.task_spec.get().TaskId().Binary())
 
     def parent_task_id(self):
         """Return the task ID of the parent task."""
-        return TaskID(self.task_spec.get().ParentTaskId().binary())
+        return TaskID(self.task_spec.get().ParentTaskId().Binary())
 
     def parent_counter(self):
         """Return the parent counter of this task."""
@@ -162,7 +162,7 @@ cdef class Task:
                 if count > 0:
                     assert count == 1
                     arg_list.append(
-                        ObjectID(task_spec.ArgId(i, 0).binary()))
+                        ObjectID(task_spec.ArgId(i, 0).Binary()))
                 else:
                     serialized_str = (
                         task_spec.ArgVal(i)[:task_spec.ArgValLength(i)])
@@ -178,7 +178,7 @@ cdef class Task:
         cdef CTaskSpecification *task_spec = self.task_spec.get()
         return_id_list = []
         for i in range(task_spec.NumReturns()):
-            return_id_list.append(ObjectID(task_spec.ReturnId(i).binary()))
+            return_id_list.append(ObjectID(task_spec.ReturnId(i).Binary()))
         return return_id_list
 
     def required_resources(self):
@@ -207,16 +207,16 @@ cdef class Task:
 
     def actor_creation_id(self):
         """Return the actor creation ID for the task."""
-        return ActorID(self.task_spec.get().ActorCreationId().binary())
+        return ActorID(self.task_spec.get().ActorCreationId().Binary())
 
     def actor_creation_dummy_object_id(self):
         """Return the actor creation dummy object ID for the task."""
         return ObjectID(
-            self.task_spec.get().ActorCreationDummyObjectId().binary())
+            self.task_spec.get().ActorCreationDummyObjectId().Binary())
 
     def actor_id(self):
         """Return the actor ID for this task."""
-        return ActorID(self.task_spec.get().ActorId().binary())
+        return ActorID(self.task_spec.get().ActorId().Binary())
 
     def actor_counter(self):
         """Return the actor counter for this task."""
