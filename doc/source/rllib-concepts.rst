@@ -413,7 +413,7 @@ Now, building on the TF examples above, let's look at how the `A3C torch policy 
 
 .. code-block:: python
 
-    def model_value_predictions(policy, model_out):
+    def model_value_predictions(policy, input_dict, state_batches, model_out):
         return {SampleBatch.VF_PREDS: model_out[2].cpu().numpy()}
 
 ``postprocess_fn`` and ``mixins``: Similar to the PPO example, we need access to the value function during postprocessing (i.e., ``add_advantages`` below calls ``policy._value()``. The value function is exposed through a mixin class that defines the method:
