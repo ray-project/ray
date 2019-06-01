@@ -321,10 +321,12 @@ class PopulationBasedTraining(FIFOScheduler):
         if len(trials) <= 1:
             return [], []
         else:
-            return (
-                trials[:int(math.ceil(len(trials) * self._quantile_fraction))],
-                trials[int(math.floor(-len(trials) *
-                                      self._quantile_fraction)):])
+            num_trials_in_quantile = math.ceil(
+                len(trials) * self._quantile_fraction)
+            if num_trials_in_quantile > len(trials) / 2:
+                num_trials_in_quantile = math.floor(len(trials) / 2)
+            return (trials[:num_trials_in_quantile],
+                    trials[-num_trials_in_quantile:])
 
     def choose_trial_to_run(self, trial_runner):
         """Ensures all trials get fair share of time (as defined by time_attr).
