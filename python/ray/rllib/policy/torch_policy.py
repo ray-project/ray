@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import os
 
-import numpy as np
 from threading import Lock
 
 try:
@@ -69,15 +69,21 @@ class TorchPolicy(Policy):
                         **kwargs):
         with self.lock:
             with torch.no_grad():
-                ob = torch.from_numpy(np.array(obs_batch)) \
-                    .float().to(self.device)
-                model_out = self._model({"obs": ob}, state_batches)
+                input_dict = self._lazy_tensor_dict({
+                    "obs": obs_batch,
+                })
+                if prev_action_batch:
+                    input_dict["prev_actions"] = prev_action_batch
+                if prev_reward_batch:
+                    input_dict["prev_rewards"] = prev_reward_batch
+                model_out = self._model(input_dict, state_batches)
                 logits, _, vf, state = model_out
                 action_dist = self._action_dist_cls(logits)
                 actions = action_dist.sample()
                 return (actions.cpu().numpy(),
                         [h.cpu().numpy() for h in state],
-                        self.extra_action_out(model_out))
+                        self.extra_action_out(input_dict, state_batches,
+                                              model_out))
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
@@ -146,10 +152,12 @@ class TorchPolicy(Policy):
            return processing info."""
         return {}
 
-    def extra_action_out(self, model_out):
+    def extra_action_out(self, input_dict, state_batches, model_out):
         """Returns dict of extra info to include in experience batch.
 
         Arguments:
+            input_dict (dict): Dict of model input tensors.
+            state_batches (list): List of state tensors.
             model_out (list): Outputs of the policy model module."""
         return {}
 
@@ -168,6 +176,12 @@ class TorchPolicy(Policy):
 
     def _lazy_tensor_dict(self, postprocessed_batch):
         batch_tensors = UsageTrackingDict(postprocessed_batch)
-        batch_tensors.set_get_interceptor(
-            lambda arr: torch.from_numpy(arr).to(self.device))
+
+        def convert(arr):
+            tensor = torch.from_numpy(np.asarray(arr))
+            if tensor.dtype == torch.double:
+                tensor = tensor.float()
+            return tensor.to(self.device)
+
+        batch_tensors.set_get_interceptor(convert)
         return batch_tensors
