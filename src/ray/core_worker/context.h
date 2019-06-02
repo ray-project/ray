@@ -16,9 +16,9 @@ class WorkerContext {
 
   const ClientID &GetWorkerID() const;
 
-  const DriverID &GetCurrentDriverID();
+  const DriverID &GetCurrentDriverID() const;
 
-  const TaskID &GetCurrentTaskID();
+  const TaskID &GetCurrentTaskID() const;
 
   void SetCurrentTask(const raylet::TaskSpecification &spec);
 

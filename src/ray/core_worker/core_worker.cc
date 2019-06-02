@@ -21,7 +21,7 @@ Status CoreWorker::Connect() {
 
   // connect to raylet.
   ::Language lang = ::Language::PYTHON;
-  if (language_ == Language::JAVA) {
+  if (language_ == ray::Language::JAVA) {
     lang = ::Language::JAVA;
   }
 
@@ -30,7 +30,7 @@ Status CoreWorker::Connect() {
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-      raylet_socket_, worker_context_.GetWorkerID(), (worker_type_ == WorkerType::WORKER),
+      raylet_socket_, worker_context_.GetWorkerID(), (worker_type_ == ray::WorkerType::WORKER),
       worker_context_.GetCurrentDriverID(), lang));
   return Status::OK();
 }

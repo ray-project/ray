@@ -12,14 +12,18 @@ struct WorkerThreadContext {
 
   int GetNextPutIndex() { return ++put_index; }
 
-  const TaskID &GetCurrentTaskID() { return current_task_id; }
+  const TaskID &GetCurrentTaskID() const { return current_task_id; }
 
-  void SetCurrentTask(const raylet::TaskSpecification &spec) {
-    current_task_id = spec.TaskId();
+  void SetCurrentTask(const TaskID &task_id) {
+    current_task_id = task_id;
     task_index = 0;
     put_index = 0;
   }
 
+  void SetCurrentTask(const raylet::TaskSpecification &spec) {
+    SetCurrentTask(spec.TaskId());
+  }
+ private:
   /// The task ID for current task.
   TaskID current_task_id;
 
@@ -42,8 +46,8 @@ WorkerContext::WorkerContext(WorkerType worker_type, const DriverID &driver_id)
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to randmom ID via GetThreadContext).
-  GetThreadContext().current_task_id =
-      (worker_type == WorkerType::DRIVER) ? TaskID::FromRandom() : TaskID::Nil();
+  GetThreadContext().SetCurrentTask((worker_type == WorkerType::DRIVER) ?
+      TaskID::FromRandom() : TaskID::Nil());
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type; }
@@ -54,9 +58,9 @@ int WorkerContext::GetNextTaskIndex() { return GetThreadContext().GetNextTaskInd
 
 int WorkerContext::GetNextPutIndex() { return GetThreadContext().GetNextPutIndex(); }
 
-const DriverID &WorkerContext::GetCurrentDriverID() { return current_driver_id; }
+const DriverID &WorkerContext::GetCurrentDriverID() const { return current_driver_id; }
 
-const TaskID &WorkerContext::GetCurrentTaskID() {
+const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
