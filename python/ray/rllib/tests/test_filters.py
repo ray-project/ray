@@ -8,7 +8,7 @@ import numpy as np
 import ray
 from ray.rllib.utils.filter import RunningStat, MeanStdFilter
 from ray.rllib.utils import FilterManager
-from ray.rllib.tests.mock_evaluator import _MockEvaluator
+from ray.rllib.tests.mock_worker import _MockWorker
 
 
 class RunningStatTest(unittest.TestCase):
@@ -89,8 +89,8 @@ class FilterManagerTest(unittest.TestCase):
         filt1.clear_buffer()
         self.assertEqual(filt1.buffer.n, 0)
 
-        RemoteEvaluator = ray.remote(_MockEvaluator)
-        remote_e = RemoteEvaluator.remote(sample_count=10)
+        RemoteWorker = ray.remote(_MockWorker)
+        remote_e = RemoteWorker.remote(sample_count=10)
         remote_e.sample.remote()
 
         FilterManager.synchronize({

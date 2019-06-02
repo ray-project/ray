@@ -171,9 +171,9 @@ class DDPGTrainer(DQNTrainer):
         if pure_expl_steps:
             # tell workers whether they should do pure exploration
             only_explore = self.global_timestep < pure_expl_steps
-            self.local_evaluator.foreach_trainable_policy(
+            self.workers.local_worker().foreach_trainable_policy(
                 lambda p, _: p.set_pure_exploration_phase(only_explore))
-            for e in self.remote_evaluators:
+            for e in self.workers.remote_workers():
                 e.foreach_trainable_policy.remote(
                     lambda p, _: p.set_pure_exploration_phase(only_explore))
         return super(DDPGTrainer, self)._train()

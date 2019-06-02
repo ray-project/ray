@@ -48,13 +48,10 @@ class MARWILTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
-        self.local_evaluator = self.make_local_evaluator(
-            env_creator, self._policy)
-        self.remote_evaluators = self.make_remote_evaluators(
-            env_creator, self._policy, config["num_workers"])
+        self.workers = self._make_workers(env_creator, self._policy, config,
+                                          config["num_workers"])
         self.optimizer = SyncBatchReplayOptimizer(
-            self.local_evaluator,
-            self.remote_evaluators,
+            self.workers,
             learning_starts=config["learning_starts"],
             buffer_size=config["replay_buffer_size"],
             train_batch_size=config["train_batch_size"],

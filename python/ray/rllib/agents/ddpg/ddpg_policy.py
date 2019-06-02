@@ -515,7 +515,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
             stochastic_actions = tf.cond(
                 # need to condition on noise_scale > 0 because zeroing
-                # noise_scale is how evaluator signals no noise should be used
+                # noise_scale is how a worker signals no noise should be used
                 # (this is ugly and should be fixed by adding an "eval_mode"
                 # config flag or something)
                 tf.logical_and(enable_pure_exploration, noise_scale > 0),

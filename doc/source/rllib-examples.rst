@@ -22,7 +22,7 @@ Training Workflows
    Example of how to adjust the configuration of an environment over time.
 - `Custom metrics <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__:
    Example of how to output custom training metrics to TensorBoard.
-- `Using policy evaluators directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/policy_evaluator_custom_workflow.py>`__:
+- `Using rollout workers directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rollout_worker_custom_workflow.py>`__:
    Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
 
 Custom Envs and Models
