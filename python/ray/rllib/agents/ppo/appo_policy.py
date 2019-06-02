@@ -365,12 +365,15 @@ class ValueNetworkMixin(object):
                                           tf.get_variable_scope().name)
 
     def value(self, ob, *args):
-        feed_dict = {self._obs_input: [ob], self.model.seq_lens: [1]}
+        feed_dict = {
+            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
+            self.model.seq_lens: [1]
+        }
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):
             feed_dict[k] = v
-        vf = self._sess.run(self.value_function, feed_dict)
+        vf = self.get_session().run(self.value_function, feed_dict)
         return vf[0]
 
 

@@ -108,7 +108,7 @@ ray::Status ClientTable::Remove(const ClientID &client_id, DoneCallback done_cal
 }
 
 ClientID GcsClient::Register(const std::string &ip, uint16_t port) {
-  ClientID client_id = ClientID().from_random();
+  ClientID client_id = ClientID::FromRandom();
   // TODO: handle client registration failure.
   ray::Status status = client_table().Add(std::move(client_id), ip, port, []() {});
   return client_id;

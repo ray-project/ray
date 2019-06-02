@@ -100,6 +100,8 @@ COMMON_CONFIG = {
     "clip_actions": True,
     # Whether to use rllib or deepmind preprocessors by default
     "preprocessor_pref": "deepmind",
+    # The default learning rate
+    "lr": 0.0001,
 
     # === Evaluation ===
     # Evaluate with every `evaluation_interval` training iterations.

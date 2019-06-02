@@ -30,3 +30,8 @@ class UsageTrackingDict(dict):
                 self.intercepted_values[key] = self.get_interceptor(value)
             value = self.intercepted_values[key]
         return value
+
+    def __setitem__(self, key, value):
+        dict.__setitem__(self, key, value)
+        if key in self.intercepted_values:
+            self.intercepted_values[key] = value
