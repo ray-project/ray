@@ -69,6 +69,29 @@ class ActionDistribution(object):
         """Returns the log probability of the sampled action."""
         return tf.exp(self.logp(self.sample_op))
 
+    @DeveloperAPI
+    @staticmethod
+    def parameter_shape_for_action_space(action_space, options_dict=None):
+        """Must be implemented for custom action distributions.
+
+        Returns the required shape of an input parameter tensor for a
+        particular action space and an optional dict of distribution-specific
+        options (e.g., whether a Gaussian should expect a variable for its
+        log-variance parameter).
+
+        Args:
+            action_space (gym.Space): The action space this distribution will
+                be used for, whose shape attributes will be used to determine
+                the required shape of the input parameter tensor.
+            options_dict (dict): Optional args used for this method. This will
+                be the "custom_options" dict in the model options dict.
+
+        Returns:
+            dist_dim (np.ndarray) int array of the size of the required input
+                vector.
+        """
+        raise NotImplementedError
+
 
 class Categorical(ActionDistribution):
     """Categorical distribution for discrete action spaces."""

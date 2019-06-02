@@ -8,7 +8,7 @@ import numpy as np
 from functools import partial
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
-    _global_registry
+    RLLIB_ACTION_DIST, _global_registry
 
 from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
@@ -80,6 +80,8 @@ MODEL_DEFAULTS = {
     "custom_preprocessor": None,
     # Name of a custom model to use
     "custom_model": None,
+    # Name of a custom action distribution to use
+    "custom_action_dist": None,
     # Extra options to pass to the custom classes
     "custom_options": {},
 }
@@ -119,6 +121,15 @@ class ModelCatalog(object):
         """
 
         config = config or MODEL_DEFAULTS
+        if config.get("custom_action_dist"):
+            action_dist_name = config["custom_action_dist"]
+            logger.debug("Using custom action distribution {}".format(
+                action_dist_name))
+            dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
+            n = dist.parameter_shape_for_action_space(action_space,
+                                                      config["custom_options"])
+            return dist, n
+
         if isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
                 raise UnsupportedSpaceException(
@@ -476,3 +487,18 @@ class ModelCatalog(object):
             model_class (type): Python class of the model.
         """
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
+
+    @staticmethod
+    @PublicAPI
+    def register_custom_action_dist(action_dist_name, action_dist_class):
+        """Register a custom action distribution class by name.
+
+        The model can be later used by specifying
+        {"custom_action_dist": action_dist_name} in the model config.
+
+        Args:
+            model_name (str): Name to register the model under.
+            model_class (type): Python class of the model.
+        """
+        _global_registry.register(RLLIB_ACTION_DIST, action_dist_name,
+                                  action_dist_class)
