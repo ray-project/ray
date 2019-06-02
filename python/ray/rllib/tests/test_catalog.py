@@ -5,8 +5,9 @@ from gym.spaces import Box, Discrete, Tuple
 
 import ray
 
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.model import Model
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
                                             Preprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
@@ -29,6 +30,17 @@ class CustomPreprocessor2(Preprocessor):
 class CustomModel(Model):
     def _build_layers(self, *args):
         return tf.constant([[0] * 5]), None
+
+
+class CustomActionDistribution(ActionDistribution):
+    def parameter_shape_for_action_space(action_space, options_dict=None):
+        if options_dict is not None and options_dict.get("output_dim"):
+            return int(options_dict.get("output_dim"))
+        return action_space.shape
+
+    def _build_sample_op(self):
+        return tf.random_uniform(tf.shape(self.inputs), minval=-self.inputs,
+                                 maxval=self.inputs)
 
 
 class ModelCatalogTest(unittest.TestCase):
@@ -93,6 +105,35 @@ class ModelCatalogTest(unittest.TestCase):
         }, Box(0, 1, shape=(3, ), dtype=np.float32), Discrete(5), 5,
                                     {"custom_model": "foo"})
         self.assertEqual(str(type(p1)), str(CustomModel))
+
+    def testCustomActionDistribution(self):
+        ray.init()
+        # registration
+        ModelCatalog.register_custom_action_dist("test",
+                                                 CustomActionDistribution)
+        action_space = Box(0, 1, shape=(5,), dtype=np.float32)
+
+        # test retrieving it
+        options_dict = MODEL_DEFAULTS.copy()
+        options_dict["custom_action_dist"] = "test"
+        dist_cls, param_shape = ModelCatalog.get_action_dist(action_space,
+                                                             options_dict)
+        self.assertEqual(str(dist_cls), str(CustomActionDistribution))
+        self.assertEqual(param_shape, action_space.shape)
+
+        # test passing the options to it
+        options_dict["custom_options"].update({"output_dim": 3})
+        dist_cls, param_shape = ModelCatalog.get_action_dist(action_space,
+                                                             options_dict)
+        self.assertEqual(param_shape, 3)
+
+        # test the class works as a distribution
+        dist_input = tf.ones(param_shape, dtype=tf.float32)
+        dist = dist_cls(dist_input)
+        self.assertEqual(dist.sample().shape, dist_input.shape)
+        self.assertIsInstance(dist.sample(), tf.Tensor)
+        with self.assertRaises(NotImplementedError):
+            dist.entropy()
 
 
 if __name__ == "__main__":
