@@ -31,25 +31,4 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=60G --memory=60G $DOCKER_SHA \
 ######################## SGD TESTS #################################
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
-        --batch-size=1 --strategy=simple
-
-$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
-        --batch-size=1 --strategy=ps
-
-$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/test_save_and_restore.py --num-iters=2 \
-        --batch-size=1 --strategy=simple
-
-$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/test_save_and_restore.py --num-iters=2 \
-        --batch-size=1 --strategy=ps
-
-$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
-        --num-workers=1 --devices-per-worker=1 --strategy=ps
-
-$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
-        --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
+    python -m pytest /ray/python/ray/experimental/sgd/tests
