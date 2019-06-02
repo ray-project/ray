@@ -2,12 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils.annotations import override
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -38,43 +36,28 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class A3CTrainer(Trainer):
-    """A3C implementations in TensorFlow and PyTorch."""
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.a3c.a3c_torch_policy import \
+            A3CTorchPolicy
+        return A3CTorchPolicy
+    else:
+        return A3CTFPolicy
 
-    _name = "A3C"
-    _default_config = DEFAULT_CONFIG
-    _policy = A3CTFPolicy
 
-    @override(Trainer)
-    def _init(self, config, env_creator):
-        if config["use_pytorch"]:
-            from ray.rllib.agents.a3c.a3c_torch_policy import \
-                A3CTorchPolicy
-            policy_cls = A3CTorchPolicy
-        else:
-            policy_cls = self._policy
+def validate_config(config):
+    if config["entropy_coeff"] < 0:
+        raise DeprecationWarning("entropy_coeff must be >= 0")
 
-        if config["entropy_coeff"] < 0:
-            raise DeprecationWarning("entropy_coeff must be >= 0")
 
-        self.local_evaluator = self.make_local_evaluator(
-            env_creator, policy_cls)
-        self.remote_evaluators = self.make_remote_evaluators(
-            env_creator, policy_cls, config["num_workers"])
-        self.optimizer = self._make_optimizer()
+def make_async_optimizer(workers, config):
+    return AsyncGradientsOptimizer(workers, **config["optimizer"])
 
-    @override(Trainer)
-    def _train(self):
-        prev_steps = self.optimizer.num_steps_sampled
-        start = time.time()
-        while time.time() - start < self.config["min_iter_time_s"]:
-            self.optimizer.step()
-        result = self.collect_metrics()
-        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
-                      prev_steps)
-        return result
 
-    def _make_optimizer(self):
-        return AsyncGradientsOptimizer(self.local_evaluator,
-                                       self.remote_evaluators,
-                                       **self.config["optimizer"])
+A3CTrainer = build_trainer(
+    name="A3C",
+    default_config=DEFAULT_CONFIG,
+    default_policy=A3CTFPolicy,
+    get_policy_class=get_policy_class,
+    validate_config=validate_config,
+    make_policy_optimizer=make_async_optimizer)

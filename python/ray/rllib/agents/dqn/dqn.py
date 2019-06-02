@@ -196,26 +196,26 @@ class DQNTrainer(Trainer):
             config["callbacks"]["on_episode_end"] = tune.function(
                 on_episode_end)
 
-        self.local_evaluator = self.make_local_evaluator(
-            env_creator, self._policy)
-
-        def create_remote_evaluators():
-            return self.make_remote_evaluators(env_creator, self._policy,
-                                               config["num_workers"])
-
         if config["optimizer_class"] != "AsyncReplayOptimizer":
-            self.remote_evaluators = create_remote_evaluators()
+            self.workers = self._make_workers(
+                env_creator,
+                self._policy,
+                config,
+                num_workers=self.config["num_workers"])
+            workers_needed = 0
         else:
             # Hack to workaround https://github.com/ray-project/ray/issues/2541
-            self.remote_evaluators = None
+            self.workers = self._make_workers(
+                env_creator, self._policy, config, num_workers=0)
+            workers_needed = self.config["num_workers"]
 
         self.optimizer = getattr(optimizers, config["optimizer_class"])(
-            self.local_evaluator, self.remote_evaluators,
-            **config["optimizer"])
-        # Create the remote evaluators *after* the replay actors
-        if self.remote_evaluators is None:
-            self.remote_evaluators = create_remote_evaluators()
-            self.optimizer._set_evaluators(self.remote_evaluators)
+            self.workers, **config["optimizer"])
+
+        # Create the remote workers *after* the replay actors
+        if workers_needed > 0:
+            self.workers.add_workers(workers_needed)
+            self.optimizer._set_workers(self.workers.remote_workers())
 
         self.last_target_update_ts = 0
         self.num_target_updates = 0
@@ -226,9 +226,9 @@ class DQNTrainer(Trainer):
 
         # Update worker explorations
         exp_vals = [self.exploration0.value(self.global_timestep)]
-        self.local_evaluator.foreach_trainable_policy(
+        self.workers.local_worker().foreach_trainable_policy(
             lambda p, _: p.set_epsilon(exp_vals[0]))
-        for i, e in enumerate(self.remote_evaluators):
+        for i, e in enumerate(self.workers.remote_workers()):
             exp_val = self.explorations[i].value(self.global_timestep)
             e.foreach_trainable_policy.remote(
                 lambda p, _: p.set_epsilon(exp_val))
@@ -245,8 +245,8 @@ class DQNTrainer(Trainer):
         if self.config["per_worker_exploration"]:
             # Only collect metrics from the third of workers with lowest eps
             result = self.collect_metrics(
-                selected_evaluators=self.remote_evaluators[
-                    -len(self.remote_evaluators) // 3:])
+                selected_workers=self.workers.remote_workers()[
+                    -len(self.workers.remote_workers()) // 3:])
         else:
             result = self.collect_metrics()
 
@@ -263,7 +263,7 @@ class DQNTrainer(Trainer):
     def update_target_if_needed(self):
         if self.global_timestep - self.last_target_update_ts > \
                 self.config["target_network_update_freq"]:
-            self.local_evaluator.foreach_trainable_policy(
+            self.workers.local_worker().foreach_trainable_policy(
                 lambda p, _: p.update_target())
             self.last_target_update_ts = self.global_timestep
             self.num_target_updates += 1
@@ -275,11 +275,13 @@ class DQNTrainer(Trainer):
     def _evaluate(self):
         logger.info("Evaluating current policy for {} episodes".format(
             self.config["evaluation_num_episodes"]))
-        self.evaluation_ev.restore(self.local_evaluator.save())
-        self.evaluation_ev.foreach_policy(lambda p, _: p.set_epsilon(0))
+        self.evaluation_workers.local_worker().restore(
+            self.workers.local_worker().save())
+        self.evaluation_workers.local_worker().foreach_policy(
+            lambda p, _: p.set_epsilon(0))
         for _ in range(self.config["evaluation_num_episodes"]):
-            self.evaluation_ev.sample()
-        metrics = collect_metrics(self.evaluation_ev)
+            self.evaluation_workers.local_worker().sample()
+        metrics = collect_metrics(self.evaluation_workers.local_worker())
         return {"evaluation": metrics}
 
     def _make_exploration_schedule(self, worker_index):

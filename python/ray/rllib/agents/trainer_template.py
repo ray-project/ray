@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -25,8 +27,7 @@ def build_trainer(name,
         default_config (dict): the default config dict of the algorithm,
             otherwises uses the Trainer default config
         make_policy_optimizer (func): optional function that returns a
-            PolicyOptimizer instance given
-            (local_evaluator, remote_evaluators, config)
+            PolicyOptimizer instance given (WorkerSet, config)
         validate_config (func): optional callback that checks a given config
             for correctness. It may mutate the config as needed.
         get_policy_class (func): optional callback that takes a config and
@@ -44,8 +45,7 @@ def build_trainer(name,
         a Trainer instance that uses the specified args.
     """
 
-    if not name.endswith("Trainer"):
-        raise ValueError("Algorithm name should have *Trainer suffix", name)
+    original_kwargs = locals().copy()
 
     class trainer_cls(Trainer):
         _name = name
@@ -59,19 +59,15 @@ def build_trainer(name,
                 policy = default_policy
             else:
                 policy = get_policy_class(config)
-            self.local_evaluator = self.make_local_evaluator(
-                env_creator, policy)
-            self.remote_evaluators = self.make_remote_evaluators(
-                env_creator, policy, config["num_workers"])
+            self.workers = self._make_workers(env_creator, policy, config,
+                                              self.config["num_workers"])
             if make_policy_optimizer:
-                self.optimizer = make_policy_optimizer(
-                    self.local_evaluator, self.remote_evaluators, config)
+                self.optimizer = make_policy_optimizer(self.workers, config)
             else:
                 optimizer_config = dict(
                     config["optimizer"],
                     **{"train_batch_size": config["train_batch_size"]})
-                self.optimizer = SyncSamplesOptimizer(self.local_evaluator,
-                                                      self.remote_evaluators,
+                self.optimizer = SyncSamplesOptimizer(self.workers,
                                                       **optimizer_config)
 
         @override(Trainer)
@@ -79,9 +75,15 @@ def build_trainer(name,
             if before_train_step:
                 before_train_step(self)
             prev_steps = self.optimizer.num_steps_sampled
-            fetches = self.optimizer.step()
-            if after_optimizer_step:
-                after_optimizer_step(self, fetches)
+
+            start = time.time()
+            while True:
+                fetches = self.optimizer.step()
+                if after_optimizer_step:
+                    after_optimizer_step(self, fetches)
+                if time.time() - start > self.config["min_iter_time_s"]:
+                    break
+
             res = self.collect_metrics()
             res.update(
                 timesteps_this_iter=self.optimizer.num_steps_sampled -
@@ -91,6 +93,11 @@ def build_trainer(name,
                 after_train_result(self, res)
             return res
 
+    @staticmethod
+    def with_updates(**overrides):
+        return build_trainer(**dict(original_kwargs, **overrides))
+
+    trainer_cls.with_updates = with_updates
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name
     return trainer_cls
