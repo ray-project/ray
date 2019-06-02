@@ -40,13 +40,9 @@ def my_train_fn(config, reporter):
 
 if __name__ == "__main__":
     ray.init()
-    tune.run(
-        my_train_fn,
-        resources_per_trial={
-            "cpu": 1,
-        },
-        config={
-            "lr": 0.01,
-            "num_workers": 0,
-        },
-    )
+    config = {
+        "lr": 0.01,
+        "num_workers": 0,
+    }
+    resources = PPOTrainer.default_resource_request(config).to_json()
+    tune.run(my_train_fn, resources_per_trial=resources, config=config)
