@@ -37,7 +37,8 @@ ray.init(redis_address=cluster.redis_address)
 
 pbt = PopulationBasedTraining(
     time_attr="training_iteration",
-    reward_attr="episode_reward_mean",
+    metric="episode_reward_mean",
+    mode="max",
     perturbation_interval=10,
     hyperparam_mutations={
         "lr": [0.1, 0.01, 0.001, 0.0001],

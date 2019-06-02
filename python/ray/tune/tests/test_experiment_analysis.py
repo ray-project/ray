@@ -36,7 +36,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def run_test_exp(self):
         ahb = AsyncHyperBandScheduler(
             time_attr="training_iteration",
-            reward_attr=self.metric,
+            metric=self.metric,
+            mode="max",
             grace_period=5,
             max_t=100)
 

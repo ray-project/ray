@@ -112,5 +112,5 @@ if __name__ == "__main__":
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
     algo = AxSearch(client, max_concurrent=4)
-    scheduler = AsyncHyperBandScheduler(reward_attr="hartmann6")
+    scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="max")
     run(easy_objective, name="ax", search_alg=algo, **config)
