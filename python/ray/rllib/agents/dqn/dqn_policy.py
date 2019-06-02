@@ -7,14 +7,14 @@ import numpy as np
 from scipy.stats import entropy
 
 import ray
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog, Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy, \
     LearningRateSchedule
+from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -100,46 +100,6 @@ class QLoss(object):
                 "max_q": tf.reduce_max(q_t_selected),
                 "mean_td_error": tf.reduce_mean(self.td_error),
             }
-
-
-class DQNPostprocessing(object):
-    """Implements n-step learning and param noise adjustments."""
-
-    @override(TFPolicy)
-    def extra_compute_action_fetches(self):
-        return dict(
-            TFPolicy.extra_compute_action_fetches(self), **{
-                "q_values": self.q_values,
-            })
-
-    @override(Policy)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        if self.config["parameter_noise"]:
-            # adjust the sigma of parameter space noise
-            states = [list(x) for x in sample_batch.columns(["obs"])][0]
-
-            noisy_action_distribution = self.sess.run(
-                self.action_probs, feed_dict={self.cur_observations: states})
-            self.sess.run(self.remove_noise_op)
-            clean_action_distribution = self.sess.run(
-                self.action_probs, feed_dict={self.cur_observations: states})
-            distance_in_action_space = np.mean(
-                entropy(clean_action_distribution.T,
-                        noisy_action_distribution.T))
-            self.pi_distance = distance_in_action_space
-            if (distance_in_action_space <
-                    -np.log(1 - self.cur_epsilon +
-                            self.cur_epsilon / self.num_actions)):
-                self.parameter_noise_sigma_val *= 1.01
-            else:
-                self.parameter_noise_sigma_val /= 1.01
-            self.parameter_noise_sigma.load(
-                self.parameter_noise_sigma_val, session=self.sess)
-
-        return _postprocess_dqn(self, sample_batch)
 
 
 class QNetwork(object):
@@ -345,170 +305,18 @@ class QValuePolicy(object):
         self.action_prob = None
 
 
-class DQNTFPolicy(LearningRateSchedule, DQNPostprocessing, TFPolicy):
-    def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
-        if not isinstance(action_space, Discrete):
-            raise UnsupportedSpaceException(
-                "Action space {} is not supported for DQN.".format(
-                    action_space))
-
-        self.config = config
+class ExplorationStateMixin(object):
+    def __init__(self, obs_space, action_space, config):
         self.cur_epsilon = 1.0
-        self.num_actions = action_space.n
-
-        # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
         self.eps = tf.placeholder(tf.float32, (), name="eps")
-        self.cur_observations = tf.placeholder(
-            tf.float32, shape=(None, ) + observation_space.shape)
 
-        # Action Q network
-        with tf.variable_scope(Q_SCOPE) as scope:
-            q_values, q_logits, q_dist, _ = self._build_q_network(
-                self.cur_observations, observation_space, action_space)
-            self.q_values = q_values
-            self.q_func_vars = _scope_vars(scope.name)
-
-        # Noise vars for Q network except for layer normalization vars
+    def add_parameter_noise(self):
         if self.config["parameter_noise"]:
-            self._build_parameter_noise([
-                var for var in self.q_func_vars if "LayerNorm" not in var.name
-            ])
-            self.action_probs = tf.nn.softmax(self.q_values)
+            self.sess.run(self.add_noise_op)
 
-        # Action outputs
-        self.output_actions, self.action_prob = self._build_q_value_policy(
-            q_values)
-
-        # Replay inputs
-        self.obs_t = tf.placeholder(
-            tf.float32, shape=(None, ) + observation_space.shape)
-        self.act_t = tf.placeholder(tf.int32, [None], name="action")
-        self.rew_t = tf.placeholder(tf.float32, [None], name="reward")
-        self.obs_tp1 = tf.placeholder(
-            tf.float32, shape=(None, ) + observation_space.shape)
-        self.done_mask = tf.placeholder(tf.float32, [None], name="done")
-        self.importance_weights = tf.placeholder(
-            tf.float32, [None], name="weight")
-
-        # q network evaluation
-        with tf.variable_scope(Q_SCOPE, reuse=True):
-            prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-            q_t, q_logits_t, q_dist_t, model = self._build_q_network(
-                self.obs_t, observation_space, action_space)
-            q_batchnorm_update_ops = list(
-                set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
-                prev_update_ops)
-
-        # target q network evalution
-        with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1, q_logits_tp1, q_dist_tp1, _ = self._build_q_network(
-                self.obs_tp1, observation_space, action_space)
-            self.target_q_func_vars = _scope_vars(scope.name)
-
-        # q scores for actions which we know were selected in the given state.
-        one_hot_selection = tf.one_hot(self.act_t, self.num_actions)
-        q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
-        q_logits_t_selected = tf.reduce_sum(
-            q_logits_t * tf.expand_dims(one_hot_selection, -1), 1)
-
-        # compute estimate of best possible value starting from state at t + 1
-        if config["double_q"]:
-            with tf.variable_scope(Q_SCOPE, reuse=True):
-                q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-                    q_dist_tp1_using_online_net, _ = self._build_q_network(
-                        self.obs_tp1, observation_space, action_space)
-            q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
-            q_tp1_best_one_hot_selection = tf.one_hot(
-                q_tp1_best_using_online_net, self.num_actions)
-            q_tp1_best = tf.reduce_sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
-            q_dist_tp1_best = tf.reduce_sum(
-                q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1),
-                1)
-        else:
-            q_tp1_best_one_hot_selection = tf.one_hot(
-                tf.argmax(q_tp1, 1), self.num_actions)
-            q_tp1_best = tf.reduce_sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
-            q_dist_tp1_best = tf.reduce_sum(
-                q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1),
-                1)
-
-        self.loss = self._build_q_loss(q_t_selected, q_logits_t_selected,
-                                       q_tp1_best, q_dist_tp1_best)
-
-        # update_target_fn will be called periodically to copy Q network to
-        # target Q network
-        update_target_expr = []
-        assert len(self.q_func_vars) == len(self.target_q_func_vars), \
-            (self.q_func_vars, self.target_q_func_vars)
-        for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
-            update_target_expr.append(var_target.assign(var))
-        self.update_target_expr = tf.group(*update_target_expr)
-
-        # initialize TFPolicy
-        self.sess = tf.get_default_session()
-        self.loss_inputs = [
-            (SampleBatch.CUR_OBS, self.obs_t),
-            (SampleBatch.ACTIONS, self.act_t),
-            (SampleBatch.REWARDS, self.rew_t),
-            (SampleBatch.NEXT_OBS, self.obs_tp1),
-            (SampleBatch.DONES, self.done_mask),
-            (PRIO_WEIGHTS, self.importance_weights),
-        ]
-
-        LearningRateSchedule.__init__(self, self.config["lr"],
-                                      self.config["lr_schedule"])
-        TFPolicy.__init__(
-            self,
-            observation_space,
-            action_space,
-            self.sess,
-            obs_input=self.cur_observations,
-            action_sampler=self.output_actions,
-            action_prob=self.action_prob,
-            loss=self.loss.loss,
-            model=model,
-            loss_inputs=self.loss_inputs,
-            update_ops=q_batchnorm_update_ops)
-        self.sess.run(tf.global_variables_initializer())
-
-        self.stats_fetches = dict({
-            "cur_lr": tf.cast(self.cur_lr, tf.float64),
-        }, **self.loss.stats)
-
-    @override(TFPolicy)
-    def optimizer(self):
-        return tf.train.AdamOptimizer(
-            learning_rate=self.cur_lr, epsilon=self.config["adam_epsilon"])
-
-    @override(TFPolicy)
-    def gradients(self, optimizer, loss):
-        if self.config["grad_norm_clipping"] is not None:
-            grads_and_vars = _minimize_and_clip(
-                optimizer,
-                loss,
-                var_list=self.q_func_vars,
-                clip_val=self.config["grad_norm_clipping"])
-        else:
-            grads_and_vars = optimizer.compute_gradients(
-                loss, var_list=self.q_func_vars)
-        grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
-        return grads_and_vars
-
-    @override(TFPolicy)
-    def extra_compute_action_feed_dict(self):
-        return {
-            self.stochastic: True,
-            self.eps: self.cur_epsilon,
-        }
-
-    @override(TFPolicy)
-    def extra_compute_grad_fetches(self):
-        return {
-            "td_error": self.loss.td_error,
-            LEARNER_STATS_KEY: self.stats_fetches,
-        }
+    def set_epsilon(self, epsilon):
+        self.cur_epsilon = epsilon
 
     @override(Policy)
     def get_state(self):
@@ -519,93 +327,262 @@ class DQNTFPolicy(LearningRateSchedule, DQNPostprocessing, TFPolicy):
         TFPolicy.set_state(self, state[0])
         self.set_epsilon(state[1])
 
-    def _build_parameter_noise(self, pnet_params):
-        self.parameter_noise_sigma_val = 1.0
-        self.parameter_noise_sigma = tf.get_variable(
-            initializer=tf.constant_initializer(
-                self.parameter_noise_sigma_val),
-            name="parameter_noise_sigma",
-            shape=(),
-            trainable=False,
-            dtype=tf.float32)
-        self.parameter_noise = list()
-        # No need to add any noise on LayerNorm parameters
-        for var in pnet_params:
-            noise_var = tf.get_variable(
-                name=var.name.split(":")[0] + "_noise",
-                shape=var.shape,
-                initializer=tf.constant_initializer(.0),
-                trainable=False)
-            self.parameter_noise.append(noise_var)
-        remove_noise_ops = list()
-        for var, var_noise in zip(pnet_params, self.parameter_noise):
-            remove_noise_ops.append(tf.assign_add(var, -var_noise))
-        self.remove_noise_op = tf.group(*tuple(remove_noise_ops))
-        generate_noise_ops = list()
-        for var_noise in self.parameter_noise:
-            generate_noise_ops.append(
-                tf.assign(
-                    var_noise,
-                    tf.random_normal(
-                        shape=var_noise.shape,
-                        stddev=self.parameter_noise_sigma)))
-        with tf.control_dependencies(generate_noise_ops):
-            add_noise_ops = list()
-            for var, var_noise in zip(pnet_params, self.parameter_noise):
-                add_noise_ops.append(tf.assign_add(var, var_noise))
-            self.add_noise_op = tf.group(*tuple(add_noise_ops))
-        self.pi_distance = None
 
+class TargetNetworkMixin(object):
+    def __init__(self, obs_space, action_space, config):
+        # update_target_fn will be called periodically to copy Q network to
+        # target Q network
+        update_target_expr = []
+        assert len(self.q_func_vars) == len(self.target_q_func_vars), \
+            (self.q_func_vars, self.target_q_func_vars)
+        for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
+            update_target_expr.append(var_target.assign(var))
+        self.update_target_expr = tf.group(*update_target_expr)
+
+    def update_target(self):
+        return self.get_session().run(self.update_target_expr)
+
+
+class ComputeTDErrorMixin(object):
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
-        td_err = self.sess.run(
+        if not self.loss_initialized():
+            return np.zeros_like(rew_t)
+
+        td_err = self.get_session().run(
             self.loss.td_error,
             feed_dict={
-                self.obs_t: [np.array(ob) for ob in obs_t],
-                self.act_t: act_t,
-                self.rew_t: rew_t,
-                self.obs_tp1: [np.array(ob) for ob in obs_tp1],
-                self.done_mask: done_mask,
-                self.importance_weights: importance_weights
+                self.get_placeholder(SampleBatch.CUR_OBS): [
+                    np.array(ob) for ob in obs_t
+                ],
+                self.get_placeholder(SampleBatch.ACTIONS): act_t,
+                self.get_placeholder(SampleBatch.REWARDS): rew_t,
+                self.get_placeholder(SampleBatch.NEXT_OBS): [
+                    np.array(ob) for ob in obs_tp1
+                ],
+                self.get_placeholder(SampleBatch.DONES): done_mask,
+                self.get_placeholder(PRIO_WEIGHTS): importance_weights,
             })
         return td_err
 
-    def add_parameter_noise(self):
-        if self.config["parameter_noise"]:
-            self.sess.run(self.add_noise_op)
 
-    def update_target(self):
-        return self.sess.run(self.update_target_expr)
+def postprocess_trajectory(policy,
+                           sample_batch,
+                           other_agent_batches=None,
+                           episode=None):
+    if policy.config["parameter_noise"]:
+        # adjust the sigma of parameter space noise
+        states = [list(x) for x in sample_batch.columns(["obs"])][0]
 
-    def set_epsilon(self, epsilon):
-        self.cur_epsilon = epsilon
+        noisy_action_distribution = policy.get_session().run(
+            policy.action_probs, feed_dict={policy.cur_observations: states})
+        policy.get_session().run(policy.remove_noise_op)
+        clean_action_distribution = policy.get_session().run(
+            policy.action_probs, feed_dict={policy.cur_observations: states})
+        distance_in_action_space = np.mean(
+            entropy(clean_action_distribution.T, noisy_action_distribution.T))
+        policy.pi_distance = distance_in_action_space
+        if (distance_in_action_space <
+                -np.log(1 - policy.cur_epsilon +
+                        policy.cur_epsilon / policy.num_actions)):
+            policy.parameter_noise_sigma_val *= 1.01
+        else:
+            policy.parameter_noise_sigma_val /= 1.01
+        policy.parameter_noise_sigma.load(
+            policy.parameter_noise_sigma_val, session=policy.get_session())
 
-    def _build_q_network(self, obs, obs_space, action_space):
-        qnet = QNetwork(
-            ModelCatalog.get_model({
-                "obs": obs,
-                "is_training": self._get_is_training_placeholder(),
-            }, obs_space, action_space, self.num_actions,
-                                   self.config["model"]), self.num_actions,
-            self.config["dueling"], self.config["hiddens"],
-            self.config["noisy"], self.config["num_atoms"],
-            self.config["v_min"], self.config["v_max"], self.config["sigma0"],
-            self.config["parameter_noise"])
-        return qnet.value, qnet.logits, qnet.dist, qnet.model
+    return _postprocess_dqn(policy, sample_batch)
 
-    def _build_q_value_policy(self, q_values):
-        policy = QValuePolicy(
-            q_values, self.cur_observations, self.num_actions, self.stochastic,
-            self.eps, self.config["soft_q"], self.config["softmax_temp"])
-        return policy.action, policy.action_prob
 
-    def _build_q_loss(self, q_t_selected, q_logits_t_selected, q_tp1_best,
-                      q_dist_tp1_best):
-        return QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,
-                     q_dist_tp1_best, self.importance_weights, self.rew_t,
-                     self.done_mask, self.config["gamma"],
-                     self.config["n_step"], self.config["num_atoms"],
-                     self.config["v_min"], self.config["v_max"])
+def build_q_networks(policy, input_dict, observation_space, action_space,
+                     config):
+
+    if not isinstance(action_space, Discrete):
+        raise UnsupportedSpaceException(
+            "Action space {} is not supported for DQN.".format(action_space))
+
+    # Action Q network
+    with tf.variable_scope(Q_SCOPE) as scope:
+        q_values, q_logits, q_dist, _ = _build_q_network(
+            policy, input_dict[SampleBatch.CUR_OBS], observation_space,
+            action_space)
+        policy.q_values = q_values
+        policy.q_func_vars = _scope_vars(scope.name)
+
+    # Noise vars for Q network except for layer normalization vars
+    if config["parameter_noise"]:
+        _build_parameter_noise(
+            policy,
+            [var for var in policy.q_func_vars if "LayerNorm" not in var.name])
+        policy.action_probs = tf.nn.softmax(policy.q_values)
+
+    # Action outputs
+    qvp = QValuePolicy(q_values, input_dict[SampleBatch.CUR_OBS],
+                       action_space.n, policy.stochastic, policy.eps,
+                       policy.config["soft_q"], policy.config["softmax_temp"])
+    policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
+
+    return policy.output_actions, policy.action_prob
+
+
+def _build_parameter_noise(policy, pnet_params):
+    policy.parameter_noise_sigma_val = 1.0
+    policy.parameter_noise_sigma = tf.get_variable(
+        initializer=tf.constant_initializer(policy.parameter_noise_sigma_val),
+        name="parameter_noise_sigma",
+        shape=(),
+        trainable=False,
+        dtype=tf.float32)
+    policy.parameter_noise = list()
+    # No need to add any noise on LayerNorm parameters
+    for var in pnet_params:
+        noise_var = tf.get_variable(
+            name=var.name.split(":")[0] + "_noise",
+            shape=var.shape,
+            initializer=tf.constant_initializer(.0),
+            trainable=False)
+        policy.parameter_noise.append(noise_var)
+    remove_noise_ops = list()
+    for var, var_noise in zip(pnet_params, policy.parameter_noise):
+        remove_noise_ops.append(tf.assign_add(var, -var_noise))
+    policy.remove_noise_op = tf.group(*tuple(remove_noise_ops))
+    generate_noise_ops = list()
+    for var_noise in policy.parameter_noise:
+        generate_noise_ops.append(
+            tf.assign(
+                var_noise,
+                tf.random_normal(
+                    shape=var_noise.shape,
+                    stddev=policy.parameter_noise_sigma)))
+    with tf.control_dependencies(generate_noise_ops):
+        add_noise_ops = list()
+        for var, var_noise in zip(pnet_params, policy.parameter_noise):
+            add_noise_ops.append(tf.assign_add(var, var_noise))
+        policy.add_noise_op = tf.group(*tuple(add_noise_ops))
+    policy.pi_distance = None
+
+
+def build_q_losses(policy, batch_tensors):
+    # q network evaluation
+    with tf.variable_scope(Q_SCOPE, reuse=True):
+        prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+        q_t, q_logits_t, q_dist_t, model = _build_q_network(
+            policy, batch_tensors[SampleBatch.CUR_OBS],
+            policy.observation_space, policy.action_space)
+        policy.q_batchnorm_update_ops = list(
+            set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+
+    # target q network evalution
+    with tf.variable_scope(Q_TARGET_SCOPE) as scope:
+        q_tp1, q_logits_tp1, q_dist_tp1, _ = _build_q_network(
+            policy, batch_tensors[SampleBatch.NEXT_OBS],
+            policy.observation_space, policy.action_space)
+        policy.target_q_func_vars = _scope_vars(scope.name)
+
+    # q scores for actions which we know were selected in the given state.
+    one_hot_selection = tf.one_hot(batch_tensors[SampleBatch.ACTIONS],
+                                   policy.action_space.n)
+    q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
+    q_logits_t_selected = tf.reduce_sum(
+        q_logits_t * tf.expand_dims(one_hot_selection, -1), 1)
+
+    # compute estimate of best possible value starting from state at t + 1
+    if policy.config["double_q"]:
+        with tf.variable_scope(Q_SCOPE, reuse=True):
+            q_tp1_using_online_net, q_logits_tp1_using_online_net, \
+                q_dist_tp1_using_online_net, _ = _build_q_network(
+                    policy,
+                    batch_tensors[SampleBatch.NEXT_OBS],
+                    policy.observation_space, policy.action_space)
+        q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
+        q_tp1_best_one_hot_selection = tf.one_hot(q_tp1_best_using_online_net,
+                                                  policy.action_space.n)
+        q_tp1_best = tf.reduce_sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
+        q_dist_tp1_best = tf.reduce_sum(
+            q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1), 1)
+    else:
+        q_tp1_best_one_hot_selection = tf.one_hot(
+            tf.argmax(q_tp1, 1), policy.action_space.n)
+        q_tp1_best = tf.reduce_sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
+        q_dist_tp1_best = tf.reduce_sum(
+            q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1), 1)
+
+    policy.loss = _build_q_loss(
+        q_t_selected, q_logits_t_selected, q_tp1_best, q_dist_tp1_best,
+        batch_tensors[SampleBatch.REWARDS], batch_tensors[SampleBatch.DONES],
+        batch_tensors[PRIO_WEIGHTS], policy.config)
+
+    return policy.loss.loss
+
+
+def adam_optimizer(policy, config):
+    return tf.train.AdamOptimizer(
+        learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+
+
+def clip_gradients(policy, optimizer, loss):
+    if policy.config["grad_norm_clipping"] is not None:
+        grads_and_vars = _minimize_and_clip(
+            optimizer,
+            loss,
+            var_list=policy.q_func_vars,
+            clip_val=policy.config["grad_norm_clipping"])
+    else:
+        grads_and_vars = optimizer.compute_gradients(
+            loss, var_list=policy.q_func_vars)
+    grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
+    return grads_and_vars
+
+
+def exploration_setting_inputs(policy):
+    return {
+        policy.stochastic: True,
+        policy.eps: policy.cur_epsilon,
+    }
+
+
+def build_q_stats(policy, batch_tensors):
+    return dict({
+        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+    }, **policy.loss.stats)
+
+
+def setup_early_mixins(policy, obs_space, action_space, config):
+    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+    ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
+
+
+def setup_late_mixins(policy, obs_space, action_space, config):
+    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+
+
+def _build_q_network(policy, obs, obs_space, action_space):
+    config = policy.config
+    qnet = QNetwork(
+        ModelCatalog.get_model({
+            "obs": obs,
+            "is_training": policy._get_is_training_placeholder(),
+        }, obs_space, action_space, action_space.n, config["model"]),
+        action_space.n, config["dueling"], config["hiddens"], config["noisy"],
+        config["num_atoms"], config["v_min"], config["v_max"],
+        config["sigma0"], config["parameter_noise"])
+    return qnet.value, qnet.logits, qnet.dist, qnet.model
+
+
+def _build_q_value_policy(policy, q_values):
+    policy = QValuePolicy(q_values, policy.cur_observations,
+                          policy.num_actions, policy.stochastic, policy.eps,
+                          policy.config["soft_q"],
+                          policy.config["softmax_temp"])
+    return policy.action, policy.action_prob
+
+
+def _build_q_loss(q_t_selected, q_logits_t_selected, q_tp1_best,
+                  q_dist_tp1_best, rewards, dones, importance_weights, config):
+    return QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,
+                 q_dist_tp1_best, importance_weights, rewards,
+                 tf.cast(dones, tf.float32), config["gamma"], config["n_step"],
+                 config["num_atoms"], config["v_min"], config["v_max"])
 
 
 def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
@@ -706,3 +683,27 @@ def _scope_vars(scope, trainable_only=False):
         tf.GraphKeys.TRAINABLE_VARIABLES
         if trainable_only else tf.GraphKeys.VARIABLES,
         scope=scope if isinstance(scope, str) else scope.name)
+
+
+DQNTFPolicy = build_tf_policy(
+    name="DQNTFPolicy",
+    get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
+    make_action_sampler=build_q_networks,
+    loss_fn=build_q_losses,
+    stats_fn=build_q_stats,
+    postprocess_fn=postprocess_trajectory,
+    optimizer_fn=adam_optimizer,
+    gradients_fn=clip_gradients,
+    extra_action_feed_fn=exploration_setting_inputs,
+    extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.loss.td_error},
+    update_ops_fn=lambda policy: policy.q_batchnorm_update_ops,
+    before_init=setup_early_mixins,
+    after_init=setup_late_mixins,
+    obs_include_prev_action_reward=False,
+    mixins=[
+        ExplorationStateMixin,
+        TargetNetworkMixin,
+        ComputeTDErrorMixin,
+        LearningRateSchedule,
+    ])

@@ -139,6 +139,39 @@ class TFPolicy(Policy):
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
 
+    def get_placeholder(self, name):
+        """Returns the given action or loss input placeholder by name.
+
+        If the loss has not been initialized and a loss input placeholder is
+        requested, an error is raised.
+        """
+
+        obs_inputs = {
+            SampleBatch.CUR_OBS: self._obs_input,
+            SampleBatch.PREV_ACTIONS: self._prev_action_input,
+            SampleBatch.PREV_REWARDS: self._prev_reward_input,
+        }
+        if name in obs_inputs:
+            return obs_inputs[name]
+
+        if not self.loss_initialized():
+            raise RuntimeError(
+                "You cannot call policy.get_placeholder() for non-obs inputs "
+                "before the loss has been initialized. To avoid this, use "
+                "policy.loss_initialized() to check whether this is the "
+                "case, or move the call to later (e.g., from stats_fn to "
+                "grad_stats_fn).")
+
+        return self._loss_input_dict[name]
+
+    def get_session(self):
+        """Returns a reference to the TF session for this policy."""
+        return self._sess
+
+    def loss_initialized(self):
+        """Returns whether the loss function has been initialized."""
+        return self._loss is not None
+
     def _initialize_loss(self, loss, loss_inputs):
         self._loss_inputs = loss_inputs
         self._loss_input_dict = dict(self._loss_inputs)
@@ -172,7 +205,7 @@ class TFPolicy(Policy):
                                                  self._grads_and_vars)
 
         if log_once("loss_used"):
-            logger.debug(
+            logger.info(
                 "These tensors were used in the loss_fn:\n\n{}\n".format(
                     summarize(self._loss_input_dict)))
 
@@ -195,21 +228,21 @@ class TFPolicy(Policy):
 
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):
-        assert self._loss is not None, "Loss not initialized"
+        assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
 
     @override(Policy)
     def apply_gradients(self, gradients):
-        assert self._loss is not None, "Loss not initialized"
+        assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "apply_gradients")
         fetches = self._build_apply_gradients(builder, gradients)
         builder.get(fetches)
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
-        assert self._loss is not None, "Loss not initialized"
+        assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "learn_on_batch")
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         return builder.get(fetches)
