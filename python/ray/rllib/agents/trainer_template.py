@@ -45,6 +45,8 @@ def build_trainer(name,
         a Trainer instance that uses the specified args.
     """
 
+    original_kwargs = locals().copy()
+
     class trainer_cls(Trainer):
         _name = name
         _default_config = default_config or COMMON_CONFIG
@@ -91,6 +93,11 @@ def build_trainer(name,
                 after_train_result(self, res)
             return res
 
+    @staticmethod
+    def with_updates(**overrides):
+        return build_trainer(**dict(original_kwargs, **overrides))
+
+    trainer_cls.with_updates = with_updates
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name
     return trainer_cls

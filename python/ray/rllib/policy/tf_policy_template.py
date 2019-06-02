@@ -88,6 +88,7 @@ def build_tf_policy(name,
         a DynamicTFPolicy instance that uses the specified args
     """
 
+    original_kwargs = locals().copy()
     base = DynamicTFPolicy
     while mixins:
 
@@ -188,6 +189,11 @@ def build_tf_policy(name,
             else:
                 return TFPolicy.extra_compute_grad_feed_dict(self)
 
+    @staticmethod
+    def with_updates(**overrides):
+        return build_tf_policy(**dict(original_kwargs, **overrides))
+
+    policy_cls.with_updates = with_updates
     policy_cls.__name__ = name
     policy_cls.__qualname__ = name
     return policy_cls
