@@ -283,13 +283,14 @@ class Trial(object):
                                      "default_resource_request"):
             default_resources = trainable_cls.default_resource_request(
                 self.config)
-            if default_resources and resources:
-                raise ValueError(
-                    "Resources for {} have been automatically set to {} "
-                    "by its `default_resource_request()` method. Please "
-                    "clear the `resources_per_trial` option.".format(
-                        trainable_cls, default_resources))
-            resources = default_resources
+            if default_resources:
+                if resources:
+                    raise ValueError(
+                        "Resources for {} have been automatically set to {} "
+                        "by its `default_resource_request()` method. Please "
+                        "clear the `resources_per_trial` option.".format(
+                            trainable_cls, default_resources))
+                resources = default_resources
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
