@@ -30,7 +30,7 @@ def renamed_class(cls, old_name):
 def add_mixins(base, mixins):
     """Returns a new class with mixins applied in priority order."""
 
-    mixins = (mixins or []).copy()
+    mixins = list(mixins or [])
 
     while mixins:
 
