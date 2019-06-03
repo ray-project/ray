@@ -31,19 +31,43 @@ struct ActorCreationOptions {
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id)
-      : actor_id_(actor_id), actor_handle_id_(actor_handle_id) {}
+      : actor_id_(actor_id),
+        actor_handle_id_(actor_handle_id),
+        actor_cursor_(ObjectID::FromBinary(actor_id.Binary())),
+        task_counter_(0) {}
 
   /// ID of the actor.
-  const class ActorID &ActorID() const { return actor_id_; }
+  const ActorID &ActorID() const { return actor_id_; };
 
   /// ID of this actor handle.
-  const class ActorHandleID &ActorHandleID() const { return actor_handle_id_; }
+  const ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
+
+ private:
+  /// Cursor of this actor. 
+  const ObjectID &ActorCursor() const { return actor_cursor_; };
+
+  /// Set actor cursor.
+  void SetActorCursor(const ObjectID &actor_cursor) { actor_cursor_ = actor_cursor; };
+
+  /// Increase task counter.
+  int IncreaseTaskCounter() { return task_counter_++; }
+
+  class ActorHandleID GetNewActorHandle() {
+    // TODO: implement this.
+    return ActorHandleID();
+  }
 
  private:
   /// ID of the actor.
   const class ActorID actor_id_;
   /// ID of this actor handle.
   const class ActorHandleID actor_handle_id_;
+  /// ID of this actor cursor.
+  ObjectID actor_cursor_;
+  /// Counter for tasks from this handle.
+  int task_counter_;
+
+  friend class CoreWorkerTaskInterface;
 };
 
 /// The interface that contains all `CoreWorker` methods that are related to task
@@ -71,7 +95,7 @@ class CoreWorkerTaskInterface {
   /// \return Status.
   Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     ActorHandle *actor_handle);
+                     std::unique_ptr<ActorHandle> *actor_handle);
 
   /// Submit an actor task.
   ///
