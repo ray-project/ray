@@ -58,6 +58,11 @@ DEFAULT_CONFIG = with_common_config({
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
     "parameter_noise": False,
+    # Extra configuration that disables exploration.
+    "evaluation_config": {
+        "exploration_fraction": 0,
+        "exploration_final_eps": 0,
+    },
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -220,33 +225,32 @@ def get_initial_state(config):
     }
 
 
-class ExplorationScheduleMixin(object):
-    def __init__(self):
-        self.exploration0 = self._make_exploration_schedule(-1)
-        self.explorations = [
-            self._make_exploration_schedule(i)
-            for i in range(self.config["num_workers"])
-        ]
+def make_exploration_schedule(config, worker_index):
+    # Use either a different `eps` per worker, or a linear schedule.
+    if config["per_worker_exploration"]:
+        assert config["num_workers"] > 1, \
+            "This requires multiple workers"
+        if worker_index >= 0:
+            exponent = (
+                1 + worker_index / float(config["num_workers"] - 1) * 7)
+            return ConstantSchedule(0.4**exponent)
+        else:
+            # local ev should have zero exploration so that eval rollouts
+            # run properly
+            return ConstantSchedule(0.0)
+    return LinearSchedule(
+        schedule_timesteps=int(
+            config["exploration_fraction"] * config["schedule_max_timesteps"]),
+        initial_p=1.0,
+        final_p=config["exploration_final_eps"])
 
-    def _make_exploration_schedule(self, worker_index):
-        # Use either a different `eps` per worker, or a linear schedule.
-        if self.config["per_worker_exploration"]:
-            assert self.config["num_workers"] > 1, \
-                "This requires multiple workers"
-            if worker_index >= 0:
-                exponent = (
-                    1 +
-                    worker_index / float(self.config["num_workers"] - 1) * 7)
-                return ConstantSchedule(0.4**exponent)
-            else:
-                # local ev should have zero exploration so that eval rollouts
-                # run properly
-                return ConstantSchedule(0.0)
-        return LinearSchedule(
-            schedule_timesteps=int(self.config["exploration_fraction"] *
-                                   self.config["schedule_max_timesteps"]),
-            initial_p=1.0,
-            final_p=self.config["exploration_final_eps"])
+
+def setup_exploration(trainer):
+    trainer.exploration0 = make_exploration_schedule(trainer.config, -1)
+    trainer.explorations = [
+        make_exploration_schedule(trainer.config, i)
+        for i in range(trainer.config["num_workers"])
+    ]
 
 
 def update_worker_explorations(trainer):
@@ -299,17 +303,20 @@ def disable_exploration(trainer):
         lambda p, _: p.set_epsilon(0))
 
 
-DQNTrainer = build_trainer(
-    name="DQN",
-    default_policy=DQNTFPolicy,
+GenericOffPolicyTrainer = build_trainer(
+    name="GenericOffPolicyAlgorithm",
+    default_policy=None,
     default_config=DEFAULT_CONFIG,
-    make_workers=make_workers,
-    make_policy_optimizer=make_optimizer,
     validate_config=check_config_and_setup_param_noise,
     get_initial_state=get_initial_state,
+    make_workers=make_workers,
+    make_policy_optimizer=make_optimizer,
+    before_init=setup_exploration,
     before_train_step=update_worker_explorations,
     after_optimizer_step=update_target_if_needed,
     after_train_result=add_trainer_metrics,
-    before_evaluate_fn=disable_exploration,
     collect_metrics_fn=collect_metrics,
-    mixins=[ExplorationScheduleMixin])
+    before_evaluate_fn=disable_exploration)
+
+DQNTrainer = GenericOffPolicyTrainer.with_updates(
+    name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)

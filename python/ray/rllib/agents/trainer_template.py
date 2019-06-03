@@ -6,6 +6,7 @@ import time
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
+from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
 
 
@@ -16,8 +17,10 @@ def build_trainer(name,
                   validate_config=None,
                   get_initial_state=None,
                   get_policy_class=None,
+                  before_init=None,
                   make_workers=None,
                   make_policy_optimizer=None,
+                  after_init=None,
                   before_train_step=None,
                   after_optimizer_step=None,
                   after_train_result=None,
@@ -25,6 +28,11 @@ def build_trainer(name,
                   before_evaluate_fn=None,
                   mixins=None):
     """Helper function for defining a custom trainer.
+
+    Functions will be run in this order to initialize the trainer:
+        1. Config setup: validate_config, get_initial_state, get_policy
+        2. Worker setup: before_init, make_workers, make_policy_optimizer
+        3. Post setup: after_init
 
     Arguments:
         name (str): name of the trainer (e.g., "PPO")
@@ -39,10 +47,14 @@ def build_trainer(name,
             be available as the `trainer.state` variable.
         get_policy_class (func): optional callback that takes a config and
             returns the policy class to override the default with
+        before_init (func): optional function to run at the start of trainer
+            init that takes the trainer instance as argument
         make_workers (func): override the method that creates rollout workers.
             This takes in (trainer, env_creator, policy, config) as args.
         make_policy_optimizer (func): optional function that returns a
             PolicyOptimizer instance given (WorkerSet, config)
+        after_init (func): optional function to run at the end of trainer init
+            that takes the trainer instance as argument
         before_train_step (func): optional callback to run before each train()
             call. It takes the trainer instance as an argument.
         after_optimizer_step (func): optional callback to run after each
@@ -64,26 +76,27 @@ def build_trainer(name,
     """
 
     original_kwargs = locals().copy()
-    base = Trainer
-    while mixins:
-
-        class new_base(mixins.pop(), base):
-            pass
-
-        base = new_base
+    base = add_mixins(Trainer, mixins)
 
     class trainer_cls(base):
         _name = name
         _default_config = default_config or COMMON_CONFIG
         _policy = default_policy
 
+        def __init__(self, config=None, env=None, logger_creator=None):
+            Trainer.__init__(self, config, env, logger_creator)
+
         def _init(self, config, env_creator):
             if validate_config:
                 validate_config(config)
+            if get_initial_state:
+                self.state = get_initial_state(self)
             if get_policy_class is None:
                 policy = default_policy
             else:
                 policy = get_policy_class(config)
+            if before_init:
+                before_init(self)
             if make_workers:
                 self.workers = make_workers(self, env_creator, policy, config)
             else:
@@ -97,6 +110,8 @@ def build_trainer(name,
                     **{"train_batch_size": config["train_batch_size"]})
                 self.optimizer = SyncSamplesOptimizer(self.workers,
                                                       **optimizer_config)
+            if after_init:
+                after_init(self)
 
         @override(Trainer)
         def _train(self):
