@@ -43,6 +43,9 @@ DEFAULT_CONFIG = with_common_config({
     # 1.0 to exploration_fraction over this number of timesteps scaled by
     # exploration_fraction
     "schedule_max_timesteps": 100000,
+    # Minimum env steps to optimize for per train call. This value does
+    # not affect learning, only the length of iterations.
+    "timesteps_per_iteration": 1000,
     # Fraction of entire training period over which the exploration rate is
     # annealed
     "exploration_fraction": 0.1,

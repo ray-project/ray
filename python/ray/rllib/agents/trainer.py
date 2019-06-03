@@ -186,9 +186,9 @@ COMMON_CONFIG = {
     "remote_env_batch_wait_ms": 0,
     # Minimum time per iteration
     "min_iter_time_s": 0,
-    # Number of env steps to optimize for per train call. This value does
+    # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
-    "timesteps_per_iteration": 1000,
+    "timesteps_per_iteration": 0,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
