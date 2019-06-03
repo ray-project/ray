@@ -19,16 +19,12 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     """A simple synchronous RL optimizer.
 
     In each step, this optimizer pulls samples from a number of remote
-    evaluators, concatenates them, and then updates a local model. The updated
-    model weights are then broadcast to all remote evaluators.
+    workers, concatenates them, and then updates a local model. The updated
+    model weights are then broadcast to all remote workers.
     """
 
-    def __init__(self,
-                 local_evaluator,
-                 remote_evaluators,
-                 num_sgd_iter=1,
-                 train_batch_size=1):
-        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+    def __init__(self, workers, num_sgd_iter=1, train_batch_size=1):
+        PolicyOptimizer.__init__(self, workers)
 
         self.update_weights_timer = TimerStat()
         self.sample_timer = TimerStat()
@@ -41,27 +37,28 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     @override(PolicyOptimizer)
     def step(self):
         with self.update_weights_timer:
-            if self.remote_evaluators:
-                weights = ray.put(self.local_evaluator.get_weights())
-                for e in self.remote_evaluators:
+            if self.workers.remote_workers():
+                weights = ray.put(self.workers.local_worker().get_weights())
+                for e in self.workers.remote_workers():
                     e.set_weights.remote(weights)
 
         with self.sample_timer:
             samples = []
             while sum(s.count for s in samples) < self.train_batch_size:
-                if self.remote_evaluators:
+                if self.workers.remote_workers():
                     samples.extend(
                         ray_get_and_free([
-                            e.sample.remote() for e in self.remote_evaluators
+                            e.sample.remote()
+                            for e in self.workers.remote_workers()
                         ]))
                 else:
-                    samples.append(self.local_evaluator.sample())
+                    samples.append(self.workers.local_worker().sample())
             samples = SampleBatch.concat_samples(samples)
             self.sample_timer.push_units_processed(samples.count)
 
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
-                fetches = self.local_evaluator.learn_on_batch(samples)
+                fetches = self.workers.local_worker().learn_on_batch(samples)
                 self.learner_stats = get_learner_stats(fetches)
                 if self.num_sgd_iter > 1:
                     logger.debug("{} {}".format(i, fetches))
