@@ -58,7 +58,8 @@ if __name__ == "__main__":
     # which is automatically filled by Tune.
     hyperband = HyperBandScheduler(
         time_attr="training_iteration",
-        reward_attr="episode_reward_mean",
+        metric="episode_reward_mean",
+        mode="max",
         max_t=100)
 
     exp = Experiment(
