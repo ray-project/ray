@@ -43,17 +43,20 @@ def defer_make_workers(trainer, env_creator, policy, config):
 
 def make_async_optimizer(workers, config):
     assert len(workers.remote_workers()) == 0
+    extra_config = config["optimizer"].copy()
+    for key in [
+            "prioritized_replay", "prioritized_replay_alpha",
+            "prioritized_replay_beta", "prioritized_replay_eps"
+    ]:
+        if key in config:
+            extra_config[key] = config[key]
     opt = AsyncReplayOptimizer(
         workers,
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
-        prioritized_replay=config["prioritized_replay"],
-        prioritized_replay_alpha=config["prioritized_replay_alpha"],
-        prioritized_replay_beta=config["prioritized_replay_beta"],
-        prioritized_replay_eps=config["prioritized_replay_eps"],
         train_batch_size=config["train_batch_size"],
         sample_batch_size=config["sample_batch_size"],
-        **config["optimizer"])
+        **extra_config)
     workers.add_workers(config["num_workers"])
     opt._set_workers(workers.remote_workers())
     return opt
