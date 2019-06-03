@@ -2,8 +2,10 @@
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
 #include "common.h"
+#include "context.h"
 #include "object_interface.h"
 #include "ray/common/buffer.h"
+#include "ray/raylet/raylet_client.h"
 #include "task_execution.h"
 #include "task_interface.h"
 
@@ -18,15 +20,12 @@ class CoreWorker {
   ///
   /// \param[in] worker_type Type of this worker.
   /// \param[in] langauge Language of this worker.
-  CoreWorker(const WorkerType worker_type, const Language language)
-      : worker_type_(worker_type),
-        language_(language),
-        task_interface_(*this),
-        object_interface_(*this),
-        task_execution_interface_(*this) {}
+  CoreWorker(const WorkerType worker_type, const Language language,
+             const std::string &store_socket, const std::string &raylet_socket,
+             DriverID driver_id = DriverID::Nil());
 
-  /// Connect this worker to Raylet.
-  Status Connect() { return Status::OK(); }
+  /// Connect to raylet.
+  Status Connect();
 
   /// Type of this worker.
   enum WorkerType WorkerType() const { return worker_type_; }
@@ -53,6 +52,21 @@ class CoreWorker {
   /// Language of this worker.
   const enum Language language_;
 
+  /// Worker context per thread.
+  WorkerContext worker_context_;
+
+  /// Plasma store socket name.
+  std::string store_socket_;
+
+  /// raylet socket name.
+  std::string raylet_socket_;
+
+  /// Plasma store client.
+  plasma::PlasmaClient store_client_;
+
+  /// Raylet client.
+  std::unique_ptr<RayletClient> raylet_client_;
+
   /// The `CoreWorkerTaskInterface` instance.
   CoreWorkerTaskInterface task_interface_;
 
@@ -61,6 +75,10 @@ class CoreWorker {
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
   CoreWorkerTaskExecutionInterface task_execution_interface_;
+
+  friend class CoreWorkerTaskInterface;
+  friend class CoreWorkerObjectInterface;
+  friend class CoreWorkerTaskExecutionInterface;
 };
 
 }  // namespace ray

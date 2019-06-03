@@ -791,7 +791,7 @@ int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString
   return REDISMODULE_OK;
 }
 
-Status is_nil(bool *out, const std::string &data) {
+Status IsNil(bool *out, const std::string &data) {
   if (data.size() != kUniqueIDSize) {
     return Status::RedisError("Size of data doesn't match size of UniqueID");
   }
@@ -836,7 +836,7 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **arg
                    static_cast<int>(update->test_state_bitmask());
 
   bool is_nil_result;
-  REPLY_AND_RETURN_IF_NOT_OK(is_nil(&is_nil_result, update->test_raylet_id()->str()));
+  REPLY_AND_RETURN_IF_NOT_OK(IsNil(&is_nil_result, update->test_raylet_id()->str()));
   if (!is_nil_result) {
     do_update = do_update && update->test_raylet_id()->str() == data->raylet_id()->str();
   }
