@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.dqn.apex import update_target_based_on_num_steps_trained
+from ray.rllib.agents.dqn.apex import APEX_TRAINER_PROPERTIES
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
     DEFAULT_CONFIG as DDPG_CONFIG
 from ray.rllib.utils import merge_dicts
@@ -10,7 +10,6 @@ from ray.rllib.utils import merge_dicts
 APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
     DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
     {
-        "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(
             DDPG_CONFIG["optimizer"], {
                 "max_weight_sync_delay": 400,
@@ -35,4 +34,4 @@ APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
 ApexDDPGTrainer = DDPGTrainer.with_updates(
     name="APEX_DDPG",
     default_config=APEX_DDPG_DEFAULT_CONFIG,
-    after_optimizer_step=update_target_based_on_num_steps_trained)
+    **APEX_TRAINER_PROPERTIES)

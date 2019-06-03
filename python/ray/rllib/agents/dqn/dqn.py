@@ -8,7 +8,7 @@ from ray import tune
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
-from ray.rllib.optimizers import AsyncReplayOptimizer, SyncReplayOptimizer
+from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
@@ -108,8 +108,6 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Optimizer class to use.
-    "optimizer_class": "SyncReplayOptimizer",
     # Whether to use a distribution of epsilons across workers for exploration.
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
@@ -121,53 +119,21 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def make_workers(trainer, env_creator, policy, config):
-    if config["optimizer_class"] == "AsyncReplayOptimizer":
-        # Hack to workaround https://github.com/ray-project/ray/issues/2541
-        # The workers will be creatd later, after the optimizer is created
-        num_workers = 0
-    else:
-        num_workers = config["num_workers"]
-    return trainer._make_workers(env_creator, policy, config, num_workers)
-
-
 def make_optimizer(workers, config):
-    if config["optimizer_class"] == "SyncReplayOptimizer":
-        return SyncReplayOptimizer(
-            workers,
-            learning_starts=config["learning_starts"],
-            buffer_size=config["buffer_size"],
-            prioritized_replay=config["prioritized_replay"],
-            prioritized_replay_alpha=config["prioritized_replay_alpha"],
-            prioritized_replay_beta=config["prioritized_replay_beta"],
-            schedule_max_timesteps=config["schedule_max_timesteps"],
-            beta_annealing_fraction=config["beta_annealing_fraction"],
-            final_prioritized_replay_beta=config[
-                "final_prioritized_replay_beta"],
-            prioritized_replay_eps=config["prioritized_replay_eps"],
-            train_batch_size=config["train_batch_size"],
-            sample_batch_size=config["sample_batch_size"],
-            **config["optimizer"])
-    elif config["optimizer_class"] == "AsyncReplayOptimizer":
-        assert len(workers.remote_workers()) == 0
-        opt = AsyncReplayOptimizer(
-            workers,
-            learning_starts=config["learning_starts"],
-            buffer_size=config["buffer_size"],
-            prioritized_replay=config["prioritized_replay"],
-            prioritized_replay_alpha=config["prioritized_replay_alpha"],
-            prioritized_replay_beta=config["prioritized_replay_beta"],
-            prioritized_replay_eps=config["prioritized_replay_eps"],
-            train_batch_size=config["train_batch_size"],
-            sample_batch_size=config["sample_batch_size"],
-            **config["optimizer"])
-        workers.add_workers(config["num_workers"])
-        opt._set_workers(workers.remote_workers())
-        return opt
-    else:
-        raise ValueError(
-            "Optimizer class must be one of `SyncReplayOptimizer` or "
-            "`AsyncReplayOptimizer`.")
+    return SyncReplayOptimizer(
+        workers,
+        learning_starts=config["learning_starts"],
+        buffer_size=config["buffer_size"],
+        prioritized_replay=config["prioritized_replay"],
+        prioritized_replay_alpha=config["prioritized_replay_alpha"],
+        prioritized_replay_beta=config["prioritized_replay_beta"],
+        schedule_max_timesteps=config["schedule_max_timesteps"],
+        beta_annealing_fraction=config["beta_annealing_fraction"],
+        final_prioritized_replay_beta=config["final_prioritized_replay_beta"],
+        prioritized_replay_eps=config["prioritized_replay_eps"],
+        train_batch_size=config["train_batch_size"],
+        sample_batch_size=config["sample_batch_size"],
+        **config["optimizer"])
 
 
 def check_config_and_setup_param_noise(config):
@@ -176,7 +142,7 @@ def check_config_and_setup_param_noise(config):
                               config.get("n_step", 1))
     config["sample_batch_size"] = adjusted_batch_size
 
-    if config["parameter_noise"]:
+    if config.get("parameter_noise", False):
         if config["batch_mode"] != "complete_episodes":
             raise ValueError("Exploration with parameter space noise requires "
                              "batch_mode to be complete_episodes.")
@@ -309,7 +275,6 @@ GenericOffPolicyTrainer = build_trainer(
     default_config=DEFAULT_CONFIG,
     validate_config=check_config_and_setup_param_noise,
     get_initial_state=get_initial_state,
-    make_workers=make_workers,
     make_policy_optimizer=make_optimizer,
     before_init=setup_exploration,
     before_train_step=update_worker_explorations,

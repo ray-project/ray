@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.optimizers import AsyncReplayOptimizer
 from ray.rllib.utils import merge_dicts
 
 # yapf: disable
@@ -10,7 +11,6 @@ from ray.rllib.utils import merge_dicts
 APEX_DEFAULT_CONFIG = merge_dicts(
     DQN_CONFIG,  # see also the options in dqn.py, which are also supported
     {
-        "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(
             DQN_CONFIG["optimizer"], {
                 "max_weight_sync_delay": 400,
@@ -35,6 +35,30 @@ APEX_DEFAULT_CONFIG = merge_dicts(
 # yapf: enable
 
 
+def defer_make_workers(trainer, env_creator, policy, config):
+    # Hack to workaround https://github.com/ray-project/ray/issues/2541
+    # The workers will be creatd later, after the optimizer is created
+    return trainer._make_workers(env_creator, policy, config, 0)
+
+
+def make_async_optimizer(workers, config):
+    assert len(workers.remote_workers()) == 0
+    opt = AsyncReplayOptimizer(
+        workers,
+        learning_starts=config["learning_starts"],
+        buffer_size=config["buffer_size"],
+        prioritized_replay=config["prioritized_replay"],
+        prioritized_replay_alpha=config["prioritized_replay_alpha"],
+        prioritized_replay_beta=config["prioritized_replay_beta"],
+        prioritized_replay_eps=config["prioritized_replay_eps"],
+        train_batch_size=config["train_batch_size"],
+        sample_batch_size=config["sample_batch_size"],
+        **config["optimizer"])
+    workers.add_workers(config["num_workers"])
+    opt._set_workers(workers.remote_workers())
+    return opt
+
+
 def update_target_based_on_num_steps_trained(trainer, fetches):
     # Ape-X updates based on num steps trained, not sampled
     if (trainer.optimizer.num_steps_trained -
@@ -47,7 +71,11 @@ def update_target_based_on_num_steps_trained(trainer, fetches):
         trainer.state["num_target_updates"] += 1
 
 
+APEX_TRAINER_PROPERTIES = {
+    "make_workers": defer_make_workers,
+    "make_policy_optimizer": make_async_optimizer,
+    "after_optimizer_step": update_target_based_on_num_steps_trained,
+}
+
 ApexTrainer = DQNTrainer.with_updates(
-    name="APEX",
-    default_config=APEX_DEFAULT_CONFIG,
-    after_optimizer_step=update_target_based_on_num_steps_trained)
+    name="APEX", default_config=APEX_DEFAULT_CONFIG, **APEX_TRAINER_PROPERTIES)
