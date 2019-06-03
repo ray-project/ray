@@ -2,7 +2,7 @@ RLlib Package Reference
 =======================
 
 ray.rllib.policy
--------------
+----------------
 
 .. automodule:: ray.rllib.policy
     :members:
