@@ -29,11 +29,13 @@ RAYLET_EXEC="./bazel-bin/raylet"
 
 # Allow cleanup commands to fail.
 bazel run //:redis-cli -- -p 6379 shutdown || true
+sleep 1s
 bazel run //:redis-cli -- -p 6380 shutdown || true
 sleep 1s
 bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
+sleep 2s
 bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6380 &
-sleep 1s
+sleep 2s
 # Run tests.
 ./bazel-bin/core_worker_test $STORE_EXEC $RAYLET_EXEC
 sleep 1s
