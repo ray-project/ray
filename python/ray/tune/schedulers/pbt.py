@@ -321,8 +321,8 @@ class PopulationBasedTraining(FIFOScheduler):
         if len(trials) <= 1:
             return [], []
         else:
-            num_trials_in_quantile = int(math.ceil(
-                len(trials) * self._quantile_fraction))
+            num_trials_in_quantile = int(
+                math.ceil(len(trials) * self._quantile_fraction))
             if num_trials_in_quantile > len(trials) / 2:
                 num_trials_in_quantile = int(math.floor(len(trials) / 2))
             return (trials[:num_trials_in_quantile],
