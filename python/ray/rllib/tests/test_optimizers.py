@@ -11,10 +11,11 @@ import ray
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
 from ray.rllib.evaluation import SampleBatch
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
-from ray.rllib.tests.mock_evaluator import _MockEvaluator
+from ray.rllib.tests.mock_worker import _MockWorker
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -26,11 +27,11 @@ class AsyncOptimizerTest(unittest.TestCase):
 
     def testBasic(self):
         ray.init(num_cpus=4)
-        local = _MockEvaluator()
-        remotes = ray.remote(_MockEvaluator)
-        remote_evaluators = [remotes.remote() for i in range(5)]
-        test_optimizer = AsyncGradientsOptimizer(
-            local, remote_evaluators, grads_per_step=10)
+        local = _MockWorker()
+        remotes = ray.remote(_MockWorker)
+        remote_workers = [remotes.remote() for i in range(5)]
+        workers = WorkerSet._from_existing(local, remote_workers)
+        test_optimizer = AsyncGradientsOptimizer(workers, grads_per_step=10)
         test_optimizer.step()
         self.assertTrue(all(local.get_weights() == 0))
 
@@ -117,30 +118,28 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
     def testSimple(self):
         local, remotes = self._make_evs()
-        optimizer = AsyncSamplesOptimizer(local, remotes)
+        workers = WorkerSet._from_existing(local, remotes)
+        optimizer = AsyncSamplesOptimizer(workers)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiGPU(self):
         local, remotes = self._make_evs()
-        optimizer = AsyncSamplesOptimizer(
-            local, remotes, num_gpus=2, _fake_gpus=True)
+        workers = WorkerSet._from_existing(local, remotes)
+        optimizer = AsyncSamplesOptimizer(workers, num_gpus=2, _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiGPUParallelLoad(self):
         local, remotes = self._make_evs()
+        workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
-            local,
-            remotes,
-            num_gpus=2,
-            num_data_loader_buffers=2,
-            _fake_gpus=True)
+            workers, num_gpus=2, num_data_loader_buffers=2, _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiplePasses(self):
         local, remotes = self._make_evs()
+        workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
-            local,
-            remotes,
+            workers,
             minibatch_buffer_size=10,
             num_sgd_iter=10,
             sample_batch_size=10,
@@ -151,9 +150,9 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
     def testReplay(self):
         local, remotes = self._make_evs()
+        workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
-            local,
-            remotes,
+            workers,
             replay_buffer_num_slots=100,
             replay_proportion=10,
             sample_batch_size=10,
@@ -168,9 +167,9 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
     def testReplayAndMultiplePasses(self):
         local, remotes = self._make_evs()
+        workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
-            local,
-            remotes,
+            workers,
             minibatch_buffer_size=10,
             num_sgd_iter=10,
             replay_buffer_num_slots=100,
@@ -189,45 +188,43 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
     def testMultiTierAggregationBadConf(self):
         local, remotes = self._make_evs()
+        workers = WorkerSet._from_existing(local, remotes)
         aggregators = TreeAggregator.precreate_aggregators(4)
-        optimizer = AsyncSamplesOptimizer(
-            local, remotes, num_aggregation_workers=4)
+        optimizer = AsyncSamplesOptimizer(workers, num_aggregation_workers=4)
         self.assertRaises(ValueError,
                           lambda: optimizer.aggregator.init(aggregators))
 
     def testMultiTierAggregation(self):
         local, remotes = self._make_evs()
+        workers = WorkerSet._from_existing(local, remotes)
         aggregators = TreeAggregator.precreate_aggregators(1)
-        optimizer = AsyncSamplesOptimizer(
-            local, remotes, num_aggregation_workers=1)
+        optimizer = AsyncSamplesOptimizer(workers, num_aggregation_workers=1)
         optimizer.aggregator.init(aggregators)
         self._wait_for(optimizer, 1000, 1000)
 
     def testRejectBadConfigs(self):
         local, remotes = self._make_evs()
+        workers = WorkerSet._from_existing(local, remotes)
         self.assertRaises(
             ValueError, lambda: AsyncSamplesOptimizer(
                 local, remotes,
                 num_data_loader_buffers=2, minibatch_buffer_size=4))
         optimizer = AsyncSamplesOptimizer(
-            local,
-            remotes,
+            workers,
             num_gpus=2,
             train_batch_size=100,
             sample_batch_size=50,
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
         optimizer = AsyncSamplesOptimizer(
-            local,
-            remotes,
+            workers,
             num_gpus=2,
             train_batch_size=100,
             sample_batch_size=25,
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
         optimizer = AsyncSamplesOptimizer(
-            local,
-            remotes,
+            workers,
             num_gpus=2,
             train_batch_size=100,
             sample_batch_size=74,
@@ -238,12 +235,12 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         def make_sess():
             return tf.Session(config=tf.ConfigProto(device_count={"CPU": 2}))
 
-        local = PolicyEvaluator(
+        local = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy=PPOTFPolicy,
             tf_session_creator=make_sess)
         remotes = [
-            PolicyEvaluator.as_remote().remote(
+            RolloutWorker.as_remote().remote(
                 env_creator=lambda _: gym.make("CartPole-v0"),
                 policy=PPOTFPolicy,
                 tf_session_creator=make_sess)

@@ -36,7 +36,7 @@ class Policy(object):
         """Initialize the graph.
 
         This is the standard constructor for policies. The policy
-        class you pass into PolicyEvaluator will be constructed with
+        class you pass into RolloutWorker will be constructed with
         these arguments.
 
         Args:

@@ -24,7 +24,7 @@ def build_torch_policy(name,
     """Helper function for creating a torch policy at runtime.
 
     Arguments:
-        name (str): name of the policy (e.g., "PPOTFPolicy")
+        name (str): name of the policy (e.g., "PPOTorchPolicy")
         loss_fn (func): function that returns a loss tensor the policy,
             and dict of experience tensor placeholders
         get_default_config (func): optional function that returns the default
@@ -55,9 +55,7 @@ def build_torch_policy(name,
         a TorchPolicy instance that uses the specified args
     """
 
-    if not name.endswith("TorchPolicy"):
-        raise ValueError("Name should match *TorchPolicy", name)
-
+    original_kwargs = locals().copy()
     base = TorchPolicy
     while mixins:
 
@@ -66,7 +64,7 @@ def build_torch_policy(name,
 
         base = new_base
 
-    class graph_cls(base):
+    class policy_cls(base):
         def __init__(self, obs_space, action_space, config):
             if get_default_config:
                 config = dict(get_default_config(), **config)
@@ -130,6 +128,11 @@ def build_torch_policy(name,
             else:
                 return TorchPolicy.extra_grad_info(self, batch_tensors)
 
-    graph_cls.__name__ = name
-    graph_cls.__qualname__ = name
-    return graph_cls
+    @staticmethod
+    def with_updates(**overrides):
+        return build_torch_policy(**dict(original_kwargs, **overrides))
+
+    policy_cls.with_updates = with_updates
+    policy_cls.__name__ = name
+    policy_cls.__qualname__ = name
+    return policy_cls
