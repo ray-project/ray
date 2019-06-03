@@ -91,6 +91,8 @@ def build_trainer(name,
                 validate_config(config)
             if get_initial_state:
                 self.state = get_initial_state(self)
+            else:
+                self.state = {}
             if get_policy_class is None:
                 policy = default_policy
             else:
