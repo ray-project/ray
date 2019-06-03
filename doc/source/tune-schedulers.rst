@@ -7,7 +7,7 @@ By default, Tune schedules trials in serial order with the ``FIFOScheduler`` cla
 
     tune.run( ... , scheduler=AsyncHyperBandScheduler())
 
-Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`__. Currently, all schedulers take in a ``reward_attr``, which is assumed to be maximized.
+Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`__. All schedulers take in a ``metric``, which is a value returned in the result dict of your Trainable and is maximized or minimized according to ``mode``.
 
 Current Available Trial Schedulers:
 
@@ -25,7 +25,8 @@ Tune includes a distributed implementation of `Population Based Training (PBT) <
 
     pbt_scheduler = PopulationBasedTraining(
             time_attr='time_total_s',
-            reward_attr='mean_accuracy',
+            metric='mean_accuracy',
+            mode='max',
             perturbation_interval=600.0,
             hyperparam_mutations={
                 "lr": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
@@ -52,7 +53,8 @@ The `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlR
 
     async_hb_scheduler = AsyncHyperBandScheduler(
         time_attr='training_iteration',
-        reward_attr='episode_reward_mean',
+        metric='episode_reward_mean',
+        mode='max',
         max_t=100,
         grace_period=10,
         reduction_factor=3,
