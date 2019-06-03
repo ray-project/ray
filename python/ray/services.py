@@ -1301,6 +1301,7 @@ def determine_plasma_store_config(object_store_memory=None,
         # error in more severe cases.
         avail_memory = ray.utils.estimate_available_memory()
         object_store_fraction = object_store_memory / avail_memory
+        # Escape hatch, undocumented for now.
         no_check = os.environ.get("RAY_DEBUG_DISABLE_MEM_CHECKS", False)
         if object_store_fraction > 0.9 and not no_check:
             raise ValueError(
