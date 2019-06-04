@@ -38,6 +38,8 @@ Custom Envs and Models
    Example of adding batch norm layers to a custom model.
 - `Parametric actions <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.
+- `Eager execution <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/eager_execution.py>`__:
+   Example of how to leverage TensorFlow eager to simplify debugging and design of custom models and policies.
 
 Serving and Offline
 -------------------
