@@ -1,14 +1,18 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-import logging
 import base64
-import fnmatch
-import os
 import copy
-import numpy as np
+import fnmatch
+import logging
+import os
+import threading
 import time
+from collections import defaultdict
+from threading import Thread
+
+import numpy as np
+import psutil
+import GPUtil
 
 import ray
 
@@ -17,6 +21,37 @@ logger = logging.getLogger(__name__)
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
 
+class UtilMonitor(Thread):
+    def __init__(self, delay):
+        super(UtilMonitor, self).__init__()
+        self.stopped = False
+        self.delay = delay  # Time between calls to GPUtil
+        self.values = defaultdict(list)
+        self.lock = threading.Lock()
+        self.start()
+
+    def read_utilization(self):
+        with self.lock:
+            self.values["perf/cpu"].append(float(psutil.cpu_percent(interval=None)))
+            self.values["perf/ram"].append(float(getattr(psutil.virtual_memory(), 'percent')))
+            for gpu in GPUtil.getGPUs():
+                self.values["perf/gpu" + str(gpu.id)].append(float(gpu.load))
+                self.values["perf/vram" + str(gpu.id)].append(float(gpu.memoryUtil))
+
+    def get_data(self):
+        with self.lock:
+            ret_values = copy.deepcopy(self.values)
+            for key, val in self.values.items():
+                val.clear()
+        return {k: np.mean(v) for k, v in ret_values.items()}
+
+    def run(self):
+        while not self.stopped:
+            self.read_utilization()
+            time.sleep(self.delay)
+
+    def stop(self):
+        self.stopped = True
 
 def pin_in_object_store(obj):
     """Pin an object in the object store.

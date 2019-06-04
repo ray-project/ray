@@ -22,6 +22,8 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
                              TRAINING_ITERATION, RESULT_DUPLICATE)
 
+from python.ray.tune.util import UtilMonitor
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,6 +88,9 @@ class Trainable(object):
         self._restored = False
         self._setup(copy.deepcopy(self.config))
         self._local_ip = ray.services.get_node_ip_address()
+        self._track_sys_usage = config["log_sys_usage"]
+        if self._track_sys_usage:
+            self.monitor = UtilMonitor(0.7)
 
     @classmethod
     def default_resource_request(cls, config):
@@ -442,6 +447,9 @@ class Trainable(object):
         Args:
             result (dict): Training result returned by _train().
         """
+
+        if self._track_sys_usage:
+            result.update(self.monitor.get_data())
 
         self._result_logger.on_result(result)
 

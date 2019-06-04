@@ -143,6 +143,7 @@ requires = [
     "click",
     "colorama",
     "pytest",
+    "gputil",
     "pyyaml",
     "redis",
     # NOTE: Don't upgrade the version of six! Doing so causes installation
