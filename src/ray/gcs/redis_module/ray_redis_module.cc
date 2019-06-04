@@ -179,7 +179,7 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
   return fbb.CreateString(redis_string_str, redis_string_size);
 }
 
-/// This the helper method to publish formated data to target channel.
+/// Helper method to publish formatted data to target channel.
 ///
 /// \param pubsub_channel_str The pubsub channel name that notifications for
 /// this key should be published to. When publishing to a specific client, the
