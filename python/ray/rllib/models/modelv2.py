@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 
- @PublicAPI
+@PublicAPI
 class ModelV2(object):
     def __init__(self, obs_space, action_space, num_outputs, options):
         self.obs_space = obs_space
