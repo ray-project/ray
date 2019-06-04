@@ -185,7 +185,7 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
 /// this key should be published to. When publishing to a specific client, the
 /// channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key that the notification is about.
-/// \param data_buffer The data to publish, which is an GcsTableEntry buffer.
+/// \param data_buffer The data to publish, which is a GcsTableEntry buffer.
 /// \return OK if there is no error during a publish.
 int PublishDataHelper(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
                       RedisModuleString *id, RedisModuleString *data_buffer) {
