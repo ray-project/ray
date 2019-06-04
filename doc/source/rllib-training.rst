@@ -367,6 +367,11 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
     openaigym.video.0.31403.video000000.meta.json
     openaigym.video.0.31403.video000000.mp4
 
+TensorFlow Eager
+~~~~~~~~~~~~~~~~
+
+While RLlib uses TF graph mode for all computations, you can still leverage TF eager to inspect the intermediate state of computations using `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an exampe of using eager mode in `a custom RLlib model and loss <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/eager_execution.py>`__.
+
 Episode Traces
 ~~~~~~~~~~~~~~
 
