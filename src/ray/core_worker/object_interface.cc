@@ -12,8 +12,11 @@ Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id)
   ObjectID put_id = ObjectID::ForPut(core_worker_.worker_context_.GetCurrentTaskID(),
                                      core_worker_.worker_context_.GetNextPutIndex());
   *object_id = put_id;
+  return Put(buffer, put_id);
+}
 
-  auto plasma_id = put_id.ToPlasmaId();
+Status CoreWorkerObjectInterface::Put(const Buffer &buffer, const ObjectID &object_id) {
+  auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> data;
   {
     std::unique_lock<std::mutex> guard(core_worker_.store_client_mutex_);

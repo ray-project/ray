@@ -5,8 +5,7 @@
 namespace ray {
 
 void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
-  //const auto task_id = GenerateTaskId(context.GetCurrentDriverID(),
-  //    context.GetCurrentTaskID(), context.GetNextTaskIndex());
+  RAY_CHECK(core_worker_.is_initialized_);
 
   while (true) {
     std::unique_ptr<raylet::TaskSpecification> task_spec;
@@ -15,17 +14,24 @@ void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
     auto& spec = *task_spec;
     core_worker_.worker_context_.SetCurrentTask(spec);
 
-    RayFunction func{ spec.GetLanguage(), spec.FunctionDescriptor() };
+    WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA) ?
+        WorkerLanguage::JAVA : WorkerLanguage::PYTHON;
+    RayFunction func{ language, spec.FunctionDescriptor() };
 
     std::vector<std::shared_ptr<Buffer>> args;
     RAY_CHECK_OK(BuildArgsForExecutor(spec, &args)); 
 
-    auto status = executor(func, args, spec.NumReturns());
-    if (status.ok()) {
-        // TODO:
-        // 1. Check and handle failure.
-        // 2. Save or load checkpoint. 
+    RAY_CHECK(spec.NumReturns() > 0);
+    auto num_returns = spec.NumReturns();
+    if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+      // Decrease to account for the dummy object id.
+      num_returns--;
     }
+  
+    auto status = executor(func, args, spec.TaskId(), num_returns);
+      // TODO:
+      // 1. Check and handle failure.
+      // 2. Save or load checkpoint. 
   }
 }
 

@@ -23,6 +23,13 @@ class CoreWorkerObjectInterface {
   /// \return Status.
   Status Put(const Buffer &buffer, ObjectID *object_id);
 
+ /// Put an object into object store.
+  ///
+  /// \param[in] buffer Data buffer of the object.
+  /// \param[in] object_id Object ID specified by user.
+  /// \return Status.
+  Status Put(const Buffer &buffer, const ObjectID &object_id);
+
   /// Get a list of objects from the object store.
   ///
   /// \param[in] ids IDs of the objects to get.

@@ -12,12 +12,12 @@ namespace ray {
 enum class WorkerType { WORKER, DRIVER };
 
 /// Language of Ray tasks and workers.
-enum class Language { PYTHON, JAVA };
+enum class WorkerLanguage { PYTHON, JAVA };
 
 /// Information about a remote function.
 struct RayFunction {
   /// Language of the remote function.
-  const Language language;
+  const WorkerLanguage language;
   /// Function descriptor of the remote function.
   const std::vector<std::string> function_descriptor;
 };

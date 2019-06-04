@@ -144,7 +144,6 @@ cc_binary(
     deps = [
         ":core_worker_lib",
         ":gcs",
-        ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

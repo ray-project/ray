@@ -57,6 +57,8 @@ class ActorHandle {
     return ActorHandleID();
   }
 
+  void ClearNewActorHandles() { /* TODO: implement this. */ }
+
  private:
   /// ID of the actor.
   const ray::ActorID actor_id_;

@@ -3,7 +3,7 @@
 
 namespace ray {
 
-CoreWorker::CoreWorker(const enum WorkerType worker_type, const enum Language language,
+CoreWorker::CoreWorker(const enum WorkerType worker_type, const enum WorkerLanguage language,
                        const std::string &store_socket, const std::string &raylet_socket,
                        DriverID driver_id)
     : worker_type_(worker_type),
@@ -11,6 +11,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type, const enum Language la
       worker_context_(worker_type, driver_id),
       store_socket_(store_socket),
       raylet_socket_(raylet_socket),
+      is_initialized_(false),
       task_interface_(*this),
       object_interface_(*this),
       task_execution_interface_(*this) {}
@@ -20,10 +21,8 @@ Status CoreWorker::Connect() {
   RAY_ARROW_RETURN_NOT_OK(store_client_.Connect(store_socket_));
 
   // connect to raylet.
-  ::Language lang = ::Language::PYTHON;
-  if (language_ == ray::Language::JAVA) {
-    lang = ::Language::JAVA;
-  }
+  ::Language language = (language_ == ray::WorkerLanguage::JAVA) ?
+      (::Language::JAVA) : (::Language::PYTHON);
 
   // TODO: currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this needs to be changed
@@ -32,7 +31,8 @@ Status CoreWorker::Connect() {
   raylet_client_ = std::unique_ptr<RayletClient>(
       new RayletClient(raylet_socket_, worker_context_.GetWorkerID(),
                        (worker_type_ == ray::WorkerType::WORKER),
-                       worker_context_.GetCurrentDriverID(), lang));
+                       worker_context_.GetCurrentDriverID(), language));
+  is_initialized_ = true;
   return Status::OK();
 }
 
