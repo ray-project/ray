@@ -532,7 +532,7 @@ class Hash : private Log<ID, Data>,
   /// \return Status
   Status Lookup(const DriverID &driver_id, const ID &id, const HashCallback &lookup);
 
-  /// Remove an entries from the hash table.
+  /// Remove entries from the hash table.
   ///
   /// \param driver_id The ID of the job (= driver).
   /// \param id The ID of the data that is removed from the GCS.
