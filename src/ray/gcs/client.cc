@@ -120,7 +120,7 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   profile_table_.reset(new ProfileTable(shard_contexts_, this));
   actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
-  dynamic_resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
+  resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
   command_type_ = command_type;
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
@@ -230,8 +230,8 @@ ActorCheckpointIdTable &AsyncGcsClient::actor_checkpoint_id_table() {
   return *actor_checkpoint_id_table_;
 }
 
-DynamicResourceTable &AsyncGcsClient::dynamic_resource_table() {
-  return *dynamic_resource_table_;
+DynamicResourceTable &AsyncGcsClient::resource_table() {
+  return *resource_table_;
 }
 
 }  // namespace gcs

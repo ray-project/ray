@@ -101,7 +101,7 @@ class Monitor(object):
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
 
-        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+        gcs_entries = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(
             data, 0)
         heartbeat_data = gcs_entries.Entries(0)
 
@@ -208,7 +208,7 @@ class Monitor(object):
             unused_channel: The message channel.
             data: The message data.
         """
-        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+        gcs_entries = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(
             data, 0)
         driver_data = gcs_entries.Entries(0)
         message = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(

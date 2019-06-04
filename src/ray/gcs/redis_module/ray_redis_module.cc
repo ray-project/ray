@@ -185,7 +185,7 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
 /// this key should be published to. When publishing to a specific client, the
 /// channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key that the notification is about.
-/// \param data_buffer The data to publish, which is a GcsTableEntry buffer.
+/// \param data_buffer The data to publish, which is a GcsEntry buffer.
 /// \return OK if there is no error during a publish.
 int PublishDataHelper(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
                       RedisModuleString *id, RedisModuleString *data_buffer) {
@@ -231,13 +231,13 @@ int PublishDataHelper(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str
 /// \param data The appended/removed data.
 /// \return OK if there is no error during a publish.
 int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
-                       RedisModuleString *id, GcsTableNotificationMode notification_mode,
+                       RedisModuleString *id, GcsChangeMode chagne_mode,
                        RedisModuleString *data) {
   // Serialize the notification to send.
   flatbuffers::FlatBufferBuilder fbb;
   auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
   auto message =
-      CreateGcsTableEntry(fbb, notification_mode, RedisStringToFlatbuf(fbb, id),
+      CreateGcsEntry(fbb, chagne_mode, RedisStringToFlatbuf(fbb, id),
                           fbb.CreateVector(&data_flatbuf, 1));
   fbb.Finish(message);
   auto data_buffer = RedisModule_CreateString(
@@ -281,7 +281,7 @@ int TableAdd_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   if (pubsub_channel != TablePubsub::NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the channel.
     return PublishTableUpdate(ctx, pubsub_channel_str, id,
-                              GcsTableNotificationMode::APPEND_OR_ADD, data);
+                              GcsChangeMode::APPEND_OR_ADD, data);
   } else {
     return RedisModule_ReplyWithSimpleString(ctx, "OK");
   }
@@ -381,7 +381,7 @@ int TableAppend_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int /*a
     // All other pubsub channels write the data back directly onto the
     // channel.
     return PublishTableUpdate(ctx, pubsub_channel_str, id,
-                              GcsTableNotificationMode::APPEND_OR_ADD, data);
+                              GcsChangeMode::APPEND_OR_ADD, data);
   } else {
     return RedisModule_ReplyWithSimpleString(ctx, "OK");
   }
@@ -434,8 +434,8 @@ int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
     // All other pubsub channels write the data back directly onto the
     // channel.
     return PublishTableUpdate(ctx, pubsub_channel_str, id,
-                              is_add ? GcsTableNotificationMode::APPEND_OR_ADD
-                                     : GcsTableNotificationMode::REMOVE,
+                              is_add ? GcsChangeMode::APPEND_OR_ADD
+                                     : GcsChangeMode::REMOVE,
                               data);
   } else {
     return RedisModule_ReplyWithSimpleString(ctx, "OK");
@@ -532,8 +532,7 @@ int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
-int Hash_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv,
-                   GcsTableNotificationMode notification_mode) {
+int Hash_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv) {
   RedisModuleString *pubsub_channel_str = argv[2];
   RedisModuleString *id = argv[3];
   RedisModuleString *data = argv[4];
@@ -551,11 +550,11 @@ int Hash_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv,
 
 /// Do the hash table write operation. This is called from by HashUpdate_RedisCommand.
 ///
-/// \param notification_mode Output the mode of the operation: APPEND_OR_ADD or REMOVE.
+/// \param chagne_mode Output the mode of the operation: APPEND_OR_ADD or REMOVE.
 /// \param deleted_data Output data if the deleted data is not the same as required.
 int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
-                       GcsTableNotificationMode *notification_mode,
-                       RedisModuleString *&deleted_data) {
+                       GcsChangeMode *chagne_mode,
+                       RedisModuleString **changed_data) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -574,9 +573,9 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   size_t update_data_len = 0;
   const char *update_data_buf = RedisModule_StringPtrLen(update_data, &update_data_len);
 
-  auto data_vec = flatbuffers::GetRoot<GcsTableEntry>(update_data_buf);
-  *notification_mode = data_vec->notification_mode();
-  if (*notification_mode == GcsTableNotificationMode::APPEND_OR_ADD) {
+  auto data_vec = flatbuffers::GetRoot<GcsEntry>(update_data_buf);
+  *chagne_mode = data_vec->chagne_mode();
+  if (*chagne_mode == GcsChangeMode::APPEND_OR_ADD) {
     // This code path means they are updating command.
     size_t total_size = data_vec->entries()->size();
     REPLY_AND_RETURN_IF_FALSE(total_size % 2 == 0, "Invalid Hash Update data vector.");
@@ -591,9 +590,9 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
       RAY_IGNORE_EXPR(
           RedisModule_HashSet(key, REDISMODULE_HASH_NONE, entry_key, entry_value, NULL));
     }
+    *changed_data = update_data;
   } else {
     // This code path means the command wants to remove the entries.
-    // Hash_DoPublish only publish the entries that have been removed.
     size_t total_size = data_vec->entries()->size();
     std::vector<bool> deleted_flags(total_size, true);
     int remove_count = 0;
@@ -616,15 +615,15 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
                                           data_vec->entries()->Get(i)->size()));
         }
       }
-      auto message = CreateGcsTableEntry(
-          fbb, data_vec->notification_mode(),
+      auto message = CreateGcsEntry(
+          fbb, data_vec->chagne_mode(),
           fbb.CreateString(data_vec->id()->data(), data_vec->id()->size()),
           fbb.CreateVector(data));
       fbb.Finish(message);
-      deleted_data = RedisModule_CreateString(
+      *changed_data = RedisModule_CreateString(
           ctx, reinterpret_cast<char *>(fbb.GetBufferPointer()), fbb.GetSize());
     } else {
-      deleted_data = nullptr;
+      *changed_data = nullptr;
     }
     auto size = RedisModule_ValueLength(key);
     if (size == 0) {
@@ -646,29 +645,24 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
 /// key should be published to. When publishing to a specific client, the
 /// channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to remove from.
-/// \param data The GcsTableEntry flatbugger data used to update this hash table.
+/// \param data The GcsEntry flatbugger data used to update this hash table.
 ///     1). For deletion, this is a list of keys.
 ///     2). For updating, this is a list of pairs with each key followed by the value.
 /// \return OK if the remove succeeds, or an error message string if the remove
 /// fails.
 int HashUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  GcsTableNotificationMode mode;
-  RedisModuleString *deleted_data = nullptr;
-  if (HashUpdate_DoWrite(ctx, argv, argc, &mode, deleted_data) != REDISMODULE_OK) {
+  GcsChangeMode mode;
+  RedisModuleString *changed_data = nullptr;
+  if (HashUpdate_DoWrite(ctx, argv, argc, &mode, &changed_data) != REDISMODULE_OK) {
     return REDISMODULE_ERR;
   }
-  if (deleted_data == nullptr) {
-    // The deleted elements are the same as required.
-    return Hash_DoPublish(ctx, argv, mode);
-  } else {
-    // Replace the data with the deleted-keys.
-    std::vector<RedisModuleString *> new_argv(argv, argv + argc);
-    new_argv[4] = deleted_data;
-    return Hash_DoPublish(ctx, new_argv.data(), mode);
-  }
+  // Replace the data with the changed data to do the publish.
+  std::vector<RedisModuleString *> new_argv(argv, argv + argc);
+  new_argv[4] = changed_data;
+  return Hash_DoPublish(ctx, new_argv.data());
 }
 
-/// A helper function to create and finish a GcsTableEntry, based on the
+/// A helper function to create and finish a GcsEntry, based on the
 /// current value or values at the given key.
 ///
 /// \param ctx The Redis module context.
@@ -678,7 +672,7 @@ int HashUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
 /// \param prefix_str The string prefix associated with the open Redis key.
 /// When parsed, this is expected to be a TablePrefix.
 /// \param entry_id The UniqueID associated with the open Redis key.
-/// \param fbb A flatbuffer builder used to build the GcsTableEntry.
+/// \param fbb A flatbuffer builder used to build the GcsEntry.
 Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
                            RedisModuleString *prefix_str, RedisModuleString *entry_id,
                            flatbuffers::FlatBufferBuilder &fbb) {
@@ -689,7 +683,7 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
     size_t data_len = 0;
     char *data_buf = RedisModule_StringDMA(table_key, &data_len, REDISMODULE_READ);
     auto data = fbb.CreateString(data_buf, data_len);
-    auto message = CreateGcsTableEntry(fbb, GcsTableNotificationMode::APPEND_OR_ADD,
+    auto message = CreateGcsEntry(fbb, GcsChangeMode::APPEND_OR_ADD,
                                        RedisStringToFlatbuf(fbb, entry_id),
                                        fbb.CreateVector(&data, 1));
     fbb.Finish(message);
@@ -728,13 +722,13 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
       data.push_back(fbb.CreateString(element_str, len));
     }
     auto message =
-        CreateGcsTableEntry(fbb, GcsTableNotificationMode::APPEND_OR_ADD,
+        CreateGcsEntry(fbb, GcsChangeMode::APPEND_OR_ADD,
                             RedisStringToFlatbuf(fbb, entry_id), fbb.CreateVector(data));
     fbb.Finish(message);
   } break;
   case REDISMODULE_KEYTYPE_EMPTY: {
-    auto message = CreateGcsTableEntry(
-        fbb, GcsTableNotificationMode::APPEND_OR_ADD, RedisStringToFlatbuf(fbb, entry_id),
+    auto message = CreateGcsEntry(
+        fbb, GcsChangeMode::APPEND_OR_ADD, RedisStringToFlatbuf(fbb, entry_id),
         fbb.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>()));
     fbb.Finish(message);
   } break;

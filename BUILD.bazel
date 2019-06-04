@@ -535,7 +535,7 @@ flatbuffer_py_library(
         "ErrorTableData.py",
         "ErrorType.py",
         "FunctionTableData.py",
-        "GcsTableEntry.py",
+        "GcsEntry.py",
         "HeartbeatBatchTableData.py",
         "HeartbeatTableData.py",
         "Language.py",

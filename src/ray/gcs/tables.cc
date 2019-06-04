@@ -92,7 +92,7 @@ Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
       std::vector<DataT> results;
       if (!reply.IsNil()) {
         const auto data = reply.ReadAsString();
-        auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
         RAY_CHECK(from_flatbuf<ID>(*root->id()) == id);
         for (size_t i = 0; i < root->entries()->size(); i++) {
           DataT result;
@@ -114,9 +114,9 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
   auto subscribe_wrapper = [subscribe](AsyncGcsClient *client, const ID &id,
-                                       const GcsTableNotificationMode notification_mode,
+                                       const GcsChangeMode chagne_mode,
                                        const std::vector<DataT> &data) {
-    RAY_CHECK(notification_mode != GcsTableNotificationMode::REMOVE);
+    RAY_CHECK(chagne_mode != GcsChangeMode::REMOVE);
     subscribe(client, id, data);
   };
   return Subscribe(driver_id, client_id, subscribe_wrapper, done);
@@ -141,7 +141,7 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
       // Data is provided. This is the callback for a message.
       if (subscribe != nullptr) {
         // Parse the notification.
-        auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
         ID id;
         if (root->id()->size() > 0) {
           id = from_flatbuf<ID>(*root->id());
@@ -153,7 +153,7 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
           data_root->UnPackTo(&result);
           results.emplace_back(std::move(result));
         }
-        subscribe(client_, id, root->notification_mode(), results);
+        subscribe(client_, id, root->chagne_mode(), results);
       }
     }
   };
@@ -363,7 +363,7 @@ Status Hash<ID, Data>::Update(const DriverID &driver_id, const ID &id,
     data_vec.push_back(fbb.CreateString(data));
   }
 
-  fbb.Finish(CreateGcsTableEntry(fbb, GcsTableNotificationMode::APPEND_OR_ADD,
+  fbb.Finish(CreateGcsEntry(fbb, GcsChangeMode::APPEND_OR_ADD,
                                  fbb.CreateString(id.Binary()),
                                  fbb.CreateVector(data_vec)));
   return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, fbb.GetBufferPointer(),
@@ -372,9 +372,9 @@ Status Hash<ID, Data>::Update(const DriverID &driver_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Hash<ID, Data>::RemoveEntry(const DriverID &driver_id, const ID &id,
-                                   const std::vector<std::string> &keys,
-                                   const HashRemoveCallback &remove_callback) {
+Status Hash<ID, Data>::RemoveEntries(const DriverID &driver_id, const ID &id,
+                                     const std::vector<std::string> &keys,
+                                     const HashRemoveCallback &remove_callback) {
   num_removes_++;
   auto callback = [this, id, keys, remove_callback](const CallbackReply &reply) {
     if (remove_callback != nullptr) {
@@ -389,7 +389,7 @@ Status Hash<ID, Data>::RemoveEntry(const DriverID &driver_id, const ID &id,
     data_vec.push_back(fbb.CreateString(key));
   }
 
-  fbb.Finish(CreateGcsTableEntry(fbb, GcsTableNotificationMode::REMOVE,
+  fbb.Finish(CreateGcsEntry(fbb, GcsChangeMode::REMOVE,
                                  fbb.CreateString(id.Binary()),
                                  fbb.CreateVector(data_vec)));
   return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, fbb.GetBufferPointer(),
@@ -414,7 +414,7 @@ Status Hash<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
       DataMap results;
       if (!reply.IsNil()) {
         const auto data = reply.ReadAsString();
-        auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
         RAY_CHECK(from_flatbuf<ID>(*root->id()) == id);
         RAY_CHECK(root->entries()->size() % 2 == 0);
         for (size_t i = 0; i < root->entries()->size(); i += 2) {
@@ -453,13 +453,13 @@ Status Hash<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clie
       // Data is provided. This is the callback for a message.
       if (subscribe != nullptr) {
         // Parse the notification.
-        auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
         DataMap data_map;
         ID id;
         if (root->id()->size() > 0) {
           id = from_flatbuf<ID>(*root->id());
         }
-        if (root->notification_mode() == GcsTableNotificationMode::REMOVE) {
+        if (root->chagne_mode() == GcsChangeMode::REMOVE) {
           for (size_t i = 0; i < root->entries()->size(); i++) {
             std::string key(root->entries()->Get(i)->data(),
                             root->entries()->Get(i)->size());
@@ -477,7 +477,7 @@ Status Hash<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clie
             data_map.emplace(key, std::move(result));
           }
         }
-        subscribe(client_, id, root->notification_mode(), data_map);
+        subscribe(client_, id, root->chagne_mode(), data_map);
       }
     }
   };

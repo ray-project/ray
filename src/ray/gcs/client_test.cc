@@ -658,12 +658,12 @@ void TestSetSubscribeAll(const DriverID &driver_id,
   // Callback for a notification.
   auto notification_callback = [object_ids, managers](
       gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsTableNotificationMode notification_mode,
+      const GcsChangeMode chagne_mode,
       const std::vector<ObjectTableDataT> data) {
     if (test->NumCallbacks() < 3 * 3) {
-      ASSERT_EQ(notification_mode, GcsTableNotificationMode::APPEND_OR_ADD);
+      ASSERT_EQ(chagne_mode, GcsChangeMode::APPEND_OR_ADD);
     } else {
-      ASSERT_EQ(notification_mode, GcsTableNotificationMode::REMOVE);
+      ASSERT_EQ(chagne_mode, GcsChangeMode::REMOVE);
     }
     ASSERT_EQ(id, object_ids[test->NumCallbacks() / 3 % 3]);
     // Check that we get notifications in the same order as the writes.
@@ -895,9 +895,9 @@ void TestSetSubscribeId(const DriverID &driver_id,
   // received for keys that we requested notifications for.
   auto notification_callback = [object_id2, managers2](
       gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsTableNotificationMode notification_mode,
+      const GcsChangeMode chagne_mode,
       const std::vector<ObjectTableDataT> &data) {
-    ASSERT_EQ(notification_mode, GcsTableNotificationMode::APPEND_OR_ADD);
+    ASSERT_EQ(chagne_mode, GcsChangeMode::APPEND_OR_ADD);
     // Check that we only get notifications for the requested key.
     ASSERT_EQ(id, object_id2);
     // Check that we get notifications in the same order as the writes.
@@ -1112,9 +1112,9 @@ void TestSetSubscribeCancel(const DriverID &driver_id,
   // received for the object that we requested notifications for.
   auto notification_callback = [object_id, managers](
       gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsTableNotificationMode notification_mode,
+      const GcsChangeMode chagne_mode,
       const std::vector<ObjectTableDataT> &data) {
-    ASSERT_EQ(notification_mode, GcsTableNotificationMode::APPEND_OR_ADD);
+    ASSERT_EQ(chagne_mode, GcsChangeMode::APPEND_OR_ADD);
     ASSERT_EQ(id, object_id);
     // Check that we get a duplicate notification for the first write. We get a
     // duplicate notification because notifications
@@ -1354,9 +1354,9 @@ void TestHashTable(const DriverID &driver_id,
   };
   auto notification_callback = [data_map1, data_map2, compare_test](
       AsyncGcsClient *client, const ClientID &id,
-      const GcsTableNotificationMode notification_mode,
+      const GcsChangeMode chagne_mode,
       const DynamicResourceTable::DataMap &data) {
-    if (notification_mode == GcsTableNotificationMode::REMOVE) {
+    if (chagne_mode == GcsChangeMode::REMOVE) {
       ASSERT_EQ(data.size(), 2);
       ASSERT_TRUE(data.find("GPU") != data.end());
       ASSERT_TRUE(data.find("CUSTOM") != data.end() || data.find("CPU") != data.end());
@@ -1377,9 +1377,9 @@ void TestHashTable(const DriverID &driver_id,
     }
   };
   // Step 0: Subscribe the change of the hash table.
-  RAY_CHECK_OK(client->dynamic_resource_table().Subscribe(
+  RAY_CHECK_OK(client->resource_table().Subscribe(
       driver_id, ClientID::Nil(), notification_callback, subscribe_callback));
-  RAY_CHECK_OK(client->dynamic_resource_table().RequestNotifications(
+  RAY_CHECK_OK(client->resource_table().RequestNotifications(
       driver_id, client_id, client->client_table().GetLocalClientId()));
 
   // Step 1: Add elements to the hash table.
@@ -1389,7 +1389,7 @@ void TestHashTable(const DriverID &driver_id,
     compare_test(data_map1, callback_data);
     test->IncrementNumCallbacks();
   };
-  RAY_CHECK_OK(client->dynamic_resource_table().Update(driver_id, client_id, data_map1,
+  RAY_CHECK_OK(client->resource_table().Update(driver_id, client_id, data_map1,
                                                        update_callback1));
   auto lookup_callback1 = [data_map1, compare_test](
       AsyncGcsClient *client, const ClientID &id,
@@ -1398,11 +1398,11 @@ void TestHashTable(const DriverID &driver_id,
     test->IncrementNumCallbacks();
   };
   RAY_CHECK_OK(
-      client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback1));
+      client->resource_table().Lookup(driver_id, client_id, lookup_callback1));
 
   // Step 2: Decrease one element, increase one and add a new one.
   RAY_CHECK_OK(
-      client->dynamic_resource_table().Update(driver_id, client_id, data_map2, nullptr));
+      client->resource_table().Update(driver_id, client_id, data_map2, nullptr));
   auto lookup_callback2 = [data_map2, compare_test](
       AsyncGcsClient *client, const ClientID &id,
       const DynamicResourceTable::DataMap &callback_data) {
@@ -1410,7 +1410,7 @@ void TestHashTable(const DriverID &driver_id,
     test->IncrementNumCallbacks();
   };
   RAY_CHECK_OK(
-      client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback2));
+      client->resource_table().Lookup(driver_id, client_id, lookup_callback2));
   std::vector<std::string> delete_keys({"GPU", "CUSTOM", "None-Existent"});
   auto remove_callback = [delete_keys](AsyncGcsClient *client, const ClientID &id,
                                        const std::vector<std::string> &callback_data) {
@@ -1420,7 +1420,7 @@ void TestHashTable(const DriverID &driver_id,
     }
     test->IncrementNumCallbacks();
   };
-  RAY_CHECK_OK(client->dynamic_resource_table().RemoveEntry(
+  RAY_CHECK_OK(client->resource_table().RemoveEntries(
       driver_id, client_id, delete_keys, remove_callback));
   DynamicResourceTable::DataMap data_map3(data_map2);
   data_map3.erase("GPU");
@@ -1432,10 +1432,10 @@ void TestHashTable(const DriverID &driver_id,
     test->IncrementNumCallbacks();
   };
   RAY_CHECK_OK(
-      client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback3));
+      client->resource_table().Lookup(driver_id, client_id, lookup_callback3));
 
   // Step 3: Reset the the resources to data_map1.
-  RAY_CHECK_OK(client->dynamic_resource_table().Update(driver_id, client_id, data_map1,
+  RAY_CHECK_OK(client->resource_table().Update(driver_id, client_id, data_map1,
                                                        update_callback1));
   auto lookup_callback4 = [data_map1, compare_test](
       AsyncGcsClient *client, const ClientID &id,
@@ -1444,10 +1444,10 @@ void TestHashTable(const DriverID &driver_id,
     test->IncrementNumCallbacks();
   };
   RAY_CHECK_OK(
-      client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback4));
+      client->resource_table().Lookup(driver_id, client_id, lookup_callback4));
 
   // Step 4: Removing all elements will remove the home Hash table from GCS.
-  RAY_CHECK_OK(client->dynamic_resource_table().RemoveEntry(
+  RAY_CHECK_OK(client->resource_table().RemoveEntries(
       driver_id, client_id, {"GPU", "CPU", "CUSTOM", "None-Existent"}, nullptr));
   auto lookup_callback5 = [](AsyncGcsClient *client, const ClientID &id,
                              const DynamicResourceTable::DataMap &callback_data) {
@@ -1459,7 +1459,7 @@ void TestHashTable(const DriverID &driver_id,
     }
   };
   RAY_CHECK_OK(
-      client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback5));
+      client->resource_table().Lookup(driver_id, client_id, lookup_callback5));
   test->Start();
   ASSERT_EQ(test->NumCallbacks(), expected_count);
 }
