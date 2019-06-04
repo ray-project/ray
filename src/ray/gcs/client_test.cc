@@ -1400,7 +1400,7 @@ void TestHashTable(const DriverID &driver_id,
   RAY_CHECK_OK(
       client->dynamic_resource_table().Lookup(driver_id, client_id, lookup_callback1));
 
-  // Step 2: Decreace one element, increace one and add a new one.
+  // Step 2: Decrease one element, increase one and add a new one.
   RAY_CHECK_OK(
       client->dynamic_resource_table().Update(driver_id, client_id, data_map2, nullptr));
   auto lookup_callback2 = [data_map2, compare_test](
