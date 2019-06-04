@@ -39,6 +39,7 @@ class EagerModel(Model):
             return tf.identity(self.fcnet.outputs), feature_out
 
     def forward_eager(self, feature_layer):
+        assert tf.executing_eagerly()
         if random.random() > 0.99:
             print("Eagerly printing the feature layer mean value",
                   tf.reduce_mean(feature_layer))
@@ -58,6 +59,7 @@ def policy_gradient_loss(policy, batch_tensors):
     """
 
     def compute_penalty(actions, rewards):
+        assert tf.executing_eagerly()
         penalty = tf.reduce_mean(tf.cast(actions, tf.float32))
         if random.random() > 0.9:
             print("The eagerly computed penalty is", penalty, actions, rewards)
