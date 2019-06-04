@@ -26,6 +26,7 @@ REDIS_MODULE="./bazel-bin/libray_redis_module.so"
 LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
 RAYLET_EXEC="./bazel-bin/raylet"
+MOCK_WORKER_EXEC="./bazel-bin/mock_worker"
 
 # Allow cleanup commands to fail.
 bazel run //:redis-cli -- -p 6379 shutdown || true

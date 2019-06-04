@@ -15,11 +15,19 @@ Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id)
 
   auto plasma_id = put_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> data;
-  RAY_ARROW_RETURN_NOT_OK(
-      core_worker_.store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
+  {
+    std::unique_lock<std::mutex> guard(core_worker_.store_client_mutex_);
+    RAY_ARROW_RETURN_NOT_OK(
+        core_worker_.store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
+  }      
+  
   memcpy(data->mutable_data(), buffer.Data(), buffer.Size());
-  RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Seal(plasma_id));
-  RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Release(plasma_id));
+
+  {
+    std::unique_lock<std::mutex> guard(core_worker_.store_client_mutex_);
+    RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Seal(plasma_id));
+    RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Release(plasma_id));
+  }
   return Status::OK();
 }
 
@@ -73,8 +81,11 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     }
 
     std::vector<plasma::ObjectBuffer> object_buffers;
-    auto status =
-        core_worker_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
+    {
+      std::unique_lock<std::mutex> guard(core_worker_.store_client_mutex_);    
+      auto status =
+          core_worker_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
+    }
 
     for (int i = 0; i < object_buffers.size(); i++) {
       if (object_buffers[i].data != nullptr) {

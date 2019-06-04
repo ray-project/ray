@@ -52,16 +52,16 @@ class ActorHandle {
   /// Increase task counter.
   int IncreaseTaskCounter() { return task_counter_++; }
 
-  class ActorHandleID GetNewActorHandle() {
+  ray::ActorHandleID GetNewActorHandle() {
     // TODO: implement this.
     return ActorHandleID();
   }
 
  private:
   /// ID of the actor.
-  const class ActorID actor_id_;
+  const ray::ActorID actor_id_;
   /// ID of this actor handle.
-  const class ActorHandleID actor_handle_id_;
+  const ray::ActorHandleID actor_handle_id_;
   /// ID of this actor cursor.
   ObjectID actor_cursor_;
   /// Counter for tasks from this handle.
