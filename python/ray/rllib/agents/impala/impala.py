@@ -113,18 +113,16 @@ class ImpalaTrainer(Trainer):
             if k not in config["optimizer"]:
                 config["optimizer"][k] = config[k]
         policy_cls = self._get_policy()
-        self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)
+        self.workers = self._make_workers(
+            self.env_creator, policy_cls, self.config, num_workers=0)
 
         if self.config["num_aggregation_workers"] > 0:
             # Create co-located aggregator actors first for placement pref
             aggregators = TreeAggregator.precreate_aggregators(
                 self.config["num_aggregation_workers"])
 
-        self.remote_evaluators = self.make_remote_evaluators(
-            env_creator, policy_cls, config["num_workers"])
-        self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
-                                               self.remote_evaluators,
+        self.workers.add_workers(config["num_workers"])
+        self.optimizer = AsyncSamplesOptimizer(self.workers,
                                                **config["optimizer"])
         if config["entropy_coeff"] < 0:
             raise DeprecationWarning("entropy_coeff must be >= 0")

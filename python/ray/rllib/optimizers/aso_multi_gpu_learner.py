@@ -31,7 +31,7 @@ class TFMultiGPULearner(LearnerThread):
     """
 
     def __init__(self,
-                 local_evaluator,
+                 local_worker,
                  num_gpus=1,
                  lr=0.0005,
                  train_batch_size=500,
@@ -41,7 +41,7 @@ class TFMultiGPULearner(LearnerThread):
                  learner_queue_size=16,
                  num_data_load_threads=16,
                  _fake_gpus=False):
-        LearnerThread.__init__(self, local_evaluator, minibatch_buffer_size,
+        LearnerThread.__init__(self, local_worker, minibatch_buffer_size,
                                num_sgd_iter, learner_queue_size)
         self.lr = lr
         self.train_batch_size = train_batch_size
@@ -59,16 +59,16 @@ class TFMultiGPULearner(LearnerThread):
         assert self.train_batch_size % len(self.devices) == 0
         assert self.train_batch_size >= len(self.devices), "batch too small"
 
-        if set(self.local_evaluator.policy_map.keys()) != {DEFAULT_POLICY_ID}:
+        if set(self.local_worker.policy_map.keys()) != {DEFAULT_POLICY_ID}:
             raise NotImplementedError("Multi-gpu mode for multi-agent")
-        self.policy = self.local_evaluator.policy_map[DEFAULT_POLICY_ID]
+        self.policy = self.local_worker.policy_map[DEFAULT_POLICY_ID]
 
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
         self.par_opt = []
-        with self.local_evaluator.tf_sess.graph.as_default():
-            with self.local_evaluator.tf_sess.as_default():
+        with self.local_worker.tf_sess.graph.as_default():
+            with self.local_worker.tf_sess.as_default():
                 with tf.variable_scope(DEFAULT_POLICY_ID, reuse=tf.AUTO_REUSE):
                     if self.policy._state_inputs:
                         rnn_inputs = self.policy._state_inputs + [
@@ -87,7 +87,7 @@ class TFMultiGPULearner(LearnerThread):
                                 999999,  # it will get rounded down
                                 self.policy.copy))
 
-                self.sess = self.local_evaluator.tf_sess
+                self.sess = self.local_worker.tf_sess
                 self.sess.run(tf.global_variables_initializer())
 
         self.idle_optimizers = queue.Queue()

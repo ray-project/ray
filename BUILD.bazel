@@ -77,6 +77,7 @@ cc_library(
             "src/ray/raylet/mock_gcs_client.cc",
             "src/ray/raylet/monitor_main.cc",
             "src/ray/raylet/*_test.cc",
+            "src/ray/raylet/main.cc",
         ],
     ),
     hdrs = glob([
@@ -122,15 +123,18 @@ cc_library(
     deps = [
         ":ray_common",
         ":ray_util",
+        ":raylet_lib",
     ],
 )
 
-cc_test(
+# This test is run by src/ray/test/run_core_worker_tests.sh
+cc_binary(
     name = "core_worker_test",
     srcs = ["src/ray/core_worker/core_worker_test.cc"],
     copts = COPTS,
     deps = [
         ":core_worker_lib",
+        ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -320,6 +324,7 @@ cc_library(
         ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
+        "@plasma//:plasma_client",
     ],
 )
 

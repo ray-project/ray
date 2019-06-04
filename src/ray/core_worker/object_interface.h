@@ -2,6 +2,7 @@
 #define RAY_CORE_WORKER_OBJECT_INTERFACE_H
 
 #include "common.h"
+#include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/id.h"
 #include "ray/status.h"
@@ -13,14 +14,14 @@ class CoreWorker;
 /// The interface that contains all `CoreWorker` methods that are related to object store.
 class CoreWorkerObjectInterface {
  public:
-  CoreWorkerObjectInterface(CoreWorker &core_worker) : core_worker_(core_worker) {}
+  CoreWorkerObjectInterface(CoreWorker &core_worker);
 
   /// Put an object into object store.
   ///
   /// \param[in] buffer Data buffer of the object.
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
-  Status Put(const Buffer &buffer, const ObjectID *object_id);
+  Status Put(const Buffer &buffer, ObjectID *object_id);
 
   /// Get a list of objects from the object store.
   ///
@@ -29,7 +30,7 @@ class CoreWorkerObjectInterface {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-             std::vector<Buffer> *results);
+             std::vector<std::shared_ptr<Buffer>> *results);
 
   /// Wait for a list of objects to appear in the object store.
   ///

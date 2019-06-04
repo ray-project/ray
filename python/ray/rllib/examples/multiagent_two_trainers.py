@@ -75,7 +75,7 @@ if __name__ == "__main__":
         })
 
     # disable DQN exploration when used by the PPO trainer
-    ppo_trainer.optimizer.foreach_evaluator(
+    ppo_trainer.workers.foreach_worker(
         lambda ev: ev.for_policy(
             lambda pi: pi.set_epsilon(0.0), policy_id="dqn_policy"))
 

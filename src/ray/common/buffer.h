@@ -3,6 +3,11 @@
 
 #include <cstdint>
 #include <cstdio>
+#include "plasma/client.h"
+
+namespace arrow {
+class Buffer;
+}
 
 namespace ray {
 
@@ -15,7 +20,7 @@ class Buffer {
   /// Size of this buffer.
   virtual size_t Size() const = 0;
 
-  virtual ~Buffer() {}
+  virtual ~Buffer(){};
 
   bool operator==(const Buffer &rhs) const {
     return this->Data() == rhs.Data() && this->Size() == rhs.Size();
@@ -38,6 +43,21 @@ class LocalMemoryBuffer : public Buffer {
   uint8_t *data_;
   /// Size of the buffer.
   size_t size_;
+};
+
+/// Represents a byte buffer for plasma object.
+class PlasmaBuffer : public Buffer {
+ public:
+  PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer) : buffer_(buffer) {}
+
+  uint8_t *Data() const override { return const_cast<uint8_t *>(buffer_->data()); }
+
+  size_t Size() const override { return buffer_->size(); }
+
+ private:
+  /// shared_ptr to arrow buffer which can potentially hold a reference
+  /// for the object (when it's a plasma::PlasmaBuffer).
+  std::shared_ptr<arrow::Buffer> buffer_;
 };
 
 }  // namespace ray

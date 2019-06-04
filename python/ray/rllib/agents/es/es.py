@@ -192,7 +192,7 @@ class ESTrainer(Trainer):
 
         # Create the actors.
         logger.info("Creating actors.")
-        self.workers = [
+        self._workers = [
             Worker.remote(config, policy_params, env_creator, noise_id)
             for _ in range(config["num_workers"])
         ]
@@ -270,7 +270,7 @@ class ESTrainer(Trainer):
         # Now sync the filters
         FilterManager.synchronize({
             DEFAULT_POLICY_ID: self.policy.get_filter()
-        }, self.workers)
+        }, self._workers)
 
         info = {
             "weights_norm": np.square(theta).sum(),
@@ -296,7 +296,7 @@ class ESTrainer(Trainer):
     @override(Trainer)
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
-        for w in self.workers:
+        for w in self._workers:
             w.__ray_terminate__.remote()
 
     def _collect_results(self, theta_id, min_episodes, min_timesteps):
@@ -307,7 +307,7 @@ class ESTrainer(Trainer):
                 "Collected {} episodes {} timesteps so far this iter".format(
                     num_episodes, num_timesteps))
             rollout_ids = [
-                worker.do_rollouts.remote(theta_id) for worker in self.workers
+                worker.do_rollouts.remote(theta_id) for worker in self._workers
             ]
             # Get the results of the rollouts.
             for result in ray_get_and_free(rollout_ids):
@@ -334,4 +334,4 @@ class ESTrainer(Trainer):
         self.policy.set_filter(state["filter"])
         FilterManager.synchronize({
             DEFAULT_POLICY_ID: self.policy.get_filter()
-        }, self.workers)
+        }, self._workers)

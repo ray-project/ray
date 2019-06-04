@@ -120,14 +120,14 @@ def default_policy_agent_mapping(unused_agent_id):
 def rollout(agent, env_name, num_steps, out=None, no_render=True):
     policy_agent_mapping = default_policy_agent_mapping
 
-    if hasattr(agent, "local_evaluator"):
-        env = agent.local_evaluator.env
+    if hasattr(agent, "workers"):
+        env = agent.workers.local_worker().env
         multiagent = isinstance(env, MultiAgentEnv)
-        if agent.local_evaluator.multiagent:
+        if agent.workers.local_worker().multiagent:
             policy_agent_mapping = agent.config["multiagent"][
                 "policy_mapping_fn"]
 
-        policy_map = agent.local_evaluator.policy_map
+        policy_map = agent.workers.local_worker().policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
         action_init = {

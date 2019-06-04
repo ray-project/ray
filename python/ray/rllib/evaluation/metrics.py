@@ -39,27 +39,23 @@ def get_learner_stats(grad_info):
 
 
 @DeveloperAPI
-def collect_metrics(local_evaluator=None,
-                    remote_evaluators=[],
-                    timeout_seconds=180):
-    """Gathers episode metrics from PolicyEvaluator instances."""
+def collect_metrics(local_worker=None, remote_workers=[], timeout_seconds=180):
+    """Gathers episode metrics from RolloutWorker instances."""
 
     episodes, num_dropped = collect_episodes(
-        local_evaluator, remote_evaluators, timeout_seconds=timeout_seconds)
+        local_worker, remote_workers, timeout_seconds=timeout_seconds)
     metrics = summarize_episodes(episodes, episodes, num_dropped)
     return metrics
 
 
 @DeveloperAPI
-def collect_episodes(local_evaluator=None,
-                     remote_evaluators=[],
+def collect_episodes(local_worker=None, remote_workers=[],
                      timeout_seconds=180):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
-    if remote_evaluators:
+    if remote_workers:
         pending = [
-            a.apply.remote(lambda ev: ev.get_metrics())
-            for a in remote_evaluators
+            a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_workers
         ]
         collected, _ = ray.wait(
             pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
@@ -73,8 +69,8 @@ def collect_episodes(local_evaluator=None,
         metric_lists = []
         num_metric_batches_dropped = 0
 
-    if local_evaluator:
-        metric_lists.append(local_evaluator.get_metrics())
+    if local_worker:
+        metric_lists.append(local_worker.get_metrics())
     episodes = []
     for metrics in metric_lists:
         episodes.extend(metrics)
