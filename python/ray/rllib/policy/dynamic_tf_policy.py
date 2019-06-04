@@ -182,6 +182,9 @@ class DynamicTFPolicy(TFPolicy):
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
 
+        if self.config["use_eager"]:
+            raise ValueError("eager not implemented in this case")
+
         # Note that there might be RNN state inputs at the end of the list
         if self._state_inputs:
             num_state_inputs = len(self._state_inputs) + 1
