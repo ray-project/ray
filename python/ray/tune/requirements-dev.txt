@@ -1,0 +1,9 @@
+flake8==3.7.7
+flake8-quotes==2.0.1
+gym==0.12.5
+opencv-python==4.1.0.25
+pandas==0.24.2
+requests==2.22.0
+tabulate==0.8.3
+tensorflow==1.13.1
+yapf==0.23.0
