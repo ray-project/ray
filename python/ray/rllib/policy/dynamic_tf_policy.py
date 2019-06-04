@@ -42,6 +42,7 @@ class DynamicTFPolicy(TFPolicy):
                  before_loss_init=None,
                  make_action_sampler=None,
                  existing_inputs=None,
+                 existing_model=None,
                  get_batch_divisibility_req=None,
                  obs_include_prev_action_reward=True):
         """Initialize a dynamic TF policy.
@@ -67,6 +68,8 @@ class DynamicTFPolicy(TFPolicy):
             existing_inputs (OrderedDict): when copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
+            existing_model (ModelV2): when copying a policy, this specifies
+                an existing model to clone and share weights with
             get_batch_divisibility_req (func): optional function that returns
                 the divisibility requirement for sample batches
             obs_include_prev_action_reward (bool): whether to include the
@@ -112,32 +115,41 @@ class DynamicTFPolicy(TFPolicy):
             self.model = None
             self.dist_class = None
             self.action_dist = None
+            state_in = None
+            state_out = None
+            seq_lens = None
             action_sampler, action_prob = make_action_sampler(
                 self, self.input_dict, obs_space, action_space, config)
         else:
             self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
+            if existing_model:
+                self.model = existing_model
+            else:
+                self.model = ModelCatalog.get_model_v2(
+                    obs_space, action_space, logit_dim, self.config["model"])
             if existing_inputs:
-                existing_state_in = [
+                state_in = [
                     v for k, v in existing_inputs.items()
                     if k.startswith("state_in_")
                 ]
-                if existing_state_in:
-                    existing_seq_lens = existing_inputs["seq_lens"]
+                if state_in:
+                    seq_lens = existing_inputs["seq_lens"]
                 else:
-                    existing_seq_lens = None
+                    seq_lens = None
             else:
-                existing_state_in = []
-                existing_seq_lens = None
-            self.model = ModelCatalog.get_model(
-                self.input_dict,
-                obs_space,
-                action_space,
-                logit_dim,
-                self.config["model"],
-                state_in=existing_state_in,
-                seq_lens=existing_seq_lens)
-            self.action_dist = self.dist_class(self.model.outputs)
+                state_in = [
+                    tf.placeholder(s.shape, dtype=s.dtype)
+                    for s in self.model.get_initial_state()
+                ]
+                if state_in:
+                    seq_lens = tf.placeholder(
+                        dtype=tf.int32, shape=[None], name="seq_lens")
+                else:
+                    seq_lens = None
+            logits, self.feature_out, state_out = self.model.forward(
+                 self.input_dict, state_in, seq_lens)
+            self.action_dist = self.dist_class(logits)
             action_sampler = self.action_dist.sample()
             action_prob = self.action_dist.sampled_action_prob()
 
@@ -158,11 +170,11 @@ class DynamicTFPolicy(TFPolicy):
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
-            state_inputs=self.model and self.model.state_in,
-            state_outputs=self.model and self.model.state_out,
+            state_inputs=state_in,
+            state_outputs=state_out,
             prev_action_input=prev_actions,
             prev_reward_input=prev_rewards,
-            seq_lens=self.model and self.model.seq_lens,
+            seq_lens=seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req)
 
@@ -209,7 +221,8 @@ class DynamicTFPolicy(TFPolicy):
             self.observation_space,
             self.action_space,
             self.config,
-            existing_inputs=input_dict)
+            existing_inputs=input_dict,
+            existing_model=self.model)
 
         loss = instance._do_loss_init(input_dict)
         TFPolicy._initialize_loss(
@@ -223,7 +236,7 @@ class DynamicTFPolicy(TFPolicy):
     @override(Policy)
     def get_initial_state(self):
         if self.model:
-            return self.model.state_init
+            return self.model.get_initial_state()
         else:
             return []
 

@@ -67,6 +67,7 @@ class Model(object):
         self.options = options
         self.scope = tf.get_variable_scope()
         self.session = tf.get_default_session()
+        self.input_dict = input_dict
         if seq_lens is not None:
             self.seq_lens = seq_lens
         else:

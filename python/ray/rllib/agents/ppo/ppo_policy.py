@@ -224,26 +224,18 @@ class ValueNetworkMixin(object):
     def __init__(self, obs_space, action_space, config):
         if config["use_gae"]:
             if config["vf_share_layers"]:
-                self.value_function = self.model.value_function()
+                self.value_function = self.model.get_branch_output(
+                    "value", 1, feature_layer=self.feature_out)
             else:
-                vf_config = config["model"].copy()
-                # Do not split the last layer of the value function into
-                # mean parameters and standard deviation parameters and
-                # do not make the standard deviations free variables.
-                vf_config["free_log_std"] = False
-                if vf_config["use_lstm"]:
-                    vf_config["use_lstm"] = False
+                if config["model"]["use_lstm"]:
                     logger.warning(
                         "It is not recommended to use a LSTM model with "
                         "vf_share_layers=False (consider setting it to True). "
                         "If you want to not share layers, you can implement "
                         "a custom LSTM model that overrides the "
                         "value_function() method.")
-                with tf.variable_scope("value_function"):
-                    self.value_function = ModelCatalog.get_model(
-                        self.get_obs_input_dict(), obs_space, action_space, 1,
-                        vf_config).outputs
-                    self.value_function = tf.reshape(self.value_function, [-1])
+                self.value_function = self.model.get_branch_output(
+                    "value", 1, feature_layer=None)
         else:
             self.value_function = tf.zeros(
                 shape=tf.shape(self.get_placeholder(SampleBatch.CUR_OBS))[:1])

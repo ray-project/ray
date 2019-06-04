@@ -559,7 +559,7 @@ def setup_late_mixins(policy, obs_space, action_space, config):
 def _build_q_network(policy, obs, obs_space, action_space):
     config = policy.config
     qnet = QNetwork(
-        ModelCatalog.get_model({
+        ModelCatalog.get_model_v2({
             "obs": obs,
             "is_training": policy._get_is_training_placeholder(),
         }, obs_space, action_space, action_space.n, config["model"]),
