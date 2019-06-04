@@ -163,13 +163,6 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --env CartPole-v0 \
     --run PG \
     --stop '{"training_iteration": 1}' \
-    --config '{"use_eager": true}'
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output /ray/python/ray/rllib/train.py \
-    --env CartPole-v0 \
-    --run PG \
-    --stop '{"training_iteration": 1}' \
     --config '{"sample_batch_size": 500, "num_workers": 1}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -401,6 +394,13 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/python/ray/rllib/examples/eager_execution.py --iters=2
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run PPO \
+    --stop '{"training_iteration": 1}' \
+    --config '{"use_eager": true, "simple_optimizer": true}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/python/ray/rllib/examples/custom_tf_policy.py --iters=2

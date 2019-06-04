@@ -167,6 +167,8 @@ class DynamicTFPolicy(TFPolicy):
             batch_divisibility_req=batch_divisibility_req)
 
         # Phase 2 init
+        self._needs_eager_conversion = set()
+        self._eager_tensors = {}
         before_loss_init(self, obs_space, action_space, config)
         if not existing_inputs:
             self._initialize_loss()
@@ -178,12 +180,25 @@ class DynamicTFPolicy(TFPolicy):
         """
         return self.input_dict
 
+    def convert_to_eager(self, tensor):
+        """Convert a graph tensor accessed in the loss to an eager tensor.
+
+        Experimental.
+        """
+        if tf.executing_eagerly():
+            return self._eager_tensors[tensor]
+        else:
+            self._needs_eager_conversion.add(tensor)
+            return tensor
+
     @override(TFPolicy)
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
 
         if self.config["use_eager"]:
-            raise ValueError("eager not implemented in this case")
+            raise ValueError(
+                "eager not implemented for multi-GPU, try setting "
+                "`simple_optimizer: true`")
 
         # Note that there might be RNN state inputs at the end of the list
         if self._state_inputs:
@@ -304,23 +319,31 @@ class DynamicTFPolicy(TFPolicy):
         # XXX experimental support for automatically eagerifying the loss.
         # The main limitation right now is that TF doesn't support mixing eager
         # and non-eager tensors, so losses that read non-eager tensors through
-        # the `policy` reference will crash.
+        # `policy` need to use `policy.convert_to_eager(tensor)`.
         if self.config["use_eager"]:
             if not self.model:
                 raise ValueError("eager not implemented in this case")
+            graph_tensors = list(self._needs_eager_conversion)
 
             def gen_loss(model_outputs, *args):
-                eager_inputs = dict(zip([k for (k, v) in loss_inputs], args))
+                # fill in the batch tensor dict with eager ensors
+                eager_inputs = dict(
+                    zip([k for (k, v) in loss_inputs],
+                        args[:len(loss_inputs)]))
+                # fill in the eager versions of all accessed graph tensors
+                self._eager_tensors = dict(
+                    zip(graph_tensors, args[len(loss_inputs):]))
                 # patch the action dist to use eager mode tensors
                 self.action_dist.inputs = model_outputs
                 return self._loss_fn(self, eager_inputs)
 
             loss = tf.py_function(
                 gen_loss,
-                [self.model.outputs] +
                 # cast works around TypeError: Cannot convert provided value
                 # to EagerTensor. Provided value: 0.0 Requested dtype: int64
-                [tf.cast(v, tf.float32) for (k, v) in loss_inputs],
+                [self.model.outputs] + [
+                    tf.cast(v, tf.float32) for (k, v) in loss_inputs
+                ] + [tf.cast(t, tf.float32) for t in graph_tensors],
                 tf.float32)
 
         TFPolicy._initialize_loss(self, loss, loss_inputs)
