@@ -297,6 +297,25 @@ class DynamicTFPolicy(TFPolicy):
         loss = self._do_loss_init(batch_tensors)
         for k in sorted(batch_tensors.accessed_keys):
             loss_inputs.append((k, batch_tensors[k]))
+
+        # XXX experimental support for automatically eagerifying the loss.
+        # The main limitation right now is that TF doesn't support mixing eager
+        # and non-eager tensors, so losses that read non-eager tensors through
+        # the `policy` reference will crash.
+        if self.config["use_eager"]:
+            if not self.model:
+                raise ValueError("eager not implemented in this case")
+
+            def gen_loss(model_outputs, *args):
+                eager_inputs = dict(zip([k for (k, v) in loss_inputs], args))
+                # patch the action dist to use eager mode tensors
+                self.action_dist.inputs = model_outputs
+                return self._loss_fn(self, eager_inputs)
+
+            loss = tf.py_function(
+                gen_loss, [self.model.outputs] +
+                [tf.cast(v, tf.float32) for (k, v) in loss_inputs], tf.float32)
+
         TFPolicy._initialize_loss(self, loss, loss_inputs)
         if self._grad_stats_fn:
             self._stats_fetches.update(self._grad_stats_fn(self, self._grads))

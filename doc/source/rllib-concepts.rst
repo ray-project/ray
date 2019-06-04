@@ -373,8 +373,9 @@ While RLlib runs all TF operations in graph mode, you can still leverage TensorF
 
         return penalty - tf.reduce_mean(policy.action_dist.logp(actions) * rewards)
 
-You can find a runnable example of the above eager execution example `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/eager_execution.py>`__.
+You can find a runnable file for the above eager execution example `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/eager_execution.py>`__.
 
+There is also experimental support for automatically running the entire loss function in eager mode. This can be enabled with ``use_eager: True``, e.g., ``rllib train --env=CartPole-v0 --run=PG --config='{"use_eager": true}'``. However this currently only works for basic algorithms such as PG.
 
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

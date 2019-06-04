@@ -67,6 +67,9 @@ COMMON_CONFIG = {
     },
     # Whether to attempt to continue training if a worker crashes.
     "ignore_worker_failures": False,
+    # Execute TF loss functions in eager mode. This is currently experimental
+    # and only really works with the basic PG algorithm.
+    "use_eager": False,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the
