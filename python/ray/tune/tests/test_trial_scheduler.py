@@ -627,6 +627,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             time_attr="training_iteration",
             perturbation_interval=10,
             resample_probability=resample_prob,
+            quantile_fraction=0.25,
             hyperparam_mutations={
                 "id_factor": [100],
                 "float_factor": lambda: 100.0,
