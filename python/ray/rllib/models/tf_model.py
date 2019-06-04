@@ -4,7 +4,7 @@ from __future__ import print_function
 
 
 @PublicAPI
-class TFModel(object):
+class ModelV2(object):
     def __init__(self, obs_space, action_space, num_outputs, options):
         self.obs_space = obs_space
         self.action_space = action_space
@@ -20,15 +20,16 @@ class TFModel(object):
         raise NotImplementedError
 
     @PublicAPI
-    def copy_share_weights(self, new_input_dict, new_name):
-        return self  # this default works for keras type models
+    def copy_share_weights(
+            self, new_name, new_input_dict, new_state_in, new_seq_lens):
+        return self  # this default works for torch and keras type models
 
     @PublicAPI
     def get_initial_state(self):
         return None
 
 
-class TFModelLegacyWrapper(TFModel):
+class ModelV1Wrapper(ModelV2):
     def __init__(self,
                  legacy_model_cls,
                  input_dict,
