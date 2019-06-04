@@ -74,6 +74,13 @@ class DynamicTFPolicy(TFPolicy):
                 the divisibility requirement for sample batches
             obs_include_prev_action_reward (bool): whether to include the
                 previous action and reward in the model input
+
+        Attributes:
+            config
+            model
+            action_dist
+            state_in
+            seq_lens
         """
         self.config = config
         self._loss_fn = loss_fn
@@ -107,6 +114,8 @@ class DynamicTFPolicy(TFPolicy):
             SampleBatch.PREV_REWARDS: prev_rewards,
             "is_training": self._get_is_training_placeholder(),
         }
+        self.seq_lens = tf.placeholder(
+            dtype=tf.int32, shape=[None], name="seq_lens")
 
         # Create the model network and action outputs
         if make_action_sampler:
@@ -115,9 +124,8 @@ class DynamicTFPolicy(TFPolicy):
             self.model = None
             self.dist_class = None
             self.action_dist = None
-            state_in = None
-            state_out = None
-            seq_lens = None
+            self.state_in = None
+            self.state_out = None
             action_sampler, action_prob = make_action_sampler(
                 self, self.input_dict, obs_space, action_space, config)
         else:
@@ -129,27 +137,21 @@ class DynamicTFPolicy(TFPolicy):
                 self.model = ModelCatalog.get_model_v2(
                     obs_space, action_space, logit_dim, self.config["model"])
             if existing_inputs:
-                state_in = [
+                self.state_in = [
                     v for k, v in existing_inputs.items()
                     if k.startswith("state_in_")
                 ]
-                if state_in:
-                    seq_lens = existing_inputs["seq_lens"]
-                else:
-                    seq_lens = None
+                if self.state_in:
+                    self.seq_lens = existing_inputs["seq_lens"]
             else:
-                state_in = [
+                self.state_in = [
                     tf.placeholder(s.shape, dtype=s.dtype)
                     for s in self.model.get_initial_state()
                 ]
-                if state_in:
-                    seq_lens = tf.placeholder(
-                        dtype=tf.int32, shape=[None], name="seq_lens")
-                else:
-                    seq_lens = None
-            logits, self.feature_out, state_out = self.model.forward(
-                 self.input_dict, state_in, seq_lens)
-            self.action_dist = self.dist_class(logits)
+            (self.model_out,
+             self.feature_out, self.state_out) = self.model.forward(
+                 self.input_dict, self.state_in, self.seq_lens)
+            self.action_dist = self.dist_class(self.model_out)
             action_sampler = self.action_dist.sample()
             action_prob = self.action_dist.sampled_action_prob()
 
@@ -170,11 +172,11 @@ class DynamicTFPolicy(TFPolicy):
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
-            state_inputs=state_in,
-            state_outputs=state_out,
+            state_inputs=self.state_in,
+            state_outputs=self.state_out,
             prev_action_input=prev_actions,
             prev_reward_input=prev_rewards,
-            seq_lens=seq_lens,
+            seq_lens=self.seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req)
 

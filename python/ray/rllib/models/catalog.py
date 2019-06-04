@@ -16,7 +16,7 @@ from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
                                           MultiActionDistribution, Dirichlet)
 from ray.rllib.models.torch_action_dist import (TorchCategorical,
                                                 TorchDiagGaussian)
-from ray.rllib.models.modelv2 import ModelV1Wrapper
+from ray.rllib.models.modelv1_compat import ModelV1Wrapper
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -196,13 +196,13 @@ class ModelCatalog(object):
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))
-    
+
     # Experimental
     @staticmethod
     def get_model_v2(obs_space, action_space, num_outputs, options):
-        return ModelV1Wrapper(
-            FullyConnectedNetwork, obs_space, action_space, num_outputs,
-            options)
+        # TODO(ekl) implement this properly
+        return ModelV1Wrapper(FullyConnectedNetwork, obs_space, action_space,
+                              num_outputs, options)
 
     @staticmethod
     @DeveloperAPI

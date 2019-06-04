@@ -102,6 +102,7 @@ def build_tf_policy(name,
                      obs_space,
                      action_space,
                      config,
+                     existing_model=None,
                      existing_inputs=None):
             if get_default_config:
                 config = dict(get_default_config(), **config)
@@ -129,6 +130,7 @@ def build_tf_policy(name,
                 update_ops_fn=update_ops_fn,
                 before_loss_init=before_loss_init_wrapper,
                 make_action_sampler=make_action_sampler,
+                existing_model=existing_model,
                 existing_inputs=existing_inputs,
                 obs_include_prev_action_reward=obs_include_prev_action_reward)
 

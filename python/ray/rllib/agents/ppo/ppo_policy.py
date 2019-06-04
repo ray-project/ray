@@ -105,9 +105,9 @@ class PPOLoss(object):
 
 
 def ppo_surrogate_loss(policy, batch_tensors):
-    if policy.model.state_in:
-        max_seq_len = tf.reduce_max(policy.model.seq_lens)
-        mask = tf.sequence_mask(policy.model.seq_lens, max_seq_len)
+    if policy.state_in:
+        max_seq_len = tf.reduce_max(policy.seq_lens)
+        mask = tf.sequence_mask(policy.seq_lens, max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(
@@ -155,7 +155,7 @@ def vf_preds_and_logits_fetches(policy):
     """Adds value function and logits outputs to experience batches."""
     return {
         SampleBatch.VF_PREDS: policy.value_function,
-        BEHAVIOUR_LOGITS: policy.model.outputs,
+        BEHAVIOUR_LOGITS: policy.model_out,
     }
 
 
@@ -170,7 +170,7 @@ def postprocess_ppo_gae(policy,
         last_r = 0.0
     else:
         next_state = []
-        for i in range(len(policy.model.state_in)):
+        for i in range(len(policy.state_in)):
             next_state.append([sample_batch["state_out_{}".format(i)][-1]])
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
                                sample_batch[SampleBatch.ACTIONS][-1],
@@ -227,13 +227,6 @@ class ValueNetworkMixin(object):
                 self.value_function = self.model.get_branch_output(
                     "value", 1, feature_layer=self.feature_out)
             else:
-                if config["model"]["use_lstm"]:
-                    logger.warning(
-                        "It is not recommended to use a LSTM model with "
-                        "vf_share_layers=False (consider setting it to True). "
-                        "If you want to not share layers, you can implement "
-                        "a custom LSTM model that overrides the "
-                        "value_function() method.")
                 self.value_function = self.model.get_branch_output(
                     "value", 1, feature_layer=None)
         else:
@@ -245,11 +238,10 @@ class ValueNetworkMixin(object):
             self.get_placeholder(SampleBatch.CUR_OBS): [ob],
             self.get_placeholder(SampleBatch.PREV_ACTIONS): [prev_action],
             self.get_placeholder(SampleBatch.PREV_REWARDS): [prev_reward],
-            self.model.seq_lens: [1]
+            self.seq_lens: [1]
         }
-        assert len(args) == len(self.model.state_in), \
-            (args, self.model.state_in)
-        for k, v in zip(self.model.state_in, args):
+        assert len(args) == len(self.state_in), (args, self.state_in)
+        for k, v in zip(self.state_in, args):
             feed_dict[k] = v
         vf = self.get_session().run(self.value_function, feed_dict)
         return vf[0]
