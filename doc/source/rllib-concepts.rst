@@ -349,7 +349,7 @@ Finally, note that you do not have to use ``build_tf_policy`` to define a Tensor
 Building Policies in TensorFlow Eager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-While RLlib runs all TF operations in graph mode, you can still leverage TensorFlow eager using `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an example of embedding eager execution within a policy loss function:
+While RLlib runs all TF operations in graph mode, you can still leverage TensorFlow eager using `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. However, note that eager and non-eager tensors cannot be mixed within the ``py_function``. Here's an example of embedding eager execution within a policy loss function:
 
 .. code-block:: python
 
