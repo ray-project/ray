@@ -313,8 +313,12 @@ class DynamicTFPolicy(TFPolicy):
                 return self._loss_fn(self, eager_inputs)
 
             loss = tf.py_function(
-                gen_loss, [self.model.outputs] +
-                [tf.cast(v, tf.float32) for (k, v) in loss_inputs], tf.float32)
+                gen_loss,
+                [self.model.outputs] +
+                # cast works around TypeError: Cannot convert provided value
+                # to EagerTensor. Provided value: 0.0 Requested dtype: int64
+                [tf.cast(v, tf.float32) for (k, v) in loss_inputs],
+                tf.float32)
 
         TFPolicy._initialize_loss(self, loss, loss_inputs)
         if self._grad_stats_fn:
