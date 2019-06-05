@@ -93,10 +93,10 @@ class ModelV1Wrapper(ModelV2):
                     seq_lens=None)
                 return tf.reshape(branch_instance.outputs, [-1])
 
-    # TODO(ekl) support this in v2?
+    @override(ModelV2)
     def custom_loss(self, policy_loss, loss_inputs):
         return self.instances[-1].custom_loss(policy_loss, loss_inputs)
 
-    # TODO(ekl) support this in v2?
+    @override(ModelV2)
     def custom_stats(self):
         return self.instances[-1].custom_stats()
