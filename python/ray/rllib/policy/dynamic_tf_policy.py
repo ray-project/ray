@@ -337,6 +337,7 @@ class DynamicTFPolicy(TFPolicy):
                 self.action_dist.inputs = model_outputs
                 return self._loss_fn(self, eager_inputs)
 
+            # TODO(ekl) also handle the stats funcs
             loss = tf.py_function(
                 gen_loss,
                 # cast works around TypeError: Cannot convert provided value
