@@ -46,12 +46,34 @@ class ModelV2(object):
         __call__ before being passed to forward(). To access the flattened
         observation tensor, refer to input_dict["obs_flat"].
 
+        This method can be called any number of times. In eager frameworks,
+        each call to forward() will eagerly evaluate the model. In symbolic
+        frameworks, each call to forward creates a computation graph that
+        operates over the variables of this model (i.e., shares weights).
+
         Custom models should override this instead of __call__.
+
+        Arguments:
+            input_dict (dict): dictionary of input tensors, including "obs",
+                "obs_flat", "prev_action", "prev_reward", "is_training"
+            state (list): list of state tensors with sizes matching those
+                returned by get_initial_state + the batch dimension
+            seq_lens (list): 1d tensor holding input sequence lengths
+
+        Returns:
+            (outputs, state, feature_layer): The model output tensor of size
+                [BATCH, num_outputs], a list of state tensors of sizes
+                [BATCH, state_size_i], and a tensor of [BATCH, feature_size]
         """
         raise NotImplementedError
 
     def get_branch_output(self, branch_type, num_outputs, feature_layer=None):
         """Get the branch output of the model (e.g., "value" branch).
+
+        It is important to note that the method outputs are tied to the
+        immediately previous call to forward(). This means that after calling
+        forward() once, you must retrieve all its branch outputs before calling
+        forward() again.
 
         Arguments:
             branch_type (str): identifier for the branch (e.g., "value")
@@ -67,6 +89,11 @@ class ModelV2(object):
 
     def __call__(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.
+
+        This is the method used by RLlib to execute the forward pass. It calls
+        forward() internally after unpacking nested observation tensors.
+
+        Custom models should override forward() instead of __call__.
 
         Arguments:
             input_dict (dict): dictionary of input tensors, including "obs",
