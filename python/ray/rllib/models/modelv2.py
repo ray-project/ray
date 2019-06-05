@@ -87,6 +87,43 @@ class ModelV2(object):
         """
         raise NotImplementedError
 
+    def custom_loss(self, policy_loss, loss_inputs):
+        """Override to customize the loss function used to optimize this model.
+
+        This can be used to incorporate self-supervised losses (by defining
+        a loss over existing input and output tensors of this model), and
+        supervised losses (by defining losses over a variable-sharing copy of
+        this model's layers).
+
+        You can find an runnable example in examples/custom_loss.py.
+
+        Arguments:
+            policy_loss (Tensor): scalar policy loss from the policy.
+            loss_inputs (dict): map of input placeholders for rollout data.
+
+        Returns:
+            Scalar tensor for the customized loss for this model.
+        """
+        if self.loss() is not None:
+            raise DeprecationWarning(
+                "self.loss() is deprecated, use self.custom_loss() instead.")
+        return policy_loss
+
+    def custom_stats(self):
+        """Override to return custom metrics from your model.
+
+        The stats will be reported as part of the learner stats, i.e.,
+            info:
+                learner:
+                    model:
+                        key1: metric1
+                        key2: metric2
+
+        Returns:
+            Dict of string keys to scalar tensors.
+        """
+        return {}
+
     def __call__(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.
 
