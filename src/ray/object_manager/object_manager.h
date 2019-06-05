@@ -16,8 +16,8 @@
 #include "plasma/client.h"
 
 #include "ray/common/client_connection.h"
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 
 #include "ray/object_manager/connection_pool.h"
 #include "ray/object_manager/format/object_manager_generated.h"

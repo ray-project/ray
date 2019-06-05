@@ -1,7 +1,7 @@
 #include "ray/raylet/monitor.h"
 
-#include "ray/ray_config.h"
-#include "ray/status.h"
+#include "ray/common/ray_config.h"
+#include "ray/common/status.h"
 #include "ray/util/util.h"
 
 namespace ray {

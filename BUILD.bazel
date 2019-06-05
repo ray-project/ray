@@ -281,16 +281,13 @@ cc_library(
     name = "ray_util",
     srcs = glob(
         [
-            "src/ray/*.cc",
             "src/ray/util/*.cc",
         ],
         exclude = [
-            "src/ray/util/logging_test.cc",
-            "src/ray/util/signal_test.cc",
+            "src/ray/util/*_test.cc",
         ],
     ),
     hdrs = glob([
-        "src/ray/*.h",
         "src/ray/util/*.h",
     ]),
     copts = COPTS,
@@ -306,22 +303,25 @@ cc_library(
 
 cc_library(
     name = "ray_common",
-    srcs = [
-        "src/ray/common/client_connection.cc",
-        "src/ray/common/common_protocol.cc",
-    ],
-    hdrs = [
-        "src/ray/common/buffer.h",
-        "src/ray/common/client_connection.h",
-        "src/ray/common/common_protocol.h",
-    ],
+    srcs = glob(
+        [
+            "src/ray/common/*.cc",
+        ],
+        exclude = [
+            "src/ray/common/*_test.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/common/*.h",
+        ],
+    ),
     copts = COPTS,
     includes = [
         "src/ray/gcs/format",
     ],
     deps = [
         ":gcs_fbs",
-        ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
         "@plasma//:plasma_client",
@@ -468,7 +468,7 @@ cc_binary(
     srcs = [
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
-        "src/ray/id.h",
+        "src/ray/common/id.h",
         "src/ray/raylet/raylet_client.h",
         "src/ray/util/logging.h",
         "@bazel_tools//tools/jdk:jni_header",

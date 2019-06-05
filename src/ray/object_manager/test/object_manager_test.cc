@@ -3,14 +3,14 @@
 
 #include "gtest/gtest.h"
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "ray/object_manager/object_manager.h"
 
 namespace {
 std::string store_executable;
 int64_t wait_timeout_ms;
-}
+}  // namespace
 
 namespace ray {
 

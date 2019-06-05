@@ -1,8 +1,8 @@
 #include "ray/gcs/tables.h"
 
 #include "ray/common/common_protocol.h"
+#include "ray/common/ray_config.h"
 #include "ray/gcs/client.h"
-#include "ray/ray_config.h"
 #include "ray/util/util.h"
 
 namespace {

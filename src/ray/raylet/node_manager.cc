@@ -2,10 +2,10 @@
 
 #include <fstream>
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "ray/common/common_protocol.h"
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
 

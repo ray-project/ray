@@ -5,7 +5,7 @@
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "ray/common/common_protocol.h"
 #include "ray/object_manager/object_store_notification_manager.h"
