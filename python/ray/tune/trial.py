@@ -29,6 +29,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
                              TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL,
                              EPISODE_REWARD_MEAN, MEAN_LOSS, MEAN_ACCURACY)
 from ray.utils import binary_to_hex, hex_to_binary
+from ray.tune.util import recursive_fnmatch
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
@@ -182,25 +183,15 @@ def has_trainable(trainable_name):
 
 
 def _find_newest_ckpt(ckpt_dir):
+    if not ckpt_dir or ckpt_dir.endswith("checkpoint-"):
+        return ckpt_dir
     try:
-        full_paths = [
-            os.path.join(ckpt_dir, fname) for fname in os.listdir(ckpt_dir)
-            if fname.startswith("experiment_state") and fname.endswith(".json")
-        ]
-        with open(max(full_paths), "r") as f:
-            runner_state = json.load(f)
-        log_path = runner_state["checkpoints"][-1]["logdir"]
-        log_paths = [
-            os.path.join(log_path, ckptname, ckptname.replace('_', '-'))
-            for ckptname in os.listdir(log_path)
-            if ckptname.startswith("checkpoint")
-        ]
-        newest_ckpt_path = max(log_paths)
+        newest_ckpt_path = max(recursive_fnmatch(ckpt_dir, "checkpoint-[0-9]"))
         logger.info("Find newest checkpoint file {} in {}.".format(
             newest_ckpt_path, ckpt_dir))
         return newest_ckpt_path
-    except:
-        return ckpt_dir
+    except OSError as e:
+        raise e
 
 
 class Checkpoint(object):

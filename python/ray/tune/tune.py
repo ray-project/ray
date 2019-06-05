@@ -142,8 +142,12 @@ def run(run_or_experiment,
             checkpoint at least this many times. Only applies if
             checkpointing is enabled. Setting to -1 will lead to infinite
             recovery retries. Defaults to 3.
-        restore (str): Path to checkpoint. Only makes sense to set if
-            running 1 trial. Defaults to None.
+        restore (str): Path to a specific checkpoint (e.g. ``~/ray_results/
+            {experiment_name}/{trial_name}/checkpoint_7/checkpoint-7``
+            or the trial path (e.g. ``~/ray_results/{experiment_name}/
+            {trial_name}``). If a trial path, then it will find the newest
+            checkpoint under the path automatically. Only makes sense to set
+            if running 1 trial. Defaults to None.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
             BasicVariantGenerator.
         scheduler (TrialScheduler): Scheduler for executing
