@@ -11,7 +11,7 @@
 #include <string>
 
 #include "plasma/common.h"
-#include "ray/constants.h"
+#include "ray/common/constants.h"
 #include "ray/util/logging.h"
 #include "ray/util/visibility.h"
 

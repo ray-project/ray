@@ -12,8 +12,8 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 
 namespace ray {
 

@@ -1,7 +1,7 @@
 #include "ray/gcs/client.h"
 
+#include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/ray_config.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {

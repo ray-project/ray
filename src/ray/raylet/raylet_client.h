@@ -6,8 +6,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/status.h"
 #include "ray/raylet/task_spec.h"
-#include "ray/status.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;

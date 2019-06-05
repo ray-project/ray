@@ -3,8 +3,8 @@
 
 #include "common.h"
 #include "ray/common/buffer.h"
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 
 namespace ray {
 

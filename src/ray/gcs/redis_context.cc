@@ -14,7 +14,7 @@ extern "C" {
 }
 
 // TODO(pcm): Integrate into the C++ tree.
-#include "ray/ray_config.h"
+#include "ray/common/ray_config.h"
 
 namespace {
 

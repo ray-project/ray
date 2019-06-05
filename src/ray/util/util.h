@@ -4,7 +4,7 @@
 #include <boost/system/error_code.hpp>
 #include <chrono>
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
 /// returned timestamp may be used for accurately measuring intervals but has

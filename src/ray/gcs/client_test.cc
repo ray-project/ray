@@ -5,9 +5,9 @@ extern "C" {
 #include "ray/thirdparty/hiredis/hiredis.h"
 }
 
+#include "ray/common/ray_config.h"
 #include "ray/gcs/client.h"
 #include "ray/gcs/tables.h"
-#include "ray/ray_config.h"
 
 namespace ray {
 
