@@ -9,7 +9,13 @@ void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
 
   while (true) {
     std::unique_ptr<raylet::TaskSpecification> task_spec;
-    RAY_CHECK_OK(core_worker_.raylet_client_->GetTask(&task_spec));
+    //RAY_CHECK_OK(core_worker_.raylet_client_->GetTask(&task_spec));
+    auto status = core_worker_.raylet_client_->GetTask(&task_spec);
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Get task failed with error: "
+                     << ray::Status::IOError(status.message());
+      break;
+    }    
 
     auto& spec = *task_spec;
     core_worker_.worker_context_.SetCurrentTask(spec);
@@ -28,7 +34,7 @@ void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
       num_returns--;
     }
   
-    auto status = executor(func, args, spec.TaskId(), num_returns);
+    status = executor(func, args, spec.TaskId(), num_returns);
       // TODO:
       // 1. Check and handle failure.
       // 2. Save or load checkpoint. 

@@ -1,6 +1,7 @@
 #ifndef RAY_CORE_WORKER_TASK_INTERFACE_H
 #define RAY_CORE_WORKER_TASK_INTERFACE_H
 
+#include <list>
 #include "common.h"
 #include "ray/common/buffer.h"
 #include "ray/id.h"
@@ -12,6 +13,12 @@ class CoreWorker;
 
 /// Options of a non-actor-creation task.
 struct TaskOptions {
+  TaskOptions() {}
+  TaskOptions(const int num_returns,
+              const std::unordered_map<std::string, double> &resources)
+    : num_returns(num_returns),
+      resources(resources) {}
+
   /// Number of returns of this task.
   const int num_returns = 1;
   /// Resources required by this task.
@@ -20,6 +27,13 @@ struct TaskOptions {
 
 /// Options of an actor creation task.
 struct ActorCreationOptions {
+  ActorCreationOptions() {}
+  ActorCreationOptions(
+      const uint64_t max_reconstructions,
+      const std::unordered_map<std::string, double> &resources)
+    : max_reconstructions(max_reconstructions),
+      resources(resources) {}
+
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
   const uint64_t max_reconstructions = 0;
@@ -52,9 +66,9 @@ class ActorHandle {
   /// Increase task counter.
   int IncreaseTaskCounter() { return task_counter_++; }
 
-  ray::ActorHandleID GetNewActorHandle() {
+  std::list<ray::ActorHandleID> GetNewActorHandle() {
     // TODO: implement this.
-    return ActorHandleID();
+    return std::list<ray::ActorHandleID>();
   }
 
   void ClearNewActorHandles() { /* TODO: implement this. */ }

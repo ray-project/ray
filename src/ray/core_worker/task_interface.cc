@@ -61,6 +61,7 @@ Status CoreWorkerTaskInterface::CreateActor(
 
   *actor_handle = std::unique_ptr<ActorHandle>(
       new ActorHandle(actor_creation_id, ActorHandleID::Nil()));
+  (*actor_handle)->IncreaseTaskCounter();  
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
   std::vector<std::shared_ptr<raylet::TaskArgument>> task_arguments;
@@ -110,9 +111,6 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
     (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1);
   }
 
-  auto actor_cursor = (*return_ids).back();
-  actor_handle.SetActorCursor(actor_cursor);
-  actor_handle.ClearNewActorHandles();
   auto actor_creation_dummy_object_id = ObjectID::FromBinary(
       actor_handle.ActorID().Binary());
 
@@ -130,7 +128,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
 
   ::Language language = (function.language == ray::WorkerLanguage::JAVA) ?
       (::Language::JAVA) : (::Language::PYTHON);
-  std::vector<ActorHandleID> new_actor_handles{ actor_handle.GetNewActorHandle() };
+  std::vector<ActorHandleID> new_actor_handles;
   ray::raylet::TaskSpecification spec(context.GetCurrentDriverID(),
       context.GetCurrentTaskID(), next_task_index, ActorID::Nil(),
       actor_creation_dummy_object_id, 0,
@@ -141,6 +139,10 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   
   std::vector<ObjectID> execution_dependencies;
   execution_dependencies.push_back(actor_handle.ActorCursor());
+
+  auto actor_cursor = (*return_ids).back();
+  actor_handle.SetActorCursor(actor_cursor);
+  actor_handle.ClearNewActorHandles();
 
   auto status = core_worker_.raylet_client_->SubmitTask(execution_dependencies, spec);
   
