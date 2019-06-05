@@ -135,7 +135,11 @@ class DynamicTFPolicy(TFPolicy):
                 self.model = existing_model
             else:
                 self.model = ModelCatalog.get_model_v2(
-                    obs_space, action_space, logit_dim, self.config["model"])
+                    obs_space,
+                    action_space,
+                    logit_dim,
+                    self.config["model"],
+                    framework="tf")
             if existing_inputs:
                 self.state_in = [
                     v for k, v in existing_inputs.items()

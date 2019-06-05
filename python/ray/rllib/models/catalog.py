@@ -21,6 +21,7 @@ from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils import try_import_tf
 
@@ -197,13 +198,38 @@ class ModelCatalog(object):
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))
 
-    # Experimental
     @staticmethod
-    def get_model_v2(obs_space, action_space, num_outputs, options):
-        # TODO(ekl) implement this properly
-        legacy_model_cls = ModelCatalog.get_model
-        return ModelV1Wrapper(legacy_model_cls, obs_space, action_space,
-                              num_outputs, options)
+    def get_model_v2(obs_space,
+                     action_space,
+                     num_outputs,
+                     options,
+                     framework="tf"):
+        """Returns a suitable model compatible with given spaces and output.
+
+        Args:
+            obs_space (Space): Observation space of the target gym env. This
+                may have an `original_space` attribute that specifies how to
+                unflatten the tensor into a ragged tensor.
+            action_space (Space): Action space of the target gym env.
+            num_outputs (int): The size of the output vector of the model.
+            framework (str): Either "tf" or "torch".
+
+        Returns:
+            model (ModelV2): Model to use for the policy.
+        """
+
+        if options.get("custom_model"):
+            model_cls = _global_registry.get(RLLIB_MODEL,
+                                             options["custom_model"])
+            if isinstance(model_cls, ModelV2):
+                return model_cls(obs_space, action_space, num_outputs, options)
+
+        if framework == "tf":
+            legacy_model_cls = ModelCatalog.get_model
+            return ModelV1Wrapper(legacy_model_cls, obs_space, action_space,
+                                  num_outputs, options)
+
+        raise NotImplementedError("TODO: support {} models".format(framework))
 
     @staticmethod
     @DeveloperAPI
