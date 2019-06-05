@@ -4,9 +4,9 @@ from __future__ import print_function
 
 import os
 import pytest
-import sys
 import tempfile
 import torch
+import torch.distributed as dist
 
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, Resources
@@ -15,9 +15,8 @@ from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
 
 
-# Distributed PyTorch doesn't work with macOS, so test with only 1 replica
 @pytest.mark.parametrize(  # noqa: F811
-    "num_replicas", [1] if sys.platform == "darwin" else [1, 2])
+    "num_replicas", [1, 2] if dist.is_available() else [1])
 def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer = PyTorchTrainer(
         model_creator,
@@ -38,9 +37,8 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     assert validation_loss2 <= validation_loss1
 
 
-# Distributed PyTorch doesn't work with macOS, so test with only 1 replica
 @pytest.mark.parametrize(  # noqa: F811
-    "num_replicas", [1] if sys.platform == "darwin" else [1, 2])
+    "num_replicas", [1, 2] if dist.is_available() else [1])
 def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer1 = PyTorchTrainer(
         model_creator,

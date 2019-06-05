@@ -3,8 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import sys
 import torch
+import torch.distributed as dist
 import logging
 
 import ray
@@ -53,7 +53,7 @@ class PyTorchTrainer(object):
         """
         # TODO: add support for mixed precision
         # TODO: add support for callbacks
-        if sys.platform == "darwin":
+        if num_replicas > 1 and not dist.is_available():
             raise Exception(
                 ("Distributed PyTorch is not supported on macOS. For more "
                  "information, see "
