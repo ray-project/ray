@@ -23,8 +23,8 @@ class ModelV1Wrapper(ModelV2):
         ModelV2.__init__(self, obs_space, action_space, num_outputs, options)
         self.legacy_model_cls = legacy_model_cls
 
-        # Tracks each weight-sharing copy of the underlying V1 model
-        self.instances = []
+        # Tracks the last v1 model created by the call to forward
+        self.cur_instance = None
 
         # XXX: Try to guess the initial state size. Since the size of the state
         # is known only after forward() for V1 models, it might be wrong.
@@ -43,9 +43,9 @@ class ModelV1Wrapper(ModelV2):
 
     @override(ModelV2)
     def __call__(self, input_dict, state, seq_lens):
-        if self.instances:
+        if self.cur_instance:
             # create a weight-sharing model copy
-            with tf.variable_scope(self.instances[0].scope, reuse=True):
+            with tf.variable_scope(self.cur_instance.scope, reuse=True):
                 new_instance = self.legacy_model_cls(
                     input_dict, self.obs_space, self.action_space,
                     self.num_outputs, self.options, state, seq_lens)
@@ -54,18 +54,17 @@ class ModelV1Wrapper(ModelV2):
             new_instance = self.legacy_model_cls(
                 input_dict, self.obs_space, self.action_space,
                 self.num_outputs, self.options, state, seq_lens)
-        self.instances.append(new_instance)
+        self.cur_instance = new_instance
         return (new_instance.outputs, new_instance.last_layer,
                 new_instance.state_out)
 
     @override(ModelV2)
     def get_branch_output(self, branch_type, num_outputs, feature_layer=None):
-        assert self.instances, "must call forward first"
-        cur_instance = self.instances[-1]
+        assert self.cur_instance, "must call forward first"
 
         # Simple case: sharing the feature layer
         if feature_layer is not None:
-            with tf.variable_scope(cur_instance.scope):
+            with tf.variable_scope(self.cur_instance.scope):
                 return tf.reshape(
                     linear(feature_layer, num_outputs, branch_type,
                            normc_initializer(1.0)), [-1])
@@ -81,10 +80,10 @@ class ModelV1Wrapper(ModelV2):
                 "If you want to not share layers, you can implement "
                 "a custom LSTM model that overrides the "
                 "value_function() method.")
-        with tf.variable_scope(cur_instance.scope):
+        with tf.variable_scope(self.cur_instance.scope):
             with tf.variable_scope("branch_" + branch_type):
                 branch_instance = self.legacy_model_cls(
-                    cur_instance.input_dict,
+                    self.cur_instance.input_dict,
                     self.obs_space,
                     self.action_space,
                     num_outputs,
@@ -95,8 +94,8 @@ class ModelV1Wrapper(ModelV2):
 
     @override(ModelV2)
     def custom_loss(self, policy_loss, loss_inputs):
-        return self.instances[-1].custom_loss(policy_loss, loss_inputs)
+        return self.cur_instance.custom_loss(policy_loss, loss_inputs)
 
     @override(ModelV2)
     def custom_stats(self):
-        return self.instances[-1].custom_stats()
+        return self.cur_instance.custom_stats()
