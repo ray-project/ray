@@ -1,7 +1,7 @@
 #include "object_interface.h"
 #include "context.h"
 #include "core_worker.h"
-#include "ray/ray_config.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 

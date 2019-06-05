@@ -8,8 +8,8 @@
 #include "ray/common/common_protocol.h"
 #include "ray/raylet/task.h"
 #include "ray/gcs/tables.h"
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 // clang-format on
 
 namespace ray {

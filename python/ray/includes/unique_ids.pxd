@@ -2,7 +2,7 @@ from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
 from libc.stdint cimport uint8_t, int64_t
 
-cdef extern from "ray/id.h" namespace "ray" nogil:
+cdef extern from "ray/common/id.h" namespace "ray" nogil:
     cdef cppclass CBaseID[T]:
         @staticmethod
         T from_random()
@@ -113,7 +113,7 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
 
         c_bool is_put()
 
-        int64_t ObjectIndex() const 
+        int64_t ObjectIndex() const
 
         CTaskID TaskId() const
 
