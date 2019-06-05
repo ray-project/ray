@@ -743,12 +743,15 @@ void NodeManager::CleanUpTasksForDeadDriver(const DriverID &driver_id) {
   local_queues_.RemoveTasks(tasks_to_remove);
 }
 
-// TODO(qwang): Do this as batch.
 void NodeManager::CleanUpGcsData(const DriverID &driver_id) {
+  constexpr static size_t batch_size = 10000;
   {
     // Clean up actors from GCS.
-    auto cb = [driver_id, this](const std::vector <ActorID> &ids) {
-      this->gcs_client_->actor_table().Delete(driver_id, ids);
+    auto cb = [driver_id, this](const std::vector<ActorID> &ids) {
+      DoBatchCall<ActorID>(ids, batch_size,
+          [driver_id, this](const std::vector<ActorID> &items) {
+        this->gcs_client_->actor_table().Delete(driver_id, items);
+      });
     };
     gcs_client_->actor_table().GetAllIdsByDriver(driver_id, std::move(cb));
   }
@@ -756,7 +759,10 @@ void NodeManager::CleanUpGcsData(const DriverID &driver_id) {
   {
     // Clean up tasks from GCS.
     auto cb = [driver_id, this] (const std::vector<TaskID> &ids) {
-      this->gcs_client_->raylet_task_table().Delete(driver_id, ids);
+      DoBatchCall<TaskID>(ids, batch_size,
+          [driver_id, this](const std::vector<TaskID> &items){
+        this->gcs_client_->raylet_task_table().Delete(driver_id, items);
+      });
     };
     gcs_client_->raylet_task_table().GetAllIdsByDriver(driver_id, std::move(cb));
   }

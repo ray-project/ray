@@ -3,6 +3,7 @@
 
 #include <boost/system/error_code.hpp>
 #include <chrono>
+#include <algorithm>
 
 #include "ray/common/status.h"
 
@@ -77,5 +78,21 @@ class InitShutdownRAII {
  private:
   ShutdownFunc shutdown_;
 };
+
+template <typename T>
+using BatchCallType = std::function<void (const std::vector<T> &)>;
+
+/// Do batch call on a set of items.
+///
+/// \param items The items that we will do batch call on.
+/// \param batch_size The size of a batch.
+/// \param batch_call The function that we will do on a batch of items.
+template <typename T>
+void DoBatchCall(const std::vector<T> &items, size_t batch_size, BatchCallType<T> batch_call) {
+  for (int i = 0; i < items.size(); i += batch_size) {
+    const size_t end_index = std::min(i + batch_size, items.size());
+    batch_call(std::vector<T>(items.begin() + i, items.begin() + end_index));
+  }
+}
 
 #endif  // RAY_UTIL_UTIL_H
