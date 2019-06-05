@@ -94,7 +94,7 @@ burden and speedup review process.
 Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
 
 We also have tests for code formatting and linting that need to pass before merge.
-Install `yapf==0.23, flake8, flake8-quotes` (these are also in the requirements-dev.txt found in ``python/ray/tune``). You can run the following locally:
+Install `yapf==0.23, flake8, flake8-quotes` (these are also in the `requirements-dev.txt` found in ``python/ray/tune``). You can run the following locally:
 
 .. code-block:: shell
 
