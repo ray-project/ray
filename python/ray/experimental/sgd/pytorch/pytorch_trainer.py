@@ -55,8 +55,9 @@ class PyTorchTrainer(object):
         # TODO: add support for callbacks
         if num_replicas > 1 and not dist.is_available():
             raise Exception(
-                ("Distributed PyTorch is not supported on macOS. For more "
-                 "information, see "
+                ("Distributed PyTorch is not supported on macOS. "
+                 "To run without distributed PyTorch, set 'num_replicas=1'. "
+                 "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
