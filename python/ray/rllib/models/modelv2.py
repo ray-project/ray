@@ -6,7 +6,7 @@ from ray.rllib.models.model import restore_original_dimensions
 
 
 class ModelV2(object):
-    """Defines an Keras-style abstract network model for use with RLlib.
+    """Defines a Keras-style abstract network model for use with RLlib.
 
     This interface is used for both TF and Torch custom models. Experimental.
 
@@ -39,29 +39,6 @@ class ModelV2(object):
         """
         return []
 
-    def __call__(self, input_dict, state, seq_lens):
-        """Call the model with the given input tensors and state.
-
-        Arguments:
-            input_dict (dict): dictionary of input tensors, including "obs",
-                "prev_action", "prev_reward", "is_training"
-            state (list): list of state tensors with sizes matching those
-                returned by get_initial_state + the batch dimension
-            seq_lens (list): 1d tensor holding input sequence lengths
-
-        Returns:
-            (outputs, state, feature_layer): The model output tensor of size
-                [BATCH, num_outputs], a list of state tensors of sizes
-                [BATCH, state_size_i], and a tensor of [BATCH, feature_size]
-        """
-
-        if hasattr(self.obs_space, "original_space"):
-            restored = input_dict.copy()
-            restored["obs"] = restore_original_dimensions(
-                input_dict["obs"], self.obs_space)
-            restored["obs_flat"] = input_dict["obs"]
-        return self.forward(restored, state, seq_lens)
-
     def forward(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.
 
@@ -87,3 +64,26 @@ class ModelV2(object):
             tensor: branch output of size [BATCH, num_outputs]
         """
         raise NotImplementedError
+
+    def __call__(self, input_dict, state, seq_lens):
+        """Call the model with the given input tensors and state.
+
+        Arguments:
+            input_dict (dict): dictionary of input tensors, including "obs",
+                "prev_action", "prev_reward", "is_training"
+            state (list): list of state tensors with sizes matching those
+                returned by get_initial_state + the batch dimension
+            seq_lens (list): 1d tensor holding input sequence lengths
+
+        Returns:
+            (outputs, state, feature_layer): The model output tensor of size
+                [BATCH, num_outputs], a list of state tensors of sizes
+                [BATCH, state_size_i], and a tensor of [BATCH, feature_size]
+        """
+
+        if hasattr(self.obs_space, "original_space"):
+            restored = input_dict.copy()
+            restored["obs"] = restore_original_dimensions(
+                input_dict["obs"], self.obs_space)
+            restored["obs_flat"] = input_dict["obs"]
+        return self.forward(restored, state, seq_lens)
