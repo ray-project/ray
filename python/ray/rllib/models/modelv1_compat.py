@@ -42,7 +42,7 @@ class ModelV1Wrapper(ModelV2):
         return self.initial_state
 
     @override(ModelV2)
-    def forward(self, input_dict, state, seq_lens):
+    def __call__(self, input_dict, state, seq_lens):
         if self.instances:
             # create a weight-sharing model copy
             with tf.variable_scope(self.instances[0].scope, reuse=True):

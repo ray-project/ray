@@ -201,7 +201,8 @@ class ModelCatalog(object):
     @staticmethod
     def get_model_v2(obs_space, action_space, num_outputs, options):
         # TODO(ekl) implement this properly
-        return ModelV1Wrapper(FullyConnectedNetwork, obs_space, action_space,
+        legacy_model_cls = ModelCatalog.get_model
+        return ModelV1Wrapper(legacy_model_cls, obs_space, action_space,
                               num_outputs, options)
 
     @staticmethod

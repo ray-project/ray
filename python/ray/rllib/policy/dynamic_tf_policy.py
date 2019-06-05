@@ -145,12 +145,11 @@ class DynamicTFPolicy(TFPolicy):
                     self.seq_lens = existing_inputs["seq_lens"]
             else:
                 self.state_in = [
-                    tf.placeholder(s.shape, dtype=s.dtype)
+                    tf.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
                     for s in self.model.get_initial_state()
                 ]
-            (self.model_out,
-             self.feature_out, self.state_out) = self.model.forward(
-                 self.input_dict, self.state_in, self.seq_lens)
+            (self.model_out, self.feature_out, self.state_out) = self.model(
+                self.input_dict, self.state_in, self.seq_lens)
             self.action_dist = self.dist_class(self.model_out)
             action_sampler = self.action_dist.sample()
             action_prob = self.action_dist.sampled_action_prob()
