@@ -36,4 +36,11 @@ constexpr char kObjectTablePrefix[] = "ObjectTable";
 /// Prefix for the task table keys in redis.
 constexpr char kTaskTablePrefix[] = "TaskTable";
 
+/// Prefix for the index of actor table.
+constexpr char kActorIndexPrefix[] = "INDEX_ACTOR_";
+/// Prefix for the index of raylet task table.
+constexpr char kRayletTaskIndexPrefix[] = "INDEX_RAYLET_TASK_";
+/// Prefix for the index of object table.
+constexpr char kObjectIndexPrefix[] = "INDEX_OBJECT_";
+
 #endif  // RAY_CONSTANTS_H_

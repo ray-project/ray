@@ -275,10 +275,8 @@ void NodeManager::HandleDriverTableUpdate(
       // alive because of the delay in killing workers.
       CleanUpTasksForDeadDriver(driver_id);
 
-      // Clean up GCS
+      // Clean up data from GCS.
       CleanUpGcsData(driver_id);
-
-      // TODO(qwang): Clean up other data cached in node_manager, object manager.
     }
   }
 }

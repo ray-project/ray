@@ -4,6 +4,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/client.h"
 #include "ray/util/util.h"
+#include "ray/constants.h"
 
 namespace {
 
@@ -681,9 +682,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
 
 Status ActorTable::GetAllActorIdsByDriverId(const DriverID &driver_id,
                                             GetAllActorsCallback callback) {
-  const std::string key = "INDEX_ACTOR_" + driver_id.Binary();
-  // Do this on primary.
-  // TODO(qwang): GetRedisContext(driver_id) should be replaced by primary_
+  const std::string key = kActorIndexPrefix + driver_id.Binary();
   auto cb =  [callback](const CallbackReply &reply) {
     std::vector<std::string> result;
     reply.ReadAsStringArray(&result);
@@ -694,12 +693,13 @@ Status ActorTable::GetAllActorIdsByDriverId(const DriverID &driver_id,
     callback(actor_ids);
   };
 
+  // This should do on primary instance.
   return GetRedisContext(ActorID::Nil())->RunArgvAsyncWithCallback({"SMEMBERS", key}, std::move(cb));
 }
 
 Status raylet::TaskTable::GetAllTaskIdsByDriverId(const DriverID &driver_id,
                                                   GetAllTasksCallback callback) {
-  const std::string key = "INDEX_RAYLET_TASK_" + driver_id.Binary();
+  const std::string key = kRayletTaskIndexPrefix + driver_id.Binary();
   // Do this on all shards.
   auto cb = [callback](const CallbackReply &reply) {
     std::vector<std::string> result;
@@ -721,7 +721,7 @@ Status raylet::TaskTable::GetAllTaskIdsByDriverId(const DriverID &driver_id,
 
 Status ObjectTable::GetAllObjectIdsByDriverId(const DriverID &driver_id,
                                               GetAllObjectsCallback callback) {
-  const std::string key = "INDEX_OBJECT_" + driver_id.Binary();
+  const std::string key = kObjectIndexPrefix + driver_id.Binary();
   // Do this on all shards.
   auto cb = [callback](const CallbackReply &reply) {
     std::vector<std::string> result;

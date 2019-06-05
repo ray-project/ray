@@ -113,7 +113,7 @@ void CallbackReply::ReadAsStringArray(std::vector<std::string> *array) const {
         strcmp(entry->str, "subscribe") == 0 || strcmp(entry->str, "message") == 0;
     RAY_CHECK(!is_pubsub_reply) << "Subpub reply cannot be read as a string array.";
   }
-  // array->reverse(array_size);
+
   for (size_t i = 0; i < array_size; ++i) {
     auto *entry = redis_reply_->element[i];
     RAY_CHECK(REDIS_REPLY_STRING == entry->type) << "Unexcepted type: " << entry->type;
@@ -274,10 +274,10 @@ Status RedisContext::RunArgvAsyncWithCallback(const std::vector<std::string> &ar
   }
   int status = redisAsyncCommandArgv(async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
       reinterpret_cast<void *>(callback_index), args.size(), argv.data(), argc.data());
-//  std::string a("ACTOR");
-//  Status status = redisAsyncCommandArgv(async_context_, &GlobalRedisCallback,
-//                                               reinterpret_cast<void *>(callback_index),
-//                                               2, "SMEMBERS %b", a.c_str(), a.size());
+
+  if (status == REDIS_ERR) {
+    return Status::RedisError(std::string(async_context_->errstr));
+  }
   return Status::OK();
 }
 

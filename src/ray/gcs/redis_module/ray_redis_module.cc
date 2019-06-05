@@ -104,7 +104,6 @@ Status ParseTablePrefix(const RedisModuleString *table_prefix_str, TablePrefix *
   }
 }
 
-/// TODO(qwang): Add more
 /// Update index for tables.
 Status UpdateTableIndex(RedisModuleCtx *ctx,
                         RedisModuleString *prefix_enum,
@@ -116,12 +115,8 @@ Status UpdateTableIndex(RedisModuleCtx *ctx,
     return Status::RedisError("Failed to parse table prefix.");
   }
 
-//  if (prefix == TablePrefix::OBJECT) {
-//    GetDriverIdOfObject(ctx, id);
-//  }
-
   if (prefix != TablePrefix::ACTOR && prefix != TablePrefix::RAYLET_TASK && prefix != TablePrefix::OBJECT) {
-    RAY_LOG(DEBUG) << "Ignore this update index since the prefix is not ACTOR, and it's " << EnumNameTablePrefix(prefix);
+    RAY_LOG(DEBUG) << "The table("<< EnumNameTablePrefix(prefix) <<") needn't to be updated index.";
     return Status::OK();
   }
 
@@ -129,8 +124,6 @@ Status UpdateTableIndex(RedisModuleCtx *ctx,
   RedisModuleCallReply *reply =
     RedisModule_Call(ctx, is_add ? "SADD" : "SREM", "ss", key_str, id);
   if (RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
-    //*changed = RedisModule_CallReplyInteger(reply) > 0;
-    //TODO(qwang): Should we remove empty set here?
     return Status::RedisError("Failed to update index.");
   } else {
     return Status::OK();
@@ -460,7 +453,6 @@ int ChainTableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
 #endif
 
 int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
-  // TODO(qwang): Check argc
   RedisModuleString *pubsub_channel_str = argv[2];
   RedisModuleString *id = argv[4];
   RedisModuleString *data = argv[5];
@@ -479,7 +471,6 @@ int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
   }
 }
 
-// TODO(qwang): extra the common code.
 int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is_add,
                 bool *changed) {
   if (argc != 6) {
