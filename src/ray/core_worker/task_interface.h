@@ -48,10 +48,10 @@ class ActorHandle {
         task_counter_(0) {}
 
   /// ID of the actor.
-  const ActorID &ActorID() const { return actor_id_; };
+  const ray::ActorID &ActorID() const { return actor_id_; };
 
   /// ID of this actor handle.
-  const ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
+  const ray::ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
 
  private:
   /// Cursor of this actor.

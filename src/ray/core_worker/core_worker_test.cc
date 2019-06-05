@@ -322,7 +322,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   buffers.emplace_back(array2, sizeof(array2));
 
   std::vector<ObjectID> ids(buffers.size());
-  for (int i = 0; i < ids.size(); i++) {
+  for (size_t i = 0; i < ids.size(); i++) {
     RAY_CHECK_OK(core_worker.Objects().Put(buffers[i], &ids[i]));
   }
 
@@ -331,7 +331,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   RAY_CHECK_OK(core_worker.Objects().Get(ids, -1, &results));
 
   ASSERT_EQ(results.size(), 2);
-  for (int i = 0; i < ids.size(); i++) {
+  for (size_t i = 0; i < ids.size(); i++) {
     ASSERT_EQ(results[i]->Size(), buffers[i].Size());
     ASSERT_EQ(memcmp(results[i]->Data(), buffers[i].Data(), buffers[i].Size()), 0);
   }
@@ -384,7 +384,7 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossMachine) {
   buffers.emplace_back(array2, sizeof(array2));
 
   std::vector<ObjectID> ids(buffers.size());
-  for (int i = 0; i < ids.size(); i++) {
+  for (size_t i = 0; i < ids.size(); i++) {
     RAY_CHECK_OK(worker1.Objects().Put(buffers[i], &ids[i]));
   }
 
@@ -393,7 +393,7 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossMachine) {
   RAY_CHECK_OK(worker2.Objects().Get(ids, -1, &results));
 
   ASSERT_EQ(results.size(), 2);
-  for (int i = 0; i < ids.size(); i++) {
+  for (size_t i = 0; i < ids.size(); i++) {
     ASSERT_EQ(results[i]->Size(), buffers[i].Size());
     ASSERT_EQ(memcmp(results[i]->Data(), buffers[i].Data(), buffers[i].Size()), 0);
   }

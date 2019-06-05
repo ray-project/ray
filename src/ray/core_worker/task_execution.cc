@@ -67,7 +67,7 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   std::vector<std::shared_ptr<Buffer>> results;
   auto status = core_worker_.object_interface_.Get(object_ids_to_fetch, -1, &results);
   if (status.ok()) {
-    for (int i = 0; i < results.size(); i++) {
+    for (size_t i = 0; i < results.size(); i++) {
       (*args)[indices[i]] = results[i];
     }
   }

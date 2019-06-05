@@ -135,7 +135,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       context.GetCurrentDriverID(), context.GetCurrentTaskID(), next_task_index,
       ActorID::Nil(), actor_creation_dummy_object_id, 0, actor_handle.ActorID(),
       actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(), new_actor_handles,
-      task_arguments, num_returns, call_options.resources, {}, language,
+      task_arguments, num_returns, call_options.resources, {{}}, language,
       function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
