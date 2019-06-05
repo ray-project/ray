@@ -10,7 +10,7 @@ namespace ray {
 class CoreWorker;
 
 namespace raylet {
-  class TaskSpecification;
+class TaskSpecification;
 }
 
 /// The interface that contains all `CoreWorker` methods that are related to task
@@ -25,10 +25,8 @@ class CoreWorkerTaskExecutionInterface {
   /// \param args[in] Arguments of the task.
   /// \return Status.
   using TaskExecutor = std::function<Status(
-      const RayFunction &ray_function,
-      const std::vector<std::shared_ptr<Buffer>> &args,
-      const TaskID &task_id,
-      int num_returns)>;
+      const RayFunction &ray_function, const std::vector<std::shared_ptr<Buffer>> &args,
+      const TaskID &task_id, int num_returns)>;
 
   /// Start receving and executes tasks in a infinite loop.
   void Start(const TaskExecutor &executor);
@@ -37,13 +35,13 @@ class CoreWorkerTaskExecutionInterface {
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
   /// fetch its content from store and; for arguments that are passedby value,
-  /// just copy their content. 
-  /// 
+  /// just copy their content.
+  ///
   /// \param spec[in] Task specification.
-  /// \param args[out] The arguments for passing to task executor. 
-  /// 
+  /// \param args[out] The arguments for passing to task executor.
+  ///
   Status BuildArgsForExecutor(const raylet::TaskSpecification &spec,
-      std::vector<std::shared_ptr<Buffer>> *args);
+                              std::vector<std::shared_ptr<Buffer>> *args);
 
   /// Reference to the parent CoreWorker instance.
   CoreWorker &core_worker_;

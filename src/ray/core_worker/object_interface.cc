@@ -22,8 +22,8 @@ Status CoreWorkerObjectInterface::Put(const Buffer &buffer, const ObjectID &obje
     std::unique_lock<std::mutex> guard(core_worker_.store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(
         core_worker_.store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
-  }      
-  
+  }
+
   memcpy(data->mutable_data(), buffer.Data(), buffer.Size());
 
   {
@@ -85,7 +85,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
     std::vector<plasma::ObjectBuffer> object_buffers;
     {
-      std::unique_lock<std::mutex> guard(core_worker_.store_client_mutex_);    
+      std::unique_lock<std::mutex> guard(core_worker_.store_client_mutex_);
       auto status =
           core_worker_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
     }

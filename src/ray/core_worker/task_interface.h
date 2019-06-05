@@ -16,8 +16,7 @@ struct TaskOptions {
   TaskOptions() {}
   TaskOptions(const int num_returns,
               const std::unordered_map<std::string, double> &resources)
-    : num_returns(num_returns),
-      resources(resources) {}
+      : num_returns(num_returns), resources(resources) {}
 
   /// Number of returns of this task.
   const int num_returns = 1;
@@ -28,11 +27,9 @@ struct TaskOptions {
 /// Options of an actor creation task.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(
-      const uint64_t max_reconstructions,
-      const std::unordered_map<std::string, double> &resources)
-    : max_reconstructions(max_reconstructions),
-      resources(resources) {}
+  ActorCreationOptions(const uint64_t max_reconstructions,
+                       const std::unordered_map<std::string, double> &resources)
+      : max_reconstructions(max_reconstructions), resources(resources) {}
 
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
@@ -57,7 +54,7 @@ class ActorHandle {
   const ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
 
  private:
-  /// Cursor of this actor. 
+  /// Cursor of this actor.
   const ObjectID &ActorCursor() const { return actor_cursor_; };
 
   /// Set actor cursor.
@@ -71,7 +68,8 @@ class ActorHandle {
     return std::list<ray::ActorHandleID>();
   }
 
-  void ClearNewActorHandles() { /* TODO: implement this. */ }
+  void ClearNewActorHandles() { /* TODO: implement this. */
+  }
 
  private:
   /// ID of the actor.

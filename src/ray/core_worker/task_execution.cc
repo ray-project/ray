@@ -9,23 +9,24 @@ void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
 
   while (true) {
     std::unique_ptr<raylet::TaskSpecification> task_spec;
-    //RAY_CHECK_OK(core_worker_.raylet_client_->GetTask(&task_spec));
+    // RAY_CHECK_OK(core_worker_.raylet_client_->GetTask(&task_spec));
     auto status = core_worker_.raylet_client_->GetTask(&task_spec);
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Get task failed with error: "
                      << ray::Status::IOError(status.message());
       break;
-    }    
+    }
 
-    auto& spec = *task_spec;
+    auto &spec = *task_spec;
     core_worker_.worker_context_.SetCurrentTask(spec);
 
-    WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA) ?
-        WorkerLanguage::JAVA : WorkerLanguage::PYTHON;
-    RayFunction func{ language, spec.FunctionDescriptor() };
+    WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
+                                  ? WorkerLanguage::JAVA
+                                  : WorkerLanguage::PYTHON;
+    RayFunction func{language, spec.FunctionDescriptor()};
 
     std::vector<std::shared_ptr<Buffer>> args;
-    RAY_CHECK_OK(BuildArgsForExecutor(spec, &args)); 
+    RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
 
     RAY_CHECK(spec.NumReturns() > 0);
     auto num_returns = spec.NumReturns();
@@ -33,17 +34,16 @@ void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
       // Decrease to account for the dummy object id.
       num_returns--;
     }
-  
+
     status = executor(func, args, spec.TaskId(), num_returns);
-      // TODO:
-      // 1. Check and handle failure.
-      // 2. Save or load checkpoint. 
+    // TODO:
+    // 1. Check and handle failure.
+    // 2. Save or load checkpoint.
   }
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
     const raylet::TaskSpecification &spec, std::vector<std::shared_ptr<Buffer>> *args) {
-  
   auto num_args = spec.NumArgs();
   (*args).resize(num_args);
 
@@ -60,9 +60,9 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
     } else {
       // pass by value.
       (*args)[i] = std::make_shared<LocalMemoryBuffer>(
-          const_cast<uint8_t*>(spec.ArgVal(i)), spec.ArgValLength(i));
+          const_cast<uint8_t *>(spec.ArgVal(i)), spec.ArgValLength(i));
     }
-  } 
+  }
 
   std::vector<std::shared_ptr<Buffer>> results;
   auto status = core_worker_.object_interface_.Get(object_ids_to_fetch, -1, &results);

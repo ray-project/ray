@@ -3,7 +3,8 @@
 
 namespace ray {
 
-CoreWorker::CoreWorker(const enum WorkerType worker_type, const enum WorkerLanguage language,
+CoreWorker::CoreWorker(const enum WorkerType worker_type,
+                       const enum WorkerLanguage language,
                        const std::string &store_socket, const std::string &raylet_socket,
                        DriverID driver_id)
     : worker_type_(worker_type),
@@ -21,8 +22,8 @@ Status CoreWorker::Connect() {
   RAY_ARROW_RETURN_NOT_OK(store_client_.Connect(store_socket_));
 
   // connect to raylet.
-  ::Language language = (language_ == ray::WorkerLanguage::JAVA) ?
-      (::Language::JAVA) : (::Language::PYTHON);
+  ::Language language = (language_ == ray::WorkerLanguage::JAVA) ? (::Language::JAVA)
+                                                                 : (::Language::PYTHON);
 
   // TODO: currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this needs to be changed
