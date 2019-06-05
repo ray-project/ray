@@ -15,14 +15,15 @@ from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
 
 
-@pytest.mark.skipif(  # noqa: F811
-    sys.platform == "darwin", reason="Doesn't work on macOS.")
-def test_train(ray_start_2_cpus):  # noqa: F811
+# Distributed PyTorch doesn't work with macOS, so test with only 1 replica
+@pytest.mark.parametrize(  # noqa: F811
+    "num_replicas", [1] if sys.platform == "darwin" else [1, 2])
+def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
-        num_replicas=2,
+        num_replicas=num_replicas,
         resources_per_replica=Resources(num_cpus=1))
     train_loss1 = trainer.train()["train_loss"]
     validation_loss1 = trainer.validate()["validation_loss"]
@@ -37,14 +38,15 @@ def test_train(ray_start_2_cpus):  # noqa: F811
     assert validation_loss2 <= validation_loss1
 
 
-@pytest.mark.skipif(  # noqa: F811
-    sys.platform == "darwin", reason="Doesn't work on macOS.")
-def test_save_and_restore(ray_start_2_cpus):  # noqa: F811
+# Distributed PyTorch doesn't work with macOS, so test with only 1 replica
+@pytest.mark.parametrize(  # noqa: F811
+    "num_replicas", [1] if sys.platform == "darwin" else [1, 2])
+def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer1 = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
-        num_replicas=2,
+        num_replicas=num_replicas,
         resources_per_replica=Resources(num_cpus=1))
     trainer1.train()
 
@@ -59,7 +61,7 @@ def test_save_and_restore(ray_start_2_cpus):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
-        num_replicas=2,
+        num_replicas=num_replicas,
         resources_per_replica=Resources(num_cpus=1))
     trainer2.restore(filename)
 

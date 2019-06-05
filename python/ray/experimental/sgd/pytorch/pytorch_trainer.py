@@ -10,6 +10,8 @@ import logging
 import ray
 
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
+    DistributedPyTorchRunner)
 from ray.experimental.sgd.pytorch import utils
 
 logger = logging.getLogger(__name__)
@@ -68,10 +70,17 @@ class PyTorchTrainer(object):
         if backend == "auto":
             backend = "nccl" if resources_per_replica.num_gpus > 0 else "gloo"
 
-        Runner = ray.remote(
-            num_cpus=resources_per_replica.num_cpus,
-            num_gpus=resources_per_replica.num_gpus,
-            resources=resources_per_replica.resources)(PyTorchRunner)
+        if num_replicas == 1:
+            Runner = ray.remote(
+                num_cpus=resources_per_replica.num_cpus,
+                num_gpus=resources_per_replica.num_gpus,
+                resources=resources_per_replica.resources)(PyTorchRunner)
+        else:
+            Runner = ray.remote(
+                num_cpus=resources_per_replica.num_cpus,
+                num_gpus=resources_per_replica.num_gpus,
+                resources=resources_per_replica.resources)(
+                    DistributedPyTorchRunner)
 
         batch_size_per_replica = batch_size // num_replicas
         if batch_size % num_replicas > 0:
@@ -86,6 +95,9 @@ class PyTorchTrainer(object):
 
         self.workers = [
             Runner.remote(model_creator, data_creator, optimizer_creator,
+                          self.config, batch_size_per_replica)
+            if num_replicas == 1 else
+            Runner.remote(model_creator, data_creator, optimizer_creator,
                           self.config, batch_size_per_replica, backend)
             for i in range(num_replicas)
         ]
@@ -96,7 +108,9 @@ class PyTorchTrainer(object):
 
         # Get setup tasks in order to throw errors on failure
         ray.get([
-            worker.setup.remote(address, i, len(self.workers))
+            worker.setup.remote()
+            if num_replicas == 1 else worker.setup.remote(
+                address, i, len(self.workers))
             for i, worker in enumerate(self.workers)
         ])
 
@@ -122,14 +136,7 @@ class PyTorchTrainer(object):
         """Returns the learned model"""
         model = self.model_creator(self.config)
         state = ray.get(self.workers[0].get_state.remote())
-
-        # Remove module. prefix added by distrbuted pytorch
-        state_dict = {
-            k.replace("module.", ""): v
-            for k, v in state["model"].items()
-        }
-
-        model.load_state_dict(state_dict)
+        model.load_state_dict(state["model"])
         return model
 
     def save(self, ckpt):

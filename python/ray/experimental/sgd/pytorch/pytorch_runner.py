@@ -3,9 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import os
 import torch
-import torch.distributed as dist
 import torch.utils.data
 
 import ray
@@ -15,15 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 class PyTorchRunner(object):
-    """Manages a distributed PyTorch model replica"""
+    """Manages a PyTorch model for training"""
 
     def __init__(self,
                  model_creator,
                  data_creator,
                  optimizer_creator,
                  config=None,
-                 batch_size=16,
-                 backend="gloo"):
+                 batch_size=16):
         """Initializes the runner.
 
         Args:
@@ -36,7 +33,6 @@ class PyTorchRunner(object):
             config (dict): configuration passed to 'model_creator',
                 'data_creator', and 'optimizer_creator'.
             batch_size (int): batch size used in an update.
-            backend (string): backend used by distributed PyTorch.
         """
 
         self.model_creator = model_creator
@@ -44,7 +40,6 @@ class PyTorchRunner(object):
         self.optimizer_creator = optimizer_creator
         self.config = {} if config is None else config
         self.batch_size = batch_size
-        self.backend = backend
         self.verbose = True
 
         self.epoch = 0
@@ -56,72 +51,34 @@ class PyTorchRunner(object):
             ]
         }
 
-    def setup(self, url, world_rank, world_size):
-        """Connects to the distributed PyTorch backend and initializes the model.
-
-        Args:
-            url (str): the URL used to connect to distributed PyTorch.
-            world_rank (int): the index of the runner.
-            world_size (int): the total number of runners.
-        """
-        self._setup_distributed_pytorch(url, world_rank, world_size)
-        self._setup_training()
-
-    def _setup_distributed_pytorch(self, url, world_rank, world_size):
-        os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-        with self._timers["setup_proc"]:
-            self.world_rank = world_rank
-            logger.debug(
-                "Connecting to {} world_rank: {} world_size: {}".format(
-                    url, world_rank, world_size))
-            logger.debug("using {}".format(self.backend))
-            dist.init_process_group(
-                backend=self.backend,
-                init_method=url,
-                rank=world_rank,
-                world_size=world_size)
-
-    def _setup_training(self):
+    def setup(self):
+        """Initializes the model"""
         logger.debug("Creating model")
         self.model = self.model_creator(self.config)
         if torch.cuda.is_available():
-            self.model = torch.nn.parallel.DistributedDataParallel(
-                self.model.cuda())
-        else:
-            self.model = torch.nn.parallel.DistributedDataParallelCPU(
-                self.model)
+            self.model = self.model.cuda()
 
         logger.debug("Creating optimizer")
         self.criterion, self.optimizer = self.optimizer_creator(
             self.model, self.config)
-
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
         logger.debug("Creating dataset")
         self.training_set, self.validation_set = self.data_creator(self.config)
-
-        # TODO: make num_workers configurable
-        self.train_sampler = torch.utils.data.distributed.DistributedSampler(
-            self.training_set)
         self.train_loader = torch.utils.data.DataLoader(
             self.training_set,
             batch_size=self.batch_size,
-            shuffle=(self.train_sampler is None),
+            shuffle=True,
             num_workers=2,
-            pin_memory=False,
-            sampler=self.train_sampler)
+            pin_memory=False)
 
-        self.validation_sampler = (
-            torch.utils.data.distributed.DistributedSampler(
-                self.validation_set))
         self.validation_loader = torch.utils.data.DataLoader(
             self.validation_set,
             batch_size=self.batch_size,
-            shuffle=(self.validation_sampler is None),
+            shuffle=True,
             num_workers=2,
-            pin_memory=False,
-            sampler=self.validation_sampler)
+            pin_memory=False)
 
     def get_node_ip(self):
         """Returns the IP address of the current node"""
@@ -129,9 +86,6 @@ class PyTorchRunner(object):
 
     def step(self):
         """Runs a training epoch and updates the model parameters"""
-        logger.debug("Starting step")
-        self.train_sampler.set_epoch(self.epoch)
-
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
         with self._timers["training"]:
             train_stats = utils.train(self.train_loader, self.model,
@@ -179,4 +133,4 @@ class PyTorchRunner(object):
 
     def shutdown(self):
         """Attempts to shut down the worker"""
-        dist.destroy_process_group()
+        pass
