@@ -517,6 +517,9 @@ int Set_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool is
         REPLY_AND_RETURN_IF_FALSE(RedisModule_DeleteKey(key) == REDISMODULE_OK,
                                   "ERR Failed to delete empty set.");
       }
+
+      // Update the index.
+      RAY_IGNORE_EXPR(UpdateTableIndex(ctx, prefix_str, driver_id_str, id, /*is_add=*/false));
     }
     return REDISMODULE_OK;
   } else {
