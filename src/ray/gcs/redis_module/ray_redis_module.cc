@@ -732,6 +732,7 @@ int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     return RedisModule_WrongArity(ctx);
   }
   RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *driver_id_str = argv[3];
   RedisModuleString *data = argv[5];
 
   size_t len = 0;
@@ -746,6 +747,7 @@ int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   for (size_t i = 0; i < ids_to_delete; ++i) {
     RedisModuleString *id_data =
         RedisModule_CreateString(ctx, data_ptr + i * id_length, id_length);
+    RAY_IGNORE_EXPR(UpdateTableIndex(ctx, prefix_str, driver_id_str, id_data, /*is_add=*/false));
     RAY_IGNORE_EXPR(DeleteKeyHelper(ctx, prefix_str, id_data));
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
