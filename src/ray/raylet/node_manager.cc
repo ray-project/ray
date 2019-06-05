@@ -750,7 +750,7 @@ void NodeManager::CleanUpGcsData(const DriverID &driver_id) {
     auto cb = [driver_id, this](const std::vector <ActorID> &ids) {
       this->gcs_client_->actor_table().Delete(driver_id, ids);
     };
-    gcs_client_->actor_table().GetAllActorIdsByDriverId(driver_id, std::move(cb));
+    gcs_client_->actor_table().GetAllIdsByDriver(driver_id, std::move(cb));
   }
 
   {
@@ -758,7 +758,7 @@ void NodeManager::CleanUpGcsData(const DriverID &driver_id) {
     auto cb = [driver_id, this] (const std::vector<TaskID> &ids) {
       this->gcs_client_->raylet_task_table().Delete(driver_id, ids);
     };
-    gcs_client_->raylet_task_table().GetAllTaskIdsByDriverId(driver_id, std::move(cb));
+    gcs_client_->raylet_task_table().GetAllIdsByDriver(driver_id, std::move(cb));
   }
 
   {
@@ -768,7 +768,7 @@ void NodeManager::CleanUpGcsData(const DriverID &driver_id) {
       // Note that this also can removed the objects from GCS.
       object_manager_.FreeObjects(ids, false);
     };
-    gcs_client_->object_table().GetAllObjectIdsByDriverId(driver_id, std::move(cb));
+    gcs_client_->object_table().GetAllIdsByDriver(driver_id, std::move(cb));
   }
 }
 

@@ -199,6 +199,15 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \return Void.
   void Delete(const DriverID &driver_id, const std::vector<ID> &ids);
 
+  using GetAllIdsCallback = std::function<void (const std::vector<ID> &)>;
+
+  /// Get all ids of this table by driver.
+  ///
+  /// \param driver_id The ID of this driver.
+  /// \param callback The callback that processes the data of ids.
+  /// \return Status
+  Status GetAllIdsByDriver(const DriverID &driver_id, GetAllIdsCallback callback);
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -349,6 +358,15 @@ class Table : private Log<ID, Data>,
     Log<ID, Data>::Delete(driver_id, ids);
   }
 
+  using GetAllIdsCallback = std::function<void (const std::vector<ID> &)>;
+
+  /// Get all ids of this table by driver.
+  ///
+  /// \param driver_id The ID of this driver.
+  /// \param callback The callback that processes the data of ids.
+  /// \return Status
+  Status GetAllIdsByDriver(const DriverID &driver_id, GetAllIdsCallback callback);
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -434,6 +452,15 @@ class Set : private Log<ID, Data>,
     return Log<ID, Data>::Subscribe(driver_id, client_id, subscribe, done);
   }
 
+  using GetAllIdsCallback = std::function<void (const std::vector<ID> &)>;
+
+  /// Get all ids of this table by driver.
+  ///
+  /// \param driver_id The ID of this driver.
+  /// \param callback The callback that processes the data of ids.
+  /// \return Status
+  Status GetAllIdsByDriver(const DriverID &driver_id, GetAllIdsCallback callback);
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -459,9 +486,6 @@ class ObjectTable : public Set<ObjectID, ObjectTableData> {
     pubsub_channel_ = TablePubsub::OBJECT;
     prefix_ = TablePrefix::OBJECT;
   };
-
-  using GetAllObjectsCallback =  std::function<void (const std::vector<ObjectID> &)>;
-  Status GetAllObjectIdsByDriverId(const DriverID &driver_id, GetAllObjectsCallback callback);
 
   virtual ~ObjectTable(){};
 };
@@ -533,8 +557,6 @@ class ActorTable : public Log<ActorID, ActorTableData> {
     prefix_ = TablePrefix::ACTOR;
   }
 
-  using GetAllActorsCallback =  std::function<void (const std::vector<ActorID> &)>;
-  Status GetAllActorIdsByDriverId(const DriverID &driver_id, GetAllActorsCallback callback);
 };
 
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
@@ -616,9 +638,6 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
       : TaskTable(contexts, client) {
     command_type_ = command_type;
   };
-
-  using GetAllTasksCallback =  std::function<void (const std::vector<TaskID> &)>;
-  Status GetAllTaskIdsByDriverId(const DriverID &driver_id, GetAllTasksCallback callback);
 
 };
 

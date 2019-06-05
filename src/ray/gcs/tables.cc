@@ -227,6 +227,29 @@ void Log<ID, Data>::Delete(const DriverID &driver_id, const ID &id) {
 }
 
 template <typename ID, typename Data>
+Status Log<ID, Data>::GetAllIdsByDriver(const DriverID &driver_id,
+                                        GetAllIdsCallback callback) {
+  const std::string key = std::string("INDEX_") + EnumNameTablePrefix(prefix_) + "_" + driver_id.Binary();
+
+  auto cb = [callback](const CallbackReply &reply) {
+    std::vector<std::string> result;
+    reply.ReadAsStringArray(&result);
+    std::vector<ID> ids;
+    for (const auto &item : result) {
+      ids.push_back(ID::FromBinary(item));
+    }
+    callback(ids);
+  };
+
+  Status status = Status::OK();
+  for (auto shard : shard_contexts_) {
+    status = shard->RunArgvAsyncWithCallback({"SMEMBERS", key}, cb);
+  }
+
+  return status;
+}
+
+template <typename ID, typename Data>
 std::string Log<ID, Data>::DebugString() const {
   std::stringstream result;
   result << "num lookups: " << num_lookups_ << ", num appends: " << num_appends_;
@@ -292,6 +315,12 @@ Status Table<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &cli
 }
 
 template <typename ID, typename Data>
+Status Table<ID, Data>::GetAllIdsByDriver(const DriverID &driver_id,
+                                          GetAllIdsCallback callback) {
+  return Log<ID, Data>::GetAllIdsByDriver(driver_id, callback);
+}
+
+template <typename ID, typename Data>
 std::string Table<ID, Data>::DebugString() const {
   std::stringstream result;
   result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_;
@@ -330,6 +359,12 @@ Status Set<ID, Data>::Remove(const DriverID &driver_id, const ID &id,
   return GetRedisContext(id)->RunAsync("RAY.SET_REMOVE", driver_id, id, fbb.GetBufferPointer(),
                                        fbb.GetSize(), prefix_, pubsub_channel_,
                                        std::move(callback));
+}
+
+template <typename ID, typename Data>
+Status Set<ID, Data>::GetAllIdsByDriver(const DriverID &driver_id,
+                                        GetAllIdsCallback callback) {
+  return Log<ID, Data>::GetAllIdsByDriver(driver_id, callback);
 }
 
 template <typename ID, typename Data>
@@ -678,67 +713,6 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
     RAY_CHECK_OK(Add(driver_id, actor_id, data, nullptr));
   };
   return Lookup(driver_id, actor_id, lookup_callback, failure_callback);
-}
-
-Status ActorTable::GetAllActorIdsByDriverId(const DriverID &driver_id,
-                                            GetAllActorsCallback callback) {
-  const std::string key = kActorIndexPrefix + driver_id.Binary();
-  auto cb =  [callback](const CallbackReply &reply) {
-    std::vector<std::string> result;
-    reply.ReadAsStringArray(&result);
-    std::vector<ActorID> actor_ids;
-    for (const auto &item : result) {
-      actor_ids.push_back(ActorID::FromBinary(item));
-    }
-    callback(actor_ids);
-  };
-
-  // This should do on primary instance.
-  return GetRedisContext(ActorID::Nil())->RunArgvAsyncWithCallback({"SMEMBERS", key}, std::move(cb));
-}
-
-Status raylet::TaskTable::GetAllTaskIdsByDriverId(const DriverID &driver_id,
-                                                  GetAllTasksCallback callback) {
-  const std::string key = kRayletTaskIndexPrefix + driver_id.Binary();
-  // Do this on all shards.
-  auto cb = [callback](const CallbackReply &reply) {
-    std::vector<std::string> result;
-    reply.ReadAsStringArray(&result);
-    std::vector<TaskID> task_ids;
-    for (const auto &item : result) {
-      task_ids.push_back(TaskID::FromBinary(item));
-    }
-    callback(task_ids);
-  };
-
-  Status status = Status::OK();
-  for (auto shard : shard_contexts_) {
-    status = shard->RunArgvAsyncWithCallback({"SMEMBERS", key}, cb);
-  }
-
-  return status;
-}
-
-Status ObjectTable::GetAllObjectIdsByDriverId(const DriverID &driver_id,
-                                              GetAllObjectsCallback callback) {
-  const std::string key = kObjectIndexPrefix + driver_id.Binary();
-  // Do this on all shards.
-  auto cb = [callback](const CallbackReply &reply) {
-    std::vector<std::string> result;
-    reply.ReadAsStringArray(&result);
-    std::vector<ObjectID> object_ids;
-    for (const auto &item : result) {
-      object_ids.push_back(ObjectID::FromBinary(item));
-    }
-    callback(object_ids);
-  };
-
-  Status status = Status::OK();
-  for (auto shard : shard_contexts_) {
-    status = shard->RunArgvAsyncWithCallback({"SMEMBERS", key}, cb);
-  }
-
-  return status;
 }
 
 template class Log<ObjectID, ObjectTableData>;
