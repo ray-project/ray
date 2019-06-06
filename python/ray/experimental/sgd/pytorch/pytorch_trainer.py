@@ -72,48 +72,51 @@ class PyTorchTrainer(object):
             backend = "nccl" if resources_per_replica.num_gpus > 0 else "gloo"
 
         if num_replicas == 1:
+            # Generate actor class
             Runner = ray.remote(
                 num_cpus=resources_per_replica.num_cpus,
                 num_gpus=resources_per_replica.num_gpus,
                 resources=resources_per_replica.resources)(PyTorchRunner)
+            # Start workers
+            self.workers = [
+                Runner.remote(model_creator, data_creator, optimizer_creator,
+                              self.config, batch_size)
+            ]
+            # Get setup tasks in order to throw errors on failure
+            ray.get(self.workers[0].setup.remote())
         else:
+            # Geneate actor class
             Runner = ray.remote(
                 num_cpus=resources_per_replica.num_cpus,
                 num_gpus=resources_per_replica.num_gpus,
                 resources=resources_per_replica.resources)(
                     DistributedPyTorchRunner)
-
-        batch_size_per_replica = batch_size // num_replicas
-        if batch_size % num_replicas > 0:
-            new_batch_size = batch_size_per_replica * num_replicas
-            logger.warn(
-                ("Changing batch size from {old_batch_size} to "
-                 "{new_batch_size} to evenly distribute batches across "
-                 "{num_replicas} replicas.").format(
-                     old_batch_size=batch_size,
-                     new_batch_size=new_batch_size,
-                     num_replicas=num_replicas))
-
-        self.workers = [
-            Runner.remote(model_creator, data_creator, optimizer_creator,
-                          self.config, batch_size_per_replica)
-            if num_replicas == 1 else
-            Runner.remote(model_creator, data_creator, optimizer_creator,
-                          self.config, batch_size_per_replica, backend)
-            for i in range(num_replicas)
-        ]
-
-        ip = ray.get(self.workers[0].get_node_ip.remote())
-        port = ray.get(self.workers[0].find_free_port.remote())
-        address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-
-        # Get setup tasks in order to throw errors on failure
-        ray.get([
-            worker.setup.remote()
-            if num_replicas == 1 else worker.setup.remote(
-                address, i, len(self.workers))
-            for i, worker in enumerate(self.workers)
-        ])
+            # Compute batch size per replica
+            batch_size_per_replica = batch_size // num_replicas
+            if batch_size % num_replicas > 0:
+                new_batch_size = batch_size_per_replica * num_replicas
+                logger.warn(
+                    ("Changing batch size from {old_batch_size} to "
+                     "{new_batch_size} to evenly distribute batches across "
+                     "{num_replicas} replicas.").format(
+                         old_batch_size=batch_size,
+                         new_batch_size=new_batch_size,
+                         num_replicas=num_replicas))
+            # Start workers
+            self.workers = [
+                Runner.remote(model_creator, data_creator, optimizer_creator,
+                              self.config, batch_size_per_replica, backend)
+                for i in range(num_replicas)
+            ]
+            # Compute URL for initializing distributed PyTorch
+            ip = ray.get(self.workers[0].get_node_ip.remote())
+            port = ray.get(self.workers[0].find_free_port.remote())
+            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+            # Get setup tasks in order to throw errors on failure
+            ray.get([
+                worker.setup.remote(address, i, len(self.workers))
+                for i, worker in enumerate(self.workers)
+            ])
 
     def train(self):
         """Runs a training epoch"""
