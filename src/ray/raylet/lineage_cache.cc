@@ -199,8 +199,6 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
   // if the new entry has an equal or lower GCS status than the current entry
   // in our cache. This also prevents us from traversing the same node twice.
   if (lineage_.SetEntry(entry->TaskData(), entry->GetStatus())) {
-    // TODO(swang): Do not subscribe to tasks that are in the uncommitted
-    // lineage but were already COMMITTED at the sender.
     RAY_CHECK(SubscribeTask(task_id));
     for (const auto &parent_id : parent_ids) {
       AddUncommittedLineage(parent_id, uncommitted_lineage);

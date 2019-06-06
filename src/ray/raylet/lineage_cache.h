@@ -17,6 +17,10 @@ namespace ray {
 namespace raylet {
 
 /// The status of a lineage cache entry according to its status in the GCS.
+/// Tasks can only transition to a higher GcsStatus (e.g., an UNCOMMITTED state
+/// can become COMMITTING but not vice versa). If a task is evicted from the
+/// local cache, it implicitly goes back to state `NONE`, after which it may be
+/// added to the local cache again (e.g., if it is forwarded to us again).
 enum class GcsStatus {
   /// The task is not in the lineage cache.
   NONE = 0,
@@ -25,9 +29,11 @@ enum class GcsStatus {
   UNCOMMITTED,
   /// We flushed this task and are waiting for the commit acknowledgement.
   COMMITTING,
-  // TODO(swang): Add a COMMITTED state for the following scenario: We
-  // received a commit acknowledgement for this task, but a task in its
-  // lineage has not yet been committed.
+  // TODO(swang): Add a COMMITTED state for tasks for which we received a
+  // commit acknowledgement, but which we cannot evict yet (due to an ancestor
+  // that has not been evicted). This is to allow a performance optimization
+  // that avoids unnecessary subscribes when we receive tasks that were
+  // already COMMITTED at the sender.
 };
 
 /// \class LineageEntry
