@@ -2301,7 +2301,7 @@ void NodeManager::ForwardTask(
 
         if (status.ok()) {
           const auto &spec = task.GetTaskSpecification();
-          // Mark as forwarded so that the task and its lineage is not
+          // Mark as forwarded so that the task and its lineage are not
           // re-forwarded in the future to the receiving node.
           lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
 
