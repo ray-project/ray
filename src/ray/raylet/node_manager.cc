@@ -1060,6 +1060,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     // The client is a driver.
     RAY_CHECK_OK(
         gcs_client_->driver_table().AppendDriverData(DriverID(client->GetClientId()),
+                                                     current_time_ms() / 1000,
                                                      /*is_dead=*/true));
     auto driver_id = worker->GetAssignedTaskId();
     RAY_CHECK(!driver_id.is_nil());

@@ -35,8 +35,8 @@ def ray_deps_setup():
 
     git_repository(
         name = "com_github_nelhage_rules_boost",
-        commit = "5171b9724fbb39c5fdad37b9ca9b544e8858d8ac",
-        remote = "https://github.com/ray-project/rules_boost",
+        commit = "6d6fd834281cb8f8e758dd9ad76df86304bf1869",
+        remote = "https://github.com/nelhage/rules_boost",
     )
 
     git_repository(

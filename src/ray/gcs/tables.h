@@ -501,7 +501,7 @@ class DriverTable : public Log<DriverID, DriverTableData> {
   /// \param driver_id The driver id.
   /// \param is_dead Whether the driver is dead.
   /// \return The return status.
-  Status AppendDriverData(const DriverID &driver_id, bool is_dead);
+  Status AppendDriverData(const DriverID &driver_id, int64_t timestamp, bool is_dead);
 };
 
 class FunctionTable : public Table<ObjectID, FunctionTableData> {

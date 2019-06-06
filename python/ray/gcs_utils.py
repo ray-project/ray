@@ -55,6 +55,7 @@ TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
 TablePrefix_OBJECT_string = "OBJECT"
 TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
+TablePrefix_DRIVER_string = "DRIVER"
 
 
 def construct_error_message(driver_id, error_type, message, timestamp):

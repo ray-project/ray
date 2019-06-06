@@ -362,9 +362,10 @@ std::string ProfileTable::DebugString() const {
   return Log<UniqueID, ProfileTableData>::DebugString();
 }
 
-Status DriverTable::AppendDriverData(const DriverID &driver_id, bool is_dead) {
+Status DriverTable::AppendDriverData(const DriverID &driver_id, int64_t timestamp, bool is_dead) {
   auto data = std::make_shared<DriverTableDataT>();
   data->driver_id = driver_id.binary();
+  data->timestamp = timestamp;
   data->is_dead = is_dead;
   return Append(DriverID(driver_id), driver_id, data, /*done_callback=*/nullptr);
 }

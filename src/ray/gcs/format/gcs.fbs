@@ -313,6 +313,8 @@ table TaskLeaseData {
 table DriverTableData {
   // The driver ID.
   driver_id: string;
+  // The UNIX timestamp corresponding to this event (driver added or removed).
+  timestamp: int64;
   // Whether it's dead.
   is_dead: bool;
 }

@@ -413,6 +413,42 @@ class GlobalState(object):
 
         return _parse_client_table(self.redis_client)
 
+    def _driver_table(self, driver_id):
+        """Fetch and parse the driver table information for a single driver ID.
+
+        Args:
+            driver_id: A driver ID to get information about.
+
+        Returns:
+            A dictionary with information about the driver ID in question.
+        """
+        # Allow the argument to be either an ObjectID or a hex string.
+        if not isinstance(driver_id, ray.DriverID):
+            driver_id = ray.DriverID(hex_to_binary(driver_id))
+
+        # Return information about a single driver ID.
+        message = self.redis_client.execute_command("RAY.TABLE_LOOKUP",
+            ray.gcs_utils.TablePrefix.DRIVER, "", driver_id.binary())
+
+        if message is None:
+            return {}
+
+        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
+
+        assert gcs_entry.EntriesLength() > 0
+
+        entry = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(
+            gcs_entry.Entries(0), 0)
+
+        driver_info = {
+            "DriverID": binary_to_hex(entry.DriverId()),
+            "Timestamp": entry.Timestamp(),
+            "IsDead": entry.IsDead()
+        }
+
+        return driver_info
+
     def driver_table(self):
         """Fetch and parse the Redis driver table.
 
@@ -421,8 +457,20 @@ class GlobalState(object):
         """
         self._check_connected()
 
+        driver_keys = self.redis_client.keys(
+            ray.gcs_utils.TablePrefix_DRIVER_string + "*")
+
+        driver_ids_binary = {
+            key[len(ray.gcs_utils.TablePrefix_DRIVER_string):]
+            for key in driver_keys
+        }
+
         drivers = []
 
+        for driver_id_binary in driver_ids_binary:
+            drivers.append(self._driver_table(binary_to_hex(driver_id_binary)))
+
+        """
         for driver_key in self.redis_client.keys(b"Drivers:*"):
             driver_info = state.redis_client.hgetall(driver_key)
             driver_id = ray.utils.binary_to_hex(driver_info[b"driver_id"])
@@ -435,6 +483,7 @@ class GlobalState(object):
                 "RayletSocketName": decode(driver_info[b"raylet_socket"]),
                 "Name": decode(driver_info[b"name"])
             })
+        """
 
         return drivers
 
