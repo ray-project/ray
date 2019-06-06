@@ -203,7 +203,8 @@ class ModelCatalog(object):
                      action_space,
                      num_outputs,
                      options,
-                     framework="tf"):
+                     framework="tf",
+                     name=None):
         """Returns a suitable model compatible with given spaces and output.
 
         Args:
@@ -213,6 +214,7 @@ class ModelCatalog(object):
             action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
             framework (str): Either "tf" or "torch".
+            name (str): Name (scope) for the model.
 
         Returns:
             model (ModelV2): Model to use for the policy.
@@ -222,12 +224,13 @@ class ModelCatalog(object):
             model_cls = _global_registry.get(RLLIB_MODEL,
                                              options["custom_model"])
             if isinstance(model_cls, ModelV2):
-                return model_cls(obs_space, action_space, num_outputs, options)
+                return model_cls(obs_space, action_space, num_outputs, options,
+                                 name)
 
         if framework == "tf":
             legacy_model_cls = ModelCatalog.get_model
             return ModelV1Wrapper(legacy_model_cls, obs_space, action_space,
-                                  num_outputs, options)
+                                  num_outputs, options, name)
 
         raise NotImplementedError("TODO: support {} models".format(framework))
 

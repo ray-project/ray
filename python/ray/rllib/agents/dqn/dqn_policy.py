@@ -10,6 +10,7 @@ import ray
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog, Categorical
+from ray.rllib.models.modelv2 import OutputSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy, \
@@ -105,6 +106,8 @@ class QLoss(object):
 class QNetwork(object):
     def __init__(self,
                  model,
+                 obs,
+                 is_training,
                  num_actions,
                  dueling=False,
                  hiddens=[256],
@@ -115,9 +118,13 @@ class QNetwork(object):
                  sigma0=0.5,
                  parameter_noise=False):
         self.model = model
+        model_outputs, feature_layer, state = model({
+            "obs": obs,
+            "is_training": is_training,
+        }, [], None)
         with tf.variable_scope("action_value"):
             if hiddens:
-                action_out = model.last_layer
+                action_out = feature_layer
                 for i in range(len(hiddens)):
                     if use_noisy:
                         action_out = self.noisy_layer(
@@ -137,7 +144,7 @@ class QNetwork(object):
             else:
                 # Avoid postprocessing the outputs. This enables custom models
                 # to be used for parametric action DQN.
-                action_out = model.outputs
+                action_out = model_outputs
             if use_noisy:
                 action_scores = self.noisy_layer(
                     "output",
@@ -149,7 +156,7 @@ class QNetwork(object):
                 action_scores = tf.layers.dense(
                     action_out, units=num_actions * num_atoms, activation=None)
             else:
-                action_scores = model.outputs
+                action_scores = model_outputs
             if num_atoms > 1:
                 # Distributional Q-learning uses a discrete support z
                 # to represent the action value distribution
@@ -169,7 +176,7 @@ class QNetwork(object):
 
         if dueling:
             with tf.variable_scope("state_value"):
-                state_out = model.last_layer
+                state_out = feature_layer
                 for i in range(len(hiddens)):
                     if use_noisy:
                         state_out = self.noisy_layer("dueling_hidden_%d" % i,
@@ -394,20 +401,36 @@ def postprocess_trajectory(policy,
     return _postprocess_dqn(policy, sample_batch)
 
 
-def build_q_networks(policy, input_dict, observation_space, action_space,
-                     config):
+# TODO(ekl) probably want to split this into setup_model (stateful) and
+# get_actions (stateless)
+def build_q_networks(policy, input_dict, obs_space, action_space, config):
 
     if not isinstance(action_space, Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
+    policy.q_model = ModelCatalog.get_model_v2(
+        obs_space,
+        action_space,
+        OutputSpec(action_space.n),
+        config["model"],
+        framework="tf",
+        name=Q_SCOPE)
+
+    policy.target_q_model = ModelCatalog.get_model_v2(
+        obs_space,
+        action_space,
+        OutputSpec(action_space.n),
+        config["model"],
+        framework="tf",
+        name=Q_TARGET_SCOPE)
+
     # Action Q network
-    with tf.variable_scope(Q_SCOPE) as scope:
-        q_values, q_logits, q_dist, _ = _build_q_network(
-            policy, input_dict[SampleBatch.CUR_OBS], observation_space,
-            action_space)
-        policy.q_values = q_values
-        policy.q_func_vars = _scope_vars(scope.name)
+    q_values, q_logits, q_dist, _ = _q_network_from(
+        policy, policy.q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
+        action_space)
+    policy.q_values = q_values
+    policy.q_func_vars = policy.q_model.variables()
 
     # Noise vars for Q network except for layer normalization vars
     if config["parameter_noise"]:
@@ -464,20 +487,18 @@ def _build_parameter_noise(policy, pnet_params):
 
 def build_q_losses(policy, batch_tensors):
     # q network evaluation
-    with tf.variable_scope(Q_SCOPE, reuse=True):
-        prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-        q_t, q_logits_t, q_dist_t, model = _build_q_network(
-            policy, batch_tensors[SampleBatch.CUR_OBS],
-            policy.observation_space, policy.action_space)
-        policy.q_batchnorm_update_ops = list(
-            set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    q_t, q_logits_t, q_dist_t, model = _q_network_from(
+        policy, policy.q_model, batch_tensors[SampleBatch.CUR_OBS],
+        policy.observation_space, policy.action_space)
+    policy.q_batchnorm_update_ops = list(
+        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # target q network evalution
-    with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-        q_tp1, q_logits_tp1, q_dist_tp1, _ = _build_q_network(
-            policy, batch_tensors[SampleBatch.NEXT_OBS],
-            policy.observation_space, policy.action_space)
-        policy.target_q_func_vars = _scope_vars(scope.name)
+    q_tp1, q_logits_tp1, q_dist_tp1, _ = _q_network_from(
+        policy, policy.target_q_model, batch_tensors[SampleBatch.NEXT_OBS],
+        policy.observation_space, policy.action_space)
+    policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(batch_tensors[SampleBatch.ACTIONS],
@@ -488,12 +509,11 @@ def build_q_losses(policy, batch_tensors):
 
     # compute estimate of best possible value starting from state at t + 1
     if policy.config["double_q"]:
-        with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-                q_dist_tp1_using_online_net, _ = _build_q_network(
-                    policy,
-                    batch_tensors[SampleBatch.NEXT_OBS],
-                    policy.observation_space, policy.action_space)
+        q_tp1_using_online_net, q_logits_tp1_using_online_net, \
+            q_dist_tp1_using_online_net, _ = _q_network_from(
+                policy, policy.q_model,
+                batch_tensors[SampleBatch.NEXT_OBS],
+                policy.observation_space, policy.action_space)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = tf.one_hot(q_tp1_best_using_online_net,
                                                   policy.action_space.n)
@@ -556,16 +576,13 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-def _build_q_network(policy, obs, obs_space, action_space):
+def _q_network_from(policy, model, obs, obs_space, action_space):
     config = policy.config
-    qnet = QNetwork(
-        ModelCatalog.get_model_v2({
-            "obs": obs,
-            "is_training": policy._get_is_training_placeholder(),
-        }, obs_space, action_space, action_space.n, config["model"]),
-        action_space.n, config["dueling"], config["hiddens"], config["noisy"],
-        config["num_atoms"], config["v_min"], config["v_max"],
-        config["sigma0"], config["parameter_noise"])
+    qnet = QNetwork(model, obs, policy._get_is_training_placeholder(),
+                    action_space.n, config["dueling"], config["hiddens"],
+                    config["noisy"], config["num_atoms"], config["v_min"],
+                    config["v_max"], config["sigma0"],
+                    config["parameter_noise"])
     return qnet.value, qnet.logits, qnet.dist, qnet.model
 
 
@@ -659,30 +676,6 @@ def _minimize_and_clip(optimizer, objective, var_list, clip_val=10):
         if grad is not None:
             gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
     return gradients
-
-
-def _scope_vars(scope, trainable_only=False):
-    """
-    Get variables inside a scope
-    The scope can be specified as a string
-
-    Parameters
-    ----------
-    scope: str or VariableScope
-      scope in which the variables reside.
-    trainable_only: bool
-      whether or not to return only the variables that were marked as
-      trainable.
-
-    Returns
-    -------
-    vars: [tf.Variable]
-      list of variables in `scope`.
-    """
-    return tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES
-        if trainable_only else tf.GraphKeys.VARIABLES,
-        scope=scope if isinstance(scope, str) else scope.name)
 
 
 DQNTFPolicy = build_tf_policy(

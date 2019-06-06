@@ -19,8 +19,9 @@ class ModelV1Wrapper(TFModelV2):
     """Compatibility wrapper that allows V1 models to be used as ModelV2."""
 
     def __init__(self, legacy_model_cls, obs_space, action_space, output_spec,
-                 options):
-        TFModelV2.__init__(self, obs_space, action_space, output_spec, options)
+                 options, name):
+        TFModelV2.__init__(self, obs_space, action_space, output_spec, options,
+                           name)
         self.legacy_model_cls = legacy_model_cls
 
         # Tracks the last v1 model created by the call to forward
@@ -51,9 +52,10 @@ class ModelV1Wrapper(TFModelV2):
                     self.output_spec.size, self.options, state, seq_lens)
         else:
             # create a new model instance
-            new_instance = self.legacy_model_cls(
-                input_dict, self.obs_space, self.action_space,
-                self.output_spec.size, self.options, state, seq_lens)
+            with tf.variable_scope(self.name):
+                new_instance = self.legacy_model_cls(
+                    input_dict, self.obs_space, self.action_space,
+                    self.output_spec.size, self.options, state, seq_lens)
         self.cur_instance = new_instance
         return (new_instance.outputs, new_instance.last_layer,
                 new_instance.state_out)
@@ -99,3 +101,31 @@ class ModelV1Wrapper(TFModelV2):
     @override(ModelV2)
     def custom_stats(self):
         return self.cur_instance.custom_stats()
+
+    @override(ModelV2)
+    def variables(self):
+        return _scope_vars(self.cur_instance.scope)
+
+
+def _scope_vars(scope, trainable_only=False):
+    """
+    Get variables inside a scope
+    The scope can be specified as a string
+
+    Parameters
+    ----------
+    scope: str or VariableScope
+      scope in which the variables reside.
+    trainable_only: bool
+      whether or not to return only the variables that were marked as
+      trainable.
+
+    Returns
+    -------
+    vars: [tf.Variable]
+      list of variables in `scope`.
+    """
+    return tf.get_collection(
+        tf.GraphKeys.TRAINABLE_VARIABLES
+        if trainable_only else tf.GraphKeys.VARIABLES,
+        scope=scope if isinstance(scope, str) else scope.name)

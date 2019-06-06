@@ -34,11 +34,12 @@ class ModelV2(object):
         action_space (Space): action space of the target gym env
         output_spec (OutputSpec): defines the output shape of the model
         options (dict): options for the model, documented in ModelCatalog
-        tensorlib (module): either tf or torch
+        name (str): name (scope) for the model
+        framework (str): either "tf" or "torch"
     """
 
-    def __init__(self, obs_space, action_space, output_spec, options,
-                 tensorlib):
+    def __init__(self, obs_space, action_space, output_spec, options, name,
+                 framework):
         """Initialize the model.
 
         This method should create any variables used by the model.
@@ -48,7 +49,8 @@ class ModelV2(object):
         self.action_space = action_space
         self.output_spec = output_spec
         self.options = options
-        self.tensorlib = tensorlib
+        self.name = name
+        self.framework = framework
 
     def get_initial_state(self):
         """Get the initial recurrent state values for the model.
@@ -77,13 +79,13 @@ class ModelV2(object):
                 "obs_flat", "prev_action", "prev_reward", "is_training"
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
-            seq_lens (list): 1d tensor holding input sequence lengths
+            seq_lens (Tensor): 1d tensor holding input sequence lengths
 
         Returns:
-            (outputs, state, feature_layer): The model output tensor of size
+            (outputs, feature_layer, state): The model output tensor of size
                 [BATCH, output_spec.size] or a list of tensors corresponding to
-                output_spec.shape_list, a list of state tensors of
-                [BATCH, state_size_i], and a tensor of [BATCH, feature_size]
+                output_spec.shape_list, a tensor of [BATCH, feature_size], and
+                a list of state tensors of [BATCH, state_size_i].
         """
         raise NotImplementedError
 
@@ -144,6 +146,10 @@ class ModelV2(object):
         """
         return {}
 
+    def variables(self):
+        """Returns the list of variables for this model."""
+        raise NotImplementedError
+
     def __call__(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.
 
@@ -157,51 +163,63 @@ class ModelV2(object):
                 "prev_action", "prev_reward", "is_training"
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
-            seq_lens (list): 1d tensor holding input sequence lengths
+            seq_lens (Tensor): 1d tensor holding input sequence lengths
 
         Returns:
-            (outputs, state, feature_layer): The model output tensor of size
-                [BATCH, output_spec.size], a list of state tensors of sizes
-                [BATCH, state_size_i], and a tensor of [BATCH, feature_size]
+            (outputs, feature_layer, state): The model output tensor of size
+                [BATCH, output_spec.size] or a list of tensors corresponding to
+                output_spec.shape_list, a tensor of [BATCH, feature_size], and
+                a list of state tensors of [BATCH, state_size_i].
         """
 
         if hasattr(self.obs_space, "original_space"):
             restored = input_dict.copy()
             restored["obs"] = restore_original_dimensions(
-                input_dict["obs"], self.obs_space, self.tensorlib)
+                input_dict["obs"], self.obs_space, self.framework)
             restored["obs_flat"] = input_dict["obs"]
-        outputs, state, feature_layer = self.forward(restored, state, seq_lens)
+        outputs, feature_layer, state = self.forward(restored, state, seq_lens)
 
         try:
             shape = outputs.shape
         except AttributeError:
-            raise ValueError("Output is not a tensor: {}".format(self.outputs))
+            raise ValueError("Output is not a tensor: {}".format(outputs))
         else:
             if len(shape) != 2 or shape[1] != self.output_spec.size:
                 raise ValueError(
                     "Expected output shape of [None, {}], got {}".format(
                         self.output_spec.size, shape))
+        if not hasattr(feature_layer, "shape"):
+            raise ValueError(
+                "Feature layer is not a tensor: {}".format(feature_layer))
+        if not isinstance(state, list):
+            raise ValueError("State output is not a list: {}".format(state))
 
-        return outputs, state, feature_layer
+        return outputs, feature_layer, state
 
 
 class TFModelV2(ModelV2):
     """TF version of ModelV2."""
 
-    def __init__(self, obs_space, action_space, output_spec, options):
-        ModelV2.__init__(
-            self, obs_space, action_space, output_spec, options, tensorlib=tf)
-
-
-class TorchModelV2(ModelV2):
-    """Torch version of ModelV2."""
-
-    def __init__(self, obs_space, action_space, output_spec, options):
-        import torch
+    def __init__(self, obs_space, action_space, output_spec, options, name):
         ModelV2.__init__(
             self,
             obs_space,
             action_space,
             output_spec,
             options,
-            tensorlib=torch)
+            name,
+            framework="tf")
+
+
+class TorchModelV2(ModelV2):
+    """Torch version of ModelV2."""
+
+    def __init__(self, obs_space, action_space, output_spec, options, name):
+        ModelV2.__init__(
+            self,
+            obs_space,
+            action_space,
+            output_spec,
+            options,
+            name,
+            framework="torch")
