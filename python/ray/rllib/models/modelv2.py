@@ -2,25 +2,43 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 from ray.rllib.models.model import restore_original_dimensions
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
+
+
+class OutputSpec(namedtuple("OutputSpec", ["size"])):
+    """Defines the tensor shape of the model output.
+
+    The model should return a single flat vector of shape [BATCH, size]. In
+    the future, more complex output types can be supported via OutputSpec.
+
+    Attributes:
+        size (int): size in units of the flat output vector (e.g., 16)
+    """
+    pass
 
 
 class ModelV2(object):
     """Defines a Keras-style abstract network model for use with RLlib.
 
-    This interface is used for both TF and Torch custom models. Experimental.
+    Custom models should extend either TFModelV2 or TorchModelV2 instead of
+    this class directly. Experimental.
 
     Attributes:
         obs_space (Space): observation space of the target gym env. This
             may have an `original_space` attribute that specifies how to
             unflatten the tensor into a ragged tensor.
         action_space (Space): action space of the target gym env
-            num_outputs (int): the size of the output vector of the model
-        num_outputs (int): the size of the output vector of the model
+        output_spec (OutputSpec): defines the output shape of the model
         options (dict): options for the model, documented in ModelCatalog
+        tensorlib (module): either tf or torch
     """
 
-    def __init__(self, obs_space, action_space, num_outputs, options):
+    def __init__(self, obs_space, action_space, output_spec, options,
+                 tensorlib):
         """Initialize the model.
 
         This method should create any variables used by the model.
@@ -28,8 +46,9 @@ class ModelV2(object):
 
         self.obs_space = obs_space
         self.action_space = action_space
-        self.num_outputs = num_outputs
+        self.output_spec = output_spec
         self.options = options
+        self.tensorlib = tensorlib
 
     def get_initial_state(self):
         """Get the initial recurrent state values for the model.
@@ -46,9 +65,9 @@ class ModelV2(object):
         __call__ before being passed to forward(). To access the flattened
         observation tensor, refer to input_dict["obs_flat"].
 
-        This method can be called any number of times. In eager frameworks,
+        This method can be called any number of times. In eager execution,
         each call to forward() will eagerly evaluate the model. In symbolic
-        frameworks, each call to forward creates a computation graph that
+        execution, each call to forward creates a computation graph that
         operates over the variables of this model (i.e., shares weights).
 
         Custom models should override this instead of __call__.
@@ -62,12 +81,13 @@ class ModelV2(object):
 
         Returns:
             (outputs, state, feature_layer): The model output tensor of size
-                [BATCH, num_outputs], a list of state tensors of sizes
+                [BATCH, output_spec.size] or a list of tensors corresponding to
+                output_spec.shape_list, a list of state tensors of
                 [BATCH, state_size_i], and a tensor of [BATCH, feature_size]
         """
         raise NotImplementedError
 
-    def get_branch_output(self, branch_type, num_outputs, feature_layer=None):
+    def get_branch_output(self, branch_type, output_spec, feature_layer=None):
         """Get the branch output of the model (e.g., "value" branch).
 
         It is important to note that the method outputs are tied to the
@@ -77,13 +97,13 @@ class ModelV2(object):
 
         Arguments:
             branch_type (str): identifier for the branch (e.g., "value")
-            num_outputs (int): size of the branch output
+            output_spec (OutputSpec): defines shape of the branch output
             feature_layer (tensor): if specified, this hints that the branch
                 output should be computed using this shared feature layer.
                 However custom models are free to ignore this hint.
 
         Returns:
-            tensor: branch output of size [BATCH, num_outputs]
+            tensor: branch output of size [BATCH, output_spec.size]
         """
         raise NotImplementedError
 
@@ -141,13 +161,47 @@ class ModelV2(object):
 
         Returns:
             (outputs, state, feature_layer): The model output tensor of size
-                [BATCH, num_outputs], a list of state tensors of sizes
+                [BATCH, output_spec.size], a list of state tensors of sizes
                 [BATCH, state_size_i], and a tensor of [BATCH, feature_size]
         """
 
         if hasattr(self.obs_space, "original_space"):
             restored = input_dict.copy()
             restored["obs"] = restore_original_dimensions(
-                input_dict["obs"], self.obs_space)
+                input_dict["obs"], self.obs_space, self.tensorlib)
             restored["obs_flat"] = input_dict["obs"]
-        return self.forward(restored, state, seq_lens)
+        outputs, state, feature_layer = self.forward(restored, state, seq_lens)
+
+        try:
+            shape = outputs.shape
+        except AttributeError:
+            raise ValueError("Output is not a tensor: {}".format(self.outputs))
+        else:
+            if len(shape) != 2 or shape[1] != self.output_spec.size:
+                raise ValueError(
+                    "Expected output shape of [None, {}], got {}".format(
+                        self.output_spec.size, shape))
+
+        return outputs, state, feature_layer
+
+
+class TFModelV2(ModelV2):
+    """TF version of ModelV2."""
+
+    def __init__(self, obs_space, action_space, output_spec, options):
+        ModelV2.__init__(
+            self, obs_space, action_space, output_spec, options, tensorlib=tf)
+
+
+class TorchModelV2(ModelV2):
+    """Torch version of ModelV2."""
+
+    def __init__(self, obs_space, action_space, output_spec, options):
+        import torch
+        ModelV2.__init__(
+            self,
+            obs_space,
+            action_space,
+            output_spec,
+            options,
+            tensorlib=torch)

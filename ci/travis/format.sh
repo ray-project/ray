@@ -17,7 +17,7 @@ if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
 fi
 
 # Only fetch master since that's the branch we're diffing against.
-git fetch upstream master
+git fetch upstream master || true
 
 YAPF_FLAGS=(
     '--style' "$ROOT/.style.yapf"

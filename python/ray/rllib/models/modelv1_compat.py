@@ -5,7 +5,7 @@ from __future__ import print_function
 import logging
 import numpy as np
 
-from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.modelv2 import ModelV2, TFModelV2
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
@@ -15,12 +15,12 @@ tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class ModelV1Wrapper(ModelV2):
+class ModelV1Wrapper(TFModelV2):
     """Compatibility wrapper that allows V1 models to be used as ModelV2."""
 
-    def __init__(self, legacy_model_cls, obs_space, action_space, num_outputs,
+    def __init__(self, legacy_model_cls, obs_space, action_space, output_spec,
                  options):
-        ModelV2.__init__(self, obs_space, action_space, num_outputs, options)
+        TFModelV2.__init__(self, obs_space, action_space, output_spec, options)
         self.legacy_model_cls = legacy_model_cls
 
         # Tracks the last v1 model created by the call to forward
@@ -48,25 +48,25 @@ class ModelV1Wrapper(ModelV2):
             with tf.variable_scope(self.cur_instance.scope, reuse=True):
                 new_instance = self.legacy_model_cls(
                     input_dict, self.obs_space, self.action_space,
-                    self.num_outputs, self.options, state, seq_lens)
+                    self.output_spec.size, self.options, state, seq_lens)
         else:
             # create a new model instance
             new_instance = self.legacy_model_cls(
                 input_dict, self.obs_space, self.action_space,
-                self.num_outputs, self.options, state, seq_lens)
+                self.output_spec.size, self.options, state, seq_lens)
         self.cur_instance = new_instance
         return (new_instance.outputs, new_instance.last_layer,
                 new_instance.state_out)
 
     @override(ModelV2)
-    def get_branch_output(self, branch_type, num_outputs, feature_layer=None):
+    def get_branch_output(self, branch_type, output_spec, feature_layer=None):
         assert self.cur_instance, "must call forward first"
 
         # Simple case: sharing the feature layer
         if feature_layer is not None:
             with tf.variable_scope(self.cur_instance.scope):
                 return tf.reshape(
-                    linear(feature_layer, num_outputs, branch_type,
+                    linear(feature_layer, output_spec.size, branch_type,
                            normc_initializer(1.0)), [-1])
 
         # Create a new separate model with no RNN state, etc.
@@ -86,7 +86,7 @@ class ModelV1Wrapper(ModelV2):
                     self.cur_instance.input_dict,
                     self.obs_space,
                     self.action_space,
-                    num_outputs,
+                    output_spec.size,
                     branch_options,
                     state_in=None,
                     seq_lens=None)
