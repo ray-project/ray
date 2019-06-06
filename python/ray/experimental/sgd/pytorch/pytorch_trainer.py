@@ -104,7 +104,7 @@ class PyTorchTrainer(object):
         ]
 
         ip = ray.get(self.workers[0].get_node_ip.remote())
-        port = utils.find_free_port()
+        port = ray.get(self.workers[0].find_free_port.remote())
         address = "tcp://{ip}:{port}".format(ip=ip, port=port)
 
         # Get setup tasks in order to throw errors on failure

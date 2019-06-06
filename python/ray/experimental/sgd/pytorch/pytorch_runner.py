@@ -84,6 +84,10 @@ class PyTorchRunner(object):
         """Returns the IP address of the current node"""
         return ray.services.get_node_ip_address()
 
+    def find_free_port(self):
+        """Finds a fee port on the curent node"""
+        return utils.find_free_port()
+
     def step(self):
         """Runs a training epoch and updates the model parameters"""
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
