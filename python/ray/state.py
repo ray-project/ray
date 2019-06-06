@@ -430,7 +430,8 @@ class GlobalState(object):
                 "DriverID": driver_id,
                 "NodeAddress": decode(driver_info[b"node_ip_address"]),
                 "StartTime": float(driver_info[b"start_time"]),
-                "ObjectStoreSocketName": decode(driver_info[b"plasma_store_socket"]),
+                "ObjectStoreSocketName": decode(
+                    driver_info[b"plasma_store_socket"]),
                 "RayletSocketName": decode(driver_info[b"raylet_socket"]),
                 "Name": decode(driver_info[b"name"])
             })
