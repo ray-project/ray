@@ -199,8 +199,8 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
   // if the new entry has an equal or lower GCS status than the current entry
   // in our cache. This also prevents us from traversing the same node twice.
   if (lineage_.SetEntry(entry->TaskData(), entry->GetStatus())) {
-    // TODO(swang): Do not subscribe to tasks that are in the lineage cache
-    // but are already COMMITTED.
+    // TODO(swang): Do not subscribe to tasks that are in the uncommitted
+    // lineage but were already COMMITTED at the sender.
     RAY_CHECK(SubscribeTask(task_id));
     for (const auto &parent_id : parent_ids) {
       AddUncommittedLineage(parent_id, uncommitted_lineage);
@@ -212,9 +212,9 @@ bool LineageCache::CommitTask(const Task &task) {
   const TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Commiting task " << task_id << " on " << client_id_;
 
-  // Set the task to READY.
-  if (lineage_.SetEntry(task, GcsStatus::UNCOMMITTED)) {
-    // Attempt to flush the task.
+  if (lineage_.SetEntry(task, GcsStatus::UNCOMMITTED) ||
+      lineage_.GetEntry(task_id)->GetStatus() == GcsStatus::UNCOMMITTED) {
+    // Attempt to flush the task if the task is uncommitted.
     FlushTask(task_id);
     return true;
   } else {
