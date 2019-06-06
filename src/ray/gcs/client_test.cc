@@ -658,12 +658,12 @@ void TestSetSubscribeAll(const DriverID &driver_id,
   // Callback for a notification.
   auto notification_callback = [object_ids, managers](
       gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsChangeMode chagne_mode,
+      const GcsChangeMode change_mode,
       const std::vector<ObjectTableDataT> data) {
     if (test->NumCallbacks() < 3 * 3) {
-      ASSERT_EQ(chagne_mode, GcsChangeMode::APPEND_OR_ADD);
+      ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
     } else {
-      ASSERT_EQ(chagne_mode, GcsChangeMode::REMOVE);
+      ASSERT_EQ(change_mode, GcsChangeMode::REMOVE);
     }
     ASSERT_EQ(id, object_ids[test->NumCallbacks() / 3 % 3]);
     // Check that we get notifications in the same order as the writes.
@@ -895,9 +895,9 @@ void TestSetSubscribeId(const DriverID &driver_id,
   // received for keys that we requested notifications for.
   auto notification_callback = [object_id2, managers2](
       gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsChangeMode chagne_mode,
+      const GcsChangeMode change_mode,
       const std::vector<ObjectTableDataT> &data) {
-    ASSERT_EQ(chagne_mode, GcsChangeMode::APPEND_OR_ADD);
+    ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
     // Check that we only get notifications for the requested key.
     ASSERT_EQ(id, object_id2);
     // Check that we get notifications in the same order as the writes.
@@ -1112,9 +1112,9 @@ void TestSetSubscribeCancel(const DriverID &driver_id,
   // received for the object that we requested notifications for.
   auto notification_callback = [object_id, managers](
       gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsChangeMode chagne_mode,
+      const GcsChangeMode change_mode,
       const std::vector<ObjectTableDataT> &data) {
-    ASSERT_EQ(chagne_mode, GcsChangeMode::APPEND_OR_ADD);
+    ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
     ASSERT_EQ(id, object_id);
     // Check that we get a duplicate notification for the first write. We get a
     // duplicate notification because notifications
@@ -1354,9 +1354,9 @@ void TestHashTable(const DriverID &driver_id,
   };
   auto notification_callback = [data_map1, data_map2, compare_test](
       AsyncGcsClient *client, const ClientID &id,
-      const GcsChangeMode chagne_mode,
+      const GcsChangeMode change_mode,
       const DynamicResourceTable::DataMap &data) {
-    if (chagne_mode == GcsChangeMode::REMOVE) {
+    if (change_mode == GcsChangeMode::REMOVE) {
       ASSERT_EQ(data.size(), 2);
       ASSERT_TRUE(data.find("GPU") != data.end());
       ASSERT_TRUE(data.find("CUSTOM") != data.end() || data.find("CPU") != data.end());

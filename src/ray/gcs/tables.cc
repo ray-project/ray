@@ -114,9 +114,9 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
   auto subscribe_wrapper = [subscribe](AsyncGcsClient *client, const ID &id,
-                                       const GcsChangeMode chagne_mode,
+                                       const GcsChangeMode change_mode,
                                        const std::vector<DataT> &data) {
-    RAY_CHECK(chagne_mode != GcsChangeMode::REMOVE);
+    RAY_CHECK(change_mode != GcsChangeMode::REMOVE);
     subscribe(client, id, data);
   };
   return Subscribe(driver_id, client_id, subscribe_wrapper, done);
@@ -153,7 +153,7 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
           data_root->UnPackTo(&result);
           results.emplace_back(std::move(result));
         }
-        subscribe(client_, id, root->chagne_mode(), results);
+        subscribe(client_, id, root->change_mode(), results);
       }
     }
   };
@@ -459,7 +459,7 @@ Status Hash<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clie
         if (root->id()->size() > 0) {
           id = from_flatbuf<ID>(*root->id());
         }
-        if (root->chagne_mode() == GcsChangeMode::REMOVE) {
+        if (root->change_mode() == GcsChangeMode::REMOVE) {
           for (size_t i = 0; i < root->entries()->size(); i++) {
             std::string key(root->entries()->Get(i)->data(),
                             root->entries()->Get(i)->size());
@@ -477,7 +477,7 @@ Status Hash<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clie
             data_map.emplace(key, std::move(result));
           }
         }
-        subscribe(client_, id, root->chagne_mode(), data_map);
+        subscribe(client_, id, root->change_mode(), data_map);
       }
     }
   };

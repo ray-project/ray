@@ -121,7 +121,7 @@ enum GcsChangeMode:int {
 }
 
 table GcsEntry {
-  chagne_mode: GcsChangeMode;
+  change_mode: GcsChangeMode;
   id: string;
   entries: [string];
 }

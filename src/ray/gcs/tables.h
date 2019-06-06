@@ -77,7 +77,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
                                       const std::vector<DataT> &data)>;
   using NotificationCallback = std::function<void(
       AsyncGcsClient *client, const ID &id,
-      const GcsChangeMode chagne_mode, const std::vector<DataT> &data)>;
+      const GcsChangeMode change_mode, const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
@@ -214,7 +214,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// to subscribe to all modifications, or to subscribe only to keys that it
   /// requests notifications for. This may only be called once per Log
   /// instance. This function is different from public version due to
-  /// an additional parameter chagne_mode in NotificationCallback. Therefore this
+  /// an additional parameter change_mode in NotificationCallback. Therefore this
   /// function supports notifications of remove operations.
   ///
   /// \param driver_id The ID of the job (= driver).
@@ -480,12 +480,12 @@ class HashInterface {
   /// The notification function used by function Subscribe.
   ///
   /// \param client The client on which the Subscribe is called.
-  /// \param chagne_mode The mode to identify the data is removed or updated.
+  /// \param change_mode The mode to identify the data is removed or updated.
   /// \param data Map data contains the change to the Hash Table.
   /// \return Void
   using HashNotificationCallback = std::function<void(
       AsyncGcsClient *client, const ID &id,
-      const GcsChangeMode chagne_mode, const DataMap &data)>;
+      const GcsChangeMode change_mode, const DataMap &data)>;
 
   /// Add entries of a hash table.
   ///

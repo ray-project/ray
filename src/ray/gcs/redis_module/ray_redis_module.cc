@@ -231,13 +231,13 @@ int PublishDataHelper(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str
 /// \param data The appended/removed data.
 /// \return OK if there is no error during a publish.
 int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
-                       RedisModuleString *id, GcsChangeMode chagne_mode,
+                       RedisModuleString *id, GcsChangeMode change_mode,
                        RedisModuleString *data) {
   // Serialize the notification to send.
   flatbuffers::FlatBufferBuilder fbb;
   auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
   auto message =
-      CreateGcsEntry(fbb, chagne_mode, RedisStringToFlatbuf(fbb, id),
+      CreateGcsEntry(fbb, change_mode, RedisStringToFlatbuf(fbb, id),
                           fbb.CreateVector(&data_flatbuf, 1));
   fbb.Finish(message);
   auto data_buffer = RedisModule_CreateString(
@@ -550,10 +550,10 @@ int Hash_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv) {
 
 /// Do the hash table write operation. This is called from by HashUpdate_RedisCommand.
 ///
-/// \param chagne_mode Output the mode of the operation: APPEND_OR_ADD or REMOVE.
+/// \param change_mode Output the mode of the operation: APPEND_OR_ADD or REMOVE.
 /// \param deleted_data Output data if the deleted data is not the same as required.
 int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
-                       GcsChangeMode *chagne_mode,
+                       GcsChangeMode *change_mode,
                        RedisModuleString **changed_data) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
@@ -574,8 +574,8 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   const char *update_data_buf = RedisModule_StringPtrLen(update_data, &update_data_len);
 
   auto data_vec = flatbuffers::GetRoot<GcsEntry>(update_data_buf);
-  *chagne_mode = data_vec->chagne_mode();
-  if (*chagne_mode == GcsChangeMode::APPEND_OR_ADD) {
+  *change_mode = data_vec->change_mode();
+  if (*change_mode == GcsChangeMode::APPEND_OR_ADD) {
     // This code path means they are updating command.
     size_t total_size = data_vec->entries()->size();
     REPLY_AND_RETURN_IF_FALSE(total_size % 2 == 0, "Invalid Hash Update data vector.");
@@ -616,7 +616,7 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
         }
       }
       auto message = CreateGcsEntry(
-          fbb, data_vec->chagne_mode(),
+          fbb, data_vec->change_mode(),
           fbb.CreateString(data_vec->id()->data(), data_vec->id()->size()),
           fbb.CreateVector(data));
       fbb.Finish(message);
