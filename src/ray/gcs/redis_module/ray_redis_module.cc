@@ -594,37 +594,26 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   } else {
     // This code path means the command wants to remove the entries.
     size_t total_size = data_vec->entries()->size();
-    std::vector<bool> deleted_flags(total_size, true);
-    int remove_count = 0;
+    flatbuffers::FlatBufferBuilder fbb;
+    std::vector<flatbuffers::Offset<flatbuffers::String>> data;
     for (int i = 0; i < total_size; i++) {
       RedisModuleString *entry_key = RedisModule_CreateString(
           ctx, data_vec->entries()->Get(i)->data(), data_vec->entries()->Get(i)->size());
       int deleted_num = RedisModule_HashSet(key, REDISMODULE_HASH_NONE, entry_key,
                                             REDISMODULE_HASH_DELETE, NULL);
-      deleted_flags[i] = deleted_num != 0;
-      remove_count += deleted_num;
-    }
-    if (remove_count != deleted_flags.size()) {
-      // Not all keys in data_vec have been removed.
-      // Prepare the notification data of deleted keys.
-      flatbuffers::FlatBufferBuilder fbb;
-      std::vector<flatbuffers::Offset<flatbuffers::String>> data;
-      for (size_t i = 0; i < total_size; i++) {
-        if (deleted_flags[i]) {
-          data.push_back(fbb.CreateString(data_vec->entries()->Get(i)->data(),
-                                          data_vec->entries()->Get(i)->size()));
-        }
+      if (deleted_num != 0) {
+        // The corresponding key is removed.
+        data.push_back(fbb.CreateString(data_vec->entries()->Get(i)->data(),
+                                        data_vec->entries()->Get(i)->size()));
       }
-      auto message = CreateGcsEntry(
-          fbb, data_vec->change_mode(),
-          fbb.CreateString(data_vec->id()->data(), data_vec->id()->size()),
-          fbb.CreateVector(data));
-      fbb.Finish(message);
-      *changed_data = RedisModule_CreateString(
-          ctx, reinterpret_cast<char *>(fbb.GetBufferPointer()), fbb.GetSize());
-    } else {
-      *changed_data = nullptr;
     }
+    auto message = CreateGcsEntry(
+        fbb, data_vec->change_mode(),
+        fbb.CreateString(data_vec->id()->data(), data_vec->id()->size()),
+        fbb.CreateVector(data));
+    fbb.Finish(message);
+    *changed_data = RedisModule_CreateString(
+        ctx, reinterpret_cast<char *>(fbb.GetBufferPointer()), fbb.GetSize());
     auto size = RedisModule_ValueLength(key);
     if (size == 0) {
       REPLY_AND_RETURN_IF_FALSE(RedisModule_DeleteKey(key) == REDISMODULE_OK,
