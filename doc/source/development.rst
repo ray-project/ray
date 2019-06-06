@@ -33,7 +33,7 @@ recompile much more quickly by doing
  bazel build //:ray_pkg
 
 This command is not enough to recompile all C++ unit tests. To do so, see
-:ref:`Testing locally`.
+`Testing locally`_.
 
 Debugging
 ---------
