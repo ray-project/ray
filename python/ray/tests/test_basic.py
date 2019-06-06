@@ -2417,13 +2417,13 @@ def test_global_state_api(shutdown_only):
         ray.objects()
 
     with pytest.raises(Exception):
-        ray.drivers()
-
-    with pytest.raises(Exception):
         ray.tasks()
 
     with pytest.raises(Exception):
         ray.nodes()
+
+    with pytest.raises(Exception):
+        ray.drivers()
 
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
@@ -2459,7 +2459,6 @@ def test_global_state_api(shutdown_only):
     driver_table = ray.drivers()
 
     assert len(driver_table) == 1
-    driver_id = ray.worker.global_worker.task_driver_id.hex()
     assert driver_table[0]["DriverID"] == driver_id
     assert driver_table[0]["NodeAddress"] == node_ip_address
 
