@@ -119,7 +119,7 @@ class CoreWorkerTest : public ::testing::Test {
     ASSERT_TRUE(system(("rm -rf " + raylet_socket_name + ".pid").c_str()) == 0);
   }
 
-  void SetUp() { }
+  void SetUp() {}
 
   void TearDown() {}
 

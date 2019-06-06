@@ -5,10 +5,13 @@
 namespace ray {
 
 /// A mock C++ worker used by core_worker_test.cc to verify the task submission/execution
-/// interfaces in both single node and cross-nodes scenarios. As the raylet client can only
+/// interfaces in both single node and cross-nodes scenarios. As the raylet client can
+/// only
 /// be called by a real worker process, core_worker_test.cc has to use this program binary
-/// to start the actual worker process, in the test, the task submission interfaces are called
-/// in core_worker_test, and task execution interfaces are called in this file, see that test
+/// to start the actual worker process, in the test, the task submission interfaces are
+/// called
+/// in core_worker_test, and task execution interfaces are called in this file, see that
+/// test
 /// for more details on how this class is used.
 class MockWorker {
  public:

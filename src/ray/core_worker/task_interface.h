@@ -127,7 +127,7 @@ class CoreWorkerTaskInterface {
  private:
   /// Reference to the parent CoreWorker instance.
   CoreWorker &core_worker_;
- 
+
  private:
   /// Build the arguments for a task spec.
   ///

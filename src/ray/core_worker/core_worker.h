@@ -46,7 +46,6 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
  private:
-
   /// Type of this worker.
   const enum WorkerType worker_type_;
 

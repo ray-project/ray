@@ -114,8 +114,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       context.GetCurrentDriverID(), context.GetCurrentTaskID(), next_task_index,
       ActorID::Nil(), actor_creation_dummy_object_id, 0, actor_handle.ActorID(),
       actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(), new_actor_handles,
-      task_arguments, num_returns, task_options.resources, task_options.resources, language,
-      function.function_descriptor);
+      task_arguments, num_returns, task_options.resources, task_options.resources,
+      language, function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
   execution_dependencies.push_back(actor_handle.ActorCursor());
@@ -148,8 +148,9 @@ CoreWorkerTaskInterface::BuildTaskArguments(const std::vector<TaskArg> &args) {
   return task_arguments;
 }
 
-std::pair<Status, ::Language> CoreWorkerTaskInterface::ToTaskLanguage(WorkerLanguage language) {
-  switch(language) {
+std::pair<Status, ::Language> CoreWorkerTaskInterface::ToTaskLanguage(
+    WorkerLanguage language) {
+  switch (language) {
   case ray::WorkerLanguage::JAVA:
     return std::make_pair(Status::OK(), ::Language::JAVA);
     break;
@@ -157,7 +158,8 @@ std::pair<Status, ::Language> CoreWorkerTaskInterface::ToTaskLanguage(WorkerLang
     return std::make_pair(Status::OK(), ::Language::PYTHON);
     break;
   default:
-    return std::make_pair(Status::Invalid("invalid language specified"), ::Language::PYTHON);
+    return std::make_pair(Status::Invalid("invalid language specified"),
+                          ::Language::PYTHON);
     break;
   }
 }

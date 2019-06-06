@@ -16,8 +16,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
       task_interface_(*this),
       object_interface_(*this),
       task_execution_interface_(*this) {
-
-  switch(language_) {
+  switch (language_) {
   case ray::WorkerLanguage::JAVA:
     task_language_ = ::Language::JAVA;
     break;
@@ -28,7 +27,6 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
     RAY_LOG(FATAL) << "Unsupported worker language: " << static_cast<int>(language_);
     break;
   }
-
 }
 
 Status CoreWorker::Connect() {
