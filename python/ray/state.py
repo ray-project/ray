@@ -1053,6 +1053,15 @@ state = GlobalState()
 global_state = DeprecatedGlobalState()
 
 
+def drivers():
+    """Get a list of the drivers in the cluster.
+
+    Returns:
+        Information from the driver table.
+    """
+    return state.driver_table()
+
+
 def nodes():
     """Get a list of the nodes in the cluster.
 
@@ -1086,15 +1095,6 @@ def objects(object_id=None):
         Information from the object table.
     """
     return state.object_table(object_id=object_id)
-
-
-def drivers():
-    """Fetch and parse the driver table info.
-
-    Returns:
-        Information from the driver table.
-    """
-    return state.driver_table()
 
 
 def timeline(filename=None):
