@@ -4,7 +4,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/client.h"
 #include "ray/util/util.h"
-#include "ray/constants.h"
 
 namespace {
 
