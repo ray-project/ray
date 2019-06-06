@@ -413,6 +413,30 @@ class GlobalState(object):
 
         return _parse_client_table(self.redis_client)
 
+    def driver_table(self):
+        """Fetch and parse the Redis driver table.
+
+        Returns:
+            Information about the Ray drivers in the cluster.
+        """
+        self._check_connected()
+
+        drivers = []
+
+        for driver_key in self.redis_client.keys(b"Drivers:*"):
+            driver_info = state.redis_client.hgetall(driver_key)
+            driver_id = ray.utils.binary_to_hex(driver_info[b"driver_id"])
+            drivers.append({
+                "DriverID": driver_id,
+                "NodeAddress": decode(driver_info[b"node_ip_address"]),
+                "StartTime": float(driver_info[b"start_time"]),
+                "ObjectStoreSocketName": decode(driver_info[b"plasma_store_socket"]),
+                "RayletSocketName": decode(driver_info[b"raylet_socket"]),
+                "Name": decode(driver_info[b"name"])
+            })
+
+        return drivers
+
     def _profile_table(self, batch_id):
         """Get the profile events for a given batch of profile events.
 
@@ -1062,6 +1086,15 @@ def objects(object_id=None):
         Information from the object table.
     """
     return state.object_table(object_id=object_id)
+
+
+def drivers():
+    """Fetch and parse the driver table info.
+
+    Returns:
+        Information from the driver table.
+    """
+    return state.driver_table()
 
 
 def timeline(filename=None):
