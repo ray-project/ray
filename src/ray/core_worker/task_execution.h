@@ -34,7 +34,7 @@ class CoreWorkerTaskExecutionInterface {
  private:
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
-  /// fetch its content from store and; for arguments that are passedby value,
+  /// fetch its content from store and; for arguments that are passed by value,
   /// just copy their content.
   ///
   /// \param spec[in] Task specification.
