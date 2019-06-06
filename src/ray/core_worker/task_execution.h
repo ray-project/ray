@@ -29,7 +29,8 @@ class CoreWorkerTaskExecutionInterface {
       const TaskID &task_id, int num_returns)>;
 
   /// Start receving and executes tasks in a infinite loop.
-  void Start(const TaskExecutor &executor);
+  /// \return Status.
+  Status Run(const TaskExecutor &executor);
 
  private:
   /// Build arguments for task executor. This would loop through all the arguments

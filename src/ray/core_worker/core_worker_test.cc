@@ -33,6 +33,9 @@ static void flushall_redis(void) {
 class CoreWorkerTest : public ::testing::Test {
  public:
   CoreWorkerTest(int num_nodes) {
+    // flush redis first.
+    flushall_redis();
+
     RAY_CHECK(num_nodes >= 0);
     if (num_nodes > 0) {
       raylet_socket_names_.resize(num_nodes);
@@ -116,7 +119,7 @@ class CoreWorkerTest : public ::testing::Test {
     ASSERT_TRUE(system(("rm -rf " + raylet_socket_name + ".pid").c_str()) == 0);
   }
 
-  void SetUp() { flushall_redis(); }
+  void SetUp() { }
 
   void TearDown() {}
 

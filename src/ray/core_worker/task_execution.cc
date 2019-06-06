@@ -4,7 +4,7 @@
 
 namespace ray {
 
-void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
+Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
   RAY_CHECK(core_worker_.is_initialized_);
 
   while (true) {
@@ -14,7 +14,7 @@ void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Get task failed with error: "
                      << ray::Status::IOError(status.message());
-      break;
+      return status;
     }
 
     auto &spec = *task_spec;
@@ -28,9 +28,9 @@ void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
     std::vector<std::shared_ptr<Buffer>> args;
     RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
 
-    RAY_CHECK(spec.NumReturns() > 0);
     auto num_returns = spec.NumReturns();
     if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+      RAY_CHECK(num_returns > 0);
       // Decrease to account for the dummy object id.
       num_returns--;
     }
@@ -40,6 +40,9 @@ void CoreWorkerTaskExecutionInterface::Start(const TaskExecutor &executor) {
     // 1. Check and handle failure.
     // 2. Save or load checkpoint.
   }
+
+  // should never reach here.
+  return Status::OK();
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(

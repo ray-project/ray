@@ -46,11 +46,15 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
  private:
+
   /// Type of this worker.
   const enum WorkerType worker_type_;
 
   /// Language of this worker.
   const enum WorkerLanguage language_;
+
+  /// Language of this worker as specified in flatbuf (used by task spec).
+  ::Language task_language_;
 
   /// Worker context per thread.
   WorkerContext worker_context_;

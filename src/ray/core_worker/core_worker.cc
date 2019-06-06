@@ -15,16 +15,27 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
       is_initialized_(false),
       task_interface_(*this),
       object_interface_(*this),
-      task_execution_interface_(*this) {}
+      task_execution_interface_(*this) {
+
+  switch(language_) {
+  case ray::WorkerLanguage::JAVA:
+    task_language_ = ::Language::JAVA;
+    break;
+  case ray::WorkerLanguage::PYTHON:
+    task_language_ = ::Language::PYTHON;
+    break;
+  default:
+    RAY_LOG(FATAL) << "Unsupported worker language: " << static_cast<int>(language_);
+    break;
+  }
+
+}
 
 Status CoreWorker::Connect() {
   // connect to plasma.
   RAY_ARROW_RETURN_NOT_OK(store_client_.Connect(store_socket_));
 
   // connect to raylet.
-  ::Language language = (language_ == ray::WorkerLanguage::JAVA) ? (::Language::JAVA)
-                                                                 : (::Language::PYTHON);
-
   // TODO: currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this needs to be changed
   // so that the worker (java/python .etc) can retrieve and handle the error
@@ -32,7 +43,7 @@ Status CoreWorker::Connect() {
   raylet_client_ = std::unique_ptr<RayletClient>(
       new RayletClient(raylet_socket_, worker_context_.GetWorkerID(),
                        (worker_type_ == ray::WorkerType::WORKER),
-                       worker_context_.GetCurrentDriverID(), language));
+                       worker_context_.GetCurrentDriverID(), task_language_));
   is_initialized_ = true;
   return Status::OK();
 }

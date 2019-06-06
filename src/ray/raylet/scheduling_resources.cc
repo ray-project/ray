@@ -80,7 +80,12 @@ ResourceSet::ResourceSet(
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
-    RAY_CHECK(resource_pair.second > 0);
+
+    if (resource_pair.second <= 0) {
+      RAY_LOG(INFO) << "invalid resource pair " <<  resource_pair.first << ", " << resource_pair.second;
+    }
+    RAY_CHECK(resource_pair.second > 0) << resource_pair.first;
+
     resource_capacity_[resource_pair.first] =
         FractionalResourceQuantity(resource_pair.second);
   }
