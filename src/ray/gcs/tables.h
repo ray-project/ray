@@ -75,9 +75,9 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
-  using NotificationCallback = std::function<void(
-      AsyncGcsClient *client, const ID &id,
-      const GcsTableNotificationMode notification_mode, const std::vector<DataT> &data)>;
+  using NotificationCallback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                                  const GcsChangeMode change_mode,
+                                                  const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
@@ -214,7 +214,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// to subscribe to all modifications, or to subscribe only to keys that it
   /// requests notifications for. This may only be called once per Log
   /// instance. This function is different from public version due to
-  /// an additional parameter notification_mode in NotificationCallback. Therefore this
+  /// an additional parameter change_mode in NotificationCallback. Therefore this
   /// function supports notifications of remove operations.
   ///
   /// \param driver_id The ID of the job (= driver).
@@ -449,6 +449,157 @@ class Set : private Log<ID, Data>,
   int64_t num_adds_ = 0;
   int64_t num_removes_ = 0;
   using Log<ID, Data>::num_lookups_;
+};
+
+template <typename ID, typename Data>
+class HashInterface {
+ public:
+  using DataT = typename Data::NativeTableType;
+  using DataMap = std::unordered_map<std::string, std::shared_ptr<DataT>>;
+  // Reuse Log's SubscriptionCallback when Subscribe is successfully called.
+  using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
+
+  /// The callback function used by function Update & Lookup.
+  ///
+  /// \param client The client on which the RemoveEntries is called.
+  /// \param id The ID of the Hash Table whose entries are removed.
+  /// \param data Map data contains the change to the Hash Table.
+  /// \return Void
+  using HashCallback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataMap &pairs)>;
+
+  /// The callback function used by function RemoveEntries.
+  ///
+  /// \param client The client on which the RemoveEntries is called.
+  /// \param id The ID of the Hash Table whose entries are removed.
+  /// \param keys The keys that are moved from this Hash Table.
+  /// \return Void
+  using HashRemoveCallback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                                const std::vector<std::string> &keys)>;
+
+  /// The notification function used by function Subscribe.
+  ///
+  /// \param client The client on which the Subscribe is called.
+  /// \param change_mode The mode to identify the data is removed or updated.
+  /// \param data Map data contains the change to the Hash Table.
+  /// \return Void
+  using HashNotificationCallback =
+      std::function<void(AsyncGcsClient *client, const ID &id,
+                         const GcsChangeMode change_mode, const DataMap &data)>;
+
+  /// Add entries of a hash table.
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param pairs Map data to add to the hash table.
+  /// \param done HashCallback that is called once the request data has been written to
+  /// the GCS.
+  /// \return Status
+  virtual Status Update(const DriverID &driver_id, const ID &id, const DataMap &pairs,
+                        const HashCallback &done) = 0;
+
+  /// Remove entries from the hash table.
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param id The ID of the data that is removed from the GCS.
+  /// \param keys The entry keys of the hash table.
+  /// \param remove_callback HashRemoveCallback that is called once the data has been
+  /// written to the GCS no matter whether the key exists in the hash table.
+  /// \return Status
+  virtual Status RemoveEntries(const DriverID &driver_id, const ID &id,
+                               const std::vector<std::string> &keys,
+                               const HashRemoveCallback &remove_callback) = 0;
+
+  /// Lookup the map data of a hash table.
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param id The ID of the data that is looked up in the GCS.
+  /// \param lookup HashCallback that is called after lookup. If the callback is
+  /// called with an empty hash table, then there was no data in the callback.
+  /// \return Status
+  virtual Status Lookup(const DriverID &driver_id, const ID &id,
+                        const HashCallback &lookup) = 0;
+
+  /// Subscribe to any Update or Remove operations to this hash table.
+  ///
+  /// \param driver_id The ID of the driver.
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each Update to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
+  /// \param subscribe HashNotificationCallback that is called on each received message.
+  /// \param done SubscriptionCallback that is called when subscription is complete and
+  /// we are ready to receive messages.
+  /// \return Status
+  virtual Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
+                           const HashNotificationCallback &subscribe,
+                           const SubscriptionCallback &done) = 0;
+
+  virtual ~HashInterface(){};
+};
+
+template <typename ID, typename Data>
+class Hash : private Log<ID, Data>,
+             public HashInterface<ID, Data>,
+             virtual public PubsubInterface<ID> {
+ public:
+  using DataT = typename Log<ID, Data>::DataT;
+  using DataMap = std::unordered_map<std::string, std::shared_ptr<DataT>>;
+  using HashCallback = typename HashInterface<ID, Data>::HashCallback;
+  using HashRemoveCallback = typename HashInterface<ID, Data>::HashRemoveCallback;
+  using HashNotificationCallback =
+      typename HashInterface<ID, Data>::HashNotificationCallback;
+  using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
+
+  Hash(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
+      : Log<ID, Data>(contexts, client) {}
+
+  using Log<ID, Data>::RequestNotifications;
+  using Log<ID, Data>::CancelNotifications;
+
+  Status Update(const DriverID &driver_id, const ID &id, const DataMap &pairs,
+                const HashCallback &done) override;
+
+  Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
+                   const HashNotificationCallback &subscribe,
+                   const SubscriptionCallback &done) override;
+
+  Status Lookup(const DriverID &driver_id, const ID &id,
+                const HashCallback &lookup) override;
+
+  Status RemoveEntries(const DriverID &driver_id, const ID &id,
+                       const std::vector<std::string> &keys,
+                       const HashRemoveCallback &remove_callback) override;
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
+ protected:
+  using Log<ID, Data>::shard_contexts_;
+  using Log<ID, Data>::client_;
+  using Log<ID, Data>::pubsub_channel_;
+  using Log<ID, Data>::prefix_;
+  using Log<ID, Data>::subscribe_callback_index_;
+  using Log<ID, Data>::GetRedisContext;
+
+  int64_t num_adds_ = 0;
+  int64_t num_removes_ = 0;
+  using Log<ID, Data>::num_lookups_;
+};
+
+class DynamicResourceTable : public Hash<ClientID, RayResource> {
+ public:
+  DynamicResourceTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                       AsyncGcsClient *client)
+      : Hash(contexts, client) {
+    pubsub_channel_ = TablePubsub::NODE_RESOURCE;
+    prefix_ = TablePrefix::NODE_RESOURCE;
+  };
+
+  virtual ~DynamicResourceTable(){};
 };
 
 class ObjectTable : public Set<ObjectID, ObjectTableData> {

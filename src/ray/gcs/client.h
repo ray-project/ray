@@ -62,6 +62,7 @@ class RAY_EXPORT AsyncGcsClient {
   ProfileTable &profile_table();
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
+  DynamicResourceTable &resource_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -94,6 +95,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ClientTable> client_table_;
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
+  std::unique_ptr<DynamicResourceTable> resource_table_;
   // The following contexts write to the data shard
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_async_clients_;
