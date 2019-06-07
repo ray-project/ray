@@ -14,7 +14,7 @@ from ray.rllib.utils.memory import ray_get_and_free
 
 
 class Aggregator(object):
-    """An aggregator collects and processes samples from evaluators.
+    """An aggregator collects and processes samples from workers.
 
     This class is used to abstract away the strategy for sample collection.
     For example, you may want to use a tree of actors to collect samples. The
@@ -22,21 +22,21 @@ class Aggregator(object):
     as concatenating and decompressing sample batches.
 
     Attributes:
-        local_evaluator: local PolicyEvaluator copy
+        local_worker: local RolloutWorker copy
     """
 
     def iter_train_batches(self):
         """Returns a generator over batches ready to learn on.
 
         Iterating through this generator will also send out weight updates to
-        remote evaluators as needed.
+        remote workers as needed.
 
         This call may block until results are available.
         """
         raise NotImplementedError
 
     def broadcast_new_weights(self):
-        """Broadcast a new set of weights from the local evaluator."""
+        """Broadcast a new set of weights from the local workers."""
         raise NotImplementedError
 
     def should_broadcast(self):
@@ -47,19 +47,19 @@ class Aggregator(object):
         """Returns runtime statistics for debugging."""
         raise NotImplementedError
 
-    def reset(self, remote_evaluators):
-        """Called to change the set of remote evaluators being used."""
+    def reset(self, remote_workers):
+        """Called to change the set of remote workers being used."""
         raise NotImplementedError
 
 
 class AggregationWorkerBase(object):
     """Aggregators should extend from this class."""
 
-    def __init__(self, initial_weights_obj_id, remote_evaluators,
+    def __init__(self, initial_weights_obj_id, remote_workers,
                  max_sample_requests_in_flight_per_worker, replay_proportion,
                  replay_buffer_num_slots, train_batch_size, sample_batch_size):
         self.broadcasted_weights = initial_weights_obj_id
-        self.remote_evaluators = remote_evaluators
+        self.remote_workers = remote_workers
         self.sample_batch_size = sample_batch_size
         self.train_batch_size = train_batch_size
 
@@ -73,7 +73,7 @@ class AggregationWorkerBase(object):
 
         # Kick off async background sampling
         self.sample_tasks = TaskPool()
-        for ev in self.remote_evaluators:
+        for ev in self.remote_workers:
             ev.set_weights.remote(self.broadcasted_weights)
             for _ in range(max_sample_requests_in_flight_per_worker):
                 self.sample_tasks.add(ev, ev.sample.remote())
@@ -138,8 +138,8 @@ class AggregationWorkerBase(object):
         }
 
     @override(Aggregator)
-    def reset(self, remote_evaluators):
-        self.sample_tasks.reset_evaluators(remote_evaluators)
+    def reset(self, remote_workers):
+        self.sample_tasks.reset_workers(remote_workers)
 
     def _augment_with_replay(self, sample_futures):
         def can_replay():
@@ -164,25 +164,25 @@ class SimpleAggregator(AggregationWorkerBase, Aggregator):
     """Simple single-threaded implementation of an Aggregator."""
 
     def __init__(self,
-                 local_evaluator,
-                 remote_evaluators,
+                 workers,
                  max_sample_requests_in_flight_per_worker=2,
                  replay_proportion=0.0,
                  replay_buffer_num_slots=0,
                  train_batch_size=500,
                  sample_batch_size=50,
                  broadcast_interval=5):
-        self.local_evaluator = local_evaluator
+        self.workers = workers
+        self.local_worker = workers.local_worker()
         self.broadcast_interval = broadcast_interval
         self.broadcast_new_weights()
         AggregationWorkerBase.__init__(
-            self, self.broadcasted_weights, remote_evaluators,
+            self, self.broadcasted_weights, self.workers.remote_workers(),
             max_sample_requests_in_flight_per_worker, replay_proportion,
             replay_buffer_num_slots, train_batch_size, sample_batch_size)
 
     @override(Aggregator)
     def broadcast_new_weights(self):
-        self.broadcasted_weights = ray.put(self.local_evaluator.get_weights())
+        self.broadcasted_weights = ray.put(self.local_worker.get_weights())
         self.num_sent_since_broadcast = 0
 
     @override(Aggregator)

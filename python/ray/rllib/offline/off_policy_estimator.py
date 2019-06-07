@@ -33,14 +33,14 @@ class OffPolicyEstimator(object):
     @classmethod
     def create(cls, ioctx):
         """Create an off-policy estimator from a IOContext."""
-        gamma = ioctx.evaluator.policy_config["gamma"]
+        gamma = ioctx.worker.policy_config["gamma"]
         # Grab a reference to the current model
-        keys = list(ioctx.evaluator.policy_map.keys())
+        keys = list(ioctx.worker.policy_map.keys())
         if len(keys) > 1:
             raise NotImplementedError(
                 "Off-policy estimation is not implemented for multi-agent. "
                 "You can set `input_evaluation: []` to resolve this.")
-        policy = ioctx.evaluator.get_policy(keys[0])
+        policy = ioctx.worker.get_policy(keys[0])
         return cls(policy, gamma)
 
     @DeveloperAPI

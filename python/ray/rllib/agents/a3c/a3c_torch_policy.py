@@ -53,7 +53,7 @@ def add_advantages(policy,
                               policy.config["lambda"])
 
 
-def model_value_predictions(policy, model_out):
+def model_value_predictions(policy, input_dict, state_batches, model_out):
     return {SampleBatch.VF_PREDS: model_out[2].cpu().numpy()}
 
 

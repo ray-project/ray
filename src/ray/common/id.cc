@@ -1,4 +1,4 @@
-#include "ray/id.h"
+#include "ray/common/id.h"
 
 #include <limits.h>
 
@@ -6,11 +6,11 @@
 #include <mutex>
 #include <random>
 
-#include "ray/constants.h"
-#include "ray/status.h"
+#include "ray/common/constants.h"
+#include "ray/common/status.h"
 
 extern "C" {
-#include "thirdparty/sha256.h"
+#include "ray/thirdparty/sha256.h"
 }
 
 // Definitions for computing hash digests.
@@ -26,14 +26,14 @@ std::mt19937 RandomlySeededMersenneTwister() {
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
-plasma::UniqueID ObjectID::to_plasma_id() const {
+plasma::UniqueID ObjectID::ToPlasmaId() const {
   plasma::UniqueID result;
-  std::memcpy(result.mutable_data(), data(), kUniqueIDSize);
+  std::memcpy(result.mutable_data(), Data(), kUniqueIDSize);
   return result;
 }
 
 ObjectID::ObjectID(const plasma::UniqueID &from) {
-  std::memcpy(this->mutable_data(), from.data(), kUniqueIDSize);
+  std::memcpy(this->MutableData(), from.data(), kUniqueIDSize);
 }
 
 // This code is from https://sites.google.com/site/murmurhash/
@@ -86,29 +86,29 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
 }
 
 TaskID TaskID::GetDriverTaskID(const DriverID &driver_id) {
-  std::string driver_id_str = driver_id.binary();
-  driver_id_str.resize(size());
-  return TaskID::from_binary(driver_id_str);
+  std::string driver_id_str = driver_id.Binary();
+  driver_id_str.resize(Size());
+  return TaskID::FromBinary(driver_id_str);
 }
 
-TaskID ObjectID::task_id() const {
-  return TaskID::from_binary(
-      std::string(reinterpret_cast<const char *>(id_), TaskID::size()));
+TaskID ObjectID::TaskId() const {
+  return TaskID::FromBinary(
+      std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
 }
 
-ObjectID ObjectID::for_put(const TaskID &task_id, int64_t put_index) {
+ObjectID ObjectID::ForPut(const TaskID &task_id, int64_t put_index) {
   RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts) << "index=" << put_index;
   ObjectID object_id;
-  std::memcpy(object_id.id_, task_id.binary().c_str(), task_id.size());
+  std::memcpy(object_id.id_, task_id.Binary().c_str(), task_id.Size());
   object_id.index_ = -put_index;
   return object_id;
 }
 
-ObjectID ObjectID::for_task_return(const TaskID &task_id, int64_t return_index) {
+ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, int64_t return_index) {
   RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns) << "index="
                                                                   << return_index;
   ObjectID object_id;
-  std::memcpy(object_id.id_, task_id.binary().c_str(), task_id.size());
+  std::memcpy(object_id.id_, task_id.Binary().c_str(), task_id.Size());
   object_id.index_ = return_index;
   return object_id;
 }
@@ -118,23 +118,23 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   // Compute hashes.
   SHA256_CTX ctx;
   sha256_init(&ctx);
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(driver_id.data()), driver_id.size());
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.data()),
-                parent_task_id.size());
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(driver_id.Data()), driver_id.Size());
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()),
+                parent_task_id.Size());
   sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
 
   // Compute the final task ID from the hash.
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
-  return TaskID::from_binary(std::string(buff, buff + TaskID::size()));
+  return TaskID::FromBinary(std::string(buff, buff + TaskID::Size()));
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \
   std::ostream &operator<<(std::ostream &os, const id_type &id) { \
-    if (id.is_nil()) {                                            \
+    if (id.IsNil()) {                                             \
       os << "NIL_ID";                                             \
     } else {                                                      \
-      os << id.hex();                                             \
+      os << id.Hex();                                             \
     }                                                             \
     return os;                                                    \
   }

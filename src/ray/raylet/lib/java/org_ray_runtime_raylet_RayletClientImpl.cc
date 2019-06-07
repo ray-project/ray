@@ -2,7 +2,7 @@
 
 #include <jni.h>
 
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/util/logging.h"
 
@@ -12,10 +12,10 @@ class UniqueIdFromJByteArray {
   const ID &GetId() const { return id; }
 
   UniqueIdFromJByteArray(JNIEnv *env, const jbyteArray &bytes) {
-    std::string id_str(ID::size(), 0);
-    env->GetByteArrayRegion(bytes, 0, ID::size(),
+    std::string id_str(ID::Size(), 0);
+    env->GetByteArrayRegion(bytes, 0, ID::Size(),
                             reinterpret_cast<jbyte *>(&id_str.front()));
-    id = ID::from_binary(id_str);
+    id = ID::FromBinary(id_str);
   }
 
  private:
@@ -231,12 +231,12 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(
 
   TaskID task_id =
       ray::GenerateTaskId(driver_id.GetId(), parent_task_id.GetId(), parent_task_counter);
-  jbyteArray result = env->NewByteArray(task_id.size());
+  jbyteArray result = env->NewByteArray(task_id.Size());
   if (nullptr == result) {
     return nullptr;
   }
-  env->SetByteArrayRegion(result, 0, task_id.size(),
-                          reinterpret_cast<const jbyte *>(task_id.data()));
+  env->SetByteArrayRegion(result, 0, task_id.Size(),
+                          reinterpret_cast<const jbyte *>(task_id.Data()));
 
   return result;
 }
@@ -280,9 +280,9 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativePrepareCheckpoint(JNIEnv *env
   if (ThrowRayExceptionIfNotOK(env, status)) {
     return nullptr;
   }
-  jbyteArray result = env->NewByteArray(checkpoint_id.size());
-  env->SetByteArrayRegion(result, 0, checkpoint_id.size(),
-                          reinterpret_cast<const jbyte *>(checkpoint_id.data()));
+  jbyteArray result = env->NewByteArray(checkpoint_id.Size());
+  env->SetByteArrayRegion(result, 0, checkpoint_id.Size(),
+                          reinterpret_cast<const jbyte *>(checkpoint_id.Data()));
   return result;
 }
 

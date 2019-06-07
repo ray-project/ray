@@ -1,9 +1,9 @@
 #include <iostream>
 
-#include "ray/ray_config.h"
+#include "ray/common/ray_config.h"
+#include "ray/common/status.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
-#include "ray/status.h"
 
 #include "gflags/gflags.h"
 
@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.7.0"},
+      {ray::stats::VersionKey, "0.7.1"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 

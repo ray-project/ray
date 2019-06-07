@@ -6,9 +6,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "ray/constants.h"
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/constants.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/util/logging.h"
 
 #include "ray/gcs/format/gcs_generated.h"
@@ -564,7 +564,7 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
     // TODO(swang): Use a common helper function to format the key instead of
     // hardcoding it to match the Redis module.
     std::vector<std::string> args = {"PEXPIRE",
-                                     EnumNameTablePrefix(prefix_) + id.binary(),
+                                     EnumNameTablePrefix(prefix_) + id.Binary(),
                                      std::to_string(data->timeout)};
 
     return GetRedisContext(id)->RunArgvAsync(args);
@@ -700,7 +700,7 @@ class ClientTable : public Log<ClientID, ClientTableData> {
     prefix_ = TablePrefix::CLIENT;
 
     // Set the local client's ID.
-    local_client_.client_id = client_id.binary();
+    local_client_.client_id = client_id.Binary();
   };
 
   /// Connect as a client to the GCS. This registers us in the client table

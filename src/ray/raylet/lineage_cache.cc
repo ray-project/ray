@@ -48,7 +48,7 @@ void LineageEntry::ComputeParentTaskIds() {
   parent_task_ids_.clear();
   // A task's parents are the tasks that created its arguments.
   for (const auto &dependency : task_.GetDependencies()) {
-    parent_task_ids_.insert(dependency.task_id());
+    parent_task_ids_.insert(dependency.TaskId());
   }
 }
 
@@ -296,7 +296,7 @@ bool LineageCache::RemoveWaitingTask(const TaskID &task_id) {
 }
 
 void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id) {
-  RAY_CHECK(!node_id.is_nil());
+  RAY_CHECK(!node_id.IsNil());
   lineage_.GetEntryMutable(task_id)->MarkExplicitlyForwarded(node_id);
 }
 
@@ -374,7 +374,7 @@ bool LineageCache::SubscribeTask(const TaskID &task_id) {
   if (unsubscribed) {
     // Request notifications for the task if we haven't already requested
     // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.RequestNotifications(DriverID::nil(), task_id, client_id_));
+    RAY_CHECK_OK(task_pubsub_.RequestNotifications(DriverID::Nil(), task_id, client_id_));
   }
   // Return whether we were previously unsubscribed to this task and are now
   // subscribed.
@@ -387,7 +387,7 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
   if (subscribed) {
     // Cancel notifications for the task if we previously requested
     // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.CancelNotifications(DriverID::nil(), task_id, client_id_));
+    RAY_CHECK_OK(task_pubsub_.CancelNotifications(DriverID::Nil(), task_id, client_id_));
     subscribed_tasks_.erase(it);
   }
   // Return whether we were previously subscribed to this task and are now

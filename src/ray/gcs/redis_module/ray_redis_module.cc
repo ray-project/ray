@@ -2,9 +2,9 @@
 #include <sstream>
 
 #include "ray/common/common_protocol.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/gcs/format/gcs_generated.h"
-#include "ray/id.h"
-#include "ray/status.h"
 #include "ray/util/logging.h"
 #include "redis_string.h"
 #include "redismodule.h"
@@ -351,7 +351,7 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     // The requested index did not match the current length of the log. Return
     // an error message as a string.
     static const char *reply = "ERR entry exists";
-    RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
+    RedisModule_ReplyWithSimpleString(ctx, reply);
     return REDISMODULE_ERR;
   }
 }
@@ -648,7 +648,7 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
     const char *redis_string_str = RedisModule_StringPtrLen(id_data, &redis_string_size);
     auto id_binary = std::string(redis_string_str, redis_string_size);
     ostream << "Undesired type for RAY.TableDelete: " << key_type
-            << " id:" << ray::UniqueID::from_binary(id_binary);
+            << " id:" << ray::UniqueID::FromBinary(id_binary);
     RAY_LOG(ERROR) << ostream.str();
     return Status::RedisError(ostream.str());
   }
@@ -791,7 +791,7 @@ int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString
   return REDISMODULE_OK;
 }
 
-Status is_nil(bool *out, const std::string &data) {
+Status IsNil(bool *out, const std::string &data) {
   if (data.size() != kUniqueIDSize) {
     return Status::RedisError("Size of data doesn't match size of UniqueID");
   }
@@ -836,7 +836,7 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **arg
                    static_cast<int>(update->test_state_bitmask());
 
   bool is_nil_result;
-  REPLY_AND_RETURN_IF_NOT_OK(is_nil(&is_nil_result, update->test_raylet_id()->str()));
+  REPLY_AND_RETURN_IF_NOT_OK(IsNil(&is_nil_result, update->test_raylet_id()->str()));
   if (!is_nil_result) {
     do_update = do_update && update->test_raylet_id()->str() == data->raylet_id()->str();
   }

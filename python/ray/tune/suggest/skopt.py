@@ -2,12 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 try:
     import skopt as sko
 except ImportError:
     sko = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
+
+logger = logging.getLogger(__name__)
 
 
 def _validate_warmstart(parameter_names, points_to_evaluate,
@@ -52,8 +55,9 @@ class SkOptSearch(SuggestionAlgorithm):
             the dimension of the optimizer output.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
-        reward_attr (str): The training result objective value attribute.
-            This refers to an increasing value.
+        metric (str): The training result objective value attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
         points_to_evaluate (list of lists): A list of points you'd like to run
             first before sampling from the optimiser, e.g. these could be
             parameter configurations you already know work well to help
@@ -73,7 +77,8 @@ class SkOptSearch(SuggestionAlgorithm):
         >>> algo = SkOptSearch(optimizer,
         >>>     ["width", "height"],
         >>>     max_concurrent=4,
-        >>>     reward_attr="neg_mean_loss",
+        >>>     metric="mean_loss",
+        >>>     mode="min",
         >>>     points_to_evaluate=current_best_params)
     """
 
@@ -81,7 +86,9 @@ class SkOptSearch(SuggestionAlgorithm):
                  optimizer,
                  parameter_names,
                  max_concurrent=10,
-                 reward_attr="episode_reward_mean",
+                 reward_attr=None,
+                 metric="episode_reward_mean",
+                 mode="max",
                  points_to_evaluate=None,
                  evaluated_rewards=None,
                  **kwargs):
@@ -91,6 +98,15 @@ class SkOptSearch(SuggestionAlgorithm):
         assert type(max_concurrent) is int and max_concurrent > 0
         _validate_warmstart(parameter_names, points_to_evaluate,
                             evaluated_rewards)
+        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._initial_points = []
         if points_to_evaluate and evaluated_rewards:
@@ -99,7 +115,12 @@ class SkOptSearch(SuggestionAlgorithm):
             self._initial_points = points_to_evaluate
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
-        self._reward_attr = reward_attr
+        self._metric = metric
+        # Skopt internally minimizes, so "max" => -1
+        if mode == "max":
+            self._metric_op = -1.
+        elif mode == "min":
+            self._metric_op = 1.
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
         super(SkOptSearch, self).__init__(**kwargs)
@@ -131,7 +152,8 @@ class SkOptSearch(SuggestionAlgorithm):
         """
         skopt_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            self._skopt_opt.tell(skopt_trial_info, -result[self._reward_attr])
+            self._skopt_opt.tell(skopt_trial_info,
+                                 self._metric_op * result[self._metric])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)

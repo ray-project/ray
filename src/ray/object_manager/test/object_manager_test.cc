@@ -3,14 +3,14 @@
 
 #include "gtest/gtest.h"
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "ray/object_manager/object_manager.h"
 
 namespace {
 std::string store_executable;
 int64_t wait_timeout_ms;
-}
+}  // namespace
 
 namespace ray {
 
@@ -114,8 +114,8 @@ class TestObjectManagerBase : public ::testing::Test {
     flushall_redis();
 
     // start store
-    store_id_1 = StartStore(UniqueID::from_random().hex());
-    store_id_2 = StartStore(UniqueID::from_random().hex());
+    store_id_1 = StartStore(UniqueID::FromRandom().Hex());
+    store_id_2 = StartStore(UniqueID::FromRandom().Hex());
 
     uint pull_timeout_ms = 1;
     push_timeout_ms = 1000;
@@ -162,7 +162,7 @@ class TestObjectManagerBase : public ::testing::Test {
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
-    return WriteDataToClient(client, data_size, ObjectID::from_random());
+    return WriteDataToClient(client, data_size, ObjectID::FromRandom());
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size,
@@ -171,9 +171,9 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
-    RAY_ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata,
-                                     metadata_size, &data));
-    RAY_ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
+    RAY_ARROW_CHECK_OK(
+        client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
+    RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
     return object_id;
   }
 
@@ -221,7 +221,7 @@ class TestObjectManager : public TestObjectManagerBase {
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     gcs_client_1->client_table().RegisterClientAddedCallback([this](
         gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-      ClientID parsed_id = ClientID::from_binary(data.client_id);
+      ClientID parsed_id = ClientID::FromBinary(data.client_id);
       if (parsed_id == client_id_1 || parsed_id == client_id_2) {
         num_connected_clients += 1;
       }
@@ -240,13 +240,13 @@ class TestObjectManager : public TestObjectManagerBase {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
         [this](const object_manager::protocol::ObjectInfoT &object_info) {
-          object_added_handler_1(ObjectID::from_binary(object_info.object_id));
+          object_added_handler_1(ObjectID::FromBinary(object_info.object_id));
           NotificationTestCompleteIfSatisfied();
         });
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
         [this](const object_manager::protocol::ObjectInfoT &object_info) {
-          object_added_handler_2(ObjectID::from_binary(object_info.object_id));
+          object_added_handler_2(ObjectID::FromBinary(object_info.object_id));
           NotificationTestCompleteIfSatisfied();
         });
     RAY_CHECK_OK(status);
@@ -254,11 +254,11 @@ class TestObjectManager : public TestObjectManagerBase {
     uint data_size = 1000000;
 
     // dummy_id is not local. The push function will timeout.
-    ObjectID dummy_id = ObjectID::from_random();
+    ObjectID dummy_id = ObjectID::FromRandom();
     server1->object_manager_.Push(dummy_id,
                                   gcs_client_2->client_table().GetLocalClientId());
 
-    created_object_id1 = ObjectID::from_random();
+    created_object_id1 = ObjectID::FromRandom();
     WriteDataToClient(client1, data_size, created_object_id1);
     // Server1 holds Object1 so this Push call will success.
     server1->object_manager_.Push(created_object_id1,
@@ -268,7 +268,7 @@ class TestObjectManager : public TestObjectManagerBase {
     timer.reset(new boost::asio::deadline_timer(main_service));
     auto period = boost::posix_time::milliseconds(push_timeout_ms + 10);
     timer->expires_from_now(period);
-    created_object_id2 = ObjectID::from_random();
+    created_object_id2 = ObjectID::FromRandom();
     timer->async_wait([this, data_size](const boost::system::error_code &error) {
       WriteDataToClient(client2, data_size, created_object_id2);
     });
@@ -288,7 +288,7 @@ class TestObjectManager : public TestObjectManagerBase {
     // object.
     ObjectID object_1 = WriteDataToClient(client2, data_size);
     ObjectID object_2 = WriteDataToClient(client2, data_size);
-    UniqueID sub_id = ray::UniqueID::from_random();
+    UniqueID sub_id = ray::UniqueID::FromRandom();
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1, [this, sub_id, object_1, object_2](
@@ -307,7 +307,7 @@ class TestObjectManager : public TestObjectManagerBase {
     std::vector<ObjectID> object_ids = {object_1, object_2};
     boost::posix_time::ptime start_time = boost::posix_time::second_clock::local_time();
 
-    UniqueID wait_id = UniqueID::from_random();
+    UniqueID wait_id = UniqueID::FromRandom();
 
     RAY_CHECK_OK(server1->object_manager_.AddWaitRequest(
         wait_id, object_ids, timeout_ms, required_objects, false,
@@ -378,7 +378,7 @@ class TestObjectManager : public TestObjectManagerBase {
     }
     if (include_nonexistent) {
       num_objects += 1;
-      object_ids.push_back(ObjectID::from_random());
+      object_ids.push_back(ObjectID::FromRandom());
     }
     boost::posix_time::ptime start_time = boost::posix_time::second_clock::local_time();
     RAY_CHECK_OK(server1->object_manager_.Wait(
@@ -457,17 +457,17 @@ class TestObjectManager : public TestObjectManagerBase {
                    << "\n";
     ClientTableDataT data;
     gcs_client_1->client_table().GetClient(client_id_1, data);
-    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id).is_nil());
-    RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
+    RAY_LOG(DEBUG) << (ClientID::FromBinary(data.client_id).IsNil());
+    RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::FromBinary(data.client_id);
     RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address;
     RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port;
-    ASSERT_EQ(client_id_1, ClientID::from_binary(data.client_id));
+    ASSERT_EQ(client_id_1, ClientID::FromBinary(data.client_id));
     ClientTableDataT data2;
     gcs_client_1->client_table().GetClient(client_id_2, data2);
-    RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::from_binary(data2.client_id);
+    RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::FromBinary(data2.client_id);
     RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address;
     RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port;
-    ASSERT_EQ(client_id_2, ClientID::from_binary(data2.client_id));
+    ASSERT_EQ(client_id_2, ClientID::FromBinary(data2.client_id));
   }
 };
 

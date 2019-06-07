@@ -77,6 +77,7 @@ cc_library(
             "src/ray/raylet/mock_gcs_client.cc",
             "src/ray/raylet/monitor_main.cc",
             "src/ray/raylet/*_test.cc",
+            "src/ray/raylet/main.cc",
         ],
     ),
     hdrs = glob([
@@ -102,6 +103,39 @@ cc_library(
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
         "@plasma//:plasma_client",
+    ],
+)
+
+cc_library(
+    name = "core_worker_lib",
+    srcs = glob(
+        [
+            "src/ray/core_worker/*.cc",
+        ],
+        exclude = [
+            "src/ray/core_worker/*_test.cc",
+        ],
+    ),
+    hdrs = glob([
+        "src/ray/core_worker/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        ":ray_util",
+        ":raylet_lib",
+    ],
+)
+
+# This test is run by src/ray/test/run_core_worker_tests.sh
+cc_binary(
+    name = "core_worker_test",
+    srcs = ["src/ray/core_worker/core_worker_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -247,16 +281,13 @@ cc_library(
     name = "ray_util",
     srcs = glob(
         [
-            "src/ray/*.cc",
             "src/ray/util/*.cc",
         ],
         exclude = [
-            "src/ray/util/logging_test.cc",
-            "src/ray/util/signal_test.cc",
+            "src/ray/util/*_test.cc",
         ],
     ),
     hdrs = glob([
-        "src/ray/*.h",
         "src/ray/util/*.h",
     ]),
     copts = COPTS,
@@ -272,23 +303,28 @@ cc_library(
 
 cc_library(
     name = "ray_common",
-    srcs = [
-        "src/ray/common/client_connection.cc",
-        "src/ray/common/common_protocol.cc",
-    ],
-    hdrs = [
-        "src/ray/common/client_connection.h",
-        "src/ray/common/common_protocol.h",
-    ],
+    srcs = glob(
+        [
+            "src/ray/common/*.cc",
+        ],
+        exclude = [
+            "src/ray/common/*_test.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/common/*.h",
+        ],
+    ),
     copts = COPTS,
     includes = [
         "src/ray/gcs/format",
     ],
     deps = [
         ":gcs_fbs",
-        ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
+        "@plasma//:plasma_client",
     ],
 )
 
@@ -432,7 +468,7 @@ cc_binary(
     srcs = [
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
-        "src/ray/id.h",
+        "src/ray/common/id.h",
         "src/ray/raylet/raylet_client.h",
         "src/ray/util/logging.h",
         "@bazel_tools//tools/jdk:jni_header",
@@ -637,8 +673,8 @@ genrule(
         cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
         for f in $(locations //:python_gcs_fbs); do cp -f $$f $$WORK_DIR/python/ray/core/generated/; done &&
         mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
-        for f in $(locations //:python_node_manager_fbs); do 
-            cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/; 
+        for f in $(locations //:python_node_manager_fbs); do
+            cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/;
         done &&
         echo $$WORK_DIR > $@
     """,
