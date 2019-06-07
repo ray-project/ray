@@ -67,6 +67,8 @@ COMMON_CONFIG = {
     },
     # Whether to attempt to continue training if a worker crashes.
     "ignore_worker_failures": False,
+    # Logs system resources utilization to tensorboard CPU, GPU, RAM, VRAM
+    "log_sys_usage": True,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the

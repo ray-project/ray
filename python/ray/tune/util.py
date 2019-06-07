@@ -11,8 +11,6 @@ from collections import defaultdict
 from threading import Thread
 
 import numpy as np
-import psutil
-import GPUtil
 
 import ray
 
@@ -21,13 +19,32 @@ logger = logging.getLogger(__name__)
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
 
+
 class UtilMonitor(Thread):
-    def __init__(self, delay):
+    """Class for system usage utilization monitoring.
+
+    It keeps track of CPU, RAM, GPU, VRAM usage (each gpu separately) by
+    pinging for information every x seconds in a separate thread.
+    """
+    def __init__(self, delay=0.7):
+
+        try:
+            global psutil
+            import psutil
+            global GPUtil
+            import GPUtil
+        except ModuleNotFoundError:
+            logging.warning("System performance monitoring will not be available."
+                            "Install psutil and gputil packages.")
+            self.stopped = True
+            return
+
         super(UtilMonitor, self).__init__()
         self.stopped = False
         self.delay = delay  # Time between calls to GPUtil
         self.values = defaultdict(list)
         self.lock = threading.Lock()
+        self.daemon = True
         self.start()
 
     def read_utilization(self):
@@ -39,6 +56,9 @@ class UtilMonitor(Thread):
                 self.values["perf/vram" + str(gpu.id)].append(float(gpu.memoryUtil))
 
     def get_data(self):
+        if self.stopped:
+            return {}
+
         with self.lock:
             ret_values = copy.deepcopy(self.values)
             for key, val in self.values.items():
