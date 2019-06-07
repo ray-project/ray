@@ -4,15 +4,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.agents.dqn.apex import APEX_TRAINER_PROPERTIES
 from ray.rllib.agents.qmix.qmix import QMixTrainer, \
     DEFAULT_CONFIG as QMIX_CONFIG
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils import merge_dicts
 
 APEX_QMIX_DEFAULT_CONFIG = merge_dicts(
     QMIX_CONFIG,  # see also the options in qmix.py, which are also supported
     {
-        "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(
             QMIX_CONFIG["optimizer"],
             {
@@ -34,23 +33,7 @@ APEX_QMIX_DEFAULT_CONFIG = merge_dicts(
     },
 )
 
-
-class ApexQMixTrainer(QMixTrainer):
-    """QMIX variant that uses the Ape-X distributed policy optimizer.
-
-    By default, this is configured for a large single node (32 cores). For
-    running in a large cluster, increase the `num_workers` config var.
-    """
-
-    _name = "APEX_QMIX"
-    _default_config = APEX_QMIX_DEFAULT_CONFIG
-
-    @override(QMixTrainer)
-    def update_target_if_needed(self):
-        # Ape-X updates based on num steps trained, not sampled
-        if self.optimizer.num_steps_trained - self.last_target_update_ts > \
-                self.config["target_network_update_freq"]:
-            self.workers.local_worker().foreach_trainable_policy(
-                lambda p, _: p.update_target())
-            self.last_target_update_ts = self.optimizer.num_steps_trained
-            self.num_target_updates += 1
+ApexQMixTrainer = QMixTrainer.with_updates(
+    name="APEX_QMIX",
+    default_config=APEX_QMIX_DEFAULT_CONFIG,
+    **APEX_TRAINER_PROPERTIES)

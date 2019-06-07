@@ -2,32 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.impala.vtrace_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.utils.annotations import override
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Resources
-
-OPTIMIZER_SHARED_CONFIGS = [
-    "lr",
-    "num_envs_per_worker",
-    "num_gpus",
-    "sample_batch_size",
-    "train_batch_size",
-    "replay_buffer_num_slots",
-    "replay_proportion",
-    "num_data_loader_buffers",
-    "max_sample_requests_in_flight_per_worker",
-    "broadcast_interval",
-    "num_sgd_iter",
-    "minibatch_buffer_size",
-    "num_aggregation_workers",
-]
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -100,37 +83,57 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class ImpalaTrainer(Trainer):
-    """IMPALA implementation using DeepMind's V-trace."""
+def choose_policy(config):
+    if config["vtrace"]:
+        return VTraceTFPolicy
+    else:
+        return A3CTFPolicy
 
-    _name = "IMPALA"
-    _default_config = DEFAULT_CONFIG
-    _policy = VTraceTFPolicy
 
-    @override(Trainer)
-    def _init(self, config, env_creator):
-        for k in OPTIMIZER_SHARED_CONFIGS:
-            if k not in config["optimizer"]:
-                config["optimizer"][k] = config[k]
-        policy_cls = self._get_policy()
-        self.workers = self._make_workers(
-            self.env_creator, policy_cls, self.config, num_workers=0)
+def validate_config(config):
+    if config["entropy_coeff"] < 0:
+        raise DeprecationWarning("entropy_coeff must be >= 0")
 
-        if self.config["num_aggregation_workers"] > 0:
-            # Create co-located aggregator actors first for placement pref
-            aggregators = TreeAggregator.precreate_aggregators(
-                self.config["num_aggregation_workers"])
 
-        self.workers.add_workers(config["num_workers"])
-        self.optimizer = AsyncSamplesOptimizer(self.workers,
-                                               **config["optimizer"])
-        if config["entropy_coeff"] < 0:
-            raise DeprecationWarning("entropy_coeff must be >= 0")
+def defer_make_workers(trainer, env_creator, policy, config):
+    # Defer worker creation to after the optimizer has been created.
+    return trainer._make_workers(env_creator, policy, config, 0)
 
-        if self.config["num_aggregation_workers"] > 0:
-            # Assign the pre-created aggregators to the optimizer
-            self.optimizer.aggregator.init(aggregators)
 
+def make_aggregators_and_optimizer(workers, config):
+    if config["num_aggregation_workers"] > 0:
+        # Create co-located aggregator actors first for placement pref
+        aggregators = TreeAggregator.precreate_aggregators(
+            config["num_aggregation_workers"])
+    else:
+        aggregators = None
+    workers.add_workers(config["num_workers"])
+
+    optimizer = AsyncSamplesOptimizer(
+        workers,
+        lr=config["lr"],
+        num_envs_per_worker=config["num_envs_per_worker"],
+        num_gpus=config["num_gpus"],
+        sample_batch_size=config["sample_batch_size"],
+        train_batch_size=config["train_batch_size"],
+        replay_buffer_num_slots=config["replay_buffer_num_slots"],
+        replay_proportion=config["replay_proportion"],
+        num_data_loader_buffers=config["num_data_loader_buffers"],
+        max_sample_requests_in_flight_per_worker=config[
+            "max_sample_requests_in_flight_per_worker"],
+        broadcast_interval=config["broadcast_interval"],
+        num_sgd_iter=config["num_sgd_iter"],
+        minibatch_buffer_size=config["minibatch_buffer_size"],
+        num_aggregation_workers=config["num_aggregation_workers"],
+        **config["optimizer"])
+
+    if aggregators:
+        # Assign the pre-created aggregators to the optimizer
+        optimizer.aggregator.init(aggregators)
+    return optimizer
+
+
+class OverrideDefaultResourceRequest(object):
     @classmethod
     @override(Trainable)
     def default_resource_request(cls, config):
@@ -143,22 +146,13 @@ class ImpalaTrainer(Trainer):
             cf["num_aggregation_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
-    @override(Trainer)
-    def _train(self):
-        prev_steps = self.optimizer.num_steps_sampled
-        start = time.time()
-        self.optimizer.step()
-        while (time.time() - start < self.config["min_iter_time_s"]
-               or self.optimizer.num_steps_sampled == prev_steps):
-            self.optimizer.step()
-        result = self.collect_metrics()
-        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
-                      prev_steps)
-        return result
 
-    def _get_policy(self):
-        if self.config["vtrace"]:
-            policy_cls = self._policy
-        else:
-            policy_cls = A3CTFPolicy
-        return policy_cls
+ImpalaTrainer = build_trainer(
+    name="IMPALA",
+    default_config=DEFAULT_CONFIG,
+    default_policy=VTraceTFPolicy,
+    validate_config=validate_config,
+    get_policy_class=choose_policy,
+    make_workers=defer_make_workers,
+    make_policy_optimizer=make_aggregators_and_optimizer,
+    mixins=[OverrideDefaultResourceRequest])

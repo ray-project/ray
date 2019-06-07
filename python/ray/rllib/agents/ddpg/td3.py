@@ -1,3 +1,9 @@
+"""A more stable successor to TD3.
+
+By default, this uses a near-identical configuration to that reported in the
+TD3 paper.
+"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -36,7 +42,6 @@ TD3_DEFAULT_CONFIG = merge_dicts(
         "train_batch_size": 100,
         "use_huber": False,
         "target_network_update_freq": 0,
-        "optimizer_class": "SyncReplayOptimizer",
         "num_workers": 0,
         "num_gpus_per_worker": 0,
         "per_worker_exploration": False,
@@ -48,10 +53,5 @@ TD3_DEFAULT_CONFIG = merge_dicts(
     },
 )
 
-
-class TD3Trainer(DDPGTrainer):
-    """A more stable successor to TD3. By default, this uses a near-identical
-    configuration to that reported in the TD3 paper."""
-
-    _name = "TD3"
-    _default_config = TD3_DEFAULT_CONFIG
+TD3Trainer = DDPGTrainer.with_updates(
+    name="TD3", default_config=TD3_DEFAULT_CONFIG)

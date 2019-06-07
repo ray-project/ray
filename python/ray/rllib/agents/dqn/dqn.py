@@ -3,26 +3,16 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import time
 
 from ray import tune
-from ray.rllib import optimizers
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
-from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
 logger = logging.getLogger(__name__)
-
-OPTIMIZER_SHARED_CONFIGS = [
-    "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "schedule_max_timesteps",
-    "beta_annealing_fraction", "final_prioritized_replay_beta",
-    "prioritized_replay_eps", "sample_batch_size", "train_batch_size",
-    "learning_starts"
-]
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -53,7 +43,8 @@ DEFAULT_CONFIG = with_common_config({
     # 1.0 to exploration_fraction over this number of timesteps scaled by
     # exploration_fraction
     "schedule_max_timesteps": 100000,
-    # Number of env steps to optimize for before returning
+    # Minimum env steps to optimize for per train call. This value does
+    # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
     # Fraction of entire training period over which the exploration rate is
     # annealed
@@ -70,6 +61,11 @@ DEFAULT_CONFIG = with_common_config({
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
     "parameter_noise": False,
+    # Extra configuration that disables exploration.
+    "evaluation_config": {
+        "exploration_fraction": 0,
+        "exploration_final_eps": 0,
+    },
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -115,8 +111,6 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Optimizer class to use.
-    "optimizer_class": "SyncReplayOptimizer",
     # Whether to use a distribution of epsilons across workers for exploration.
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
@@ -128,202 +122,175 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class DQNTrainer(Trainer):
-    """DQN implementation in TensorFlow."""
+def make_optimizer(workers, config):
+    return SyncReplayOptimizer(
+        workers,
+        learning_starts=config["learning_starts"],
+        buffer_size=config["buffer_size"],
+        prioritized_replay=config["prioritized_replay"],
+        prioritized_replay_alpha=config["prioritized_replay_alpha"],
+        prioritized_replay_beta=config["prioritized_replay_beta"],
+        schedule_max_timesteps=config["schedule_max_timesteps"],
+        beta_annealing_fraction=config["beta_annealing_fraction"],
+        final_prioritized_replay_beta=config["final_prioritized_replay_beta"],
+        prioritized_replay_eps=config["prioritized_replay_eps"],
+        train_batch_size=config["train_batch_size"],
+        sample_batch_size=config["sample_batch_size"],
+        **config["optimizer"])
 
-    _name = "DQN"
-    _default_config = DEFAULT_CONFIG
-    _policy = DQNTFPolicy
-    _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
 
-    @override(Trainer)
-    def _init(self, config, env_creator):
-        self._validate_config()
+def check_config_and_setup_param_noise(config):
+    """Update the config based on settings.
 
-        # Update effective batch size to include n-step
-        adjusted_batch_size = max(config["sample_batch_size"],
-                                  config.get("n_step", 1))
-        config["sample_batch_size"] = adjusted_batch_size
+    Rewrites sample_batch_size to take into account n_step truncation, and also
+    adds the necessary callbacks to support parameter space noise exploration.
+    """
 
-        self.exploration0 = self._make_exploration_schedule(-1)
-        self.explorations = [
-            self._make_exploration_schedule(i)
-            for i in range(config["num_workers"])
-        ]
+    # Update effective batch size to include n-step
+    adjusted_batch_size = max(config["sample_batch_size"],
+                              config.get("n_step", 1))
+    config["sample_batch_size"] = adjusted_batch_size
 
-        for k in self._optimizer_shared_configs:
-            if self._name != "DQN" and k in [
-                    "schedule_max_timesteps", "beta_annealing_fraction",
-                    "final_prioritized_replay_beta"
-            ]:
-                # only Rainbow needs annealing prioritized_replay_beta
-                continue
-            if k not in config["optimizer"]:
-                config["optimizer"][k] = config[k]
-
-        if config.get("parameter_noise", False):
-            if config["callbacks"]["on_episode_start"]:
-                start_callback = config["callbacks"]["on_episode_start"]
-            else:
-                start_callback = None
-
-            def on_episode_start(info):
-                # as a callback function to sample and pose parameter space
-                # noise on the parameters of network
-                policies = info["policy"]
-                for pi in policies.values():
-                    pi.add_parameter_noise()
-                if start_callback:
-                    start_callback(info)
-
-            config["callbacks"]["on_episode_start"] = tune.function(
-                on_episode_start)
-            if config["callbacks"]["on_episode_end"]:
-                end_callback = config["callbacks"]["on_episode_end"]
-            else:
-                end_callback = None
-
-            def on_episode_end(info):
-                # as a callback function to monitor the distance
-                # between noisy policy and original policy
-                policies = info["policy"]
-                episode = info["episode"]
-                episode.custom_metrics["policy_distance"] = policies[
-                    DEFAULT_POLICY_ID].pi_distance
-                if end_callback:
-                    end_callback(info)
-
-            config["callbacks"]["on_episode_end"] = tune.function(
-                on_episode_end)
-
-        if config["optimizer_class"] != "AsyncReplayOptimizer":
-            self.workers = self._make_workers(
-                env_creator,
-                self._policy,
-                config,
-                num_workers=self.config["num_workers"])
-            workers_needed = 0
+    if config.get("parameter_noise", False):
+        if config["batch_mode"] != "complete_episodes":
+            raise ValueError("Exploration with parameter space noise requires "
+                             "batch_mode to be complete_episodes.")
+        if config.get("noisy", False):
+            raise ValueError(
+                "Exploration with parameter space noise and noisy network "
+                "cannot be used at the same time.")
+        if config["callbacks"]["on_episode_start"]:
+            start_callback = config["callbacks"]["on_episode_start"]
         else:
-            # Hack to workaround https://github.com/ray-project/ray/issues/2541
-            self.workers = self._make_workers(
-                env_creator, self._policy, config, num_workers=0)
-            workers_needed = self.config["num_workers"]
+            start_callback = None
 
-        self.optimizer = getattr(optimizers, config["optimizer_class"])(
-            self.workers, **config["optimizer"])
+        def on_episode_start(info):
+            # as a callback function to sample and pose parameter space
+            # noise on the parameters of network
+            policies = info["policy"]
+            for pi in policies.values():
+                pi.add_parameter_noise()
+            if start_callback:
+                start_callback(info)
 
-        # Create the remote workers *after* the replay actors
-        if workers_needed > 0:
-            self.workers.add_workers(workers_needed)
-            self.optimizer._set_workers(self.workers.remote_workers())
-
-        self.last_target_update_ts = 0
-        self.num_target_updates = 0
-
-    @override(Trainer)
-    def _train(self):
-        start_timestep = self.global_timestep
-
-        # Update worker explorations
-        exp_vals = [self.exploration0.value(self.global_timestep)]
-        self.workers.local_worker().foreach_trainable_policy(
-            lambda p, _: p.set_epsilon(exp_vals[0]))
-        for i, e in enumerate(self.workers.remote_workers()):
-            exp_val = self.explorations[i].value(self.global_timestep)
-            e.foreach_trainable_policy.remote(
-                lambda p, _: p.set_epsilon(exp_val))
-            exp_vals.append(exp_val)
-
-        # Do optimization steps
-        start = time.time()
-        while (self.global_timestep - start_timestep <
-               self.config["timesteps_per_iteration"]
-               ) or time.time() - start < self.config["min_iter_time_s"]:
-            self.optimizer.step()
-            self.update_target_if_needed()
-
-        if self.config["per_worker_exploration"]:
-            # Only collect metrics from the third of workers with lowest eps
-            result = self.collect_metrics(
-                selected_workers=self.workers.remote_workers()[
-                    -len(self.workers.remote_workers()) // 3:])
+        config["callbacks"]["on_episode_start"] = tune.function(
+            on_episode_start)
+        if config["callbacks"]["on_episode_end"]:
+            end_callback = config["callbacks"]["on_episode_end"]
         else:
-            result = self.collect_metrics()
+            end_callback = None
 
-        result.update(
-            timesteps_this_iter=self.global_timestep - start_timestep,
-            info=dict({
-                "min_exploration": min(exp_vals),
-                "max_exploration": max(exp_vals),
-                "num_target_updates": self.num_target_updates,
-            }, **self.optimizer.stats()))
+        def on_episode_end(info):
+            # as a callback function to monitor the distance
+            # between noisy policy and original policy
+            policies = info["policy"]
+            episode = info["episode"]
+            episode.custom_metrics["policy_distance"] = policies[
+                DEFAULT_POLICY_ID].pi_distance
+            if end_callback:
+                end_callback(info)
 
-        return result
+        config["callbacks"]["on_episode_end"] = tune.function(on_episode_end)
 
-    def update_target_if_needed(self):
-        if self.global_timestep - self.last_target_update_ts > \
-                self.config["target_network_update_freq"]:
-            self.workers.local_worker().foreach_trainable_policy(
-                lambda p, _: p.update_target())
-            self.last_target_update_ts = self.global_timestep
-            self.num_target_updates += 1
 
-    @property
-    def global_timestep(self):
-        return self.optimizer.num_steps_sampled
+def get_initial_state(config):
+    return {
+        "last_target_update_ts": 0,
+        "num_target_updates": 0,
+    }
 
-    def _evaluate(self):
-        logger.info("Evaluating current policy for {} episodes".format(
-            self.config["evaluation_num_episodes"]))
-        self.evaluation_workers.local_worker().restore(
-            self.workers.local_worker().save())
-        self.evaluation_workers.local_worker().foreach_policy(
-            lambda p, _: p.set_epsilon(0))
-        for _ in range(self.config["evaluation_num_episodes"]):
-            self.evaluation_workers.local_worker().sample()
-        metrics = collect_metrics(self.evaluation_workers.local_worker())
-        return {"evaluation": metrics}
 
-    def _make_exploration_schedule(self, worker_index):
-        # Use either a different `eps` per worker, or a linear schedule.
-        if self.config["per_worker_exploration"]:
-            assert self.config["num_workers"] > 1, \
-                "This requires multiple workers"
-            if worker_index >= 0:
-                exponent = (
-                    1 +
-                    worker_index / float(self.config["num_workers"] - 1) * 7)
-                return ConstantSchedule(0.4**exponent)
-            else:
-                # local ev should have zero exploration so that eval rollouts
-                # run properly
-                return ConstantSchedule(0.0)
-        return LinearSchedule(
-            schedule_timesteps=int(self.config["exploration_fraction"] *
-                                   self.config["schedule_max_timesteps"]),
-            initial_p=1.0,
-            final_p=self.config["exploration_final_eps"])
+def make_exploration_schedule(config, worker_index):
+    # Use either a different `eps` per worker, or a linear schedule.
+    if config["per_worker_exploration"]:
+        assert config["num_workers"] > 1, \
+            "This requires multiple workers"
+        if worker_index >= 0:
+            exponent = (
+                1 + worker_index / float(config["num_workers"] - 1) * 7)
+            return ConstantSchedule(0.4**exponent)
+        else:
+            # local ev should have zero exploration so that eval rollouts
+            # run properly
+            return ConstantSchedule(0.0)
+    return LinearSchedule(
+        schedule_timesteps=int(
+            config["exploration_fraction"] * config["schedule_max_timesteps"]),
+        initial_p=1.0,
+        final_p=config["exploration_final_eps"])
 
-    def __getstate__(self):
-        state = Trainer.__getstate__(self)
-        state.update({
-            "num_target_updates": self.num_target_updates,
-            "last_target_update_ts": self.last_target_update_ts,
-        })
-        return state
 
-    def __setstate__(self, state):
-        Trainer.__setstate__(self, state)
-        self.num_target_updates = state["num_target_updates"]
-        self.last_target_update_ts = state["last_target_update_ts"]
+def setup_exploration(trainer):
+    trainer.exploration0 = make_exploration_schedule(trainer.config, -1)
+    trainer.explorations = [
+        make_exploration_schedule(trainer.config, i)
+        for i in range(trainer.config["num_workers"])
+    ]
 
-    def _validate_config(self):
-        if self.config.get("parameter_noise", False):
-            if self.config["batch_mode"] != "complete_episodes":
-                raise ValueError(
-                    "Exploration with parameter space noise requires "
-                    "batch_mode to be complete_episodes.")
-            if self.config.get("noisy", False):
-                raise ValueError(
-                    "Exploration with parameter space noise and noisy network "
-                    "cannot be used at the same time.")
+
+def update_worker_explorations(trainer):
+    global_timestep = trainer.optimizer.num_steps_sampled
+    exp_vals = [trainer.exploration0.value(global_timestep)]
+    trainer.workers.local_worker().foreach_trainable_policy(
+        lambda p, _: p.set_epsilon(exp_vals[0]))
+    for i, e in enumerate(trainer.workers.remote_workers()):
+        exp_val = trainer.explorations[i].value(global_timestep)
+        e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
+        exp_vals.append(exp_val)
+    trainer.train_start_timestep = global_timestep
+    trainer.cur_exp_vals = exp_vals
+
+
+def add_trainer_metrics(trainer, result):
+    global_timestep = trainer.optimizer.num_steps_sampled
+    result.update(
+        timesteps_this_iter=global_timestep - trainer.train_start_timestep,
+        info=dict({
+            "min_exploration": min(trainer.cur_exp_vals),
+            "max_exploration": max(trainer.cur_exp_vals),
+            "num_target_updates": trainer.state["num_target_updates"],
+        }, **trainer.optimizer.stats()))
+
+
+def update_target_if_needed(trainer, fetches):
+    global_timestep = trainer.optimizer.num_steps_sampled
+    if global_timestep - trainer.state["last_target_update_ts"] > \
+            trainer.config["target_network_update_freq"]:
+        trainer.workers.local_worker().foreach_trainable_policy(
+            lambda p, _: p.update_target())
+        trainer.state["last_target_update_ts"] = global_timestep
+        trainer.state["num_target_updates"] += 1
+
+
+def collect_metrics(trainer):
+    if trainer.config["per_worker_exploration"]:
+        # Only collect metrics from the third of workers with lowest eps
+        result = trainer.collect_metrics(
+            selected_workers=trainer.workers.remote_workers()[
+                -len(trainer.workers.remote_workers()) // 3:])
+    else:
+        result = trainer.collect_metrics()
+    return result
+
+
+def disable_exploration(trainer):
+    trainer.evaluation_workers.local_worker().foreach_policy(
+        lambda p, _: p.set_epsilon(0))
+
+
+GenericOffPolicyTrainer = build_trainer(
+    name="GenericOffPolicyAlgorithm",
+    default_policy=None,
+    default_config=DEFAULT_CONFIG,
+    validate_config=check_config_and_setup_param_noise,
+    get_initial_state=get_initial_state,
+    make_policy_optimizer=make_optimizer,
+    before_init=setup_exploration,
+    before_train_step=update_worker_explorations,
+    after_optimizer_step=update_target_if_needed,
+    after_train_result=add_trainer_metrics,
+    collect_metrics_fn=collect_metrics,
+    before_evaluate_fn=disable_exploration)
+
+DQNTrainer = GenericOffPolicyTrainer.with_updates(
+    name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
