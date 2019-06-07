@@ -2,8 +2,8 @@
 
 #include <sstream>
 
+#include "ray/common/status.h"
 #include "ray/stats/stats.h"
-#include "ray/status.h"
 
 namespace {
 

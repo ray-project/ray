@@ -3,7 +3,7 @@
 
 #include "gtest/gtest.h"
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "ray/raylet/raylet.h"
 

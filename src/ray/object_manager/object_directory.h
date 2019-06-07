@@ -9,10 +9,10 @@
 
 #include "plasma/client.h"
 
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/gcs/client.h"
-#include "ray/id.h"
 #include "ray/object_manager/format/object_manager_generated.h"
-#include "ray/status.h"
 
 namespace ray {
 

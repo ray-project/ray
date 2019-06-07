@@ -41,7 +41,7 @@ def _parse_client_table(redis_client):
         return []
 
     node_info = {}
-    gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+    gcs_entry = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(message, 0)
 
     ordered_client_ids = []
 
@@ -248,8 +248,7 @@ class GlobalState(object):
                                         object_id.binary())
         if message is None:
             return {}
-        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            message, 0)
+        gcs_entry = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(message, 0)
 
         assert gcs_entry.EntriesLength() > 0
 
@@ -307,8 +306,7 @@ class GlobalState(object):
                                         "", task_id.binary())
         if message is None:
             return {}
-        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            message, 0)
+        gcs_entries = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(message, 0)
 
         assert gcs_entries.EntriesLength() == 1
 
@@ -431,8 +429,7 @@ class GlobalState(object):
         if message is None:
             return []
 
-        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            message, 0)
+        gcs_entries = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(message, 0)
 
         profile_events = []
         for i in range(gcs_entries.EntriesLength()):
@@ -815,9 +812,8 @@ class GlobalState(object):
                         ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL):
                     continue
                 data = raw_message["data"]
-                gcs_entries = (
-                    ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-                        data, 0))
+                gcs_entries = (ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(
+                    data, 0))
                 heartbeat_data = gcs_entries.Entries(0)
                 message = (ray.gcs_utils.HeartbeatTableData.
                            GetRootAsHeartbeatTableData(heartbeat_data, 0))
@@ -871,8 +867,7 @@ class GlobalState(object):
         if message is None:
             return []
 
-        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            message, 0)
+        gcs_entries = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(message, 0)
         error_messages = []
         for i in range(gcs_entries.EntriesLength()):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
@@ -934,8 +929,7 @@ class GlobalState(object):
         )
         if message is None:
             return None
-        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            message, 0)
+        gcs_entry = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(message, 0)
         entry = (
             ray.gcs_utils.ActorCheckpointIdData.GetRootAsActorCheckpointIdData(
                 gcs_entry.Entries(0), 0))

@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {

@@ -1656,7 +1656,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             if msg is None:
                 threads_stopped.wait(timeout=0.01)
                 continue
-            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            gcs_entry = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(
                 msg["data"], 0)
             assert gcs_entry.EntriesLength() == 1
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(

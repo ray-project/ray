@@ -4,7 +4,7 @@
 #include <string>
 
 #include "ray/common/buffer.h"
-#include "ray/id.h"
+#include "ray/common/id.h"
 
 namespace ray {
 
@@ -45,13 +45,13 @@ class TaskArg {
   bool IsPassedByReference() const { return id_ != nullptr; }
 
   /// Get the reference object ID.
-  ObjectID &GetReference() {
+  const ObjectID &GetReference() const {
     RAY_CHECK(id_ != nullptr) << "This argument isn't passed by reference.";
     return *id_;
   }
 
   /// Get the value.
-  std::shared_ptr<Buffer> GetValue() {
+  std::shared_ptr<Buffer> GetValue() const {
     RAY_CHECK(data_ != nullptr) << "This argument isn't passed by value.";
     return data_;
   }

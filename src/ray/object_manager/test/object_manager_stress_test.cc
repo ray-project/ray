@@ -5,7 +5,7 @@
 
 #include "gtest/gtest.h"
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "ray/object_manager/object_manager.h"
 
