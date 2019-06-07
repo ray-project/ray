@@ -29,8 +29,11 @@ recompile much more quickly by doing
 
 .. code-block:: shell
 
- cd ray/build
- make -j8
+ cd ray
+ bazel build //:ray_pkg
+
+This command is not enough to recompile all C++ unit tests. To do so, see
+`Testing locally`_.
 
 Debugging
 ---------
@@ -143,6 +146,14 @@ failing, you can do
 When running tests, usually only the first test failure matters. A single
 test failure often triggers the failure of subsequent tests in the same
 script.
+
+To compile and run all C++ tests, you can run:
+
+.. code-block:: shell
+
+ cd ray
+ bazel test $(bazel query 'kind(cc_test, ...)')
+
 
 Linting
 -------
