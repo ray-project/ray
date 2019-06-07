@@ -77,10 +77,10 @@ ResourceSet::ResourceSet() {}
 ResourceSet::ResourceSet(
     const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map)
     : resource_capacity_(resource_map) {
-      for (auto const &resource_pair : resource_map) {
-        RAY_CHECK(resource_pair.second > 0);
-      }
-    }
+  for (auto const &resource_pair : resource_map) {
+    RAY_CHECK(resource_pair.second > 0);
+  }
+}
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
