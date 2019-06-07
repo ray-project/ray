@@ -2,10 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.marwil.marwil_policy import MARWILPolicy
 from ray.rllib.optimizers import SyncBatchReplayOptimizer
-from ray.rllib.utils.annotations import override
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -39,30 +39,17 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class MARWILTrainer(Trainer):
-    """MARWIL implementation in TensorFlow."""
+def make_optimizer(workers, config):
+    return SyncBatchReplayOptimizer(
+        workers,
+        learning_starts=config["learning_starts"],
+        buffer_size=config["replay_buffer_size"],
+        train_batch_size=config["train_batch_size"],
+    )
 
-    _name = "MARWIL"
-    _default_config = DEFAULT_CONFIG
-    _policy = MARWILPolicy
 
-    @override(Trainer)
-    def _init(self, config, env_creator):
-        self.workers = self._make_workers(env_creator, self._policy, config,
-                                          config["num_workers"])
-        self.optimizer = SyncBatchReplayOptimizer(
-            self.workers,
-            learning_starts=config["learning_starts"],
-            buffer_size=config["replay_buffer_size"],
-            train_batch_size=config["train_batch_size"],
-        )
-
-    @override(Trainer)
-    def _train(self):
-        prev_steps = self.optimizer.num_steps_sampled
-        fetches = self.optimizer.step()
-        res = self.collect_metrics()
-        res.update(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
-            info=dict(fetches, **res.get("info", {})))
-        return res
+MARWILTrainer = build_trainer(
+    name="MARWIL",
+    default_config=DEFAULT_CONFIG,
+    default_policy=MARWILPolicy,
+    make_policy_optimizer=make_optimizer)
