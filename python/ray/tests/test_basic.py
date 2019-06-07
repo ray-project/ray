@@ -1754,7 +1754,7 @@ def test_multi_resource_constraints(shutdown_only):
     def g(n):
         time.sleep(n)
 
-    time_buffer = 0.5
+    time_buffer = 2
 
     start_time = time.time()
     ray.get([f.remote(0.5), g.remote(0.5)])
