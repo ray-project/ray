@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class PyTorchRunner(object):
-    """Manages a PyTorch model for training"""
+    """Manages a PyTorch model for training."""
 
     def __init__(self,
                  model_creator,
@@ -52,7 +52,7 @@ class PyTorchRunner(object):
         }
 
     def setup(self):
-        """Initializes the model"""
+        """Initializes the model."""
         logger.debug("Creating model")
         self.model = self.model_creator(self.config)
         if torch.cuda.is_available():
@@ -81,15 +81,15 @@ class PyTorchRunner(object):
             pin_memory=False)
 
     def get_node_ip(self):
-        """Returns the IP address of the current node"""
+        """Returns the IP address of the current node."""
         return ray.services.get_node_ip_address()
 
     def find_free_port(self):
-        """Finds a fee port on the curent node"""
+        """Finds a free port on the current node."""
         return utils.find_free_port()
 
     def step(self):
-        """Runs a training epoch and updates the model parameters"""
+        """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
         with self._timers["training"]:
             train_stats = utils.train(self.train_loader, self.model,
@@ -102,7 +102,7 @@ class PyTorchRunner(object):
         return train_stats
 
     def validate(self):
-        """Evaluates the model on the validation data set"""
+        """Evaluates the model on the validation data set."""
         with self._timers["validation"]:
             validation_stats = utils.validate(self.validation_loader,
                                               self.model, self.criterion)
@@ -111,7 +111,7 @@ class PyTorchRunner(object):
         return validation_stats
 
     def stats(self):
-        """Returns a dictionary of statistics collected"""
+        """Returns a dictionary of statistics collected."""
         stats = {"epoch": self.epoch}
         for k, t in self._timers.items():
             stats[k + "_time_mean"] = t.mean
@@ -120,7 +120,7 @@ class PyTorchRunner(object):
         return stats
 
     def get_state(self):
-        """Returns the state of the runner"""
+        """Returns the state of the runner."""
         return {
             "epoch": self.epoch,
             "model": self.model.state_dict(),
@@ -129,12 +129,20 @@ class PyTorchRunner(object):
         }
 
     def set_state(self, state):
-        """Sets the state of the model"""
+        """Sets the state of the model."""
         # TODO: restore timer stats
         self.model.load_state_dict(state["model"])
         self.optimizer.load_state_dict(state["optimizer"])
         self.epoch = state["stats"]["epoch"]
 
     def shutdown(self):
-        """Attempts to shut down the worker"""
-        pass
+        """Attempts to shut down the worker."""
+        del self.validation_loader
+        del self.validation_set
+        del self.train_loader
+        del self.training_set
+        del self.criterion
+        del self.optimizer
+        del self.model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()

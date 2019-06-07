@@ -54,7 +54,7 @@ class PyTorchTrainer(object):
         # TODO: add support for mixed precision
         # TODO: add support for callbacks
         if num_replicas > 1 and not dist.is_available():
-            raise Exception(
+            raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
                  "To run without distributed PyTorch, set 'num_replicas=1'. "
                  "For more information, see "
@@ -119,7 +119,7 @@ class PyTorchTrainer(object):
             ])
 
     def train(self):
-        """Runs a training epoch"""
+        """Runs a training epoch."""
         with self.optimizer_timer:
             worker_stats = ray.get([w.step.remote() for w in self.workers])
 
@@ -129,7 +129,7 @@ class PyTorchTrainer(object):
         return train_stats
 
     def validate(self):
-        """Evaluates the model on the validation data set"""
+        """Evaluates the model on the validation data set."""
         worker_stats = ray.get([w.validate.remote() for w in self.workers])
         validation_stats = worker_stats[0].copy()
         validation_stats["validation_loss"] = np.mean(
@@ -137,25 +137,25 @@ class PyTorchTrainer(object):
         return validation_stats
 
     def get_model(self):
-        """Returns the learned model"""
+        """Returns the learned model."""
         model = self.model_creator(self.config)
         state = ray.get(self.workers[0].get_state.remote())
         model.load_state_dict(state["model"])
         return model
 
     def save(self, ckpt):
-        """Saves the model at the provided checkpoint"""
+        """Saves the model at the provided checkpoint."""
         state = ray.get(self.workers[0].get_state.remote())
         torch.save(state, ckpt)
 
     def restore(self, ckpt):
-        """Restores the model from the provided checkpoint"""
+        """Restores the model from the provided checkpoint."""
         state = torch.load(ckpt)
         state_id = ray.put(state)
         ray.get([worker.set_state.remote(state_id) for worker in self.workers])
 
     def shutdown(self):
-        """Shuts down workers and releases resources"""
+        """Shuts down workers and releases resources."""
         for worker in self.workers:
             worker.shutdown.remote()
             worker.__ray_terminate__.remote()

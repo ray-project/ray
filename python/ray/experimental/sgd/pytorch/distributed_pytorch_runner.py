@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class DistributedPyTorchRunner(PyTorchRunner):
-    """Manages a distributed PyTorch model replica"""
+    """Manages a distributed PyTorch model replica."""
 
     def __init__(self,
                  model_creator,
@@ -103,13 +103,13 @@ class DistributedPyTorchRunner(PyTorchRunner):
             sampler=self.validation_sampler)
 
     def step(self):
-        """Runs a training epoch and updates the model parameters"""
+        """Runs a training epoch and updates the model parameters."""
         logger.debug("Starting step")
         self.train_sampler.set_epoch(self.epoch)
         return super(DistributedPyTorchRunner, self).step()
 
     def get_state(self):
-        """Returns the state of the runner"""
+        """Returns the state of the runner."""
         return {
             "epoch": self.epoch,
             "model": self.model.module.state_dict(),
@@ -118,12 +118,13 @@ class DistributedPyTorchRunner(PyTorchRunner):
         }
 
     def set_state(self, state):
-        """Sets the state of the model"""
+        """Sets the state of the model."""
         # TODO: restore timer stats
         self.model.module.load_state_dict(state["model"])
         self.optimizer.load_state_dict(state["optimizer"])
         self.epoch = state["stats"]["epoch"]
 
     def shutdown(self):
-        """Attempts to shut down the worker"""
+        """Attempts to shut down the worker."""
+        super(DistributedPyTorchRunner, self).shutdown()
         dist.destroy_process_group()

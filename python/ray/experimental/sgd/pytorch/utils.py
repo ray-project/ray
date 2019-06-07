@@ -196,7 +196,7 @@ def find_free_port():
 
 
 class AverageMeter(object):
-    """Computes and stores the average and current value"""
+    """Computes and stores the average and current value."""
 
     def __init__(self):
         self.reset()
@@ -238,8 +238,3 @@ def sgd_mse_optimizer(model, config):
     criterion = nn.MSELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
     return criterion, optimizer
-
-
-def clean_state_dict(state_dict):
-    """Removes the 'module.' prefix added by PyTorch"""
-    return {k.replace("module.", ""): v for k, v in state_dict.items()}
