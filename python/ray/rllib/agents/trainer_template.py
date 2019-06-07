@@ -160,6 +160,12 @@ def build_trainer(name,
 
     @staticmethod
     def with_updates(**overrides):
+        """Build a copy of this trainer with the specified overrides.
+
+        Arguments:
+            overrides (dict): use this to override any of the arguments
+                originally passed to build_trainer() for this policy.
+        """
         return build_trainer(**dict(original_kwargs, **overrides))
 
     trainer_cls.with_updates = with_updates

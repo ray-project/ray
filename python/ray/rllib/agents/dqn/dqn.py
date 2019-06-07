@@ -140,6 +140,12 @@ def make_optimizer(workers, config):
 
 
 def check_config_and_setup_param_noise(config):
+    """Update the config based on settings.
+
+    Rewrites sample_batch_size to take into account n_step truncation, and also
+    adds the necessary callbacks to support parameter space noise exploration.
+    """
+
     # Update effective batch size to include n-step
     adjusted_batch_size = max(config["sample_batch_size"],
                               config.get("n_step", 1))
