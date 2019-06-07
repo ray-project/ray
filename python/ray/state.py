@@ -422,7 +422,7 @@ class GlobalState(object):
         Returns:
             A dictionary with information about the driver ID in question.
         """
-        # Allow the argument to be either an ObjectID or a hex string.
+        # Allow the argument to be either a DriverID or a hex string.
         if not isinstance(driver_id, ray.DriverID):
             driver_id = ray.DriverID(hex_to_binary(driver_id))
 

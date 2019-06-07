@@ -625,7 +625,8 @@ void TestLogSubscribeAll(const DriverID &driver_id,
   auto subscribe_callback = [driver_ids](gcs::AsyncGcsClient *client) {
     // We have subscribed. Do the writes to the table.
     for (size_t i = 0; i < driver_ids.size(); i++) {
-      RAY_CHECK_OK(client->driver_table().AppendDriverData(driver_ids[i], false));
+      RAY_CHECK_OK(client->driver_table().AppendDriverData(driver_ids[i], 0,
+                                                           "localhost", 1, false));
     }
   };
 
