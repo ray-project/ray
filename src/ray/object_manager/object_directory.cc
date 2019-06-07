@@ -54,8 +54,7 @@ void ObjectDirectory::RegisterBackend() {
     it->second.subscribed = true;
 
     // Update entries for this object.
-    UpdateObjectLocations(change_mode, location_updates,
-                          gcs_client_->client_table(),
+    UpdateObjectLocations(change_mode, location_updates, gcs_client_->client_table(),
                           &it->second.current_object_locations);
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
@@ -135,8 +134,7 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
     if (listener.second.current_object_locations.count(client_id) > 0) {
       // If the subscribed object has the removed client as a location, update
       // its locations with an empty update so that the location will be removed.
-      UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, {},
-                            gcs_client_->client_table(),
+      UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, {}, gcs_client_->client_table(),
                             &listener.second.current_object_locations);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.

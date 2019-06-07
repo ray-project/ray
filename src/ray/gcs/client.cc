@@ -230,9 +230,7 @@ ActorCheckpointIdTable &AsyncGcsClient::actor_checkpoint_id_table() {
   return *actor_checkpoint_id_table_;
 }
 
-DynamicResourceTable &AsyncGcsClient::resource_table() {
-  return *resource_table_;
-}
+DynamicResourceTable &AsyncGcsClient::resource_table() { return *resource_table_; }
 
 }  // namespace gcs
 

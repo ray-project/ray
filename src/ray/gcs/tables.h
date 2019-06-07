@@ -75,9 +75,9 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
-  using NotificationCallback = std::function<void(
-      AsyncGcsClient *client, const ID &id,
-      const GcsChangeMode change_mode, const std::vector<DataT> &data)>;
+  using NotificationCallback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                                  const GcsChangeMode change_mode,
+                                                  const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
@@ -483,9 +483,9 @@ class HashInterface {
   /// \param change_mode The mode to identify the data is removed or updated.
   /// \param data Map data contains the change to the Hash Table.
   /// \return Void
-  using HashNotificationCallback = std::function<void(
-      AsyncGcsClient *client, const ID &id,
-      const GcsChangeMode change_mode, const DataMap &data)>;
+  using HashNotificationCallback =
+      std::function<void(AsyncGcsClient *client, const ID &id,
+                         const GcsChangeMode change_mode, const DataMap &data)>;
 
   /// Add entries of a hash table.
   ///

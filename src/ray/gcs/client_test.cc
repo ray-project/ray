@@ -657,8 +657,7 @@ void TestSetSubscribeAll(const DriverID &driver_id,
 
   // Callback for a notification.
   auto notification_callback = [object_ids, managers](
-      gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsChangeMode change_mode,
+      gcs::AsyncGcsClient *client, const ObjectID &id, const GcsChangeMode change_mode,
       const std::vector<ObjectTableDataT> data) {
     if (test->NumCallbacks() < 3 * 3) {
       ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
@@ -894,8 +893,7 @@ void TestSetSubscribeId(const DriverID &driver_id,
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
   auto notification_callback = [object_id2, managers2](
-      gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsChangeMode change_mode,
+      gcs::AsyncGcsClient *client, const ObjectID &id, const GcsChangeMode change_mode,
       const std::vector<ObjectTableDataT> &data) {
     ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
     // Check that we only get notifications for the requested key.
@@ -1111,8 +1109,7 @@ void TestSetSubscribeCancel(const DriverID &driver_id,
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
   auto notification_callback = [object_id, managers](
-      gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsChangeMode change_mode,
+      gcs::AsyncGcsClient *client, const ObjectID &id, const GcsChangeMode change_mode,
       const std::vector<ObjectTableDataT> &data) {
     ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
     ASSERT_EQ(id, object_id);
@@ -1353,8 +1350,7 @@ void TestHashTable(const DriverID &driver_id,
     test->IncrementNumCallbacks();
   };
   auto notification_callback = [data_map1, data_map2, compare_test](
-      AsyncGcsClient *client, const ClientID &id,
-      const GcsChangeMode change_mode,
+      AsyncGcsClient *client, const ClientID &id, const GcsChangeMode change_mode,
       const DynamicResourceTable::DataMap &data) {
     if (change_mode == GcsChangeMode::REMOVE) {
       ASSERT_EQ(data.size(), 2);
@@ -1389,28 +1385,25 @@ void TestHashTable(const DriverID &driver_id,
     compare_test(data_map1, callback_data);
     test->IncrementNumCallbacks();
   };
-  RAY_CHECK_OK(client->resource_table().Update(driver_id, client_id, data_map1,
-                                                       update_callback1));
+  RAY_CHECK_OK(
+      client->resource_table().Update(driver_id, client_id, data_map1, update_callback1));
   auto lookup_callback1 = [data_map1, compare_test](
       AsyncGcsClient *client, const ClientID &id,
       const DynamicResourceTable::DataMap &callback_data) {
     compare_test(data_map1, callback_data);
     test->IncrementNumCallbacks();
   };
-  RAY_CHECK_OK(
-      client->resource_table().Lookup(driver_id, client_id, lookup_callback1));
+  RAY_CHECK_OK(client->resource_table().Lookup(driver_id, client_id, lookup_callback1));
 
   // Step 2: Decrease one element, increase one and add a new one.
-  RAY_CHECK_OK(
-      client->resource_table().Update(driver_id, client_id, data_map2, nullptr));
+  RAY_CHECK_OK(client->resource_table().Update(driver_id, client_id, data_map2, nullptr));
   auto lookup_callback2 = [data_map2, compare_test](
       AsyncGcsClient *client, const ClientID &id,
       const DynamicResourceTable::DataMap &callback_data) {
     compare_test(data_map2, callback_data);
     test->IncrementNumCallbacks();
   };
-  RAY_CHECK_OK(
-      client->resource_table().Lookup(driver_id, client_id, lookup_callback2));
+  RAY_CHECK_OK(client->resource_table().Lookup(driver_id, client_id, lookup_callback2));
   std::vector<std::string> delete_keys({"GPU", "CUSTOM", "None-Existent"});
   auto remove_callback = [delete_keys](AsyncGcsClient *client, const ClientID &id,
                                        const std::vector<std::string> &callback_data) {
@@ -1420,8 +1413,8 @@ void TestHashTable(const DriverID &driver_id,
     }
     test->IncrementNumCallbacks();
   };
-  RAY_CHECK_OK(client->resource_table().RemoveEntries(
-      driver_id, client_id, delete_keys, remove_callback));
+  RAY_CHECK_OK(client->resource_table().RemoveEntries(driver_id, client_id, delete_keys,
+                                                      remove_callback));
   DynamicResourceTable::DataMap data_map3(data_map2);
   data_map3.erase("GPU");
   data_map3.erase("CUSTOM");
@@ -1431,20 +1424,18 @@ void TestHashTable(const DriverID &driver_id,
     compare_test(data_map3, callback_data);
     test->IncrementNumCallbacks();
   };
-  RAY_CHECK_OK(
-      client->resource_table().Lookup(driver_id, client_id, lookup_callback3));
+  RAY_CHECK_OK(client->resource_table().Lookup(driver_id, client_id, lookup_callback3));
 
   // Step 3: Reset the the resources to data_map1.
-  RAY_CHECK_OK(client->resource_table().Update(driver_id, client_id, data_map1,
-                                                       update_callback1));
+  RAY_CHECK_OK(
+      client->resource_table().Update(driver_id, client_id, data_map1, update_callback1));
   auto lookup_callback4 = [data_map1, compare_test](
       AsyncGcsClient *client, const ClientID &id,
       const DynamicResourceTable::DataMap &callback_data) {
     compare_test(data_map1, callback_data);
     test->IncrementNumCallbacks();
   };
-  RAY_CHECK_OK(
-      client->resource_table().Lookup(driver_id, client_id, lookup_callback4));
+  RAY_CHECK_OK(client->resource_table().Lookup(driver_id, client_id, lookup_callback4));
 
   // Step 4: Removing all elements will remove the home Hash table from GCS.
   RAY_CHECK_OK(client->resource_table().RemoveEntries(
@@ -1458,8 +1449,7 @@ void TestHashTable(const DriverID &driver_id,
       test->Stop();
     }
   };
-  RAY_CHECK_OK(
-      client->resource_table().Lookup(driver_id, client_id, lookup_callback5));
+  RAY_CHECK_OK(client->resource_table().Lookup(driver_id, client_id, lookup_callback5));
   test->Start();
   ASSERT_EQ(test->NumCallbacks(), expected_count);
 }

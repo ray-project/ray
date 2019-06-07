@@ -364,8 +364,7 @@ Status Hash<ID, Data>::Update(const DriverID &driver_id, const ID &id,
   }
 
   fbb.Finish(CreateGcsEntry(fbb, GcsChangeMode::APPEND_OR_ADD,
-                                 fbb.CreateString(id.Binary()),
-                                 fbb.CreateVector(data_vec)));
+                            fbb.CreateString(id.Binary()), fbb.CreateVector(data_vec)));
   return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, fbb.GetBufferPointer(),
                                        fbb.GetSize(), prefix_, pubsub_channel_,
                                        std::move(callback));
@@ -389,9 +388,8 @@ Status Hash<ID, Data>::RemoveEntries(const DriverID &driver_id, const ID &id,
     data_vec.push_back(fbb.CreateString(key));
   }
 
-  fbb.Finish(CreateGcsEntry(fbb, GcsChangeMode::REMOVE,
-                                 fbb.CreateString(id.Binary()),
-                                 fbb.CreateVector(data_vec)));
+  fbb.Finish(CreateGcsEntry(fbb, GcsChangeMode::REMOVE, fbb.CreateString(id.Binary()),
+                            fbb.CreateVector(data_vec)));
   return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, fbb.GetBufferPointer(),
                                        fbb.GetSize(), prefix_, pubsub_channel_,
                                        std::move(callback));
