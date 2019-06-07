@@ -106,8 +106,10 @@ class PPOLoss(object):
 
 def ppo_surrogate_loss(policy, batch_tensors):
     if policy.model.state_in:
-        max_seq_len = tf.reduce_max(policy.model.seq_lens)
-        mask = tf.sequence_mask(policy.model.seq_lens, max_seq_len)
+        max_seq_len = tf.reduce_max(
+            policy.convert_to_eager(policy.model.seq_lens))
+        mask = tf.sequence_mask(
+            policy.convert_to_eager(policy.model.seq_lens), max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(
@@ -121,8 +123,8 @@ def ppo_surrogate_loss(policy, batch_tensors):
         batch_tensors[BEHAVIOUR_LOGITS],
         batch_tensors[SampleBatch.VF_PREDS],
         policy.action_dist,
-        policy.value_function,
-        policy.kl_coeff,
+        policy.convert_to_eager(policy.value_function),
+        policy.convert_to_eager(policy.kl_coeff),
         mask,
         entropy_coeff=policy.config["entropy_coeff"],
         clip_param=policy.config["clip_param"],
