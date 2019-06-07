@@ -169,7 +169,7 @@ void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
     const std::string &resource_label = resource_pair.first;
     const FractionalResourceQuantity &resource_capacity = resource_pair.second;
     RAY_CHECK(resource_capacity_.count(resource_label) == 1)
-        << "Attempt to acquire unknown resource: " << resource_label;
+        << "Attempt to acquire unknown resource: " << resource_label << " capacity " << resource_capacity.ToDouble();
     resource_capacity_[resource_label] -= resource_capacity;
 
     // Ensure that quantity is positive. Note, we have to have the check before
