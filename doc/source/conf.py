@@ -29,7 +29,7 @@ MOCK_MODULES = [
     "ray.core.generated.EntryType",
     "ray.core.generated.ErrorTableData",
     "ray.core.generated.ErrorType",
-    "ray.core.generated.GcsTableEntry",
+    "ray.core.generated.GcsEntry",
     "ray.core.generated.HeartbeatBatchTableData",
     "ray.core.generated.HeartbeatTableData",
     "ray.core.generated.Language",

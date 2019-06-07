@@ -92,7 +92,7 @@ Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
       std::vector<DataT> results;
       if (!reply.IsNil()) {
         const auto data = reply.ReadAsString();
-        auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
         RAY_CHECK(from_flatbuf<ID>(*root->id()) == id);
         for (size_t i = 0; i < root->entries()->size(); i++) {
           DataT result;
@@ -114,9 +114,9 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
   auto subscribe_wrapper = [subscribe](AsyncGcsClient *client, const ID &id,
-                                       const GcsTableNotificationMode notification_mode,
+                                       const GcsChangeMode change_mode,
                                        const std::vector<DataT> &data) {
-    RAY_CHECK(notification_mode != GcsTableNotificationMode::REMOVE);
+    RAY_CHECK(change_mode != GcsChangeMode::REMOVE);
     subscribe(client, id, data);
   };
   return Subscribe(driver_id, client_id, subscribe_wrapper, done);
@@ -141,7 +141,7 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
       // Data is provided. This is the callback for a message.
       if (subscribe != nullptr) {
         // Parse the notification.
-        auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
         ID id;
         if (root->id()->size() > 0) {
           id = from_flatbuf<ID>(*root->id());
@@ -153,7 +153,7 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
           data_root->UnPackTo(&result);
           results.emplace_back(std::move(result));
         }
-        subscribe(client_, id, root->notification_mode(), results);
+        subscribe(client_, id, root->change_mode(), results);
       }
     }
   };
@@ -337,6 +337,155 @@ std::string Set<ID, Data>::DebugString() const {
   result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_
          << ", num removes: " << num_removes_;
   return result.str();
+}
+
+template <typename ID, typename Data>
+Status Hash<ID, Data>::Update(const DriverID &driver_id, const ID &id,
+                              const DataMap &data_map, const HashCallback &done) {
+  num_adds_++;
+  auto callback = [this, id, data_map, done](const CallbackReply &reply) {
+    if (done != nullptr) {
+      (done)(client_, id, data_map);
+    }
+  };
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<flatbuffers::String>> data_vec;
+  data_vec.reserve(data_map.size() * 2);
+  for (auto const &pair : data_map) {
+    // Add the key.
+    data_vec.push_back(fbb.CreateString(pair.first));
+    flatbuffers::FlatBufferBuilder fbb_data;
+    fbb_data.ForceDefaults(true);
+    fbb_data.Finish(Data::Pack(fbb_data, pair.second.get()));
+    std::string data(reinterpret_cast<char *>(fbb_data.GetBufferPointer()),
+                     fbb_data.GetSize());
+    // Add the value.
+    data_vec.push_back(fbb.CreateString(data));
+  }
+
+  fbb.Finish(CreateGcsEntry(fbb, GcsChangeMode::APPEND_OR_ADD,
+                            fbb.CreateString(id.Binary()), fbb.CreateVector(data_vec)));
+  return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, fbb.GetBufferPointer(),
+                                       fbb.GetSize(), prefix_, pubsub_channel_,
+                                       std::move(callback));
+}
+
+template <typename ID, typename Data>
+Status Hash<ID, Data>::RemoveEntries(const DriverID &driver_id, const ID &id,
+                                     const std::vector<std::string> &keys,
+                                     const HashRemoveCallback &remove_callback) {
+  num_removes_++;
+  auto callback = [this, id, keys, remove_callback](const CallbackReply &reply) {
+    if (remove_callback != nullptr) {
+      (remove_callback)(client_, id, keys);
+    }
+  };
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<flatbuffers::String>> data_vec;
+  data_vec.reserve(keys.size());
+  // Add the keys.
+  for (auto const &key : keys) {
+    data_vec.push_back(fbb.CreateString(key));
+  }
+
+  fbb.Finish(CreateGcsEntry(fbb, GcsChangeMode::REMOVE, fbb.CreateString(id.Binary()),
+                            fbb.CreateVector(data_vec)));
+  return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, fbb.GetBufferPointer(),
+                                       fbb.GetSize(), prefix_, pubsub_channel_,
+                                       std::move(callback));
+}
+
+template <typename ID, typename Data>
+std::string Hash<ID, Data>::DebugString() const {
+  std::stringstream result;
+  result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_
+         << ", num removes: " << num_removes_;
+  return result.str();
+}
+
+template <typename ID, typename Data>
+Status Hash<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
+                              const HashCallback &lookup) {
+  num_lookups_++;
+  auto callback = [this, id, lookup](const CallbackReply &reply) {
+    if (lookup != nullptr) {
+      DataMap results;
+      if (!reply.IsNil()) {
+        const auto data = reply.ReadAsString();
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
+        RAY_CHECK(from_flatbuf<ID>(*root->id()) == id);
+        RAY_CHECK(root->entries()->size() % 2 == 0);
+        for (size_t i = 0; i < root->entries()->size(); i += 2) {
+          std::string key(root->entries()->Get(i)->data(),
+                          root->entries()->Get(i)->size());
+          auto result = std::make_shared<DataT>();
+          auto data_root =
+              flatbuffers::GetRoot<Data>(root->entries()->Get(i + 1)->data());
+          data_root->UnPackTo(result.get());
+          results.emplace(key, std::move(result));
+        }
+      }
+      lookup(client_, id, results);
+    }
+  };
+  std::vector<uint8_t> nil;
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
+                                       prefix_, pubsub_channel_, std::move(callback));
+}
+
+template <typename ID, typename Data>
+Status Hash<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &client_id,
+                                 const HashNotificationCallback &subscribe,
+                                 const SubscriptionCallback &done) {
+  RAY_CHECK(subscribe_callback_index_ == -1)
+      << "Client called Subscribe twice on the same table";
+  auto callback = [this, subscribe, done](const CallbackReply &reply) {
+    const auto data = reply.ReadAsPubsubData();
+    if (data.empty()) {
+      // No notification data is provided. This is the callback for the
+      // initial subscription request.
+      if (done != nullptr) {
+        done(client_);
+      }
+    } else {
+      // Data is provided. This is the callback for a message.
+      if (subscribe != nullptr) {
+        // Parse the notification.
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
+        DataMap data_map;
+        ID id;
+        if (root->id()->size() > 0) {
+          id = from_flatbuf<ID>(*root->id());
+        }
+        if (root->change_mode() == GcsChangeMode::REMOVE) {
+          for (size_t i = 0; i < root->entries()->size(); i++) {
+            std::string key(root->entries()->Get(i)->data(),
+                            root->entries()->Get(i)->size());
+            data_map.emplace(key, std::shared_ptr<DataT>());
+          }
+        } else {
+          RAY_CHECK(root->entries()->size() % 2 == 0);
+          for (size_t i = 0; i < root->entries()->size(); i += 2) {
+            std::string key(root->entries()->Get(i)->data(),
+                            root->entries()->Get(i)->size());
+            auto result = std::make_shared<DataT>();
+            auto data_root =
+                flatbuffers::GetRoot<Data>(root->entries()->Get(i + 1)->data());
+            data_root->UnPackTo(result.get());
+            data_map.emplace(key, std::move(result));
+          }
+        }
+        subscribe(client_, id, root->change_mode(), data_map);
+      }
+    }
+  };
+
+  subscribe_callback_index_ = 1;
+  for (auto &context : shard_contexts_) {
+    RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback,
+                                              &subscribe_callback_index_));
+  }
+  return Status::OK();
 }
 
 Status ErrorTable::PushErrorToDriver(const DriverID &driver_id, const std::string &type,
@@ -695,6 +844,9 @@ template class Log<DriverID, DriverTableData>;
 template class Log<UniqueID, ProfileTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
+
+template class Log<ClientID, RayResource>;
+template class Hash<ClientID, RayResource>;
 
 }  // namespace gcs
 
