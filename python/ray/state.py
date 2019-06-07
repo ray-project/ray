@@ -438,14 +438,20 @@ class GlobalState(object):
 
         assert gcs_entry.EntriesLength() > 0
 
-        entry = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(
-            gcs_entry.Entries(0), 0)
+        driver_info = {}
 
-        driver_info = {
-            "DriverID": binary_to_hex(entry.DriverId()),
-            "Timestamp": entry.Timestamp(),
-            "IsDead": entry.IsDead()
-        }
+        for i in range(gcs_entry.EntriesLength()):
+            entry = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(
+                gcs_entry.Entries(i), 0)
+            assert entry.DriverId() == driver_id.binary()
+            driver_info["DriverID"] = driver_id.hex()
+            driver_info["NodeManagerAddress"] = decode(
+                entry.NodeManagerAddress())
+            driver_info["DriverPid"] = entry.DriverPid()
+            if entry.IsDead():
+                driver_info["StopTime"] = entry.Timestamp()
+            else:
+                driver_info["StartTime"] = entry.Timestamp()
 
         return driver_info
 
@@ -469,21 +475,6 @@ class GlobalState(object):
 
         for driver_id_binary in driver_ids_binary:
             drivers.append(self._driver_table(binary_to_hex(driver_id_binary)))
-
-        """
-        for driver_key in self.redis_client.keys(b"Drivers:*"):
-            driver_info = state.redis_client.hgetall(driver_key)
-            driver_id = ray.utils.binary_to_hex(driver_info[b"driver_id"])
-            drivers.append({
-                "DriverID": driver_id,
-                "NodeAddress": decode(driver_info[b"node_ip_address"]),
-                "StartTime": float(driver_info[b"start_time"]),
-                "ObjectStoreSocketName": decode(
-                    driver_info[b"plasma_store_socket"]),
-                "RayletSocketName": decode(driver_info[b"raylet_socket"]),
-                "Name": decode(driver_info[b"name"])
-            })
-        """
 
         return drivers
 

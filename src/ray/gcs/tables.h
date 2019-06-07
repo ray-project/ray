@@ -499,9 +499,14 @@ class DriverTable : public Log<DriverID, DriverTableData> {
   /// Appends driver data to the driver table.
   ///
   /// \param driver_id The driver id.
+  /// \param timestamp The UNIX timestamp when the driver was started/stopped.
+  /// \param node_manager_address IP address of the node the driver is running on.
+  /// \param driver_pid Process ID of the driver process.
   /// \param is_dead Whether the driver is dead.
   /// \return The return status.
-  Status AppendDriverData(const DriverID &driver_id, int64_t timestamp, bool is_dead);
+  Status AppendDriverData(const DriverID &driver_id, int64_t timestamp,
+                          const std::string& node_manager_address,
+                          int64_t driver_pid, bool is_dead);
 };
 
 class FunctionTable : public Table<ObjectID, FunctionTableData> {

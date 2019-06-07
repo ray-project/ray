@@ -887,12 +887,20 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // message is actually the ID of the driver task, while client_id represents the
     // real driver ID, which can associate all the tasks/actors for a given driver,
     // which is set to the worker ID.
-    const DriverID driver_id = from_flatbuf<DriverID>(*message->driver_id());
-    TaskID driver_task_id = TaskID::GetDriverTaskID(driver_id);
+    const DriverID driver_id = from_flatbuf<DriverID>(*message->client_id());
+    TaskID driver_task_id = TaskID::GetDriverTaskID(
+      from_flatbuf<DriverID>(*message->driver_id())
+    );
     worker->AssignTaskId(driver_task_id);
-    worker->AssignDriverId(from_flatbuf<DriverID>(*message->client_id()));
+    worker->AssignDriverId(driver_id);
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
+    RAY_CHECK_OK(
+      gcs_client_->driver_table().AppendDriverData(driver_id,
+                                                   std::time(nullptr),
+                                                   initial_config_.node_manager_address,
+                                                   message->worker_pid(),
+                                                   /*is_dead=*/false));
   }
 }
 
@@ -1060,7 +1068,9 @@ void NodeManager::ProcessDisconnectClientMessage(
     // The client is a driver.
     RAY_CHECK_OK(
         gcs_client_->driver_table().AppendDriverData(DriverID(client->GetClientId()),
-                                                     current_time_ms() / 1000,
+                                                     std::time(nullptr),
+                                                     initial_config_.node_manager_address,
+                                                     worker->Pid(),
                                                      /*is_dead=*/true));
     auto driver_id = worker->GetAssignedTaskId();
     RAY_CHECK(!driver_id.is_nil());
