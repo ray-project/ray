@@ -314,11 +314,11 @@ table DriverTableData {
   // The driver ID.
   driver_id: string;
   // The UNIX timestamp corresponding to this event (driver added or removed).
-  timestamp: int64;
+  timestamp: long;
   // IP of the node this driver is running on.
   node_manager_address: string;
   // Process ID of this driver.
-  driver_pid: int64;
+  driver_pid: long;
   // Whether it's dead.
   is_dead: bool;
 }

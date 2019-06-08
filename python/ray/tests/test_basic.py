@@ -2460,7 +2460,7 @@ def test_global_state_api(shutdown_only):
 
     assert len(driver_table) == 1
     assert driver_table[0]["DriverID"] == driver_id
-    assert driver_table[0]["NodeAddress"] == node_ip_address
+    assert driver_table[0]["NodeManagerAddress"] == node_ip_address
 
     @ray.remote
     def f(*xs):

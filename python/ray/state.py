@@ -471,12 +471,12 @@ class GlobalState(object):
             for key in driver_keys
         }
 
-        drivers = []
+        results = []
 
         for driver_id_binary in driver_ids_binary:
-            drivers.append(self._driver_table(binary_to_hex(driver_id_binary)))
+            results.append(self._driver_table(binary_to_hex(driver_id_binary)))
 
-        return drivers
+        return results
 
     def _profile_table(self, batch_id):
         """Get the profile events for a given batch of profile events.
