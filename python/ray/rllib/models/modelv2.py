@@ -49,7 +49,7 @@ class ModelV2(object):
         self.action_space = action_space
         self.output_spec = output_spec
         self.options = options
-        self.name = name
+        self.name = name or "default"
         self.framework = framework
 
     def get_initial_state(self):
@@ -92,6 +92,10 @@ class ModelV2(object):
     def get_branch_output(self, branch_type, output_spec, feature_layer=None):
         """Get the branch output of the model (e.g., "value" branch).
 
+        This method defines other output heads, for example, the value function
+        prediction. The model internally can decide whether to share layers
+        with the primary action output head.
+
         It is important to note that the method outputs are tied to the
         immediately previous call to forward(). This means that after calling
         forward() once, you must retrieve all its branch outputs before calling
@@ -131,7 +135,7 @@ class ModelV2(object):
                 "self.loss() is deprecated, use self.custom_loss() instead.")
         return policy_loss
 
-    def custom_stats(self):
+    def metrics(self):
         """Override to return custom metrics from your model.
 
         The stats will be reported as part of the learner stats, i.e.,
@@ -149,6 +153,10 @@ class ModelV2(object):
     def variables(self):
         """Returns the list of variables for this model."""
         raise NotImplementedError
+
+    def trainable_variables(self):
+        """Returns the list of trainable variables for this model."""
+        return self.variables()
 
     def __call__(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.

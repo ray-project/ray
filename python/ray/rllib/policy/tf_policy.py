@@ -12,6 +12,7 @@ import ray.experimental.tf_utils
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.lstm import chop_into_sequences
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
@@ -180,7 +181,10 @@ class TFPolicy(Policy):
 
         if self.model:
             self._loss = self.model.custom_loss(loss, self._loss_input_dict)
-            self._stats_fetches.update({"model": self.model.custom_stats()})
+            self._stats_fetches.update({
+                "model": self.model.metrics() if isinstance(
+                    self.model, ModelV2) else self.model.custom_stats()
+            })
         else:
             self._loss = loss
 
