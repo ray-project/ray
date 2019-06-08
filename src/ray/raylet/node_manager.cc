@@ -1809,9 +1809,9 @@ bool NodeManager::AssignTask(const Task &task) {
   cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources());
 
   if (spec.IsActorCreationTask()) {
-    // Check that we are not placing an actor creation task on a node with 0 CPUs.
-    RAY_CHECK(cluster_resource_map_[my_client_id].GetTotalResources().GetResourceMap().at(
-                  kCPU_ResourceLabel) != 0);
+    // Check that the actor's placement resource requirements are satisfied.
+    RAY_CHECK(spec.GetRequiredPlacementResources().IsSubset(
+        cluster_resource_map_[my_client_id].GetTotalResources()));
     worker->SetLifetimeResourceIds(acquired_resources);
   } else {
     worker->SetTaskResourceIds(acquired_resources);
