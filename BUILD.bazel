@@ -1,11 +1,23 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@build_stack_rules_proto//cpp:cpp_grpc_library.bzl", "cpp_grpc_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
 
 COPTS = ["-DRAY_USE_GLOG"]
+
+# gRPC libraries.
+proto_library(
+    name = "node_manager_proto",
+    srcs = ["src/ray/protobuf/node_manager.proto"],
+)
+
+cpp_grpc_library(
+    name = "node_manager_grpc",
+    deps = [":node_manager_proto"],
+)
 
 cc_binary(
     name = "raylet",
