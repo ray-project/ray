@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package ray.node_manager;
+package ray;
 
 message TaskExecutionSpecification {
   // A list of object IDs representing the dependencies of this task that may
@@ -25,8 +25,8 @@ message ForwardTaskRequest {
   repeated Task uncommitted_tasks = 2;
 }
 
-message ForwardTaskResponse {}
+message ForwardTaskReply {}
 
 service NodeManagerService {
-  rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskResponse);
+  rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
 }

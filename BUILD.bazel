@@ -19,6 +19,22 @@ cpp_grpc_library(
     deps = [":node_manager_proto"],
 )
 
+cc_library(
+    name = "node_manager_rpc_lib",
+    srcs = [
+        "src/ray/rpc/node_manager_client.cc",
+    ],
+    hdrs = [
+        "src/ray/rpc/node_manager_client.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        ":node_manager_grpc",
+        "@boost//:asio",
+    ],
+)
+
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
