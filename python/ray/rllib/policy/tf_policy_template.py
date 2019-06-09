@@ -27,7 +27,7 @@ def build_tf_policy(name,
                     before_loss_init=None,
                     after_init=None,
                     make_model=None,
-                    make_action_sampler=None,
+                    action_sampler_fn=None,
                     mixins=None,
                     get_batch_divisibility_req=None,
                     obs_include_prev_action_reward=True):
@@ -46,7 +46,7 @@ def build_tf_policy(name,
         - loss_fn
         - stats_fn
         - grad_stats_fn
-        - make_action_sampler (if defined)
+        - action_sampler_fn (if defined)
     This means that these functions should not define any variables internally,
     otherwise they will fail in eager mode execution. Variable should only
     be created in make_model (if defined).
@@ -84,11 +84,12 @@ def build_tf_policy(name,
             init that takes the same arguments as the policy constructor
         after_init (func): optional function to run at the end of policy init
             that takes the same arguments as the policy constructor
-        make_model (func): optional function that returns a model tensor given
-            (policy, input_dict, obs_space, action_space, config). All policy
-            variables should be created in this function.
-        make_action_sampler (func): optional function that returns a
-            tuple of action and action prob tensors given (policy, model)
+        make_model (func): optional function that returns a ModelV2 object
+            given (policy, obs_space, action_space, config).
+            All policy variables should be created in this function.
+        action_sampler_fn (func): optional function that returns a
+            tuple of action and action prob tensors given
+            (policy, model, input_dict, obs_space, action_space, config).
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the DynamicTFPolicy class
@@ -136,7 +137,8 @@ def build_tf_policy(name,
                 grad_stats_fn=grad_stats_fn,
                 update_ops_fn=update_ops_fn,
                 before_loss_init=before_loss_init_wrapper,
-                make_action_sampler=make_action_sampler,
+                make_model=make_model,
+                action_sampler_fn=action_sampler_fn,
                 existing_model=existing_model,
                 existing_inputs=existing_inputs,
                 obs_include_prev_action_reward=obs_include_prev_action_reward)

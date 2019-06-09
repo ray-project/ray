@@ -401,9 +401,7 @@ def postprocess_trajectory(policy,
     return _postprocess_dqn(policy, sample_batch)
 
 
-# TODO(ekl) probably want to split this into setup_model (stateful) and
-# get_actions (stateless)
-def build_q_networks(policy, input_dict, obs_space, action_space, config):
+def build_q_model(policy, obs_space, action_space, config):
 
     if not isinstance(action_space, Discrete):
         raise UnsupportedSpaceException(
@@ -425,12 +423,18 @@ def build_q_networks(policy, input_dict, obs_space, action_space, config):
         framework="tf",
         name=Q_TARGET_SCOPE)
 
+    return policy.q_model
+
+
+def build_q_networks(policy, q_model, input_dict, obs_space, action_space,
+                     config):
+
     # Action Q network
     q_values, q_logits, q_dist, _ = _q_network_from(
-        policy, policy.q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
+        policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
         action_space)
     policy.q_values = q_values
-    policy.q_func_vars = policy.q_model.variables()
+    policy.q_func_vars = q_model.variables()
 
     # Noise vars for Q network except for layer normalization vars
     if config["parameter_noise"]:
@@ -442,7 +446,7 @@ def build_q_networks(policy, input_dict, obs_space, action_space, config):
     # Action outputs
     qvp = QValuePolicy(q_values, input_dict[SampleBatch.CUR_OBS],
                        action_space.n, policy.stochastic, policy.eps,
-                       policy.config["soft_q"], policy.config["softmax_temp"])
+                       config["soft_q"], config["softmax_temp"])
     policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
 
     return policy.output_actions, policy.action_prob
@@ -681,7 +685,8 @@ def _minimize_and_clip(optimizer, objective, var_list, clip_val=10):
 DQNTFPolicy = build_tf_policy(
     name="DQNTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
-    make_action_sampler=build_q_networks,
+    make_model=build_q_model,
+    action_sampler_fn=build_q_networks,
     loss_fn=build_q_losses,
     stats_fn=build_q_stats,
     postprocess_fn=postprocess_trajectory,

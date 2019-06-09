@@ -41,7 +41,8 @@ class DynamicTFPolicy(TFPolicy):
                  update_ops_fn=None,
                  grad_stats_fn=None,
                  before_loss_init=None,
-                 make_action_sampler=None,
+                 make_model=None,
+                 action_sampler_fn=None,
                  existing_inputs=None,
                  existing_model=None,
                  get_batch_divisibility_req=None,
@@ -62,10 +63,12 @@ class DynamicTFPolicy(TFPolicy):
                 overriding the update ops to run when applying gradients
             before_loss_init (func): optional function to run prior to loss
                 init that takes the same arguments as __init__
-            make_action_sampler (func): optional function that returns a
-                tuple of action and action prob tensors. The function takes
-                (policy, input_dict, obs_space, action_space, config) as its
-                arguments
+            make_model (func): optional function that returns a ModelV2 object
+                given (policy, obs_space, action_space, config).
+                All policy variables should be created in this function.
+            action_sampler_fn (func): optional function that returns a
+                tuple of action and action prob tensors given
+                (policy, model, input_dict, obs_space, action_space, config).
             existing_inputs (OrderedDict): when copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
@@ -118,43 +121,43 @@ class DynamicTFPolicy(TFPolicy):
         self.seq_lens = tf.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
 
-        # Create the model network and action outputs
-        if make_action_sampler:
-            assert not existing_inputs, \
-                "Cloning not supported with custom action sampler"
-            self.model = None
-            self.dist_class = None
-            self.action_dist = None
-            self.state_in = None
-            self.state_out = None
-            action_sampler, action_prob = make_action_sampler(
-                self, self.input_dict, obs_space, action_space, config)
+        # Setup model
+        self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"])
+        if existing_model:
+            self.model = existing_model
+        elif make_model:
+            self.model = make_model(self, obs_space, action_space, config)
         else:
-            self.dist_class, logit_dim = ModelCatalog.get_action_dist(
-                action_space, self.config["model"])
-            if existing_model:
-                self.model = existing_model
-            else:
-                self.model = ModelCatalog.get_model_v2(
-                    obs_space,
-                    action_space,
-                    OutputSpec(logit_dim),
-                    self.config["model"],
-                    framework="tf")
-            if existing_inputs:
-                self.state_in = [
-                    v for k, v in existing_inputs.items()
-                    if k.startswith("state_in_")
-                ]
-                if self.state_in:
-                    self.seq_lens = existing_inputs["seq_lens"]
-            else:
-                self.state_in = [
-                    tf.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
-                    for s in self.model.get_initial_state()
-                ]
-            (self.model_out, self.feature_out, self.state_out) = self.model(
-                self.input_dict, self.state_in, self.seq_lens)
+            self.model = ModelCatalog.get_model_v2(
+                obs_space,
+                action_space,
+                OutputSpec(logit_dim),
+                self.config["model"],
+                framework="tf")
+        if existing_inputs:
+            self.state_in = [
+                v for k, v in existing_inputs.items()
+                if k.startswith("state_in_")
+            ]
+            if self.state_in:
+                self.seq_lens = existing_inputs["seq_lens"]
+        else:
+            self.state_in = [
+                tf.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
+                for s in self.model.get_initial_state()
+            ]
+        (self.model_out, self.feature_out, self.state_out) = self.model(
+            self.input_dict, self.state_in, self.seq_lens)
+
+        # Setup action sampler
+        if action_sampler_fn:
+            self.action_dist = None
+            self.dist_class = None
+            action_sampler, action_prob = action_sampler_fn(
+                self, self.model, self.input_dict, obs_space, action_space,
+                config)
+        else:
             self.action_dist = self.dist_class(self.model_out)
             action_sampler = self.action_dist.sample()
             action_prob = self.action_dist.sampled_action_prob()
