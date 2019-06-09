@@ -5,6 +5,7 @@ from __future__ import print_function
 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
 
 
@@ -89,13 +90,7 @@ def build_tf_policy(name,
     """
 
     original_kwargs = locals().copy()
-    base = DynamicTFPolicy
-    while mixins:
-
-        class new_base(mixins.pop(), base):
-            pass
-
-        base = new_base
+    base = add_mixins(DynamicTFPolicy, mixins)
 
     class policy_cls(base):
         def __init__(self,

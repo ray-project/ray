@@ -41,8 +41,9 @@ def actor_critic_loss(policy, batch_tensors):
     policy.loss = A3CLoss(
         policy.action_dist, batch_tensors[SampleBatch.ACTIONS],
         batch_tensors[Postprocessing.ADVANTAGES],
-        batch_tensors[Postprocessing.VALUE_TARGETS], policy.vf,
-        policy.config["vf_loss_coeff"], policy.config["entropy_coeff"])
+        batch_tensors[Postprocessing.VALUE_TARGETS],
+        policy.convert_to_eager(policy.vf), policy.config["vf_loss_coeff"],
+        policy.config["entropy_coeff"])
     return policy.loss.total_loss
 
 

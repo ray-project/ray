@@ -4,7 +4,7 @@
 #include <string>
 
 #include "ray/common/buffer.h"
-#include "ray/id.h"
+#include "ray/common/id.h"
 
 namespace ray {
 
