@@ -1,7 +1,7 @@
 #ifndef RAY_CORE_WORKER_TASK_EXECUTION_H
 #define RAY_CORE_WORKER_TASK_EXECUTION_H
 
-#include "common.h"
+#include "ray/core_worker/common.h"
 #include "ray/common/buffer.h"
 #include "ray/status.h"
 

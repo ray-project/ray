@@ -1,7 +1,7 @@
 #include "ray/raylet/task.h"
-#include "context.h"
-#include "core_worker.h"
-#include "task_interface.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/task_interface.h"
 
 namespace ray {
 
@@ -21,14 +21,14 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   }
 
   auto task_arguments = BuildTaskArguments(args);
-  auto ret = ToTaskLanguage(function.language);
-  if (!ret.first.ok()) {
-    RAY_LOG(ERROR) << ret.first.message() << "  task: " << task_id
+  ::Language language;
+  auto status = ToTaskLanguage(function.language, &language);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << status.message() << "  task: " << task_id
                    << ", language: " << static_cast<int>(function.language);
-    return ret.first;
+    return status;
   }
 
-  auto language = ret.second;
   ray::raylet::TaskSpecification spec(context.GetCurrentDriverID(),
                                       context.GetCurrentTaskID(), next_task_index,
                                       task_arguments, num_returns, task_options.resources,
@@ -57,14 +57,13 @@ Status CoreWorkerTaskInterface::CreateActor(
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
   auto task_arguments = BuildTaskArguments(args);
-  auto ret = ToTaskLanguage(function.language);
-  if (!ret.first.ok()) {
-    RAY_LOG(ERROR) << ret.first.message() << "  task: " << task_id
+  ::Language language;
+  auto status = ToTaskLanguage(function.language, &language);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << status.message() << "  task: " << task_id
                    << ", language: " << static_cast<int>(function.language);
-    return ret.first;
+    return status;
   }
-
-  auto language = ret.second;
 
   // Note that the caller is supposed to specify required placement resources
   // correctly via actor_creation_options.resources.
@@ -100,14 +99,13 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
 
   auto task_arguments = BuildTaskArguments(args);
-  auto ret = ToTaskLanguage(function.language);
-  if (!ret.first.ok()) {
-    RAY_LOG(ERROR) << ret.first.message() << "  task: " << task_id
+  ::Language language;
+  auto status = ToTaskLanguage(function.language, &language);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << status.message() << "  task: " << task_id
                    << ", language: " << static_cast<int>(function.language);
-    return ret.first;
+    return status;
   }
-
-  auto language = ret.second;
 
   std::vector<ActorHandleID> new_actor_handles;
   ray::raylet::TaskSpecification spec(
@@ -124,7 +122,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   actor_handle.SetActorCursor(actor_cursor);
   actor_handle.ClearNewActorHandles();
 
-  auto status = core_worker_.raylet_client_->SubmitTask(execution_dependencies, spec);
+  status = core_worker_.raylet_client_->SubmitTask(execution_dependencies, spec);
 
   // remove cursor from return ids.
   (*return_ids).pop_back();
@@ -134,7 +132,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
 std::vector<std::shared_ptr<raylet::TaskArgument>>
 CoreWorkerTaskInterface::BuildTaskArguments(const std::vector<TaskArg> &args) {
   std::vector<std::shared_ptr<raylet::TaskArgument>> task_arguments;
-  for (auto &arg : args) {
+  for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
       std::vector<ObjectID> references{arg.GetReference()};
       task_arguments.push_back(
@@ -148,18 +146,20 @@ CoreWorkerTaskInterface::BuildTaskArguments(const std::vector<TaskArg> &args) {
   return task_arguments;
 }
 
-std::pair<Status, ::Language> CoreWorkerTaskInterface::ToTaskLanguage(
-    WorkerLanguage language) {
+Status CoreWorkerTaskInterface::ToTaskLanguage(
+    WorkerLanguage language, ::Language *out) {
   switch (language) {
   case ray::WorkerLanguage::JAVA:
-    return std::make_pair(Status::OK(), ::Language::JAVA);
+    *out = ::Language::JAVA;
+    return Status::OK();
     break;
   case ray::WorkerLanguage::PYTHON:
-    return std::make_pair(Status::OK(), ::Language::PYTHON);
+    *out = ::Language::PYTHON;
+    return Status::OK();
     break;
   default:
-    return std::make_pair(Status::Invalid("invalid language specified"),
-                          ::Language::PYTHON);
+    *out = ::Language::PYTHON;
+    return Status::Invalid("invalid language specified");
     break;
   }
 }

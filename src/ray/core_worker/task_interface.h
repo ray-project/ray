@@ -2,7 +2,8 @@
 #define RAY_CORE_WORKER_TASK_INTERFACE_H
 
 #include <list>
-#include "common.h"
+
+#include "ray/core_worker/common.h"
 #include "ray/common/buffer.h"
 #include "ray/id.h"
 #include "ray/status.h"
@@ -14,7 +15,7 @@ class CoreWorker;
 /// Options of a non-actor-creation task.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(const int num_returns,
+  TaskOptions(int num_returns,
               const std::unordered_map<std::string, double> &resources)
       : num_returns(num_returns), resources(resources) {}
 
@@ -27,7 +28,7 @@ struct TaskOptions {
 /// Options of an actor creation task.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(const uint64_t max_reconstructions,
+  ActorCreationOptions(uint64_t max_reconstructions,
                        const std::unordered_map<std::string, double> &resources)
       : max_reconstructions(max_reconstructions), resources(resources) {}
 
@@ -139,8 +140,9 @@ class CoreWorkerTaskInterface {
   /// Translate from WorkLanguage to Language type (required by taks spec).
   ///
   /// \param[in] language Language for a task.
-  /// \return a pair of <Status, Language>.
-  std::pair<Status, ::Language> ToTaskLanguage(WorkerLanguage language);
+  /// \param[out] Translated task language.
+  /// \return Status.
+  Status ToTaskLanguage(WorkerLanguage language, ::Language *out);
 };
 
 }  // namespace ray

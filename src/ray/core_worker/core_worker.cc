@@ -1,5 +1,5 @@
-#include "core_worker.h"
-#include "context.h"
+#include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/context.h"
 
 namespace ray {
 

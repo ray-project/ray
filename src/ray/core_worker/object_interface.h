@@ -1,7 +1,7 @@
 #ifndef RAY_CORE_WORKER_OBJECT_INTERFACE_H
 #define RAY_CORE_WORKER_OBJECT_INTERFACE_H
 
-#include "common.h"
+#include "ray/core_worker/common.h"
 #include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/id.h"

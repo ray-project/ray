@@ -1,13 +1,13 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
-#include "common.h"
-#include "context.h"
-#include "object_interface.h"
 #include "ray/common/buffer.h"
+#include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/object_interface.h"
+#include "ray/core_worker/task_execution.h"
+#include "ray/core_worker/task_interface.h"
 #include "ray/raylet/raylet_client.h"
-#include "task_execution.h"
-#include "task_interface.h"
 
 namespace ray {
 

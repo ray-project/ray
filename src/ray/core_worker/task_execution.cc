@@ -1,6 +1,6 @@
-#include "task_execution.h"
-#include "context.h"
-#include "core_worker.h"
+#include "ray/core_worker/task_execution.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 
@@ -17,7 +17,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
       return status;
     }
 
-    auto &spec = *task_spec;
+    const auto &spec = *task_spec;
     core_worker_.worker_context_.SetCurrentTask(spec);
 
     WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
