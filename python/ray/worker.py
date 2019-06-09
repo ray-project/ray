@@ -399,9 +399,9 @@ class Worker(object):
             # fallbacks here to start from the beginning. Hopefully the object
             # could have a `__reduce__` method.
             register_custom_serializer(type(value), use_pickle=True)
-            warning_message = (
-                "WARNING: Serializing the class {} failed, "
-                "so are are falling back to cloudpickle.".format(type(value)))
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "so are are falling back to cloudpickle."
+                               .format(type(value)))
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 

@@ -201,17 +201,6 @@ ray.get([a.log.remote(), f.remote()])
         assert out.count(log_message) == 4
 
 
-def wait_for_success_output(process_handle, timeout=10):
-    # Wait until the process prints "success" and then return.
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        output_line = ray.utils.decode(
-            process_handle.stdout.readline()).strip()
-        if output_line == "success":
-            return
-    raise Exception("Timed out waiting for process to print success.")
-
-
 def test_logging_to_multiple_drivers(call_ray_start):
     redis_address = call_ray_start
 
@@ -219,7 +208,6 @@ def test_logging_to_multiple_drivers(call_ray_start):
 from __future__ import print_function
 import ray
 from ray.tests.utils import CaptureOutputAndError
-import sys
 import time
 
 ray.init(redis_address="{}")
