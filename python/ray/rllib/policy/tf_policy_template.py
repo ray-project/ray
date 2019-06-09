@@ -26,6 +26,7 @@ def build_tf_policy(name,
                     before_init=None,
                     before_loss_init=None,
                     after_init=None,
+                    make_model=None,
                     make_action_sampler=None,
                     mixins=None,
                     get_batch_divisibility_req=None,
@@ -39,6 +40,16 @@ def build_tf_policy(name,
 
     This means that you can e.g., depend on any policy attributes created in
     the running of `loss_fn` in later functions such as `stats_fn`.
+
+    In eager mode, the following functions will be run repeatedly on each
+    eager execution:
+        - loss_fn
+        - stats_fn
+        - grad_stats_fn
+        - make_action_sampler (if defined)
+    This means that these functions should not define any variables internally,
+    otherwise they will fail in eager mode execution. Variable should only
+    be created in make_model (if defined).
 
     Arguments:
         name (str): name of the policy (e.g., "PPOTFPolicy")
@@ -73,10 +84,11 @@ def build_tf_policy(name,
             init that takes the same arguments as the policy constructor
         after_init (func): optional function to run at the end of policy init
             that takes the same arguments as the policy constructor
+        make_model (func): optional function that returns a model tensor given
+            (policy, input_dict, obs_space, action_space, config). All policy
+            variables should be created in this function.
         make_action_sampler (func): optional function that returns a
-            tuple of action and action prob tensors. The function takes
-            (policy, input_dict, obs_space, action_space, config) as its
-            arguments
+            tuple of action and action prob tensors given (policy, model)
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the DynamicTFPolicy class
