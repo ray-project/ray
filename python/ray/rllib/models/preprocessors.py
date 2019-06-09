@@ -193,7 +193,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def transform(self, observation):
-        self.check_shape(observation)
+        self.check_shape(tuple(observation))
         array = np.zeros(self.shape)
         self.write(observation, array, 0)
         return array
