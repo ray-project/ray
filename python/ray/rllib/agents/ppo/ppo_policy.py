@@ -7,6 +7,7 @@ import logging
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
+from ray.rllib.models.modelv2 import OutputSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -114,7 +115,7 @@ def ppo_surrogate_loss(policy, batch_tensors):
         mask = tf.ones_like(
             batch_tensors[Postprocessing.ADVANTAGES], dtype=tf.bool)
 
-    policy.loss_obj = PPOLoss(
+    loss_obj = PPOLoss(
         policy.action_space,
         batch_tensors[Postprocessing.VALUE_TARGETS],
         batch_tensors[Postprocessing.ADVANTAGES],
@@ -131,25 +132,21 @@ def ppo_surrogate_loss(policy, batch_tensors):
         vf_loss_coeff=policy.config["vf_loss_coeff"],
         use_gae=policy.config["use_gae"])
 
-    return policy.loss_obj.loss
-
-
-def kl_and_loss_stats(policy, batch_tensors):
-    policy.explained_variance = explained_variance(
-        batch_tensors[Postprocessing.VALUE_TARGETS], policy.value_function)
-
-    stats_fetches = {
-        "cur_kl_coeff": policy.kl_coeff,
-        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
-        "total_loss": policy.loss_obj.loss,
-        "policy_loss": policy.loss_obj.mean_policy_loss,
-        "vf_loss": policy.loss_obj.mean_vf_loss,
-        "vf_explained_var": policy.explained_variance,
-        "kl": policy.loss_obj.mean_kl,
-        "entropy": policy.loss_obj.mean_entropy,
+    stats = {
+        "cur_kl_coeff": tf.cast(
+            policy.convert_to_eager(policy.kl_coeff), tf.float64),
+        "cur_lr": tf.cast(policy.convert_to_eager(policy.cur_lr), tf.float64),
+        "total_loss": loss_obj.loss,
+        "policy_loss": loss_obj.mean_policy_loss,
+        "vf_loss": loss_obj.mean_vf_loss,
+        "vf_explained_var": explained_variance(
+            batch_tensors[Postprocessing.VALUE_TARGETS],
+            policy.convert_to_eager(policy.value_function)),
+        "kl": loss_obj.mean_kl,
+        "entropy": loss_obj.mean_entropy,
     }
 
-    return stats_fetches
+    return loss_obj.loss, stats
 
 
 def vf_preds_and_logits_fetches(policy):
@@ -226,10 +223,10 @@ class ValueNetworkMixin(object):
         if config["use_gae"]:
             if config["vf_share_layers"]:
                 self.value_function = self.model.get_branch_output(
-                    "value", 1, feature_layer=self.feature_out)
+                    "value", OutputSpec(1), feature_layer=self.feature_out)
             else:
                 self.value_function = self.model.get_branch_output(
-                    "value", 1, feature_layer=None)
+                    "value", OutputSpec(1), feature_layer=None)
         else:
             self.value_function = tf.zeros(
                 shape=tf.shape(self.get_placeholder(SampleBatch.CUR_OBS))[:1])
@@ -258,7 +255,6 @@ PPOTFPolicy = build_tf_policy(
     name="PPOTFPolicy",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     loss_fn=ppo_surrogate_loss,
-    stats_fn=kl_and_loss_stats,
     extra_action_fetches_fn=vf_preds_and_logits_fetches,
     postprocess_fn=postprocess_ppo_gae,
     gradients_fn=clip_gradients,

@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+from ray.rllib.models.modelv2 import OutputSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
@@ -72,7 +73,8 @@ def add_value_function_fetch(policy):
 
 class ValueNetworkMixin(object):
     def __init__(self):
-        self.vf = self.model.value_function()
+        self.vf = self.model.get_branch_output(
+            "value", OutputSpec(1), feature_layer=self.feature_out)
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {

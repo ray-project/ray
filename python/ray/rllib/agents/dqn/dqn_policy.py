@@ -531,12 +531,12 @@ def build_q_losses(policy, batch_tensors):
         q_dist_tp1_best = tf.reduce_sum(
             q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1), 1)
 
-    policy.loss = _build_q_loss(
+    policy.q_loss = _build_q_loss(
         q_t_selected, q_logits_t_selected, q_tp1_best, q_dist_tp1_best,
         batch_tensors[SampleBatch.REWARDS], batch_tensors[SampleBatch.DONES],
         batch_tensors[PRIO_WEIGHTS], policy.config)
 
-    return policy.loss.loss
+    return policy.q_loss.loss
 
 
 def adam_optimizer(policy, config):
@@ -568,7 +568,7 @@ def exploration_setting_inputs(policy):
 def build_q_stats(policy, batch_tensors):
     return dict({
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
-    }, **policy.loss.stats)
+    }, **policy.q_loss.stats)
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):
@@ -694,7 +694,7 @@ DQNTFPolicy = build_tf_policy(
     gradients_fn=clip_gradients,
     extra_action_feed_fn=exploration_setting_inputs,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
-    extra_learn_fetches_fn=lambda policy: {"td_error": policy.loss.td_error},
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.convert_to_eager(policy.q_loss.td_error)},
     update_ops_fn=lambda policy: policy.q_batchnorm_update_ops,
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,

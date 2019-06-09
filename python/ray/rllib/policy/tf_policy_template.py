@@ -43,10 +43,11 @@ def build_tf_policy(name,
 
     In eager mode, the following functions will be run repeatedly on each
     eager execution:
+        - forward pass of the built model
+        - action_sampler_fn
         - loss_fn
         - stats_fn
         - grad_stats_fn
-        - action_sampler_fn (if defined)
     This means that these functions should not define any variables internally,
     otherwise they will fail in eager mode execution. Variable should only
     be created in make_model (if defined).
@@ -86,10 +87,12 @@ def build_tf_policy(name,
             that takes the same arguments as the policy constructor
         make_model (func): optional function that returns a ModelV2 object
             given (policy, obs_space, action_space, config).
-            All policy variables should be created in this function.
+            All policy variables should be created in this function. If not
+            specified, a default model will be created.
         action_sampler_fn (func): optional function that returns a
             tuple of action and action prob tensors given
             (policy, model, input_dict, obs_space, action_space, config).
+            If not specified, a default action distribution will be used.
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the DynamicTFPolicy class
@@ -133,7 +136,6 @@ def build_tf_policy(name,
                 action_space,
                 config,
                 loss_fn,
-                stats_fn=stats_fn,
                 grad_stats_fn=grad_stats_fn,
                 update_ops_fn=update_ops_fn,
                 before_loss_init=before_loss_init_wrapper,
