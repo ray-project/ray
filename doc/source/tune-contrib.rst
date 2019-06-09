@@ -15,10 +15,9 @@ We welcome (and encourage!) all forms of contributions to Tune, including and no
 Setting up a development environment
 ------------------------------------
 
-If you have Ray installed via pip (``pip install -U ray``), you can develop Tune locally without needing to compile Ray.
+If you have Ray installed via pip (``pip install -U [link to wheel]`` - you can find the link to the latest wheel `here <https://ray.readthedocs.io/en/latest/installation.html>`__), you can develop Tune locally without needing to compile Ray.
 
-
-First, you will need your own [fork](https://help.github.com/en/articles/fork-a-repo) to work on the code. Press the Fork button on the `ray project page <https://github.com/ray-project/ray/>`__.
+First, you will need your own `fork <https://help.github.com/en/articles/fork-a-repo>`__ to work on the code. Press the Fork button on the `ray project page <https://github.com/ray-project/ray/>`__.
 Then, clone the project to your machine and connect your repository to the upstream (main project) ray repository.
 
 .. code-block:: shell
@@ -28,10 +27,16 @@ Then, clone the project to your machine and connect your repository to the upstr
     git remote add upstream https://github.com/ray-project/ray.git
 
 
+Before continuing, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://ray.readthedocs.io/en/latest/installation.html>`__ installed.)
+
 Then, run `[path to ray directory]/python/ray/setup-dev.py` `(also here on Github) <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script.
 This sets up links between the ``tune`` dir (among other directories) in your local repo and the one bundled with the ``ray`` package.
 
-When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://ray.readthedocs.io/en/latest/installation.html>`__ installed.)
+As a last step make sure to install all packages required for development of tune. This can be done by running:
+
+.. code-block:: shell
+
+    pip install -r [path to ray directory]/python/ray/tune/requirements-dev.txt
 
 
 What can I work on?
@@ -89,7 +94,7 @@ burden and speedup review process.
 Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
 
 We also have tests for code formatting and linting that need to pass before merge.
-Install `yapf==0.23, flake8, flake8-quotes`. You can run the following locally:
+Install `yapf==0.23, flake8, flake8-quotes` (these are also in the `requirements-dev.txt` found in ``python/ray/tune``). You can run the following locally:
 
 .. code-block:: shell
 

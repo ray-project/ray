@@ -63,17 +63,15 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def choose_policy_optimizer(local_evaluator, remote_evaluators, config):
+def choose_policy_optimizer(workers, config):
     if config["simple_optimizer"]:
         return SyncSamplesOptimizer(
-            local_evaluator,
-            remote_evaluators,
+            workers,
             num_sgd_iter=config["num_sgd_iter"],
             train_batch_size=config["train_batch_size"])
 
     return LocalMultiGPUOptimizer(
-        local_evaluator,
-        remote_evaluators,
+        workers,
         sgd_batch_size=config["sgd_minibatch_size"],
         num_sgd_iter=config["num_sgd_iter"],
         num_gpus=config["num_gpus"],
@@ -87,7 +85,7 @@ def choose_policy_optimizer(local_evaluator, remote_evaluators, config):
 def update_kl(trainer, fetches):
     if "kl" in fetches:
         # single-agent
-        trainer.local_evaluator.for_policy(
+        trainer.workers.local_worker().for_policy(
             lambda pi: pi.update_kl(fetches["kl"]))
     else:
 
@@ -98,7 +96,7 @@ def update_kl(trainer, fetches):
                 logger.debug("No data for {}, not updating kl".format(pi_id))
 
         # multi-agent
-        trainer.local_evaluator.foreach_trainable_policy(update)
+        trainer.workers.local_worker().foreach_trainable_policy(update)
 
 
 def warn_about_obs_filter(trainer):
@@ -155,7 +153,7 @@ def validate_config(config):
 
 
 PPOTrainer = build_trainer(
-    name="PPOTrainer",
+    name="PPO",
     default_config=DEFAULT_CONFIG,
     default_policy=PPOTFPolicy,
     make_policy_optimizer=choose_policy_optimizer,

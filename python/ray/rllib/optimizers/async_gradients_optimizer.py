@@ -14,30 +14,30 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
     """An asynchronous RL optimizer, e.g. for implementing A3C.
 
     This optimizer asynchronously pulls and applies gradients from remote
-    evaluators, sending updated weights back as needed. This pipelines the
+    workers, sending updated weights back as needed. This pipelines the
     gradient computations on the remote workers.
     """
 
-    def __init__(self, local_evaluator, remote_evaluators, grads_per_step=100):
-        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+    def __init__(self, workers, grads_per_step=100):
+        PolicyOptimizer.__init__(self, workers)
 
         self.apply_timer = TimerStat()
         self.wait_timer = TimerStat()
         self.dispatch_timer = TimerStat()
         self.grads_per_step = grads_per_step
         self.learner_stats = {}
-        if not self.remote_evaluators:
+        if not self.workers.remote_workers():
             raise ValueError(
-                "Async optimizer requires at least 1 remote evaluator")
+                "Async optimizer requires at least 1 remote workers")
 
     @override(PolicyOptimizer)
     def step(self):
-        weights = ray.put(self.local_evaluator.get_weights())
+        weights = ray.put(self.workers.local_worker().get_weights())
         pending_gradients = {}
         num_gradients = 0
 
         # Kick off the first wave of async tasks
-        for e in self.remote_evaluators:
+        for e in self.workers.remote_workers():
             e.set_weights.remote(weights)
             future = e.compute_gradients.remote(e.sample.remote())
             pending_gradients[future] = e
@@ -56,13 +56,14 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
 
             if gradient is not None:
                 with self.apply_timer:
-                    self.local_evaluator.apply_gradients(gradient)
+                    self.workers.local_worker().apply_gradients(gradient)
                 self.num_steps_sampled += info["batch_count"]
                 self.num_steps_trained += info["batch_count"]
 
             if num_gradients < self.grads_per_step:
                 with self.dispatch_timer:
-                    e.set_weights.remote(self.local_evaluator.get_weights())
+                    e.set_weights.remote(
+                        self.workers.local_worker().get_weights())
                     future = e.compute_gradients.remote(e.sample.remote())
 
                     pending_gradients[future] = e

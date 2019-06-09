@@ -101,7 +101,11 @@ Concepts and Building Custom Algorithms
 
    -  `Building Policies in TensorFlow <rllib-concepts.html#building-policies-in-tensorflow>`__
 
+   -  `Building Policies in TensorFlow Eager <rllib-concepts.html#building-policies-in-tensorflow-eager>`__
+
    -  `Building Policies in PyTorch <rllib-concepts.html#building-policies-in-pytorch>`__
+
+   -  `Extending Existing Policies <rllib-concepts.html#extending-existing-policies>`__
 
 *  `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
 *  `Policy Optimization <rllib-concepts.html#policy-optimization>`__

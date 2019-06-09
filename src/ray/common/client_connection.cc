@@ -4,8 +4,7 @@
 #include <boost/bind.hpp>
 #include <sstream>
 
-#include "ray/ray_config.h"
-#include "ray/raylet/format/node_manager_generated.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -231,7 +230,7 @@ ClientConnection<T>::ClientConnection(
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names, int64_t error_message_type)
     : ServerConnection<T>(std::move(socket)),
-      client_id_(ClientID::nil()),
+      client_id_(ClientID::Nil()),
       message_handler_(message_handler),
       debug_label_(debug_label),
       message_type_enum_names_(message_type_enum_names),
@@ -307,7 +306,7 @@ bool ClientConnection<T>::CheckRayCookie() {
     ss << ", remote endpoint info: " << remote_endpoint_info;
   }
 
-  if (!client_id_.is_nil()) {
+  if (!client_id_.IsNil()) {
     // This is from a known client, which indicates a bug.
     RAY_LOG(FATAL) << ss.str();
   } else {

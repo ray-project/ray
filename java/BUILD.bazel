@@ -160,7 +160,7 @@ flatbuffers_generated_files = [
     "ErrorTableData.java",
     "ErrorType.java",
     "FunctionTableData.java",
-    "GcsTableEntry.java",
+    "GcsEntry.java",
     "HeartbeatBatchTableData.java",
     "HeartbeatTableData.java",
     "Language.java",

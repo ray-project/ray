@@ -13,7 +13,7 @@
 #include <sys/un.h>
 
 #include "ray/common/common_protocol.h"
-#include "ray/ray_config.h"
+#include "ray/common/ray_config.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/task_spec.h"
 #include "ray/util/logging.h"
@@ -312,12 +312,12 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply.get());
   auto found = reply_message->found();
   for (uint i = 0; i < found->size(); i++) {
-    ObjectID object_id = ObjectID::from_binary(found->Get(i)->str());
+    ObjectID object_id = ObjectID::FromBinary(found->Get(i)->str());
     result->first.push_back(object_id);
   }
   auto remaining = reply_message->remaining();
   for (uint i = 0; i < remaining->size(); i++) {
-    ObjectID object_id = ObjectID::from_binary(remaining->Get(i)->str());
+    ObjectID object_id = ObjectID::FromBinary(remaining->Get(i)->str());
     result->second.push_back(object_id);
   }
   return ray::Status::OK();
@@ -373,7 +373,7 @@ ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
   if (!status.ok()) return status;
   auto reply_message =
       flatbuffers::GetRoot<ray::protocol::PrepareActorCheckpointReply>(reply.get());
-  checkpoint_id = ActorCheckpointID::from_binary(reply_message->checkpoint_id()->str());
+  checkpoint_id = ActorCheckpointID::FromBinary(reply_message->checkpoint_id()->str());
   return ray::Status::OK();
 }
 

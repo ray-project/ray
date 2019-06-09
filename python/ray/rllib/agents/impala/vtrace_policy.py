@@ -15,7 +15,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy, \
     LearningRateSchedule
-from ray.rllib.models.action_dist import MultiCategorical
+from ray.rllib.models.action_dist import Categorical
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
@@ -191,9 +191,7 @@ class VTraceTFPolicy(LearningRateSchedule, VTracePostprocessing, TFPolicy):
         unpacked_outputs = tf.split(
             self.model.outputs, output_hidden_shape, axis=1)
 
-        dist_inputs = unpacked_outputs if is_multidiscrete else \
-            self.model.outputs
-        action_dist = dist_class(dist_inputs)
+        action_dist = dist_class(self.model.outputs)
 
         values = self.model.value_function()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
@@ -258,31 +256,12 @@ class VTraceTFPolicy(LearningRateSchedule, VTracePostprocessing, TFPolicy):
             rewards=make_time_major(rewards, drop_last=True),
             values=make_time_major(values, drop_last=True),
             bootstrap_value=make_time_major(values)[-1],
-            dist_class=dist_class,
+            dist_class=Categorical if is_multidiscrete else dist_class,
             valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=self.config["vf_loss_coeff"],
             entropy_coeff=self.config["entropy_coeff"],
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
             clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"])
-
-        # KL divergence between worker and learner logits for debugging
-        model_dist = MultiCategorical(unpacked_outputs)
-        behaviour_dist = MultiCategorical(unpacked_behaviour_logits)
-
-        kls = model_dist.kl(behaviour_dist)
-        if len(kls) > 1:
-            self.KL_stats = {}
-
-            for i, kl in enumerate(kls):
-                self.KL_stats.update({
-                    "mean_KL_{}".format(i): tf.reduce_mean(kl),
-                    "max_KL_{}".format(i): tf.reduce_max(kl),
-                })
-        else:
-            self.KL_stats = {
-                "mean_KL": tf.reduce_mean(kls[0]),
-                "max_KL": tf.reduce_max(kls[0]),
-            }
 
         # Initialize TFPolicy
         loss_in = [
@@ -318,7 +297,7 @@ class VTraceTFPolicy(LearningRateSchedule, VTracePostprocessing, TFPolicy):
         self.sess.run(tf.global_variables_initializer())
 
         self.stats_fetches = {
-            LEARNER_STATS_KEY: dict({
+            LEARNER_STATS_KEY: {
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
@@ -328,7 +307,7 @@ class VTraceTFPolicy(LearningRateSchedule, VTracePostprocessing, TFPolicy):
                 "vf_explained_var": explained_variance(
                     tf.reshape(self.loss.vtrace_returns.vs, [-1]),
                     tf.reshape(make_time_major(values, drop_last=True), [-1])),
-            }, **self.KL_stats),
+            },
         }
 
     @override(TFPolicy)

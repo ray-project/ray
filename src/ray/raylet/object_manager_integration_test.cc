@@ -3,7 +3,7 @@
 
 #include "gtest/gtest.h"
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "ray/raylet/raylet.h"
 
@@ -99,14 +99,14 @@ class TestObjectManagerBase : public ::testing::Test {
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
-    ObjectID object_id = ObjectID::from_random();
+    ObjectID object_id = ObjectID::FromRandom();
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
-    RAY_ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata,
-                                     metadata_size, &data));
-    RAY_ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
+    RAY_ARROW_CHECK_OK(
+        client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
+    RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
     return object_id;
   }
 
@@ -138,7 +138,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     gcs_client_1->client_table().RegisterClientAddedCallback([this](
         gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-      ClientID parsed_id = ClientID::from_binary(data.client_id);
+      ClientID parsed_id = ClientID::FromBinary(data.client_id);
       if (parsed_id == client_id_1 || parsed_id == client_id_2) {
         num_connected_clients += 1;
       }
@@ -158,7 +158,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
         [this](const object_manager::protocol::ObjectInfoT &object_info) {
-          v1.push_back(ObjectID::from_binary(object_info.object_id));
+          v1.push_back(ObjectID::FromBinary(object_info.object_id));
           if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TestPushComplete();
           }
@@ -166,7 +166,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
         [this](const object_manager::protocol::ObjectInfoT &object_info) {
-          v2.push_back(ObjectID::from_binary(object_info.object_id));
+          v2.push_back(ObjectID::FromBinary(object_info.object_id));
           if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TestPushComplete();
           }
@@ -208,13 +208,13 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
                   << "\n";
     ClientTableDataT data;
     gcs_client_2->client_table().GetClient(client_id_1, data);
-    RAY_LOG(INFO) << (ClientID::from_binary(data.client_id).is_nil());
-    RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
+    RAY_LOG(INFO) << (ClientID::FromBinary(data.client_id).IsNil());
+    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
     RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port;
     ClientTableDataT data2;
     gcs_client_1->client_table().GetClient(client_id_2, data2);
-    RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id);
+    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data2.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address;
     RAY_LOG(INFO) << "ClientPort=" << data2.node_manager_port;
   }

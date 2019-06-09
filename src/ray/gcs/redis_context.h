@@ -5,8 +5,8 @@
 #include <memory>
 #include <unordered_map>
 
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/util/logging.h"
 
 #include "ray/gcs/format/gcs_generated.h"
@@ -24,9 +24,43 @@ struct aeEventLoop;
 namespace ray {
 
 namespace gcs {
+
+/// A simple reply wrapper for redis reply.
+class CallbackReply {
+ public:
+  explicit CallbackReply(redisReply *redis_reply);
+
+  /// Whether this reply is `nil` type reply.
+  bool IsNil() const;
+
+  /// Read this reply data as an integer.
+  int64_t ReadAsInteger() const;
+
+  /// Read this reply data as a string.
+  ///
+  /// Note that this will return an empty string if
+  /// the type of this reply is `nil` or `status`.
+  std::string ReadAsString() const;
+
+  /// Read this reply data as a status.
+  Status ReadAsStatus() const;
+
+  /// Read this reply data as a pub-sub data.
+  std::string ReadAsPubsubData() const;
+
+  /// Read this reply data as a string array.
+  ///
+  /// \param array Since the return-value may be large,
+  /// make it as an output parameter.
+  void ReadAsStringArray(std::vector<std::string> *array) const;
+
+ private:
+  redisReply *redis_reply_;
+};
+
 /// Every callback should take in a vector of the results from the Redis
 /// operation.
-using RedisCallback = std::function<void(const std::string &)>;
+using RedisCallback = std::function<void(const CallbackReply &)>;
 
 void GlobalRedisCallback(void *c, void *r, void *privdata);
 
@@ -134,7 +168,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id,
       int status = redisAsyncCommand(
           async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
           reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-          pubsub_channel, id.data(), id.size(), data, length, log_length);
+          pubsub_channel, id.Data(), id.Size(), data, length, log_length);
       if (status == REDIS_ERR) {
         return Status::RedisError(std::string(async_context_->errstr));
       }
@@ -143,7 +177,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id,
       int status = redisAsyncCommand(
           async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
           reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-          pubsub_channel, id.data(), id.size(), data, length);
+          pubsub_channel, id.Data(), id.Size(), data, length);
       if (status == REDIS_ERR) {
         return Status::RedisError(std::string(async_context_->errstr));
       }
@@ -154,7 +188,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id,
     int status = redisAsyncCommand(
         async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-        pubsub_channel, id.data(), id.size());
+        pubsub_channel, id.Data(), id.Size());
     if (status == REDIS_ERR) {
       return Status::RedisError(std::string(async_context_->errstr));
     }

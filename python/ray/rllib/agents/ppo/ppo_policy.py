@@ -106,8 +106,10 @@ class PPOLoss(object):
 
 def ppo_surrogate_loss(policy, batch_tensors):
     if policy.model.state_in:
-        max_seq_len = tf.reduce_max(policy.model.seq_lens)
-        mask = tf.sequence_mask(policy.model.seq_lens, max_seq_len)
+        max_seq_len = tf.reduce_max(
+            policy.convert_to_eager(policy.model.seq_lens))
+        mask = tf.sequence_mask(
+            policy.convert_to_eager(policy.model.seq_lens), max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(
@@ -121,8 +123,8 @@ def ppo_surrogate_loss(policy, batch_tensors):
         batch_tensors[BEHAVIOUR_LOGITS],
         batch_tensors[SampleBatch.VF_PREDS],
         policy.action_dist,
-        policy.value_function,
-        policy.kl_coeff,
+        policy.convert_to_eager(policy.value_function),
+        policy.convert_to_eager(policy.kl_coeff),
         mask,
         entropy_coeff=policy.config["entropy_coeff"],
         clip_param=policy.config["clip_param"],
@@ -216,7 +218,7 @@ class KLCoeffMixin(object):
             self.kl_coeff_val *= 1.5
         elif sampled_kl < 0.5 * self.kl_target:
             self.kl_coeff_val *= 0.5
-        self.kl_coeff.load(self.kl_coeff_val, session=self._sess)
+        self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
         return self.kl_coeff_val
 
 
@@ -240,28 +242,26 @@ class ValueNetworkMixin(object):
                         "a custom LSTM model that overrides the "
                         "value_function() method.")
                 with tf.variable_scope("value_function"):
-                    self.value_function = ModelCatalog.get_model({
-                        "obs": self._obs_input,
-                        "prev_actions": self._prev_action_input,
-                        "prev_rewards": self._prev_reward_input,
-                        "is_training": self._get_is_training_placeholder(),
-                    }, obs_space, action_space, 1, vf_config).outputs
+                    self.value_function = ModelCatalog.get_model(
+                        self.get_obs_input_dict(), obs_space, action_space, 1,
+                        vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
         else:
-            self.value_function = tf.zeros(shape=tf.shape(self._obs_input)[:1])
+            self.value_function = tf.zeros(
+                shape=tf.shape(self.get_placeholder(SampleBatch.CUR_OBS))[:1])
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {
-            self._obs_input: [ob],
-            self._prev_action_input: [prev_action],
-            self._prev_reward_input: [prev_reward],
+            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
+            self.get_placeholder(SampleBatch.PREV_ACTIONS): [prev_action],
+            self.get_placeholder(SampleBatch.PREV_REWARDS): [prev_reward],
             self.model.seq_lens: [1]
         }
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):
             feed_dict[k] = v
-        vf = self._sess.run(self.value_function, feed_dict)
+        vf = self.get_session().run(self.value_function, feed_dict)
         return vf[0]
 
 
