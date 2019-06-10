@@ -21,13 +21,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   }
 
   auto task_arguments = BuildTaskArguments(args);
-  ::Language language;
-  auto status = ToTaskLanguage(function.language, &language);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << status.message() << "  task: " << task_id
-                   << ", language: " << static_cast<int>(function.language);
-    return status;
-  }
+  auto language = ToTaskLanguage(function.language);
 
   ray::raylet::TaskSpecification spec(context.GetCurrentDriverID(),
                                       context.GetCurrentTaskID(), next_task_index,
@@ -57,13 +51,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
   auto task_arguments = BuildTaskArguments(args);
-  ::Language language;
-  auto status = ToTaskLanguage(function.language, &language);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << status.message() << "  task: " << task_id
-                   << ", language: " << static_cast<int>(function.language);
-    return status;
-  }
+  auto language = ToTaskLanguage(function.language);
 
   // Note that the caller is supposed to specify required placement resources
   // correctly via actor_creation_options.resources.
@@ -99,13 +87,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
 
   auto task_arguments = BuildTaskArguments(args);
-  ::Language language;
-  auto status = ToTaskLanguage(function.language, &language);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << status.message() << "  task: " << task_id
-                   << ", language: " << static_cast<int>(function.language);
-    return status;
-  }
+  auto language = ToTaskLanguage(function.language);
 
   std::vector<ActorHandleID> new_actor_handles;
   ray::raylet::TaskSpecification spec(
@@ -122,7 +104,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   actor_handle.SetActorCursor(actor_cursor);
   actor_handle.ClearNewActorHandles();
 
-  status = core_worker_.raylet_client_->SubmitTask(execution_dependencies, spec);
+  auto status = core_worker_.raylet_client_->SubmitTask(execution_dependencies, spec);
 
   // remove cursor from return ids.
   (*return_ids).pop_back();
@@ -146,20 +128,18 @@ CoreWorkerTaskInterface::BuildTaskArguments(const std::vector<TaskArg> &args) {
   return task_arguments;
 }
 
-Status CoreWorkerTaskInterface::ToTaskLanguage(
-    WorkerLanguage language, ::Language *out) {
+::Language CoreWorkerTaskInterface::ToTaskLanguage(
+    WorkerLanguage language) {
   switch (language) {
   case ray::WorkerLanguage::JAVA:
-    *out = ::Language::JAVA;
-    return Status::OK();
+    return ::Language::JAVA;
     break;
   case ray::WorkerLanguage::PYTHON:
-    *out = ::Language::PYTHON;
-    return Status::OK();
+    return ::Language::PYTHON;
     break;
   default:
-    *out = ::Language::PYTHON;
-    return Status::Invalid("invalid language specified");
+    RAY_LOG(FATAL) << "invalid language specified: "
+                   << static_cast<int>(language);
     break;
   }
 }

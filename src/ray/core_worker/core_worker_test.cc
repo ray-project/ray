@@ -163,7 +163,6 @@ class CoreWorkerTest : public ::testing::Test {
       ObjectID object_id;
       RAY_CHECK_OK(driver.Objects().Put(*buffer1, &object_id));
 
-      // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByReference(object_id));
 
@@ -220,8 +219,7 @@ class CoreWorkerTest : public ::testing::Test {
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
-      // args.emplace_back(TaskArg::PassByReference(object_id));
-      args.emplace_back(TaskArg::PassByValue(buffer1));
+      args.emplace_back(TaskArg::PassByReference(object_id));
       args.emplace_back(TaskArg::PassByValue(buffer2));
 
       TaskOptions options{1, resources};
@@ -368,7 +366,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_TRUE(!results[1]);
 }
 
-TEST_F(TwoNodeTest, TestObjectInterfaceCrossMachine) {
+TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   CoreWorker worker1(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                      raylet_store_socket_names_[0], raylet_socket_names_[0],
                      DriverID::FromRandom());
@@ -441,7 +439,7 @@ TEST_F(SingleNodeTest, TestNormalTaskLocal) {
   TestNormalTask(resources);
 }
 
-TEST_F(TwoNodeTest, TestNormalTaskCrossMachine) {
+TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
   TestNormalTask(resources);
@@ -452,7 +450,7 @@ TEST_F(SingleNodeTest, TestActorTaskLocal) {
   TestActorTask(resources);
 }
 
-TEST_F(TwoNodeTest, TestActorTaskCrossMachine) {
+TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
   TestActorTask(resources);

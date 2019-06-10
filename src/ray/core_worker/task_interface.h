@@ -140,9 +140,8 @@ class CoreWorkerTaskInterface {
   /// Translate from WorkLanguage to Language type (required by taks spec).
   ///
   /// \param[in] language Language for a task.
-  /// \param[out] Translated task language.
-  /// \return Status.
-  Status ToTaskLanguage(WorkerLanguage language, ::Language *out);
+  /// \return Translated task language.
+  ::Language ToTaskLanguage(WorkerLanguage language);
 };
 
 }  // namespace ray

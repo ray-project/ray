@@ -9,7 +9,6 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
 
   while (true) {
     std::unique_ptr<raylet::TaskSpecification> task_spec;
-    // RAY_CHECK_OK(core_worker_.raylet_client_->GetTask(&task_spec));
     auto status = core_worker_.raylet_client_->GetTask(&task_spec);
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Get task failed with error: "
