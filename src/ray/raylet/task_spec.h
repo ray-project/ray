@@ -128,6 +128,8 @@ class TaskSpecification {
   /// will default to be equal to the required_resources argument.
   /// \param language The language of the worker that must execute the function.
   /// \param function_descriptor The function descriptor.
+  /// \param worker_starting_prefix The prefix string for starting an actor worker.
+  /// \param worker_starting_suffix The suffix string for starting an actor worker.
   TaskSpecification(
       const DriverID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
       const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
@@ -138,7 +140,9 @@ class TaskSpecification {
       int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const Language &language, const std::vector<std::string> &function_descriptor);
+      const Language &language, const std::vector<std::string> &function_descriptor,
+      const std::string &worker_starting_prefix = "",
+      const std::string &worker_starting_suffix = "");
 
   /// Deserialize a task specification from a string.
   ///
@@ -213,6 +217,10 @@ class TaskSpecification {
   int64_t ActorCounter() const;
   ObjectID ActorDummyObject() const;
   std::vector<ActorHandleID> NewActorHandles() const;
+
+  // Methods specific to actor creating tasks.
+  std::string WorkerStartingPrefix() const;
+  std::string WorkerStartingSuffix() const;
 
  private:
   /// Assign the specification data from a pointer.
