@@ -12,6 +12,7 @@ import uuid
 import time
 import tempfile
 import os
+import re
 from numbers import Number
 
 # For compatibility under py2 to consider unicode as str
@@ -183,13 +184,17 @@ def has_trainable(trainable_name):
 
 
 def _find_newest_ckpt(ckpt_dir):
-    if not ckpt_dir or ckpt_dir.endswith("checkpoint-"):
+    if not ckpt_dir or re.match(".*/checkpoint_\d+/*", ckpt_dir):
         return ckpt_dir
     try:
-        newest_ckpt_path = max(recursive_fnmatch(ckpt_dir, "checkpoint-[0-9]"))
-        logger.info("Find newest checkpoint file {} in {}.".format(
-            newest_ckpt_path, ckpt_dir))
-        return newest_ckpt_path
+        ckpt_files = recursive_fnmatch(ckpt_dir, "*.tune_metadata")
+        if ckpt_files:
+            newest_ckpt_path = max(ckpt_files)
+            logger.info("Find newest checkpoint file {} in {}.".format(
+                newest_ckpt_path, ckpt_dir))
+            return os.path.splitext(newest_ckpt_path)[0]
+        else:
+            raise ValueError("No checkpoint file in {}.".format(ckpt_dir))
     except OSError as e:
         raise e
 
