@@ -49,10 +49,10 @@ This document describes the process for creating new releases.
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_6_intel.whl
 
 6. **Final Testing:** Send a link to the wheels to the other contributors and
-   core members of the Ray project. Make sure the wheels are tested on Ubuntu,
-   Mac OSX 10.12, and Mac OSX 10.13+. This testing should verify that the
-   wheels are correct and that all release blockers have been resolved. Should
-   a new release blocker be found, repeat steps 5-7.
+   core members of the Ray project. Make sure the wheels are tested on Ubuntu
+   and MacOS (ideally multiple versions of Ubuntu and MacOS). This testing
+   should verify that the wheels are correct and that all release blockers have
+   been resolved. Should a new release blocker be found, repeat steps 5-7.
 
 7. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
@@ -60,7 +60,7 @@ This document describes the process for creating new releases.
 
    .. code-block:: bash
 
-     twine upload --repository-url https://test.pypi.org/legacy/ray/.whl/*
+     twine upload --repository-url https://test.pypi.org/legacy/ ray/.whl/*
 
    assuming that you've downloaded the wheels from the ``ray-wheels`` S3 bucket
    and put them in ``ray/.whl``, that you've installed ``twine`` through
