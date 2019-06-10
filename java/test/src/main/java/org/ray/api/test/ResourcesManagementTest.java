@@ -46,14 +46,16 @@ public class ResourcesManagementTest extends BaseTest {
   @Test
   public void testMethods() {
     TestUtils.skipTestUnderSingleProcess();
-    CallOptions callOptions1 = new CallOptions(ImmutableMap.of("CPU", 4.0));
+    CallOptions callOptions1 =
+        new CallOptions.Builder().setResources(ImmutableMap.of("CPU", 4.0)).createCallOptions();
 
     // This is a case that can satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
     RayObject<Integer> result1 = Ray.call(ResourcesManagementTest::echo, 100, callOptions1);
     Assert.assertEquals(100, (int) result1.get());
 
-    CallOptions callOptions2 = new CallOptions(ImmutableMap.of("CPU", 4.0));
+    CallOptions callOptions2 =
+        new CallOptions.Builder().setResources(ImmutableMap.of("CPU", 4.0)).createCallOptions();
 
     // This is a case that can't satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
@@ -64,7 +66,8 @@ public class ResourcesManagementTest extends BaseTest {
     Assert.assertEquals(0, waitResult.getUnready().size());
 
     try {
-      CallOptions callOptions3 = new CallOptions(ImmutableMap.of("CPU", 0.0));
+      CallOptions callOptions3 =
+          new CallOptions.Builder().setResources(ImmutableMap.of("CPU", 0.0)).createCallOptions();
       Assert.fail();
     } catch (RuntimeException e) {
       // We should receive a RuntimeException indicates that we should not
@@ -76,9 +79,8 @@ public class ResourcesManagementTest extends BaseTest {
   public void testActors() {
     TestUtils.skipTestUnderSingleProcess();
 
-    ActorCreationOptions actorCreationOptions1 =
-        new ActorCreationOptions(ImmutableMap.of("CPU", 2.0));
-
+    ActorCreationOptions actorCreationOptions1 = new ActorCreationOptions.Builder()
+        .setResources(ImmutableMap.of("CPU", 2.0)).createActorCreationOptions();
     // This is a case that can satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
     RayActor<Echo> echo1 = Ray.createActor(Echo::new, actorCreationOptions1);
@@ -87,8 +89,8 @@ public class ResourcesManagementTest extends BaseTest {
 
     // This is a case that can't satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
-    ActorCreationOptions actorCreationOptions2 =
-        new ActorCreationOptions(ImmutableMap.of("CPU", 8.0));
+    ActorCreationOptions actorCreationOptions2 = new ActorCreationOptions.Builder()
+        .setResources(ImmutableMap.of("CPU", 8.0)).createActorCreationOptions();
 
     RayActor<ResourcesManagementTest.Echo> echo2 =
         Ray.createActor(Echo::new, actorCreationOptions2);
