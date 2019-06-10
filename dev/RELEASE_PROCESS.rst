@@ -118,8 +118,7 @@ This document describes the process for creating new releases.
 
     New minor release (e.g., 0.7.0): Increment the minor version and append
     ``.dev0`` to the version. For example, if the version of the new release is
-    0.7.0, the master branch needs to be updated to 0.8.0.dev0. `Example PR for
-    minor release`
+    0.7.0, the master branch needs to be updated to 0.8.0.dev0.
 
     New micro release (e.g., 0.7.1): Increment the ``dev`` number, such that the
     number after ``dev`` equals the micro version. For example, if the version
