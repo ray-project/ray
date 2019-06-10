@@ -63,8 +63,6 @@ class Raylet {
   void DoAcceptObjectManager();
   /// Handle an accepted tcp client connection.
   void HandleAcceptObjectManager(const boost::system::error_code &error);
-  void DoAcceptNodeManager();
-  void HandleAcceptNodeManager(const boost::system::error_code &error);
 
   friend class TestObjectManagerIntegration;
 
@@ -88,10 +86,6 @@ class Raylet {
   boost::asio::ip::tcp::acceptor object_manager_acceptor_;
   /// The socket to listen on for new object manager tcp clients.
   boost::asio::ip::tcp::socket object_manager_socket_;
-  /// An acceptor for new tcp clients.
-  boost::asio::ip::tcp::acceptor node_manager_acceptor_;
-  /// The socket to listen on for new tcp clients.
-  boost::asio::ip::tcp::socket node_manager_socket_;
 };
 
 }  // namespace raylet

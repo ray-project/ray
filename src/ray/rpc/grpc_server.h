@@ -27,10 +27,9 @@ class GrpcServer {
 
   virtual void EnqueueRequests() = 0;
 
-  const uint32_t port_;
-
- private:
   void StartPolling();
+
+  const uint32_t port_;
 
   std::unique_ptr<std::thread> polling_thread_;
 

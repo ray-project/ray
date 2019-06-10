@@ -199,6 +199,9 @@ class TaskSpecification {
   ///
   /// \return The resources that are required to place a task on a node.
   const ResourceSet GetRequiredPlacementResources() const;
+
+  std::string Serialize() const;
+
   bool IsDriverTask() const;
   Language GetLanguage() const;
 
