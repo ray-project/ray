@@ -21,12 +21,12 @@ cpp_grpc_library(
 
 cc_library(
     name = "node_manager_rpc_lib",
-    srcs = [
-        "src/ray/rpc/node_manager_client.cc",
-    ],
-    hdrs = [
-        "src/ray/rpc/node_manager_client.h",
-    ],
+    srcs = glob([
+        "src/ray/rpc/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/rpc/*.h",
+    ]),
     copts = COPTS,
     deps = [
         ":ray_common",
