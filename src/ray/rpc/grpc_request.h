@@ -3,9 +3,11 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include "ray/common/status.h"
+
 namespace ray {
 
-using RequestDoneCallback = void(Status status);
+using RequestDoneCallback = std::function<void(Status)>;
 
 class UntypedGrpcRequest {
  public:
@@ -68,7 +70,9 @@ class GrpcRequest : public UntypedGrpcRequest {
     if (ok) {
       new GrpcRequest(grpc_service_, enqueue_function_, service_handler_,
                       handle_request_function_, cq_);
-      service_handler_->*handle_request_function_(request_, &reply_, this->SendResponse);
+      (service_handler_->*handle_request_function_)(
+                             request_, &reply_,
+                             [this](Status status) { SendResponse(status); });
     }
   }
 
@@ -95,7 +99,7 @@ class GrpcRequest : public UntypedGrpcRequest {
 
   GrpcRequestTag request_received_tag_{this, GrpcRequestTag::TagType::REQUEST_RECEIVED};
   GrpcRequestTag reply_sent_tag_{this, GrpcRequestTag::TagType::REPLY_SENT};
-};
+};  // namespace ray
 
 }  // namespace ray
 

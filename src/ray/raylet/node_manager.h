@@ -4,6 +4,8 @@
 #include <boost/asio/steady_timer.hpp>
 
 // clang-format off
+#include "ray/rpc/node_manager_server.h"
+#include "ray/rpc/node_manager_client.h"
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
@@ -52,7 +54,7 @@ struct NodeManagerConfig {
   std::string session_dir;
 };
 
-class NodeManager {
+class NodeManager : public NodeManagerServiceHandler {
  public:
   /// Create a node manager.
   ///
@@ -450,15 +452,8 @@ class NodeManager {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
-  /// connect to a remote node manager.
-  ///
-  /// \param client_id The client ID for the remote node manager.
-  /// \param client_address The IP address for the remote node manager.
-  /// \param client_port The listening port for the remote node manager.
-  /// \return True if the connect succeeds.
-  ray::Status ConnectRemoteNodeManager(const ClientID &client_id,
-                                       const std::string &client_address,
-                                       int32_t client_port);
+  void HandleForwardTask(const ForwardTaskRequest &request, ForwardTaskReply *reply,
+                         RequestDoneCallback done_callback) override;
 
   // GCS client ID for this node.
   ClientID client_id_;
@@ -505,9 +500,6 @@ class NodeManager {
   TaskDependencyManager task_dependency_manager_;
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
-  std::vector<ClientID> remote_clients_;
-  std::unordered_map<ClientID, std::shared_ptr<TcpServerConnection>>
-      remote_server_connections_;
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
@@ -515,6 +507,10 @@ class NodeManager {
   /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
+
+  NodeManagerServer node_manager_server_;
+
+  std::unordered_map<ClientID, std::unique_ptr<NodeManagerClient>> node_manager_clients_;
 };
 
 }  // namespace raylet

@@ -204,6 +204,10 @@ const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
   return required_placement_resources_;
 }
 
+std::string TaskSpecification::Serialize() const {
+  return std::string(reinterpret_cast<const char *>(data()), size());
+}
+
 bool TaskSpecification::IsDriverTask() const {
   // Driver tasks are empty tasks that have no function ID set.
   return FunctionDescriptor().empty();

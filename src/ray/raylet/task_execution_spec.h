@@ -80,6 +80,7 @@ class TaskExecutionSpecification {
   /// time stamp to. Tracks the last time this task entered a raylet.
   void SetLastTimestamp(int64_t new_timestamp);
 
+  std::string Serialize() const;
  private:
   protocol::TaskExecutionSpecificationT execution_spec_;
 };
