@@ -53,7 +53,7 @@ run_test(){
 }
 
 pushd "$ROOT_DIR"
-    run_test test_many_tasks_and_transfers
+    run_test test_many_tasks
     run_test test_dead_actors
 popd
 
