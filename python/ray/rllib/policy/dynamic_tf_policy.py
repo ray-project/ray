@@ -59,9 +59,9 @@ class DynamicTFPolicy(TFPolicy):
             observation_space (gym.Space): Observation space of the policy.
             action_space (gym.Space): Action space of the policy.
             config (dict): Policy-specific configuration data.
-            loss_fn (func): function that returns the loss tensor and a dict of
-                stats tensors given the policy and dict of experience tensors
-                as arguments
+            loss_fn (func): function that returns the loss tensor, or a tuple
+                of the loss and a dict of stats tensors. The arguments given
+                are the policy and dict of experience tensors
             grad_stats_fn (func): optional function that returns a dict of
                 TF fetches given the policy and loss gradient tensors
             update_ops_fn (func): optional function that returns a list
@@ -370,6 +370,7 @@ class DynamicTFPolicy(TFPolicy):
         # `policy` need to use `policy.convert_to_eager(tensor)`.
         if self.config["use_eager"]:
             loss, stats = self._gen_eager_loss_op(loss_inputs)
+            loss = tf.reshape(loss, ())
 
         self._stats_fetches.update(stats)
         TFPolicy._initialize_loss(self, loss, loss_inputs)
