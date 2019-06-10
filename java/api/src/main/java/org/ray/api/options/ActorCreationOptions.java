@@ -13,17 +13,17 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public final int maxReconstructions;
 
-  private ActorCreationOptions(Builder builder) {
-    super(builder.resources);
-    this.maxReconstructions = builder.maxReconstructions;
+  private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions) {
+    super(resources);
+    this.maxReconstructions = maxReconstructions;
   }
 
   /**
-   * The inner class for building ActorCreationOptions.
+   *  The inner class for building ActorCreationOptions.
    */
   public static class Builder {
-    private Map<String, Double> resources = new HashMap<>();
 
+    private Map<String, Double> resources = new HashMap<>();
     private int maxReconstructions = NO_RECONSTRUCTION;
 
     public Builder setResources(Map<String, Double> resources) {
@@ -36,8 +36,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    public ActorCreationOptions build() {
-      return new ActorCreationOptions(this);
+    public ActorCreationOptions createActorCreationOptions() {
+      return new ActorCreationOptions(resources, maxReconstructions);
     }
   }
 
