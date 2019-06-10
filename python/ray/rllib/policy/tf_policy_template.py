@@ -14,6 +14,7 @@ def build_tf_policy(name,
                     loss_fn,
                     get_default_config=None,
                     postprocess_fn=None,
+                    stats_fn=None,
                     update_ops_fn=None,
                     optimizer_fn=None,
                     gradients_fn=None,
@@ -44,19 +45,21 @@ def build_tf_policy(name,
     repeatedly on each eager execution:
         - action_sampler_fn
         - loss_fn
+        - stats_fn
     This means that these functions should not define any variables internally,
     otherwise they will fail in eager mode execution. Variable should only
     be created in make_model (if defined).
 
     Arguments:
         name (str): name of the policy (e.g., "PPOTFPolicy")
-        loss_fn (func): function that returns the loss tensor, or a tuple
-            of the loss and a dict of stats tensors. The arguments given
-            are the policy and dict of experience tensors
+        loss_fn (func): function that returns a loss tensor the policy,
+            and dict of experience tensor placeholdes
         get_default_config (func): optional function that returns the default
             config to merge with any overrides
         postprocess_fn (func): optional experience postprocessing function
             that takes the same args as Policy.postprocess_trajectory()
+        stats_fn (func): optional function that returns a dict of
+            TF fetches given the policy and batch input tensors
         update_ops_fn (func): optional function that returns a list overriding
             the update ops to run when applying gradients
         optimizer_fn (func): optional function that returns a tf.Optimizer
@@ -131,6 +134,7 @@ def build_tf_policy(name,
                 action_space,
                 config,
                 loss_fn,
+                stats_fn=stats_fn,
                 grad_stats_fn=grad_stats_fn,
                 update_ops_fn=update_ops_fn,
                 before_loss_init=before_loss_init_wrapper,

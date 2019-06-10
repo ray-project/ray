@@ -505,8 +505,9 @@ def build_q_losses(policy, batch_tensors):
     policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
-    one_hot_selection = tf.one_hot(tf.cast(batch_tensors[SampleBatch.ACTIONS], tf.int32),
-                                   policy.action_space.n)
+    one_hot_selection = tf.one_hot(
+        tf.cast(batch_tensors[SampleBatch.ACTIONS], tf.int32),
+        policy.action_space.n)
     q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
     q_logits_t_selected = tf.reduce_sum(
         q_logits_t * tf.expand_dims(one_hot_selection, -1), 1)
@@ -567,9 +568,6 @@ def exploration_setting_inputs(policy):
         policy.stochastic: True,
         policy.eps: policy.cur_epsilon,
     }
-
-
-def build_q_stats(policy, batch_tensors):
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):
