@@ -9,6 +9,7 @@ from threading import Lock
 
 try:
     import torch
+    import torch.nn as nn
 except ImportError:
     pass  # soft dep
 
@@ -53,6 +54,8 @@ class TorchPolicy(Policy):
         self.device = (torch.device("cuda")
                        if bool(os.environ.get("CUDA_VISIBLE_DEVICES", None))
                        else torch.device("cpu"))
+        if torch.cuda().device_count() > 1:
+            model = nn.DataParallel(model)
         self._model = model.to(self.device)
         self._loss = loss
         self._optimizer = self.optimizer()
