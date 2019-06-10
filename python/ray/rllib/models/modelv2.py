@@ -203,31 +203,3 @@ class ModelV2(object):
             raise ValueError("State output is not a list: {}".format(state))
 
         return outputs, feature_layer, state
-
-
-class TFModelV2(ModelV2):
-    """TF version of ModelV2."""
-
-    def __init__(self, obs_space, action_space, output_spec, options, name):
-        ModelV2.__init__(
-            self,
-            obs_space,
-            action_space,
-            output_spec,
-            options,
-            name,
-            framework="tf")
-
-
-class TorchModelV2(ModelV2):
-    """Torch version of ModelV2."""
-
-    def __init__(self, obs_space, action_space, output_spec, options, name):
-        ModelV2.__init__(
-            self,
-            obs_space,
-            action_space,
-            output_spec,
-            options,
-            name,
-            framework="torch")

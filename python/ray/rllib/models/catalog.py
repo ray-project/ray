@@ -16,7 +16,7 @@ from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
                                           MultiActionDistribution, Dirichlet)
 from ray.rllib.models.torch_action_dist import (TorchCategorical,
                                                 TorchDiagGaussian)
-from ray.rllib.models.modelv1_compat import ModelV1Wrapper
+from ray.rllib.models.tf.modelv1_compat import ModelV1Wrapper
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -322,10 +322,10 @@ class ModelCatalog(object):
         Returns:
             model (models.Model): Neural network model.
         """
-        from ray.rllib.models.pytorch.fcnet import (FullyConnectedNetwork as
-                                                    PyTorchFCNet)
-        from ray.rllib.models.pytorch.visionnet import (VisionNetwork as
-                                                        PyTorchVisionNet)
+        from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
+                                                  PyTorchFCNet)
+        from ray.rllib.models.torch.visionnet import (VisionNetwork as
+                                                      PyTorchVisionNet)
 
         options = options or MODEL_DEFAULTS
 
