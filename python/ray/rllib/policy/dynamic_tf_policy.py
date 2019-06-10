@@ -93,8 +93,20 @@ class DynamicTFPolicy(TFPolicy):
             state_in
             seq_lens
         """
+
+        self.observation_space = obs_space
+        self.action_space = action_space
         self.config = config
-        self._loss_fn = loss_fn
+
+        def wrapped_loss(*args):
+            loss = loss_fn(*args)
+            stats = {}
+            if type(loss) in [tuple, list]:
+                loss, stats = loss
+            return loss, stats
+
+        self._loss_fn = wrapped_loss
+        self._action_sampler_fn = action_sampler_fn
         self._grad_stats_fn = grad_stats_fn
         self._update_ops_fn = update_ops_fn
         self._obs_include_prev_action_reward = obs_include_prev_action_reward
@@ -120,13 +132,17 @@ class DynamicTFPolicy(TFPolicy):
 
         self.input_dict = {
             SampleBatch.CUR_OBS: obs,
-            SampleBatch.PREV_ACTIONS: prev_actions,
-            SampleBatch.PREV_REWARDS: prev_rewards,
             "is_training": self._get_is_training_placeholder(),
         }
+        if self._obs_include_prev_action_reward:
+            self.input_dict[SampleBatch.PREV_ACTIONS] = prev_actions
+            self.input_dict[SampleBatch.PREV_REWARDS] = prev_rewards
         self.seq_lens = tf.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
 
+        # Phase 1 init
+        self._needs_eager_conversion = set()
+        self._eager_tensors = {}
         # Setup model
         self.dist_class, logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
@@ -153,22 +169,14 @@ class DynamicTFPolicy(TFPolicy):
                 tf.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
                 for s in self.model.get_initial_state()
             ]
-        (self.model_out, self.feature_out, self.state_out) = self.model(
+
+        # Forward pass of model
+        self.model_out, self.feature_out, self.state_out = self.model(
             self.input_dict, self.state_in, self.seq_lens)
+        (self.action_dist,
+         action_sampler, action_prob) = self._run_model_forward(
+             self.model, self.model_out, self.input_dict)
 
-        # Setup action sampler
-        if action_sampler_fn:
-            self.action_dist = None
-            self.dist_class = None
-            action_sampler, action_prob = action_sampler_fn(
-                self, self.model, self.input_dict, obs_space, action_space,
-                config)
-        else:
-            self.action_dist = self.dist_class(self.model_out)
-            action_sampler = self.action_dist.sample()
-            action_prob = self.action_dist.sampled_action_prob()
-
-        # Phase 1 init
         sess = tf.get_default_session() or tf.Session()
         if get_batch_divisibility_req:
             batch_divisibility_req = get_batch_divisibility_req(self)
@@ -194,11 +202,23 @@ class DynamicTFPolicy(TFPolicy):
             batch_divisibility_req=batch_divisibility_req)
 
         # Phase 2 init
-        self._needs_eager_conversion = set()
-        self._eager_tensors = {}
         before_loss_init(self, obs_space, action_space, config)
         if not existing_inputs:
             self._initialize_loss()
+
+    def _run_model_forward(self, model, model_out, input_dict):
+        # Setup action sampler
+        if self._action_sampler_fn:
+            action_dist = None
+            action_sampler, action_prob = self._action_sampler_fn(
+                self, self.model, input_dict, self.observation_space,
+                self.action_space, self.config)
+        else:
+            action_dist = self.dist_class(model_out)
+            action_sampler = action_dist.sample()
+            action_prob = action_dist.sampled_action_prob()
+
+        return action_dist, action_sampler, action_prob
 
     def get_obs_input_dict(self):
         """Returns the obs input dict used to build policy models.
@@ -368,15 +388,20 @@ class DynamicTFPolicy(TFPolicy):
         graph_tensors = list(self._needs_eager_conversion)
         stat_items = list(self._stats_fetches.items())
 
-        def gen_loss(model_outputs, *args):
-            # fill in the batch tensor dict with eager ensors
-            eager_inputs = dict(
-                zip([k for (k, v) in loss_inputs], args[:len(loss_inputs)]))
+        def gen_loss(model_out, *args):
             # fill in the eager versions of all accessed graph tensors
             self._eager_tensors = dict(
                 zip(graph_tensors, args[len(loss_inputs):]))
-            # patch the action dist to use eager mode tensors
-            self.action_dist.inputs = model_outputs
+            # fill in the batch tensor dict with eager tensors
+            eager_inputs = dict(
+                zip([k for (k, v) in loss_inputs], args[:len(loss_inputs)]))
+            eager_inputs["is_training"] = True
+            if not self._action_sampler_fn:
+                (self.action_dist,
+                 action_sampler, action_prob) = self._run_model_forward(
+                     self.model, model_out,
+                     {k: eager_inputs[k]
+                      for k in self.input_dict})
             loss, stats = self._loss_fn(self, eager_inputs)
             return [loss] + [stats[k] for (k, v) in stat_items]
 

@@ -590,14 +590,6 @@ def _q_network_from(policy, model, obs, obs_space, action_space):
     return qnet.value, qnet.logits, qnet.dist, qnet.model
 
 
-def _build_q_value_policy(policy, q_values):
-    policy = QValuePolicy(q_values, policy.cur_observations,
-                          policy.num_actions, policy.stochastic, policy.eps,
-                          policy.config["soft_q"],
-                          policy.config["softmax_temp"])
-    return policy.action, policy.action_prob
-
-
 def _build_q_loss(q_t_selected, q_logits_t_selected, q_tp1_best,
                   q_dist_tp1_best, rewards, dones, importance_weights, config):
     return QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,

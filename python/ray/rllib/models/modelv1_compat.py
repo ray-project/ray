@@ -52,7 +52,6 @@ class ModelV1Wrapper(TFModelV2):
                     self.output_spec.size, self.options, state, seq_lens)
         else:
             # create a new model instance
-            print("SELF>NAME", self.name)
             with tf.variable_scope(self.name):
                 new_instance = self.legacy_model_cls(
                     input_dict, self.obs_space, self.action_space,
