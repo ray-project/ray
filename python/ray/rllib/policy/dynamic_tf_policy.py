@@ -257,7 +257,7 @@ class DynamicTFPolicy(TFPolicy):
 
         loss = instance._do_loss_init(input_dict)
         loss_inputs = [(k, existing_inputs[i])
-                         for i, (k, _) in enumerate(self._loss_inputs)]
+                       for i, (k, _) in enumerate(self._loss_inputs)]
 
         if self.config["use_eager"]:
             loss, new_stats = instance._gen_eager_loss_op(loss_inputs)

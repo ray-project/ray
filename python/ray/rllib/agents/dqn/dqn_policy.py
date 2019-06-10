@@ -537,11 +537,7 @@ def build_q_losses(policy, batch_tensors):
         batch_tensors[SampleBatch.REWARDS], batch_tensors[SampleBatch.DONES],
         batch_tensors[PRIO_WEIGHTS], policy.config)
 
-    stats = dict({
-        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
-    }, **policy.q_loss.stats)
-
-    return policy.q_loss.loss, stats
+    return policy.q_loss.loss
 
 
 def adam_optimizer(policy, config):
@@ -568,6 +564,12 @@ def exploration_setting_inputs(policy):
         policy.stochastic: True,
         policy.eps: policy.cur_epsilon,
     }
+
+
+def build_q_stats(policy, batch_tensors):
+    return dict({
+        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+    }, **policy.q_loss.stats)
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):
@@ -679,6 +681,7 @@ DQNTFPolicy = build_tf_policy(
     make_model=build_q_model,
     action_sampler_fn=build_q_networks,
     loss_fn=build_q_losses,
+    stats_fn=build_q_stats,
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=adam_optimizer,
     gradients_fn=clip_gradients,
