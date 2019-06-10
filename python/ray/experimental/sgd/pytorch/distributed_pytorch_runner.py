@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import logging
 import os
 import torch.distributed as dist
@@ -21,16 +25,13 @@ class DistributedPyTorchRunner(PyTorchRunner):
         """Initializes the runner.
 
         Args:
-            model_creator (dict -> torch.nn.Module): creates the model using
-                the config.
-            data_creator (dict -> Dataset, Dataset): creates the training and
-                validation data sets using the config.
+            model_creator (dict -> torch.nn.Module): see pytorch_trainer.py.
+            data_creator (dict -> Dataset, Dataset):  see pytorch_trainer.py.
             optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
-                creates the loss and optimizer using the model and the config.
-            config (dict): configuration passed to 'model_creator',
-                'data_creator', and 'optimizer_creator'.
-            batch_size (int): batch size used in an update.
-            backend (string): backend used by distributed PyTorch.
+                see pytorch_trainer.py.
+            config (dict):  see pytorch_trainer.py.
+            batch_size (int): batch size used by one replica for an update.
+            backend (string):  see pytorch_trainer.py.
         """
         super(DistributedPyTorchRunner, self).__init__(
             model_creator, data_creator, optimizer_creator, config, batch_size)

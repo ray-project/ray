@@ -24,15 +24,12 @@ class PyTorchRunner(object):
         """Initializes the runner.
 
         Args:
-            model_creator (dict -> torch.nn.Module): creates the model using
-                the config.
-            data_creator (dict -> Dataset, Dataset): creates the training and
-                validation data sets using the config.
+            model_creator (dict -> torch.nn.Module): see pytorch_trainer.py.
+            data_creator (dict -> Dataset, Dataset): see pytorch_trainer.py.
             optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
-                creates the loss and optimizer using the model and the config.
-            config (dict): configuration passed to 'model_creator',
-                'data_creator', and 'optimizer_creator'.
-            batch_size (int): batch size used in an update.
+                see pytorch_trainer.py.
+            config (dict): see pytorch_trainer.py.
+            batch_size (int): see pytorch_trainer.py.
         """
 
         self.model_creator = model_creator
