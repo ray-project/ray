@@ -1,5 +1,6 @@
 package org.ray.api.options;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -7,12 +8,23 @@ import java.util.Map;
  */
 public class CallOptions extends BaseTaskOptions {
 
-  public CallOptions() {
-    super();
+  private CallOptions(Builder builder) {
+    super(builder.resources);
   }
 
-  public CallOptions(Map<String, Double> resources) {
-    super(resources);
-  }
+  /**
+   * This inner class for building CallOptions.
+   */
+  public static class Builder {
+    private Map<String, Double> resources = new HashMap<>();
 
+    public Builder setResources(Map<String, Double> resources) {
+      this.resources = resources;
+      return this;
+    }
+
+    public CallOptions build() {
+      return new CallOptions(this);
+    }
+  }
 }
