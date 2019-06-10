@@ -23,7 +23,8 @@ public class DynamicResourceTest extends BaseTest {
   @Test
   public void testSetResource() {
     TestUtils.skipTestUnderSingleProcess();
-    CallOptions op1 = new CallOptions(ImmutableMap.of("A", 10.0));
+    CallOptions op1 =
+        new CallOptions.Builder().setResources(ImmutableMap.of("A", 10.0)).createCallOptions();
     RayObject<String> obj = Ray.call(DynamicResourceTest::sayHi, op1);
     WaitResult<String> result = Ray.wait(ImmutableList.of(obj), 1, 1000);
     Assert.assertEquals(result.getReady().size(), 0);

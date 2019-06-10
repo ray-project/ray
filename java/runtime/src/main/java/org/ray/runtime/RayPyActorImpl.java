@@ -20,7 +20,9 @@ public class RayPyActorImpl extends RayActorImpl implements RayPyActor {
    */
   private String className;
 
-  private RayPyActorImpl() {}
+  // Note that this empty constructor must be public
+  // since it'll be needed when deserializing.
+  public RayPyActorImpl() {}
 
   public RayPyActorImpl(UniqueId id, String moduleName, String className) {
     super(id);
