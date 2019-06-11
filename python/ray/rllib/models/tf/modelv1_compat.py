@@ -5,7 +5,8 @@ from __future__ import print_function
 import logging
 import numpy as np
 
-from ray.rllib.models.modelv2 import ModelV2, TFModelV2
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
@@ -26,6 +27,9 @@ class ModelV1Wrapper(TFModelV2):
 
         # Tracks the last v1 model created by the call to forward
         self.cur_instance = None
+
+        # Tracks branches created so far
+        self.branches_created = set()
 
         # XXX: Try to guess the initial state size. Since the size of the state
         # is known only after forward() for V1 models, it might be wrong.
@@ -57,33 +61,46 @@ class ModelV1Wrapper(TFModelV2):
                     input_dict, self.obs_space, self.action_space,
                     self.output_spec.size, self.options, state, seq_lens)
         self.cur_instance = new_instance
+        self.variable_scope = new_instance.scope
         return (new_instance.outputs, new_instance.last_layer,
                 new_instance.state_out)
 
     @override(ModelV2)
-    def get_branch_output(self, branch_type, output_spec, feature_layer=None):
+    def get_branch_output(self,
+                          branch_type,
+                          output_spec=None,
+                          feature_layer=None,
+                          default_impl=None):
         assert self.cur_instance, "must call forward first"
+        if branch_type in self.branches_created:
+            reuse = True
+        else:
+            self.branches_created.add(branch_type)
+            reuse = tf.AUTO_REUSE
 
-        # Simple case: sharing the feature layer
-        if feature_layer is not None:
-            with tf.variable_scope(self.cur_instance.scope):
-                return tf.reshape(
-                    linear(feature_layer, output_spec.size, branch_type,
-                           normc_initializer(1.0)), [-1])
+        with tf.variable_scope(self.variable_scope):
+            with tf.variable_scope(branch_type, reuse=reuse):
+                # Custom implementation with arbitrary build function
+                if default_impl:
+                    return default_impl()
 
-        # Create a new separate model with no RNN state, etc.
-        branch_options = self.options.copy()
-        branch_options["free_log_std"] = False
-        if branch_options["use_lstm"]:
-            branch_options["use_lstm"] = False
-            logger.warning(
-                "It is not recommended to use a LSTM model with "
-                "vf_share_layers=False (consider setting it to True). "
-                "If you want to not share layers, you can implement "
-                "a custom LSTM model that overrides the "
-                "value_function() method.")
-        with tf.variable_scope(self.cur_instance.scope):
-            with tf.variable_scope("branch_" + branch_type):
+                # Simple case: sharing the feature layer
+                if feature_layer is not None:
+                    return tf.reshape(
+                        linear(feature_layer, output_spec.size, branch_type,
+                               normc_initializer(1.0)), [-1])
+
+                # Create a new separate model with no RNN state, etc.
+                branch_options = self.options.copy()
+                branch_options["free_log_std"] = False
+                if branch_options["use_lstm"]:
+                    branch_options["use_lstm"] = False
+                    logger.warning(
+                        "It is not recommended to use a LSTM model with "
+                        "vf_share_layers=False (consider setting it to True). "
+                        "If you want to not share layers, you can implement "
+                        "a custom LSTM model that overrides the "
+                        "value_function() method.")
                 branch_instance = self.legacy_model_cls(
                     self.cur_instance.input_dict,
                     self.obs_space,

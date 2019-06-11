@@ -43,7 +43,6 @@ def build_tf_policy(name,
 
     In eager mode (experimental), the following functions will be run
     repeatedly on each eager execution:
-        - action_sampler_fn
         - loss_fn
         - stats_fn
     This means that these functions should not define any variables internally,

@@ -89,7 +89,11 @@ class ModelV2(object):
         """
         raise NotImplementedError
 
-    def get_branch_output(self, branch_type, output_spec, feature_layer=None):
+    def get_branch_output(self,
+                          branch_type,
+                          output_spec=None,
+                          feature_layer=None,
+                          default_impl=None):
         """Get the branch output of the model (e.g., "value" branch).
 
         This method defines other output heads, for example, the value function
@@ -107,6 +111,9 @@ class ModelV2(object):
             feature_layer (tensor): if specified, this hints that the branch
                 output should be computed using this shared feature layer.
                 However custom models are free to ignore this hint.
+            default_impl (func): if specified, this function will be called to
+                implement the branch output. However custom models are free
+                to ignore this and return anything they want.
 
         Returns:
             tensor: branch output of size [BATCH, output_spec.size]

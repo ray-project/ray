@@ -122,7 +122,8 @@ class QNetwork(object):
             "obs": obs,
             "is_training": is_training,
         }, [], None)
-        with tf.variable_scope("action_value"):
+
+        def build_action_value():
             if hiddens:
                 action_out = feature_layer
                 for i in range(len(hiddens)):
@@ -140,7 +141,8 @@ class QNetwork(object):
                         action_out = tf.layers.dense(
                             action_out,
                             units=hiddens[i],
-                            activation=tf.nn.relu)
+                            activation=tf.nn.relu,
+                            name="hidden_%d" % i)
             else:
                 # Avoid postprocessing the outputs. This enables custom models
                 # to be used for parametric action DQN.
@@ -168,14 +170,24 @@ class QNetwork(object):
                     logits=support_logits_per_action)
                 action_scores = tf.reduce_sum(
                     input_tensor=z * support_prob_per_action, axis=-1)
-                self.logits = support_logits_per_action
-                self.dist = support_prob_per_action
+                logits = support_logits_per_action
+                dist = support_prob_per_action
             else:
-                self.logits = tf.expand_dims(tf.ones_like(action_scores), -1)
-                self.dist = tf.expand_dims(tf.ones_like(action_scores), -1)
+                logits = tf.expand_dims(tf.ones_like(action_scores), -1)
+                dist = tf.expand_dims(tf.ones_like(action_scores), -1)
+                z = None
+                support_logits_per_action = None
+            return action_scores, z, support_logits_per_action, logits, dist
+
+        (action_scores, z, support_logits_per_action, self.logits,
+         self.dist) = model.get_branch_output(
+             "action_value",
+             feature_layer=feature_layer,
+             default_impl=build_action_value)
 
         if dueling:
-            with tf.variable_scope("state_value"):
+
+            def build_state_value():
                 state_out = feature_layer
                 for i in range(len(hiddens)):
                     if use_noisy:
@@ -201,6 +213,13 @@ class QNetwork(object):
                 else:
                     state_score = tf.layers.dense(
                         state_out, units=num_atoms, activation=None)
+                return state_score
+
+            state_score = model.get_branch_output(
+                "state_value",
+                feature_layer=feature_layer,
+                default_impl=build_state_value)
+
             if num_atoms > 1:
                 support_logits_per_action_mean = tf.reduce_mean(
                     support_logits_per_action, 1)
