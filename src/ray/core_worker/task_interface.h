@@ -3,10 +3,10 @@
 
 #include <list>
 
-#include "ray/core_worker/common.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/common.h"
 
 namespace ray {
 
@@ -15,8 +15,7 @@ class CoreWorker;
 /// Options of a non-actor-creation task.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns,
-              const std::unordered_map<std::string, double> &resources)
+  TaskOptions(int num_returns, const std::unordered_map<std::string, double> &resources)
       : num_returns(num_returns), resources(resources) {}
 
   /// Number of returns of this task.

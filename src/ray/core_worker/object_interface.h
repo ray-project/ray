@@ -1,11 +1,11 @@
 #ifndef RAY_CORE_WORKER_OBJECT_INTERFACE_H
 #define RAY_CORE_WORKER_OBJECT_INTERFACE_H
 
-#include "ray/core_worker/common.h"
 #include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/common.h"
 
 namespace ray {
 

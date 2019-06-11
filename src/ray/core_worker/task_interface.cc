@@ -128,8 +128,7 @@ CoreWorkerTaskInterface::BuildTaskArguments(const std::vector<TaskArg> &args) {
   return task_arguments;
 }
 
-::Language CoreWorkerTaskInterface::ToTaskLanguage(
-    WorkerLanguage language) {
+::Language CoreWorkerTaskInterface::ToTaskLanguage(WorkerLanguage language) {
   switch (language) {
   case ray::WorkerLanguage::JAVA:
     return ::Language::JAVA;
@@ -138,8 +137,7 @@ CoreWorkerTaskInterface::BuildTaskArguments(const std::vector<TaskArg> &args) {
     return ::Language::PYTHON;
     break;
   default:
-    RAY_LOG(FATAL) << "invalid language specified: "
-                   << static_cast<int>(language);
+    RAY_LOG(FATAL) << "invalid language specified: " << static_cast<int>(language);
     break;
   }
 }
