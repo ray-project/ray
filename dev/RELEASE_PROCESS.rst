@@ -6,13 +6,28 @@ This document describes the process for creating new releases.
 1. **Increment the Python version:** Create a PR that increments the Python
    package version. See `this example`_.
 
-2. **Create a release branch:** Create the branch from the version bump PR. In
+2. **Bump version on Ray master branch again:** Create a pull request to
+   increment the version of the master branch. The format of the new version is
+   as follows:
+
+   New minor release (e.g., 0.7.0): Increment the minor version and append
+   ``.dev0`` to the version. For example, if the version of the new release is
+   0.7.0, the master branch needs to be updated to 0.8.0.dev0.
+
+   New micro release (e.g., 0.7.1): Increment the ``dev`` number, such that the
+   number after ``dev`` equals the micro version. For example, if the version
+   of the new release is 0.7.1, the master branch needs to be updated to
+   0.8.0.dev1.
+
+   This can be merged as soon as step 1 is complete.
+
+3. **Create a release branch:** Create the branch from the version bump PR. In
    order to create the branch, locally checkout the commit ID i.e.,
    ``git checkout <hash>``. Then checkout a new branch of the format
    ``releases/<release-version>``. Then push that branch to the ray repo:
    ``git push upstream releases/<release-version>``.
 
-3. **Testing:** Before a release is created, significant testing should be done.
+4. **Testing:** Before a release is created, significant testing should be done.
    Run the following scripts
 
    .. code-block:: bash
@@ -23,7 +38,7 @@ This document describes the process for creating new releases.
    and make sure they pass. If they pass, it will be obvious that they passed.
    This will use the autoscaler to start a bunch of machines and run some tests.
 
-4. **Resolve release-blockers:** If a release blocking issue arises, there are
+5. **Resolve release-blockers:** If a release blocking issue arises, there are
    two ways the issue can be resolved: 1) Fix the issue on the master branch and
    cherry-pick the relevant commit  (using ``git cherry-pick``) onto the release
    branch. 2) Revert the commit that introduced the bug on the release branch
@@ -31,7 +46,7 @@ This document describes the process for creating new releases.
 
    These changes should then be pushed directly to the release branch.
 
-5. **Download all the wheels:** Now the release is ready to begin final
+6. **Download all the wheels:** Now the release is ready to begin final
    testing. The wheels are automatically uploaded to S3, even on the release
    branch. To test, ``pip install`` from the following URLs:
 
@@ -48,13 +63,13 @@ This document describes the process for creating new releases.
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_6_intel.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_6_intel.whl
 
-6. **Final Testing:** Send a link to the wheels to the other contributors and
+7. **Final Testing:** Send a link to the wheels to the other contributors and
    core members of the Ray project. Make sure the wheels are tested on Ubuntu
    and MacOS (ideally multiple versions of Ubuntu and MacOS). This testing
    should verify that the wheels are correct and that all release blockers have
    been resolved. Should a new release blocker be found, repeat steps 5-7.
 
-7. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
+8. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
    need to run a command like
 
@@ -80,7 +95,7 @@ This document describes the process for creating new releases.
    Do this at least for MacOS and for Linux, as well as for Python 2 and Python
    3.
 
-8. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
+9. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,
    **it will not be possible to modify wheels once you upload them**, so any
    mistake will require a new release. You can upload the wheels with a command
@@ -99,31 +114,18 @@ This document describes the process for creating new releases.
    finds the correct Ray version, and successfully runs some simple scripts on
    both MacOS and Linux as well as Python 2 and Python 3.
 
-9. **Create a GitHub release:** Create a GitHub release through the
-   `GitHub website`_. The release should be created at the commit from the
-   previous step. This should include **release notes**. Copy the style and
-   formatting used by previous releases. Create a draft of the release notes
-   containing information about substantial changes/updates/bugfixes and their
-   PR numbers. Once you have a draft, make sure you solicit feedback from other
-   Ray developers before publishing. Use the following to get started:
+10. **Create a GitHub release:** Create a GitHub release through the
+    `GitHub website`_. The release should be created at the commit from the
+    previous step. This should include **release notes**. Copy the style and
+    formatting used by previous releases. Create a draft of the release notes
+    containing information about substantial changes/updates/bugfixes and their
+    PR numbers. Once you have a draft, make sure you solicit feedback from other
+    Ray developers before publishing. Use the following to get started:
 
-   .. code-block:: bash
+    .. code-block:: bash
 
-     git pull origin master --tags
-     git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
-
-10. **Bump version on Ray master branch:** Create a pull request to increment
-    the version of the master branch. The format of the new version is as
-    follows:
-
-    New minor release (e.g., 0.7.0): Increment the minor version and append
-    ``.dev0`` to the version. For example, if the version of the new release is
-    0.7.0, the master branch needs to be updated to 0.8.0.dev0.
-
-    New micro release (e.g., 0.7.1): Increment the ``dev`` number, such that the
-    number after ``dev`` equals the micro version. For example, if the version
-    of the new release is 0.7.1, the master branch needs to be updated to
-    0.8.0.dev1.
+      git pull origin master --tags
+      git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
 
 11. **Update version numbers throughout codebase:** Suppose we just released
     0.7.1. The previous release version number (in this case 0.7.0) and the
