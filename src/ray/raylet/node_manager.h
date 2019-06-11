@@ -4,6 +4,7 @@
 #include <boost/asio/steady_timer.hpp>
 
 // clang-format off
+#include "ray/rpc/client_call.h"
 #include "ray/rpc/node_manager_server.h"
 #include "ray/rpc/node_manager_client.h"
 #include "ray/raylet/task.h"
@@ -508,6 +509,7 @@ class NodeManager : public NodeManagerServiceHandler {
 
   NodeManagerServer node_manager_server_;
 
+  ClientCallManager client_call_manager_;
   std::unordered_map<ClientID, std::unique_ptr<NodeManagerClient>> node_manager_clients_;
 };
 

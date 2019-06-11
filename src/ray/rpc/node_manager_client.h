@@ -4,41 +4,39 @@
 #include <thread>
 
 #include <grpcpp/grpcpp.h>
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
 
 #include "ray/common/status.h"
+#include "ray/rpc/client_call.h"
+#include "ray/util/logging.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 
 class NodeManagerClient {
- public:
   using ForwardTaskCallback =
       std::function<void(const Status &status, const ForwardTaskReply &reply)>;
 
-  NodeManagerClient(boost::asio::io_service &main_service,
-                    const std::string &node_manager_address, const int node_manager_port);
-
-  void ForwardTask(const ForwardTaskRequest &request,
-                   const ForwardTaskCallback &callback);
-
- private:
-  boost::asio::io_service &main_service_;
-  std::unique_ptr<NodeManagerService::Stub> stub_;
-
-  grpc::CompletionQueue cq_;
-
-  struct CallbackItem {
-    ForwardTaskReply reply;
-    ForwardTaskCallback callback;
+ public:
+  NodeManagerClient(const std::string &node_manager_address, const int node_manager_port,
+                    ClientCallManager &client_call_manager)
+      : client_call_manager_(client_call_manager) {
+    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
+        node_manager_address + ":" + std::to_string(node_manager_port),
+        grpc::InsecureChannelCredentials());
+    stub_ = NodeManagerService::NewStub(channel);
   };
 
-  std::mutex mutex_;
-  std::unordered_map<uint64_t, std::shared_ptr<CallbackItem>> pending_callbacks_;
+  void ForwardTask(const ForwardTaskRequest &request,
+                   const ForwardTaskCallback &callback) {
+    client_call_manager_.CreateCall<NodeManagerService, ForwardTaskRequest,
+                                    ForwardTaskReply, ForwardTaskCallback>(stub_, request,
+                                                                           callback);
+  }
 
-  std::shared_ptr<std::thread> polling_thread_;
+ private:
+  std::unique_ptr<NodeManagerService::Stub> stub_;
+  ClientCallManager &client_call_manager_;
 };
 
 }  // namespace ray
