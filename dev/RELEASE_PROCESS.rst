@@ -21,11 +21,11 @@ This document describes the process for creating new releases.
 
    This can be merged as soon as step 1 is complete.
 
-3. **Create a release branch:** Create the branch from the version bump PR. In
-   order to create the branch, locally checkout the commit ID i.e.,
-   ``git checkout <hash>``. Then checkout a new branch of the format
-   ``releases/<release-version>``. Then push that branch to the ray repo:
-   ``git push upstream releases/<release-version>``.
+3. **Create a release branch:** Create the branch from the version bump PR (the
+   one from step 1, not step 2). In order to create the branch, locally checkout
+   the commit ID i.e., ``git checkout <hash>``. Then checkout a new branch of
+   the format ``releases/<release-version>``. Then push that branch to the ray
+   repo: ``git push upstream releases/<release-version>``.
 
 4. **Testing:** Before a release is created, significant testing should be done.
    Run the following scripts
