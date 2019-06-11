@@ -30,9 +30,8 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     // If we requested notifications for this task ID, send the notification as
     // part of the callback.
     if (subscribed_tasks_.count(task_id) == 1) {
-      callback = [this, done](ray::gcs::AsyncGcsClient *client,
-                                              const TaskID &task_id,
-                                              const protocol::TaskT &data) {
+      callback = [this, done](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                              const protocol::TaskT &data) {
         done(client, task_id, data);
         // If we're subscribed to the task to be added, also send a
         // subscription notification.
