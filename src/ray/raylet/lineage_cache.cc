@@ -226,6 +226,7 @@ void LineageCache::FlushAllUncommittedTasks() {
   for (const auto &entry : lineage_.GetEntries()) {
     // Flush all tasks that have not yet committed.
     if (entry.second.GetStatus() == GcsStatus::UNCOMMITTED) {
+      RAY_CHECK(UnsubscribeTask(entry.first));
       FlushTask(entry.first);
       num_flushed++;
     }
