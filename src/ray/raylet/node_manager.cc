@@ -2334,7 +2334,8 @@ void NodeManager::ForwardTask(
 
 void NodeManager::DumpDebugState() const {
   std::fstream fs;
-  fs.open(temp_dir_ + "/debug_state.txt", std::fstream::out | std::fstream::trunc);
+  fs.open(initial_config_.session_dir + "/debug_state.txt",
+          std::fstream::out | std::fstream::trunc);
   fs << DebugString();
   fs.close();
 }
