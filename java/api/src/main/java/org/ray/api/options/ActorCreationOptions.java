@@ -13,9 +13,18 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public final int maxReconstructions;
 
-  private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions) {
+  public final String workerStartingPrefix;
+
+  public final String workerStartingSuffix;
+
+  private ActorCreationOptions(Map<String, Double> resources,
+                               int maxReconstructions,
+                               String workerStartingPrefix,
+                               String workerStartingSuffix) {
     super(resources);
     this.maxReconstructions = maxReconstructions;
+    this.workerStartingPrefix = workerStartingPrefix;
+    this.workerStartingSuffix = workerStartingSuffix;
   }
 
   /**
@@ -25,6 +34,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     private Map<String, Double> resources = new HashMap<>();
     private int maxReconstructions = NO_RECONSTRUCTION;
+    private String workerStartingPrefix = null;
+    private String workerStartingSuffix = null;
 
     public Builder setResources(Map<String, Double> resources) {
       this.resources = resources;
@@ -36,8 +47,18 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
+    public Builder setWorkerStartingPrefix(String workerStartingPrefix) {
+      this.workerStartingPrefix = workerStartingPrefix;
+      return this;
+    }
+
+    public Builder setWorkerStartingSuffix(String workerStartingSuffix) {
+      this.workerStartingSuffix = workerStartingSuffix;
+      return this;
+    }
+
     public ActorCreationOptions createActorCreationOptions() {
-      return new ActorCreationOptions(resources, maxReconstructions);
+      return new ActorCreationOptions(resources, maxReconstructions, workerStartingPrefix, workerStartingSuffix);
     }
   }
 

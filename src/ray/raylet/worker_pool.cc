@@ -218,13 +218,31 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
 std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec) {
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
   const auto &actor_id = task_spec.ActorId();
+
   std::shared_ptr<Worker> worker = nullptr;
-  if (actor_id.IsNil()) {
+  if (task_spec.IsActroCreationTask()) {
+    // code path of actor creation task.
+    if (task_spec.WorkerStartingPrefix().empty() && task_spec.WorkerStartingSuffix().empty()) {
+      // There is no prefix and suffix of command. Pop a worker from idle worker pool of non-actor.
+      if (!state.idle.empty()) {
+        worker = std::move(*state.idle.begin());
+        state.idle.erase(state.idle.begin());
+      }
+    } else {
+      auto it = state.waiting_creating_actor_workers.find(task_spec.TaskID());
+      if (it != state.waiting_creating_actor_workers.end()) {
+        worker = std::move(*it);
+        state.waiting_creating_actor_workers.erase(it);
+      }
+    }
+  } else if (!task_spec.IsActorTask()) {
+    // code path of normal task.
     if (!state.idle.empty()) {
       worker = std::move(*state.idle.begin());
       state.idle.erase(state.idle.begin());
     }
   } else {
+    // code path of actor task.
     auto actor_entry = state.idle_actor.find(actor_id);
     if (actor_entry != state.idle_actor.end()) {
       worker = std::move(actor_entry->second);

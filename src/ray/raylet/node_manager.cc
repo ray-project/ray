@@ -1723,7 +1723,11 @@ bool NodeManager::AssignTask(const Task &task) {
   std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
   if (worker == nullptr) {
     // There are no workers that can execute this task.
-    if (!spec.IsActorTask()) {
+    const bool need_start_new =
+        (!spec.WorkerStartingPrefix().empty() || !spec.WorkerStartingSuffix().empty());
+    if (spec.IsActorCreationTask() && need_start_new) {
+      worker_pool_.StartWorkerProcess();
+    } else if (!spec.IsActorTask()) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker.
       worker_pool_.StartWorkerProcess(spec.GetLanguage());

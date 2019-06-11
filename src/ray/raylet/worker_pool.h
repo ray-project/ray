@@ -144,6 +144,8 @@ class WorkerPool {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
+    /// The pool of actor creation task workers with prefix or suffix.
+    std::unordered_map<TaskID, std::shared_ptr<Worker>> waiting_creating_actor_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<Worker>> idle;
     /// The pool of idle actor workers.
