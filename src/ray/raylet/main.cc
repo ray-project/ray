@@ -22,6 +22,7 @@ DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
+DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
 DEFINE_bool(enable_stdout_exporter, false,
@@ -61,6 +62,7 @@ int main(int argc, char *argv[]) {
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
+  const std::string session_dir = FLAGS_session_dir;
   const bool disable_stats = FLAGS_disable_stats;
   const std::string stat_address = FLAGS_stat_address;
   const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
@@ -132,6 +134,7 @@ int main(int argc, char *argv[]) {
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
   node_manager_config.store_socket_name = store_socket_name;
   node_manager_config.temp_dir = temp_dir;
+  node_manager_config.session_dir = session_dir;
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;
