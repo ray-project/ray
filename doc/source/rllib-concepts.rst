@@ -230,7 +230,7 @@ The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#polic
             standardize_fields=["advantages"],
             straggler_mitigation=config["straggler_mitigation"])
 
-Suppose we want to customize PPO to use an asynchronous-gradient optimization strategy similar to A3C. To do that, we could define a new function that returns ``AsyncGradientsOptimizer`` and override the ``make_policy_optimizer`` component of ``PPOTrainer``:
+Suppose we want to customize PPO to use an asynchronous-gradient optimization strategy similar to A3C. To do that, we could define a new function that returns ``AsyncGradientsOptimizer`` and override the ``make_policy_optimizer`` component of ``PPOTrainer``.
 
 .. code-block:: python
 
@@ -244,6 +244,8 @@ Suppose we want to customize PPO to use an asynchronous-gradient optimization st
         make_policy_optimizer=make_async_optimizer)
 
 
+The ``with_updates`` method that we use here is also available for Torch and TF policies built from templates.
+ 
 Now let's take a look at the ``update_kl`` function. This is used to adaptively adjust the KL penalty coefficient on the PPO loss, which bounds the policy change per training step. You'll notice the code handles both single and multi-agent cases (where there are be multiple policies each with different KL coeffs):
 
 .. code-block:: python
