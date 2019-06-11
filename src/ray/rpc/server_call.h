@@ -1,5 +1,5 @@
-#ifndef RAY_RPC_GRPC_REQUEST_H
-#define RAY_RPC_GRPC_REQUEST_H
+#ifndef RAY_RPC_SERVER_CALL_H
+#define RAY_RPC_SERVER_CALL_H
 
 #include <grpcpp/grpcpp.h>
 
@@ -9,36 +9,36 @@ namespace ray {
 
 using RequestDoneCallback = std::function<void(Status)>;
 
-class UntypedGrpcRequest {
+class UntypedServerCall {
  public:
   virtual void RequestReceived(bool ok) = 0;
 };
 
-class GrpcRequestTag {
+class ServerCallTag {
  public:
   enum class TagType { REQUEST_RECEIVED, REPLY_SENT };
 
-  GrpcRequestTag(UntypedGrpcRequest *grpc_request, const TagType tag_type)
-      : grpc_request_(grpc_request), tag_type_(tag_type) {}
+  ServerCallTag(UntypedServerCall *server_call, const TagType tag_type)
+      : server_call_(server_call), tag_type_(tag_type) {}
 
   void OnCompleted(bool ok) {
     switch (tag_type_) {
     case TagType::REQUEST_RECEIVED:
-      grpc_request_->RequestReceived(ok);
+      server_call_->RequestReceived(ok);
       break;
     case TagType::REPLY_SENT:
-      delete grpc_request_;
+      delete server_call_;
       break;
     }
   }
 
  private:
-  UntypedGrpcRequest *grpc_request_;
+  UntypedServerCall *server_call_;
   const TagType tag_type_;
 };
 
 template <class GrpcService, class ServiceHandler, class Request, class Reply>
-class GrpcRequest : public UntypedGrpcRequest {
+class ServerCall : public UntypedServerCall {
   // Represents the generic signature of a generated
   // `GrpcService::RequestFoo()` method, where `Foo` is the name of an
   // RPC method.
@@ -52,7 +52,7 @@ class GrpcRequest : public UntypedGrpcRequest {
                                                          RequestDoneCallback);
 
  public:
-  GrpcRequest(GrpcService *grpc_service, EnqueueFunction enqueue_function,
+  ServerCall(GrpcService *grpc_service, EnqueueFunction enqueue_function,
               ServiceHandler *service_handler,
               HandleRequestFunction handle_request_function,
               ::grpc::ServerCompletionQueue *cq)
@@ -68,7 +68,7 @@ class GrpcRequest : public UntypedGrpcRequest {
 
   void RequestReceived(bool ok) override {
     if (ok) {
-      new GrpcRequest(grpc_service_, enqueue_function_, service_handler_,
+      new ServerCall(grpc_service_, enqueue_function_, service_handler_,
                       handle_request_function_, cq_);
       (service_handler_->*handle_request_function_)(
                              request_, &reply_,
@@ -97,8 +97,8 @@ class GrpcRequest : public UntypedGrpcRequest {
   Request request_;
   Reply reply_;
 
-  GrpcRequestTag request_received_tag_{this, GrpcRequestTag::TagType::REQUEST_RECEIVED};
-  GrpcRequestTag reply_sent_tag_{this, GrpcRequestTag::TagType::REPLY_SENT};
+  ServerCallTag request_received_tag_{this, ServerCallTag::TagType::REQUEST_RECEIVED};
+  ServerCallTag reply_sent_tag_{this, ServerCallTag::TagType::REPLY_SENT};
 };  // namespace ray
 
 }  // namespace ray

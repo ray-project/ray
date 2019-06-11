@@ -28,7 +28,7 @@ void GrpcServer::StartPolling() {
       RAY_CHECK(cq_->Next(&tag, &ok));
       RAY_CHECK(ok);
       // Handle requests;
-      GrpcRequestTag* request_tag = static_cast<GrpcRequestTag *>(tag);
+      ServerCallTag* request_tag = static_cast<ServerCallTag *>(tag);
       request_tag->OnCompleted(ok);
     }
   };

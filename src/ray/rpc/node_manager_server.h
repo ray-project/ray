@@ -1,7 +1,7 @@
 #ifndef RAY_RPC_NODE_MANAGER_SERVER_H
 #define RAY_RPC_NODE_MANAGER_SERVER_H
 
-#include "ray/rpc/grpc_request.h"
+#include "ray/rpc/server_call.h"
 #include "ray/rpc/grpc_server.h"
 
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
@@ -26,7 +26,7 @@ class NodeManagerServer : public GrpcServer {
   }
 
   void EnqueueRequests() override {
-    new GrpcRequest<NodeManagerService::AsyncService, NodeManagerServiceHandler,
+    new ServerCall<NodeManagerService::AsyncService, NodeManagerServiceHandler,
                     ForwardTaskRequest, ForwardTaskReply>(
         &service_, &NodeManagerService::AsyncService::RequestForwardTask, handler_,
         &NodeManagerServiceHandler::HandleForwardTask, cq_.get());

@@ -6,7 +6,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include "ray/common/status.h"
-#include "ray/rpc/grpc_request.h"
+#include "ray/rpc/server_call.h"
 
 namespace ray {
 
