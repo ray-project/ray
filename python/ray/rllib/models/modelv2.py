@@ -33,13 +33,13 @@ class ModelV2(object):
             unflatten the tensor into a ragged tensor.
         action_space (Space): action space of the target gym env
         output_spec (OutputSpec): defines the output shape of the model
-        options (dict): options for the model, documented in ModelCatalog
+        model_config (dict): config for the model, documented in ModelCatalog
         name (str): name (scope) for the model
         framework (str): either "tf" or "torch"
     """
 
-    def __init__(self, obs_space, action_space, output_spec, options, name,
-                 framework):
+    def __init__(self, obs_space, action_space, output_spec, model_config,
+                 name, framework):
         """Initialize the model.
 
         This method should create any variables used by the model.
@@ -48,7 +48,7 @@ class ModelV2(object):
         self.obs_space = obs_space
         self.action_space = action_space
         self.output_spec = output_spec
-        self.options = options
+        self.model_config = model_config
         self.name = name or "default"
         self.framework = framework
 

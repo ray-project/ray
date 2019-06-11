@@ -202,7 +202,7 @@ class ModelCatalog(object):
     def get_model_v2(obs_space,
                      action_space,
                      num_outputs,
-                     options,
+                     model_config,
                      framework="tf",
                      name=None):
         """Returns a suitable model compatible with given spaces and output.
@@ -220,17 +220,17 @@ class ModelCatalog(object):
             model (ModelV2): Model to use for the policy.
         """
 
-        if options.get("custom_model"):
+        if model_config.get("custom_model"):
             model_cls = _global_registry.get(RLLIB_MODEL,
-                                             options["custom_model"])
+                                             model_config["custom_model"])
             if isinstance(model_cls, ModelV2):
-                return model_cls(obs_space, action_space, num_outputs, options,
-                                 name)
+                return model_cls(obs_space, action_space, num_outputs,
+                                 model_config, name)
 
         if framework == "tf":
             legacy_model_cls = ModelCatalog.get_model
             return ModelV1Wrapper(legacy_model_cls, obs_space, action_space,
-                                  num_outputs, options, name)
+                                  num_outputs, model_config, name)
 
         raise NotImplementedError("TODO: support {} models".format(framework))
 
