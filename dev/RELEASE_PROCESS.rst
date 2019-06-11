@@ -6,38 +6,45 @@ This document describes the process for creating new releases.
 1. **Increment the Python version:** Create a PR that increments the Python
    package version. See `this example`_.
 
-2. **Download the Travis-built wheels:** Once Travis has completed the tests,
-   the wheels from this commit can be downloaded from S3 to do testing, etc.
-   The URL is structured like this:
-   ``https://s3-us-west-2.amazonaws.com/ray-wheels/<hash>/<wheel-name>``
-   where ``<hash>`` is replaced by the ID of the commit and the ``<version>``
-   is the incremented version from the previous step. The ``<wheel-name>`` can
-   be determined by looking at the OS/Version matrix in the documentation_.
+2. **Bump version on Ray master branch again:** Create a pull request to
+   increment the version of the master branch. The format of the new version is
+   as follows:
 
-3. **Create a release branch:** This branch should also have the same commit ID as the
-   previous two steps. In order to create the branch, locally checkout the commit ID
-   i.e. ``git checkout <hash>``. Then checkout a new branch of the format
-   ``releases/<release_number>``. The release number must match the increment in
-   the first step. Then push that branch to the ray repo:
-   ``git push upstream releases/<release_number>``.
+   New minor release (e.g., 0.7.0): Increment the minor version and append
+   ``.dev0`` to the version. For example, if the version of the new release is
+   0.7.0, the master branch needs to be updated to 0.8.0.dev0.
+
+   New micro release (e.g., 0.7.1): Increment the ``dev`` number, such that the
+   number after ``dev`` equals the micro version. For example, if the version
+   of the new release is 0.7.1, the master branch needs to be updated to
+   0.8.0.dev1.
+
+   This can be merged as soon as step 1 is complete.
+
+3. **Create a release branch:** Create the branch from the version bump PR (the
+   one from step 1, not step 2). In order to create the branch, locally checkout
+   the commit ID i.e., ``git checkout <hash>``. Then checkout a new branch of
+   the format ``releases/<release-version>``. Then push that branch to the ray
+   repo: ``git push upstream releases/<release-version>``.
 
 4. **Testing:** Before a release is created, significant testing should be done.
-   Run the scripts `ci/stress_tests/run_stress_tests.sh`_ and
-   `ci/stress_tests/run_application_stress_tests.sh`_ and make sure they
-   pass. You **MUST** modify the autoscaler config file and replace
-   ``<<RAY_RELEASE_HASH>>`` and ``<<RAY_RELEASE_VERSION>>`` with the appropriate
-   values to test the correct wheels. This will use the autoscaler to start a bunch of
-   machines and run some tests. Any new stress tests should be added to this
-   script so that they will be run automatically for future release testing.
+   Run the following scripts
 
-5. **Resolve release-blockers:** Should any release blocking issues arise,
-   there are two ways these issues are resolved: A PR to patch the issue or a
-   revert commit that removes the breaking change from the release. In the case
-   of a PR, that PR should be created against master. Once it is merged, the
-   release master should ``git cherry-pick`` the commit to the release branch.
-   If the decision is to revert a commit that caused the release blocker, the
-   release master should ``git revert`` the commit to be reverted on the
-   release branch. Push these changes directly to the release branch.
+   .. code-block:: bash
+
+       ray/ci/stress_tests/run_stress_tests.sh <release-version> <release-commit>
+       ray/ci/stress_tests/run_application_stress_tests.sh <release-version> <release-commit>
+
+   and make sure they pass. If they pass, it will be obvious that they passed.
+   This will use the autoscaler to start a bunch of machines and run some tests.
+
+5. **Resolve release-blockers:** If a release blocking issue arises, there are
+   two ways the issue can be resolved: 1) Fix the issue on the master branch and
+   cherry-pick the relevant commit  (using ``git cherry-pick``) onto the release
+   branch. 2) Revert the commit that introduced the bug on the release branch
+   (using ``git revert``), but not on the master.
+
+   These changes should then be pushed directly to the release branch.
 
 6. **Download all the wheels:** Now the release is ready to begin final
    testing. The wheels are automatically uploaded to S3, even on the release
@@ -47,20 +54,20 @@ This document describes the process for creating new releases.
 
        export RAY_HASH=...  # e.g., 618147f57fb40368448da3b2fb4fd213828fa12b
        export RAY_VERSION=...  # e.g., 0.7.0
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp27-cp27mu-manylinux1_x86_64.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-manylinux1_x86_64.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux1_x86_64.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux1_x86_64.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp27-cp27m-macosx_10_6_intel.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-macosx_10_6_intel.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_6_intel.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_6_intel.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp27-cp27mu-manylinux1_x86_64.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-manylinux1_x86_64.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux1_x86_64.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux1_x86_64.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp27-cp27m-macosx_10_6_intel.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-macosx_10_6_intel.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_6_intel.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_6_intel.whl
 
 7. **Final Testing:** Send a link to the wheels to the other contributors and
-   core members of the Ray project. Make sure the wheels are tested on Ubuntu,
-   Mac OSX 10.12, and Mac OSX 10.13+. This testing should verify that the
-   wheels are correct and that all release blockers have been resolved. Should
-   a new release blocker be found, repeat steps 5-7.
+   core members of the Ray project. Make sure the wheels are tested on Ubuntu
+   and MacOS (ideally multiple versions of Ubuntu and MacOS). This testing
+   should verify that the wheels are correct and that all release blockers have
+   been resolved. Should a new release blocker be found, repeat steps 5-7.
 
 8. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
@@ -68,11 +75,11 @@ This document describes the process for creating new releases.
 
    .. code-block:: bash
 
-     twine upload --repository-url https://test.pypi.org/legacy/ray/.whl/*
+     twine upload --repository-url https://test.pypi.org/legacy/ ray/.whl/*
 
    assuming that you've downloaded the wheels from the ``ray-wheels`` S3 bucket
    and put them in ``ray/.whl``, that you've installed ``twine`` through
-   ``pip``, and that you've made PyPI accounts.
+   ``pip``, and that you've created both PyPI accounts.
 
    Test that you can install the wheels with pip from the PyPI test repository
    with
@@ -86,7 +93,7 @@ This document describes the process for creating new releases.
    installed by checking ``ray.__version__`` and ``ray.__file__``.
 
    Do this at least for MacOS and for Linux, as well as for Python 2 and Python
-   3. Also do this for different versions of MacOS.
+   3.
 
 9. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,
@@ -107,41 +114,31 @@ This document describes the process for creating new releases.
    finds the correct Ray version, and successfully runs some simple scripts on
    both MacOS and Linux as well as Python 2 and Python 3.
 
-10. **Create a GitHub release:** Create a GitHub release through the `GitHub website`_.
-    The release should be created at the commit from the previous
-    step. This should include **release notes**. Copy the style and formatting
-    used by previous releases. Create a draft of the release notes containing
-    information about substantial changes/updates/bugfixes and their PR number.
-    Once you have a draft, make sure you solicit feedback from other Ray
-    developers before publishing. Use the following to get started:
+10. **Create a GitHub release:** Create a GitHub release through the
+    `GitHub website`_. The release should be created at the commit from the
+    previous step. This should include **release notes**. Copy the style and
+    formatting used by previous releases. Create a draft of the release notes
+    containing information about substantial changes/updates/bugfixes and their
+    PR numbers. Once you have a draft, make sure you solicit feedback from other
+    Ray developers before publishing. Use the following to get started:
 
     .. code-block:: bash
 
       git pull origin master --tags
       git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
 
-11. **Bump version on Ray master branch:** Create a pull request to increment the
-    version of the master branch. The format of the new version is as follows:
+11. **Update version numbers throughout codebase:** Suppose we just released
+    0.7.1. The previous release version number (in this case 0.7.0) and the
+    previous dev version number (in this case 0.8.0.dev0) appear in many places
+    throughout the code base including the installation documentation, the
+    example autoscaler config files, and the testing scripts. Search for all of
+    the occurrences of these version numbers and update them to use the new
+    release and dev version numbers. **NOTE:** Not all of the version numbers
+    should be replaced. For example, ``0.7.0`` appears in this file but should
+    not be updated.
 
-    New minor release (e.g., 0.7.0): Increment the minor version and append ``.dev0`` to
-    the version. For example, if the version of the new release is 0.7.0, the master
-    branch needs to be updated to 0.8.0.dev0. `Example PR for minor release`
+12. **Improve the release process:** Find some way to improve the release
+    process so that whoever manages the release next will have an easier time.
 
-    New micro release (e.g., 0.7.1): Increment the ``dev`` number, such that the number
-    after ``dev`` equals the micro version. For example, if the version of the new
-    release is 0.7.1, the master branch needs to be updated to 0.8.0.dev1.
-
-12. **Update version numbers throughout codebase:** Suppose we just released 0.7.1. The
-    previous release version number (in this case 0.7.0) and the previous dev version number
-    (in this case 0.8.0.dev0) appear in many places throughout the code base including
-    the installation documentation, the example autoscaler config files, and the testing
-    scripts. Search for all of the occurrences of these version numbers and update them to
-    use the new release and dev version numbers.
-
-.. _documentation: https://ray.readthedocs.io/en/latest/installation.html#trying-snapshots-from-master
-.. _`documentation for building wheels`: https://github.com/ray-project/ray/blob/master/python/README-building-wheels.md
-.. _`ci/stress_tests/run_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/ci/stress_tests/run_stress_tests.sh
-.. _`ci/stress_tests/run_application_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/ci/stress_tests/run_application_stress_tests.sh
 .. _`this example`: https://github.com/ray-project/ray/pull/4226
 .. _`GitHub website`: https://github.com/ray-project/ray/releases
-.. _`Example PR for minor release`: https://github.com/ray-project/ray/pull/4845
