@@ -17,6 +17,7 @@ void GrpcServer::Run() {
 
   EnqueueRequests();
   StartPolling();
+  RAY_LOG(DEBUG) << "Grpc server started " << server_address;
 }
 
 void GrpcServer::StartPolling() {

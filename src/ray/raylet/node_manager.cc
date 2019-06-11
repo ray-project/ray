@@ -100,7 +100,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                      gcs_client_->raylet_task_table(), gcs_client_->raylet_task_table(),
                      config.max_lineage_size),
       actor_registry_(),
-      node_manager_server_(config.node_manager_port, this){
+      node_manager_server_(config.node_manager_port, this),
+      client_call_manager_(io_service) {
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -116,6 +117,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
   RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
+  node_manager_server_.Run();
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -369,14 +371,14 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   }
 
   auto entry = node_manager_clients_.find(client_id);
-  if (entry == node_manager_clients_.end()) {
+  if (entry != node_manager_clients_.end()) {
     RAY_LOG(DEBUG) << "Received a new client connection that already exists: "
                    << client_id;
     return;
   }
 
   std::unique_ptr<NodeManagerClient> client(new NodeManagerClient(
-      io_service_, client_data.node_manager_address, client_data.node_manager_port));
+      client_data.node_manager_address, client_data.node_manager_port, client_call_manager_));
   node_manager_clients_.emplace(client_id, std::move(client));
 
   // // Establish a new NodeManager connection to this GCS client.
