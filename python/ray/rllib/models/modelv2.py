@@ -49,7 +49,7 @@ class ModelV2(object):
         self.action_space = action_space
         self.output_spec = output_spec
         self.model_config = model_config
-        self.name = name or "default"
+        self.name = name or "default_model"
         self.framework = framework
 
     def get_initial_state(self):
