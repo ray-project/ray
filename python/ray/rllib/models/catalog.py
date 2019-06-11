@@ -223,7 +223,7 @@ class ModelCatalog(object):
         if model_config.get("custom_model"):
             model_cls = _global_registry.get(RLLIB_MODEL,
                                              model_config["custom_model"])
-            if isinstance(model_cls, ModelV2):
+            if issubclass(model_cls, ModelV2):
                 return model_cls(obs_space, action_space, num_outputs,
                                  model_config, name)
 

@@ -137,9 +137,6 @@ class ModelV2(object):
         Returns:
             Scalar tensor for the customized loss for this model.
         """
-        if self.loss() is not None:
-            raise DeprecationWarning(
-                "self.loss() is deprecated, use self.custom_loss() instead.")
         return policy_loss
 
     def metrics(self):
@@ -187,11 +184,10 @@ class ModelV2(object):
                 a list of state tensors of [BATCH, state_size_i].
         """
 
-        if hasattr(self.obs_space, "original_space"):
-            restored = input_dict.copy()
-            restored["obs"] = restore_original_dimensions(
-                input_dict["obs"], self.obs_space, self.framework)
-            restored["obs_flat"] = input_dict["obs"]
+        restored = input_dict.copy()
+        restored["obs"] = restore_original_dimensions(
+            input_dict["obs"], self.obs_space, self.framework)
+        restored["obs_flat"] = input_dict["obs"]
         outputs, feature_layer, state = self.forward(restored, state, seq_lens)
 
         try:

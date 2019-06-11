@@ -86,9 +86,8 @@ class ModelV1Wrapper(TFModelV2):
 
                 # Simple case: sharing the feature layer
                 if feature_layer is not None:
-                    return tf.reshape(
-                        linear(feature_layer, output_spec.size, branch_type,
-                               normc_initializer(1.0)), [-1])
+                    return linear(feature_layer, output_spec.size, branch_type,
+                                  normc_initializer(1.0))
 
                 # Create a new separate model with no RNN state, etc.
                 branch_model_config = self.model_config.copy()
@@ -109,7 +108,7 @@ class ModelV1Wrapper(TFModelV2):
                     branch_model_config,
                     state_in=None,
                     seq_lens=None)
-                return tf.reshape(branch_instance.outputs, [-1])
+                return branch_instance.outputs
 
     @override(ModelV2)
     def custom_loss(self, policy_loss, loss_inputs):

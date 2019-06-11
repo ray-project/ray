@@ -224,11 +224,14 @@ class ValueNetworkMixin(object):
     def __init__(self, obs_space, action_space, config):
         if config["use_gae"]:
             if config["vf_share_layers"]:
-                self.value_function = self.model.get_branch_output(
-                    "value", OutputSpec(1), feature_layer=self.feature_out)
+                self.value_function = tf.reshape(
+                    self.model.get_branch_output(
+                        "value", OutputSpec(1),
+                        feature_layer=self.feature_out), [-1])
             else:
-                self.value_function = self.model.get_branch_output(
-                    "value", OutputSpec(1), feature_layer=None)
+                self.value_function = tf.reshape(
+                    self.model.get_branch_output(
+                        "value", OutputSpec(1), feature_layer=None), [-1])
         else:
             self.value_function = tf.zeros(
                 shape=tf.shape(self.get_placeholder(SampleBatch.CUR_OBS))[:1])

@@ -73,8 +73,9 @@ def add_value_function_fetch(policy):
 
 class ValueNetworkMixin(object):
     def __init__(self):
-        self.vf = self.model.get_branch_output(
-            "value", OutputSpec(1), feature_layer=self.feature_out)
+        self.vf = tf.reshape(
+            self.model.get_branch_output(
+                "value", OutputSpec(1), feature_layer=self.feature_out), [-1])
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {
