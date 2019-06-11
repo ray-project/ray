@@ -9,97 +9,117 @@ namespace ray {
 
 using RequestDoneCallback = std::function<void(Status)>;
 
+enum class ServerCallState { PENDING, PROCECCSSING, REPLY_SENT };
+
+class UntypedServerCallFactory;
+
 class UntypedServerCall {
  public:
-  virtual void RequestReceived(bool ok) = 0;
+  virtual ServerCallState GetState() const = 0;
+  virtual void Proceed() = 0;
+  virtual const UntypedServerCallFactory &GetFactory() const = 0;
 };
 
-class ServerCallTag {
+class UntypedServerCallFactory {
  public:
-  enum class TagType { REQUEST_RECEIVED, REPLY_SENT };
-
-  ServerCallTag(UntypedServerCall *server_call, const TagType tag_type)
-      : server_call_(server_call), tag_type_(tag_type) {}
-
-  void OnCompleted(bool ok) {
-    switch (tag_type_) {
-    case TagType::REQUEST_RECEIVED:
-      server_call_->RequestReceived(ok);
-      break;
-    case TagType::REPLY_SENT:
-      delete server_call_;
-      break;
-    }
-  }
-
- private:
-  UntypedServerCall *server_call_;
-  const TagType tag_type_;
+  virtual UntypedServerCall *CreateCall() const = 0;
 };
 
-template <class GrpcService, class ServiceHandler, class Request, class Reply>
-class ServerCall : public UntypedServerCall {
-  // Represents the generic signature of a generated
-  // `GrpcService::RequestFoo()` method, where `Foo` is the name of an
-  // RPC method.
-  using EnqueueFunction = void (GrpcService::*)(
-      ::grpc::ServerContext *, Request *, ::grpc::ServerAsyncResponseWriter<Reply> *,
-      ::grpc::CompletionQueue *, ::grpc::ServerCompletionQueue *, void *);
+template <class GcsService, class ServiceHandler, class Request, class Reply>
+class ServerCallFactory;
 
+template <class ServiceHandler, class Request, class Reply>
+class ServerCall : public UntypedServerCall {
   // Represents the generic signature of a `Service::HandleFoo()`
   // method, where `Foo` is the name of an RPC method.
   using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
                                                          RequestDoneCallback);
 
  public:
-  ServerCall(GrpcService *grpc_service, EnqueueFunction enqueue_function,
-              ServiceHandler *service_handler,
-              HandleRequestFunction handle_request_function,
-              ::grpc::ServerCompletionQueue *cq)
-      : grpc_service_(grpc_service),
-        enqueue_function_(enqueue_function),
+  ServerCall(const UntypedServerCallFactory &factory, ServiceHandler *service_handler,
+             HandleRequestFunction handle_request_function)
+      : state_(ServerCallState::PENDING),
+        factory_(factory),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
-        cq_(cq),
-        responder_(&ctx_) {
-    (grpc_service_->*enqueue_function_)(&ctx_, &request_, &responder_, cq_, cq_,
-                                        &request_received_tag_);
-  }
+        response_writer_(&context_) {}
 
-  void RequestReceived(bool ok) override {
-    if (ok) {
-      new ServerCall(grpc_service_, enqueue_function_, service_handler_,
-                      handle_request_function_, cq_);
+  ServerCallState GetState() const override { return state_; }
+
+  void Proceed() override {
+    if (state_ == ServerCallState::PENDING) {
+      state_ = ServerCallState::PROCECCSSING;
       (service_handler_->*handle_request_function_)(
-                             request_, &reply_,
-                             [this](Status status) { SendResponse(status); });
+          request_, &reply_, [this](Status status) { SendResponse(status); });
+    } else if (state_ == ServerCallState::PROCECCSSING) {
+      state_ = ServerCallState::REPLY_SENT;
     }
   }
+
+  const UntypedServerCallFactory &GetFactory() const override { return factory_; }
 
  private:
   void SendResponse(Status status) {
-    if (status.ok()) {
-      responder_.Finish(reply_, ::grpc::Status::OK, &reply_sent_tag_);
-    }
+    // TODO
+    ::grpc::Status grpc_status = ::grpc::Status::OK;
+    response_writer_.Finish(reply_, grpc_status, this);
   }
 
-  GrpcService *grpc_service_;
-  EnqueueFunction enqueue_function_;
+  ServerCallState state_;
+
+  const UntypedServerCallFactory &factory_;
 
   ServiceHandler *service_handler_;
   HandleRequestFunction handle_request_function_;
 
-  ::grpc::ServerCompletionQueue *cq_;
-
-  ::grpc::ServerContext ctx_;
-  ::grpc::ServerAsyncResponseWriter<Reply> responder_;
+  ::grpc::ServerContext context_;
+  ::grpc::ServerAsyncResponseWriter<Reply> response_writer_;
 
   Request request_;
   Reply reply_;
 
-  ServerCallTag request_received_tag_{this, ServerCallTag::TagType::REQUEST_RECEIVED};
-  ServerCallTag reply_sent_tag_{this, ServerCallTag::TagType::REPLY_SENT};
-};  // namespace ray
+  template <class GcsServiceX, class ServiceHandlerX, class RequestX, class ReplyX>
+  friend class ServerCallFactory;
+};
+
+template <class GcsService, class ServiceHandler, class Request, class Reply>
+class ServerCallFactory : public UntypedServerCallFactory {
+  using AsyncService = typename GcsService::AsyncService;
+
+  using RequestCallFunction = void (AsyncService::*)(
+      ::grpc::ServerContext *, Request *, ::grpc::ServerAsyncResponseWriter<Reply> *,
+      ::grpc::CompletionQueue *, ::grpc::ServerCompletionQueue *, void *);
+
+  using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
+                                                         RequestDoneCallback);
+
+ public:
+  ServerCallFactory(AsyncService *service, RequestCallFunction request_call_function,
+                    ServiceHandler *service_handler,
+                    HandleRequestFunction handle_request_function,
+                    const std::unique_ptr<::grpc::ServerCompletionQueue> &cq)
+      : service_(service),
+        request_call_function_(request_call_function),
+        service_handler_(service_handler),
+        handle_request_function_(handle_request_function),
+        cq_(cq) {}
+
+  UntypedServerCall *CreateCall() const override {
+    auto call = new ServerCall<ServiceHandler, Request, Reply>(*this, service_handler_,
+                                                               handle_request_function_);
+    (service_->*request_call_function_)(&call->context_, &call->request_,
+                                        &call->response_writer_, cq_.get(), cq_.get(),
+                                        call);
+    return call;
+  }
+
+ private:
+  AsyncService *service_;
+  RequestCallFunction request_call_function_;
+  ServiceHandler *service_handler_;
+  HandleRequestFunction handle_request_function_;
+  const std::unique_ptr<::grpc::ServerCompletionQueue> &cq_;
+};
 
 }  // namespace ray
 

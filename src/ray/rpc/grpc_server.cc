@@ -15,7 +15,10 @@ void GrpcServer::Run() {
   // Finally assemble the server.
   server_ = builder.BuildAndStart();
 
-  EnqueueRequests();
+  InitServerCallFactories();
+  for (auto &factory : server_call_factories_) {
+    factory->CreateCall();
+  }
   StartPolling();
   RAY_LOG(DEBUG) << "Grpc server started " << server_address;
 }
@@ -24,12 +27,25 @@ void GrpcServer::StartPolling() {
   auto polling_func = [this]() {
     void *tag;
     bool ok;
-    while (true) {
-      RAY_CHECK(cq_->Next(&tag, &ok));
-      RAY_CHECK(ok);
-      // Handle requests;
-      ServerCallTag* request_tag = static_cast<ServerCallTag *>(tag);
-      request_tag->OnCompleted(ok);
+    while (cq_->Next(&tag, &ok)) {
+      UntypedServerCall *server_call = static_cast<UntypedServerCall *>(tag);
+      // `ok == False` indicates that the server has been shut down.
+      // We should delete the call object in this case.
+      bool delete_call = !ok;
+      if (ok) {
+        switch (server_call->GetState()) {
+        case ServerCallState::PENDING:
+          server_call->GetFactory().CreateCall();
+          break;
+        case ServerCallState::PROCECCSSING:
+          delete_call = true;
+          break;
+        }
+        server_call->Proceed();
+      }
+      if (delete_call) {
+        delete server_call;
+      }
     }
   };
 
