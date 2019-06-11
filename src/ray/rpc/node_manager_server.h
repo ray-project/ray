@@ -1,8 +1,8 @@
 #ifndef RAY_RPC_NODE_MANAGER_SERVER_H
 #define RAY_RPC_NODE_MANAGER_SERVER_H
 
-#include "ray/rpc/server_call.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/rpc/server_call.h"
 
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
@@ -25,11 +25,13 @@ class NodeManagerServer : public GrpcServer {
     builder.RegisterService(&service_);
   }
 
-  void EnqueueRequests() override {
-    new ServerCall<NodeManagerService::AsyncService, NodeManagerServiceHandler,
-                    ForwardTaskRequest, ForwardTaskReply>(
-        &service_, &NodeManagerService::AsyncService::RequestForwardTask, handler_,
-        &NodeManagerServiceHandler::HandleForwardTask, cq_.get());
+  void InitServerCallFactories() override {
+    std::unique_ptr<UntypedServerCallFactory> forward_task_call_factory(
+        new ServerCallFactory<NodeManagerService, NodeManagerServiceHandler,
+                              ForwardTaskRequest, ForwardTaskReply>(
+            &service_, &NodeManagerService::AsyncService::RequestForwardTask, handler_,
+            &NodeManagerServiceHandler::HandleForwardTask, cq_));
+    server_call_factories_.push_back(std::move(forward_task_call_factory));
   }
 
  private:
