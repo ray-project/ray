@@ -117,6 +117,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
   RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
+  // Run the node manger rpc server.
   node_manager_server_.Run();
 }
 
@@ -372,11 +373,12 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
 
   auto entry = node_manager_clients_.find(client_id);
   if (entry != node_manager_clients_.end()) {
-    RAY_LOG(DEBUG) << "Received a new client connection that already exists: "
+    RAY_LOG(DEBUG) << "Received notification of a new client that already exists: "
                    << client_id;
     return;
   }
 
+  // Initialize a rpc client to the new node manager.
   std::unique_ptr<NodeManagerClient> client(new NodeManagerClient(
       client_data.node_manager_address, client_data.node_manager_port, client_call_manager_));
   node_manager_clients_.emplace(client_id, std::move(client));
@@ -403,7 +405,7 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   // Remove the client from the resource map.
   cluster_resource_map_.erase(client_id);
 
-  // Remove the remote server connection.
+  // Remove the node manager client.
   const auto client_entry = node_manager_clients_.find(client_id);
   if (client_entry != node_manager_clients_.end()) {
     node_manager_clients_.erase(client_entry);
@@ -1199,6 +1201,7 @@ void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client
 
 void NodeManager::HandleForwardTask(const ForwardTaskRequest &request, ForwardTaskReply *reply,
     RequestDoneCallback done_callback) {
+  // Get the forwarded task and its uncommitted lineage from the request.
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;
   for (int i = 0; i < request.uncommitted_tasks_size(); i++) {
@@ -2188,12 +2191,12 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
 void NodeManager::ForwardTask(
     const Task &task, const ClientID &node_id,
     const std::function<void(const ray::Status &, const Task &)> &on_error) {
-  // Lookup remote server connection for this node_id and use it to send the request.
+  // Lookup node manager client for this node_id and use it to send the request.
   auto client_entry = node_manager_clients_.find(node_id);
   if (client_entry == node_manager_clients_.end()) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
-    RAY_LOG(INFO) << "No NodeManager client found for GCS client id " << node_id;
-    on_error(ray::Status::IOError("NodeManager client not found"), task);
+    RAY_LOG(INFO) << "No node manager client found for GCS client id " << node_id;
+    on_error(ray::Status::IOError("Node manager client not found"), task);
     return;
   }
   auto &client = client_entry->second;
@@ -2222,6 +2225,7 @@ void NodeManager::ForwardTask(
                  << " spillback="
                  << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
 
+  // Prepare the request message.
   ForwardTaskRequest request;
   request.set_task_id(task_id.Binary());
   for (auto &entry : uncommitted_lineage.GetEntries()) {

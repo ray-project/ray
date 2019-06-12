@@ -447,6 +447,7 @@ class NodeManager : public NodeManagerServiceHandler {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
+  /// Handle a `ForwardTask` request.
   void HandleForwardTask(const ForwardTaskRequest &request, ForwardTaskReply *reply,
                          RequestDoneCallback done_callback) override;
 
@@ -503,9 +504,13 @@ class NodeManager : public NodeManagerServiceHandler {
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 
+  /// The RPC server.
   NodeManagerServer node_manager_server_;
 
+  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
   ClientCallManager client_call_manager_;
+
+  /// Map from node ids to the `NodeManagerClient`s.
   std::unordered_map<ClientID, std::unique_ptr<NodeManagerClient>> node_manager_clients_;
 };
 

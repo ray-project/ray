@@ -13,17 +13,22 @@
 
 namespace ray {
 
+/// Client used for communicating with a remote node manager server.
 class NodeManagerClient {
   using ForwardTaskCallback =
       std::function<void(const Status &status, const ForwardTaskReply &reply)>;
 
  public:
-  NodeManagerClient(const std::string &node_manager_address, const int node_manager_port,
+  /// Constructor.
+  ///
+  /// \param address Address of the node manager server.
+  /// \param port Port of the node manager server.
+  /// \param client_call_manager The `ClientCallManager` used for managing requests.
+  NodeManagerClient(const std::string &address, const int port,
                     ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        node_manager_address + ":" + std::to_string(node_manager_port),
-        grpc::InsecureChannelCredentials());
+        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
     stub_ = NodeManagerService::NewStub(channel);
   };
 
