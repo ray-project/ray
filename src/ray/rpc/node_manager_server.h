@@ -25,13 +25,14 @@ class NodeManagerServer : public GrpcServer {
     builder.RegisterService(&service_);
   }
 
-  void InitServerCallFactories() override {
+  void InitServerCallFactories(std::vector<std::unique_ptr<UntypedServerCallFactory>>
+                                   *server_call_factories) override {
     std::unique_ptr<UntypedServerCallFactory> forward_task_call_factory(
         new ServerCallFactory<NodeManagerService, NodeManagerServiceHandler,
                               ForwardTaskRequest, ForwardTaskReply>(
             &service_, &NodeManagerService::AsyncService::RequestForwardTask, handler_,
             &NodeManagerServiceHandler::HandleForwardTask, cq_));
-    server_call_factories_.push_back(std::move(forward_task_call_factory));
+    server_call_factories->push_back(std::move(forward_task_call_factory));
   }
 
  private:

@@ -15,7 +15,7 @@ void GrpcServer::Run() {
   // Finally assemble the server.
   server_ = builder.BuildAndStart();
 
-  InitServerCallFactories();
+  InitServerCallFactories(&server_call_factories_);
   for (auto &factory : server_call_factories_) {
     factory->CreateCall();
   }
@@ -39,6 +39,9 @@ void GrpcServer::StartPolling() {
           break;
         case ServerCallState::PROCECCSSING:
           delete_call = true;
+          break;
+        case ServerCallState::REPLY_SENT:
+          RAY_LOG(FATAL) << "Shouldn't reach here.";
           break;
         }
         server_call->Proceed();

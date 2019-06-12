@@ -25,15 +25,8 @@ class GrpcServer {
  protected:
   virtual void RegisterServices(::grpc::ServerBuilder &builder) = 0;
 
-// #define REQUEST_CALL(grpc_service, method)                                    \
-//   do {                                                                        \
-//     new ServerCall<grpc_service## ::AsyncService, grpc_service##Handler,      \
-//                    method##Request, method##Reply>(                           \
-//         &service_, &grpc_service## ::AsyncService::Request##method, handler_, \
-//         &grpc_service##Handler::Handle##method, cq_.get());                   \
-//   } while (0)
-
-  virtual void InitServerCallFactories() = 0;
+  virtual void InitServerCallFactories(
+      std::vector<std::unique_ptr<UntypedServerCallFactory>> *server_call_factories) = 0;
 
   void StartPolling();
 
