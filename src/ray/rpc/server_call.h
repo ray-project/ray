@@ -50,13 +50,14 @@ class ServerCall : public UntypedServerCall {
   void OnRequestReceived() override {
     state_ = ServerCallState::PROCECCSSING;
     (service_handler_->*handle_request_function_)(
-        request_, &reply_, [this](Status status) { SendResponse(status); });
+        request_, &reply_, [this](Status status) { SendReply(status); });
   }
 
   const UntypedServerCallFactory &GetFactory() const override { return factory_; }
 
  private:
-  void SendResponse(Status status) {
+  void SendReply(Status status) {
+    state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
   }
 

@@ -23,8 +23,8 @@ class GrpcServer {
  public:
   /// Construct a gRPC server.
   ///
-  /// \param name Name of this server, used for logging and debugging purpose.
-  /// \param port The port to bind this server to. If it's 0, a random available port
+  /// \param[in] name Name of this server, used for logging and debugging purpose.
+  /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
   GrpcServer(const std::string &name, const uint32_t port) : name_(name), port_(port) {}
 

@@ -47,7 +47,7 @@ void GrpcServer::StartPolling() {
           break;
         case ServerCallState::SENDING_REPLY:
           // The reply has been sent, this call can be deleted now.
-          // This event is triggered by `ServerCall::SendResponse`.
+          // This event is triggered by `ServerCall::SendReply`.
           delete_call = true;
           break;
         default:
