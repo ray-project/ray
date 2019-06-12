@@ -6,21 +6,25 @@ void GrpcServer::Run() {
   std::string server_address("0.0.0.0:" + std::to_string(port_));
 
   ::grpc::ServerBuilder builder;
-  // Listen on the given address without any authentication mechanism.
-  builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials());
+  // TODO(hchen): Add options for authentication.
+  builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials(), &port_);
+  // Allow subclasses to register concrete services.
   RegisterServices(builder);
   // Get hold of the completion queue used for the asynchronous communication
   // with the gRPC runtime.
   cq_ = builder.AddCompletionQueue();
-  // Finally assemble the server.
+  // Build and start server.
   server_ = builder.BuildAndStart();
+  RAY_LOG(DEBUG) << name_ << " server started, listening on port " << port_ << ".";
 
+  // Allow subclasses to initialize the server call factories.
   InitServerCallFactories(&server_call_factories_);
   for (auto &factory : server_call_factories_) {
+    // Create and request calls from the factories.
     factory->CreateCall();
   }
+  // Start polling incoming requests.
   StartPolling();
-  RAY_LOG(DEBUG) << "Grpc server started " << server_address;
 }
 
 void GrpcServer::StartPolling() {
@@ -35,16 +39,21 @@ void GrpcServer::StartPolling() {
       if (ok) {
         switch (server_call->GetState()) {
         case ServerCallState::PENDING:
+          // We've received a new incoming request. Now we use this call object
+          // to handle this request. So we need to create a new call to handle next
+          // incoming request.
           server_call->GetFactory().CreateCall();
+          server_call->OnRequestReceived();
           break;
-        case ServerCallState::PROCECCSSING:
+        case ServerCallState::SENDING_REPLY:
+          // The reply has been sent, this call can be deleted now.
+          // This event is triggered by `ServerCall::SendResponse`.
           delete_call = true;
           break;
-        case ServerCallState::REPLY_SENT:
+        default:
           RAY_LOG(FATAL) << "Shouldn't reach here.";
           break;
         }
-        server_call->Proceed();
       }
       if (delete_call) {
         delete server_call;

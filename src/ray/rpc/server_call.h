@@ -10,14 +10,14 @@ namespace ray {
 
 using RequestDoneCallback = std::function<void(Status)>;
 
-enum class ServerCallState { PENDING, PROCECCSSING, REPLY_SENT };
+enum class ServerCallState { PENDING, PROCECCSSING, SENDING_REPLY };
 
 class UntypedServerCallFactory;
 
 class UntypedServerCall {
  public:
   virtual ServerCallState GetState() const = 0;
-  virtual void Proceed() = 0;
+  virtual void OnRequestReceived() = 0;
   virtual const UntypedServerCallFactory &GetFactory() const = 0;
 };
 
@@ -47,14 +47,10 @@ class ServerCall : public UntypedServerCall {
 
   ServerCallState GetState() const override { return state_; }
 
-  void Proceed() override {
-    if (state_ == ServerCallState::PENDING) {
-      state_ = ServerCallState::PROCECCSSING;
-      (service_handler_->*handle_request_function_)(
-          request_, &reply_, [this](Status status) { SendResponse(status); });
-    } else if (state_ == ServerCallState::PROCECCSSING) {
-      state_ = ServerCallState::REPLY_SENT;
-    }
+  void OnRequestReceived() override {
+    state_ = ServerCallState::PROCECCSSING;
+    (service_handler_->*handle_request_function_)(
+        request_, &reply_, [this](Status status) { SendResponse(status); });
   }
 
   const UntypedServerCallFactory &GetFactory() const override { return factory_; }
