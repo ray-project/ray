@@ -31,8 +31,8 @@ class NodeManagerServer : public GrpcServer {
   ///
   /// \param[in] port See `GrpcServer`.
   /// \param[in] handler The service handler that actually handle the requests.
-  NodeManagerServer(const uint32_t port, NodeManagerServiceHandler *handler)
-      : GrpcServer("NodeManager", port), handler_(handler){};
+  NodeManagerServer(const uint32_t port, NodeManagerServiceHandler &service_handler)
+      : GrpcServer("NodeManager", port), service_handler_(service_handler){};
 
   void RegisterServices(::grpc::ServerBuilder &builder) override {
     /// Register `NodeManagerService`.
@@ -45,8 +45,8 @@ class NodeManagerServer : public GrpcServer {
     std::unique_ptr<ServerCallFactory> forward_task_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
                                   ForwardTaskRequest, ForwardTaskReply>(
-            &service_, &NodeManagerService::AsyncService::RequestForwardTask, handler_,
-            &NodeManagerServiceHandler::HandleForwardTask, cq_));
+            service_, &NodeManagerService::AsyncService::RequestForwardTask,
+            service_handler_, &NodeManagerServiceHandler::HandleForwardTask, cq_));
     server_call_factories->push_back(std::move(forward_task_call_factory));
   }
 
@@ -54,7 +54,7 @@ class NodeManagerServer : public GrpcServer {
   /// The grpc async service object.
   NodeManagerService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  NodeManagerServiceHandler *handler_;
+  NodeManagerServiceHandler &service_handler_;
 };
 
 }  // namespace ray
