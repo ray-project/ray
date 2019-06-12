@@ -100,7 +100,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                      gcs_client_->raylet_task_table(), gcs_client_->raylet_task_table(),
                      config.max_lineage_size),
       actor_registry_(),
-      node_manager_server_(config.node_manager_port, this),
+      node_manager_server_(config.node_manager_port, *this),
       client_call_manager_(io_service) {
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.

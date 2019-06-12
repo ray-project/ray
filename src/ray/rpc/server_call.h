@@ -55,7 +55,7 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] factory The factory which created this call.
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
-  ServerCallImpl(const ServerCallFactory &factory, ServiceHandler *service_handler,
+  ServerCallImpl(const ServerCallFactory &factory, ServiceHandler &service_handler,
                  HandleRequestFunction handle_request_function)
       : state_(ServerCallState::PENDING),
         factory_(factory),
@@ -67,13 +67,13 @@ class ServerCallImpl : public ServerCall {
 
   void OnRequestReceived() override {
     state_ = ServerCallState::PROCECCSSING;
-    (service_handler_->*handle_request_function_)(request_, &reply_,
-                                                  [this](Status status) {
-                                                    // When the handler is done with the
-                                                    // request, tell gRPC to finish this
-                                                    // request.
-                                                    SendReply(status);
-                                                  });
+    (service_handler_.*handle_request_function_)(request_, &reply_,
+                                                 [this](Status status) {
+                                                   // When the handler is done with the
+                                                   // request, tell gRPC to finish this
+                                                   // request.
+                                                   SendReply(status);
+                                                 });
   }
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
@@ -92,7 +92,7 @@ class ServerCallImpl : public ServerCall {
   const ServerCallFactory &factory_;
 
   /// The service handler that handles the request.
-  ServiceHandler *service_handler_;
+  ServiceHandler &service_handler_;
 
   /// Pointer to the service handler function.
   HandleRequestFunction handle_request_function_;
@@ -138,8 +138,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] cq The `CompletionQueue`.
-  ServerCallFactoryImpl(AsyncService *service, RequestCallFunction request_call_function,
-                        ServiceHandler *service_handler,
+  ServerCallFactoryImpl(AsyncService &service, RequestCallFunction request_call_function,
+                        ServiceHandler &service_handler,
                         HandleRequestFunction handle_request_function,
                         const std::unique_ptr<::grpc::ServerCompletionQueue> &cq)
       : service_(service),
@@ -152,22 +152,23 @@ class ServerCallFactoryImpl : public ServerCallFactory {
     // Create a new `ServerCall`.
     auto call = new ServerCallImpl<ServiceHandler, Request, Reply>(
         *this, service_handler_, handle_request_function_);
-    /// Call `FooService::AsyncService::RequestBar()` function and use the call as the tag.
-    (service_->*request_call_function_)(&call->context_, &call->request_,
-                                        &call->response_writer_, cq_.get(), cq_.get(),
-                                        call);
+    /// Call `FooService::AsyncService::RequestBar()` function and use the call as the
+    /// tag.
+    (service_.*request_call_function_)(&call->context_, &call->request_,
+                                       &call->response_writer_, cq_.get(), cq_.get(),
+                                       call);
     return call;
   }
 
  private:
   /// The gRPC-generate `AsyncService`.
-  AsyncService *service_;
+  AsyncService &service_;
 
   /// Pointer to the `AsyncService::RequestMethod` fucntion.
   RequestCallFunction request_call_function_;
 
   /// The service handler that handles the request.
-  ServiceHandler *service_handler_;
+  ServiceHandler &service_handler_;
 
   /// Pointer to the service handler function.
   HandleRequestFunction handle_request_function_;
