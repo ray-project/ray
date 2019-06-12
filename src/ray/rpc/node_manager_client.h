@@ -21,9 +21,9 @@ class NodeManagerClient {
  public:
   /// Constructor.
   ///
-  /// \param address Address of the node manager server.
-  /// \param port Port of the node manager server.
-  /// \param client_call_manager The `ClientCallManager` used for managing requests.
+  /// \param[in] address Address of the node manager server.
+  /// \param[in] port Port of the node manager server.
+  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerClient(const std::string &address, const int port,
                     ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
@@ -32,6 +32,10 @@ class NodeManagerClient {
     stub_ = NodeManagerService::NewStub(channel);
   };
 
+  /// Forward a task and its uncommitted lineage.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
   void ForwardTask(const ForwardTaskRequest &request,
                    const ForwardTaskCallback &callback) {
     client_call_manager_.CreateCall<NodeManagerService, ForwardTaskRequest,
@@ -40,7 +44,10 @@ class NodeManagerClient {
   }
 
  private:
+  /// The gRPC-generated stub.
   std::unique_ptr<NodeManagerService::Stub> stub_;
+
+  /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
 };
 

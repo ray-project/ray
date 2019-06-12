@@ -24,7 +24,7 @@ class ClientCall {
  public:
   /// The callback to be called by `ClientCallManager` when the reply of this request is
   /// received.
-  virtual void OnReplyReceived();
+  virtual void OnReplyReceived() = 0;
 };
 
 class ClientCallManager;
@@ -42,7 +42,7 @@ class ClientCallImpl : public ClientCall {
  private:
   /// Constructor.
   ///
-  /// \param callback The callback function to handle the reply.
+  /// \param[in] callback The callback function to handle the reply.
   ClientCallImpl(const Callback &callback) : callback_(callback) {}
 
   /// The reply message.
@@ -75,7 +75,7 @@ class ClientCallManager {
  public:
   /// Constructor.
   ///
-  /// \param main_service The main event loop, to which the callback functions will be
+  /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
   ClientCallManager(boost::asio::io_service &main_service) : main_service_(main_service) {
     // Start the polling thread.
@@ -101,9 +101,9 @@ class ClientCallManager {
 
   /// Create a new `ClientCall`.
   ///
-  /// \param stub The gRPC-generated stub.
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply.
+  /// \param[in] stub The gRPC-generated stub.
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
   template <class GrpcService, class Request, class Reply, class Callback>
   ClientCall *CreateCall(const std::unique_ptr<typename GrpcService::Stub> &stub,
                          const Request &request, const Callback &callback) {
