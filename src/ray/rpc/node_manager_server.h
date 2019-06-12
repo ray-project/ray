@@ -27,9 +27,9 @@ class NodeManagerServiceHandler {
 /// The `GrpcServer` for `NodeManagerService`.
 class NodeManagerServer : public GrpcServer {
  public:
-  /// Construct a `NodeManagerServer`.
+  /// Constructor.
   ///
-  /// \param[in] port See `GrpcServer`.
+  /// \param[in] port See super class.
   /// \param[in] handler The service handler that actually handle the requests.
   NodeManagerServer(const uint32_t port, NodeManagerServiceHandler &service_handler)
       : GrpcServer("NodeManager", port), service_handler_(service_handler){};
