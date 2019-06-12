@@ -1,43 +1,53 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/task_provider/raylet_task_provider.h"
 
 namespace ray {
 
-Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
-  RAY_CHECK(core_worker_.is_initialized_);
+CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(CoreWorker &core_worker)
+    : core_worker_(core_worker) {
+  task_execution_providers_.emplace(
+      static_cast<int>(TaskProviderType::RAYLET),
+      std::unique_ptr<CoreWorkerRayletTaskExecutionProvider>(new CoreWorkerRayletTaskExecutionProvider(
+          core_worker_.ray_client_)));  
+}
 
+Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
   while (true) {
-    std::unique_ptr<raylet::TaskSpecification> task_spec;
-    auto status = core_worker_.raylet_client_->GetTask(&task_spec);
+    std::vector<TaskSpec> tasks;
+    auto status = task_execution_providers_[static_cast<int>(TaskProviderType::RAYLET)]->GetTasks(&tasks);
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Get task failed with error: "
-                     << ray::Status::IOError(status.message());
+                    << ray::Status::IOError(status.message());
       return status;
     }
 
-    const auto &spec = *task_spec;
-    core_worker_.worker_context_.SetCurrentTask(spec);
+    for (const auto &task : tasks) {
 
-    WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
-                                  ? WorkerLanguage::JAVA
-                                  : WorkerLanguage::PYTHON;
-    RayFunction func{language, spec.FunctionDescriptor()};
+      const auto &spec = task.GetTaskSpecification();
+      core_worker_.worker_context_.SetCurrentTask(spec);
 
-    std::vector<std::shared_ptr<Buffer>> args;
-    RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
+      WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
+                                    ? WorkerLanguage::JAVA
+                                    : WorkerLanguage::PYTHON;
+      RayFunction func{language, spec.FunctionDescriptor()};
 
-    auto num_returns = spec.NumReturns();
-    if (spec.IsActorCreationTask() || spec.IsActorTask()) {
-      RAY_CHECK(num_returns > 0);
-      // Decrease to account for the dummy object id.
-      num_returns--;
+      std::vector<std::shared_ptr<Buffer>> args;
+      RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
+
+      auto num_returns = spec.NumReturns();
+      if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+        RAY_CHECK(num_returns > 0);
+        // Decrease to account for the dummy object id.
+        num_returns--;
+      }
+
+      status = executor(func, args, spec.TaskId(), num_returns);
+      // TODO:
+      // 1. Check and handle failure.
+      // 2. Save or load checkpoint.
     }
-
-    status = executor(func, args, spec.TaskId(), num_returns);
-    // TODO:
-    // 1. Check and handle failure.
-    // 2. Save or load checkpoint.
   }
 
   // should never reach here.

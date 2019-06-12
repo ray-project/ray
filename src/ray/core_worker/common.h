@@ -5,6 +5,8 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
+#include "ray/raylet/task_spec.h"
+#include "ray/raylet/raylet_client.h"
 
 namespace ray {
 
@@ -64,6 +66,50 @@ class TaskArg {
   const std::shared_ptr<ObjectID> id_;
   /// Data of the argument, if passed by value, otherwise nullptr.
   const std::shared_ptr<Buffer> data_;
+};
+
+/// Task specification, which includes the immutable information about the task
+/// which are determined at the submission time.
+class TaskSpec {
+ public:
+  TaskSpec(const raylet::TaskSpecification &task_spec,
+           const std::vector<ObjectID> &dependencies)
+      : task_spec_(task_spec),
+        dependencies_(dependencies) {}
+
+  TaskSpec(const raylet::TaskSpecification &&task_spec,
+           const std::vector<ObjectID> &&dependencies)
+      : task_spec_(task_spec),
+        dependencies_(dependencies) {}
+
+  const raylet::TaskSpecification &GetTaskSpecification() const {
+    return task_spec_;
+  }
+
+  const std::vector<ObjectID> &GetDependencies() const {
+    return dependencies_;
+  }
+ private:
+  /// Raylet task specification.
+  raylet::TaskSpecification task_spec_;
+
+  /// Dependencies.
+  std::vector<ObjectID> dependencies_;
+};
+
+enum class StoreProviderType { PLASMA };
+
+enum class TaskProviderType { RAYLET };
+
+struct RayClient {
+  /// Plasma store client.
+  plasma::PlasmaClient store_client_;
+
+  /// Mutex to protect store_client_.
+  std::mutex store_client_mutex_;
+
+  /// Raylet client.
+  std::unique_ptr<RayletClient> raylet_client_;
 };
 
 }  // namespace ray
