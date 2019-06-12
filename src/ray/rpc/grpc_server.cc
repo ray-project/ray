@@ -32,7 +32,7 @@ void GrpcServer::StartPolling() {
     void *tag;
     bool ok;
     while (cq_->Next(&tag, &ok)) {
-      UntypedServerCall *server_call = static_cast<UntypedServerCall *>(tag);
+      ServerCall *server_call = static_cast<ServerCall *>(tag);
       // `ok == False` indicates that the server has been shut down.
       // We should delete the call object in this case.
       bool delete_call = !ok;
@@ -47,7 +47,7 @@ void GrpcServer::StartPolling() {
           break;
         case ServerCallState::SENDING_REPLY:
           // The reply has been sent, this call can be deleted now.
-          // This event is triggered by `ServerCall::SendReply`.
+          // This event is triggered by `ServerCallImpl::SendReply`.
           delete_call = true;
           break;
         default:

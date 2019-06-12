@@ -53,7 +53,7 @@ class GrpcServer {
   ///
   /// \param[out] server_call_factories The returned `ServerCallFactory` objects.
   virtual void InitServerCallFactories(
-      std::vector<std::unique_ptr<UntypedServerCallFactory>> *server_call_factories) = 0;
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) = 0;
 
   /// Start a background thread that keeps polling events from the
   /// `ServerCompletionQueue`, and dispach the event to the `ServiceHandler` instances via
@@ -65,7 +65,7 @@ class GrpcServer {
   /// Port of this server.
   int port_;
   /// The `ServerCallFactory` objects.
-  std::vector<std::unique_ptr<UntypedServerCallFactory>> server_call_factories_;
+  std::vector<std::unique_ptr<ServerCallFactory>> server_call_factories_;
   /// The thread that polls events from the `ServerCompletionQueue`.
   std::unique_ptr<std::thread> polling_thread_;
   /// The `ServerCompletionQueue` object used for polling events.
