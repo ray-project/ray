@@ -8,6 +8,10 @@
 
 namespace ray {
 
+/// Provider interface for store access. Store provider should inherit from this class and
+/// provide implementions for the methods. The actual store provider a plasma store or
+/// just process local memory store, and possibly other types of storage.
+
 class CoreWorkerStoreProvider {
  public:
   CoreWorkerStoreProvider() {}
