@@ -1,5 +1,5 @@
 
-#include "context.h"
+#include "ray/core_worker/context.h"
 
 namespace ray {
 
@@ -23,7 +23,6 @@ struct WorkerThreadContext {
   void SetCurrentTask(const raylet::TaskSpecification &spec) {
     SetCurrentTask(spec.TaskId());
   }
-
  private:
   /// The task ID for current task.
   TaskID current_task_id;
