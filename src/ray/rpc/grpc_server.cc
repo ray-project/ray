@@ -33,14 +33,14 @@ void GrpcServer::StartPolling() {
     bool ok;
     while (cq_->Next(&tag, &ok)) {
       ServerCall *server_call = static_cast<ServerCall *>(tag);
-      // `ok == False` indicates that the server has been shut down.
+      // `ok == false` indicates that the server has been shut down.
       // We should delete the call object in this case.
       bool delete_call = !ok;
       if (ok) {
         switch (server_call->GetState()) {
         case ServerCallState::PENDING:
-          // We've received a new incoming request. Now we use this call object
-          // to handle this request. So we need to create a new call to handle next
+          // We've received a new incoming request. Now this call object is used to
+          // track this request. So we need to create another call to handle next
           // incoming request.
           server_call->GetFactory().CreateCall();
           server_call->OnRequestReceived();

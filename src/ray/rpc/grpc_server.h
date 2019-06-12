@@ -14,14 +14,14 @@ namespace ray {
 ///
 /// A `GrpcServer` listens on a specific port. It owns
 /// 1) a `ServerCompletionQueue` that is used for polling events from gRPC,
-/// 2) and a thread that polls event from the `ServerCompletionQueue`.
+/// 2) and a thread that polls events from the `ServerCompletionQueue`.
 ///
 /// Subclasses can register one or multiple services to a `GrpcServer`, see
 /// `RegisterServices`. And they should also implement `InitServerCallFactories` to decide
 /// which kinds of requests this server should accept.
 class GrpcServer {
  public:
-  /// Construct a gRPC server.
+  /// Constructor.
   ///
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port

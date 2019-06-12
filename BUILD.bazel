@@ -9,16 +9,20 @@ load("@//bazel:cython_library.bzl", "pyx_library")
 COPTS = ["-DRAY_USE_GLOG"]
 
 # gRPC libraries.
+
+# node_manager.proto definition.
 proto_library(
     name = "node_manager_proto",
     srcs = ["src/ray/protobuf/node_manager.proto"],
 )
 
+# Node manager gRPC-genrated files.
 cpp_grpc_library(
     name = "node_manager_grpc",
     deps = [":node_manager_proto"],
 )
 
+# Node manager server and client.
 cc_library(
     name = "node_manager_rpc_lib",
     srcs = glob([

@@ -11,8 +11,8 @@ namespace ray {
 
 /// Represents an outgoing gRPC request.
 ///
-/// The lifecycle of a `ClientCall` is as following.
-//
+/// The lifecycle of a `ClientCall` is as follows.
+///
 /// When a client submits a new gRPC request, a new `ClientCall` object will be created
 /// by `ClientCallMangager::CreateCall`. Then the object will be used as the tag of
 /// `CompletionQueue`.
@@ -29,12 +29,14 @@ class ClientCall {
 
 class ClientCallManager;
 
-/// Implementaion of the `ClientCall`.
+/// Implementaion of the `ClientCall`. It represents a `ClientCall` for a particular
+/// RPC method.
 ///
 /// \tparam Reply Type of the Reply message.
 template <class Reply>
 class ClientCallImpl : public ClientCall {
  public:
+  /// Type of the callback function.
   using Callback = std::function<void(const Status &status, const Reply &reply)>;
 
   void OnReplyReceived() override { callback_(GrpcStatusToRayStatus(status_), reply_); }
@@ -122,7 +124,7 @@ class ClientCallManager {
   /// The polling thread.
   std::unique_ptr<std::thread> polling_thread_;
 
-  /// The gRPC `CompletionQueue` object used to polling events.
+  /// The gRPC `CompletionQueue` object used to poll events.
   ::grpc::CompletionQueue cq_;
 };
 

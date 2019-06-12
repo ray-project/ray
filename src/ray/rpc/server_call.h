@@ -11,11 +11,32 @@ namespace ray {
 using RequestDoneCallback = std::function<void(Status)>;
 
 /// Represents state of a `ServerCall`.
-enum class ServerCallState { PENDING, PROCECCSSING, SENDING_REPLY };
+enum class ServerCallState {
+  /// The call is created and waiting for an incoming request.
+  PENDING,
+  /// Request is received and being processed.
+  PROCECCSSING,
+  /// Request processing is done, and reply is being sent to client.
+  SENDING_REPLY
+};
 
 class ServerCallFactory;
 
-/// Reprensents a incoming request of a gRPC server.
+/// Reprensents an incoming request of a gRPC server.
+///
+/// The lifecycle and state transition of a `ServerCall` is as follows:
+///
+/// --(1)--> PENDING --(2)--> PROCESSING --(3)--> SENDING_REPLY --(4)--> [FINISHED]
+///
+/// (1) The `GrpcServer` creates a `ServerCall` and use it as the tag to accept requests
+///     gRPC `CompletionQueue`. Now the state is `PENDING`.
+/// (2) When a request is received, an event will be gotten from the `CompletionQueue`.
+///     `GrpcServer` then should call `ServerCall::OnRequestReceived`, and the state
+///     becomes `PROCESSING`.
+/// (3) When the `ServiceHandler` finishes handling the request, `ServerCallImpl::Finish`
+///     will be called, and the state becomes `SENDING_REPLY`.
+/// (4) When the reply is sent, an event will be gotten from the `CompletionQueue`.
+///     `GrpcServer` will then delete this call.
 class ServerCall {
  public:
   /// Get the state of this `ServerCall`.
@@ -28,16 +49,16 @@ class ServerCall {
   virtual const ServerCallFactory &GetFactory() const = 0;
 };
 
-/// A factory object that can create a particular kind of `ServerCall` objects.
+/// The factory that creates a particular kind of `ServerCall` objects.
 class ServerCallFactory {
  public:
-  /// Create a new `ServerCall` and request gRPC to start accepting the corresonding
-  /// type of requests.
+  /// Create a new `ServerCall` and request gRPC runtime to start accepting the
+  /// corresonding type of requests.
   virtual ServerCall *CreateCall() const = 0;
 };
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
-/// gRPC service method.
+/// RPC method.
 ///
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
@@ -114,6 +135,12 @@ class ServerCallImpl : public ServerCall {
   friend class ServerCallFactoryImpl;
 };
 
+/// Implementation of `ServerCallFactory`
+///
+/// \tparam GrpcService Type of the gRPC-generated service class.
+/// \tparam ServiceHandler Type of the handler that handles the request.
+/// \tparam Request Type of the request message.
+/// \tparam Reply Type of the reply message.
 template <class GrpcService, class ServiceHandler, class Request, class Reply>
 class ServerCallFactoryImpl : public ServerCallFactory {
   using AsyncService = typename GrpcService::AsyncService;
@@ -132,7 +159,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
  public:
   /// Constructor.
   ///
-  /// \param[in] service The gRPC-generate `AsyncService`.
+  /// \param[in] service The gRPC-generated `AsyncService`.
   /// \param[in] request_call_function Pointer to the `AsyncService::RequestMethod`
   //  fucntion.
   /// \param[in] service_handler The service handler that handles the request.
@@ -152,8 +179,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
     // Create a new `ServerCall`.
     auto call = new ServerCallImpl<ServiceHandler, Request, Reply>(
         *this, service_handler_, handle_request_function_);
-    /// Call `FooService::AsyncService::RequestBar()` function and use the call as the
-    /// tag.
+    /// Request gRPC runtime to starting accepting this kind of request, using the call as
+    /// the tag.
     (service_.*request_call_function_)(&call->context_, &call->request_,
                                        &call->response_writer_, cq_.get(), cq_.get(),
                                        call);
@@ -161,7 +188,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   }
 
  private:
-  /// The gRPC-generate `AsyncService`.
+  /// The gRPC-generated `AsyncService`.
   AsyncService &service_;
 
   /// Pointer to the `AsyncService::RequestMethod` fucntion.
