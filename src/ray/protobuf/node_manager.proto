@@ -2,27 +2,12 @@ syntax = "proto3";
 
 package ray;
 
-message TaskExecutionSpecification {
-  // A list of object IDs representing the dependencies of this task that may
-  // change at execution time.
-  repeated bytes dependencies = 1;
-  // The last time this task was received for scheduling.
-  double last_timestamp = 2;
-  // The number of times this task was spilled back by raylets.
-  uint32 num_forwards = 3;
-}
-
-message Task {
-  bytes task_specification = 1;
-  bytes task_execution_spec = 2;
-}
-
 message ForwardTaskRequest {
   // The ID of the task to be forwarded.
   bytes task_id = 1;
   // The tasks in the uncommitted lineage of the forwarded task. This
   // should include task_id.
-  repeated Task uncommitted_tasks = 2;
+  repeated bytes uncommitted_tasks = 2;
 }
 
 message ForwardTaskReply {}
