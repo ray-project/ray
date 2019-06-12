@@ -231,6 +231,13 @@ class LineageCache {
   /// task was already in the COMMITTING state.
   bool CommitTask(const Task &task);
 
+  /// Flush all tasks in the local cache that are not already being
+  /// committed. This is equivalent to all tasks in the UNCOMMITTED
+  /// state.
+  ///
+  /// \return Void.
+  void FlushAllUncommittedTasks();
+
   /// Add a task and its (estimated) uncommitted lineage to the local cache. We
   /// will subscribe to commit notifications for all uncommitted tasks to
   /// determine when it is safe to evict the lineage from the local cache.
