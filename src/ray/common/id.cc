@@ -87,19 +87,20 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
 
 TaskID TaskID::GetDriverTaskID(const DriverID &driver_id) {
   std::string driver_id_str = driver_id.Binary();
+  driver_id_str.resize(kTaskIDSize);
   driver_id_str.resize(Size());
   return TaskID::FromBinary(driver_id_str);
 }
 
 TaskID ObjectID::TaskId() const {
   return TaskID::FromBinary(
-      std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
+      std::string(reinterpret_cast<const char *>(task_id_), TaskID::Size()));
 }
 
 ObjectID ObjectID::ForPut(const TaskID &task_id, int64_t put_index) {
   RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts) << "index=" << put_index;
   ObjectID object_id;
-  std::memcpy(object_id.id_, task_id.Binary().c_str(), task_id.Size());
+  std::memcpy(object_id.task_id_, task_id.Binary().c_str(), task_id.Size());
   object_id.index_ = -put_index;
   return object_id;
 }
@@ -108,7 +109,7 @@ ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, int64_t return_index) {
   RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns) << "index="
                                                                   << return_index;
   ObjectID object_id;
-  std::memcpy(object_id.id_, task_id.Binary().c_str(), task_id.Size());
+  std::memcpy(object_id.task_id_, task_id.Binary().c_str(), task_id.Size());
   object_id.index_ = return_index;
   return object_id;
 }
@@ -140,6 +141,7 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   }
 
 ID_OSTREAM_OPERATOR(UniqueID);
+ID_OSTREAM_OPERATOR(ActorID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
 

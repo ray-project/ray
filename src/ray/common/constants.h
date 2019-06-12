@@ -13,8 +13,9 @@ constexpr int kObjectIdIndexSize = 32;
 static_assert(kObjectIdIndexSize % CHAR_BIT == 0,
               "ObjectID prefix not a multiple of bytes");
 
+constexpr int64_t kActorIdSize = 4;
 /// Length of Ray TaskID in bytes. 32-bit integer is used for object index.
-constexpr int64_t kTaskIDSize = kUniqueIDSize - kObjectIdIndexSize / 8;
+constexpr int64_t kTaskIDSize = kUniqueIDSize - kActorIdSize - kObjectIdIndexSize / 8;
 
 /// The maximum number of objects that can be returned by a task when finishing
 /// execution. An ObjectID's bytes are split into the task ID itself and the

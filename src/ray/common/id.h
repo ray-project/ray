@@ -68,14 +68,28 @@ class UniqueID : public BaseID<UniqueID> {
   uint8_t id_[kUniqueIDSize];
 };
 
+class ActorID : public BaseID<ActorID> {
+ public:
+  ActorID() : BaseID() {}
+  static size_t Size() { return kActorIdSize; }
+
+ private:
+  uint8_t id_[kActorIdSize];
+};
+
 class TaskID : public BaseID<TaskID> {
  public:
   TaskID() : BaseID() {}
-  static size_t Size() { return kTaskIDSize; }
+  static size_t Size() { return kTaskIDSize + kActorIdSize; }
+  ActorID ActorId() const {
+    return ActorID::FromBinary(
+        std::string(reinterpret_cast<const char *>(actor_id_), ActorID::Size()));
+  }
   static TaskID GetDriverTaskID(const DriverID &driver_id);
 
  private:
   uint8_t id_[kTaskIDSize];
+  uint8_t actor_id_[kActorIdSize];
 };
 
 class ObjectID : public BaseID<ObjectID> {
@@ -112,16 +126,20 @@ class ObjectID : public BaseID<ObjectID> {
   static ObjectID ForTaskReturn(const TaskID &task_id, int64_t return_index);
 
  private:
-  uint8_t id_[kTaskIDSize];
+  uint8_t task_id_[kTaskIDSize];
+  uint8_t actor_id_[kActorIdSize];
   int32_t index_;
 };
 
-static_assert(sizeof(TaskID) == kTaskIDSize + sizeof(size_t),
+// TaskID compose of a hash, kTaskIDSize unique bytes, kActorIdSize
+// bytes representing the corresponding actor ID, if any.
+static_assert(sizeof(TaskID) == sizeof(size_t) + kTaskIDSize + kActorIdSize,
               "TaskID size is not as expected");
 static_assert(sizeof(ObjectID) == sizeof(int32_t) + sizeof(TaskID),
               "ObjectID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
+std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
@@ -264,6 +282,7 @@ namespace std {
   };
 
 DEFINE_UNIQUE_ID(UniqueID);
+DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 #include "id_def.h"

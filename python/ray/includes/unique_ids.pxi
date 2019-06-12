@@ -222,14 +222,42 @@ cdef class DriverID(UniqueID):
         return <CDriverID>self.data
 
 
-cdef class ActorID(UniqueID):
+cdef class ActorID(BaseID):
+    cdef CActorID data
 
     def __init__(self, id):
-        check_id(id)
+        check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
 
     cdef CActorID native(self):
         return <CActorID>self.data
+
+    def size(self):
+        return CActorID.Size()
+
+    def binary(self):
+        return self.data.Binary()
+
+    def hex(self):
+        return decode(self.data.Hex())
+
+    def is_nil(self):
+        return self.data.IsNil()
+
+    cdef size_t hash(self):
+        return self.data.Hash()
+
+    @classmethod
+    def nil(cls):
+        return cls(CActorID.Nil().Binary())
+
+    @classmethod
+    def size(cla):
+        return CActorID.Size()
+
+    @classmethod
+    def from_random(cls):
+        return cls(os.urandom(CActorID.Size()))
 
 
 cdef class ActorHandleID(UniqueID):
