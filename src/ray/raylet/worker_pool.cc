@@ -5,9 +5,9 @@
 #include <algorithm>
 #include <thread>
 
-#include "ray/ray_config.h"
+#include "ray/common/ray_config.h"
+#include "ray/common/status.h"
 #include "ray/stats/stats.h"
-#include "ray/status.h"
 #include "ray/util/logging.h"
 
 namespace {
@@ -172,7 +172,7 @@ void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
 }
 
 void WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
-  RAY_CHECK(!driver->GetAssignedTaskId().is_nil());
+  RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
 }
@@ -201,11 +201,11 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
 
 void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
   // Since the worker is now idle, unset its assigned task ID.
-  RAY_CHECK(worker->GetAssignedTaskId().is_nil())
+  RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
   // Add the worker to the idle pool.
-  if (worker->GetActorId().is_nil()) {
+  if (worker->GetActorId().IsNil()) {
     state.idle.insert(std::move(worker));
   } else {
     state.idle_actor[worker->GetActorId()] = std::move(worker);
@@ -216,7 +216,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
   const auto &actor_id = task_spec.ActorId();
   std::shared_ptr<Worker> worker = nullptr;
-  if (actor_id.is_nil()) {
+  if (actor_id.IsNil()) {
     if (!state.idle.empty()) {
       worker = std::move(*state.idle.begin());
       state.idle.erase(state.idle.begin());

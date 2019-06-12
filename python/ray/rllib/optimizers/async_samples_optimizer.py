@@ -24,12 +24,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     """Main event loop of the IMPALA architecture.
 
     This class coordinates the data transfers between the learner thread
-    and remote evaluators (IMPALA actors).
+    and remote workers (IMPALA actors).
     """
 
     def __init__(self,
-                 local_evaluator,
-                 remote_evaluators,
+                 workers,
                  train_batch_size=500,
                  sample_batch_size=50,
                  num_envs_per_worker=1,
@@ -45,7 +44,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                  learner_queue_size=16,
                  num_aggregation_workers=0,
                  _fake_gpus=False):
-        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+        PolicyOptimizer.__init__(self, workers)
 
         self._stats_start_time = time.time()
         self._last_stats_time = {}
@@ -62,7 +61,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                     "{} vs {}".format(num_data_loader_buffers,
                                       minibatch_buffer_size))
             self.learner = TFMultiGPULearner(
-                self.local_evaluator,
+                self.workers.local_worker(),
                 lr=lr,
                 num_gpus=num_gpus,
                 train_batch_size=train_batch_size,
@@ -72,7 +71,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 learner_queue_size=learner_queue_size,
                 _fake_gpus=_fake_gpus)
         else:
-            self.learner = LearnerThread(self.local_evaluator,
+            self.learner = LearnerThread(self.workers.local_worker(),
                                          minibatch_buffer_size, num_sgd_iter,
                                          learner_queue_size)
         self.learner.start()
@@ -84,8 +83,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         if num_aggregation_workers > 0:
             self.aggregator = TreeAggregator(
-                self.local_evaluator,
-                self.remote_evaluators,
+                workers,
                 num_aggregation_workers,
                 replay_proportion=replay_proportion,
                 max_sample_requests_in_flight_per_worker=(
@@ -96,8 +94,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 broadcast_interval=broadcast_interval)
         else:
             self.aggregator = SimpleAggregator(
-                self.local_evaluator,
-                self.remote_evaluators,
+                workers,
                 replay_proportion=replay_proportion,
                 max_sample_requests_in_flight_per_worker=(
                     max_sample_requests_in_flight_per_worker),
@@ -127,7 +124,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
     @override(PolicyOptimizer)
     def step(self):
-        if len(self.remote_evaluators) == 0:
+        if len(self.workers.remote_workers()) == 0:
             raise ValueError("Config num_workers=0 means training will hang!")
         assert self.learner.is_alive()
         with self._optimizer_step_timer:
@@ -146,9 +143,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.learner.stopped = True
 
     @override(PolicyOptimizer)
-    def reset(self, remote_evaluators):
-        self.remote_evaluators = remote_evaluators
-        self.aggregator.reset(remote_evaluators)
+    def reset(self, remote_workers):
+        self.workers.reset(remote_workers)
+        self.aggregator.reset(remote_workers)
 
     @override(PolicyOptimizer)
     def stats(self):

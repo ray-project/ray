@@ -12,13 +12,13 @@ import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayException;
 import org.ray.api.exception.RayWorkerException;
 import org.ray.api.exception.UnreconstructableException;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.generated.ErrorType;
+import org.ray.runtime.util.IdUtil;
 import org.ray.runtime.util.Serializer;
-import org.ray.runtime.util.UniqueIdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,7 +61,7 @@ public class ObjectStoreProxy {
    * @param <T> Type of the object.
    * @return The GetResult object.
    */
-  public <T> GetResult<T> get(UniqueId id, int timeoutMs) {
+  public <T> GetResult<T> get(ObjectId id, int timeoutMs) {
     List<GetResult<T>> list = get(ImmutableList.of(id), timeoutMs);
     return list.get(0);
   }
@@ -74,8 +74,8 @@ public class ObjectStoreProxy {
    * @param <T> Type of these objects.
    * @return A list of GetResult objects.
    */
-  public <T> List<GetResult<T>> get(List<UniqueId> ids, int timeoutMs) {
-    byte[][] binaryIds = UniqueIdUtil.getIdBytes(ids);
+  public <T> List<GetResult<T>> get(List<ObjectId> ids, int timeoutMs) {
+    byte[][] binaryIds = IdUtil.getIdBytes(ids);
     List<ObjectStoreData> dataAndMetaList = objectStore.get().get(binaryIds, timeoutMs);
 
     List<GetResult<T>> results = new ArrayList<>();
@@ -114,7 +114,7 @@ public class ObjectStoreProxy {
   }
 
   @SuppressWarnings("unchecked")
-  private <T> GetResult<T> deserializeFromMeta(byte[] meta, byte[] data, UniqueId objectId) {
+  private <T> GetResult<T> deserializeFromMeta(byte[] meta, byte[] data, ObjectId objectId) {
     if (Arrays.equals(meta, RAW_TYPE_META)) {
       return (GetResult<T>) new GetResult<>(true, data, null);
     } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
@@ -133,7 +133,7 @@ public class ObjectStoreProxy {
    * @param id Id of the object.
    * @param object The object to put.
    */
-  public void put(UniqueId id, Object object) {
+  public void put(ObjectId id, Object object) {
     try {
       if (object instanceof byte[]) {
         // If the object is a byte array, skip serializing it and use a special metadata to
@@ -153,7 +153,7 @@ public class ObjectStoreProxy {
    * @param id Id of the object.
    * @param serializedObject The serialized object to put.
    */
-  public void putSerialized(UniqueId id, byte[] serializedObject) {
+  public void putSerialized(ObjectId id, byte[] serializedObject) {
     try {
       objectStore.get().put(id.getBytes(), serializedObject, null);
     } catch (DuplicateObjectException e) {

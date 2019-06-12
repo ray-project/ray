@@ -9,7 +9,7 @@ from ray.core.generated.ActorCheckpointIdData import ActorCheckpointIdData
 from ray.core.generated.ClientTableData import ClientTableData
 from ray.core.generated.DriverTableData import DriverTableData
 from ray.core.generated.ErrorTableData import ErrorTableData
-from ray.core.generated.GcsTableEntry import GcsTableEntry
+from ray.core.generated.GcsEntry import GcsEntry
 from ray.core.generated.HeartbeatBatchTableData import HeartbeatBatchTableData
 from ray.core.generated.HeartbeatTableData import HeartbeatTableData
 from ray.core.generated.Language import Language
@@ -25,7 +25,7 @@ __all__ = [
     "ClientTableData",
     "DriverTableData",
     "ErrorTableData",
-    "GcsTableEntry",
+    "GcsEntry",
     "HeartbeatBatchTableData",
     "HeartbeatTableData",
     "Language",

@@ -25,7 +25,6 @@ import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.experimental.signal as ray_signal
 import ray.experimental.no_return
-import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
@@ -35,6 +34,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature
+import ray.state
 
 from ray import (
     ActorHandleID,
@@ -198,7 +198,7 @@ class Worker(object):
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID(_random_string())
+                self._task_context.current_task_id = TaskID.from_random()
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -782,18 +782,27 @@ class Worker(object):
             RayError: This exception is raised if a task that
                 created one of the arguments failed.
         """
-        arguments = []
+        arguments = [None] * len(serialized_args)
+        object_ids = []
+        object_indices = []
+
         for (i, arg) in enumerate(serialized_args):
             if isinstance(arg, ObjectID):
-                # get the object from the local object store
-                argument = self.get_object([arg])[0]
-                if isinstance(argument, RayError):
-                    raise argument
+                object_ids.append(arg)
+                object_indices.append(i)
             else:
                 # pass the argument by value
-                argument = arg
+                arguments[i] = arg
 
-            arguments.append(argument)
+        # Get the objects from the local object store.
+        if len(object_ids) > 0:
+            values = self.get_object(object_ids)
+            for i, value in enumerate(values):
+                if isinstance(value, RayError):
+                    raise value
+                else:
+                    arguments[object_indices[i]] = value
+
         return arguments
 
     def _store_outputs_in_object_store(self, object_ids, outputs):
@@ -1108,8 +1117,6 @@ We use a global Worker object to ensure that there is a single worker object
 per worker process.
 """
 
-global_state = state.GlobalState()
-
 _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
@@ -1132,14 +1139,6 @@ def print_failed_task(task_status):
         Error Message: \n{}
     """.format(task_status["function_name"], task_status["operationid"],
                task_status["error_message"]))
-
-
-def error_info():
-    """Return information about failed tasks."""
-    worker = global_worker
-    worker.check_connected()
-    return (global_state.error_messages(driver_id=worker.task_driver_id) +
-            global_state.error_messages(driver_id=DriverID.nil()))
 
 
 def _initialize_serialization(driver_id, worker=global_worker):
@@ -1488,7 +1487,7 @@ def shutdown(exiting_interpreter=False):
     disconnect()
 
     # Disconnect global state from GCS.
-    global_state.disconnect()
+    ray.state.state.disconnect()
 
     # Shut down the Ray processes.
     global _global_node
@@ -1644,7 +1643,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     try:
         # Get the exports that occurred before the call to subscribe.
-        error_messages = global_state.error_messages(worker.task_driver_id)
+        error_messages = ray.errors(include_cluster_errors=False)
         for error_message in error_messages:
             logger.error(error_message)
 
@@ -1657,7 +1656,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             if msg is None:
                 threads_stopped.wait(timeout=0.01)
                 continue
-            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            gcs_entry = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(
                 msg["data"], 0)
             assert gcs_entry.EntriesLength() == 1
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
@@ -1725,7 +1724,7 @@ def connect(node,
     else:
         # This is the code path of driver mode.
         if driver_id is None:
-            driver_id = DriverID(_random_string())
+            driver_id = DriverID.from_random()
 
         if not isinstance(driver_id, DriverID):
             raise TypeError("The type of given driver id must be DriverID.")
@@ -1774,7 +1773,7 @@ def connect(node,
     worker.lock = threading.RLock()
 
     # Create an object for interfacing with the global state.
-    global_state._initialize_global_state(
+    ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 
     # Register the worker with Redis.
@@ -1834,6 +1833,7 @@ def connect(node,
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
+    driver_id_str = _random_string()
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -1865,7 +1865,7 @@ def connect(node,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            TaskID(_random_string()),  # parent_task_id.
+            TaskID(driver_id_str[:TaskID.size()]),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
@@ -1880,11 +1880,12 @@ def connect(node,
         )
 
         # Add the driver task to the task table.
-        global_state._execute_command(driver_task.task_id(), "RAY.TABLE_ADD",
-                                      ray.gcs_utils.TablePrefix.RAYLET_TASK,
-                                      ray.gcs_utils.TablePubsub.RAYLET_TASK,
-                                      driver_task.task_id().binary(),
-                                      driver_task._serialized_raylet_task())
+        ray.state.state._execute_command(driver_task.task_id(),
+                                         "RAY.TABLE_ADD",
+                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
+                                         ray.gcs_utils.TablePubsub.RAYLET_TASK,
+                                         driver_task.task_id().binary(),
+                                         driver_task._serialized_raylet_task())
 
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
@@ -1894,7 +1895,7 @@ def connect(node,
         node.raylet_socket_name,
         ClientID(worker.worker_id),
         (mode == WORKER_MODE),
-        DriverID(worker.current_task_id.binary()),
+        DriverID(driver_id_str),
     )
 
     # Start the import thread

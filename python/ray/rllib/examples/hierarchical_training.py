@@ -209,7 +209,7 @@ if __name__ == "__main__":
                 "log_level": "INFO",
                 "entropy_coeff": 0.01,
                 "multiagent": {
-                    "policy_graphs": {
+                    "policies": {
                         "high_level_policy": (None, maze.observation_space,
                                               Discrete(4), {
                                                   "gamma": 0.9

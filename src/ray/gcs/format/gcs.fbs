@@ -22,6 +22,7 @@ enum TablePrefix:int {
   TASK_LEASE,
   ACTOR_CHECKPOINT,
   ACTOR_CHECKPOINT_ID,
+  NODE_RESOURCE,
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -37,6 +38,7 @@ enum TablePubsub:int {
   ERROR_INFO,
   TASK_LEASE,
   DRIVER,
+  NODE_RESOURCE,
 }
 
 // Enum for the entry type in the ClientTable
@@ -89,9 +91,8 @@ table TaskInfo {
   new_actor_handles: string;
   // Task arguments.
   args: [Arg];
-  // Object IDs of return values. This is a long string that concatenate
-  // all of the return object IDs of this task.
-  returns: string;
+  // Number of return objects.
+  num_returns: int;
   // The required_resources vector indicates the quantities of the different
   // resources required by this task.
   required_resources: [ResourcePair];
@@ -114,13 +115,13 @@ table ResourcePair {
   value: double;
 }
 
-enum GcsTableNotificationMode:int {
+enum GcsChangeMode:int {
   APPEND_OR_ADD = 0,
   REMOVE,
 }
 
-table GcsTableEntry {
-  notification_mode: GcsTableNotificationMode;
+table GcsEntry {
+  change_mode: GcsChangeMode;
   id: string;
   entries: [string];
 }

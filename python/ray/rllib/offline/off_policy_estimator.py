@@ -5,7 +5,7 @@ from __future__ import print_function
 from collections import namedtuple
 import logging
 
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class OffPolicyEstimator(object):
         """Creates an off-policy estimator.
 
         Arguments:
-            policy (PolicyGraph): Policy graph to evaluate.
+            policy (Policy): Policy to evaluate.
             gamma (float): Discount of the MDP.
         """
         self.policy = policy
@@ -33,14 +33,14 @@ class OffPolicyEstimator(object):
     @classmethod
     def create(cls, ioctx):
         """Create an off-policy estimator from a IOContext."""
-        gamma = ioctx.evaluator.policy_config["gamma"]
+        gamma = ioctx.worker.policy_config["gamma"]
         # Grab a reference to the current model
-        keys = list(ioctx.evaluator.policy_map.keys())
+        keys = list(ioctx.worker.policy_map.keys())
         if len(keys) > 1:
             raise NotImplementedError(
                 "Off-policy estimation is not implemented for multi-agent. "
                 "You can set `input_evaluation: []` to resolve this.")
-        policy = ioctx.evaluator.get_policy(keys[0])
+        policy = ioctx.worker.get_policy(keys[0])
         return cls(policy, gamma)
 
     @DeveloperAPI
@@ -71,7 +71,7 @@ class OffPolicyEstimator(object):
             raise ValueError(
                 "Off-policy estimation is not possible unless the policy "
                 "returns action probabilities when computing actions (i.e., "
-                "the 'action_prob' key is output by the policy graph). You "
+                "the 'action_prob' key is output by the policy). You "
                 "can set `input_evaluation: []` to resolve this.")
         return info["action_prob"]
 

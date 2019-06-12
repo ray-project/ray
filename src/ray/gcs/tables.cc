@@ -1,8 +1,8 @@
 #include "ray/gcs/tables.h"
 
 #include "ray/common/common_protocol.h"
+#include "ray/common/ray_config.h"
 #include "ray/gcs/client.h"
-#include "ray/ray_config.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -41,10 +41,11 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Append(const DriverID &driver_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_appends_++;
-  auto callback = [this, id, dataT, done](const std::string &data) {
-    // If data is not empty, then Redis failed to append the entry.
-    RAY_CHECK(data.empty()) << "TABLE_APPEND command failed: " << data;
-
+  auto callback = [this, id, dataT, done](const CallbackReply &reply) {
+    const auto status = reply.ReadAsStatus();
+    // Failed to append the entry.
+    RAY_CHECK(status.ok()) << "Failed to execute command TABLE_APPEND:"
+                           << status.ToString();
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
@@ -62,8 +63,9 @@ Status Log<ID, Data>::AppendAt(const DriverID &driver_id, const ID &id,
                                std::shared_ptr<DataT> &dataT, const WriteCallback &done,
                                const WriteCallback &failure, int log_length) {
   num_appends_++;
-  auto callback = [this, id, dataT, done, failure](const std::string &data) {
-    if (data.empty()) {
+  auto callback = [this, id, dataT, done, failure](const CallbackReply &reply) {
+    const auto status = reply.ReadAsStatus();
+    if (status.ok()) {
       if (done != nullptr) {
         (done)(client_, id, *dataT);
       }
@@ -85,11 +87,12 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
                              const Callback &lookup) {
   num_lookups_++;
-  auto callback = [this, id, lookup](const std::string &data) {
+  auto callback = [this, id, lookup](const CallbackReply &reply) {
     if (lookup != nullptr) {
       std::vector<DataT> results;
-      if (!data.empty()) {
-        auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
+      if (!reply.IsNil()) {
+        const auto data = reply.ReadAsString();
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
         RAY_CHECK(from_flatbuf<ID>(*root->id()) == id);
         for (size_t i = 0; i < root->entries()->size(); i++) {
           DataT result;
@@ -111,9 +114,9 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
   auto subscribe_wrapper = [subscribe](AsyncGcsClient *client, const ID &id,
-                                       const GcsTableNotificationMode notification_mode,
+                                       const GcsChangeMode change_mode,
                                        const std::vector<DataT> &data) {
-    RAY_CHECK(notification_mode != GcsTableNotificationMode::REMOVE);
+    RAY_CHECK(change_mode != GcsChangeMode::REMOVE);
     subscribe(client, id, data);
   };
   return Subscribe(driver_id, client_id, subscribe_wrapper, done);
@@ -125,7 +128,9 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
                                 const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
       << "Client called Subscribe twice on the same table";
-  auto callback = [this, subscribe, done](const std::string &data) {
+  auto callback = [this, subscribe, done](const CallbackReply &reply) {
+    const auto data = reply.ReadAsPubsubData();
+
     if (data.empty()) {
       // No notification data is provided. This is the callback for the
       // initial subscription request.
@@ -136,7 +141,7 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
       // Data is provided. This is the callback for a message.
       if (subscribe != nullptr) {
         // Parse the notification.
-        auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
         ID id;
         if (root->id()->size() > 0) {
           id = from_flatbuf<ID>(*root->id());
@@ -148,7 +153,7 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
           data_root->UnPackTo(&result);
           results.emplace_back(std::move(result));
         }
-        subscribe(client_, id, root->notification_mode(), results);
+        subscribe(client_, id, root->change_mode(), results);
       }
     }
   };
@@ -167,7 +172,7 @@ Status Log<ID, Data>::RequestNotifications(const DriverID &driver_id, const ID &
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
   return GetRedisContext(id)->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id,
-                                       client_id.data(), client_id.size(), prefix_,
+                                       client_id.Data(), client_id.Size(), prefix_,
                                        pubsub_channel_, nullptr);
 }
 
@@ -177,7 +182,7 @@ Status Log<ID, Data>::CancelNotifications(const DriverID &driver_id, const ID &i
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
   return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id,
-                                       client_id.data(), client_id.size(), prefix_,
+                                       client_id.Data(), client_id.Size(), prefix_,
                                        pubsub_channel_, nullptr);
 }
 
@@ -188,19 +193,29 @@ void Log<ID, Data>::Delete(const DriverID &driver_id, const std::vector<ID> &ids
   }
   std::unordered_map<RedisContext *, std::ostringstream> sharded_data;
   for (const auto &id : ids) {
-    sharded_data[GetRedisContext(id).get()] << id.binary();
+    sharded_data[GetRedisContext(id).get()] << id.Binary();
   }
   // Breaking really large deletion commands into batches of smaller size.
   const size_t batch_size =
-      RayConfig::instance().maximum_gcs_deletion_batch_size() * kUniqueIDSize;
+      RayConfig::instance().maximum_gcs_deletion_batch_size() * ID::Size();
   for (const auto &pair : sharded_data) {
     std::string current_data = pair.second.str();
     for (size_t cur = 0; cur < pair.second.str().size(); cur += batch_size) {
-      RAY_IGNORE_EXPR(pair.first->RunAsync(
-          "RAY.TABLE_DELETE", UniqueID::nil(),
-          reinterpret_cast<const uint8_t *>(current_data.c_str() + cur),
-          std::min(batch_size, current_data.size() - cur), prefix_, pubsub_channel_,
-          /*redisCallback=*/nullptr));
+      size_t data_field_size = std::min(batch_size, current_data.size() - cur);
+      uint16_t id_count = data_field_size / ID::Size();
+      // Send data contains id count and all the id data.
+      std::string send_data(data_field_size + sizeof(id_count), 0);
+      uint8_t *buffer = reinterpret_cast<uint8_t *>(&send_data[0]);
+      *reinterpret_cast<uint16_t *>(buffer) = id_count;
+      RAY_IGNORE_EXPR(
+          std::copy_n(reinterpret_cast<const uint8_t *>(current_data.c_str() + cur),
+                      data_field_size, buffer + sizeof(uint16_t)));
+
+      RAY_IGNORE_EXPR(
+          pair.first->RunAsync("RAY.TABLE_DELETE", UniqueID::Nil(),
+                               reinterpret_cast<const uint8_t *>(send_data.c_str()),
+                               send_data.size(), prefix_, pubsub_channel_,
+                               /*redisCallback=*/nullptr));
     }
   }
 }
@@ -221,7 +236,7 @@ template <typename ID, typename Data>
 Status Table<ID, Data>::Add(const DriverID &driver_id, const ID &id,
                             std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
-  auto callback = [this, id, dataT, done](const std::string &data) {
+  auto callback = [this, id, dataT, done](const CallbackReply &reply) {
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
@@ -286,7 +301,7 @@ template <typename ID, typename Data>
 Status Set<ID, Data>::Add(const DriverID &driver_id, const ID &id,
                           std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_adds_++;
-  auto callback = [this, id, dataT, done](const std::string &data) {
+  auto callback = [this, id, dataT, done](const CallbackReply &reply) {
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
@@ -303,7 +318,7 @@ template <typename ID, typename Data>
 Status Set<ID, Data>::Remove(const DriverID &driver_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_removes_++;
-  auto callback = [this, id, dataT, done](const std::string &data) {
+  auto callback = [this, id, dataT, done](const CallbackReply &reply) {
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
@@ -324,10 +339,159 @@ std::string Set<ID, Data>::DebugString() const {
   return result.str();
 }
 
+template <typename ID, typename Data>
+Status Hash<ID, Data>::Update(const DriverID &driver_id, const ID &id,
+                              const DataMap &data_map, const HashCallback &done) {
+  num_adds_++;
+  auto callback = [this, id, data_map, done](const CallbackReply &reply) {
+    if (done != nullptr) {
+      (done)(client_, id, data_map);
+    }
+  };
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<flatbuffers::String>> data_vec;
+  data_vec.reserve(data_map.size() * 2);
+  for (auto const &pair : data_map) {
+    // Add the key.
+    data_vec.push_back(fbb.CreateString(pair.first));
+    flatbuffers::FlatBufferBuilder fbb_data;
+    fbb_data.ForceDefaults(true);
+    fbb_data.Finish(Data::Pack(fbb_data, pair.second.get()));
+    std::string data(reinterpret_cast<char *>(fbb_data.GetBufferPointer()),
+                     fbb_data.GetSize());
+    // Add the value.
+    data_vec.push_back(fbb.CreateString(data));
+  }
+
+  fbb.Finish(CreateGcsEntry(fbb, GcsChangeMode::APPEND_OR_ADD,
+                            fbb.CreateString(id.Binary()), fbb.CreateVector(data_vec)));
+  return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, fbb.GetBufferPointer(),
+                                       fbb.GetSize(), prefix_, pubsub_channel_,
+                                       std::move(callback));
+}
+
+template <typename ID, typename Data>
+Status Hash<ID, Data>::RemoveEntries(const DriverID &driver_id, const ID &id,
+                                     const std::vector<std::string> &keys,
+                                     const HashRemoveCallback &remove_callback) {
+  num_removes_++;
+  auto callback = [this, id, keys, remove_callback](const CallbackReply &reply) {
+    if (remove_callback != nullptr) {
+      (remove_callback)(client_, id, keys);
+    }
+  };
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<flatbuffers::String>> data_vec;
+  data_vec.reserve(keys.size());
+  // Add the keys.
+  for (auto const &key : keys) {
+    data_vec.push_back(fbb.CreateString(key));
+  }
+
+  fbb.Finish(CreateGcsEntry(fbb, GcsChangeMode::REMOVE, fbb.CreateString(id.Binary()),
+                            fbb.CreateVector(data_vec)));
+  return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, fbb.GetBufferPointer(),
+                                       fbb.GetSize(), prefix_, pubsub_channel_,
+                                       std::move(callback));
+}
+
+template <typename ID, typename Data>
+std::string Hash<ID, Data>::DebugString() const {
+  std::stringstream result;
+  result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_
+         << ", num removes: " << num_removes_;
+  return result.str();
+}
+
+template <typename ID, typename Data>
+Status Hash<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
+                              const HashCallback &lookup) {
+  num_lookups_++;
+  auto callback = [this, id, lookup](const CallbackReply &reply) {
+    if (lookup != nullptr) {
+      DataMap results;
+      if (!reply.IsNil()) {
+        const auto data = reply.ReadAsString();
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
+        RAY_CHECK(from_flatbuf<ID>(*root->id()) == id);
+        RAY_CHECK(root->entries()->size() % 2 == 0);
+        for (size_t i = 0; i < root->entries()->size(); i += 2) {
+          std::string key(root->entries()->Get(i)->data(),
+                          root->entries()->Get(i)->size());
+          auto result = std::make_shared<DataT>();
+          auto data_root =
+              flatbuffers::GetRoot<Data>(root->entries()->Get(i + 1)->data());
+          data_root->UnPackTo(result.get());
+          results.emplace(key, std::move(result));
+        }
+      }
+      lookup(client_, id, results);
+    }
+  };
+  std::vector<uint8_t> nil;
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
+                                       prefix_, pubsub_channel_, std::move(callback));
+}
+
+template <typename ID, typename Data>
+Status Hash<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &client_id,
+                                 const HashNotificationCallback &subscribe,
+                                 const SubscriptionCallback &done) {
+  RAY_CHECK(subscribe_callback_index_ == -1)
+      << "Client called Subscribe twice on the same table";
+  auto callback = [this, subscribe, done](const CallbackReply &reply) {
+    const auto data = reply.ReadAsPubsubData();
+    if (data.empty()) {
+      // No notification data is provided. This is the callback for the
+      // initial subscription request.
+      if (done != nullptr) {
+        done(client_);
+      }
+    } else {
+      // Data is provided. This is the callback for a message.
+      if (subscribe != nullptr) {
+        // Parse the notification.
+        auto root = flatbuffers::GetRoot<GcsEntry>(data.data());
+        DataMap data_map;
+        ID id;
+        if (root->id()->size() > 0) {
+          id = from_flatbuf<ID>(*root->id());
+        }
+        if (root->change_mode() == GcsChangeMode::REMOVE) {
+          for (size_t i = 0; i < root->entries()->size(); i++) {
+            std::string key(root->entries()->Get(i)->data(),
+                            root->entries()->Get(i)->size());
+            data_map.emplace(key, std::shared_ptr<DataT>());
+          }
+        } else {
+          RAY_CHECK(root->entries()->size() % 2 == 0);
+          for (size_t i = 0; i < root->entries()->size(); i += 2) {
+            std::string key(root->entries()->Get(i)->data(),
+                            root->entries()->Get(i)->size());
+            auto result = std::make_shared<DataT>();
+            auto data_root =
+                flatbuffers::GetRoot<Data>(root->entries()->Get(i + 1)->data());
+            data_root->UnPackTo(result.get());
+            data_map.emplace(key, std::move(result));
+          }
+        }
+        subscribe(client_, id, root->change_mode(), data_map);
+      }
+    }
+  };
+
+  subscribe_callback_index_ = 1;
+  for (auto &context : shard_contexts_) {
+    RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback,
+                                              &subscribe_callback_index_));
+  }
+  return Status::OK();
+}
+
 Status ErrorTable::PushErrorToDriver(const DriverID &driver_id, const std::string &type,
                                      const std::string &error_message, double timestamp) {
   auto data = std::make_shared<ErrorTableDataT>();
-  data->driver_id = driver_id.binary();
+  data->driver_id = driver_id.Binary();
   data->type = type;
   data->error_message = error_message;
   data->timestamp = timestamp;
@@ -344,7 +508,7 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
   // call "Pack" and undo the "UnPack".
   profile_events.UnPackTo(data.get());
 
-  return Append(DriverID::nil(), UniqueID::from_random(), data,
+  return Append(DriverID::Nil(), UniqueID::FromRandom(), data,
                 /*done_callback=*/nullptr);
 }
 
@@ -354,7 +518,7 @@ std::string ProfileTable::DebugString() const {
 
 Status DriverTable::AppendDriverData(const DriverID &driver_id, bool is_dead) {
   auto data = std::make_shared<DriverTableDataT>();
-  data->driver_id = driver_id.binary();
+  data->driver_id = driver_id.Binary();
   data->is_dead = is_dead;
   return Append(DriverID(driver_id), driver_id, data, /*done_callback=*/nullptr);
 }
@@ -363,7 +527,7 @@ void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callbac
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && (entry.second.entry_type == EntryType::INSERTION)) {
+    if (!entry.first.IsNil() && (entry.second.entry_type == EntryType::INSERTION)) {
       client_added_callback_(client_, entry.first, entry.second);
     }
   }
@@ -373,7 +537,7 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && entry.second.entry_type == EntryType::DELETION) {
+    if (!entry.first.IsNil() && entry.second.entry_type == EntryType::DELETION) {
       client_removed_callback_(client_, entry.first, entry.second);
     }
   }
@@ -384,7 +548,7 @@ void ClientTable::RegisterResourceCreateUpdatedCallback(
   resource_createupdated_callback_ = callback;
   // Call the callback for any clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() &&
+    if (!entry.first.IsNil() &&
         (entry.second.entry_type == EntryType::RES_CREATEUPDATE)) {
       resource_createupdated_callback_(client_, entry.first, entry.second);
     }
@@ -395,7 +559,7 @@ void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &cal
   resource_deleted_callback_ = callback;
   // Call the callback for any clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.is_nil() && entry.second.entry_type == EntryType::RES_DELETE) {
+    if (!entry.first.IsNil() && entry.second.entry_type == EntryType::RES_DELETE) {
       resource_deleted_callback_(client_, entry.first, entry.second);
     }
   }
@@ -403,7 +567,7 @@ void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &cal
 
 void ClientTable::HandleNotification(AsyncGcsClient *client,
                                      const ClientTableDataT &data) {
-  ClientID client_id = ClientID::from_binary(data.client_id);
+  ClientID client_id = ClientID::FromBinary(data.client_id);
   // It's possible to get duplicate notifications from the client table, so
   // check whether this notification is new.
   auto entry = client_cache_.find(client_id);
@@ -509,7 +673,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
 }
 
 void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT &data) {
-  auto connected_client_id = ClientID::from_binary(data.client_id);
+  auto connected_client_id = ClientID::FromBinary(data.client_id);
   RAY_CHECK(client_id_ == connected_client_id) << connected_client_id << " "
                                                << client_id_;
 }
@@ -568,13 +732,13 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
     // Callback to request notifications from the client table once we've
     // successfully subscribed.
     auto subscription_callback = [this](AsyncGcsClient *c) {
-      RAY_CHECK_OK(RequestNotifications(DriverID::nil(), client_log_key_, client_id_));
+      RAY_CHECK_OK(RequestNotifications(DriverID::Nil(), client_log_key_, client_id_));
     };
     // Subscribe to the client table.
-    RAY_CHECK_OK(Subscribe(DriverID::nil(), client_id_, notification_callback,
+    RAY_CHECK_OK(Subscribe(DriverID::Nil(), client_id_, notification_callback,
                            subscription_callback));
   };
-  return Append(DriverID::nil(), client_log_key_, data, add_callback);
+  return Append(DriverID::Nil(), client_log_key_, data, add_callback);
 }
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
@@ -583,12 +747,12 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
                                        const ClientTableDataT &data) {
     HandleConnected(client, data);
-    RAY_CHECK_OK(CancelNotifications(DriverID::nil(), client_log_key_, id));
+    RAY_CHECK_OK(CancelNotifications(DriverID::Nil(), client_log_key_, id));
     if (callback != nullptr) {
       callback();
     }
   };
-  RAY_RETURN_NOT_OK(Append(DriverID::nil(), client_log_key_, data, add_callback));
+  RAY_RETURN_NOT_OK(Append(DriverID::Nil(), client_log_key_, data, add_callback));
   // We successfully added the deletion entry. Mark ourselves as disconnected.
   disconnected_ = true;
   return Status::OK();
@@ -596,19 +760,19 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
 
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   auto data = std::make_shared<ClientTableDataT>();
-  data->client_id = dead_client_id.binary();
+  data->client_id = dead_client_id.Binary();
   data->entry_type = EntryType::DELETION;
-  return Append(DriverID::nil(), client_log_key_, data, nullptr);
+  return Append(DriverID::Nil(), client_log_key_, data, nullptr);
 }
 
 void ClientTable::GetClient(const ClientID &client_id,
                             ClientTableDataT &client_info) const {
-  RAY_CHECK(!client_id.is_nil());
+  RAY_CHECK(!client_id.IsNil());
   auto entry = client_cache_.find(client_id);
   if (entry != client_cache_.end()) {
     client_info = entry->second;
   } else {
-    client_info.client_id = ClientID::nil().binary();
+    client_info.client_id = ClientID::Nil().Binary();
   }
 }
 
@@ -618,7 +782,7 @@ const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients
 
 Status ClientTable::Lookup(const Callback &lookup) {
   RAY_CHECK(lookup != nullptr);
-  return Log::Lookup(DriverID::nil(), client_log_key_, lookup);
+  return Log::Lookup(DriverID::Nil(), client_log_key_, lookup);
 }
 
 std::string ClientTable::DebugString() const {
@@ -638,12 +802,12 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
     std::shared_ptr<ActorCheckpointIdDataT> copy =
         std::make_shared<ActorCheckpointIdDataT>(data);
     copy->timestamps.push_back(current_sys_time_ms());
-    copy->checkpoint_ids += checkpoint_id.binary();
+    copy->checkpoint_ids += checkpoint_id.Binary();
     auto num_to_keep = RayConfig::instance().num_actor_checkpoints_to_keep();
     while (copy->timestamps.size() > num_to_keep) {
       // Delete the checkpoint from actor checkpoint table.
       const auto &checkpoint_id =
-          ActorCheckpointID::from_binary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
+          ActorCheckpointID::FromBinary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
       RAY_LOG(DEBUG) << "Deleting checkpoint " << checkpoint_id << " for actor "
                      << actor_id;
       copy->timestamps.erase(copy->timestamps.begin());
@@ -656,9 +820,9 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
       ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
     std::shared_ptr<ActorCheckpointIdDataT> data =
         std::make_shared<ActorCheckpointIdDataT>();
-    data->actor_id = id.binary();
+    data->actor_id = id.Binary();
     data->timestamps.push_back(current_sys_time_ms());
-    data->checkpoint_ids = checkpoint_id.binary();
+    data->checkpoint_ids = checkpoint_id.Binary();
     RAY_CHECK_OK(Add(driver_id, actor_id, data, nullptr));
   };
   return Lookup(driver_id, actor_id, lookup_callback, failure_callback);
@@ -680,6 +844,9 @@ template class Log<DriverID, DriverTableData>;
 template class Log<UniqueID, ProfileTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
+
+template class Log<ClientID, RayResource>;
+template class Hash<ClientID, RayResource>;
 
 }  // namespace gcs
 

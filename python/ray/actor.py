@@ -17,7 +17,6 @@ from ray.function_manager import FunctionDescriptor
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
-from ray.utils import _random_string
 from ray import (ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID,
                  DriverID)
 
@@ -187,8 +186,12 @@ class ActorClass(object):
             task.
         _resources: The default resources required by the actor creation task.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
-        _exported: True if the actor class has been exported and false
-            otherwise.
+        _last_driver_id_exported_for: The ID of the driver ID of the last Ray
+            session during which this actor class definition was exported. This
+            is an imperfect mechanism used to determine if we need to export
+            the remote function again. It is imperfect in the sense that the
+            actor class definition could be exported multiple times by
+            different workers.
         _actor_methods: The actor methods.
         _method_decorators: Optional decorators that should be applied to the
             method invocation function before invoking the actor methods. These
@@ -209,7 +212,7 @@ class ActorClass(object):
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
         self._resources = resources
-        self._exported = False
+        self._last_driver_id_exported_for = None
 
         self._actor_methods = inspect.getmembers(
             self._modified_class, ray.utils.is_function_or_method)
@@ -308,7 +311,7 @@ class ActorClass(object):
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
-        actor_id = ActorID(_random_string())
+        actor_id = ActorID.from_random()
         # The actor cursor is a dummy object representing the most recent
         # actor method invocation. For each subsequent method invocation,
         # the current cursor should be added as a dependency, and then
@@ -342,10 +345,15 @@ class ActorClass(object):
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
-            if not self._exported:
+            if (self._last_driver_id_exported_for is None
+                    or self._last_driver_id_exported_for !=
+                    worker.task_driver_id):
+                # If this actor class was exported in a previous session, we
+                # need to export this function again, because current GCS
+                # doesn't have it.
+                self._last_driver_id_exported_for = worker.task_driver_id
                 worker.function_actor_manager.export_actor_class(
                     self._modified_class, self._actor_method_names)
-                self._exported = True
 
             resources = ray.utils.resources_from_resource_arguments(
                 cpus_to_use, self._num_gpus, self._resources, num_cpus,
@@ -670,7 +678,7 @@ class ActorHandle(object):
             # to release, since it could be unpickled and submit another
             # dependent task at any time. Therefore, we notify the backend of a
             # random handle ID that will never actually be used.
-            new_actor_handle_id = ActorHandleID(_random_string())
+            new_actor_handle_id = ActorHandleID.from_random()
         # Notify the backend to expect this new actor handle. The backend will
         # not release the cursor for any new handles until the first task for
         # each of the new handles is submitted.
@@ -780,7 +788,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    class_id = ActorClassID(_random_string())
+    class_id = ActorClassID.from_random()
 
     return ActorClass(Class, class_id, max_reconstructions, num_cpus, num_gpus,
                       resources)
@@ -803,7 +811,7 @@ def exit_actor():
         worker.raylet_client.disconnect()
         ray.disconnect()
         # Disconnect global state from GCS.
-        ray.global_state.disconnect()
+        ray.state.state.disconnect()
         sys.exit(0)
         assert False, "This process should have terminated."
     else:
@@ -923,7 +931,7 @@ def get_checkpoints_for_actor(actor_id):
     """Get the available checkpoints for the given actor ID, return a list
     sorted by checkpoint timestamp in descending order.
     """
-    checkpoint_info = ray.worker.global_state.actor_checkpoint_info(actor_id)
+    checkpoint_info = ray.state.state.actor_checkpoint_info(actor_id)
     if checkpoint_info is None:
         return []
     checkpoints = [

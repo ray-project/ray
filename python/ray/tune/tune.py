@@ -11,6 +11,7 @@ from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
@@ -99,7 +100,8 @@ def run(run_or_experiment,
         queue_trials=False,
         reuse_actors=False,
         trial_executor=None,
-        raise_on_failed_trial=True):
+        raise_on_failed_trial=True,
+        ray_auto_init=True):
     """Executes training.
 
     Args:
@@ -175,6 +177,9 @@ def run(run_or_experiment,
         trial_executor (TrialExecutor): Manage the execution of trials.
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
+        ray_auto_init (bool): Automatically starts a local Ray cluster
+            if using a RayTrialExecutor (which is the default) and
+            if Ray is not initialized. Defaults to True.
 
     Returns:
         List of Trial objects.
@@ -196,6 +201,10 @@ def run(run_or_experiment,
                 }
             )
     """
+    trial_executor = trial_executor or RayTrialExecutor(
+        queue_trials=queue_trials,
+        reuse_actors=reuse_actors,
+        ray_auto_init=ray_auto_init)
     experiment = run_or_experiment
     if not isinstance(run_or_experiment, Experiment):
         run_identifier = Experiment._register_if_needed(run_or_experiment)
@@ -236,8 +245,6 @@ def run(run_or_experiment,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=bool(verbose > 1),
-        queue_trials=queue_trials,
-        reuse_actors=reuse_actors,
         trial_executor=trial_executor)
 
     runner.add_experiment(experiment)

@@ -8,6 +8,7 @@ import copy
 from datetime import datetime
 import logging
 import json
+import uuid
 import time
 import tempfile
 import os
@@ -26,7 +27,7 @@ import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
                              TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL,
                              EPISODE_REWARD_MEAN, MEAN_LOSS, MEAN_ACCURACY)
-from ray.utils import _random_string, binary_to_hex, hex_to_binary
+from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
@@ -136,6 +137,9 @@ class Resources(
         }
         return Resources(cpu, gpu, extra_cpu, extra_gpu, new_custom_res,
                          extra_custom_res)
+
+    def to_json(self):
+        return resources_to_json(self)
 
 
 def json_to_resources(data):
@@ -270,11 +274,22 @@ class Trial(object):
         # Trial config
         self.trainable_name = trainable_name
         self.config = config or {}
-        self.local_dir = os.path.expanduser(local_dir)
+        self.local_dir = local_dir  # This remains unexpanded for syncing.
         self.experiment_tag = experiment_tag
-        self.resources = (
-            resources
-            or self._get_trainable_cls().default_resource_request(self.config))
+        trainable_cls = self._get_trainable_cls()
+        if trainable_cls and hasattr(trainable_cls,
+                                     "default_resource_request"):
+            default_resources = trainable_cls.default_resource_request(
+                self.config)
+            if default_resources:
+                if resources:
+                    raise ValueError(
+                        "Resources for {} have been automatically set to {} "
+                        "by its `default_resource_request()` method. Please "
+                        "clear the `resources_per_trial` option.".format(
+                            trainable_cls, default_resources))
+                resources = default_resources
+        self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
         self.sync_function = sync_function
@@ -337,19 +352,23 @@ class Trial(object):
 
     @classmethod
     def generate_id(cls):
-        return binary_to_hex(_random_string())[:8]
+        return str(uuid.uuid1().hex)[:8]
+
+    @classmethod
+    def create_logdir(cls, identifier, local_dir):
+        local_dir = os.path.expanduser(local_dir)
+        if not os.path.exists(local_dir):
+            os.makedirs(local_dir)
+        return tempfile.mkdtemp(
+            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
+            dir=local_dir)
 
     def init_logger(self):
         """Init logger."""
 
         if not self.result_logger:
-            if not os.path.exists(self.local_dir):
-                os.makedirs(self.local_dir)
             if not self.logdir:
-                self.logdir = tempfile.mkdtemp(
-                    prefix="{}_{}".format(
-                        str(self)[:MAX_LEN_IDENTIFIER], date_str()),
-                    dir=self.local_dir)
+                self.logdir = Trial.create_logdir(str(self), self.local_dir)
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 

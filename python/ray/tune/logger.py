@@ -48,6 +48,11 @@ class Logger(object):
 
         raise NotImplementedError
 
+    def update_config(self, config):
+        """Updates the config for all loggers."""
+
+        pass
+
     def close(self):
         """Releases all resources used by this logger."""
 
@@ -66,17 +71,7 @@ class NoopLogger(Logger):
 
 class JsonLogger(Logger):
     def _init(self):
-        config_out = os.path.join(self.logdir, "params.json")
-        with open(config_out, "w") as f:
-            json.dump(
-                self.config,
-                f,
-                indent=2,
-                sort_keys=True,
-                cls=_SafeFallbackEncoder)
-        config_pkl = os.path.join(self.logdir, "params.pkl")
-        with open(config_pkl, "wb") as f:
-            cloudpickle.dump(self.config, f)
+        self.update_config(self.config)
         local_file = os.path.join(self.logdir, "result.json")
         self.local_out = open(local_file, "a")
 
@@ -93,6 +88,20 @@ class JsonLogger(Logger):
 
     def close(self):
         self.local_out.close()
+
+    def update_config(self, config):
+        self.config = config
+        config_out = os.path.join(self.logdir, "params.json")
+        with open(config_out, "w") as f:
+            json.dump(
+                self.config,
+                f,
+                indent=2,
+                sort_keys=True,
+                cls=_SafeFallbackEncoder)
+        config_pkl = os.path.join(self.logdir, "params.pkl")
+        with open(config_pkl, "wb") as f:
+            cloudpickle.dump(self.config, f)
 
 
 def to_tf_values(result, path):
@@ -222,6 +231,10 @@ class UnifiedLogger(Logger):
             _logger.on_result(result)
         self._log_syncer.set_worker_ip(result.get(NODE_IP))
         self._log_syncer.sync_down_if_needed()
+
+    def update_config(self, config):
+        for _logger in self._loggers:
+            _logger.update_config(config)
 
     def close(self):
         for _logger in self._loggers:

@@ -80,7 +80,7 @@ def test_object_broadcast(ray_start_cluster_with_resource):
 
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
-    transfer_events = ray.global_state.chrome_tracing_object_transfer_dump()
+    transfer_events = ray.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
     for x_id in object_ids:
@@ -160,7 +160,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
 
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
-    transfer_events = ray.global_state.chrome_tracing_object_transfer_dump()
+    transfer_events = ray.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
     for x_id in object_ids:

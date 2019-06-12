@@ -1,7 +1,7 @@
 #include "ray/gcs/client.h"
 
+#include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/ray_config.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -120,6 +120,7 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   profile_table_.reset(new ProfileTable(shard_contexts_, this));
   actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
+  resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
   command_type_ = command_type;
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
@@ -146,19 +147,19 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                CommandType command_type)
-    : AsyncGcsClient(address, port, ClientID::from_random(), command_type) {}
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), command_type) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                CommandType command_type, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::from_random(), command_type,
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), command_type,
                      is_test_client) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                const std::string &password = "")
-    : AsyncGcsClient(address, port, ClientID::from_random(), false, password) {}
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), false, password) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), is_test_client) {}
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.
@@ -228,6 +229,8 @@ ActorCheckpointTable &AsyncGcsClient::actor_checkpoint_table() {
 ActorCheckpointIdTable &AsyncGcsClient::actor_checkpoint_id_table() {
   return *actor_checkpoint_id_table_;
 }
+
+DynamicResourceTable &AsyncGcsClient::resource_table() { return *resource_table_; }
 
 }  // namespace gcs
 

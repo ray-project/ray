@@ -15,6 +15,8 @@ import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
+import org.ray.api.id.ObjectId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.BaseTaskOptions;
@@ -32,7 +34,7 @@ import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.UniqueIdUtil;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,15 +90,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    UniqueId objectId = UniqueIdUtil.computePutId(
+    ObjectId objectId = IdUtil.computePutId(
         workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
 
     put(objectId, obj);
     return new RayObjectImpl<>(objectId);
   }
 
-  public <T> void put(UniqueId objectId, T obj) {
-    UniqueId taskId = workerContext.getCurrentTaskId();
+  public <T> void put(ObjectId objectId, T obj) {
+    TaskId taskId = workerContext.getCurrentTaskId();
     LOGGER.debug("Putting object {}, for task {} ", objectId, taskId);
     objectStoreProxy.put(objectId, obj);
   }
@@ -109,28 +111,28 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    * @return A RayObject instance that represents the in-store object.
    */
   public RayObject<Object> putSerialized(byte[] obj) {
-    UniqueId objectId = UniqueIdUtil.computePutId(
+    ObjectId objectId = IdUtil.computePutId(
         workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
-    UniqueId taskId = workerContext.getCurrentTaskId();
+    TaskId taskId = workerContext.getCurrentTaskId();
     LOGGER.debug("Putting serialized object {}, for task {} ", objectId, taskId);
     objectStoreProxy.putSerialized(objectId, obj);
     return new RayObjectImpl<>(objectId);
   }
 
   @Override
-  public <T> T get(UniqueId objectId) throws RayException {
+  public <T> T get(ObjectId objectId) throws RayException {
     List<T> ret = get(ImmutableList.of(objectId));
     return ret.get(0);
   }
 
   @Override
-  public <T> List<T> get(List<UniqueId> objectIds) {
+  public <T> List<T> get(List<ObjectId> objectIds) {
     List<T> ret = new ArrayList<>(Collections.nCopies(objectIds.size(), null));
     boolean wasBlocked = false;
 
     try {
       // A map that stores the unready object ids and their original indexes.
-      Map<UniqueId, Integer> unready = new HashMap<>();
+      Map<ObjectId, Integer> unready = new HashMap<>();
       for (int i = 0; i < objectIds.size(); i++) {
         unready.put(objectIds.get(i), i);
       }
@@ -138,7 +140,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
       // Repeat until we get all objects.
       while (!unready.isEmpty()) {
-        List<UniqueId> unreadyIds = new ArrayList<>(unready.keySet());
+        List<ObjectId> unreadyIds = new ArrayList<>(unready.keySet());
 
         // For the initial fetch, we only fetch the objects, do not reconstruct them.
         boolean fetchOnly = numAttempts == 0;
@@ -147,7 +149,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
           wasBlocked = true;
         }
         // Call `fetchOrReconstruct` in batches.
-        for (List<UniqueId> batch : splitIntoBatches(unreadyIds)) {
+        for (List<ObjectId> batch : splitIntoBatches(unreadyIds)) {
           rayletClient.fetchOrReconstruct(batch, fetchOnly, workerContext.getCurrentTaskId());
         }
 
@@ -161,7 +163,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
               throw getResult.exception;
             } else {
               // Set the result to the return list, and remove it from the unready map.
-              UniqueId id = unreadyIds.get(i);
+              ObjectId id = unreadyIds.get(i);
               ret.set(unready.get(id), getResult.object);
               unready.remove(id);
             }
@@ -172,11 +174,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         if (LOGGER.isWarnEnabled() && numAttempts % WARN_PER_NUM_ATTEMPTS == 0) {
           // Print a warning if we've attempted too many times, but some objects are still
           // unavailable.
-          List<UniqueId> idsToPrint = new ArrayList<>(unready.keySet());
+          List<ObjectId> idsToPrint = new ArrayList<>(unready.keySet());
           if (idsToPrint.size() > MAX_IDS_TO_PRINT_IN_WARNING) {
             idsToPrint = idsToPrint.subList(0, MAX_IDS_TO_PRINT_IN_WARNING);
           }
-          String ids = idsToPrint.stream().map(UniqueId::toString)
+          String ids = idsToPrint.stream().map(ObjectId::toString)
               .collect(Collectors.joining(", "));
           if (idsToPrint.size() < unready.size()) {
             ids += ", etc";
@@ -206,17 +208,26 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public void free(List<UniqueId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+  public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
     rayletClient.freePlasmaObjects(objectIds, localOnly, deleteCreatingTasks);
   }
 
-  private List<List<UniqueId>> splitIntoBatches(List<UniqueId> objectIds) {
-    List<List<UniqueId>> batches = new ArrayList<>();
+  @Override
+  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
+    Preconditions.checkArgument(Double.compare(capacity, 0) >= 0);
+    if (nodeId == null) {
+      nodeId = UniqueId.NIL;
+    }
+    rayletClient.setResource(resourceName, capacity, nodeId);
+  }
+
+  private List<List<ObjectId>> splitIntoBatches(List<ObjectId> objectIds) {
+    List<List<ObjectId>> batches = new ArrayList<>();
     int objectsSize = objectIds.size();
 
     for (int i = 0; i < objectsSize; i += FETCH_BATCH_SIZE) {
       int endIndex = i + FETCH_BATCH_SIZE;
-      List<UniqueId> batchIds = (endIndex < objectsSize)
+      List<ObjectId> batchIds = (endIndex < objectsSize)
           ? objectIds.subList(i, endIndex)
           : objectIds.subList(i, objectsSize);
 
@@ -262,7 +273,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       Object[] args, ActorCreationOptions options) {
     TaskSpec spec = createTaskSpec(actorFactoryFunc, null, RayActorImpl.NIL,
         args, true, options);
-    RayActorImpl<?> actor = new RayActorImpl(spec.returnIds[0]);
+    RayActorImpl<?> actor = new RayActorImpl(new UniqueId(spec.returnIds[0].getBytes()));
     actor.increaseTaskCounter();
     actor.setTaskCursor(spec.returnIds[0]);
     rayletClient.submitTask(spec);
@@ -334,14 +345,14 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       boolean isActorCreationTask, BaseTaskOptions taskOptions) {
     Preconditions.checkArgument((func == null) != (pyFunctionDescriptor == null));
 
-    UniqueId taskId = rayletClient.generateTaskId(workerContext.getCurrentDriverId(),
+    TaskId taskId = rayletClient.generateTaskId(workerContext.getCurrentDriverId(),
         workerContext.getCurrentTaskId(), workerContext.nextTaskIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
-    UniqueId[] returnIds = UniqueIdUtil.genReturnIds(taskId, numReturns);
+    ObjectId[] returnIds = IdUtil.genReturnIds(taskId, numReturns);
 
     UniqueId actorCreationId = UniqueId.NIL;
     if (isActorCreationTask) {
-      actorCreationId = returnIds[0];
+      actorCreationId = new UniqueId(returnIds[0].getBytes());
     }
 
     Map<String, Double> resources;
@@ -379,7 +390,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.increaseTaskCounter(),
         actor.getNewActorHandles().toArray(new UniqueId[0]),
         ArgumentsBuilder.wrap(args, language == TaskLanguage.PYTHON),
-        returnIds,
+        numReturns,
         resources,
         language,
         functionDescriptor

@@ -29,7 +29,7 @@ MOCK_MODULES = [
     "ray.core.generated.EntryType",
     "ray.core.generated.ErrorTableData",
     "ray.core.generated.ErrorType",
-    "ray.core.generated.GcsTableEntry",
+    "ray.core.generated.GcsEntry",
     "ray.core.generated.HeartbeatBatchTableData",
     "ray.core.generated.HeartbeatTableData",
     "ray.core.generated.Language",
@@ -53,6 +53,10 @@ MOCK_MODULES = [
     "tensorflow.python",
     "tensorflow.python.client",
     "tensorflow.python.util",
+    "torch",
+    "torch.distributed",
+    "torch.nn",
+    "torch.utils.data",
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
