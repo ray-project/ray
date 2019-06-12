@@ -1197,14 +1197,10 @@ void NodeManager::HandleForwardTask(const ForwardTaskRequest &request, ForwardTa
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;
   for (int i = 0; i < request.uncommitted_tasks_size(); i++) {
-    auto task_message = request.uncommitted_tasks(i);
-    const TaskSpecification task_spec(task_message.task_specification());
-    const TaskExecutionSpecification task_execution_spec(
-        *flatbuffers::GetRoot<protocol::TaskExecutionSpecification>(
-            reinterpret_cast<const uint8_t *>(
-                task_message.task_execution_spec().c_str())));
-    RAY_CHECK(uncommitted_lineage.SetEntry(Task(task_execution_spec, task_spec),
-                                           GcsStatus::UNCOMMITTED));
+    const std::string &task_message = request.uncommitted_tasks(i);
+    const Task task(*flatbuffers::GetRoot<protocol::Task>(
+        reinterpret_cast<const uint8_t *>(task_message.c_str())));
+    RAY_CHECK(uncommitted_lineage.SetEntry(std::move(task), GcsStatus::UNCOMMITTED));
   }
   const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
   RAY_LOG(DEBUG) << "Received forwarded task " << task.GetTaskSpecification().TaskId()
@@ -2224,10 +2220,7 @@ void NodeManager::ForwardTask(
   ForwardTaskRequest request;
   request.set_task_id(task_id.Binary());
   for (auto &entry : uncommitted_lineage.GetEntries()) {
-    auto *task_message = request.add_uncommitted_tasks();
-    auto &task = entry.second.TaskData();
-    task_message->set_task_specification(task.GetTaskSpecification().Serialize());
-    task_message->set_task_execution_spec(task.GetTaskExecutionSpec().Serialize());
+    request.add_uncommitted_tasks(entry.second.TaskData().Serialize());
   }
 
   // Move the FORWARDING task to the SWAP queue so that we remember that we

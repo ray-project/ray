@@ -54,13 +54,6 @@ void TaskExecutionSpecification::SetLastTimestamp(int64_t new_timestamp) {
   execution_spec_.last_timestamp = new_timestamp;
 }
 
-std::string TaskExecutionSpecification::Serialize() const {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto request = ToFlatbuffer(fbb);
-  fbb.Finish(request);
-  return std::string(reinterpret_cast<char *>(fbb.GetBufferPointer()), fbb.GetSize());
-}
-
 }  // namespace raylet
 
 }  // namespace ray
