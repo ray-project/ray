@@ -1726,7 +1726,9 @@ bool NodeManager::AssignTask(const Task &task) {
     const bool need_start_new =
         (!spec.WorkerStartingPrefix().empty() || !spec.WorkerStartingSuffix().empty());
     if (spec.IsActorCreationTask() && need_start_new) {
-      worker_pool_.StartWorkerProcess(spec.GetLanguage(), &spec);
+      if (!worker_pool_.HasWorkerStartingForTask(spec.GetLanguage(), spec.TaskId())) {
+        worker_pool_.StartWorkerProcess(spec.GetLanguage(), &spec);
+      }
     } else if (!spec.IsActorTask()) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker.

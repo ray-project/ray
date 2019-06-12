@@ -344,6 +344,17 @@ std::string WorkerPool::WarningAboutSize() {
   return warning_message.str();
 }
 
+bool WorkerPool::HasWorkerStartingForTask(const Language &language, const TaskID &task_id) {
+  auto &state = GetStateForLanguage(language);
+  for (const auto &item : state.workers_to_task_id_cache) {
+    if (item.second == task_id) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 std::string WorkerPool::DebugString() const {
   std::stringstream result;
   result << "WorkerPool:";

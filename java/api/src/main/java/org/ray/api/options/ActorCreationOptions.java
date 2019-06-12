@@ -34,8 +34,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     private Map<String, Double> resources = new HashMap<>();
     private int maxReconstructions = NO_RECONSTRUCTION;
-    private String workerStartingPrefix = null;
-    private String workerStartingSuffix = null;
+    private String workerStartingPrefix = "";
+    private String workerStartingSuffix = "";
 
     public Builder setResources(Map<String, Double> resources) {
       this.resources = resources;

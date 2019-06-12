@@ -120,6 +120,8 @@ class WorkerPool {
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
       const DriverID &driver_id) const;
 
+  bool HasWorkerStartingForTask(const Language &language, const TaskID &task_id);
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -173,7 +175,7 @@ class WorkerPool {
  private:
   /// A helper function that returns the reference of the pool state
   /// for a given language.
-  inline State &GetStateForLanguage(const Language &language);
+  State &GetStateForLanguage(const Language &language);
 
   /// We'll push a warning to the user every time a multiple of this many
   /// workers has been started.

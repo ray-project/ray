@@ -363,8 +363,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
 
     int maxActorReconstruction = 0;
-    String workerStartingPrefix = null;
-    String workerStartingSuffix = null;
+    String workerStartingPrefix = "";
+    String workerStartingSuffix = "";
     if (taskOptions instanceof ActorCreationOptions) {
       maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
       workerStartingPrefix = ((ActorCreationOptions) taskOptions).workerStartingPrefix;
