@@ -1,9 +1,9 @@
-#ifndef RAY_CORE_WORKER_RAYLET_TASK_PROVIDER_H
-#define RAY_CORE_WORKER_RAYLET_TASK_PROVIDER_H
+#ifndef RAY_CORE_WORKER_RAYLET_TRANSPORT_H
+#define RAY_CORE_WORKER_RAYLET_TRANSPORT_H
 
 #include <list>
 
-#include "ray/core_worker/task_provider/task_provider.h"
+#include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
@@ -12,9 +12,9 @@ namespace ray {
 /// and possibly gets forwarded to another raylet on which node the task should be
 /// executed, and then a worker on that node gets this task and starts executing it.
 
-class CoreWorkerRayletTaskSubmissionProvider : public CoreWorkerTaskSubmissionProvider {
+class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerRayletTaskSubmissionProvider(RayClient &ray_client);
+  CoreWorkerRayletTaskSubmitter(RayClient &ray_client);
 
   /// Submit a task for execution to raylet.
   ///
@@ -27,9 +27,9 @@ class CoreWorkerRayletTaskSubmissionProvider : public CoreWorkerTaskSubmissionPr
   RayClient &ray_client_;
 };
 
-class CoreWorkerRayletTaskExecutionProvider : public CoreWorkerTaskExecutionProvider {
+class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver {
  public:
-  CoreWorkerRayletTaskExecutionProvider(RayClient &ray_client);
+  CoreWorkerRayletTaskReceiver(RayClient &ray_client);
 
   // Get tasks for execution from raylet.
   virtual Status GetTasks(std::vector<TaskSpec> *tasks) override;
@@ -41,4 +41,4 @@ class CoreWorkerRayletTaskExecutionProvider : public CoreWorkerTaskExecutionProv
 
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_RAYLET_TASK_PROVIDER_H
+#endif  // RAY_CORE_WORKER_RAYLET_TRANSPORT_H

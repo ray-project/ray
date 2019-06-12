@@ -1,7 +1,7 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/task_provider/raylet_task_provider.h"
+#include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
 
@@ -10,8 +10,8 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     : core_worker_(core_worker) {
   task_execution_providers_.emplace(
       static_cast<int>(TaskProviderType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskExecutionProvider>(
-          new CoreWorkerRayletTaskExecutionProvider(core_worker_.ray_client_)));
+      std::unique_ptr<CoreWorkerRayletTaskReceiver>(
+          new CoreWorkerRayletTaskReceiver(core_worker_.ray_client_)));
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {

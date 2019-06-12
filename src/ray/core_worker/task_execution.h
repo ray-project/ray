@@ -4,7 +4,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/task_provider/task_provider.h"
+#include "ray/core_worker/transport/transport.h"
 
 namespace ray {
 
@@ -48,7 +48,7 @@ class CoreWorkerTaskExecutionInterface {
   CoreWorker &core_worker_;
 
   /// All the task submission providers supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskExecutionProvider>>
+  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskReceiver>>
       task_execution_providers_;
 };
 

@@ -2,7 +2,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/task_interface.h"
-#include "ray/core_worker/task_provider/raylet_task_provider.h"
+#include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
 
@@ -10,8 +10,8 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(CoreWorker &core_worker)
     : core_worker_(core_worker) {
   task_submission_providers_.emplace(
       static_cast<int>(TaskProviderType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskSubmissionProvider>(
-          new CoreWorkerRayletTaskSubmissionProvider(core_worker_.ray_client_)));
+      std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
+          new CoreWorkerRayletTaskSubmitter(core_worker_.ray_client_)));
 }
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,

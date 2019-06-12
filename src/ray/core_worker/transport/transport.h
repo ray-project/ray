@@ -1,5 +1,5 @@
-#ifndef RAY_CORE_WORKER_TASK_PROVIDER_H
-#define RAY_CORE_WORKER_TASK_PROVIDER_H
+#ifndef RAY_CORE_WORKER_TRANSPORT_H
+#define RAY_CORE_WORKER_TRANSPORT_H
 
 #include <list>
 
@@ -11,7 +11,7 @@
 
 namespace ray {
 
-/// Provider interface for task submission and execution. They are separate classes
+/// Interface for task submission and execution. They are separate classes
 /// but should be used in pairs - one type of task submission provider should be used
 /// together with task execution provider with the same type, so these classes are
 /// put together in this same file.
@@ -20,9 +20,9 @@ namespace ray {
 /// implementions for the methods. The actual task provider can submit/get tasks via
 /// raylet, or directly to/from another worker.
 
-class CoreWorkerTaskSubmissionProvider {
+class CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerTaskSubmissionProvider() {}
+  CoreWorkerTaskSubmitter() {}
 
   /// Submit a task for execution.
   ///
@@ -31,9 +31,9 @@ class CoreWorkerTaskSubmissionProvider {
   virtual Status SubmitTask(const TaskSpec &task) = 0;
 };
 
-class CoreWorkerTaskExecutionProvider {
+class CoreWorkerTaskReceiver {
  public:
-  CoreWorkerTaskExecutionProvider() {}
+  CoreWorkerTaskReceiver() {}
 
   // Get tasks for execution.
   virtual Status GetTasks(std::vector<TaskSpec> *tasks) = 0;
@@ -41,4 +41,4 @@ class CoreWorkerTaskExecutionProvider {
 
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_TASK_PROVIDER_H
+#endif  // RAY_CORE_WORKER_TRANSPORT_H

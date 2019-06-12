@@ -1,22 +1,22 @@
 
-#include "ray/core_worker/task_provider/raylet_task_provider.h"
+#include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
 
-CoreWorkerRayletTaskSubmissionProvider::CoreWorkerRayletTaskSubmissionProvider(
+CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(
     RayClient &ray_client)
     : ray_client_(ray_client) {}
 
-Status CoreWorkerRayletTaskSubmissionProvider::SubmitTask(const TaskSpec &task) {
+Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
   return ray_client_.raylet_client_->SubmitTask(task.GetDependencies(),
                                                 task.GetTaskSpecification());
 }
 
-CoreWorkerRayletTaskExecutionProvider::CoreWorkerRayletTaskExecutionProvider(
+CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     RayClient &ray_client)
     : ray_client_(ray_client) {}
 
-Status CoreWorkerRayletTaskExecutionProvider::GetTasks(std::vector<TaskSpec> *tasks) {
+Status CoreWorkerRayletTaskReceiver::GetTasks(std::vector<TaskSpec> *tasks) {
   std::unique_ptr<raylet::TaskSpecification> task_spec;
   auto status = ray_client_.raylet_client_->GetTask(&task_spec);
   if (!status.ok()) {
