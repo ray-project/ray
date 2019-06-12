@@ -48,7 +48,8 @@ class CoreWorkerTaskExecutionInterface {
   CoreWorker &core_worker_;
 
   /// All the task submission providers supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskExecutionProvider>> task_execution_providers_;     
+  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskExecutionProvider>>
+      task_execution_providers_;
 };
 
 }  // namespace ray

@@ -8,8 +8,8 @@ CoreWorkerRayletTaskSubmissionProvider::CoreWorkerRayletTaskSubmissionProvider(
     : ray_client_(ray_client) {}
 
 Status CoreWorkerRayletTaskSubmissionProvider::SubmitTask(const TaskSpec &task) {
-
-  return ray_client_.raylet_client_->SubmitTask(task.GetDependencies(), task.GetTaskSpecification());
+  return ray_client_.raylet_client_->SubmitTask(task.GetDependencies(),
+                                                task.GetTaskSpecification());
 }
 
 CoreWorkerRayletTaskExecutionProvider::CoreWorkerRayletTaskExecutionProvider(
@@ -21,7 +21,7 @@ Status CoreWorkerRayletTaskExecutionProvider::GetTasks(std::vector<TaskSpec> *ta
   auto status = ray_client_.raylet_client_->GetTask(&task_spec);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Get task from raylet failed with error: "
-                    << ray::Status::IOError(status.message());
+                   << ray::Status::IOError(status.message());
     return status;
   }
 

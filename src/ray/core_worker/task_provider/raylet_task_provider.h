@@ -21,6 +21,7 @@ class CoreWorkerRayletTaskSubmissionProvider : public CoreWorkerTaskSubmissionPr
   /// \param[in] task The task spec to submit.
   /// \return Status.
   virtual Status SubmitTask(const TaskSpec &task) override;
+
  private:
   /// ray client.
   RayClient &ray_client_;
@@ -32,9 +33,10 @@ class CoreWorkerRayletTaskExecutionProvider : public CoreWorkerTaskExecutionProv
 
   // Get tasks for execution from raylet.
   virtual Status GetTasks(std::vector<TaskSpec> *tasks) override;
+
  private:
   /// ray client.
-  RayClient &ray_client_;  
+  RayClient &ray_client_;
 };
 
 }  // namespace ray

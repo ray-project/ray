@@ -27,8 +27,8 @@ Status CoreWorker::Connect() {
   // instead of crashing.
   ray_client_.raylet_client_ = std::unique_ptr<RayletClient>(
       new RayletClient(raylet_socket_, worker_context_.GetWorkerID(),
-      (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentDriverID(),
-      ToTaskLanguage(language_)));
+                       (worker_type_ == ray::WorkerType::WORKER),
+                       worker_context_.GetCurrentDriverID(), ToTaskLanguage(language_)));
 
   return Status::OK();
 }

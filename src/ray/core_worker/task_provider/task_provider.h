@@ -11,7 +11,6 @@
 
 namespace ray {
 
-
 class CoreWorkerTaskSubmissionProvider {
  public:
   CoreWorkerTaskSubmissionProvider() {}

@@ -66,8 +66,7 @@ class CoreWorkerObjectInterface {
   CoreWorker &core_worker_;
 
   /// All the store providers supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>>
-      store_providers_;
+  std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;
 };
 
 }  // namespace ray

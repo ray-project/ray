@@ -6,8 +6,7 @@
 
 namespace ray {
 
-CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    RayClient &ray_client)
+CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(RayClient &ray_client)
     : ray_client_(ray_client) {}
 
 Status CoreWorkerPlasmaStoreProvider::Put(const Buffer &buffer,
@@ -60,7 +59,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(const std::vector<ObjectID> &ids,
     }
 
     // TODO: can call `fetchOrReconstruct` in batches as an optimization.
-    RAY_CHECK_OK(ray_client_.raylet_client_->FetchOrReconstruct(unready_ids, fetch_only, task_id));
+    RAY_CHECK_OK(
+        ray_client_.raylet_client_->FetchOrReconstruct(unready_ids, fetch_only, task_id));
 
     // Get the objects from the object store, and parse the result.
     int64_t get_timeout;
@@ -81,7 +81,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(const std::vector<ObjectID> &ids,
     std::vector<plasma::ObjectBuffer> object_buffers;
     {
       std::unique_lock<std::mutex> guard(ray_client_.store_client_mutex_);
-      auto status = ray_client_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
+      auto status =
+          ray_client_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
     }
 
     for (size_t i = 0; i < object_buffers.size(); i++) {
@@ -109,8 +110,8 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
                                            const TaskID &task_id,
                                            std::vector<bool> *results) {
   WaitResultPair result_pair;
-  auto status = ray_client_.raylet_client_->Wait(object_ids, num_objects, timeout_ms, false, task_id,
-                                     &result_pair);
+  auto status = ray_client_.raylet_client_->Wait(object_ids, num_objects, timeout_ms,
+                                                 false, task_id, &result_pair);
   std::unordered_set<ObjectID> ready_ids;
   for (const auto &entry : result_pair.first) {
     ready_ids.insert(entry);
@@ -129,7 +130,8 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
 Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
                                              bool local_only,
                                              bool delete_creating_tasks) {
-  return ray_client_.raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
+  return ray_client_.raylet_client_->FreeObjects(object_ids, local_only,
+                                                 delete_creating_tasks);
 }
 
 }  // namespace ray

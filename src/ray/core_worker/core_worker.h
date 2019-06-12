@@ -67,7 +67,8 @@ class CoreWorker {
   /// Worker context.
   WorkerContext worker_context_;
 
-  /// Ray client (this includes store client, raylet client and potentially gcs client later).
+  /// Ray client (this includes store client, raylet client and potentially gcs client
+  /// later).
   RayClient ray_client_;
 
   /// Whether this worker has been initialized.
