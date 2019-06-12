@@ -134,7 +134,7 @@ void WorkerPool::StartWorkerProcess(const Language &language,
   }
   // Note that this is used for Java worker only currently.
   if (!suffix.empty() && task_spec->GetLanguage() == Language::JAVA) {
-    RAY_CHECK(worker_command_args > 2) << "At least 2 elements of the Java worker command.";
+    RAY_CHECK(worker_command_args.size() > 2) << "At least 2 elements of the Java worker command.";
     const auto pos_to_insert = worker_command_args.size() - 1;
     worker_command_args.insert(worker_command_args.begin() + pos_to_insert, suffix.c_str());
   }

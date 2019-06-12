@@ -58,7 +58,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     public ActorCreationOptions createActorCreationOptions() {
-      return new ActorCreationOptions(resources, maxReconstructions, workerStartingPrefix, workerStartingSuffix);
+      return new ActorCreationOptions(resources, maxReconstructions,
+          workerStartingPrefix, workerStartingSuffix);
     }
   }
 
