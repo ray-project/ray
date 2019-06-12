@@ -9,6 +9,7 @@ from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.utils.annotations import PublicAPI
 
 
+# TODO(ekl) rewrite using modelv2
 @PublicAPI
 class TorchModel(nn.Module):
     """Defines an abstract network model for use with RLlib / PyTorch."""
