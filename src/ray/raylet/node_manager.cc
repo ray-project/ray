@@ -381,23 +381,6 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
       client_data.node_manager_address, client_data.node_manager_port, client_call_manager_));
   node_manager_clients_.emplace(client_id, std::move(client));
 
-  // // Establish a new NodeManager connection to this GCS client.
-  // auto status = ConnectRemoteNodeManager(client_id, client_data.node_manager_address,
-  //                                        client_data.node_manager_port);
-  // if (!status.ok()) {
-  //   // This is not a fatal error for raylet, but it should not happen.
-  //   // We need to broadcase this message.
-  //   std::string type = "raylet_connection_error";
-  //   std::ostringstream error_message;
-  //   error_message << "Failed to connect to ray node " << client_id
-  //                 << " with status: " << status.ToString()
-  //                 << ". This may be since the node was recently removed.";
-  //   // We use the nil DriverID to broadcast the message to all drivers.
-  //   RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-  //       DriverID::Nil(), type, error_message.str(), current_time_ms()));
-  //   return;
-  // }
-
   ResourceSet resources_total(client_data.resources_total_label,
                               client_data.resources_total_capacity);
   cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
@@ -423,7 +406,6 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   // Remove the remote server connection.
   const auto client_entry = node_manager_clients_.find(client_id);
   if (client_entry != node_manager_clients_.end()) {
-    // Shutdown?
     node_manager_clients_.erase(client_entry);
   } else {
     RAY_LOG(WARNING) << "Received ClientRemoved callback for an unknown client "
@@ -1212,43 +1194,6 @@ void NodeManager::ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message
 }
 
 void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client) {
-  node_manager_client.ProcessMessages();
-}
-
-void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_client,
-                                            int64_t message_type,
-                                            const uint8_t *message_data) {
-  const auto message_type_value = static_cast<protocol::MessageType>(message_type);
-  RAY_LOG(DEBUG) << "[NodeManager] Message "
-                 << protocol::EnumNameMessageType(message_type_value) << "("
-                 << message_type << ") from node manager";
-  switch (message_type_value) {
-  case protocol::MessageType::ConnectClient: {
-    auto message = flatbuffers::GetRoot<protocol::ConnectClient>(message_data);
-    auto client_id = from_flatbuf<ClientID>(*message->client_id());
-    node_manager_client.SetClientID(client_id);
-  } break;
-  case protocol::MessageType::ForwardTaskRequest: {
-    auto message = flatbuffers::GetRoot<protocol::ForwardTaskRequest>(message_data);
-    TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
-
-    Lineage uncommitted_lineage(*message);
-    const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
-    RAY_LOG(DEBUG) << "Received forwarded task " << task.GetTaskSpecification().TaskId()
-                   << " on node " << gcs_client_->client_table().GetLocalClientId()
-                   << " spillback=" << task.GetTaskExecutionSpec().NumForwards();
-    SubmitTask(task, uncommitted_lineage, /* forwarded = */ true);
-  } break;
-  case protocol::MessageType::DisconnectClient: {
-    // TODO(rkn): We need to do some cleanup here.
-    RAY_LOG(DEBUG) << "Received disconnect message from remote node manager. "
-                   << "We need to do some cleanup here.";
-    // Do not process any more messages from this node manager.
-    return;
-  } break;
-  default:
-    RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
-  }
   node_manager_client.ProcessMessages();
 }
 
@@ -2251,8 +2196,8 @@ void NodeManager::ForwardTask(
   auto client_entry = node_manager_clients_.find(node_id);
   if (client_entry == node_manager_clients_.end()) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
-    RAY_LOG(INFO) << "No NodeManager connection found for GCS client id " << node_id;
-    on_error(ray::Status::IOError("NodeManager connection not found"), task);
+    RAY_LOG(INFO) << "No NodeManager client found for GCS client id " << node_id;
+    on_error(ray::Status::IOError("NodeManager client not found"), task);
     return;
   }
   auto &client = client_entry->second;

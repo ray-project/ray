@@ -5,6 +5,7 @@
 #include <boost/asio.hpp>
 
 #include "ray/common/status.h"
+#include "ray/rpc/util.h"
 
 namespace ray {
 
@@ -18,11 +19,7 @@ class ClientCallManager;
 template <class Reply, class Callback>
 class ClientCall {
  public:
-  void OnReplyReceived() const {
-    Status status =
-        status_.ok() ? Status::OK() : Status::IOError(status_.error_message());
-    callback_(status, reply_);
-  }
+  void OnReplyReceived() const { callback_(GrpcStatusToRayStatus(status_), reply_); }
 
  private:
   ClientCall(const Callback &callback) : callback_(callback) {}

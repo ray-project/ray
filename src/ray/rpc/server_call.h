@@ -4,6 +4,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include "ray/common/status.h"
+#include "ray/rpc/util.h"
 
 namespace ray {
 
@@ -60,9 +61,7 @@ class ServerCall : public UntypedServerCall {
 
  private:
   void SendResponse(Status status) {
-    // TODO
-    ::grpc::Status grpc_status = ::grpc::Status::OK;
-    response_writer_.Finish(reply_, grpc_status, this);
+    response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
   }
 
   ServerCallState state_;
@@ -78,7 +77,7 @@ class ServerCall : public UntypedServerCall {
   Request request_;
   Reply reply_;
 
-  template <class GcsServiceX, class ServiceHandlerX, class RequestX, class ReplyX>
+  template <class T1, class T2, class T3, class T4>
   friend class ServerCallFactory;
 };
 
