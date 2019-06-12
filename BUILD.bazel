@@ -114,6 +114,7 @@ cc_library(
         ],
         exclude = [
             "src/ray/core_worker/*_test.cc",
+            "src/ray/core_worker/mock_worker.cc",
         ],
     ),
     hdrs = glob([
@@ -127,7 +128,15 @@ cc_library(
     ],
 )
 
-# This test is run by src/ray/test/run_core_worker_tests.sh
+cc_binary(
+    name = "mock_worker",
+    srcs = ["src/ray/core_worker/mock_worker.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+    ],
+)
+
 cc_binary(
     name = "core_worker_test",
     srcs = ["src/ray/core_worker/core_worker_test.cc"],
