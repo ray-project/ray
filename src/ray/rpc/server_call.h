@@ -114,9 +114,9 @@ class ServerCallImpl : public ServerCall {
   friend class ServerCallFactoryImpl;
 };
 
-template <class GcsService, class ServiceHandler, class Request, class Reply>
+template <class GrpcService, class ServiceHandler, class Request, class Reply>
 class ServerCallFactoryImpl : public ServerCallFactory {
-  using AsyncService = typename GcsService::AsyncService;
+  using AsyncService = typename GrpcService::AsyncService;
 
   // Represents the generic signature of a `FooService::AsyncService::RequestBar()`
   // method, where `Foo` is the name of the service and `Bar` is the name of the method.
