@@ -102,6 +102,9 @@ class NodeManager : public NodeManagerServiceHandler {
   /// Record metrics.
   void RecordMetrics() const;
 
+  /// Get the port of the node manager rpc server.
+  int GetServerPort() const { return node_manager_server_.GetPort(); }
+
  private:
   /// Methods for handling clients.
 

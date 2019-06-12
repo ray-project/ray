@@ -1172,7 +1172,7 @@ def start_raylet(redis_address,
     # If the node manager port is None, then use 0 to cause the node manager
     # to choose its own port.
     if node_manager_port is None:
-        node_manager_port = new_port()
+        node_manager_port = 0
 
     if load_code_from_local:
         start_worker_command += " --load-code-from-local "
