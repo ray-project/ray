@@ -363,8 +363,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
 
     int maxActorReconstruction = 0;
+    String workerStartingPrefix = null;
+    String workerStartingSuffix = null;
     if (taskOptions instanceof ActorCreationOptions) {
       maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
+      workerStartingPrefix = ((ActorCreationOptions) taskOptions).workerStartingPrefix;
+      workerStartingSuffix = ((ActorCreationOptions) taskOptions).workerStartingSuffix;
     }
 
     TaskLanguage language;
@@ -393,7 +397,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         numReturns,
         resources,
         language,
-        functionDescriptor
+        functionDescriptor,
+        workerStartingPrefix,
+        workerStartingSuffix
     );
   }
 
