@@ -115,7 +115,7 @@ ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, int64_t return_index) {
 }
 
 const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
-                            int parent_task_counter) {
+                            int parent_task_counter, const ActorID &actor_id) {
   // Compute hashes.
   SHA256_CTX ctx;
   sha256_init(&ctx);
@@ -127,7 +127,10 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   // Compute the final task ID from the hash.
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
-  return TaskID::FromBinary(std::string(buff, buff + TaskID::Size()));
+  auto unique_id = std::string(buff, buff + kTaskIDSize);
+  unique_id.resize(TaskID::Size());
+  unique_id.replace(kTaskIDSize, kActorIdSize, actor_id.Binary());
+  return TaskID::FromBinary(unique_id);
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \

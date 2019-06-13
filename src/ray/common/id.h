@@ -173,9 +173,10 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 /// \param driver_id The driver that creates the task.
 /// \param parent_task_id The parent task of this task.
 /// \param parent_task_counter The task index of the worker.
+/// \param actor_id The actor that this task is destined for, if any.
 /// \return The task ID generated from the given info.
 const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
-                            int parent_task_counter);
+                            int parent_task_counter, const ActorID &actor_id);
 
 template <typename T>
 BaseID<T>::BaseID() {
@@ -202,6 +203,8 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
+  RAY_CHECK(binary.size() == T::Size()) << "String has size " << binary.size()
+                                        << " but expected " << T::Size();
   T t = T::Nil();
   std::memcpy(t.MutableData(), binary.data(), T::Size());
   return t;
