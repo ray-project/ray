@@ -1,8 +1,8 @@
 #ifndef RAY_RPC_CLIENT_CALL_H
 #define RAY_RPC_CLIENT_CALL_H
 
-#include <boost/asio.hpp>
 #include <grpcpp/grpcpp.h>
+#include <boost/asio.hpp>
 
 #include "ray/common/status.h"
 #include "ray/rpc/util.h"
