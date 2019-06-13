@@ -14,7 +14,8 @@ message ForwardTaskRequest {
   repeated bytes uncommitted_tasks = 2;
 }
 
-message ForwardTaskReply {}
+message ForwardTaskReply {
+}
 
 // Service for inter-node-manager communication.
 service NodeManagerService {

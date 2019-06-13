@@ -379,8 +379,9 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   }
 
   // Initialize a rpc client to the new node manager.
-  std::unique_ptr<NodeManagerClient> client(new NodeManagerClient(
-      client_data.node_manager_address, client_data.node_manager_port, client_call_manager_));
+  std::unique_ptr<NodeManagerClient> client(
+      new NodeManagerClient(client_data.node_manager_address,
+                            client_data.node_manager_port, client_call_manager_));
   remote_node_manager_clients_.emplace(client_id, std::move(client));
 
   ResourceSet resources_total(client_data.resources_total_label,
@@ -1199,8 +1200,9 @@ void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client
   node_manager_client.ProcessMessages();
 }
 
-void NodeManager::HandleForwardTask(const ForwardTaskRequest &request, ForwardTaskReply *reply,
-    RequestDoneCallback done_callback) {
+void NodeManager::HandleForwardTask(const ForwardTaskRequest &request,
+                                    ForwardTaskReply *reply,
+                                    RequestDoneCallback done_callback) {
   // Get the forwarded task and its uncommitted lineage from the request.
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;

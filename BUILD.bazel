@@ -33,8 +33,8 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        ":ray_common",
         ":node_manager_grpc",
+        ":ray_common",
         "@boost//:asio",
     ],
 )
@@ -121,11 +121,11 @@ cc_library(
         ":gcs",
         ":gcs_fbs",
         ":node_manager_fbs",
+        ":node_manager_rpc_lib",
         ":object_manager",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
-        ":node_manager_rpc_lib",
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
