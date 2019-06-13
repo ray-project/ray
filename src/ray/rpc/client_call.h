@@ -8,6 +8,7 @@
 #include "ray/rpc/util.h"
 
 namespace ray {
+namespace rpc {
 
 /// Represents an outgoing gRPC request.
 ///
@@ -128,6 +129,7 @@ class ClientCallManager {
   ::grpc::CompletionQueue cq_;
 };
 
+}  // namespace rpc
 }  // namespace ray
 
 #endif

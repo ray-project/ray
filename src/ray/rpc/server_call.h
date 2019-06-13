@@ -7,6 +7,7 @@
 #include "ray/rpc/util.h"
 
 namespace ray {
+namespace rpc {
 
 using RequestDoneCallback = std::function<void(Status)>;
 
@@ -204,6 +205,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   const std::unique_ptr<::grpc::ServerCompletionQueue> &cq_;
 };
 
+}  // namespace rpc
 }  // namespace ray
 
 #endif

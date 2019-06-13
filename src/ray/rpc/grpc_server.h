@@ -9,6 +9,7 @@
 #include "ray/rpc/server_call.h"
 
 namespace ray {
+namespace rpc {
 
 /// Base class that represents an abstract gRPC server.
 ///
@@ -74,6 +75,7 @@ class GrpcServer {
   std::unique_ptr<::grpc::Server> server_;
 };
 
+}  // namespace rpc
 }  // namespace ray
 
 #endif

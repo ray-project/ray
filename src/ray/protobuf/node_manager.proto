@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package ray;
+package ray.rpc;
 
 message ForwardTaskRequest {
   // The ID of the task to be forwarded.

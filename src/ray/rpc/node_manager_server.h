@@ -8,6 +8,7 @@
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
+namespace rpc {
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -57,6 +58,7 @@ class NodeManagerServer : public GrpcServer {
   NodeManagerServiceHandler &service_handler_;
 };
 
+}  // namespace rpc
 }  // namespace ray
 
 #endif

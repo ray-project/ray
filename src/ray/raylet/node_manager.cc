@@ -379,9 +379,9 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   }
 
   // Initialize a rpc client to the new node manager.
-  std::unique_ptr<NodeManagerClient> client(
-      new NodeManagerClient(client_data.node_manager_address,
-                            client_data.node_manager_port, client_call_manager_));
+  std::unique_ptr<rpc::NodeManagerClient> client(
+      new rpc::NodeManagerClient(client_data.node_manager_address,
+                                 client_data.node_manager_port, client_call_manager_));
   remote_node_manager_clients_.emplace(client_id, std::move(client));
 
   ResourceSet resources_total(client_data.resources_total_label,
@@ -1200,9 +1200,9 @@ void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client
   node_manager_client.ProcessMessages();
 }
 
-void NodeManager::HandleForwardTask(const ForwardTaskRequest &request,
-                                    ForwardTaskReply *reply,
-                                    RequestDoneCallback done_callback) {
+void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
+                                    rpc::ForwardTaskReply *reply,
+                                    rpc::RequestDoneCallback done_callback) {
   // Get the forwarded task and its uncommitted lineage from the request.
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;
@@ -2228,7 +2228,7 @@ void NodeManager::ForwardTask(
                  << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
 
   // Prepare the request message.
-  ForwardTaskRequest request;
+  rpc::ForwardTaskRequest request;
   request.set_task_id(task_id.Binary());
   for (auto &entry : uncommitted_lineage.GetEntries()) {
     request.add_uncommitted_tasks(entry.second.TaskData().Serialize());
@@ -2240,7 +2240,7 @@ void NodeManager::ForwardTask(
   // not.
   local_queues_.QueueTasks({task}, TaskState::SWAP);
   client->ForwardTask(request, [this, on_error, task_id, node_id](
-                                   Status status, const ForwardTaskReply &reply) {
+                                   Status status, const rpc::ForwardTaskReply &reply) {
     // Remove the FORWARDING task from the SWAP queue.
     TaskState state;
     const auto task = local_queues_.RemoveTask(task_id, &state);
@@ -2313,7 +2313,7 @@ std::string NodeManager::DebugString() const {
 
   result << "\nRemote node manager clients: ";
   for (const auto &entry : remote_node_manager_clients_) {
-    result << "\n" << entry->first;
+    result << "\n" << entry.first;
   }
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);

@@ -1,6 +1,7 @@
 #include "ray/rpc/grpc_server.h"
 
 namespace ray {
+namespace rpc {
 
 void GrpcServer::Run() {
   std::string server_address("0.0.0.0:" + std::to_string(port_));
@@ -64,4 +65,5 @@ void GrpcServer::StartPolling() {
   polling_thread_.reset(new std::thread(std::move(polling_func)));
 }
 
+}  // namespace rpc
 }  // namespace ray

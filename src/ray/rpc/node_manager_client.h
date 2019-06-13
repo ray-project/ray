@@ -12,6 +12,7 @@
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
+namespace rpc {
 
 /// Client used for communicating with a remote node manager server.
 class NodeManagerClient {
@@ -51,6 +52,7 @@ class NodeManagerClient {
   ClientCallManager &client_call_manager_;
 };
 
+}  // namespace rpc
 }  // namespace ray
 
 #endif  // RAY_RPC_NODE_MANAGER_CLIENT_H
