@@ -98,6 +98,7 @@ class Node(object):
                 pid=os.getpid(), date_str=date_str)
         else:
             redis_client = self.create_redis_client()
+            self._wait_until_gcs_ready(redis_client)
             self.session_name = ray.utils.decode(
                 redis_client.get("session_name"))
 
@@ -178,6 +179,21 @@ class Node(object):
         # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
         try_to_create_directory(self._logs_dir, warn_if_exist=False)
+
+    def _wait_until_gcs_ready(self, redis_client):
+        """Check and wait until gcs is ready to read
+        This method tries to read a "GCS_READY" flag from gcs,
+        and b"1" indicates that this worker can safely reads options from gcs
+        """
+        retry_times = 10
+        retry_counter = 0
+        gcs_ready = redis_client.get("GCS_READY")
+        while retry_counter < retry_times and gcs_ready is None:
+            gcs_ready = redis_client.get("GCS_READY")
+            time.sleep(1)
+            retry_counter += 1
+        if gcs_ready != b"1":
+            raise Exception("Couldn't find GCS_READY flag!")
 
     @property
     def node_ip_address(self):

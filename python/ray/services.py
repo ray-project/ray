@@ -697,6 +697,11 @@ def start_redis(node_ip_address,
         shard_client.execute_command("MEMBER.CONNECT_TO_MASTER",
                                      node_ip_address, port)
 
+        # indicate that all relevant options have been written into primary
+        # redis-server by the head node so that workers know whether they
+        # should start to read them from redis.
+        primary_redis_client.set("GCS_READY", 1)
+
     return redis_address, redis_shards, processes
 
 
