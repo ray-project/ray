@@ -27,14 +27,14 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 // Change the compiler alignment to 1 byte (default is 8).
 #pragma pack(push, 1)
 
-template <typename T>
+template <typename T, size_t N>
 class BaseID {
  public:
   BaseID();
   static T FromRandom();
   static T FromBinary(const std::string &binary);
   static const T &Nil();
-  static size_t Size() { return T::Size(); }
+  static constexpr size_t Size() { return N; }
 
   size_t Hash() const;
   bool IsNil() const;
@@ -45,9 +45,6 @@ class BaseID {
   std::string Hex() const;
 
  protected:
-  BaseID(const std::string &binary) {
-    std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), T::Size());
-  }
   // All IDs are immutable for hash evaluations. MutableData is only allow to use
   // in construction time, so this function is protected.
   uint8_t *MutableData();
@@ -56,10 +53,9 @@ class BaseID {
   mutable size_t hash_ = 0;
 };
 
-class UniqueID : public BaseID<UniqueID> {
+class UniqueID : public BaseID<UniqueID, kUniqueIDSize> {
  public:
   UniqueID() : BaseID(){};
-  static size_t Size() { return kUniqueIDSize; }
 
  protected:
   UniqueID(const std::string &binary);
@@ -68,19 +64,17 @@ class UniqueID : public BaseID<UniqueID> {
   uint8_t id_[kUniqueIDSize];
 };
 
-class ActorID : public BaseID<ActorID> {
+class ActorID : public BaseID<ActorID, kActorIdSize> {
  public:
   ActorID() : BaseID() {}
-  static size_t Size() { return kActorIdSize; }
 
  private:
   uint8_t id_[kActorIdSize];
 };
 
-class TaskID : public BaseID<TaskID> {
+class TaskID : public BaseID<TaskID, kTaskIDSize + kActorIdSize> {
  public:
   TaskID() : BaseID() {}
-  static size_t Size() { return kTaskIDSize + kActorIdSize; }
   ActorID ActorId() const {
     return ActorID::FromBinary(
         std::string(reinterpret_cast<const char *>(actor_id_), ActorID::Size()));
@@ -92,10 +86,9 @@ class TaskID : public BaseID<TaskID> {
   uint8_t actor_id_[kActorIdSize];
 };
 
-class ObjectID : public BaseID<ObjectID> {
+class ObjectID : public BaseID<ObjectID, kUniqueIDSize> {
  public:
   ObjectID() : BaseID() {}
-  static size_t Size() { return kUniqueIDSize; }
   plasma::ObjectID ToPlasmaId() const;
   ObjectID(const plasma::UniqueID &from);
 
@@ -131,13 +124,6 @@ class ObjectID : public BaseID<ObjectID> {
   int32_t index_;
 };
 
-// TaskID compose of a hash, kTaskIDSize unique bytes, kActorIdSize
-// bytes representing the corresponding actor ID, if any.
-static_assert(sizeof(TaskID) == sizeof(size_t) + kTaskIDSize + kActorIdSize,
-              "TaskID size is not as expected");
-static_assert(sizeof(ObjectID) == sizeof(int32_t) + sizeof(TaskID),
-              "ObjectID size is not as expected");
-
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
@@ -153,7 +139,7 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
     static type FromRandom() { return type(UniqueID::FromRandom()); }          \
     static type FromBinary(const std::string &binary) { return type(binary); } \
     static type Nil() { return type(UniqueID::Nil()); }                        \
-    static size_t Size() { return kUniqueIDSize; }                             \
+    static constexpr size_t Size() { return kUniqueIDSize; }                   \
                                                                                \
    private:                                                                    \
     explicit type(const std::string &binary) {                                 \
@@ -178,16 +164,16 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
                             int parent_task_counter, const ActorID &actor_id);
 
-template <typename T>
-BaseID<T>::BaseID() {
+template <typename T, size_t N>
+BaseID<T, N>::BaseID() {
   // Using const_cast to directly change data is dangerous. The cached
   // hash may not be changed. This is used in construction time.
-  std::fill_n(this->MutableData(), T::Size(), 0xff);
+  std::fill_n(this->MutableData(), N, 0xff);
 }
 
-template <typename T>
-T BaseID<T>::FromRandom() {
-  std::string data(T::Size(), 0);
+template <typename T, size_t N>
+T BaseID<T, N>::FromRandom() {
+  std::string data(N, 0);
   // NOTE(pcm): The right way to do this is to have one std::mt19937 per
   // thread (using the thread_local keyword), but that's not supported on
   // older versions of macOS (see https://stackoverflow.com/a/29929949)
@@ -195,74 +181,74 @@ T BaseID<T>::FromRandom() {
   std::lock_guard<std::mutex> lock(random_engine_mutex);
   static std::mt19937 generator = RandomlySeededMersenneTwister();
   std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
-  for (int i = 0; i < T::Size(); i++) {
+  for (int i = 0; i < N; i++) {
     data[i] = static_cast<uint8_t>(dist(generator));
   }
   return T::FromBinary(data);
 }
 
-template <typename T>
-T BaseID<T>::FromBinary(const std::string &binary) {
-  RAY_CHECK(binary.size() == T::Size()) << "String has size " << binary.size()
-                                        << " but expected " << T::Size();
+template <typename T, size_t N>
+T BaseID<T, N>::FromBinary(const std::string &binary) {
+  RAY_CHECK(binary.size() == N) << "String has size " << binary.size() << " but expected "
+                                << N;
   T t = T::Nil();
-  std::memcpy(t.MutableData(), binary.data(), T::Size());
+  std::memcpy(t.MutableData(), binary.data(), N);
   return t;
 }
 
-template <typename T>
-const T &BaseID<T>::Nil() {
+template <typename T, size_t N>
+const T &BaseID<T, N>::Nil() {
   static const T nil_id;
   return nil_id;
 }
 
-template <typename T>
-bool BaseID<T>::IsNil() const {
+template <typename T, size_t N>
+bool BaseID<T, N>::IsNil() const {
   static T nil_id = T::Nil();
   return *this == nil_id;
 }
 
-template <typename T>
-size_t BaseID<T>::Hash() const {
+template <typename T, size_t N>
+size_t BaseID<T, N>::Hash() const {
   // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
   // default value 0)
   if (!hash_) {
-    hash_ = MurmurHash64A(Data(), T::Size(), 0);
+    hash_ = MurmurHash64A(Data(), N, 0);
   }
   return hash_;
 }
 
-template <typename T>
-bool BaseID<T>::operator==(const BaseID &rhs) const {
-  return std::memcmp(Data(), rhs.Data(), T::Size()) == 0;
+template <typename T, size_t N>
+bool BaseID<T, N>::operator==(const BaseID &rhs) const {
+  return std::memcmp(Data(), rhs.Data(), N) == 0;
 }
 
-template <typename T>
-bool BaseID<T>::operator!=(const BaseID &rhs) const {
+template <typename T, size_t N>
+bool BaseID<T, N>::operator!=(const BaseID &rhs) const {
   return !(*this == rhs);
 }
 
-template <typename T>
-uint8_t *BaseID<T>::MutableData() {
+template <typename T, size_t N>
+uint8_t *BaseID<T, N>::MutableData() {
   return reinterpret_cast<uint8_t *>(this) + sizeof(hash_);
 }
 
-template <typename T>
-const uint8_t *BaseID<T>::Data() const {
+template <typename T, size_t N>
+const uint8_t *BaseID<T, N>::Data() const {
   return reinterpret_cast<const uint8_t *>(this) + sizeof(hash_);
 }
 
-template <typename T>
-std::string BaseID<T>::Binary() const {
-  return std::string(reinterpret_cast<const char *>(Data()), T::Size());
+template <typename T, size_t N>
+std::string BaseID<T, N>::Binary() const {
+  return std::string(reinterpret_cast<const char *>(Data()), N);
 }
 
-template <typename T>
-std::string BaseID<T>::Hex() const {
+template <typename T, size_t N>
+std::string BaseID<T, N>::Hex() const {
   constexpr char hex[] = "0123456789abcdef";
   const uint8_t *id = Data();
   std::string result;
-  for (int i = 0; i < T::Size(); i++) {
+  for (int i = 0; i < N; i++) {
     unsigned int val = id[i];
     result.push_back(hex[val >> 4]);
     result.push_back(hex[val & 0xf]);
@@ -274,15 +260,17 @@ std::string BaseID<T>::Hex() const {
 
 namespace std {
 
-#define DEFINE_UNIQUE_ID(type)                                           \
-  template <>                                                            \
-  struct hash<::ray::type> {                                             \
-    size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
-  };                                                                     \
-  template <>                                                            \
-  struct hash<const ::ray::type> {                                       \
-    size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
-  };
+#define DEFINE_UNIQUE_ID(type)                                               \
+  template <>                                                                \
+  struct hash<::ray::type> {                                                 \
+    size_t operator()(const ::ray::type &id) const { return id.Hash(); }     \
+  };                                                                         \
+  template <>                                                                \
+  struct hash<const ::ray::type> {                                           \
+    size_t operator()(const ::ray::type &id) const { return id.Hash(); }     \
+  };                                                                         \
+  static_assert(sizeof(::ray::type) == sizeof(size_t) + ::ray::type::Size(), \
+                #type " size is not as expected.");
 
 DEFINE_UNIQUE_ID(UniqueID);
 DEFINE_UNIQUE_ID(ActorID);
