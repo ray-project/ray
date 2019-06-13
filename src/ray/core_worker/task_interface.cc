@@ -39,8 +39,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]
-      ->SubmitTask(task);
+  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
@@ -75,8 +74,7 @@ Status CoreWorkerTaskInterface::CreateActor(
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]
-      ->SubmitTask(task);
+  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
 }
 
 Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
@@ -119,8 +117,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
 
   TaskSpec task(std::move(spec), execution_dependencies);
   auto status =
-      task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(
-          task);
+      task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
 
   // remove cursor from return ids.
   (*return_ids).pop_back();

@@ -3,8 +3,7 @@
 
 namespace ray {
 
-CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(
-    RayClient &ray_client)
+CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(RayClient &ray_client)
     : ray_client_(ray_client) {}
 
 Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
@@ -12,8 +11,7 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
                                                 task.GetTaskSpecification());
 }
 
-CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    RayClient &ray_client)
+CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(RayClient &ray_client)
     : ray_client_(ray_client) {}
 
 Status CoreWorkerRayletTaskReceiver::GetTasks(std::vector<TaskSpec> *tasks) {

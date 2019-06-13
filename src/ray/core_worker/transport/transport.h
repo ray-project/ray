@@ -12,7 +12,7 @@
 namespace ray {
 
 /// Interface for task submitter and receiver. They are separate classes but should be
-/// used in pairs - one type of task submitter should be used together with task  
+/// used in pairs - one type of task submitter should be used together with task
 /// with the same type, so these classes are put together in this same file.
 ///
 /// Task submitter/receiver should inherit from these classes and provide implementions

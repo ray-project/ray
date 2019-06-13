@@ -138,8 +138,7 @@ class CoreWorkerTaskInterface {
       const std::vector<TaskArg> &args);
 
   /// All the task submitters supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskSubmitter>>
-      task_submitters_;
+  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskSubmitter>> task_submitters_;
 };
 
 }  // namespace ray

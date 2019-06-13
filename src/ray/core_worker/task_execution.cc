@@ -8,18 +8,16 @@ namespace ray {
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     CoreWorker &core_worker)
     : core_worker_(core_worker) {
-  task_receivers.emplace(
-      static_cast<int>(TaskTransportType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-          new CoreWorkerRayletTaskReceiver(core_worker_.ray_client_)));
+  task_receivers.emplace(static_cast<int>(TaskTransportType::RAYLET),
+                         std::unique_ptr<CoreWorkerRayletTaskReceiver>(
+                             new CoreWorkerRayletTaskReceiver(core_worker_.ray_client_)));
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
   while (true) {
     std::vector<TaskSpec> tasks;
     auto status =
-        task_receivers[static_cast<int>(TaskTransportType::RAYLET)]->GetTasks(
-            &tasks);
+        task_receivers[static_cast<int>(TaskTransportType::RAYLET)]->GetTasks(&tasks);
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Getting task failed with error: "
                      << ray::Status::IOError(status.message());
