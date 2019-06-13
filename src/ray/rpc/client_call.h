@@ -30,6 +30,12 @@ class ClientCall {
 
 class ClientCallManager;
 
+/// Reprents the client callback function of a particular rpc method.
+///
+/// \tparam Reply Type of the reply message.
+template <class Reply>
+using ClientCallback = std::function<void(const Status &status, const Reply &reply)>;
+
 /// Implementaion of the `ClientCall`. It represents a `ClientCall` for a particular
 /// RPC method.
 ///
@@ -37,25 +43,22 @@ class ClientCallManager;
 template <class Reply>
 class ClientCallImpl : public ClientCall {
  public:
-  /// Type of the callback function.
-  using Callback = std::function<void(const Status &status, const Reply &reply)>;
-
   void OnReplyReceived() override { callback_(GrpcStatusToRayStatus(status_), reply_); }
 
  private:
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  ClientCallImpl(const Callback &callback) : callback_(callback) {}
+  ClientCallImpl(const ClientCallback<Reply> &callback) : callback_(callback) {}
 
   /// The reply message.
   Reply reply_;
 
   /// The callback function to handle the reply.
-  Callback callback_;
+  ClientCallback<Reply> callback_;
 
   /// The response reader.
-  std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> response_reader_;
+  std::unique_ptr<::grpc::ClientAsyncResponseReader<Reply>> response_reader_;
 
   /// gRPC status of this request.
   ::grpc::Status status_;
@@ -66,6 +69,17 @@ class ClientCallImpl : public ClientCall {
 
   friend class ClientCallManager;
 };
+
+/// Peprents the generic siganature of a `FooService::Stub::PreapreAsyncBar`
+/// function, where `Foo` is the service name and `Bar` is the rpc method name.
+///
+/// \tparam GrpcService Type of the gRPC-generated service class.
+/// \tparam Request Type of the request message.
+/// \tparam Reply Type of the reply message.
+template <class GrpcService, class Request, class Reply>
+using PrepareAsyncFunction = std::unique_ptr<::grpc::ClientAsyncResponseReader<Reply>> (
+    GrpcService::Stub::*)(::grpc::ClientContext *context, const Request &request,
+                          ::grpc::CompletionQueue *cq);
 
 /// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
 /// `ClientCall` objects.
@@ -102,17 +116,28 @@ class ClientCallManager {
 
   ~ClientCallManager() { cq_.Shutdown(); }
 
-  /// Create a new `ClientCall`.
+  /// Create a new `ClientCall` and send request.
   ///
   /// \param[in] stub The gRPC-generated stub.
+  /// \param[in] prepare_async_function Pointer to the gRPC-generated
+  /// `FooService::Stub::PreapreAsyncBar` function.
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  template <class GrpcService, class Request, class Reply, class Callback>
-  ClientCall *CreateCall(const std::unique_ptr<typename GrpcService::Stub> &stub,
-                         const Request &request, const Callback &callback) {
+  ///
+  /// \tparam GrpcService Type of the gRPC-generated service class.
+  /// \tparam Request Type of the request message.
+  /// \tparam Reply Type of the reply message.
+  template <class GrpcService, class Request, class Reply>
+  ClientCall *CreateCall(
+      typename GrpcService::Stub &stub,
+      const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
+      const Request &request, const ClientCallback<Reply> &callback) {
+    // Create a new `ClientCall` object. This object will eventuall be deleted in the
+    // `ClientCallManager`'s polling thread when reply is received.
     auto call = new ClientCallImpl<Reply>(callback);
+    // Send request.
     call->response_reader_ =
-        stub->PrepareAsyncForwardTask(&call->context_, request, &cq_);
+        (stub.*prepare_async_function)(&call->context_, request, &cq_);
     call->response_reader_->StartCall();
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)call);
     return call;

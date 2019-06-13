@@ -16,9 +16,6 @@ namespace rpc {
 
 /// Client used for communicating with a remote node manager server.
 class NodeManagerClient {
-  using ForwardTaskCallback =
-      std::function<void(const Status &status, const ForwardTaskReply &reply)>;
-
  public:
   /// Constructor.
   ///
@@ -38,10 +35,11 @@ class NodeManagerClient {
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   void ForwardTask(const ForwardTaskRequest &request,
-                   const ForwardTaskCallback &callback) {
-    client_call_manager_.CreateCall<NodeManagerService, ForwardTaskRequest,
-                                    ForwardTaskReply, ForwardTaskCallback>(stub_, request,
-                                                                           callback);
+                   const ClientCallback<ForwardTaskReply> &callback) {
+    client_call_manager_
+        .CreateCall<NodeManagerService, ForwardTaskRequest, ForwardTaskReply>(
+            *stub_, &NodeManagerService::Stub::PrepareAsyncForwardTask, request,
+            callback);
   }
 
  private:
