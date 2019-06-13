@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package ray;
+package ray.rpc;
 
 message ForwardTaskRequest {
   // The ID of the task to be forwarded.
@@ -14,7 +14,8 @@ message ForwardTaskRequest {
   repeated bytes uncommitted_tasks = 2;
 }
 
-message ForwardTaskReply {}
+message ForwardTaskReply {
+}
 
 // Service for inter-node-manager communication.
 service NodeManagerService {

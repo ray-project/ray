@@ -1,6 +1,7 @@
 #include "ray/rpc/grpc_server.h"
 
 namespace ray {
+namespace rpc {
 
 void GrpcServer::Run() {
   std::string server_address("0.0.0.0:" + std::to_string(port_));
@@ -43,7 +44,8 @@ void GrpcServer::StartPolling() {
           // track this request. So we need to create another call to handle next
           // incoming request.
           server_call->GetFactory().CreateCall();
-          server_call->OnRequestReceived();
+          server_call->SetState(ServerCallState::PROCESSING);
+          main_service_.post([server_call] { server_call->HandleRequest(); });
           break;
         case ServerCallState::SENDING_REPLY:
           // The reply has been sent, this call can be deleted now.
@@ -63,5 +65,7 @@ void GrpcServer::StartPolling() {
 
   polling_thread_.reset(new std::thread(std::move(polling_func)));
 }
+
+}  // namespace rpc
 
 }  // namespace ray

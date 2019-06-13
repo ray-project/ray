@@ -482,7 +482,7 @@ ray::Status ObjectManager::SendObjectChunk(
     const UniqueID &push_id, const ObjectID &object_id, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index,
     std::shared_ptr<ObjectManagerClient> rpc_client) {
-  PushRequest push_request;
+  rpc::PushRequest push_request;
   // Set request header
   push_request.set_push_id(push_id.Binary());
   push_request.set_object_id(object_id.Binary());
@@ -511,7 +511,7 @@ ray::Status ObjectManager::SendObjectChunk(
   // Do this regardless of whether it failed or succeeded.
   // buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
 
-  auto callback = [this](const Status &status, const PushReply &reply) {};
+  auto callback = [this](const Status &status, const rpc::PushReply &reply) {};
   rpc_client->Push(push_request, callback);
   return Status::OK();
 }
@@ -1018,7 +1018,7 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
   }
 }
 
-std::shared_ptr<ObjectManagerClient> GetRpcClient(const ClientID &client_id) {
+std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const ClientID &client_id) {
   auto it = object_manager_clients_.find(client_id);
   if (it == object_manager_clients_.end()) {
     RemoteConnectionInfo connection_info(client_id);
@@ -1027,7 +1027,7 @@ std::shared_ptr<ObjectManagerClient> GetRpcClient(const ClientID &client_id) {
       return nullptr;
     }
     auto object_manager_client =
-        std::make_shared<ObjectManagerClient>(info.ip, info.port, client_call_manager_);
+        std::make_shared<rpc::ObjectManagerClient>(info.ip, info.port, client_call_manager_);
     if (!object_manager_client) {
       return nullptr;
     }

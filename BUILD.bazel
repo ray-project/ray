@@ -52,12 +52,12 @@ cpp_grpc_library(
 cc_library(
     name = "object_manager_rpc_lib",
     srcs = [
-        "src/ray/object_manager/object_manager_server.cc",
-        #"src/ray/object_manager/object_manager_client.cc",
+        "src/ray/rpc/object_manager_server.cc",
+        #"src/ray/rpc/object_manager_client.cc",
     ],
     hdrs = glob([
-        "src/ray/object_manager/object_manager_server.h",
-        "src/ray/object_manager/object_manager_client.h",
+        "src/ray/rpc/object_manager_server.h",
+        "src/ray/rpc/object_manager_client.h",
         "src/ray/rpc/*.h",
     ]),
     copts = COPTS,
@@ -150,6 +150,7 @@ cc_library(
         ":gcs",
         ":gcs_fbs",
         ":node_manager_fbs",
+        ":node_manager_rpc_lib",
         ":object_manager",
         ":ray_common",
         ":ray_util",
@@ -177,6 +178,7 @@ cc_library(
         ],
         exclude = [
             "src/ray/core_worker/*_test.cc",
+            "src/ray/core_worker/mock_worker.cc",
         ],
     ),
     hdrs = glob([
@@ -190,7 +192,15 @@ cc_library(
     ],
 )
 
-# This test is run by src/ray/test/run_core_worker_tests.sh
+cc_binary(
+    name = "mock_worker",
+    srcs = ["src/ray/core_worker/mock_worker.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+    ],
+)
+
 cc_binary(
     name = "core_worker_test",
     srcs = ["src/ray/core_worker/core_worker_test.cc"],

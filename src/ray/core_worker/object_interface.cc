@@ -1,7 +1,7 @@
-#include "object_interface.h"
-#include "context.h"
-#include "core_worker.h"
+#include "ray/core_worker/object_interface.h"
 #include "ray/common/ray_config.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 
@@ -12,14 +12,25 @@ Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id)
   ObjectID put_id = ObjectID::ForPut(core_worker_.worker_context_.GetCurrentTaskID(),
                                      core_worker_.worker_context_.GetNextPutIndex());
   *object_id = put_id;
+  return Put(buffer, put_id);
+}
 
-  auto plasma_id = put_id.ToPlasmaId();
+Status CoreWorkerObjectInterface::Put(const Buffer &buffer, const ObjectID &object_id) {
+  auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> data;
-  RAY_ARROW_RETURN_NOT_OK(
-      core_worker_.store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
+  {
+    std::unique_lock<std::mutex> guard(core_worker_.store_client_mutex_);
+    RAY_ARROW_RETURN_NOT_OK(
+        core_worker_.store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
+  }
+
   memcpy(data->mutable_data(), buffer.Data(), buffer.Size());
-  RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Seal(plasma_id));
-  RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Release(plasma_id));
+
+  {
+    std::unique_lock<std::mutex> guard(core_worker_.store_client_mutex_);
+    RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Seal(plasma_id));
+    RAY_ARROW_RETURN_NOT_OK(core_worker_.store_client_.Release(plasma_id));
+  }
   return Status::OK();
 }
 
@@ -31,7 +42,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   bool was_blocked = false;
 
   std::unordered_map<ObjectID, int> unready;
-  for (int i = 0; i < ids.size(); i++) {
+  for (size_t i = 0; i < ids.size(); i++) {
     unready.insert({ids[i], i});
   }
 
@@ -73,10 +84,13 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     }
 
     std::vector<plasma::ObjectBuffer> object_buffers;
-    auto status =
-        core_worker_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
+    {
+      std::unique_lock<std::mutex> guard(core_worker_.store_client_mutex_);
+      auto status =
+          core_worker_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
+    }
 
-    for (int i = 0; i < object_buffers.size(); i++) {
+    for (size_t i = 0; i < object_buffers.size(); i++) {
       if (object_buffers[i].data != nullptr) {
         const auto &object_id = unready_ids[i];
         (*results)[unready[object_id]] =
@@ -112,7 +126,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
   // TODO: change RayletClient::Wait() to return a bit set, so that we don't need
   // to do this translation.
   (*results).resize(object_ids.size());
-  for (int i = 0; i < object_ids.size(); i++) {
+  for (size_t i = 0; i < object_ids.size(); i++) {
     (*results)[i] = ready_ids.count(object_ids[i]) > 0;
   }
 

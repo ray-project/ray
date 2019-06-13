@@ -100,7 +100,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                      gcs_client_->raylet_task_table(), gcs_client_->raylet_task_table(),
                      config.max_lineage_size),
       actor_registry_(),
-      node_manager_server_(config.node_manager_port, *this),
+      node_manager_server_(config.node_manager_port, io_service, *this),
       client_call_manager_(io_service) {
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -371,17 +371,18 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
     return;
   }
 
-  auto entry = node_manager_clients_.find(client_id);
-  if (entry != node_manager_clients_.end()) {
+  auto entry = remote_node_manager_clients_.find(client_id);
+  if (entry != remote_node_manager_clients_.end()) {
     RAY_LOG(DEBUG) << "Received notification of a new client that already exists: "
                    << client_id;
     return;
   }
 
   // Initialize a rpc client to the new node manager.
-  std::unique_ptr<NodeManagerClient> client(new NodeManagerClient(
-      client_data.node_manager_address, client_data.node_manager_port, client_call_manager_));
-  node_manager_clients_.emplace(client_id, std::move(client));
+  std::unique_ptr<rpc::NodeManagerClient> client(
+      new rpc::NodeManagerClient(client_data.node_manager_address,
+                                 client_data.node_manager_port, client_call_manager_));
+  remote_node_manager_clients_.emplace(client_id, std::move(client));
 
   ResourceSet resources_total(client_data.resources_total_label,
                               client_data.resources_total_capacity);
@@ -406,9 +407,9 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   cluster_resource_map_.erase(client_id);
 
   // Remove the node manager client.
-  const auto client_entry = node_manager_clients_.find(client_id);
-  if (client_entry != node_manager_clients_.end()) {
-    node_manager_clients_.erase(client_entry);
+  const auto client_entry = remote_node_manager_clients_.find(client_id);
+  if (client_entry != remote_node_manager_clients_.end()) {
+    remote_node_manager_clients_.erase(client_entry);
   } else {
     RAY_LOG(WARNING) << "Received ClientRemoved callback for an unknown client "
                      << client_id << ".";
@@ -430,6 +431,11 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   // Notify the object directory that the client has been removed so that it
   // can remove it from any cached locations.
   object_directory_->HandleClientRemoved(client_id);
+
+  // Flush all uncommitted tasks from the local lineage cache. This is to
+  // guarantee that all tasks get flushed eventually, in case one of the tasks
+  // in our local cache was supposed to be flushed by the node that died.
+  lineage_cache_.FlushAllUncommittedTasks();
 }
 
 void NodeManager::ResourceCreateUpdated(const ClientTableDataT &client_data) {
@@ -1194,8 +1200,9 @@ void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client
   node_manager_client.ProcessMessages();
 }
 
-void NodeManager::HandleForwardTask(const ForwardTaskRequest &request, ForwardTaskReply *reply,
-    RequestDoneCallback done_callback) {
+void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
+                                    rpc::ForwardTaskReply *reply,
+                                    rpc::RequestDoneCallback done_callback) {
   // Get the forwarded task and its uncommitted lineage from the request.
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;
@@ -2080,7 +2087,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is local.
   const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
   RAY_LOG(DEBUG) << "Object local " << object_id << ", "
-                 << " on " << gcs_client_->client_table().GetLocalClientId()
+                 << " on " << gcs_client_->client_table().GetLocalClientId() << ", "
                  << ready_task_ids.size() << " tasks ready";
   // Transition the tasks whose dependencies are now fulfilled to the ready state.
   if (ready_task_ids.size() > 0) {
@@ -2187,8 +2194,8 @@ void NodeManager::ForwardTask(
     const Task &task, const ClientID &node_id,
     const std::function<void(const ray::Status &, const Task &)> &on_error) {
   // Lookup node manager client for this node_id and use it to send the request.
-  auto client_entry = node_manager_clients_.find(node_id);
-  if (client_entry == node_manager_clients_.end()) {
+  auto client_entry = remote_node_manager_clients_.find(node_id);
+  if (client_entry == remote_node_manager_clients_.end()) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
     RAY_LOG(INFO) << "No node manager client found for GCS client id " << node_id;
     on_error(ray::Status::IOError("Node manager client not found"), task);
@@ -2221,7 +2228,8 @@ void NodeManager::ForwardTask(
                  << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
 
   // Prepare the request message.
-  ForwardTaskRequest request;
+
+  rpc::ForwardTaskRequest request;
   request.set_task_id(task_id.Binary());
   for (auto &entry : uncommitted_lineage.GetEntries()) {
     request.add_uncommitted_tasks(entry.second.TaskData().Serialize());
@@ -2233,7 +2241,7 @@ void NodeManager::ForwardTask(
   // not.
   local_queues_.QueueTasks({task}, TaskState::SWAP);
   client->ForwardTask(request, [this, on_error, task_id, node_id](
-                                   Status status, const ForwardTaskReply &reply) {
+                                   Status status, const rpc::ForwardTaskReply &reply) {
     // Remove the FORWARDING task from the SWAP queue.
     TaskState state;
     const auto task = local_queues_.RemoveTask(task_id, &state);
@@ -2274,7 +2282,8 @@ void NodeManager::ForwardTask(
 
 void NodeManager::DumpDebugState() const {
   std::fstream fs;
-  fs.open(temp_dir_ + "/debug_state.txt", std::fstream::out | std::fstream::trunc);
+  fs.open(initial_config_.session_dir + "/debug_state.txt",
+          std::fstream::out | std::fstream::trunc);
   fs << DebugString();
   fs.close();
 }
@@ -2303,6 +2312,14 @@ std::string NodeManager::DebugString() const {
   result << "\n- num dead actors: " << statistical_data.dead_actors;
   result << "\n- max num handles: " << statistical_data.max_num_handles;
 
+<<<<<<< HEAD
+=======
+  result << "\nRemote node manager clients: ";
+  for (const auto &entry : remote_node_manager_clients_) {
+    result << "\n" << entry.first;
+  }
+
+>>>>>>> 1c0c2bcd8190a03d610ac51877ca29ffda2036e7
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
 }

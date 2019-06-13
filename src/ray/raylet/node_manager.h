@@ -51,9 +51,11 @@ struct NodeManagerConfig {
   std::string store_socket_name;
   /// The path to the ray temp dir.
   std::string temp_dir;
+  /// The path of this ray session dir.
+  std::string session_dir;
 };
 
-class NodeManager : public NodeManagerServiceHandler {
+class NodeManager : public rpc::NodeManagerServiceHandler {
  public:
   /// Create a node manager.
   ///
@@ -446,8 +448,9 @@ class NodeManager : public NodeManagerServiceHandler {
                                bool intentional_disconnect);
 
   /// Handle a `ForwardTask` request.
-  void HandleForwardTask(const ForwardTaskRequest &request, ForwardTaskReply *reply,
-                         RequestDoneCallback done_callback) override;
+  void HandleForwardTask(const rpc::ForwardTaskRequest &request,
+                         rpc::ForwardTaskReply *reply,
+                         rpc::RequestDoneCallback done_callback) override;
 
   // GCS client ID for this node.
   ClientID client_id_;
@@ -503,13 +506,14 @@ class NodeManager : public NodeManagerServiceHandler {
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 
   /// The RPC server.
-  NodeManagerServer node_manager_server_;
+  rpc::NodeManagerServer node_manager_server_;
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
-  ClientCallManager client_call_manager_;
+  rpc::ClientCallManager client_call_manager_;
 
-  /// Map from node ids to the `NodeManagerClient`s.
-  std::unordered_map<ClientID, std::unique_ptr<NodeManagerClient>> node_manager_clients_;
+  /// Map from node ids to clients of the remote node managers.
+  std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
+      remote_node_manager_clients_;
 };
 
 }  // namespace raylet

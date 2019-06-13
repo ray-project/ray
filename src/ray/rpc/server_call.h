@@ -7,6 +7,7 @@
 #include "ray/rpc/util.h"
 
 namespace ray {
+namespace rpc {
 
 using RequestDoneCallback = std::function<void(Status)>;
 
@@ -15,7 +16,7 @@ enum class ServerCallState {
   /// The call is created and waiting for an incoming request.
   PENDING,
   /// Request is received and being processed.
-  PROCECCSSING,
+  PROCESSING,
   /// Request processing is done, and reply is being sent to client.
   SENDING_REPLY
 };
@@ -31,8 +32,8 @@ class ServerCallFactory;
 /// (1) The `GrpcServer` creates a `ServerCall` and use it as the tag to accept requests
 ///     gRPC `CompletionQueue`. Now the state is `PENDING`.
 /// (2) When a request is received, an event will be gotten from the `CompletionQueue`.
-///     `GrpcServer` then should call `ServerCall::OnRequestReceived`, and the state
-///     becomes `PROCESSING`.
+///     `GrpcServer` then should change `ServerCall`'s state to PROCESSING and call
+///     `ServerCall::HandleRequest`.
 /// (3) When the `ServiceHandler` finishes handling the request, `ServerCallImpl::Finish`
 ///     will be called, and the state becomes `SENDING_REPLY`.
 /// (4) When the reply is sent, an event will be gotten from the `CompletionQueue`.
@@ -42,8 +43,12 @@ class ServerCall {
   /// Get the state of this `ServerCall`.
   virtual ServerCallState GetState() const = 0;
 
-  /// Callback function to be called by `GrpcServer` when the request is received.
-  virtual void OnRequestReceived() = 0;
+  /// Set state of this `ServerCall`.
+  virtual void SetState(const ServerCallState &new_state) = 0;
+
+  /// Handle the requst. This is the callback function to be called by
+  /// `GrpcServer` when the request is received.
+  virtual void HandleRequest() = 0;
 
   /// Get the factory that created this `ServerCall`.
   virtual const ServerCallFactory &GetFactory() const = 0;
@@ -65,7 +70,7 @@ class ServerCallFactory {
 /// \tparam Reply Type of the reply message.
 template <class ServiceHandler, class Request, class Reply>
 class ServerCallImpl : public ServerCall {
-  // Represents the generic signature of a `FooServiceHanler::HandleBar()`
+  // Represents the generic signature of a `FooServiceHandler::HandleBar()`
   // method, where `Foo` is the name of the service and `Bar` is the name of the method.
   using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
                                                          RequestDoneCallback);
@@ -86,8 +91,10 @@ class ServerCallImpl : public ServerCall {
 
   ServerCallState GetState() const override { return state_; }
 
-  void OnRequestReceived() override {
-    state_ = ServerCallState::PROCECCSSING;
+  void SetState(const ServerCallState &new_state) override { state_ = new_state; }
+
+  void HandleRequest() override {
+    state_ = ServerCallState::PROCESSING;
     (service_handler_.*handle_request_function_)(request_, &reply_,
                                                  [this](Status status) {
                                                    // When the handler is done with the
@@ -151,7 +158,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       ::grpc::ServerContext *, Request *, ::grpc::ServerAsyncResponseWriter<Reply> *,
       ::grpc::CompletionQueue *, ::grpc::ServerCompletionQueue *, void *);
 
-  // Represents the generic signature of a `FooServiceHanler::HandleBar()`
+  // Represents the generic signature of a `FooServiceHandler::HandleBar()`
   // method, where `Foo` is the name of the service and `Bar` is the name of the method.
   using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
                                                          RequestDoneCallback);
@@ -204,6 +211,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   const std::unique_ptr<::grpc::ServerCompletionQueue> &cq_;
 };
 
+}  // namespace rpc
 }  // namespace ray
 
 #endif

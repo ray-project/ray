@@ -1,13 +1,13 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
-#include "common.h"
-#include "context.h"
-#include "object_interface.h"
 #include "ray/common/buffer.h"
+#include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/object_interface.h"
+#include "ray/core_worker/task_execution.h"
+#include "ray/core_worker/task_interface.h"
 #include "ray/raylet/raylet_client.h"
-#include "task_execution.h"
-#include "task_interface.h"
 
 namespace ray {
 
@@ -20,7 +20,7 @@ class CoreWorker {
   ///
   /// \param[in] worker_type Type of this worker.
   /// \param[in] langauge Language of this worker.
-  CoreWorker(const WorkerType worker_type, const Language language,
+  CoreWorker(const WorkerType worker_type, const WorkerLanguage language,
              const std::string &store_socket, const std::string &raylet_socket,
              DriverID driver_id = DriverID::Nil());
 
@@ -31,7 +31,7 @@ class CoreWorker {
   enum WorkerType WorkerType() const { return worker_type_; }
 
   /// Language of this worker.
-  enum Language Language() const { return language_; }
+  enum WorkerLanguage Language() const { return language_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
@@ -50,7 +50,10 @@ class CoreWorker {
   const enum WorkerType worker_type_;
 
   /// Language of this worker.
-  const enum Language language_;
+  const enum WorkerLanguage language_;
+
+  /// Language of this worker as specified in flatbuf (used by task spec).
+  ::Language task_language_;
 
   /// Worker context per thread.
   WorkerContext worker_context_;
@@ -64,8 +67,14 @@ class CoreWorker {
   /// Plasma store client.
   plasma::PlasmaClient store_client_;
 
+  /// Mutex to protect store_client_.
+  std::mutex store_client_mutex_;
+
   /// Raylet client.
   std::unique_ptr<RayletClient> raylet_client_;
+
+  /// Whether this worker has been initialized.
+  bool is_initialized_;
 
   /// The `CoreWorkerTaskInterface` instance.
   CoreWorkerTaskInterface task_interface_;

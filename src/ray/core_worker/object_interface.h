@@ -1,11 +1,11 @@
 #ifndef RAY_CORE_WORKER_OBJECT_INTERFACE_H
 #define RAY_CORE_WORKER_OBJECT_INTERFACE_H
 
-#include "common.h"
 #include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/common.h"
 
 namespace ray {
 
@@ -22,6 +22,13 @@ class CoreWorkerObjectInterface {
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
   Status Put(const Buffer &buffer, ObjectID *object_id);
+
+  /// Put an object with specified ID into object store.
+  ///
+  /// \param[in] buffer Data buffer of the object.
+  /// \param[in] object_id Object ID specified by user.
+  /// \return Status.
+  Status Put(const Buffer &buffer, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///

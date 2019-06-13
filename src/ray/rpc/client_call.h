@@ -8,6 +8,7 @@
 #include "ray/rpc/util.h"
 
 namespace ray {
+namespace rpc {
 
 /// Represents an outgoing gRPC request.
 ///
@@ -118,7 +119,7 @@ class ClientCallManager {
   }
 
  private:
-  /// The main event loop.
+  /// The main event loop, to which the callback functions will be posted.
   boost::asio::io_service &main_service_;
 
   /// The polling thread.
@@ -127,6 +128,8 @@ class ClientCallManager {
   /// The gRPC `CompletionQueue` object used to poll events.
   ::grpc::CompletionQueue cq_;
 };
+
+}  // namespace rpc
 
 }  // namespace ray
 

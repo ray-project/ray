@@ -6,6 +6,7 @@
 #include "ray/common/status.h"
 
 namespace ray {
+namespace rpc {
 
 /// Helper function that converts a ray status to gRPC status.
 inline ::grpc::Status RayStatusToGrpcStatus(const Status &ray_status) {
@@ -26,6 +27,8 @@ inline Status GrpcStatusToRayStatus(const ::grpc::Status &grpc_status) {
   }
 }
 
+
+}  // namespace rpc
 }  // namespace ray
 
 #endif

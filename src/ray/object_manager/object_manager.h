@@ -69,7 +69,7 @@ class ObjectManagerInterface {
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.
-class ObjectManager : public ObjectManagerInterface, public ObjectManagerServiceHandler {
+class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerServiceHandler {
   /// Implementation of object manager service
  public:
   void HandlePushRequest(const PushRequest &request, PushReply *reply,
@@ -443,12 +443,12 @@ class ObjectManager : public ObjectManagerInterface, public ObjectManagerService
   std::mt19937_64 gen_;
 
   /// The gPRC server
-  ObjectManagerServer object_manager_server_;
+  rpc::ObjectManagerServer object_manager_server_;
 
-  ClientCallManager client_call_manager_;
+  rpc::ClientCallManager client_call_manager_;
 
   /// address - object manager gRPC client
-  std::unordered_map<ClientID, std::shared_ptr<ObjectManagerClient>>
+  std::unordered_map<ClientID, std::shared_ptr<rpc::ObjectManagerClient>>
       object_manager_clients_;
 };
 
