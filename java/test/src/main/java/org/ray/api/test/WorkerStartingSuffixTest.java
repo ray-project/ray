@@ -3,6 +3,7 @@ package org.ray.api.test;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
@@ -19,6 +20,7 @@ public class WorkerStartingSuffixTest extends BaseTest {
 
   @Test
   public void testSuffix() {
+    TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options = new ActorCreationOptions.Builder()
         .setWorkerStartingSuffix("-Dtest.suffix=suffix")
         .createActorCreationOptions();

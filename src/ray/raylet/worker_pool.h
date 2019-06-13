@@ -148,8 +148,7 @@ class WorkerPool {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
-    /// The pool of actor creation task workers with prefix or suffix.
-    // rename
+    /// The worker pool of actor creation tasks with prefix or suffix.
     std::unordered_map<TaskID, std::shared_ptr<Worker>> waiting_creating_actor_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<Worker>> idle;
@@ -163,8 +162,9 @@ class WorkerPool {
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<pid_t, int> starting_worker_processes;
-    /// A cache map for looking up the task id of actor creation task by the pid of worker.
-    std::unordered_map<pid_t, TaskID> workers_to_task_id_cache;
+    /// A cache map for looking up the task id of actor creation task by the pid of
+    /// worker.
+    std::unordered_map<pid_t, TaskID> worker_to_task_id_cache;
   };
 
   /// The number of workers per process.

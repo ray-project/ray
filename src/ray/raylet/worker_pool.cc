@@ -116,7 +116,6 @@ void WorkerPool::StartWorkerProcess(const Language &language,
                  << state.idle_actor.size() << " actor workers, and " << state.idle.size()
                  << " non-actor workers";
 
-
   std::string prefix = "";
   std::string suffix = "";
   if (task_spec != nullptr && task_spec->IsActorCreationTask()) {
@@ -134,7 +133,8 @@ void WorkerPool::StartWorkerProcess(const Language &language,
   }
   // Note that this is used for Java worker only currently.
   if (!suffix.empty() && task_spec->GetLanguage() == Language::JAVA) {
-    RAY_CHECK(worker_command_args.size() > 2) << "At least 2 elements of the Java worker command.";
+    RAY_CHECK(worker_command_args.size() > 2)
+        << "At least 2 elements of the Java worker command.";
     const auto pos_to_insert = worker_command_args.size() - 1;
     worker_command_args.insert(worker_command_args.begin() + pos_to_insert, suffix.c_str());
   }
@@ -151,7 +151,7 @@ void WorkerPool::StartWorkerProcess(const Language &language,
     state.starting_worker_processes.emplace(
         std::make_pair(pid, num_workers_per_process_));
     if (!prefix.empty() || !suffix.empty()) {
-      state.workers_to_task_id_cache[pid] = task_spec->TaskId();
+      state.worker_to_task_id_cache[pid] = task_spec->TaskId();
     }
     return;
   }
@@ -229,11 +229,11 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
 
-  auto it = state.workers_to_task_id_cache.find(worker->Pid());
-  if (it != state.workers_to_task_id_cache.end()) {
+  auto it = state.worker_to_task_id_cache.find(worker->Pid());
+  if (it != state.worker_to_task_id_cache.end()) {
     // The worker is used for the specific actor creation task.
     const auto task_id = it->second;
-    state.workers_to_task_id_cache.erase(it);
+    state.worker_to_task_id_cache.erase(it);
     state.waiting_creating_actor_workers[task_id] = std::move(worker);
 
     // Return to not put this worker to idle pool.
@@ -255,8 +255,10 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   std::shared_ptr<Worker> worker = nullptr;
   if (task_spec.IsActorCreationTask()) {
     // code path of actor creation task.
-    if (task_spec.WorkerStartingPrefix().empty() && task_spec.WorkerStartingSuffix().empty()) {
-      // There is no prefix and suffix of command. Pop a worker from idle worker pool of non-actor.
+    if (task_spec.WorkerStartingPrefix().empty() &&
+        task_spec.WorkerStartingSuffix().empty()) {
+      // There is no prefix and suffix of command. Pop a worker from idle worker pool of
+      // non-actor.
       if (!state.idle.empty()) {
         worker = std::move(*state.idle.begin());
         state.idle.erase(state.idle.begin());
@@ -349,7 +351,7 @@ std::string WorkerPool::WarningAboutSize() {
 
 bool WorkerPool::HasWorkerStartingForTask(const Language &language, const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
-  for (const auto &item : state.workers_to_task_id_cache) {
+  for (const auto &item : state.worker_to_task_id_cache) {
     if (item.second == task_id) {
       return true;
     }
