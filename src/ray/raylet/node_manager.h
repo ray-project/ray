@@ -510,8 +510,9 @@ class NodeManager : public NodeManagerServiceHandler {
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
   ClientCallManager client_call_manager_;
 
-  /// Map from node ids to the `NodeManagerClient`s.
-  std::unordered_map<ClientID, std::unique_ptr<NodeManagerClient>> node_manager_clients_;
+  /// Map from node ids to clients of the remote node managers.
+  std::unordered_map<ClientID, std::unique_ptr<NodeManagerClient>>
+      remote_node_manager_clients_;
 };
 
 }  // namespace raylet

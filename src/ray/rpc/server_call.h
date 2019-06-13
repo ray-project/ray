@@ -15,7 +15,7 @@ enum class ServerCallState {
   /// The call is created and waiting for an incoming request.
   PENDING,
   /// Request is received and being processed.
-  PROCECCSSING,
+  PROCESSING,
   /// Request processing is done, and reply is being sent to client.
   SENDING_REPLY
 };
@@ -65,7 +65,7 @@ class ServerCallFactory {
 /// \tparam Reply Type of the reply message.
 template <class ServiceHandler, class Request, class Reply>
 class ServerCallImpl : public ServerCall {
-  // Represents the generic signature of a `FooServiceHanler::HandleBar()`
+  // Represents the generic signature of a `FooServiceHandler::HandleBar()`
   // method, where `Foo` is the name of the service and `Bar` is the name of the method.
   using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
                                                          RequestDoneCallback);
@@ -87,7 +87,7 @@ class ServerCallImpl : public ServerCall {
   ServerCallState GetState() const override { return state_; }
 
   void OnRequestReceived() override {
-    state_ = ServerCallState::PROCECCSSING;
+    state_ = ServerCallState::PROCESSING;
     (service_handler_.*handle_request_function_)(request_, &reply_,
                                                  [this](Status status) {
                                                    // When the handler is done with the
@@ -151,7 +151,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       ::grpc::ServerContext *, Request *, ::grpc::ServerAsyncResponseWriter<Reply> *,
       ::grpc::CompletionQueue *, ::grpc::ServerCompletionQueue *, void *);
 
-  // Represents the generic signature of a `FooServiceHanler::HandleBar()`
+  // Represents the generic signature of a `FooServiceHandler::HandleBar()`
   // method, where `Foo` is the name of the service and `Bar` is the name of the method.
   using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
                                                          RequestDoneCallback);

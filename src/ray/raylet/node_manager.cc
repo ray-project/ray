@@ -371,8 +371,8 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
     return;
   }
 
-  auto entry = node_manager_clients_.find(client_id);
-  if (entry != node_manager_clients_.end()) {
+  auto entry = remote_node_manager_clients_.find(client_id);
+  if (entry != remote_node_manager_clients_.end()) {
     RAY_LOG(DEBUG) << "Received notification of a new client that already exists: "
                    << client_id;
     return;
@@ -381,7 +381,7 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   // Initialize a rpc client to the new node manager.
   std::unique_ptr<NodeManagerClient> client(new NodeManagerClient(
       client_data.node_manager_address, client_data.node_manager_port, client_call_manager_));
-  node_manager_clients_.emplace(client_id, std::move(client));
+  remote_node_manager_clients_.emplace(client_id, std::move(client));
 
   ResourceSet resources_total(client_data.resources_total_label,
                               client_data.resources_total_capacity);
@@ -406,9 +406,9 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   cluster_resource_map_.erase(client_id);
 
   // Remove the node manager client.
-  const auto client_entry = node_manager_clients_.find(client_id);
-  if (client_entry != node_manager_clients_.end()) {
-    node_manager_clients_.erase(client_entry);
+  const auto client_entry = remote_node_manager_clients_.find(client_id);
+  if (client_entry != remote_node_manager_clients_.end()) {
+    remote_node_manager_clients_.erase(client_entry);
   } else {
     RAY_LOG(WARNING) << "Received ClientRemoved callback for an unknown client "
                      << client_id << ".";
@@ -2192,8 +2192,8 @@ void NodeManager::ForwardTask(
     const Task &task, const ClientID &node_id,
     const std::function<void(const ray::Status &, const Task &)> &on_error) {
   // Lookup node manager client for this node_id and use it to send the request.
-  auto client_entry = node_manager_clients_.find(node_id);
-  if (client_entry == node_manager_clients_.end()) {
+  auto client_entry = remote_node_manager_clients_.find(node_id);
+  if (client_entry == remote_node_manager_clients_.end()) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
     RAY_LOG(INFO) << "No node manager client found for GCS client id " << node_id;
     on_error(ray::Status::IOError("Node manager client not found"), task);
@@ -2308,6 +2308,11 @@ std::string NodeManager::DebugString() const {
   result << "\n- num reconstructing actors: " << statistical_data.reconstructing_actors;
   result << "\n- num dead actors: " << statistical_data.dead_actors;
   result << "\n- max num handles: " << statistical_data.max_num_handles;
+
+  result << "\nRemote node manager clients: ";
+  for (const auto &entry : remote_node_manager_clients_) {
+    result << "\n" << entry->first;
+  }
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
