@@ -39,7 +39,7 @@ public abstract class BaseId implements Serializable {
   /**
    * @return True if this id is nil.
    */
-  public boolean isNil() {
+  public synchronized boolean isNil() {
     if (isNilCache == null) {
       isNilCache = true;
       for (int i = 0; i < size(); ++i) {
@@ -59,7 +59,7 @@ public abstract class BaseId implements Serializable {
   public abstract int size();
 
   @Override
-  public int hashCode() {
+  public synchronized int hashCode() {
     // Lazy evaluation.
     if (hashCodeCache == 0) {
       hashCodeCache = Arrays.hashCode(id);
