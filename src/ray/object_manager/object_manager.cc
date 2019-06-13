@@ -19,7 +19,9 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       send_work_(send_service_),
       receive_work_(receive_service_),
       connection_pool_(),
-      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
+      object_manager_server_(config_.object_manager_port, *this),
+      client_call_manager_(main_service) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   client_id_ = object_directory_->GetLocalClientID();
@@ -112,6 +114,25 @@ ray::Status ObjectManager::SubscribeObjDeleted(
   return ray::Status::OK();
 }
 
+/// Implementation of ObjectManagerServiceHandler
+void HandlePushRequest(const PushRequest &request, PushReply *reply,
+                       RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Receive push request for object ["
+                << ObjectID::FromBinary(request.object_id()) << "].";
+}
+
+void HandlePullRequest(const PullRequest &request, PullReply *reply,
+                       RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Receive push request for object ["
+                << ObjectID::FromBinary(request.object_id()) << "].";
+}
+
+void HandleFreeObjectsRequest(const FreeObjectsRequest &request, FreeObjectsReply *reply,
+                              RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Receive push request for object ["
+                << ObjectID::FromBinary(request.object_ids()[0]) << "].";
+}
+
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Pull on " << client_id_ << " of object " << object_id;
   // Check if object is already local.
@@ -202,7 +223,8 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Sending pull request from " << client_id_ << " to " << client_id
                  << " of object " << object_id;
   // Try pulling from the client.
-  PullEstablishConnection(object_id, client_id);
+  // PullEstablishConnection(object_id, client_id);
+  (void)SendPullRequest(object_id, client_id);
 
   // If there are more clients to try, try them in succession, with a timeout
   // in between each try.
@@ -237,6 +259,17 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
     it->second.timer_set = false;
   }
 };
+
+ray::Status ObjectManager::SendPullRequest(const ObjectID &object_id,
+                                           const ClientID &client_id) {
+  auto rpc_client = GetRpcClient(client_id);
+  if (!rpc_client) {
+    return Status::IOError("Fail to connection remote manager.");
+  }
+  auto callback = [this](const Status &status, const PullReply &reply) {};
+  rpc_client->Pull(object_id, callback);
+  return Status::OK();
+}
 
 void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
                                             const ClientID &client_id) {
@@ -399,9 +432,8 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     }
   }
 
-  RemoteConnectionInfo connection_info(client_id);
-  object_directory_->LookupRemoteConnectionInfo(connection_info);
-  if (connection_info.Connected()) {
+  auto rpc_client = GetRpcClient(client_id);
+  if (rpc_client) {
     const object_manager::protocol::ObjectInfoT &object_info =
         local_objects_[object_id].object_info;
     uint64_t data_size =
@@ -410,6 +442,14 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
     UniqueID push_id = UniqueID::FromRandom();
     for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
+      double start_time = current_sys_time_seconds();
+      auto st = SendObjectChunk(push_id, object_id, data_size, metadata_size, chunk_index,
+                                rpc_client);
+      double end_time = current_sys_time_seconds();
+      if (st.ok()) {
+        HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time, st);
+      }
+      /*
       send_service_.post([this, push_id, client_id, object_id, data_size, metadata_size,
                           chunk_index, connection_info]() {
         double start_time = current_sys_time_seconds();
@@ -429,12 +469,51 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
                                  status);
             });
       });
+      */
     }
   } else {
     // Push is best effort, so do nothing here.
     RAY_LOG(ERROR)
         << "Failed to establish connection for Push with remote object manager.";
   }
+}
+
+ray::Status ObjectManager::SendObjectChunk(
+    const UniqueID &push_id, const ObjectID &object_id, uint64_t data_size,
+    uint64_t metadata_size, uint64_t chunk_index,
+    std::shared_ptr<ObjectManagerClient> rpc_client) {
+  PushRequest push_request;
+  // Set request header
+  push_request.set_push_id(push_id.Binary());
+  push_request.set_object_id(object_id.Binary());
+  push_request.set_data_size(data_size);
+  push_request.set_metadata_size(metadata_size);
+  push_request.set_chunk_index(chunk_index);
+
+  // Send data
+  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
+      buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
+  ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
+
+  // Fail on status not okay. The object is local, and there is
+  // no other anticipated error here.
+  ray::Status status = chunk_status.second;
+  if (!chunk_status.second.ok()) {
+    RAY_LOG(WARNING) << "Attempting to push object " << object_id
+                     << " which is not local. It may have been evicted.";
+    RAY_RETURN_NOT_OK(status);
+  }
+
+  std::string buffer;
+  buffer.reserve(chunk_info.buffer_length);
+  buffer.assign(chunk_info.data, chunk_info.data + chunk_info.buffer_length);
+  push_request.set_data(std::move(buffer));
+  // Do this regardless of whether it failed or succeeded.
+  // buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
+
+  auto callback = [this](const Status &status, const PushReply &reply) {};
+  rpc_client->Push(push_request, callback);
+  return Status::OK();
 }
 
 ray::Status ObjectManager::ExecuteSendObject(
@@ -460,6 +539,7 @@ ray::Status ObjectManager::ExecuteSendObject(
       connection_pool_.RemoveSender(conn);
     }
   }
+
   return status;
 }
 
@@ -936,6 +1016,24 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
     }
   }
+}
+
+std::shared_ptr<ObjectManagerClient> GetRpcClient(const ClientID &client_id) {
+  auto it = object_manager_clients_.find(client_id);
+  if (it == object_manager_clients_.end()) {
+    RemoteConnectionInfo connection_info(client_id);
+    object_directory_->LookupRemoteConnectionInfo(connection_info);
+    if (!connection_info.Connected()) {
+      return nullptr;
+    }
+    auto object_manager_client =
+        std::make_shared<ObjectManagerClient>(info.ip, info.port, client_call_manager_);
+    if (!object_manager_client) {
+      return nullptr;
+    }
+    it = object_manager_clients_.emplace(std::move(client)).first;
+  }
+  return it->second;
 }
 
 ProfileTableDataT ObjectManager::GetAndResetProfilingInfo() {

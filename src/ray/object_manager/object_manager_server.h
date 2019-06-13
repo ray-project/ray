@@ -1,16 +1,17 @@
 #ifndef RAY_RPC_OBJECT_MANAGER_SERVER_H
 #define RAY_RPC_OBJECT_MANAGER_SERVER_H
 
-#include "ray/rpc/grpc_server.h"
-#include "ray/rpc/server_call.h"
+#include "src/ray/rpc/grpc_server.h"
+#include "src/ray/rpc/server_call.h"
 
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
 
 namespace ray {
 
-/// Implementations of the `ObjectManagerService`, check interface in `src/ray/protobuf/object_manager.proto`.
-class ObjectManagerServiceHandlers {
+/// Implementations of the `ObjectManagerService`, check interface in
+/// `src/ray/protobuf/object_manager.proto`.
+class ObjectManagerServiceHandler {
  public:
   /// Handle a `Push` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
@@ -19,15 +20,13 @@ class ObjectManagerServiceHandlers {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] done_callback The callback to be called when the request is done.
-  void HandlePushRequest(const PushRequest &request,
-                         PushReply *reply,
-                         RequestDoneCallback done_callback) = 0;
-  void HandlePullRequest(const PullRequest &request,
-                         PullReply *reply,
-                         RequestDoneCallback done_callback) = 0;
-  void HandleFreeObjectsRequest(const FreeObjectsRequest &request,
-                         FreeObjectsReply *reply,
-                         RequestDoneCallback done_callback) = 0;
+  virtual void HandlePushRequest(const PushRequest &request, PushReply *reply,
+                                 RequestDoneCallback done_callback) = 0;
+  virtual void HandlePullRequest(const PullRequest &request, PullReply *reply,
+                                 RequestDoneCallback done_callback) = 0;
+  virtual void HandleFreeObjectsRequest(const FreeObjectsRequest &request,
+                                        FreeObjectsReply *reply,
+                                        RequestDoneCallback done_callback) = 0;
 };
 
 /// The `GrpcServer` for `ObjectManagerService`.
@@ -50,23 +49,24 @@ class ObjectManagerServer : public GrpcServer {
     // Initialize the factory for `Push` requests.
     std::unique_ptr<ServerCallFactory> push_call_factory(
         new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
-                                  PushRequest, ForwardTaskReply>(
-            service_, &ObjectManagerService::AsyncService::RequestPush,
-            service_handler_, &ObjectManagerServiceHandler::HandleForwardTask, cq_));
+                                  PushRequest, PushReply>(
+            service_, &ObjectManagerService::AsyncService::RequestPush, service_handler_,
+            &ObjectManagerServiceHandler::HandlePushRequest, cq_));
     server_call_factories->push_back(std::move(push_call_factory));
     // Initialize the factory for `Pull` requests.
     std::unique_ptr<ServerCallFactory> pull_call_factory(
         new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
-                                ForwardTaskRequest, ForwardTaskReply>(
-          service_, &ObjectManagerService::AsyncService::RequestPull,
-          service_handler_, &ObjectManagerServiceHandler::HandleForwardTask, cq_));
+                                  PullRequest, PullReply>(
+            service_, &ObjectManagerService::AsyncService::RequestPull, service_handler_,
+            &ObjectManagerServiceHandler::HandlePullRequest, cq_));
     server_call_factories->push_back(std::move(pull_call_factory));
     // Initialize the factory for `FreeObjects` requests.
     std::unique_ptr<ServerCallFactory> free_objects_call_factory(
         new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
-                              ForwardTaskRequest, ForwardTaskReply>(
-        service_, &ObjectManagerService::AsyncService::RequestFreeObjects,
-        service_handler_, &ObjectManagerServiceHandler::HandleForwardTask, cq_));
+                                  FreeObjectsRequest, FreeObjectsReply>(
+            service_, &ObjectManagerService::AsyncService::RequestFreeObjects,
+            service_handler_, &ObjectManagerServiceHandler::HandleFreeObjectsRequest,
+            cq_));
     server_call_factories->push_back(std::move(free_objects_call_factory));
   }
 

@@ -23,7 +23,9 @@
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/object_manager_client.h"
 #include "ray/object_manager/object_manager_client_connection.h"
+#include "ray/object_manager/object_manager_server.h"
 #include "ray/object_manager/object_store_notification_manager.h"
 
 namespace ray {
@@ -67,7 +69,24 @@ class ObjectManagerInterface {
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.
-class ObjectManager : public ObjectManagerInterface {
+class ObjectManager : public ObjectManagerInterface, public ObjectManagerServiceHandler {
+  /// Implementation of object manager service
+ public:
+  void HandlePushRequest(const PushRequest &request, PushReply *reply,
+                         RequestDoneCallback done_callback);
+  void HandlePullRequest(const PullRequest &request, PullReply *reply,
+                         RequestDoneCallback done_callback);
+  void HandleFreeObjectsRequest(const FreeObjectsRequest &request,
+                                FreeObjectsReply *reply,
+                                RequestDoneCallback done_callback);
+
+  ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                              uint64_t data_size, uint64_t metadata_size,
+                              uint64_t chunk_index,
+                              std::shared_ptr<ObjectManagerClient> rpc_client);
+
+  ray::Status SendPullRequest(const ObjectID &object_id, const ClientID &client_id);
+
  public:
   /// Takes user-defined ObjectDirectoryInterface implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
@@ -355,6 +374,12 @@ class ObjectManager : public ObjectManagerInterface {
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 
+  std::shared_ptr<ObjectManagerClient> GetRpcClient(const ClientID &client_id);
+
+  ray::Status SendObject(const UniqueID &push_id, const ObjectID &object_id,
+                         uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
+                         std::shared_ptr<ObjectManagerClient> rpc_client);
+
   ClientID client_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
@@ -416,6 +441,15 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
+
+  /// The gPRC server
+  ObjectManagerServer object_manager_server_;
+
+  ClientCallManager client_call_manager_;
+
+  /// address - object manager gRPC client
+  std::unordered_map<ClientID, std::shared_ptr<ObjectManagerClient>>
+      object_manager_clients_;
 };
 
 }  // namespace ray

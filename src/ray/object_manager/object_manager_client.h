@@ -1,15 +1,15 @@
-#ifndef RAY_RPC_NODE_MANAGER_CLIENT_H
-#define RAY_RPC_NODE_MANAGER_CLIENT_H
+#ifndef RAY_RPC_OBJECT_MANAGER_CLIENT_H
+#define RAY_RPC_OBJECT_MANAGER_CLIENT_H
 
 #include <thread>
 
 #include <grpcpp/grpcpp.h>
 
 #include "ray/common/status.h"
-#include "ray/rpc/client_call.h"
+#include "src/ray/rpc/client_call.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/node_manager.grpc.pb.h"
-#include "src/ray/protobuf/node_manager.pb.h"
+#include "src/ray/protobuf/object_manager.grpc.pb.h"
+#include "src/ray/protobuf/object_manager.pb.h"
 
 namespace ray {
 
@@ -19,6 +19,12 @@ class ObjectManagerClient {
   using ForwardTaskCallback =
       std::function<void(const Status &status, const ForwardTaskReply &reply)>;
   */
+  /*
+  using PushCallback =
+      std::function<void(const Status &status, const PushReply &reply)>;
+  */
+  using PushCallback = std::function<void(const Status &status, const PushReply &reply)>;
+  using PullCallback = std::function<void(const Status &status, const PullReply &reply)>;
 
  public:
   /// Constructor.
@@ -27,7 +33,7 @@ class ObjectManagerClient {
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   ObjectManagerClient(const std::string &address, const int port,
-                    ClientCallManager &client_call_manager)
+                      ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
@@ -38,10 +44,16 @@ class ObjectManagerClient {
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  void Push(const ForwardTaskRequest &request,
-                   const ForwardTaskCallback &callback) {
-    client_call_manager_.CreateCall<ObjectManagerService, PushRequest,
-                                    PushReply, nullptr>(stub_, request, callback);
+  void Push(const PushRequest &request, const PushCallback &callback) {
+    client_call_manager_
+        .CreateCall<ObjectManagerService, PushRequest, PushReply, PushCallback>(stub_, request,
+                                                                           callback);
+  }
+
+  void Pull(const PullRequest &request, const PullCallback &callback) {
+    client_call_manager_
+        .CreateCall<ObjectManagerService, PullRequest, PullReply, PullCallback>(stub_, request,
+                                                                           callback);
   }
 
  private:
@@ -54,4 +66,4 @@ class ObjectManagerClient {
 
 }  // namespace ray
 
-#endif  // RAY_RPC_NODE_MANAGER_CLIENT_H
+#endif  // RAY_RPC_OBJECT_MANAGER_CLIENT_H

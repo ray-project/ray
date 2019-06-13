@@ -4,10 +4,10 @@ package ray;
 
 message ObjectInfo {
   // Object ID of this object.
-  bytes object_id = 1;
-  // Number of bytes the content of this object occupies in memory.
+  string object_id = 1;
+  // Number of string the content of this object occupies in memory.
   uint64 data_size = 2;
-  // Number of bytes the metadata of this object occupies in memory.
+  // Number of string the metadata of this object occupies in memory.
   uint64 metadata_size = 3;
   // Number of clients using the objects.
   int32 ref_count = 4;
@@ -17,7 +17,7 @@ message ObjectInfo {
   uint64 construct_duration = 6;
   // Hash of the object content. If the object is not sealed yet this is
   // an empty string.
-  bytes digest = 7;
+  string digest = 7;
   // Specifies if this object was deleted or added.
   bool is_deletion = 8;
 }
@@ -25,26 +25,28 @@ message ObjectInfo {
 message PushRequest {
   // The push ID to allow the receiver to differentiate different push attempts
   // from the same sender.
-  bytes push_id = 1;
+  string push_id = 1;
   // The object ID being transferred.
-  bytes object_id = 2;
+  string object_id = 2;
   // The index of the chunk being transferred.
   uint32 chunk_index = 3;
   // The total size of the object + metadata.
   uint64 data_size = 4;
   // The metadata size.
   uint64 metadata_size = 5;
+  // The object content
+  string data = 6;
 }
 
-message PullRequestMessage {
+message PullRequest {
   // ID of the requesting client.
-  bytes client_id = 1;
+  string client_id = 1;
   // Requested ObjectID.
-  bytes object_id = 2;
+  string object_id = 2;
 }
 
 message FreeObjectsRequest {
-  repeated bytes object_ids = 1;
+  repeated string object_ids = 1;
 }
 
 message PushReply {}
