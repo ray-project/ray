@@ -137,9 +137,9 @@ class CoreWorkerTaskInterface {
   std::vector<std::shared_ptr<raylet::TaskArgument>> BuildTaskArguments(
       const std::vector<TaskArg> &args);
 
-  /// All the task submission providers supported.
+  /// All the task submitters supported.
   std::unordered_map<int, std::unique_ptr<CoreWorkerTaskSubmitter>>
-      task_submission_providers_;
+      task_submitters_;
 };
 
 }  // namespace ray

@@ -13,7 +13,8 @@ namespace ray {
 
 class CoreWorker;
 
-/// The interface that contains all `CoreWorker` methods that are related to object store.
+/// The class provides implementations for accessing plasma store, which includes both
+/// local and remote store, remote access is done via raylet.
 class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(RayClient &ray_client);

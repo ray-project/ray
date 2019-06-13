@@ -26,7 +26,7 @@ Status CoreWorkerRayletTaskReceiver::GetTasks(std::vector<TaskSpec> *tasks) {
   }
 
   std::vector<ObjectID> dependencies;
-  (*tasks).clear();
+  RAY_CHECK((*tasks).empty());
   (*tasks).emplace_back(*task_spec, dependencies);
 
   return Status::OK();

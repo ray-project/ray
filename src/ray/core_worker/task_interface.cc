@@ -8,8 +8,8 @@ namespace ray {
 
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(CoreWorker &core_worker)
     : core_worker_(core_worker) {
-  task_submission_providers_.emplace(
-      static_cast<int>(TaskProviderType::RAYLET),
+  task_submitters_.emplace(
+      static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
           new CoreWorkerRayletTaskSubmitter(core_worker_.ray_client_)));
 }
@@ -39,7 +39,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);
-  return task_submission_providers_[static_cast<int>(TaskProviderType::RAYLET)]
+  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]
       ->SubmitTask(task);
 }
 
@@ -75,7 +75,7 @@ Status CoreWorkerTaskInterface::CreateActor(
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);
-  return task_submission_providers_[static_cast<int>(TaskProviderType::RAYLET)]
+  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]
       ->SubmitTask(task);
 }
 
@@ -119,7 +119,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
 
   TaskSpec task(std::move(spec), execution_dependencies);
   auto status =
-      task_submission_providers_[static_cast<int>(TaskProviderType::RAYLET)]->SubmitTask(
+      task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(
           task);
 
   // remove cursor from return ids.

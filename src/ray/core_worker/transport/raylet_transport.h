@@ -8,9 +8,9 @@
 
 namespace ray {
 
-/// In raylet task submission and execution provider, a task is submitted to raylet,
-/// and possibly gets forwarded to another raylet on which node the task should be
-/// executed, and then a worker on that node gets this task and starts executing it.
+/// In raylet task submitter and receiver, a task is submitted to raylet, and possibly
+/// gets forwarded to another raylet on which node the task should be executed, and
+/// then a worker on that node gets this task and starts executing it.
 
 class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:

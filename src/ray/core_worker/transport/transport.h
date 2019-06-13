@@ -11,14 +11,13 @@
 
 namespace ray {
 
-/// Interface for task submission and execution. They are separate classes
-/// but should be used in pairs - one type of task submission provider should be used
-/// together with task execution provider with the same type, so these classes are
-/// put together in this same file.
+/// Interface for task submitter and receiver. They are separate classes but should be
+/// used in pairs - one type of task submitter should be used together with task  
+/// with the same type, so these classes are put together in this same file.
 ///
-/// Task submission/execution provider should inherit from these classes and provide
-/// implementions for the methods. The actual task provider can submit/get tasks via
-/// raylet, or directly to/from another worker.
+/// Task submitter/receiver should inherit from these classes and provide implementions
+/// for the methods. The actual task submitter/receiver can submit/get tasks via raylet,
+/// or directly to/from another worker.
 
 class CoreWorkerTaskSubmitter {
  public:

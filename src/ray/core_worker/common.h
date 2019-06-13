@@ -94,7 +94,7 @@ class TaskSpec {
 
 enum class StoreProviderType { PLASMA };
 
-enum class TaskProviderType { RAYLET };
+enum class TaskTransportType { RAYLET };
 
 struct RayClient {
   /// Plasma store client.
