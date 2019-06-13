@@ -21,7 +21,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
         task_execution_providers_[static_cast<int>(TaskProviderType::RAYLET)]->GetTasks(
             &tasks);
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Get task failed with error: "
+      RAY_LOG(ERROR) << "Getting task failed with error: "
                      << ray::Status::IOError(status.message());
       return status;
     }
