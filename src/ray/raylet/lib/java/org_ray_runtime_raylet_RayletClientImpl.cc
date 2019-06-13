@@ -307,15 +307,15 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyActorResumedFromCheckpo
  * Method:    nativeSetResource
  * Signature: (JLjava/lang/String;D[B)V
  */
-JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeSetResource(JNIEnv *env, jclass,
-    jlong client, jstring resourceName, jdouble capacity, jbyteArray nodeId) {
+JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSetResource(
+    JNIEnv *env, jclass, jlong client, jstring resourceName, jdouble capacity,
+    jbyteArray nodeId) {
   auto raylet_client = reinterpret_cast<RayletClient *>(client);
   UniqueIdFromJByteArray<ClientID> node_id(env, nodeId);
   const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
 
-  auto status = raylet_client->SetResource(native_resource_name,
-      static_cast<double>(capacity), node_id.GetId());
+  auto status = raylet_client->SetResource(
+      native_resource_name, static_cast<double>(capacity), node_id.GetId());
   env->ReleaseStringUTFChars(resourceName, native_resource_name);
   ThrowRayExceptionIfNotOK(env, status);
 }

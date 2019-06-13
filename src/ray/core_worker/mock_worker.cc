@@ -25,7 +25,6 @@ class MockWorker {
     auto executor_func = [this](const RayFunction &ray_function,
                                 const std::vector<std::shared_ptr<Buffer>> &args,
                                 const TaskID &task_id, int num_returns) {
-
       // Note that this doesn't include dummy object id.
       RAY_CHECK(num_returns >= 0);
 
