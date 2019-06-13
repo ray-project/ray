@@ -35,6 +35,32 @@ cc_library(
     ],
 )
 
+proto_library(
+    name = "object_manager_proto",
+    srcs = ["src/ray/protobuf/object_manager.proto"],
+)
+
+cpp_grpc_library(
+    name = "object_manager_grpc",
+    deps = [":object_manager_proto"],
+)
+
+cc_library(
+    name = "object_manager_rpc_lib",
+    srcs = glob([
+        "src/ray/rpc/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/rpc/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        ":object_manager_grpc",
+        "@boost//:asio",
+    ],
+)
+
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
