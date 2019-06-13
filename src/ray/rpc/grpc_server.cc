@@ -44,7 +44,8 @@ void GrpcServer::StartPolling() {
           // track this request. So we need to create another call to handle next
           // incoming request.
           server_call->GetFactory().CreateCall();
-          server_call->OnRequestReceived();
+          server_call->SetState(ServerCallState::PROCESSING);
+          main_service_.post([server_call] { server_call->HandleRequest(); });
           break;
         case ServerCallState::SENDING_REPLY:
           // The reply has been sent, this call can be deleted now.

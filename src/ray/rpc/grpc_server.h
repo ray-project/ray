@@ -4,6 +4,7 @@
 #include <thread>
 
 #include <grpcpp/grpcpp.h>
+#include <boost/asio.hpp>
 
 #include "ray/common/status.h"
 #include "ray/rpc/server_call.h"
@@ -27,7 +28,11 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  GrpcServer(const std::string &name, const uint32_t port) : name_(name), port_(port) {}
+  /// \param[in] main_service The main event loop, to which service handler functions
+  /// will be posted.
+  GrpcServer(const std::string &name, const uint32_t port,
+             boost::asio::io_service &main_service)
+      : name_(name), port_(port), main_service_(main_service) {}
 
   /// Destruct this gRPC server.
   ~GrpcServer() {
@@ -61,6 +66,8 @@ class GrpcServer {
   /// the `ServerCall` objects.
   void StartPolling();
 
+  /// The main event loop, to which the service handler functions will be posted.
+  boost::asio::io_service &main_service_;
   /// Name of this server, used for logging and debugging purpose.
   const std::string name_;
   /// Port of this server.

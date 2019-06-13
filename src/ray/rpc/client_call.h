@@ -1,8 +1,8 @@
 #ifndef RAY_RPC_CLIENT_CALL_H
 #define RAY_RPC_CLIENT_CALL_H
 
-#include <grpcpp/grpcpp.h>
 #include <boost/asio.hpp>
+#include <grpcpp/grpcpp.h>
 
 #include "ray/common/status.h"
 #include "ray/rpc/util.h"
@@ -119,7 +119,7 @@ class ClientCallManager {
   }
 
  private:
-  /// The main event loop.
+  /// The main event loop, to which the callback functions will be posted.
   boost::asio::io_service &main_service_;
 
   /// The polling thread.

@@ -31,9 +31,12 @@ class NodeManagerServer : public GrpcServer {
   /// Constructor.
   ///
   /// \param[in] port See super class.
+  /// \param[in] main_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  NodeManagerServer(const uint32_t port, NodeManagerServiceHandler &service_handler)
-      : GrpcServer("NodeManager", port), service_handler_(service_handler){};
+  NodeManagerServer(const uint32_t port, boost::asio::io_service &main_service,
+                    NodeManagerServiceHandler &service_handler)
+      : GrpcServer("NodeManager", port, main_service),
+        service_handler_(service_handler){};
 
   void RegisterServices(::grpc::ServerBuilder &builder) override {
     /// Register `NodeManagerService`.
