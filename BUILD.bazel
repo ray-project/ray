@@ -111,6 +111,8 @@ cc_library(
     srcs = glob(
         [
             "src/ray/core_worker/*.cc",
+            "src/ray/core_worker/store_provider/*.cc",
+            "src/ray/core_worker/transport/*.cc",
         ],
         exclude = [
             "src/ray/core_worker/*_test.cc",
@@ -119,6 +121,8 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/core_worker/*.h",
+        "src/ray/core_worker/store_provider/*.h",
+        "src/ray/core_worker/transport/*.h",
     ]),
     copts = COPTS,
     deps = [
