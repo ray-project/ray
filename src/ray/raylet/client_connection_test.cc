@@ -73,9 +73,9 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   ClientHandler<boost::asio::local::stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> noop_handler = [](
-      std::shared_ptr<LocalClientConnection> client, int64_t message_type,
-      const uint8_t *message) {};
+  MessageHandler<boost::asio::local::stream_protocol> noop_handler =
+      [](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+         const uint8_t *message) {};
 
   std::shared_ptr<LocalClientConnection> reader = NULL;
 
@@ -120,9 +120,9 @@ TEST_F(ClientConnectionTest, SimpleAsyncError) {
   ClientHandler<boost::asio::local::stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> noop_handler = [](
-      std::shared_ptr<LocalClientConnection> client, int64_t message_type,
-      const uint8_t *message) {};
+  MessageHandler<boost::asio::local::stream_protocol> noop_handler =
+      [](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+         const uint8_t *message) {};
 
   auto writer = LocalClientConnection::Create(
       client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);
@@ -142,9 +142,9 @@ TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
   ClientHandler<boost::asio::local::stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> noop_handler = [](
-      std::shared_ptr<LocalClientConnection> client, int64_t message_type,
-      const uint8_t *message) {};
+  MessageHandler<boost::asio::local::stream_protocol> noop_handler =
+      [](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+         const uint8_t *message) {};
 
   auto writer = LocalClientConnection::Create(
       client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);

@@ -5,6 +5,7 @@ from __future__ import print_function
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
 
 
@@ -56,13 +57,7 @@ def build_torch_policy(name,
     """
 
     original_kwargs = locals().copy()
-    base = TorchPolicy
-    while mixins:
-
-        class new_base(mixins.pop(), base):
-            pass
-
-        base = new_base
+    base = add_mixins(TorchPolicy, mixins)
 
     class policy_cls(base):
         def __init__(self, obs_space, action_space, config):

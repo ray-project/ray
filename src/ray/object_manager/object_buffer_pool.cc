@@ -1,6 +1,6 @@
 #include "ray/object_manager/object_buffer_pool.h"
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 #include "ray/util/logging.h"
 
 namespace ray {

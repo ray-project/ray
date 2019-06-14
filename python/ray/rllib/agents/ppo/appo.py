@@ -5,7 +5,6 @@ from __future__ import print_function
 from ray.rllib.agents.ppo.appo_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents import impala
-from ray.rllib.utils.annotations import override
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -51,14 +50,8 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 # __sphinx_doc_end__
 # yapf: enable
 
-
-class APPOTrainer(impala.ImpalaTrainer):
-    """PPO surrogate loss with IMPALA-architecture."""
-
-    _name = "APPO"
-    _default_config = DEFAULT_CONFIG
-    _policy = AsyncPPOTFPolicy
-
-    @override(impala.ImpalaTrainer)
-    def _get_policy(self):
-        return AsyncPPOTFPolicy
+APPOTrainer = impala.ImpalaTrainer.with_updates(
+    name="APPO",
+    default_config=DEFAULT_CONFIG,
+    default_policy=AsyncPPOTFPolicy,
+    get_policy_class=lambda _: AsyncPPOTFPolicy)

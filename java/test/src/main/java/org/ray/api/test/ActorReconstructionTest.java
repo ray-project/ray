@@ -3,7 +3,6 @@ package org.ray.api.test;
 import static org.ray.runtime.util.SystemUtil.pid;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Checkpointable;
@@ -47,7 +46,8 @@ public class ActorReconstructionTest extends BaseTest {
   @Test
   public void testActorReconstruction() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
-    ActorCreationOptions options = new ActorCreationOptions(new HashMap<>(), 1);
+    ActorCreationOptions options =
+        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<Counter> actor = Ray.createActor(Counter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
@@ -127,8 +127,8 @@ public class ActorReconstructionTest extends BaseTest {
   @Test
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-
-    ActorCreationOptions options = new ActorCreationOptions(new HashMap<>(), 1);
+    ActorCreationOptions options =
+        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {

@@ -1,4 +1,4 @@
-#include "ray/id.h"
+#include "ray/common/id.h"
 
 #include <limits.h>
 
@@ -6,11 +6,11 @@
 #include <mutex>
 #include <random>
 
-#include "ray/constants.h"
-#include "ray/status.h"
+#include "ray/common/constants.h"
+#include "ray/common/status.h"
 
 extern "C" {
-#include "thirdparty/sha256.h"
+#include "ray/thirdparty/sha256.h"
 }
 
 // Definitions for computing hash digests.
@@ -105,8 +105,8 @@ ObjectID ObjectID::ForPut(const TaskID &task_id, int64_t put_index) {
 }
 
 ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, int64_t return_index) {
-  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns) << "index="
-                                                                  << return_index;
+  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns)
+      << "index=" << return_index;
   ObjectID object_id;
   std::memcpy(object_id.id_, task_id.Binary().c_str(), task_id.Size());
   object_id.index_ = return_index;

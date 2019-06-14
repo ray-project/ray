@@ -67,6 +67,9 @@ COMMON_CONFIG = {
     },
     # Whether to attempt to continue training if a worker crashes.
     "ignore_worker_failures": False,
+    # Execute TF loss functions in eager mode. This is currently experimental
+    # and only really works with the basic PG algorithm.
+    "use_eager": False,
     # Logs system resources utilization to tensorboard CPU, GPU, RAM, VRAM
     "log_sys_usage": True,
 
@@ -188,6 +191,9 @@ COMMON_CONFIG = {
     "remote_env_batch_wait_ms": 0,
     # Minimum time per iteration
     "min_iter_time_s": 0,
+    # Minimum env steps to optimize for per train call. This value does
+    # not affect learning, only the length of iterations.
+    "timesteps_per_iteration": 0,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -501,6 +507,7 @@ class Trainer(Trainable):
 
         logger.info("Evaluating current policy for {} episodes".format(
             self.config["evaluation_num_episodes"]))
+        self._before_evaluate()
         self.evaluation_workers.local_worker().restore(
             self.workers.local_worker().save())
         for _ in range(self.config["evaluation_num_episodes"]):
@@ -508,6 +515,11 @@ class Trainer(Trainable):
 
         metrics = collect_metrics(self.evaluation_workers.local_worker())
         return {"evaluation": metrics}
+
+    @DeveloperAPI
+    def _before_evaluate(self):
+        """Pre-evaluation callback."""
+        pass
 
     @PublicAPI
     def compute_action(self,

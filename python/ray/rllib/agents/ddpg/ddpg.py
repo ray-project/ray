@@ -3,9 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.dqn import DQNTrainer
+from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer, \
+    update_worker_explorations
 from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
 # yapf: disable
@@ -97,6 +97,11 @@ DEFAULT_CONFIG = with_common_config({
     # optimization on initial policy parameters. Note that this will be
     # disabled when the action noise scale is set to 0 (e.g during evaluation).
     "pure_exploration_steps": 1000,
+    # Extra configuration that disables exploration.
+    "evaluation_config": {
+        "exploration_fraction": 0,
+        "exploration_final_eps": 0,
+    },
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -108,6 +113,11 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_alpha": 0.6,
     # Beta parameter for sampling from prioritized replay buffer.
     "prioritized_replay_beta": 0.4,
+    # Fraction of entire training period over which the beta parameter is
+    # annealed
+    "beta_annealing_fraction": 0.2,
+    # Final value of beta
+    "final_prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
@@ -146,8 +156,6 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you're using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Optimizer class to use.
-    "optimizer_class": "SyncReplayOptimizer",
     # Whether to use a distribution of epsilons across workers for exploration.
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
@@ -159,47 +167,56 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class DDPGTrainer(DQNTrainer):
-    """DDPG implementation in TensorFlow."""
-    _name = "DDPG"
-    _default_config = DEFAULT_CONFIG
-    _policy = DDPGTFPolicy
-
-    @override(DQNTrainer)
-    def _train(self):
-        pure_expl_steps = self.config["pure_exploration_steps"]
-        if pure_expl_steps:
-            # tell workers whether they should do pure exploration
-            only_explore = self.global_timestep < pure_expl_steps
-            self.workers.local_worker().foreach_trainable_policy(
-                lambda p, _: p.set_pure_exploration_phase(only_explore))
-            for e in self.workers.remote_workers():
-                e.foreach_trainable_policy.remote(
-                    lambda p, _: p.set_pure_exploration_phase(only_explore))
-        return super(DDPGTrainer, self)._train()
-
-    @override(DQNTrainer)
-    def _make_exploration_schedule(self, worker_index):
-        # Override DQN's schedule to take into account
-        # `exploration_ou_noise_scale`
-        if self.config["per_worker_exploration"]:
-            assert self.config["num_workers"] > 1, \
-                "This requires multiple workers"
-            if worker_index >= 0:
-                # FIXME: what do magic constants mean? (0.4, 7)
-                max_index = float(self.config["num_workers"] - 1)
-                exponent = 1 + worker_index / max_index * 7
-                return ConstantSchedule(0.4**exponent)
-            else:
-                # local ev should have zero exploration so that eval rollouts
-                # run properly
-                return ConstantSchedule(0.0)
-        elif self.config["exploration_should_anneal"]:
-            return LinearSchedule(
-                schedule_timesteps=int(self.config["exploration_fraction"] *
-                                       self.config["schedule_max_timesteps"]),
-                initial_p=1.0,
-                final_p=self.config["exploration_final_scale"])
+def make_exploration_schedule(config, worker_index):
+    # Modification of DQN's schedule to take into account
+    # `exploration_ou_noise_scale`
+    if config["per_worker_exploration"]:
+        assert config["num_workers"] > 1, "This requires multiple workers"
+        if worker_index >= 0:
+            # FIXME: what do magic constants mean? (0.4, 7)
+            max_index = float(config["num_workers"] - 1)
+            exponent = 1 + worker_index / max_index * 7
+            return ConstantSchedule(0.4**exponent)
         else:
-            # *always* add exploration noise
-            return ConstantSchedule(1.0)
+            # local ev should have zero exploration so that eval rollouts
+            # run properly
+            return ConstantSchedule(0.0)
+    elif config["exploration_should_anneal"]:
+        return LinearSchedule(
+            schedule_timesteps=int(config["exploration_fraction"] *
+                                   config["schedule_max_timesteps"]),
+            initial_p=1.0,
+            final_p=config["exploration_final_scale"])
+    else:
+        # *always* add exploration noise
+        return ConstantSchedule(1.0)
+
+
+def setup_ddpg_exploration(trainer):
+    trainer.exploration0 = make_exploration_schedule(trainer.config, -1)
+    trainer.explorations = [
+        make_exploration_schedule(trainer.config, i)
+        for i in range(trainer.config["num_workers"])
+    ]
+
+
+def add_pure_exploration_phase(trainer):
+    global_timestep = trainer.optimizer.num_steps_sampled
+    pure_expl_steps = trainer.config["pure_exploration_steps"]
+    if pure_expl_steps:
+        # tell workers whether they should do pure exploration
+        only_explore = global_timestep < pure_expl_steps
+        trainer.workers.local_worker().foreach_trainable_policy(
+            lambda p, _: p.set_pure_exploration_phase(only_explore))
+        for e in trainer.workers.remote_workers():
+            e.foreach_trainable_policy.remote(
+                lambda p, _: p.set_pure_exploration_phase(only_explore))
+    update_worker_explorations(trainer)
+
+
+DDPGTrainer = GenericOffPolicyTrainer.with_updates(
+    name="DDPG",
+    default_config=DEFAULT_CONFIG,
+    default_policy=DDPGTFPolicy,
+    before_init=setup_ddpg_exploration,
+    before_train_step=add_pure_exploration_phase)
