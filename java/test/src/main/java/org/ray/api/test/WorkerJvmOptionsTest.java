@@ -9,7 +9,7 @@ import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class WorkerStartingSuffixTest extends BaseTest {
+public class WorkerJvmOptionsTest extends BaseTest {
 
   @RayRemote
   public static class Echo {
@@ -22,7 +22,7 @@ public class WorkerStartingSuffixTest extends BaseTest {
   public void testSuffix() {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options = new ActorCreationOptions.Builder()
-        .setWorkerStartingSuffix("-Dtest.suffix=suffix")
+        .setJvmOptions("-Dtest.suffix=suffix")
         .createActorCreationOptions();
     RayActor<Echo> actor = Ray.createActor(Echo::new, options);
     RayObject<String> obj = Ray.call(Echo::getSuffix, actor);
