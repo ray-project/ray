@@ -1,55 +1,52 @@
-#ifndef RAY_CORE_WORKER_OBJECT_INTERFACE_H
-#define RAY_CORE_WORKER_OBJECT_INTERFACE_H
+#ifndef RAY_CORE_WORKER_STORE_PROVIDER_H
+#define RAY_CORE_WORKER_STORE_PROVIDER_H
 
-#include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/store_provider/store_provider.h"
 
 namespace ray {
 
-class CoreWorker;
-class CoreWorkerStoreProvider;
+/// Provider interface for store access. Store provider should inherit from this class and
+/// provide implementions for the methods. The actual store provider may use a plasma
+/// store or local memory store in worker process, or possibly other types of storage.
 
-/// The interface that contains all `CoreWorker` methods that are related to object store.
-class CoreWorkerObjectInterface {
+class CoreWorkerStoreProvider {
  public:
-  CoreWorkerObjectInterface(CoreWorker &core_worker);
+  CoreWorkerStoreProvider() {}
 
-  /// Put an object into object store.
-  ///
-  /// \param[in] buffer Data buffer of the object.
-  /// \param[out] object_id Generated ID of the object.
-  /// \return Status.
-  Status Put(const Buffer &buffer, ObjectID *object_id);
+  virtual ~CoreWorkerStoreProvider() {}
 
   /// Put an object with specified ID into object store.
   ///
   /// \param[in] buffer Data buffer of the object.
   /// \param[in] object_id Object ID specified by user.
   /// \return Status.
-  Status Put(const Buffer &buffer, const ObjectID &object_id);
+  virtual Status Put(const Buffer &buffer, const ObjectID &object_id) = 0;
 
   /// Get a list of objects from the object store.
   ///
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[in] task_id ID for the current task.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-             std::vector<std::shared_ptr<Buffer>> *results);
+  virtual Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
+                     const TaskID &task_id,
+                     std::vector<std::shared_ptr<Buffer>> *results) = 0;
 
   /// Wait for a list of objects to appear in the object store.
   ///
   /// \param[in] IDs of the objects to wait for.
   /// \param[in] num_returns Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[in] task_id ID for the current task.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, std::vector<bool> *results);
+  virtual Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
+                      int64_t timeout_ms, const TaskID &task_id,
+                      std::vector<bool> *results) = 0;
 
   /// Delete a list of objects from the object store.
   ///
@@ -58,17 +55,10 @@ class CoreWorkerObjectInterface {
   /// the cluster.
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
   /// created these objects. \return Status.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
-                bool delete_creating_tasks);
-
- private:
-  /// Reference to the parent CoreWorker instance.
-  CoreWorker &core_worker_;
-
-  /// All the store providers supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;
+  virtual Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
+                        bool delete_creating_tasks) = 0;
 };
 
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_OBJECT_INTERFACE_H
+#endif  // RAY_CORE_WORKER_STORE_PROVIDER_H

@@ -7,6 +7,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/task.h"
 
 namespace ray {
@@ -65,11 +66,11 @@ class ActorHandle {
   int IncreaseTaskCounter() { return task_counter_++; }
 
   std::list<ray::ActorHandleID> GetNewActorHandle() {
-    // TODO: implement this.
+    // TODO(zhijunfu): implement this.
     return std::list<ray::ActorHandleID>();
   }
 
-  void ClearNewActorHandles() { /* TODO: implement this. */
+  void ClearNewActorHandles() { /* TODO(zhijunfu): implement this. */
   }
 
  private:
@@ -89,7 +90,7 @@ class ActorHandle {
 /// submission.
 class CoreWorkerTaskInterface {
  public:
-  CoreWorkerTaskInterface(CoreWorker &core_worker) : core_worker_(core_worker) {}
+  CoreWorkerTaskInterface(CoreWorker &core_worker);
 
   /// Submit a normal task.
   ///
@@ -137,11 +138,8 @@ class CoreWorkerTaskInterface {
   std::vector<std::shared_ptr<raylet::TaskArgument>> BuildTaskArguments(
       const std::vector<TaskArg> &args);
 
-  /// Translate from WorkLanguage to Language type (required by taks spec).
-  ///
-  /// \param[in] language Language for a task.
-  /// \return Translated task language.
-  ::Language ToTaskLanguage(WorkerLanguage language);
+  /// All the task submitters supported.
+  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskSubmitter>> task_submitters_;
 };
 
 }  // namespace ray

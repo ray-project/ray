@@ -43,6 +43,3 @@ sleep 1s
 bazel run //:redis-cli -- -p 6379 shutdown
 bazel run //:redis-cli -- -p 6380 shutdown
 sleep 1s
-
-# Include raylet integration test once it's ready.
-# ./bazel-bin/object_manager_integration_test $STORE_EXEC
