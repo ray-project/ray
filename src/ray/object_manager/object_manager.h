@@ -23,9 +23,9 @@
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
-#include "ray/object_manager/object_manager_client.h"
+#include "ray/rpc/object_manager_client.h"
+#include "ray/rpc/object_manager_server.h"
 #include "ray/object_manager/object_manager_client_connection.h"
-#include "ray/object_manager/object_manager_server.h"
 #include "ray/object_manager/object_store_notification_manager.h"
 
 namespace ray {
@@ -72,20 +72,26 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerServiceHandler {
   /// Implementation of object manager service
  public:
-  void HandlePushRequest(const PushRequest &request, PushReply *reply,
-                         RequestDoneCallback done_callback);
-  void HandlePullRequest(const PullRequest &request, PullReply *reply,
-                         RequestDoneCallback done_callback);
-  void HandleFreeObjectsRequest(const FreeObjectsRequest &request,
-                                FreeObjectsReply *reply,
-                                RequestDoneCallback done_callback);
+  void HandlePushRequest(const rpc::PushRequest &request, rpc::PushReply *reply,
+                         rpc::RequestDoneCallback done_callback);
+  void HandlePullRequest(const rpc::PullRequest &request, rpc::PullReply *reply,
+                         rpc::RequestDoneCallback done_callback);
+  void HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
+                                rpc::FreeObjectsReply *reply,
+                                rpc::RequestDoneCallback done_callback);
 
   ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
                               uint64_t data_size, uint64_t metadata_size,
                               uint64_t chunk_index,
-                              std::shared_ptr<ObjectManagerClient> rpc_client);
+                              std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
+
+  ray::Status ReceiveObjectChunk(
+      const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
+      uint64_t metadata_size, uint64_t chunk_index, const std::string& data);
 
   ray::Status SendPullRequest(const ObjectID &object_id, const ClientID &client_id);
+
+  std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const ClientID &client_id);
 
  public:
   /// Takes user-defined ObjectDirectoryInterface implementation.
@@ -374,12 +380,6 @@ class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerSe
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 
-  std::shared_ptr<ObjectManagerClient> GetRpcClient(const ClientID &client_id);
-
-  ray::Status SendObject(const UniqueID &push_id, const ObjectID &object_id,
-                         uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
-                         std::shared_ptr<ObjectManagerClient> rpc_client);
-
   ClientID client_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
@@ -447,7 +447,7 @@ class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerSe
 
   rpc::ClientCallManager client_call_manager_;
 
-  /// address - object manager gRPC client
+  /// clientID - object manager gRPC client
   std::unordered_map<ClientID, std::shared_ptr<rpc::ObjectManagerClient>>
       object_manager_clients_;
 };

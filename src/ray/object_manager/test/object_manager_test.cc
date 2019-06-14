@@ -25,15 +25,14 @@ class MockServer {
   MockServer(boost::asio::io_service &main_service,
              const ObjectManagerConfig &object_manager_config,
              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-      : object_manager_acceptor_(
-            main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
-        object_manager_socket_(main_service),
+      : config_(object_manager_config),
         gcs_client_(gcs_client),
         object_manager_(main_service, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
+        object_manager_server_(config_.object_manager_port, main_service, object_manager_) {
     RAY_CHECK_OK(RegisterGcs(main_service));
-    // Start listening for clients.
-    DoAcceptObjectManager();
+    // Start listening server
+    object_manager_server_.Run();
   }
 
   ~MockServer() { RAY_CHECK_OK(gcs_client_->client_table().Disconnect()); }
@@ -42,12 +41,9 @@ class MockServer {
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
     RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
-    boost::asio::ip::tcp::endpoint endpoint = object_manager_acceptor_.local_endpoint();
-    std::string ip = endpoint.address().to_string();
-    unsigned short object_manager_port = endpoint.port();
-
+    auto object_manager_port = config_.object_manager_port;
     ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
-    client_info.node_manager_address = ip;
+    client_info.node_manager_address = "0.0.0.0";
     client_info.node_manager_port = object_manager_port;
     client_info.object_manager_port = object_manager_port;
     ray::Status status = gcs_client_->client_table().Connect(client_info);
@@ -55,34 +51,12 @@ class MockServer {
     return status;
   }
 
-  void DoAcceptObjectManager() {
-    object_manager_acceptor_.async_accept(
-        object_manager_socket_, boost::bind(&MockServer::HandleAcceptObjectManager, this,
-                                            boost::asio::placeholders::error));
-  }
-
-  void HandleAcceptObjectManager(const boost::system::error_code &error) {
-    ClientHandler<boost::asio::ip::tcp> client_handler =
-        [this](TcpClientConnection &client) { object_manager_.ProcessNewClient(client); };
-    MessageHandler<boost::asio::ip::tcp> message_handler = [this](
-        std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-        const uint8_t *message) {
-      object_manager_.ProcessClientMessage(client, message_type, message);
-    };
-    // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = TcpClientConnection::Create(
-        client_handler, message_handler, std::move(object_manager_socket_),
-        "object manager", {},
-        static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
-    DoAcceptObjectManager();
-  }
-
   friend class TestObjectManager;
 
-  boost::asio::ip::tcp::acceptor object_manager_acceptor_;
-  boost::asio::ip::tcp::socket object_manager_socket_;
+  ObjectManagerConfig config_;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   ObjectManager object_manager_;
+  rpc::ObjectManagerServer object_manager_server_;
 };
 
 class TestObjectManagerBase : public ::testing::Test {
@@ -130,6 +104,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.max_receives = max_receives;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
+    om_config_1.object_manager_port = 12345;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
@@ -142,6 +117,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.max_receives = max_receives;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
+    om_config_2.object_manager_port = 23456;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
@@ -201,7 +177,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
   int max_sends = 2;
   int max_receives = 2;
-  uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
+  uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 5));
 };
 
 class TestObjectManager : public TestObjectManagerBase {

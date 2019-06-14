@@ -92,6 +92,8 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.
     std::shared_ptr<Buffer> data;
+    RAY_LOG(INFO) << "Try to create object " << object_id << ", chunk index: " << chunk_index
+                  << ", data size: " << data_size;
     arrow::Status s =
         store_client_.Create(plasma_id, object_size, NULL, metadata_size, &data);
     std::vector<boost::asio::mutable_buffer> buffer;
@@ -108,6 +110,8 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
     create_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
         std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size)));
+    RAY_LOG(INFO) << "Create object " << object_id << ", number of chunks: " << num_chunks
+                  << ", chunk index: " << chunk_index;
     RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
   if (create_buffer_state_[object_id].chunk_state[chunk_index] !=
@@ -154,6 +158,8 @@ void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk
     RAY_ARROW_CHECK_OK(store_client_.Seal(plasma_id));
     RAY_ARROW_CHECK_OK(store_client_.Release(plasma_id));
     create_buffer_state_.erase(object_id);
+    RAY_LOG(INFO) << "Have received all chunks for object " << object_id << ", last chunk index: "
+                  << chunk_index;
   }
 }
 

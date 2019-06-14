@@ -12,20 +12,10 @@
 #include "src/ray/protobuf/object_manager.pb.h"
 
 namespace ray {
+namespace rpc {
 
 /// Client used for communicating with a remote node manager server.
 class ObjectManagerClient {
-  /*
-  using ForwardTaskCallback =
-      std::function<void(const Status &status, const ForwardTaskReply &reply)>;
-  */
-  /*
-  using PushCallback =
-      std::function<void(const Status &status, const PushReply &reply)>;
-  */
-  using PushCallback = std::function<void(const Status &status, const PushReply &reply)>;
-  using PullCallback = std::function<void(const Status &status, const PullReply &reply)>;
-
  public:
   /// Constructor.
   ///
@@ -44,15 +34,17 @@ class ObjectManagerClient {
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  void Push(const PushRequest &request, const PushCallback &callback) {
+  void Push(const PushRequest &request, const ClientCallback<PushReply> &callback) {
     client_call_manager_
-        .CreateCall<ObjectManagerService, PushRequest, PushReply, PushCallback>(stub_, request,
+        .CreateCall<ObjectManagerService, PushRequest, PushReply>(*stub_,
+                                                                &ObjectManagerService::Stub::PrepareAsyncPush, request,
                                                                            callback);
   }
 
-  void Pull(const PullRequest &request, const PullCallback &callback) {
+  void Pull(const PullRequest &request, const ClientCallback<PullReply> &callback) {
     client_call_manager_
-        .CreateCall<ObjectManagerService, PullRequest, PullReply, PullCallback>(stub_, request,
+        .CreateCall<ObjectManagerService, PullRequest, PullReply>(*stub_,
+                                                                &ObjectManagerService::Stub::PrepareAsyncPull, request,
                                                                            callback);
   }
 
@@ -64,6 +56,7 @@ class ObjectManagerClient {
   ClientCallManager &client_call_manager_;
 };
 
+}  // namespace rpc
 }  // namespace ray
 
 #endif  // RAY_RPC_OBJECT_MANAGER_CLIENT_H

@@ -37,8 +37,9 @@ class ObjectManagerServer : public GrpcServer {
   ///
   /// \param[in] port See `GrpcServer`.
   /// \param[in] handler The service handler that actually handle the requests.
-  ObjectManagerServer(const uint32_t port, ObjectManagerServiceHandler &service_handler)
-      : GrpcServer("ObjectManager", port), service_handler_(service_handler){};
+  ObjectManagerServer(const uint32_t port, boost::asio::io_service &main_service,
+                      ObjectManagerServiceHandler &service_handler)
+      : GrpcServer("ObjectManager", port, main_service), service_handler_(service_handler){};
 
   void RegisterServices(::grpc::ServerBuilder &builder) override {
     /// Register `ObjectManagerService`.

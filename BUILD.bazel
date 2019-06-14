@@ -51,10 +51,9 @@ cpp_grpc_library(
 
 cc_library(
     name = "object_manager_rpc_lib",
-    srcs = [
-        "src/ray/rpc/object_manager_server.cc",
-        #"src/ray/rpc/object_manager_client.cc",
-    ],
+    srcs = glob([
+        "src/ray/rpc/*.cc",
+    ]),
     hdrs = glob([
         "src/ray/rpc/object_manager_server.h",
         "src/ray/rpc/object_manager_client.h",
@@ -155,7 +154,6 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":stats_lib",
-        ":node_manager_rpc_lib",
         ":object_manager_rpc_lib",
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",

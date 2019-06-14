@@ -2312,14 +2312,11 @@ std::string NodeManager::DebugString() const {
   result << "\n- num dead actors: " << statistical_data.dead_actors;
   result << "\n- max num handles: " << statistical_data.max_num_handles;
 
-<<<<<<< HEAD
-=======
   result << "\nRemote node manager clients: ";
   for (const auto &entry : remote_node_manager_clients_) {
     result << "\n" << entry.first;
   }
 
->>>>>>> 1c0c2bcd8190a03d610ac51877ca29ffda2036e7
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
 }

@@ -3,6 +3,10 @@
 
 #include "ray/rpc/object_manager_server.h"
 
-namespace ray {}  // namespace ray
+namespace ray {
+namespace rpc {
+
+}  // namespace rpc
+}  // namespace ray
 
 #endif
