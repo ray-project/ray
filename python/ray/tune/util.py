@@ -31,11 +31,22 @@ class UtilMonitor(Thread):
         try:
             global psutil
             import psutil
+            self.has_psutil = True
+        except ImportError:
+            self.has_psutil = False
+            logging.warning("System performance monitoring will not be available."
+                            "Install psutil package.")
+
+        try:
             global GPUtil
             import GPUtil
+            self.has_gputil = True
         except ImportError:
             logging.warning("System performance monitoring will not be available."
-                            "Install psutil and gputil packages.")
+                            "Install gputil package.")
+            self.has_gputil = False
+
+        if not self.has_gputil and not self.has_psutil:
             self.stopped = True
             return
 
@@ -49,11 +60,13 @@ class UtilMonitor(Thread):
 
     def read_utilization(self):
         with self.lock:
-            self.values["cpu"].append(float(psutil.cpu_percent(interval=None)))
-            self.values["ram"].append(float(getattr(psutil.virtual_memory(), 'percent')))
-            for gpu in GPUtil.getGPUs():
-                self.values["gpu" + str(gpu.id)].append(float(gpu.load))
-                self.values["vram" + str(gpu.id)].append(float(gpu.memoryUtil))
+            if self.has_psutil:
+                self.values["cpu"].append(float(psutil.cpu_percent(interval=None)))
+                self.values["ram"].append(float(getattr(psutil.virtual_memory(), 'percent')))
+            if self.has_gputil:
+                for gpu in GPUtil.getGPUs():
+                    self.values["gpu" + str(gpu.id)].append(float(gpu.load))
+                    self.values["vram" + str(gpu.id)].append(float(gpu.memoryUtil))
 
     def get_data(self):
         if self.stopped:
