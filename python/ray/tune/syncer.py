@@ -49,8 +49,8 @@ class BaseSyncer(object):
         """
         self._local_dir = os.path.join(local_dir, "")
         self._remote_dir = remote_dir
-        self.last_sync_up_time = 0
-        self.last_sync_down_time = 0
+        self.last_sync_up_time = float("-inf")
+        self.last_sync_down_time = float("-inf")
         self._sync_function = sync_function or (lambda source, target: None)
 
     def sync_function(self, source, target):

@@ -932,7 +932,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 })
 
     @patch("ray.tune.syncer.S3_PREFIX", "test")
-    def testCloudBadArgs(self):
+    def testCloudProperString(self):
         with self.assertRaises(ValueError):
             [trial] = tune.run(
                 "__fake",
@@ -959,6 +959,9 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_cloud": "ls {source}"
                 })
 
+        tmpdir = tempfile.mkdtemp()
+        logfile = os.path.join(tmpdir, "test.log")
+
         [trial] = tune.run(
             "__fake",
             name="foo",
@@ -968,10 +971,14 @@ class TestSyncFunctionality(unittest.TestCase):
                     "training_iteration": 1
                 },
                 "upload_dir": "test",
-                "sync_to_cloud": "echo {source} {target}"
+                "sync_to_cloud": "echo {source} {target} > " + logfile
             })
+        with open(logfile) as f:
+            lines = f.read()
+            self.assertTrue("test" in lines)
+        shutil.rmtree(tmpdir)
 
-    def testClusterBadString(self):
+    def testClusterProperString(self):
         """Tests that invalid commands throw.."""
         with self.assertRaises(TuneError):
             # This raises TuneError because logger is init in safe zone.
@@ -999,16 +1006,23 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_driver": "ls {source}"
                 })
 
-        [trial] = tune.run(
-            "__fake",
-            name="foo",
-            max_failures=0,
-            **{
-                "stop": {
-                    "training_iteration": 1
-                },
-                "sync_to_driver": "echo {source} {target}"
-            })
+        tmpdir = tempfile.mkdtemp()
+        logfile = os.path.join(tmpdir, "test.log")
+
+        with patch("ray.tune.syncer.CommandSyncer.sync_function") as mock_fn, patch(
+                "ray.services.get_node_ip_address") as mock_sync:
+            mock_sync.return_value = "0.0.0.0"
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_driver": "echo {source} {target}"
+                })
+            self.assertGreater(mock_fn.call_count, 0)
 
     def testCloudFunctions(self):
         tmpdir = tempfile.mkdtemp()
