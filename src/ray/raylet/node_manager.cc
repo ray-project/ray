@@ -179,45 +179,42 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ClientRemoved(data);
-  };
+  auto node_manager_client_removed =
+      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+             const ClientTableDataT &data) { ClientRemoved(data); };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Register a callback on the client table for resource create/update requests
-  auto node_manager_resource_createupdated = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ResourceCreateUpdated(data);
-  };
+  auto node_manager_resource_createupdated =
+      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+             const ClientTableDataT &data) { ResourceCreateUpdated(data); };
   gcs_client_->client_table().RegisterResourceCreateUpdatedCallback(
       node_manager_resource_createupdated);
 
   // Register a callback on the client table for resource delete requests
-  auto node_manager_resource_deleted = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ResourceDeleted(data);
-  };
+  auto node_manager_resource_deleted =
+      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+             const ClientTableDataT &data) { ResourceDeleted(data); };
   gcs_client_->client_table().RegisterResourceDeletedCallback(
       node_manager_resource_deleted);
 
   // Subscribe to heartbeat batches from the monitor.
-  const auto &heartbeat_batch_added = [this](
-      gcs::AsyncGcsClient *client, const ClientID &id,
-      const HeartbeatBatchTableDataT &heartbeat_batch) {
-    HeartbeatBatchAdded(heartbeat_batch);
-  };
+  const auto &heartbeat_batch_added =
+      [this](gcs::AsyncGcsClient *client, const ClientID &id,
+             const HeartbeatBatchTableDataT &heartbeat_batch) {
+        HeartbeatBatchAdded(heartbeat_batch);
+      };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
       DriverID::Nil(), ClientID::Nil(), heartbeat_batch_added,
       /*subscribe_callback=*/nullptr,
       /*done_callback=*/nullptr));
 
   // Subscribe to driver table updates.
-  const auto driver_table_handler = [this](
-      gcs::AsyncGcsClient *client, const DriverID &client_id,
-      const std::vector<DriverTableDataT> &driver_data) {
-    HandleDriverTableUpdate(client_id, driver_data);
-  };
+  const auto driver_table_handler =
+      [this](gcs::AsyncGcsClient *client, const DriverID &client_id,
+             const std::vector<DriverTableDataT> &driver_data) {
+        HandleDriverTableUpdate(client_id, driver_data);
+      };
   RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(
       DriverID::Nil(), ClientID::Nil(), driver_table_handler, nullptr));
 
@@ -2202,53 +2199,55 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
   /// TODO(rkn): Should we check that the node manager is remote and not local?
   /// TODO(rkn): Should we check if the remote node manager is known to be dead?
   // Attempt to forward the task.
-  ForwardTask(task, node_manager_id, [this, node_manager_id](ray::Status error,
-                                                             const Task &task) {
-    const TaskID task_id = task.GetTaskSpecification().TaskId();
-    RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
-                  << node_manager_id;
+  ForwardTask(
+      task, node_manager_id,
+      [this, node_manager_id](ray::Status error, const Task &task) {
+        const TaskID task_id = task.GetTaskSpecification().TaskId();
+        RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
+                      << node_manager_id;
 
-    // Mark the failed task as pending to let other raylets know that we still
-    // have the task. TaskDependencyManager::TaskPending() is assumed to be
-    // idempotent.
-    task_dependency_manager_.TaskPending(task);
+        // Mark the failed task as pending to let other raylets know that we still
+        // have the task. TaskDependencyManager::TaskPending() is assumed to be
+        // idempotent.
+        task_dependency_manager_.TaskPending(task);
 
-    // Actor tasks can only be executed at the actor's location, so they are
-    // retried after a timeout. All other tasks that fail to be forwarded are
-    // deemed to be placeable again.
-    if (task.GetTaskSpecification().IsActorTask()) {
-      // The task is for an actor on another node.  Create a timer to resubmit
-      // the task in a little bit. TODO(rkn): Really this should be a
-      // unique_ptr instead of a shared_ptr. However, it's a little harder to
-      // move unique_ptrs into lambdas.
-      auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-      auto retry_duration = boost::posix_time::milliseconds(
-          RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
-      retry_timer->expires_from_now(retry_duration);
-      retry_timer->async_wait(
-          [this, task_id, retry_timer](const boost::system::error_code &error) {
-            // Timer killing will receive the boost::asio::error::operation_aborted,
-            // we only handle the timeout event.
-            RAY_CHECK(!error);
-            RAY_LOG(INFO) << "Resubmitting task " << task_id
-                          << " because ForwardTask failed.";
-            // Remove the RESUBMITTED task from the SWAP queue.
-            TaskState state;
-            const auto task = local_queues_.RemoveTask(task_id, &state);
-            RAY_CHECK(state == TaskState::SWAP);
-            // Submit the task again.
-            SubmitTask(task, Lineage());
-          });
-      // Temporarily move the RESUBMITTED task to the SWAP queue while the
-      // timer is active.
-      local_queues_.QueueTasks({task}, TaskState::SWAP);
-    } else {
-      // The task is not for an actor and may therefore be placed on another
-      // node immediately. Send it to the scheduling policy to be placed again.
-      local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
-      ScheduleTasks(cluster_resource_map_);
-    }
-  });
+        // Actor tasks can only be executed at the actor's location, so they are
+        // retried after a timeout. All other tasks that fail to be forwarded are
+        // deemed to be placeable again.
+        if (task.GetTaskSpecification().IsActorTask()) {
+          // The task is for an actor on another node.  Create a timer to resubmit
+          // the task in a little bit. TODO(rkn): Really this should be a
+          // unique_ptr instead of a shared_ptr. However, it's a little harder to
+          // move unique_ptrs into lambdas.
+          auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+          auto retry_duration = boost::posix_time::milliseconds(
+              RayConfig::instance()
+                  .node_manager_forward_task_retry_timeout_milliseconds());
+          retry_timer->expires_from_now(retry_duration);
+          retry_timer->async_wait(
+              [this, task_id, retry_timer](const boost::system::error_code &error) {
+                // Timer killing will receive the boost::asio::error::operation_aborted,
+                // we only handle the timeout event.
+                RAY_CHECK(!error);
+                RAY_LOG(INFO) << "Resubmitting task " << task_id
+                              << " because ForwardTask failed.";
+                // Remove the RESUBMITTED task from the SWAP queue.
+                TaskState state;
+                const auto task = local_queues_.RemoveTask(task_id, &state);
+                RAY_CHECK(state == TaskState::SWAP);
+                // Submit the task again.
+                SubmitTask(task, Lineage());
+              });
+          // Temporarily move the RESUBMITTED task to the SWAP queue while the
+          // timer is active.
+          local_queues_.QueueTasks({task}, TaskState::SWAP);
+        } else {
+          // The task is not for an actor and may therefore be placed on another
+          // node immediately. Send it to the scheduling policy to be placed again.
+          local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
+          ScheduleTasks(cluster_resource_map_);
+        }
+      });
 }
 
 void NodeManager::ForwardTask(
