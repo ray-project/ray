@@ -63,7 +63,7 @@ class UtilMonitor(Thread):
             ret_values = copy.deepcopy(self.values)
             for key, val in self.values.items():
                 val.clear()
-        return {"perf": {k: np.mean(v) for k, v in ret_values.items()}}
+        return {"perf": {k: np.mean(v) for k, v in ret_values.items() if len(v) > 0}}
 
     def run(self):
         while not self.stopped:
