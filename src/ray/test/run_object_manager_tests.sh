@@ -32,8 +32,8 @@ sleep 1s
 bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
 # Run tests.
-./bazel-bin/object_manager_stress_test $STORE_EXEC
-sleep 1s
+#./bazel-bin/object_manager_stress_test $STORE_EXEC
+##sleep 1s
 # Use timeout=1000ms for the Wait tests.
 ./bazel-bin/object_manager_test $STORE_EXEC 1000
 bazel run //:redis-cli -- -p 6379 shutdown

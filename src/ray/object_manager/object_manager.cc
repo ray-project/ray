@@ -432,8 +432,10 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
     uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
     uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
+
     RAY_LOG(INFO) << "Send object chunk of " << object_id << " to client " << client_id
                   << ", number of chunks: " << num_chunks << ", total data size: " << data_size;
+
     UniqueID push_id = UniqueID::FromRandom();
     for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
       double start_time = current_sys_time_seconds();
@@ -876,7 +878,7 @@ void ObjectManager::HandlePushRequest(const rpc::PushRequest &request, rpc::Push
 ray::Status ObjectManager::ReceiveObjectChunk(
     const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index, const std::string& data) {
-  RAY_LOG(INFO) << "ReceiveObjectChunk on " << client_id_ << " from " << client_id
+  RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << client_id_ << " from " << client_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size() << ", object size: " << data_size;
 
