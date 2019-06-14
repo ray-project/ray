@@ -49,11 +49,11 @@ class UtilMonitor(Thread):
 
     def read_utilization(self):
         with self.lock:
-            self.values["perf/cpu"].append(float(psutil.cpu_percent(interval=None)))
-            self.values["perf/ram"].append(float(getattr(psutil.virtual_memory(), 'percent')))
+            self.values["cpu"].append(float(psutil.cpu_percent(interval=None)))
+            self.values["ram"].append(float(getattr(psutil.virtual_memory(), 'percent')))
             for gpu in GPUtil.getGPUs():
-                self.values["perf/gpu" + str(gpu.id)].append(float(gpu.load))
-                self.values["perf/vram" + str(gpu.id)].append(float(gpu.memoryUtil))
+                self.values["gpu" + str(gpu.id)].append(float(gpu.load))
+                self.values["vram" + str(gpu.id)].append(float(gpu.memoryUtil))
 
     def get_data(self):
         if self.stopped:
@@ -63,7 +63,7 @@ class UtilMonitor(Thread):
             ret_values = copy.deepcopy(self.values)
             for key, val in self.values.items():
                 val.clear()
-        return {k: np.mean(v) for k, v in ret_values.items()}
+        return {"perf": {k: np.mean(v) for k, v in ret_values.items()}}
 
     def run(self):
         while not self.stopped:
