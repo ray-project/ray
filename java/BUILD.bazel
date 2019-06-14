@@ -208,7 +208,7 @@ filegroup(
         "//:redis-server",
         "//:libray_redis_module.so",
         "//:raylet",
-        "//:raylet_library_java",
+        "//:core_worker_library_java",
         "@plasma//:plasma_store_server",
         "@plasma//:plasma_client_java",
     ],

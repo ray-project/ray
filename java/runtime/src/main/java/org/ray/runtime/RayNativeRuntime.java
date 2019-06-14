@@ -34,7 +34,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     try {
       LOGGER.debug("Loading native libraries.");
       // Load native libraries.
-      String[] libraries = new String[]{"raylet_library_java", "plasma_java"};
+      String[] libraries = new String[]{"core_worker_library_java", "plasma_java"};
       for (String library : libraries) {
         String fileName = System.mapLibraryName(library);
         // Copy the file from resources to a temp dir, and load the native library.
