@@ -36,10 +36,9 @@ class NodeManagerClient {
   /// \param[in] callback The callback function that handles reply.
   void ForwardTask(const ForwardTaskRequest &request,
                    const ClientCallback<ForwardTaskReply> &callback) {
-    client_call_manager_
-        .CreateCall<NodeManagerService, ForwardTaskRequest, ForwardTaskReply>(
-            *stub_, &NodeManagerService::Stub::PrepareAsyncForwardTask, request,
-            callback);
+    client_call_manager_.CreateCall<NodeManagerService, ForwardTaskRequest,
+                                    ForwardTaskReply>(
+        *stub_, &NodeManagerService::Stub::PrepareAsyncForwardTask, request, callback);
   }
 
  private:
