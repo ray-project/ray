@@ -79,6 +79,7 @@ class RemoteFunction(object):
         @wraps(function)
         def _remote_proxy(*args, **kwargs):
             return self._remote(args=args, kwargs=kwargs)
+
         self.remote = _remote_proxy
 
     def __call__(self, *args, **kwargs):
