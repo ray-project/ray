@@ -78,7 +78,8 @@ class Experiment(object):
                  restore=None,
                  repeat=None,
                  trial_resources=None,
-                 custom_loggers=None):
+                 custom_loggers=None,
+                 log_sys_usage=True):
         if sync_function:
             assert upload_dir, "Need `upload_dir` if sync_function given."
 
@@ -89,6 +90,8 @@ class Experiment(object):
                 "trial_resources", "resources_per_trial", soft=False)
         if custom_loggers:
             _raise_deprecation_note("custom_loggers", "loggers", soft=False)
+
+        config['log_sys_usage'] = log_sys_usage
 
         run_identifier = Experiment._register_if_needed(run)
         spec = {

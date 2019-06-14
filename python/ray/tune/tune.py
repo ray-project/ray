@@ -92,7 +92,8 @@ def run(run_or_experiment,
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
-        ray_auto_init=True):
+        ray_auto_init=True,
+        log_sys_usage=True):
     """Executes training.
 
     Args:
@@ -171,6 +172,8 @@ def run(run_or_experiment,
         ray_auto_init (bool): Automatically starts a local Ray cluster
             if using a RayTrialExecutor (which is the default) and
             if Ray is not initialized. Defaults to True.
+        log_sys_usage (bool): Whether to track system performance
+            utilization.
 
     Returns:
         List of Trial objects.
@@ -214,7 +217,8 @@ def run(run_or_experiment,
             checkpoint_at_end=checkpoint_at_end,
             export_formats=export_formats,
             max_failures=max_failures,
-            restore=restore)
+            restore=restore,
+            log_sys_usage=log_sys_usage)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 

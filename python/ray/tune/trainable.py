@@ -88,7 +88,7 @@ class Trainable(object):
         self._restored = False
         self._setup(copy.deepcopy(self.config))
         self._local_ip = ray.services.get_node_ip_address()
-        self._track_sys_usage = config["log_sys_usage"]
+        self._track_sys_usage = config["log_sys_usage"] if "log_sys_usage" in config else True
         self.monitor = UtilMonitor()
 
     @classmethod
