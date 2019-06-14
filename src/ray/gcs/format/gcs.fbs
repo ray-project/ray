@@ -45,8 +45,6 @@ enum TablePubsub:int {
 enum EntryType:int {
   INSERTION = 0,
   DELETION,
-  RES_CREATEUPDATE,
-  RES_DELETE,
 }
 
 table Arg {
@@ -278,8 +276,6 @@ table ClientTableData {
   object_manager_port: int;
   // Enum to store the entry type in the log
   entry_type: EntryType = INSERTION;
-  resources_total_label: [string];
-  resources_total_capacity: [double];
 }
 
 table HeartbeatTableData {

@@ -477,24 +477,18 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   object_directory_->HandleClientRemoved(client_id);
 }
 
-void NodeManager::ResourceCreateUpdated(const ClientTableDataT &client_data) {
-  const ClientID client_id = ClientID::FromBinary(client_data.client_id);
+void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
+                                        const ResourceSet &createUpdatedResources) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
 
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from client id "
-                 << client_id << ". Updating resource map.";
-  ResourceSet new_res_set(client_data.resources_total_label,
-                          client_data.resources_total_capacity);
-
-  const ResourceSet &old_res_set = cluster_resource_map_[client_id].GetTotalResources();
-  ResourceSet difference_set = old_res_set.FindUpdatedResources(new_res_set);
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] The difference in the resource map is "
-                 << difference_set.ToString();
+                 << client_id << " with created or updated resources: "
+                 << createUpdatedResources.ToString() << ". Updating resource map.";
 
   SchedulingResources &cluster_schedres = cluster_resource_map_[client_id];
 
   // Update local_available_resources_ and SchedulingResources
-  for (const auto &resource_pair : difference_set.GetResourceMap()) {
+  for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
     const std::string &resource_label = resource_pair.first;
     const double &new_resource_capacity = resource_pair.second;
 
@@ -513,27 +507,22 @@ void NodeManager::ResourceCreateUpdated(const ClientTableDataT &client_data) {
   return;
 }
 
-void NodeManager::ResourceDeleted(const ClientTableDataT &client_data) {
-  const ClientID client_id = ClientID::FromBinary(client_data.client_id);
+void NodeManager::ResourceDeleted(const ClientID &client_id,
+                                  const std::vector<std::string> &resource_names) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
 
-  ResourceSet new_res_set(client_data.resources_total_label,
-                          client_data.resources_total_capacity);
+  std::ostringstream oss;
+  for (auto &resource_name: resource_names) {
+    oss << resource_name << ", ";
+  }
   RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from client id " << client_id
-                 << " with new resources: " << new_res_set.ToString()
+                 << " with deleted resources: " << oss.str()
                  << ". Updating resource map.";
-
-  const ResourceSet &old_res_set = cluster_resource_map_[client_id].GetTotalResources();
-  ResourceSet deleted_set = old_res_set.FindDeletedResources(new_res_set);
-  RAY_LOG(DEBUG) << "[ResourceDeleted] The difference in the resource map is "
-                 << deleted_set.ToString();
 
   SchedulingResources &cluster_schedres = cluster_resource_map_[client_id];
 
   // Update local_available_resources_ and SchedulingResources
-  for (const auto &resource_pair : deleted_set.GetResourceMap()) {
-    const std::string &resource_label = resource_pair.first;
-
+  for (const auto &resource_label : resource_names) {
     cluster_schedres.DeleteResource(resource_label);
     if (client_id == local_client_id) {
       local_available_resources_.DeleteResource(resource_label);
@@ -1302,31 +1291,19 @@ void NodeManager::ProcessSetResourceRequest(
     return;
   }
 
-  // Add the new resource to a skeleton ClientTableDataT object
-  ClientTableDataT data;
-  gcs_client_->client_table().GetClient(client_id, data);
-  // Replace the resource vectors with the resource deltas from the message.
-  // RES_CREATEUPDATE and RES_DELETE entries in the ClientTable track changes (deltas) in
-  // the resources
-  data.resources_total_label = std::vector<std::string>{resource_name};
-  data.resources_total_capacity = std::vector<double>{capacity};
-  // Set the correct flag for entry_type
+  // Submit to the client table. This calls the ResourceCreateUpdated or ResourceDeleted
+  // callback, which updates cluster_resource_map_.
   if (is_deletion) {
-    data.entry_type = EntryType::RES_DELETE;
+    gcs_client_->resource_table().RemoveEntries(DriverID::Nil(), client_id,
+                                                {resource_name}, nullptr);
   } else {
-    data.entry_type = EntryType::RES_CREATEUPDATE;
+    DynamicResourceTable::DataMap data_map;
+    auto resource = std::make_shared<RayResourceT>();
+    resource->resource_name = resource_name;
+    resource->resource_capacity = capacity;
+    data_map.emplace(resource_name, resource);
+    gcs_client_->resource_table().Update(DriverID::Nil(), client_id, data_map, nullptr);
   }
-
-  // Submit to the client table. This calls the ResourceCreateUpdated callback, which
-  // updates cluster_resource_map_.
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-  if (not worker) {
-    worker = worker_pool_.GetRegisteredDriver(client);
-  }
-  auto data_shared_ptr = std::make_shared<ClientTableDataT>(data);
-  auto client_table = gcs_client_->client_table();
-  RAY_CHECK_OK(gcs_client_->client_table().Append(
-      DriverID::Nil(), client_table.client_log_key_, data_shared_ptr, nullptr));
 }
 
 void NodeManager::ScheduleTasks(

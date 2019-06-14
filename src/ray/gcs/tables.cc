@@ -580,9 +580,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
     // was alive and is now dead or resources have been updated.
     bool was_not_deleted = (entry->second.entry_type != EntryType::DELETION);
     bool is_deleted = (data.entry_type == EntryType::DELETION);
-    bool is_res_modified = ((data.entry_type == EntryType::RES_CREATEUPDATE) ||
-                            (data.entry_type == EntryType::RES_DELETE));
-    is_notif_new = (was_not_deleted && (is_deleted || is_res_modified));
+    is_notif_new = was_not_deleted && is_deleted;
     // Once a client with a given ID has been removed, it should never be added
     // again. If the entry was in the cache and the client was deleted, check
     // that this new notification is not an insertion.
@@ -594,55 +592,12 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   }
 
   // Add the notification to our cache. Notifications are idempotent.
-  // If it is a new client or a client removal, add as is
-  if ((data.entry_type == EntryType::INSERTION) ||
-      (data.entry_type == EntryType::DELETION)) {
-    RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable Insertion/Deletion "
-                      "notification for client id "
-                   << client_id << ". EntryType: " << int(data.entry_type)
-                   << ". Setting the client cache to data.";
-    client_cache_[client_id] = data;
-  } else if ((data.entry_type == EntryType::RES_CREATEUPDATE) ||
-             (data.entry_type == EntryType::RES_DELETE)) {
-    RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable RES_CREATEUPDATE "
-                      "notification for client id "
-                   << client_id << ". EntryType: " << int(data.entry_type)
-                   << ". Updating the client cache with the delta from the log.";
-
-    ClientTableDataT &cache_data = client_cache_[client_id];
-    // Iterate over all resources in the new create/update notification
-    for (std::vector<int>::size_type i = 0; i != data.resources_total_label.size(); i++) {
-      auto const &resource_name = data.resources_total_label[i];
-      auto const &capacity = data.resources_total_capacity[i];
-
-      // If resource exists in the ClientTableData, update it, else create it
-      auto existing_resource_label =
-          std::find(cache_data.resources_total_label.begin(),
-                    cache_data.resources_total_label.end(), resource_name);
-      if (existing_resource_label != cache_data.resources_total_label.end()) {
-        auto index = std::distance(cache_data.resources_total_label.begin(),
-                                   existing_resource_label);
-        // Resource already exists, set capacity if updation call..
-        if (data.entry_type == EntryType::RES_CREATEUPDATE) {
-          cache_data.resources_total_capacity[index] = capacity;
-        }
-        // .. delete if deletion call.
-        else if (data.entry_type == EntryType::RES_DELETE) {
-          cache_data.resources_total_label.erase(
-              cache_data.resources_total_label.begin() + index);
-          cache_data.resources_total_capacity.erase(
-              cache_data.resources_total_capacity.begin() + index);
-        }
-      } else {
-        // Resource does not exist, create resource and add capacity if it was a resource
-        // create call.
-        if (data.entry_type == EntryType::RES_CREATEUPDATE) {
-          cache_data.resources_total_label.push_back(resource_name);
-          cache_data.resources_total_capacity.push_back(capacity);
-        }
-      }
-    }
-  }
+  // Add as is
+  RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable Insertion/Deletion "
+                    "notification for client id "
+                 << client_id << ". EntryType: " << int(data.entry_type)
+                 << ". Setting the client cache to data.";
+  client_cache_[client_id] = data;
 
   // If the notification is new, call any registered callbacks.
   ClientTableDataT &cache_data = client_cache_[client_id];
@@ -652,21 +607,13 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
         client_added_callback_(client, client_id, cache_data);
       }
       RAY_CHECK(removed_clients_.find(client_id) == removed_clients_.end());
-    } else if (data.entry_type == EntryType::DELETION) {
+    } else {
       // NOTE(swang): The client should be added to this data structure before
       // the callback gets called, in case the callback depends on the data
       // structure getting updated.
       removed_clients_.insert(client_id);
       if (client_removed_callback_ != nullptr) {
         client_removed_callback_(client, client_id, cache_data);
-      }
-    } else if (data.entry_type == EntryType::RES_CREATEUPDATE) {
-      if (resource_createupdated_callback_ != nullptr) {
-        resource_createupdated_callback_(client, client_id, cache_data);
-      }
-    } else if (data.entry_type == EntryType::RES_DELETE) {
-      if (resource_deleted_callback_ != nullptr) {
-        resource_deleted_callback_(client, client_id, cache_data);
       }
     }
   }
