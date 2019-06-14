@@ -154,7 +154,7 @@ void WorkerPool::StartWorkerProcess(const Language &language,
     if (!prefix.empty() || !suffix.empty()) {
       RAY_CHECK(task_spec != nullptr) << "task_spec should not be nullptr "
           "since we specified prefix or suffix for worker command";
-      state.starting_lazy_worker_processes[pid] = task_spec->TaskId();
+      state.starting_dedicated_worker_processes[pid] = task_spec->TaskId();
     }
     return;
   }
@@ -232,12 +232,12 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
 
-  auto it = state.starting_lazy_worker_processes.find(worker->Pid());
-  if (it != state.starting_lazy_worker_processes.end()) {
+  auto it = state.starting_dedicated_worker_processes.find(worker->Pid());
+  if (it != state.starting_dedicated_worker_processes.end()) {
     // The worker is used for the specific actor creation task.
     const auto task_id = it->second;
-    state.starting_lazy_worker_processes.erase(it);
-    state.idle_lazy_workers[task_id] = std::move(worker);
+    state.starting_dedicated_worker_processes.erase(it);
+    state.idle_dedicated_workers[task_id] = std::move(worker);
 
     // Return to not put this worker to idle pool.
     return;
@@ -267,10 +267,10 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
         state.idle.erase(state.idle.begin());
       }
     } else {
-      auto it = state.idle_lazy_workers.find(task_spec.TaskId());
-      if (it != state.idle_lazy_workers.end()) {
+      auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
+      if (it != state.idle_dedicated_workers.end()) {
         worker = std::move(it->second);
-        state.idle_lazy_workers.erase(it);
+        state.idle_dedicated_workers.erase(it);
       }
     }
   } else if (!task_spec.IsActorTask()) {
@@ -352,9 +352,9 @@ std::string WorkerPool::WarningAboutSize() {
   return warning_message.str();
 }
 
-bool WorkerPool::IsWorkerStartingForTask(const Language &language, const TaskID &task_id) {
+bool WorkerPool::PendingRegistrationForTask(const Language &language, const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
-  for (const auto &item : state.starting_lazy_worker_processes) {
+  for (const auto &item : state.starting_dedicated_worker_processes) {
     if (item.second == task_id) {
       return true;
     }
