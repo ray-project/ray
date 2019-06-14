@@ -9,6 +9,7 @@
 #include "ray/common/status.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
+#include "ray/common/constants.h"
 
 namespace {
 
@@ -125,18 +126,18 @@ void WorkerPool::StartWorkerProcess(const Language &language,
 
   // Extract pointers from the worker command to pass into execvp.
   std::vector<const char *> worker_command_args;
-  if (!prefix.empty()) {
-    worker_command_args.push_back(prefix.c_str());
-  }
   for (auto const &token : state.worker_command) {
-    worker_command_args.push_back(token.c_str());
-  }
-  // Note that this is used for Java worker only currently.
-  if (!suffix.empty() && task_spec->GetLanguage() == Language::JAVA) {
-    RAY_CHECK(worker_command_args.size() > 2)
-        << "At least 2 elements of the Java worker command.";
-    const auto pos_to_insert = worker_command_args.size() - 1;
-    worker_command_args.insert(worker_command_args.begin() + pos_to_insert, suffix.c_str());
+    if (token == kPrefixPlaceholder) {
+      if (!prefix.empty()) {
+        worker_command_args.push_back(prefix.c_str());
+      }
+    } else if (token == kSuffixPlaceholder) {
+      if (!suffix.empty()) {
+        worker_command_args.push_back(suffix.c_str());
+      }
+    }else {
+      worker_command_args.push_back(token.c_str());
+    }
   }
   worker_command_args.push_back(nullptr);
 
@@ -151,7 +152,9 @@ void WorkerPool::StartWorkerProcess(const Language &language,
     state.starting_worker_processes.emplace(
         std::make_pair(pid, num_workers_per_process_));
     if (!prefix.empty() || !suffix.empty()) {
-      state.worker_to_task_id_cache[pid] = task_spec->TaskId();
+      RAY_CHECK(task_spec != nullptr) << "task_spec should not be nullptr "
+          "since we specified prefix or suffix for worker command";
+      state.starting_lazy_worker_processes[pid] = task_spec->TaskId();
     }
     return;
   }
@@ -229,12 +232,12 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
 
-  auto it = state.worker_to_task_id_cache.find(worker->Pid());
-  if (it != state.worker_to_task_id_cache.end()) {
+  auto it = state.starting_lazy_worker_processes.find(worker->Pid());
+  if (it != state.starting_lazy_worker_processes.end()) {
     // The worker is used for the specific actor creation task.
     const auto task_id = it->second;
-    state.worker_to_task_id_cache.erase(it);
-    state.waiting_creating_actor_workers[task_id] = std::move(worker);
+    state.starting_lazy_worker_processes.erase(it);
+    state.idle_lazy_workers[task_id] = std::move(worker);
 
     // Return to not put this worker to idle pool.
     return;
@@ -264,10 +267,10 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
         state.idle.erase(state.idle.begin());
       }
     } else {
-      auto it = state.waiting_creating_actor_workers.find(task_spec.TaskId());
-      if (it != state.waiting_creating_actor_workers.end()) {
+      auto it = state.idle_lazy_workers.find(task_spec.TaskId());
+      if (it != state.idle_lazy_workers.end()) {
         worker = std::move(it->second);
-        state.waiting_creating_actor_workers.erase(it);
+        state.idle_lazy_workers.erase(it);
       }
     }
   } else if (!task_spec.IsActorTask()) {
@@ -349,9 +352,9 @@ std::string WorkerPool::WarningAboutSize() {
   return warning_message.str();
 }
 
-bool WorkerPool::HasWorkerStartingForTask(const Language &language, const TaskID &task_id) {
+bool WorkerPool::IsWorkerStartingForTask(const Language &language, const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
-  for (const auto &item : state.worker_to_task_id_cache) {
+  for (const auto &item : state.starting_lazy_worker_processes) {
     if (item.second == task_id) {
       return true;
     }

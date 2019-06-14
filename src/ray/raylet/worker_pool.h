@@ -120,7 +120,12 @@ class WorkerPool {
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
       const DriverID &driver_id) const;
 
-  bool HasWorkerStartingForTask(const Language &language, const TaskID &task_id);
+  /// Whether we're starting a worker for the given task.
+  /// Note that, this is only used for actor creation task.
+  ///
+  /// \param language The required language.
+  /// \param task_id The task that we'll query by.
+  bool IsWorkerStartingForTask(const Language &language, const TaskID &task_id);
 
   /// Returns debug string for class.
   ///
@@ -148,8 +153,9 @@ class WorkerPool {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
-    /// The worker pool of actor creation tasks with prefix or suffix.
-    std::unordered_map<TaskID, std::shared_ptr<Worker>> waiting_creating_actor_workers;
+    /// The pool of lazy workers for actor creation tasks
+    /// with prefix or suffix worker command.
+    std::unordered_map<TaskID, std::shared_ptr<Worker>> idle_lazy_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<Worker>> idle;
     /// The pool of idle actor workers.
@@ -162,9 +168,9 @@ class WorkerPool {
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<pid_t, int> starting_worker_processes;
-    /// A cache map for looking up the task id of actor creation task by the pid of
-    /// worker.
-    std::unordered_map<pid_t, TaskID> worker_to_task_id_cache;
+    /// A map for looking up the task id of actor creation task by the pid of
+    /// worker. Note that this is used for the lazy worker processes.
+    std::unordered_map<pid_t, TaskID> starting_lazy_worker_processes;
   };
 
   /// The number of workers per process.

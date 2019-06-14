@@ -36,4 +36,9 @@ constexpr char kObjectTablePrefix[] = "ObjectTable";
 /// Prefix for the task table keys in redis.
 constexpr char kTaskTablePrefix[] = "TaskTable";
 
+/// The constant used as a placeholder of the prefix for worker command.
+constexpr char kPrefixPlaceholder[] = "__PREFIX_PLACEHOLDER__";
+/// The constant used as a placeholder of the suffix for worker command.
+constexpr char kSuffixPlaceholder[] = "__SUFFIX_PLACEHOLDER__";
+
 #endif  // RAY_CONSTANTS_H_

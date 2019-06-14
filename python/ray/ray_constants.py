@@ -125,3 +125,10 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is raw binary.
 RAW_BUFFER_METADATA = b"RAW"
+
+# These should have the same value as `kPrefixPlaceholder`
+# and `kSuffixPlaceholder` in `constants.h`
+# A constant used as a placeholder of the prefix for worker command.
+PREFIX_PLACEHOLDER = "__PREFIX_PLACEHOLDER__"
+# A constant used as a placeholder of the suffix for worker command.
+SUFFIX_PLACEHOLDER = "__SUFFIX_PLACEHOLDER__"

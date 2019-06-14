@@ -1232,7 +1232,9 @@ def build_java_worker_command(
     """
     assert java_worker_options is not None
 
-    command = "java "
+    # Add the prefix placeholder.
+    command = "{} java ".format(ray_constants.PREFIX_PLACEHOLDER)
+
     if redis_address is not None:
         command += "-Dray.redis.address={} ".format(redis_address)
 
@@ -1253,6 +1255,10 @@ def build_java_worker_command(
         # Put `java_worker_options` in the last, so it can overwrite the
         # above options.
         command += java_worker_options + " "
+
+    # Add the suffix placeholder as jvm options.
+    command += "{} ".format(ray_constants.SUFFIX_PLACEHOLDER)
+
     command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command
