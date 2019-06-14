@@ -33,7 +33,7 @@ class UtilMonitor(Thread):
             import psutil
             global GPUtil
             import GPUtil
-        except ModuleNotFoundError:
+        except ImportError:
             logging.warning("System performance monitoring will not be available."
                             "Install psutil and gputil packages.")
             self.stopped = True
