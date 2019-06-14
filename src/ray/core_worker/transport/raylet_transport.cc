@@ -7,8 +7,7 @@ CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(RayletClient &rayle
     : raylet_client_(raylet_client) {}
 
 Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
-  return raylet_client_.SubmitTask(task.GetDependencies(),
-                                                task.GetTaskSpecification());
+  return raylet_client_.SubmitTask(task.GetDependencies(), task.GetTaskSpecification());
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(RayletClient &raylet_client)

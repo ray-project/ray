@@ -13,12 +13,11 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
       raylet_socket_(raylet_socket),
       worker_context_(worker_type, driver_id),
       raylet_client_(raylet_socket_, worker_context_.GetWorkerID(),
-          (worker_type_ == ray::WorkerType::WORKER),
-          worker_context_.GetCurrentDriverID(), ToTaskLanguage(language_)),
+                     (worker_type_ == ray::WorkerType::WORKER),
+                     worker_context_.GetCurrentDriverID(), ToTaskLanguage(language_)),
       task_interface_(*this),
       object_interface_(*this),
       task_execution_interface_(*this) {
-
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this needs to be changed
   // so that the worker (java/python .etc) can retrieve and handle the error
