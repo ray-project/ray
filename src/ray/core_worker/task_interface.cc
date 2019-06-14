@@ -1,7 +1,6 @@
 #include "ray/core_worker/task_interface.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/raylet/task.h"
 
 namespace ray {
 
