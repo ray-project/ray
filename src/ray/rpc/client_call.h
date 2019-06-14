@@ -96,22 +96,8 @@ class ClientCallManager {
   /// posted.
   ClientCallManager(boost::asio::io_service &main_service) : main_service_(main_service) {
     // Start the polling thread.
-    auto poll = [this]() {
-      void *got_tag;
-      bool ok = false;
-      // Keep reading events from the `CompletionQueue`.
-      while (cq_.Next(&got_tag, &ok)) {
-        RAY_CHECK(ok);
-        ClientCall *call = reinterpret_cast<ClientCall *>(got_tag);
-        // Post the callback to the main event loop.
-        main_service_.post([call]() {
-          call->OnReplyReceived();
-          // The call is finished, we can delete the `ClientCall` object now.
-          delete call;
-        });
-      }
-    };
-    polling_thread_.reset(new std::thread(std::move(poll)));
+    std::thread polling_thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
+    polling_thread.detach();
   }
 
   ~ClientCallManager() { cq_.Shutdown(); }
@@ -133,7 +119,7 @@ class ClientCallManager {
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback) {
     // Create a new `ClientCall` object. This object will eventuall be deleted in the
-    // `ClientCallManager`'s polling thread when reply is received.
+    // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
     auto call = new ClientCallImpl<Reply>(callback);
     // Send request.
     call->response_reader_ =
@@ -144,11 +130,30 @@ class ClientCallManager {
   }
 
  private:
+  /// This function runs in a background thread. It keeps polling events from the
+  /// `CompletionQueue`, and dispaches the event to the callbacks via the `ClientCall`
+  /// objects.
+  void PollEventsFromCompletionQueue() {
+    void *got_tag;
+    bool ok = false;
+    // Keep reading events from the `CompletionQueue` until it's shutdown.
+    while (cq_.Next(&got_tag, &ok)) {
+      ClientCall *call = reinterpret_cast<ClientCall *>(got_tag);
+      if (ok) {
+        // Post the callback to the main event loop.
+        main_service_.post([call]() {
+          call->OnReplyReceived();
+          // The call is finished, we can delete the `ClientCall` object now.
+          delete call;
+        });
+      } else {
+        delete call;
+      }
+    }
+  }
+
   /// The main event loop, to which the callback functions will be posted.
   boost::asio::io_service &main_service_;
-
-  /// The polling thread.
-  std::unique_ptr<std::thread> polling_thread_;
 
   /// The gRPC `CompletionQueue` object used to poll events.
   ::grpc::CompletionQueue cq_;
