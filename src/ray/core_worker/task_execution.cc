@@ -44,7 +44,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
       }
 
       status = executor(func, args, spec.TaskId(), num_returns);
-      // TODO:
+      // TODO(zhijunfu):
       // 1. Check and handle failure.
       // 2. Save or load checkpoint.
     }

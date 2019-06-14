@@ -63,7 +63,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(const std::vector<ObjectID> &ids,
       was_blocked = true;
     }
 
-    // TODO: can call `fetchOrReconstruct` in batches as an optimization.
+    // TODO(zhijunfu): can call `fetchOrReconstruct` in batches as an optimization.
     RAY_CHECK_OK(
         raylet_client_.FetchOrReconstruct(unready_ids, fetch_only, task_id));
 
@@ -100,7 +100,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(const std::vector<ObjectID> &ids,
     }
 
     num_attempts += 1;
-    // TODO: log a message if attempted too many times.
+    // TODO(zhijunfu): log a message if attempted too many times.
   }
 
   if (was_blocked) {
@@ -122,7 +122,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
     ready_ids.insert(entry);
   }
 
-  // TODO: change RayletClient::Wait() to return a bit set, so that we don't need
+  // TODO(zhijunfu): change RayletClient::Wait() to return a bit set, so that we don't need
   // to do this translation.
   (*results).resize(object_ids.size());
   for (size_t i = 0; i < object_ids.size(); i++) {

@@ -14,14 +14,14 @@ namespace ray {
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-///
-/// Note: the constructor of CoreWorker would throw if a failure happens.
 class CoreWorker {
  public:
   /// Construct a CoreWorker instance.
   ///
   /// \param[in] worker_type Type of this worker.
   /// \param[in] langauge Language of this worker.
+  ///
+  /// NOTE(zhijunfu): the constructor would throw if a failure happens.
   CoreWorker(const WorkerType worker_type, const WorkerLanguage language,
              const std::string &store_socket, const std::string &raylet_socket,
              DriverID driver_id = DriverID::Nil());

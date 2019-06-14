@@ -19,7 +19,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
       object_interface_(*this),
       task_execution_interface_(*this) {
 
-  // TODO: currently RayletClient would crash in its constructor if it cannot
+  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this needs to be changed
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.

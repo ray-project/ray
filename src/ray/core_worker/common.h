@@ -70,7 +70,7 @@ class TaskArg {
 
 /// Task specification, which includes the immutable information about the task
 /// which are determined at the submission time.
-/// TODO: this can be removed after everything is moved to protobuf.
+/// TODO(zhijunfu): this can be removed after everything is moved to protobuf.
 class TaskSpec {
  public:
   TaskSpec(const raylet::TaskSpecification &task_spec,

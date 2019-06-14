@@ -65,11 +65,11 @@ class ActorHandle {
   int IncreaseTaskCounter() { return task_counter_++; }
 
   std::list<ray::ActorHandleID> GetNewActorHandle() {
-    // TODO: implement this.
+    // TODO(zhijunfu): implement this.
     return std::list<ray::ActorHandleID>();
   }
 
-  void ClearNewActorHandles() { /* TODO: implement this. */
+  void ClearNewActorHandles() { /* TODO(zhijunfu): implement this. */
   }
 
  private:
