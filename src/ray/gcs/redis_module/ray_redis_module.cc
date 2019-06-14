@@ -1004,7 +1004,7 @@ int DebugString_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   std::string debug_string = DebugString();
   return RedisModule_ReplyWithStringBuffer(ctx, debug_string.data(), debug_string.size());
 }
-};
+};  // namespace internal_redis_commands
 
 // Wrap all Redis commands with Redis' auto memory management.
 AUTO_MEMORY(TableAdd_RedisCommand);
