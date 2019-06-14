@@ -917,7 +917,7 @@ class TestSyncFunctionality(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     @patch("ray.tune.syncer.S3_PREFIX", "test")
-    def testCloudSyncFunction(self):
+    def testNoUploadDir(self):
         """No Upload Dir is given."""
         with self.assertRaises(AssertionError):
             [trial] = tune.run(
@@ -928,7 +928,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "stop": {
                         "training_iteration": 1
                     },
-                    "sync_to_cloud": "ls {source}"
+                    "sync_to_cloud": "echo {source} {target}"
                 })
 
     @patch("ray.tune.syncer.S3_PREFIX", "test")
@@ -971,18 +971,33 @@ class TestSyncFunctionality(unittest.TestCase):
                 "sync_to_cloud": "echo {source} {target}"
             })
 
-    @patch("ray.tune.syncer.S3_PREFIX", "test")
-    def testFunctions(self):
-        def sync_func(local, remote):
-            with open(os.path.join(local, "test.log"), "w") as f:
-                print("writing to", f.name)
-                f.write(remote)
+    def testClusterBadString(self):
+        """Tests that invalid commands throw.."""
+        with self.assertRaises(TuneError):
+            # This raises TuneError because logger is init in safe zone.
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_driver": "ls {target}"
+                })
 
-        def sync_func_driver(local, remote):
-            with open(os.path.join(local, "test.log2"), "w") as f:
-                print("writing to", f.name)
-                f.write(remote)
-
+        with self.assertRaises(TuneError):
+            # This raises TuneError because logger is init in safe zone.
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_driver": "ls {source}"
+                })
 
         [trial] = tune.run(
             "__fake",
@@ -992,20 +1007,82 @@ class TestSyncFunctionality(unittest.TestCase):
                 "stop": {
                     "training_iteration": 1
                 },
+                "sync_to_driver": "echo {source} {target}"
+            })
+
+    def testCloudFunctions(self):
+        tmpdir = tempfile.mkdtemp()
+        def sync_func(local, remote):
+            with open(os.path.join(local, "test.log"), "w") as f:
+                print("writing to", f.name)
+                f.write(remote)
+
+        [trial] = tune.run(
+            "__fake",
+            name="foo",
+            max_failures=0,
+            local_dir=tmpdir,
+            **{
+                "stop": {
+                    "training_iteration": 1
+                },
                 "upload_dir": "test",
                 "sync_to_cloud": tune.function(sync_func)
             })
         test_file_path = os.path.join(trial.local_dir, "test.log")
         self.assertTrue(os.path.exists(test_file_path))
+        shutil.rmtree(tmpdir)
+
+    def testClusterSyncFunction(self):
+        def sync_func_driver(source, target):
+            assert ":" in source, "Source not a remote path."
+            assert ":" not in target, "Target is supposed to be local."
+            with open(os.path.join(target, "test.log2"), "w") as f:
+                print("writing to", f.name)
+                f.write(source)
+
+        [trial] = tune.run(
+            "__fake",
+            name="foo",
+            max_failures=0,
+            stop={"training_iteration": 1},
+            sync_to_driver=tune.function(sync_func_driver)
+        )
+        test_file_path = os.path.join(trial.logdir, "test.log2")
+        self.assertFalse(os.path.exists(test_file_path))
+
+        with patch("ray.services.get_node_ip_address") as mock_sync:
+            mock_sync.return_value = "0.0.0.0"
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                stop={"training_iteration": 1},
+                sync_to_driver=tune.function(sync_func_driver)
+            )
+        test_file_path = os.path.join(trial.logdir, "test.log2")
+        self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
 
-    def testLocalWorker(self):
-        """Test when local worker_ip is equal to remote worker_ip"""
-        pass
 
-    def testClusterBadArgs(self):
-        """Test when sync_to_driver is and isn't valid."""
-        pass
+    def testNoSync(self):
+        def sync_func(source, target):
+            pass
+
+        with patch("ray.tune.syncer.CommandSyncer.sync_function") as mock_sync:
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "upload_dir": "test",
+                    "sync_to_driver": tune.function(sync_func),
+                    "sync_to_cloud": tune.function(sync_func)
+                })
+            self.assertEqual(mock_sync.call_count, 0)
 
 
 class VariantGeneratorTest(unittest.TestCase):

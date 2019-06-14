@@ -13,7 +13,7 @@ import numbers
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
-from ray.tune.log_sync import get_log_syncer
+from ray.tune.syncer import get_log_syncer
 from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
     TIMESTEPS_TOTAL
 

@@ -12,7 +12,7 @@ from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.log_sync import wait_for_log_sync
+from ray.tune.syncer import wait_for_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  FIFOScheduler, MedianStoppingRule)
@@ -263,7 +263,7 @@ def run(run_or_experiment,
     if verbose:
         print(runner.debug_string(max_debug=99999))
 
-    wait_for_log_sync()
+    wait_for_sync()
 
     errored_trials = []
     for trial in runner.get_trials():

@@ -17,6 +17,7 @@ except ImportError:  # py2
 
 from ray.tune.sample import function as tune_function
 from ray.tune.error import TuneError
+from ray.tune.log_sync import log_sync_template, NodeSyncMixin
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,17 @@ S3_PREFIX = "s3://"
 GS_PREFIX = "gs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX)
 
+_syncers = {}
 
 def validate_sync_string(sync_string):
     if "{source}" not in sync_string:
         raise ValueError("Sync template missing '{source}'.")
     if "{target}" not in sync_string:
         raise ValueError("Sync template missing '{target}'.")
+
+def wait_for_sync():
+    for syncer in _syncers.values():
+        syncer.wait()
 
 
 class BaseSyncer(object):
@@ -105,7 +111,7 @@ class BaseSyncer(object):
 
 
 class CommandSyncer(BaseSyncer):
-    def __init__(self, local_dir, remote_dir, sync_template=None):
+    def __init__(self, local_dir, remote_dir, sync_template):
         """
         Arguments:
             local_dir (str): Directory to sync.
@@ -117,8 +123,9 @@ class CommandSyncer(BaseSyncer):
                 by subclass.
         """
         super(CommandSyncer, self).__init__(local_dir, remote_dir)
-        if sync_template and isinstance(sync_template, str):
-            validate_sync_string(sync_template)
+        if not isinstance(sync_template, str):
+            raise ValueError("{} is not a string.".format(sync_template))
+        validate_sync_string(sync_template)
         self._sync_template = sync_template
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync", dir=self._local_dir, suffix=".log", delete=False)
@@ -132,21 +139,12 @@ class CommandSyncer(BaseSyncer):
             if self.sync_process.returncode is None:
                 logger.warning("Last sync is still in progress, skipping.")
                 return
-        sync_template = self.sync_template
-        final_cmd = sync_template.format(
+        final_cmd = self._sync_template.format(
             source=quote(source), target=quote(target))
         logger.debug("Running sync: {}".format(final_cmd))
         self.sync_process = subprocess.Popen(
             final_cmd, shell=True, stdout=self.logfile)
         return True
-
-    @property
-    def sync_template(self):
-        """Template for executing a sync command.
-
-        Can be overwritten by subclass for custom behavior.
-        """
-        return self._sync_template
 
     def close(self):
         self.logfile.close()
@@ -156,7 +154,21 @@ class CommandSyncer(BaseSyncer):
             self.sync_process.wait()
 
 
-def get_syncer(local_dir, remote_dir, sync_function=None):
+def _get_sync_cls(sync_function):
+    if not sync_function:
+        return
+    if isinstance(sync_function, types.FunctionType) or isinstance(
+            sync_function, tune_function):
+        return BaseSyncer
+    elif isinstance(sync_function, str):
+        return CommandSyncer
+    else:
+        raise ValueError(
+            "Sync function {} must be string or function".format(
+                sync_function))
+
+
+def get_syncer(local_dir, remote_dir=None, sync_function=None):
     """This returns a Syncer depending on given args.
 
     Args:
@@ -168,34 +180,63 @@ def get_syncer(local_dir, remote_dir, sync_function=None):
             syncer to run. If not provided, it defaults
             to standard S3 or gsutil sync commands.
         """
-    if not remote_dir:
-        return BaseSyncer(None, None)
+    key = (local_dir, remote_dir)
 
-    if sync_function:
-        if isinstance(sync_function, types.FunctionType) or isinstance(
-                sync_function, tune_function):
-            return BaseSyncer(local_dir, remote_dir, sync_function)
-        elif isinstance(sync_function, str):
-            return CommandSyncer(local_dir, remote_dir, sync_function)
-        else:
-            raise ValueError(
-                "Sync function {} must be string or function".format(
-                    sync_function))
+    if key in _syncers:
+        return _syncers[key]
+
+    if not remote_dir:
+        _syncers[key] = BaseSyncer(local_dir, remote_dir)
+        return _syncers[key]
+
+    sync_cls = _get_sync_cls(sync_function)
+
+    if sync_cls:
+        _syncers[key] = sync_cls(local_dir, remote_dir, sync_function)
+        return _syncers[key]
 
     if remote_dir.startswith(S3_PREFIX):
         if not distutils.spawn.find_executable("aws"):
             raise TuneError(
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX))
-        return CommandSyncer(local_dir, remote_dir,
-                             "aws s3 sync {source} {target}")
+        _syncers[key] = CommandSyncer(
+            local_dir, remote_dir, "aws s3 sync {source} {target}")
     elif remote_dir.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):
             raise TuneError(
                 "Upload uri starting with '{}' requires gsutil tool"
                 " to be installed".format(GS_PREFIX))
-        return CommandSyncer(local_dir, remote_dir,
+        _syncers[key] = CommandSyncer(local_dir, remote_dir,
                              "gsutil rsync -r {source} {target}")
     else:
         raise TuneError("Upload uri must start with one of: {}"
                         "".format(ALLOWED_REMOTE_PREFIXES))
+
+    return _syncers[key]
+
+
+def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
+    key = (local_dir, remote_dir)
+
+    if key in _syncers:
+        return _syncers[key]
+
+    if not remote_dir:
+        _syncers[key] = BaseSyncer(local_dir, remote_dir)
+        return _syncers[key]
+
+    sync_cls = None
+    if sync_function:
+        sync_cls = _get_sync_cls(sync_function)
+    else:
+        sync_cls = CommandSyncer
+        sync_function = log_sync_template()
+
+    class MixedSyncer(NodeSyncMixin, sync_cls):
+        def __init__(self, *args, **kwargs):
+            sync_cls.__init__(self, *args, **kwargs)
+            NodeSyncMixin.__init__(self)
+
+    _syncers[key] = MixedSyncer(local_dir, remote_dir, sync_function)
+    return _syncers[key]

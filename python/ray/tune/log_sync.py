@@ -11,37 +11,42 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
-from ray.tune.syncer import CommandSyncer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 
 logger = logging.getLogger(__name__)
 _log_sync_warned = False
 
-# Map from (local_dir, remote_dir) -> syncer
-_syncers = {}
+
+def log_sync_template():
+    """Syncs the local_dir on driver to worker if possible.
+
+    Requires ray cluster to be started with the autoscaler. Also requires
+    rsync to be installed.
+
+    """
+    if not distutils.spawn.find_executable("rsync"):
+        logger.error("Log sync requires rsync to be installed.")
+        return
+    global _log_sync_warned
+    ssh_key = get_ssh_key()
+    if ssh_key is None:
+        if not _log_sync_warned:
+            logger.error("Log sync requires cluster to be setup with "
+                         "`ray up`.")
+            _log_sync_warned = True
+        return
+
+    return ("""rsync -savz -e "ssh -i {ssh_key} -o ConnectTimeout=120s """
+            """-o StrictHostKeyChecking=no" {{source}} {{target}}"""
+            ).format(ssh_key=quote(ssh_key))
 
 
-def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
-    key = (local_dir, remote_dir)
-    if key not in _syncers:
-        _syncers[key] = LogSyncer(local_dir, remote_dir, sync_function)
-        raise NotImplementedError("Sync_function as func_type is not defined.")
+class NodeSyncMixin():
+    """Mixin for syncing files to/from a remote dir to a local dir."""
 
-    return _syncers[key]
-
-
-def wait_for_log_sync():
-    for syncer in _syncers.values():
-        syncer.wait()
-
-
-class LogSyncer(CommandSyncer):
-    """Syncs files to and from a remote directory to a local directory."""
-
-    def __init__(self, *args, **kwargs):
-        super(LogSyncer, self).__init__(*args, **kwargs)
-
+    def __init__(self):
         # Resolve sync_function into template or function
+        assert hasattr(self, "_remote_dir"), "Mixin not mixed with Syncer."
         self.local_ip = ray.services.get_node_ip_address()
         self.worker_ip = None
 
@@ -60,31 +65,6 @@ class LogSyncer(CommandSyncer):
                     self._local_dir))
             return False
         return True
-
-    @property
-    def sync_template(self):
-        """Syncs the local_dir on driver to worker if possible.
-
-        Requires ray cluster to be started with the autoscaler. Also requires
-        rsync to be installed.
-        """
-        if not self._check_valid_worker_ip():
-            return
-        if not distutils.spawn.find_executable("rsync"):
-            logger.error("Log sync requires rsync to be installed.")
-            return
-        global _log_sync_warned
-        ssh_key = get_ssh_key()
-        if ssh_key is None:
-            if not _log_sync_warned:
-                logger.error("Log sync requires cluster to be setup with "
-                             "`ray up`.")
-                _log_sync_warned = True
-            return
-
-        return ("""rsync -savz -e "ssh -i {ssh_key} -o ConnectTimeout=120s """
-                """-o StrictHostKeyChecking=no" {{source}} {{target}}"""
-                ).format(ssh_key=quote(ssh_key))
 
     @property
     def _remote_path(self):
