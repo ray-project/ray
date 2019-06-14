@@ -13,19 +13,19 @@ public class WorkerJvmOptionsTest extends BaseTest {
 
   @RayRemote
   public static class Echo {
-    String getSuffix() {
+    String getOptions() {
       return System.getProperty("test.suffix");
     }
   }
 
   @Test
-  public void testSuffix() {
+  public void testJvmOptions() {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options = new ActorCreationOptions.Builder()
         .setJvmOptions("-Dtest.suffix=suffix")
         .createActorCreationOptions();
     RayActor<Echo> actor = Ray.createActor(Echo::new, options);
-    RayObject<String> obj = Ray.call(Echo::getSuffix, actor);
+    RayObject<String> obj = Ray.call(Echo::getOptions, actor);
     Assert.assertEquals(obj.get(), "suffix");
   }
 }
