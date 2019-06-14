@@ -17,9 +17,7 @@ class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket)
       : worker_(WorkerType::WORKER, WorkerLanguage::PYTHON, store_socket, raylet_socket,
-                DriverID::FromRandom()) {
-    RAY_CHECK_OK(worker_.Connect());
-  }
+                DriverID::FromRandom()) {}
 
   void Run() {
     auto executor_func = [this](const RayFunction &ray_function,

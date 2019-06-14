@@ -10,7 +10,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     : core_worker_(core_worker) {
   task_receivers.emplace(static_cast<int>(TaskTransportType::RAYLET),
                          std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-                             new CoreWorkerRayletTaskReceiver(core_worker_.ray_client_)));
+                             new CoreWorkerRayletTaskReceiver(core_worker_.raylet_client_)));
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {

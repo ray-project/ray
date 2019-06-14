@@ -70,6 +70,7 @@ class TaskArg {
 
 /// Task specification, which includes the immutable information about the task
 /// which are determined at the submission time.
+/// TODO: this can be removed after everything is moved to protobuf.
 class TaskSpec {
  public:
   TaskSpec(const raylet::TaskSpecification &task_spec,
@@ -95,17 +96,6 @@ class TaskSpec {
 enum class StoreProviderType { PLASMA };
 
 enum class TaskTransportType { RAYLET };
-
-struct RayClient {
-  /// Plasma store client.
-  plasma::PlasmaClient store_client_;
-
-  /// Mutex to protect store_client_.
-  std::mutex store_client_mutex_;
-
-  /// Raylet client.
-  std::unique_ptr<RayletClient> raylet_client_;
-};
 
 }  // namespace ray
 

@@ -14,6 +14,8 @@ namespace ray {
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
+///
+/// Note: the constructor of CoreWorker would throw if a failure happens.
 class CoreWorker {
  public:
   /// Construct a CoreWorker instance.
@@ -23,9 +25,6 @@ class CoreWorker {
   CoreWorker(const WorkerType worker_type, const WorkerLanguage language,
              const std::string &store_socket, const std::string &raylet_socket,
              DriverID driver_id = DriverID::Nil());
-
-  /// Connect to raylet.
-  Status Connect();
 
   /// Type of this worker.
   enum WorkerType WorkerType() const { return worker_type_; }
@@ -67,12 +66,14 @@ class CoreWorker {
   /// Worker context.
   WorkerContext worker_context_;
 
-  /// Ray client (this includes store client, raylet client and potentially gcs client
-  /// later).
-  RayClient ray_client_;
+  /// Plasma store client.
+  plasma::PlasmaClient store_client_;
 
-  /// Whether this worker has been initialized.
-  bool is_initialized_;
+  /// Mutex to protect store_client_.
+  std::mutex store_client_mutex_;
+
+  /// Raylet client.
+  RayletClient raylet_client_;
 
   /// The `CoreWorkerTaskInterface` instance.
   CoreWorkerTaskInterface task_interface_;

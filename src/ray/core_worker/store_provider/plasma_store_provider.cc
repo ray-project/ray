@@ -6,25 +6,30 @@
 
 namespace ray {
 
-CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(RayClient &ray_client)
-    : ray_client_(ray_client) {}
+CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
+    plasma::PlasmaClient &store_client,
+    std::mutex &store_client_mutex,
+    RayletClient &raylet_client)
+    : store_client_(store_client),
+      store_client_mutex_(store_client_mutex),
+      raylet_client_(raylet_client) {}
 
 Status CoreWorkerPlasmaStoreProvider::Put(const Buffer &buffer,
                                           const ObjectID &object_id) {
   auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> data;
   {
-    std::unique_lock<std::mutex> guard(ray_client_.store_client_mutex_);
+    std::unique_lock<std::mutex> guard(store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(
-        ray_client_.store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
+        store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
   }
 
   memcpy(data->mutable_data(), buffer.Data(), buffer.Size());
 
   {
-    std::unique_lock<std::mutex> guard(ray_client_.store_client_mutex_);
-    RAY_ARROW_RETURN_NOT_OK(ray_client_.store_client_.Seal(plasma_id));
-    RAY_ARROW_RETURN_NOT_OK(ray_client_.store_client_.Release(plasma_id));
+    std::unique_lock<std::mutex> guard(store_client_mutex_);
+    RAY_ARROW_RETURN_NOT_OK(store_client_.Seal(plasma_id));
+    RAY_ARROW_RETURN_NOT_OK(store_client_.Release(plasma_id));
   }
   return Status::OK();
 }
@@ -60,7 +65,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(const std::vector<ObjectID> &ids,
 
     // TODO: can call `fetchOrReconstruct` in batches as an optimization.
     RAY_CHECK_OK(
-        ray_client_.raylet_client_->FetchOrReconstruct(unready_ids, fetch_only, task_id));
+        raylet_client_.FetchOrReconstruct(unready_ids, fetch_only, task_id));
 
     // Get the objects from the object store, and parse the result.
     int64_t get_timeout;
@@ -80,9 +85,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(const std::vector<ObjectID> &ids,
 
     std::vector<plasma::ObjectBuffer> object_buffers;
     {
-      std::unique_lock<std::mutex> guard(ray_client_.store_client_mutex_);
+      std::unique_lock<std::mutex> guard(store_client_mutex_);
       auto status =
-          ray_client_.store_client_.Get(plasma_ids, get_timeout, &object_buffers);
+          store_client_.Get(plasma_ids, get_timeout, &object_buffers);
     }
 
     for (size_t i = 0; i < object_buffers.size(); i++) {
@@ -99,7 +104,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(const std::vector<ObjectID> &ids,
   }
 
   if (was_blocked) {
-    RAY_CHECK_OK(ray_client_.raylet_client_->NotifyUnblocked(task_id));
+    RAY_CHECK_OK(raylet_client_.NotifyUnblocked(task_id));
   }
 
   return Status::OK();
@@ -110,7 +115,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
                                            const TaskID &task_id,
                                            std::vector<bool> *results) {
   WaitResultPair result_pair;
-  auto status = ray_client_.raylet_client_->Wait(object_ids, num_objects, timeout_ms,
+  auto status = raylet_client_.Wait(object_ids, num_objects, timeout_ms,
                                                  false, task_id, &result_pair);
   std::unordered_set<ObjectID> ready_ids;
   for (const auto &entry : result_pair.first) {
@@ -130,7 +135,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
 Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
                                              bool local_only,
                                              bool delete_creating_tasks) {
-  return ray_client_.raylet_client_->FreeObjects(object_ids, local_only,
+  return raylet_client_.FreeObjects(object_ids, local_only,
                                                  delete_creating_tasks);
 }
 

@@ -11,7 +11,8 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(CoreWorker &core_worker)
   store_providers_.emplace(
       static_cast<int>(StoreProviderType::PLASMA),
       std::unique_ptr<CoreWorkerStoreProvider>(
-          new CoreWorkerPlasmaStoreProvider(core_worker_.ray_client_)));
+          new CoreWorkerPlasmaStoreProvider(core_worker_.store_client_,
+          core_worker_.store_client_mutex_, core_worker_.raylet_client_)));
 }
 
 Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id) {

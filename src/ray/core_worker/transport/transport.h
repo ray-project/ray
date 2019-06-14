@@ -19,10 +19,9 @@ namespace ray {
 /// for the methods. The actual task submitter/receiver can submit/get tasks via raylet,
 /// or directly to/from another worker.
 
+/// This class is responsible to submit tasks.
 class CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerTaskSubmitter() {}
-
   /// Submit a task for execution.
   ///
   /// \param[in] task The task spec to submit.
@@ -30,10 +29,9 @@ class CoreWorkerTaskSubmitter {
   virtual Status SubmitTask(const TaskSpec &task) = 0;
 };
 
+/// This class receives tasks for execution.
 class CoreWorkerTaskReceiver {
  public:
-  CoreWorkerTaskReceiver() {}
-
   // Get tasks for execution.
   virtual Status GetTasks(std::vector<TaskSpec> *tasks) = 0;
 };
