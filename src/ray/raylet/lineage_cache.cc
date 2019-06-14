@@ -221,6 +221,20 @@ bool LineageCache::CommitTask(const Task &task) {
   }
 }
 
+void LineageCache::FlushAllUncommittedTasks() {
+  size_t num_flushed = 0;
+  for (const auto &entry : lineage_.GetEntries()) {
+    // Flush all tasks that have not yet committed.
+    if (entry.second.GetStatus() == GcsStatus::UNCOMMITTED) {
+      RAY_CHECK(UnsubscribeTask(entry.first));
+      FlushTask(entry.first);
+      num_flushed++;
+    }
+  }
+
+  RAY_LOG(DEBUG) << "Flushed " << num_flushed << " uncommitted tasks";
+}
+
 void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id) {
   RAY_CHECK(!node_id.IsNil());
   auto entry = lineage_.GetEntryMutable(task_id);
@@ -276,10 +290,9 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   RAY_CHECK(entry);
   RAY_CHECK(entry->GetStatus() < GcsStatus::COMMITTING);
 
-  gcs::raylet::TaskTable::WriteCallback task_callback = [this](
-      ray::gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
-    HandleEntryCommitted(id);
-  };
+  gcs::raylet::TaskTable::WriteCallback task_callback =
+      [this](ray::gcs::AsyncGcsClient *client, const TaskID &id,
+             const protocol::TaskT &data) { HandleEntryCommitted(id); };
   auto task = lineage_.GetEntry(task_id);
   // TODO(swang): Make this better...
   flatbuffers::FlatBufferBuilder fbb;

@@ -674,8 +674,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
 
 void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT &data) {
   auto connected_client_id = ClientID::FromBinary(data.client_id);
-  RAY_CHECK(client_id_ == connected_client_id) << connected_client_id << " "
-                                               << client_id_;
+  RAY_CHECK(client_id_ == connected_client_id)
+      << connected_client_id << " " << client_id_;
 }
 
 const ClientID &ClientTable::GetLocalClientId() const { return client_id_; }
@@ -704,8 +704,8 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
 
     // Callback for a notification from the client table.
     auto notification_callback = [this](
-        AsyncGcsClient *client, const UniqueID &log_key,
-        const std::vector<ClientTableDataT> &notifications) {
+                                     AsyncGcsClient *client, const UniqueID &log_key,
+                                     const std::vector<ClientTableDataT> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
       std::unordered_map<std::string, ClientTableDataT> connected_nodes;
       std::unordered_map<std::string, ClientTableDataT> disconnected_nodes;
@@ -797,8 +797,8 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id) {
   auto lookup_callback = [this, checkpoint_id, driver_id, actor_id](
-      ray::gcs::AsyncGcsClient *client, const UniqueID &id,
-      const ActorCheckpointIdDataT &data) {
+                             ray::gcs::AsyncGcsClient *client, const UniqueID &id,
+                             const ActorCheckpointIdDataT &data) {
     std::shared_ptr<ActorCheckpointIdDataT> copy =
         std::make_shared<ActorCheckpointIdDataT>(data);
     copy->timestamps.push_back(current_sys_time_ms());
@@ -817,7 +817,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
     RAY_CHECK_OK(Add(driver_id, actor_id, copy, nullptr));
   };
   auto failure_callback = [this, checkpoint_id, driver_id, actor_id](
-      ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
+                              ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
     std::shared_ptr<ActorCheckpointIdDataT> data =
         std::make_shared<ActorCheckpointIdDataT>();
     data->actor_id = id.Binary();

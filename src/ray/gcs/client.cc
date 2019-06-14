@@ -23,8 +23,8 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> &addr
   }
   RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
       << "No entry found for NumRedisShards";
-  RAY_CHECK(reply->type == REDIS_REPLY_STRING) << "Expected string, found Redis type "
-                                               << reply->type << " for NumRedisShards";
+  RAY_CHECK(reply->type == REDIS_REPLY_STRING)
+      << "Expected string, found Redis type " << reply->type << " for NumRedisShards";
   int num_redis_shards = atoi(reply->str);
   RAY_CHECK(num_redis_shards >= 1) << "Expected at least one Redis shard, "
                                    << "found " << num_redis_shards;
