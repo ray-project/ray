@@ -1754,7 +1754,7 @@ def test_multi_resource_constraints(shutdown_only):
     def g(n):
         time.sleep(n)
 
-    time_buffer = 0.5
+    time_buffer = 2
 
     start_time = time.time()
     ray.get([f.remote(0.5), g.remote(0.5)])
@@ -1878,12 +1878,22 @@ def test_gpu_ids(shutdown_only):
 def test_zero_cpus(shutdown_only):
     ray.init(num_cpus=0)
 
+    # We should be able to execute a task that requires 0 CPU resources.
     @ray.remote(num_cpus=0)
     def f():
         return 1
 
-    # The task should be able to execute.
     ray.get(f.remote())
+
+    # We should be able to create an actor that requires 0 CPU resources.
+    @ray.remote(num_cpus=0)
+    class Actor(object):
+        def method(self):
+            pass
+
+    a = Actor.remote()
+    x = a.method.remote()
+    ray.get(x)
 
 
 def test_zero_cpus_actor(ray_start_cluster):

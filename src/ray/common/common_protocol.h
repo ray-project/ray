@@ -5,7 +5,7 @@
 
 #include <unordered_map>
 
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/util/logging.h"
 
 /// Convert an unique ID to a flatbuffer string.

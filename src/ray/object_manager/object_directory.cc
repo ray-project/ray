@@ -11,16 +11,16 @@ namespace {
 /// Process a notification of the object table entries and store the result in
 /// client_ids. This assumes that client_ids already contains the result of the
 /// object table entries up to but not including this notification.
-void UpdateObjectLocations(const GcsTableNotificationMode notification_mode,
+void UpdateObjectLocations(const GcsChangeMode change_mode,
                            const std::vector<ObjectTableDataT> &location_updates,
                            const ray::gcs::ClientTable &client_table,
                            std::unordered_set<ClientID> *client_ids) {
   // location_updates contains the updates of locations of the object.
-  // with GcsTableNotificationMode, we can determine whether the update mode is
+  // with GcsChangeMode, we can determine whether the update mode is
   // addition or deletion.
   for (const auto &object_table_data : location_updates) {
     ClientID client_id = ClientID::FromBinary(object_table_data.manager);
-    if (notification_mode != GcsTableNotificationMode::REMOVE) {
+    if (change_mode != GcsChangeMode::REMOVE) {
       client_ids->insert(client_id);
     } else {
       client_ids->erase(client_id);
@@ -39,37 +39,36 @@ void UpdateObjectLocations(const GcsTableNotificationMode notification_mode,
 }  // namespace
 
 void ObjectDirectory::RegisterBackend() {
-  auto object_notification_callback = [this](
-      gcs::AsyncGcsClient *client, const ObjectID &object_id,
-      const GcsTableNotificationMode notification_mode,
-      const std::vector<ObjectTableDataT> &location_updates) {
-    // Objects are added to this map in SubscribeObjectLocations.
-    auto it = listeners_.find(object_id);
-    // Do nothing for objects we are not listening for.
-    if (it == listeners_.end()) {
-      return;
-    }
+  auto object_notification_callback =
+      [this](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+             const GcsChangeMode change_mode,
+             const std::vector<ObjectTableDataT> &location_updates) {
+        // Objects are added to this map in SubscribeObjectLocations.
+        auto it = listeners_.find(object_id);
+        // Do nothing for objects we are not listening for.
+        if (it == listeners_.end()) {
+          return;
+        }
 
-    // Once this flag is set to true, it should never go back to false.
-    it->second.subscribed = true;
+        // Once this flag is set to true, it should never go back to false.
+        it->second.subscribed = true;
 
-    // Update entries for this object.
-    UpdateObjectLocations(notification_mode, location_updates,
-                          gcs_client_->client_table(),
-                          &it->second.current_object_locations);
-    // Copy the callbacks so that the callbacks can unsubscribe without interrupting
-    // looping over the callbacks.
-    auto callbacks = it->second.callbacks;
-    // Call all callbacks associated with the object id locations we have
-    // received.  This notifies the client even if the list of locations is
-    // empty, since this may indicate that the objects have been evicted from
-    // all nodes.
-    for (const auto &callback_pair : callbacks) {
-      // It is safe to call the callback directly since this is already running
-      // in the subscription callback stack.
-      callback_pair.second(object_id, it->second.current_object_locations);
-    }
-  };
+        // Update entries for this object.
+        UpdateObjectLocations(change_mode, location_updates, gcs_client_->client_table(),
+                              &it->second.current_object_locations);
+        // Copy the callbacks so that the callbacks can unsubscribe without interrupting
+        // looping over the callbacks.
+        auto callbacks = it->second.callbacks;
+        // Call all callbacks associated with the object id locations we have
+        // received.  This notifies the client even if the list of locations is
+        // empty, since this may indicate that the objects have been evicted from
+        // all nodes.
+        for (const auto &callback_pair : callbacks) {
+          // It is safe to call the callback directly since this is already running
+          // in the subscription callback stack.
+          callback_pair.second(object_id, it->second.current_object_locations);
+        }
+      };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
       DriverID::Nil(), gcs_client_->client_table().GetLocalClientId(),
       object_notification_callback, nullptr));
@@ -135,8 +134,7 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
     if (listener.second.current_object_locations.count(client_id) > 0) {
       // If the subscribed object has the removed client as a location, update
       // its locations with an empty update so that the location will be removed.
-      UpdateObjectLocations(GcsTableNotificationMode::APPEND_OR_ADD, {},
-                            gcs_client_->client_table(),
+      UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, {}, gcs_client_->client_table(),
                             &listener.second.current_object_locations);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
@@ -213,7 +211,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                          const std::vector<ObjectTableDataT> &location_updates) {
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
-          UpdateObjectLocations(GcsTableNotificationMode::APPEND_OR_ADD, location_updates,
+          UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, location_updates,
                                 gcs_client_->client_table(), &client_ids);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.

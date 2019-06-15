@@ -1,15 +1,17 @@
 #ifndef RAY_CORE_WORKER_OBJECT_INTERFACE_H
 #define RAY_CORE_WORKER_OBJECT_INTERFACE_H
 
-#include "common.h"
 #include "plasma/client.h"
 #include "ray/common/buffer.h"
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
+#include "ray/core_worker/common.h"
+#include "ray/core_worker/store_provider/store_provider.h"
 
 namespace ray {
 
 class CoreWorker;
+class CoreWorkerStoreProvider;
 
 /// The interface that contains all `CoreWorker` methods that are related to object store.
 class CoreWorkerObjectInterface {
@@ -22,6 +24,13 @@ class CoreWorkerObjectInterface {
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
   Status Put(const Buffer &buffer, ObjectID *object_id);
+
+  /// Put an object with specified ID into object store.
+  ///
+  /// \param[in] buffer Data buffer of the object.
+  /// \param[in] object_id Object ID specified by user.
+  /// \return Status.
+  Status Put(const Buffer &buffer, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///
@@ -55,6 +64,9 @@ class CoreWorkerObjectInterface {
  private:
   /// Reference to the parent CoreWorker instance.
   CoreWorker &core_worker_;
+
+  /// All the store providers supported.
+  std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;
 };
 
 }  // namespace ray

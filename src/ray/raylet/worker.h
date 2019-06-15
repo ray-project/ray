@@ -4,7 +4,7 @@
 #include <memory>
 
 #include "ray/common/client_connection.h"
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/raylet/scheduling_resources.h"
 
 namespace ray {

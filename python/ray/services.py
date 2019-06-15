@@ -1194,6 +1194,7 @@ def start_raylet(redis_address,
         "--java_worker_command={}".format(java_worker_command),
         "--redis_password={}".format(redis_password or ""),
         "--temp_dir={}".format(temp_dir),
+        "--session_dir={}".format(session_dir),
     ]
     process_info = start_ray_process(
         command,

@@ -34,7 +34,7 @@ def check_id(b, size=kUniqueIDSize):
                          str(size))
 
 
-cdef extern from "ray/constants.h" nogil:
+cdef extern from "ray/common/constants.h" nogil:
     cdef int64_t kUniqueIDSize
     cdef int64_t kMaxTaskPuts
 
@@ -109,7 +109,7 @@ cdef class UniqueID(BaseID):
     def nil(cls):
         return cls(CUniqueID.Nil().Binary())
 
-    
+
     @classmethod
     def from_random(cls):
         return cls(os.urandom(CUniqueID.Size()))
@@ -122,7 +122,7 @@ cdef class UniqueID(BaseID):
 
     def hex(self):
         return decode(self.data.Hex())
-    
+
     def is_nil(self):
         return self.data.IsNil()
 
@@ -148,7 +148,7 @@ cdef class ObjectID(BaseID):
 
     def hex(self):
         return decode(self.data.Hex())
-    
+
     def is_nil(self):
         return self.data.IsNil()
 
