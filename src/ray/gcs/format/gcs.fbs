@@ -107,9 +107,9 @@ table TaskInfo {
   // For a Java function, it should be: [class_name, method_name, type_descriptor]
   function_descriptor: [string];
   // The prefix string for worker starting. This is only used for actor creating tasks.
-  worker_starting_prefix: string;
+  worker_command_prefix: string;
   // The suffix string for worker starting.
-  worker_starting_suffix: string;
+  worker_command_suffix: string;
 }
 
 table ResourcePair {

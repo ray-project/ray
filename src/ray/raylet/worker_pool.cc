@@ -120,8 +120,8 @@ void WorkerPool::StartWorkerProcess(const Language &language,
   std::string prefix = "";
   std::string suffix = "";
   if (task_spec != nullptr && task_spec->IsActorCreationTask()) {
-    prefix = task_spec->WorkerStartingPrefix();
-    suffix = task_spec->WorkerStartingSuffix();
+    prefix = task_spec->WorkerCommandPrefix();
+    suffix = task_spec->WorkerCommandSuffix();
   }
 
   // Extract pointers from the worker command to pass into execvp.
@@ -258,8 +258,8 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   std::shared_ptr<Worker> worker = nullptr;
   if (task_spec.IsActorCreationTask()) {
     // code path of actor creation task.
-    if (task_spec.WorkerStartingPrefix().empty() &&
-        task_spec.WorkerStartingSuffix().empty()) {
+    if (task_spec.WorkerCommandPrefix().empty() &&
+        task_spec.WorkerCommandSuffix().empty()) {
       // There is no prefix and suffix of command. Pop a worker from idle worker pool of
       // non-actor.
       if (!state.idle.empty()) {

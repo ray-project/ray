@@ -81,7 +81,7 @@ TaskSpecification::TaskSpecification(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const Language &language, const std::vector<std::string> &function_descriptor,
-    const std::string &worker_starting_prefix, const std::string &worker_starting_suffix)
+    const std::string &worker_command_prefix, const std::string &worker_command_suffix)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
@@ -103,8 +103,8 @@ TaskSpecification::TaskSpecification(
       map_to_flatbuf(fbb, required_resources),
       map_to_flatbuf(fbb, required_placement_resources), language,
       string_vec_to_flatbuf(fbb, function_descriptor),
-      fbb.CreateString(worker_starting_prefix.c_str(), worker_starting_prefix.size()),
-      fbb.CreateString(worker_starting_suffix.c_str(), worker_starting_suffix.size()));
+      fbb.CreateString(worker_command_prefix.c_str(), worker_command_prefix.size()),
+      fbb.CreateString(worker_command_suffix.c_str(), worker_command_suffix.size()));
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -261,14 +261,14 @@ std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
   return ids_from_flatbuf<ActorHandleID>(*message->new_actor_handles());
 }
 
-std::string TaskSpecification::WorkerStartingPrefix() const {
+std::string TaskSpecification::WorkerCommandPrefix() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return string_from_flatbuf(*message->worker_starting_prefix());
+  return string_from_flatbuf(*message->worker_command_prefix());
 }
 
-std::string TaskSpecification::WorkerStartingSuffix() const {
+std::string TaskSpecification::WorkerCommandSuffix() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return string_from_flatbuf(*message->worker_starting_suffix());
+  return string_from_flatbuf(*message->worker_command_suffix());
 }
 
 }  // namespace raylet

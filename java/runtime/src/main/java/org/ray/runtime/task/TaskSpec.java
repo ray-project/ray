@@ -63,9 +63,9 @@ public class TaskSpec {
   // Language of this task.
   public final TaskLanguage language;
 
-  public final String workerStartingPrefix;
+  public final String workerCommandPrefix;
 
-  public final String workerStartingSuffix;
+  public final String workerCommandSuffix;
 
   // Descriptor of the remote function.
   // Note, if task language is Java, the type is JavaFunctionDescriptor. If the task language
@@ -98,8 +98,8 @@ public class TaskSpec {
       Map<String, Double> resources,
       TaskLanguage language,
       FunctionDescriptor functionDescriptor,
-      String workerStartingPrefix,
-      String workerStartingSuffix) {
+      String workerCommandPrefix,
+      String workerCommandSuffix) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
@@ -112,8 +112,8 @@ public class TaskSpec {
     this.newActorHandles = newActorHandles;
     this.args = args;
     this.numReturns = numReturns;
-    this.workerStartingPrefix = workerStartingPrefix;
-    this.workerStartingSuffix = workerStartingSuffix;
+    this.workerCommandPrefix = workerCommandPrefix;
+    this.workerCommandSuffix = workerCommandSuffix;
     returnIds = new ObjectId[numReturns];
     for (int i = 0; i < numReturns; ++i) {
       returnIds[i] = IdUtil.computeReturnId(taskId, i + 1);
@@ -165,8 +165,8 @@ public class TaskSpec {
         ", resources=" + resources +
         ", language=" + language +
         ", functionDescriptor=" + functionDescriptor +
-        ", workerStartingPrefix=" + workerStartingPrefix +
-        ", workerStartingSuffix=" + workerStartingSuffix +
+        ", workerCommandPrefix=" + workerCommandPrefix +
+        ", workerCommandSuffix=" + workerCommandSuffix +
         ", executionDependencies=" + executionDependencies +
         '}';
   }

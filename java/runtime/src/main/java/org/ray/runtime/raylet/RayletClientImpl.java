@@ -193,7 +193,7 @@ public class RayletClientImpl implements RayletClient {
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
         maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
         args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor,
-        info.workerStartingPrefix(), info.workerStartingSuffix());
+        info.workerCommandPrefix(), info.workerCommandSuffix());
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -276,8 +276,8 @@ public class RayletClientImpl implements RayletClient {
       functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
     }
 
-    final int workerStartingPrefixOffset = fbb.createString(task.workerStartingPrefix);
-    final int workerStartingSuffixOffset = fbb.createString(task.workerStartingSuffix);
+    final int workerCommandPrefixOffset = fbb.createString(task.workerCommandPrefix);
+    final int workerCommandSuffixOffset = fbb.createString(task.workerCommandSuffix);
 
     int root = TaskInfo.createTaskInfo(
         fbb,
@@ -298,8 +298,8 @@ public class RayletClientImpl implements RayletClient {
         requiredPlacementResourcesOffset,
         language,
         functionDescriptorOffset,
-        workerStartingPrefixOffset,
-        workerStartingSuffixOffset);
+        workerCommandPrefixOffset,
+        workerCommandSuffixOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
 
