@@ -1,9 +1,9 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/raylet/worker_pool.h"
-#include "ray/common/constants.h"
 
 namespace ray {
 
@@ -18,8 +18,10 @@ class WorkerPoolMock : public WorkerPool {
       : WorkerPoolMock({{Language::PYTHON, {"dummy_py_worker_command"}},
                         {Language::JAVA, {"dummy_java_worker_command"}}}) {}
 
-  explicit WorkerPoolMock(const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
-      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY, worker_commands),
+  explicit WorkerPoolMock(
+      const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
+      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY,
+                   worker_commands),
         last_worker_pid_(0) {}
 
   ~WorkerPoolMock() {
@@ -81,7 +83,8 @@ class WorkerPoolTest : public ::testing::Test {
     return std::shared_ptr<Worker>(new Worker(pid, language, client));
   }
 
-  void SetWorkerCommands(const std::unordered_map<Language, std::vector<std::string>> &worker_commands) {
+  void SetWorkerCommands(
+      const std::unordered_map<Language, std::vector<std::string>> &worker_commands) {
     WorkerPoolMock worker_pool(worker_commands);
     this->worker_pool_ = std::move(worker_pool);
   }
@@ -97,8 +100,7 @@ class WorkerPoolTest : public ::testing::Test {
 };
 
 static inline TaskSpecification ExampleTaskSpec(
-    const ActorID actor_id = ActorID::Nil(),
-    const Language &language = Language::PYTHON,
+    const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
     const ActorID actor_creation_id = ActorID::Nil()) {
   std::vector<std::string> function_descriptor(3);
   return TaskSpecification(DriverID::Nil(), TaskID::Nil(), 0, actor_creation_id,
@@ -213,15 +215,18 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
 }
 
 TEST_F(WorkerPoolTest, StartWorkerWithPrefixAndSuffix) {
-  SetWorkerCommands({
-      {Language::PYTHON, {"dummy_py_worker_command"}},
-      {Language::JAVA, {kPrefixPlaceholder, "dummy_java_worker_command", kSuffixPlaceholder}}});
+  SetWorkerCommands(
+      {{Language::PYTHON, {"dummy_py_worker_command"}},
+       {Language::JAVA,
+        {kPrefixPlaceholder, "dummy_java_worker_command", kSuffixPlaceholder}}});
 
   TaskSpecification task_spec(DriverID::Nil(), TaskID::Nil(), 0, ActorID::FromRandom(),
-                    ObjectID::Nil(), 0, ActorID::Nil(), ActorHandleID::Nil(), 0, {}, {},
-                    0, {}, {}, Language::JAVA, {"", "", ""}, "test_prefix", "test_suffix");
+                              ObjectID::Nil(), 0, ActorID::Nil(), ActorHandleID::Nil(), 0,
+                              {}, {}, 0, {}, {}, Language::JAVA, {"", "", ""},
+                              "test_prefix", "test_suffix");
   worker_pool_.StartWorkerProcess(Language::JAVA, &task_spec);
-  const auto real_command = worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
+  const auto real_command =
+      worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
   ASSERT_EQ(3, real_command.size());
   ASSERT_EQ(std::string("test_prefix"), std::string(real_command[0]));
   ASSERT_EQ("dummy_java_worker_command", real_command[1]);

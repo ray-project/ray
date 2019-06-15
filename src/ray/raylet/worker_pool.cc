@@ -5,11 +5,11 @@
 #include <algorithm>
 #include <thread>
 
+#include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
-#include "ray/common/constants.h"
 
 namespace {
 
@@ -135,7 +135,7 @@ void WorkerPool::StartWorkerProcess(const Language &language,
       if (!suffix.empty()) {
         worker_command_args.push_back(suffix.c_str());
       }
-    }else {
+    } else {
       worker_command_args.push_back(token.c_str());
     }
   }
@@ -152,8 +152,9 @@ void WorkerPool::StartWorkerProcess(const Language &language,
     state.starting_worker_processes.emplace(
         std::make_pair(pid, num_workers_per_process_));
     if (!prefix.empty() || !suffix.empty()) {
-      RAY_CHECK(task_spec != nullptr) << "task_spec should not be nullptr "
-          "since we specified prefix or suffix for worker command";
+      RAY_CHECK(task_spec != nullptr)
+          << "task_spec should not be nullptr "
+             "since we specified prefix or suffix for worker command";
       state.starting_dedicated_worker_processes[pid] = task_spec->TaskId();
     }
     return;
@@ -352,7 +353,8 @@ std::string WorkerPool::WarningAboutSize() {
   return warning_message.str();
 }
 
-bool WorkerPool::PendingRegistrationForTask(const Language &language, const TaskID &task_id) {
+bool WorkerPool::PendingRegistrationForTask(const Language &language,
+                                            const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
   for (const auto &item : state.starting_dedicated_worker_processes) {
     if (item.second == task_id) {
