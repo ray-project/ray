@@ -48,8 +48,8 @@ void Monitor::Tick() {
         auto client_id = it->first;
         RAY_LOG(WARNING) << "Client timed out: " << client_id;
         auto lookup_callback = [this, client_id](
-            gcs::AsyncGcsClient *client, const ClientID &id,
-            const std::vector<ClientTableDataT> &all_data) {
+                                   gcs::AsyncGcsClient *client, const ClientID &id,
+                                   const std::vector<ClientTableDataT> &all_data) {
           bool marked = false;
           for (const auto &data : all_data) {
             if (client_id.Binary() == data.client_id &&

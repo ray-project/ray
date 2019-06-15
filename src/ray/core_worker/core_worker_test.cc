@@ -128,8 +128,6 @@ class CoreWorkerTest : public ::testing::Test {
                       raylet_store_socket_names_[0], raylet_socket_names_[0],
                       DriverID::FromRandom());
 
-    RAY_CHECK_OK(driver.Connect());
-
     // Test pass by value.
     {
       uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -187,7 +185,6 @@ class CoreWorkerTest : public ::testing::Test {
     CoreWorker driver(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                       raylet_store_socket_names_[0], raylet_socket_names_[0],
                       DriverID::FromRandom());
-    RAY_CHECK_OK(driver.Connect());
 
     std::unique_ptr<ActorHandle> actor_handle;
 
@@ -277,13 +274,6 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
   ASSERT_EQ(*data, *buffer);
 }
 
-TEST_F(ZeroNodeTest, TestAttributeGetters) {
-  CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON, "", "",
-                         DriverID::FromRandom());
-  ASSERT_EQ(core_worker.WorkerType(), WorkerType::DRIVER);
-  ASSERT_EQ(core_worker.Language(), WorkerLanguage::PYTHON);
-}
-
 TEST_F(ZeroNodeTest, TestWorkerContext) {
   auto driver_id = DriverID::FromRandom();
 
@@ -313,7 +303,6 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
                          DriverID::FromRandom());
-  RAY_CHECK_OK(core_worker.Connect());
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -370,12 +359,10 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   CoreWorker worker1(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                      raylet_store_socket_names_[0], raylet_socket_names_[0],
                      DriverID::FromRandom());
-  RAY_CHECK_OK(worker1.Connect());
 
   CoreWorker worker2(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                      raylet_store_socket_names_[1], raylet_socket_names_[1],
                      DriverID::FromRandom());
-  RAY_CHECK_OK(worker2.Connect());
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -454,6 +441,15 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
   TestActorTask(resources);
+}
+
+TEST_F(SingleNodeTest, TestCoreWorkerConstructorFailure) {
+  try {
+    CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON, "",
+                           raylet_socket_names_[0], DriverID::FromRandom());
+  } catch (const std::exception &e) {
+    std::cout << "Caught exception when constructing core worker: " << e.what();
+  }
 }
 
 }  // namespace ray

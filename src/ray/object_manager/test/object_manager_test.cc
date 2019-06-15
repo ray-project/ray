@@ -64,11 +64,11 @@ class MockServer {
   void HandleAcceptObjectManager(const boost::system::error_code &error) {
     ClientHandler<boost::asio::ip::tcp> client_handler =
         [this](TcpClientConnection &client) { object_manager_.ProcessNewClient(client); };
-    MessageHandler<boost::asio::ip::tcp> message_handler = [this](
-        std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-        const uint8_t *message) {
-      object_manager_.ProcessClientMessage(client, message_type, message);
-    };
+    MessageHandler<boost::asio::ip::tcp> message_handler =
+        [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
+               const uint8_t *message) {
+          object_manager_.ProcessClientMessage(client, message_type, message);
+        };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
         client_handler, message_handler, std::move(object_manager_socket_),
@@ -219,16 +219,17 @@ class TestObjectManager : public TestObjectManagerBase {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback([this](
-        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-      ClientID parsed_id = ClientID::FromBinary(data.client_id);
-      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-        num_connected_clients += 1;
-      }
-      if (num_connected_clients == 2) {
-        StartTests();
-      }
-    });
+    gcs_client_1->client_table().RegisterClientAddedCallback(
+        [this](gcs::AsyncGcsClient *client, const ClientID &id,
+               const ClientTableDataT &data) {
+          ClientID parsed_id = ClientID::FromBinary(data.client_id);
+          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+            num_connected_clients += 1;
+          }
+          if (num_connected_clients == 2) {
+            StartTests();
+          }
+        });
   }
 
   void StartTests() {
@@ -291,9 +292,10 @@ class TestObjectManager : public TestObjectManagerBase {
     UniqueID sub_id = ray::UniqueID::FromRandom();
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
-        sub_id, object_1, [this, sub_id, object_1, object_2](
-                              const ray::ObjectID &object_id,
-                              const std::unordered_set<ray::ClientID> &clients) {
+        sub_id, object_1,
+        [this, sub_id, object_1, object_2](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }
