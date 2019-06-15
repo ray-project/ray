@@ -2456,12 +2456,6 @@ def test_global_state_api(shutdown_only):
     assert len(client_table) == 1
     assert client_table[0]["NodeManagerAddress"] == node_ip_address
 
-    driver_table = ray.drivers()
-
-    assert len(driver_table) == 1
-    assert driver_table[0]["DriverID"] == driver_id
-    assert driver_table[0]["NodeManagerAddress"] == node_ip_address
-
     @ray.remote
     def f(*xs):
         return 1
@@ -2507,6 +2501,12 @@ def test_global_state_api(shutdown_only):
     assert object_table[x_id] == ray.objects(x_id)
     object_table_entry = ray.objects(result_id)
     assert object_table[result_id] == object_table_entry
+
+    driver_table = ray.drivers()
+
+    assert len(driver_table) == 1
+    assert driver_table[0]["DriverID"] == driver_id
+    assert driver_table[0]["NodeManagerAddress"] == node_ip_address
 
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
