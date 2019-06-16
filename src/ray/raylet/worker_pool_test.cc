@@ -215,11 +215,10 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
 }
 
 TEST_F(WorkerPoolTest, StartWorkerWithPrefixAndSuffix) {
-  const std::vector<std::string> java_worker_command
-      = {kPrefixPlaceholder, "dummy_java_worker_command", kSuffixPlaceholder};
-  SetWorkerCommands(
-      {{Language::PYTHON, {"dummy_py_worker_command"}},
-       {Language::JAVA, java_worker_command}});
+  const std::vector<std::string> java_worker_command = {
+      kPrefixPlaceholder, "dummy_java_worker_command", kSuffixPlaceholder};
+  SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
+                     {Language::JAVA, java_worker_command}});
 
   TaskSpecification task_spec(DriverID::Nil(), TaskID::Nil(), 0, ActorID::FromRandom(),
                               ObjectID::Nil(), 0, ActorID::Nil(), ActorHandleID::Nil(), 0,
