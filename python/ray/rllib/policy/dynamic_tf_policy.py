@@ -156,7 +156,7 @@ class DynamicTFPolicy(TFPolicy):
                 tf.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
                 for s in self.model.get_initial_state()
             ]
-        (self.model_out, self.feature_out, self.state_out) = self.model(
+        self.model_out, self.state_out = self.model(
             self.input_dict, self.state_in, self.seq_lens)
 
         # Setup action sampler

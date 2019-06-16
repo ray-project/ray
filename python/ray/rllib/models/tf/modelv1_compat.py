@@ -39,6 +39,12 @@ class ModelV1Wrapper(TFModelV2):
         else:
             self.initial_state = []
 
+        # Tracks branches created so far
+        self.branches_created = set()
+
+        with tf.variable_scope(self.name) as scope:
+            self.variable_scope = scope
+
     @override(ModelV2)
     def get_initial_state(self):
         return self.initial_state
@@ -59,43 +65,11 @@ class ModelV1Wrapper(TFModelV2):
                     self.output_spec.size, self.model_config, state, seq_lens)
         self.cur_instance = new_instance
         self.variable_scope = new_instance.scope
-        return (new_instance.outputs, new_instance.last_layer,
-                new_instance.state_out)
+        return new_instance.outputs, new_instance.state_out
 
-    @override(TFModelV2)
-    def _get_branch_fallback(self,
-                             branch_type,
-                             reuse,
-                             output_spec=None,
-                             feature_layer=None,
-                             default_impl=None):
-        assert self.cur_instance, "must call forward first"
-
-        # Simple case: sharing the feature layer
-        if feature_layer is not None:
-            return linear(feature_layer, output_spec.size, branch_type,
-                          normc_initializer(1.0))
-
-        # Create a new separate model with no RNN state, etc.
-        branch_model_config = self.model_config.copy()
-        branch_model_config["free_log_std"] = False
-        if branch_model_config["use_lstm"]:
-            branch_model_config["use_lstm"] = False
-            logger.warning(
-                "It is not recommended to use a LSTM model with "
-                "vf_share_layers=False (consider setting it to True). "
-                "If you want to not share layers, you can implement "
-                "a custom LSTM model that overrides the "
-                "value_function() method.")
-        branch_instance = self.legacy_model_cls(
-            self.cur_instance.input_dict,
-            self.obs_space,
-            self.action_space,
-            output_spec.size,
-            branch_model_config,
-            state_in=None,
-            seq_lens=None)
-        return branch_instance.outputs
+    @override(ModelV2)
+    def variables(self):
+        return _scope_vars(self.variable_scope)
 
     @override(ModelV2)
     def custom_loss(self, policy_loss, loss_inputs):
@@ -104,3 +78,72 @@ class ModelV1Wrapper(TFModelV2):
     @override(ModelV2)
     def metrics(self):
         return self.cur_instance.custom_stats()
+
+    def branch_variable_scope(self, branch_type):
+        if branch_type in self.branches_created:
+            reuse = True
+        else:
+            self.branches_created.add(branch_type)
+            reuse = tf.AUTO_REUSE
+
+        with tf.variable_scope(self.variable_scope):
+            return tf.variable_scope(branch_type, reuse=reuse)
+
+#    @override(TFModelV2)
+#    def _get_branch_fallback(self,
+#                             branch_type,
+#                             reuse,
+#                             output_spec=None,
+#                             feature_layer=None,
+#                             default_impl=None):
+#        assert self.cur_instance, "must call forward first"
+#
+#        # Simple case: sharing the feature layer
+#        if feature_layer is not None:
+#            return linear(feature_layer, output_spec.size, branch_type,
+#                          normc_initializer(1.0))
+#
+#        # Create a new separate model with no RNN state, etc.
+#        branch_model_config = self.model_config.copy()
+#        branch_model_config["free_log_std"] = False
+#        if branch_model_config["use_lstm"]:
+#            branch_model_config["use_lstm"] = False
+#            logger.warning(
+#                "It is not recommended to use a LSTM model with "
+#                "vf_share_layers=False (consider setting it to True). "
+#                "If you want to not share layers, you can implement "
+#                "a custom LSTM model that overrides the "
+#                "value_function() method.")
+#        branch_instance = self.legacy_model_cls(
+#            self.cur_instance.input_dict,
+#            self.obs_space,
+#            self.action_space,
+#            output_spec.size,
+#            branch_model_config,
+#            state_in=None,
+#            seq_lens=None)
+#        return branch_instance.outputs
+
+
+def _scope_vars(scope, trainable_only=False):
+    """
+    Get variables inside a scope
+    The scope can be specified as a string
+
+    Parameters
+    ----------
+    scope: str or VariableScope
+      scope in which the variables reside.
+    trainable_only: bool
+      whether or not to return only the variables that were marked as
+      trainable.
+
+    Returns
+    -------
+    vars: [tf.Variable]
+      list of variables in `scope`.
+    """
+    return tf.get_collection(
+        tf.GraphKeys.TRAINABLE_VARIABLES
+        if trainable_only else tf.GraphKeys.VARIABLES,
+        scope=scope if isinstance(scope, str) else scope.name)

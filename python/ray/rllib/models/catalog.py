@@ -22,6 +22,7 @@ from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils import try_import_tf
 
@@ -204,7 +205,8 @@ class ModelCatalog(object):
                      num_outputs,
                      model_config,
                      framework="tf",
-                     name=None):
+                     name=None,
+                     model_interface=None):
         """Returns a suitable model compatible with given spaces and output.
 
         Args:
@@ -215,6 +217,7 @@ class ModelCatalog(object):
             num_outputs (int): The size of the output vector of the model.
             framework (str): Either "tf" or "torch".
             name (str): Name (scope) for the model.
+            model_interface (cls): Interface required for the model
 
         Returns:
             model (ModelV2): Model to use for the policy.
@@ -224,15 +227,33 @@ class ModelCatalog(object):
             model_cls = _global_registry.get(RLLIB_MODEL,
                                              model_config["custom_model"])
             if issubclass(model_cls, ModelV2):
+                model_cls = ModelCatalog._wrap_if_needed(model_cls, model_interface)
                 return model_cls(obs_space, action_space, num_outputs,
                                  model_config, name)
 
         if framework == "tf":
             legacy_model_cls = ModelCatalog.get_model
-            return ModelV1Wrapper(legacy_model_cls, obs_space, action_space,
-                                  num_outputs, model_config, name)
+            wrapper = ModelCatalog._wrap_if_needed(ModelV1Wrapper, model_interface)
+            return wrapper(legacy_model_cls, obs_space, action_space,
+                           num_outputs, model_config, name)
 
         raise NotImplementedError("TODO: support {} models".format(framework))
+
+    @staticmethod
+    def _wrap_if_needed(model_cls, model_interface):
+        assert issubclass(model_cls, TFModelV2)
+
+        if issubclass(model_cls, model_interface):
+            return model_cls
+
+        class wrapper(model_interface, model_cls):
+            pass
+
+        name = "{}_as_{}".format(model_cls.__name__, model_interface.__name__)
+        wrapper.__name__ = name
+        wrapper.__qualname__ = name
+
+        return wrapper
 
     @staticmethod
     @DeveloperAPI

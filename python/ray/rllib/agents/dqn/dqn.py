@@ -296,5 +296,4 @@ GenericOffPolicyTrainer = build_trainer(
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
 
-DQNTrainer = DQNTrainer.with_updates(
-    default_policy=SimpleQPolicy)
+DQNTrainer = DQNTrainer.with_updates(default_policy=SimpleQPolicy)

@@ -82,41 +82,10 @@ class ModelV2(object):
             seq_lens (Tensor): 1d tensor holding input sequence lengths
 
         Returns:
-            (outputs, feature_layer, state): The model output tensor of size
+            (outputs, state): The model output tensor of size
                 [BATCH, output_spec.size] or a list of tensors corresponding to
-                output_spec.shape_list, a tensor of [BATCH, feature_size], and
-                a list of state tensors of [BATCH, state_size_i].
-        """
-        raise NotImplementedError
-
-    def get_branch_output(self,
-                          branch_type,
-                          output_spec=None,
-                          feature_layer=None,
-                          default_impl=None):
-        """Get the branch output of the model (e.g., "value" branch).
-
-        This method defines other output heads, for example, the value function
-        prediction. The model internally can decide whether to share layers
-        with the primary action output head.
-
-        It is important to note that the method outputs are tied to the
-        immediately previous call to forward(). This means that after calling
-        forward() once, you must retrieve all its branch outputs before calling
-        forward() again.
-
-        Arguments:
-            branch_type (str): identifier for the branch (e.g., "value")
-            output_spec (OutputSpec): defines shape of the branch output
-            feature_layer (tensor): if specified, this hints that the branch
-                output should be computed using this shared feature layer.
-                However custom models are free to ignore this hint.
-            default_impl (func): if specified, this function will be called to
-                implement the branch output. However custom models are free
-                to ignore this and return anything they want.
-
-        Returns:
-            tensor: branch output of size [BATCH, output_spec.size]
+                output_spec.shape_list, and a list of state tensors of
+                shape [BATCH, state_size_i].
         """
         raise NotImplementedError
 
@@ -178,17 +147,17 @@ class ModelV2(object):
             seq_lens (Tensor): 1d tensor holding input sequence lengths
 
         Returns:
-            (outputs, feature_layer, state): The model output tensor of size
+            (outputs, state): The model output tensor of size
                 [BATCH, output_spec.size] or a list of tensors corresponding to
-                output_spec.shape_list, a tensor of [BATCH, feature_size], and
-                a list of state tensors of [BATCH, state_size_i].
+                output_spec.shape_list, and a list of state tensors of
+                [BATCH, state_size_i].
         """
 
         restored = input_dict.copy()
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
         restored["obs_flat"] = input_dict["obs"]
-        outputs, feature_layer, state = self.forward(restored, state, seq_lens)
+        outputs, state = self.forward(restored, state, seq_lens)
 
         try:
             shape = outputs.shape
@@ -199,10 +168,7 @@ class ModelV2(object):
                 raise ValueError(
                     "Expected output shape of [None, {}], got {}".format(
                         self.output_spec.size, shape))
-        if not hasattr(feature_layer, "shape"):
-            raise ValueError(
-                "Feature layer is not a tensor: {}".format(feature_layer))
         if not isinstance(state, list):
             raise ValueError("State output is not a list: {}".format(state))
 
-        return outputs, feature_layer, state
+        return outputs, state
