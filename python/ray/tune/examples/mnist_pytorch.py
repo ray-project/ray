@@ -72,7 +72,7 @@ def train_mnist(config):
 
     mnist_transforms = transforms.Compose([
         transforms.ToTensor(),
-        # transforms.Normalize((0.1307, ), (0.3081, ))
+        transforms.Normalize((0.1307, ), (0.3081, ))
     ])
 
     train_loader = torch.utils.data.DataLoader(
