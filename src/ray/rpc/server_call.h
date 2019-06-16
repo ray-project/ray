@@ -40,6 +40,10 @@ class ServerCallFactory;
 ///     will be called, and the state becomes `SENDING_REPLY`.
 /// (4) When the reply is sent, an event will be gotten from the `CompletionQueue`.
 ///     `GrpcServer` will then delete this call.
+///
+/// NOTE(hchen): Compared to `ServerCallImpl`, this abstract interface doesn't use
+/// template. This allows the users (e.g., `GrpcServer`) not having to use
+/// template as well.
 class ServerCall {
  public:
   /// Get the state of this `ServerCall`.

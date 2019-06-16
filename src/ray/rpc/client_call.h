@@ -21,6 +21,10 @@ namespace rpc {
 /// When the reply is received, `ClientCallMangager` will get the address of this object
 /// via `CompletionQueue`'s tag. And the manager should call `OnReplyReceived` and then
 /// delete this object.
+///
+/// NOTE(hchen): Compared to `ClientCallImpl`, this abstract interface doesn't use
+/// template. This allows the users (e.g., `ClientCallMangager`) not having to use
+/// template as well.
 class ClientCall {
  public:
   /// The callback to be called by `ClientCallManager` when the reply of this request is
