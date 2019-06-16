@@ -48,6 +48,13 @@ class ExperimentAnalysis(object):
     """
 
     def __init__(self, experiment_path, trials=None):
+        """Initializer.
+
+        Args:
+            experiment_path (str): Path to where experiment is located.
+            trials (list|None): List of trials that can be accessed via
+                `analysis.trials`.
+        """
         experiment_path = os.path.expanduser(experiment_path)
         if not os.path.isdir(experiment_path):
             raise TuneError(
@@ -70,7 +77,12 @@ class ExperimentAnalysis(object):
         self._dataframe = None
 
     def dataframe(self, refresh=False):
-        """Returns a pandas.DataFrame object constructed from the trials."""
+        """Returns a pandas.DataFrame object constructed from the trials.
+
+        Args:
+            refresh (bool): Clears the cache which may have an existing copy.
+
+        """
         if self._dataframe is None or refresh:
             self._dataframe = pd.DataFrame(self._scrubbed_checkpoints)
         return self._dataframe
@@ -93,19 +105,41 @@ class ExperimentAnalysis(object):
         raise ValueError("Trial id {} not found".format(trial_id))
 
     def get_best_trainable(self, metric, trainable_cls, mode="max"):
-        """Returns the best Trainable based on the experiment metric."""
+        """Returns the best Trainable based on the experiment metric.
+
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
+
+        """
         return trainable_cls(config=self.get_best_config(metric, mode=mode))
 
     def get_best_config(self, metric, mode="max"):
-        """Retrieve the best config from the best trial."""
+        """Retrieve the best config from the best trial.
+
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
+
+        """
         return self.get_best_info(metric, flatten=False, mode=mode)["config"]
 
     def get_best_logdir(self, metric, mode="max"):
         df = self.dataframe()
-        return df.ix[df[metric].argmax()].logdir
+        if mode == "max":
+            return df.ix[df[metric].argmax()].logdir
+        elif mode == "min":
+            return df.ix[df[metric].argmin()].logdir
 
     def get_best_info(self, metric, mode="max", flatten=True):
-        """Retrieve the best trial based on the experiment metric."""
+        """Retrieve the best trial based on the experiment metric.
+
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
+            flatten (bool): Assumes trial info is flattened, where
+                nested entries are concatenated like `info:metric`.
+        """
         optimize_op = max if mode == "max" else min
         if flatten:
             return optimize_op(
