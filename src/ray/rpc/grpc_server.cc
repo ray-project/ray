@@ -19,10 +19,12 @@ void GrpcServer::Run() {
   RAY_LOG(DEBUG) << name_ << " server started, listening on port " << port_ << ".";
 
   // Allow subclasses to initialize the server call factories.
-  InitServerCallFactories(&server_call_factories_);
-  for (auto &factory : server_call_factories_) {
-    // Create and request calls from the factories.
-    factory->CreateCall();
+  InitServerCallFactories(&server_call_factories_and_concurrencies_);
+  for (auto &entry : server_call_factories_and_concurrencies_) {
+    for (int i = 0; i < entry.second; i++) {
+      // Create and request calls from the factory.
+      entry.first->CreateCall();
+    }
   }
   // Start a thread that polls incoming requests.
   std::thread polling_thread(&GrpcServer::PollEventsFromCompletionQueue, this);
