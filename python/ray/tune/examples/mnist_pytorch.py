@@ -17,8 +17,9 @@ from ray import tune
 from ray.tune import track
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
-EPOCH_SIZE = 2048
-TEST_SIZE = 1024
+# Change these values if you want the training to run quicker or slower.
+EPOCH_SIZE = 512
+TEST_SIZE = 256
 datasets.MNIST("~/data", train=True, download=True)
 parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
 parser.add_argument(
@@ -39,23 +40,22 @@ parser.add_argument(
 class Net(nn.Module):
     def __init__(self, config):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=3)
-        self.fc = nn.Linear(640, 10)
+        self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
+        self.fc = nn.Linear(192, 10)
 
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 3))
-        x = x.view(-1, 640)
+        x = x.view(-1, 192)
         x = self.fc(x)
         return F.log_softmax(x, dim=1)
 
 
-def train(model, optimizer, train_loader, use_cuda):
+def train(model, optimizer, train_loader, device):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         if batch_idx * len(data) > EPOCH_SIZE:
             return
-        if use_cuda:
-            data, target = data.cuda(), target.cuda()
+        data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
         loss = F.nll_loss(output, target)
@@ -63,7 +63,7 @@ def train(model, optimizer, train_loader, use_cuda):
         optimizer.step()
 
 
-def test(model, data_loader, use_cuda):
+def test(model, data_loader, device):
     model.eval()
     correct = 0
     total = 0
@@ -71,8 +71,7 @@ def test(model, data_loader, use_cuda):
         for batch_idx, (data, target) in enumerate(data_loader):
             if batch_idx * len(data) > TEST_SIZE:
                 break
-            if use_cuda:
-                data, target = data.cuda(), target.cuda()
+            data, target = data.to(device), target.to(device)
             outputs = model(data)
             _, predicted = torch.max(outputs.data, 1)
             total += target.size(0)
@@ -83,6 +82,7 @@ def test(model, data_loader, use_cuda):
 
 def train_mnist(config):
     use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
 
     mnist_transforms = transforms.Compose([
         transforms.ToTensor(),
@@ -99,16 +99,14 @@ def train_mnist(config):
         batch_size=64,
         shuffle=True)
 
-    model = Net(config)
-    if use_cuda:
-        model.cuda()
+    model = Net(config).to(device)
 
     optimizer = optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"])
 
     while True:
-        train(model, optimizer, train_loader, use_cuda)
-        acc = test(model, test_loader, use_cuda)
+        train(model, optimizer, train_loader, device)
+        acc = test(model, test_loader, device)
         track.log(mean_accuracy=acc)
 
 
