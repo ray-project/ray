@@ -50,8 +50,8 @@ def benchmark_task_forward(f, num_tasks):
 
 @pytest.mark.benchmark
 @pytest.mark.parametrize(
-    "num_tasks", [10**3, 10**4, 10**5],
-    ids=[str(num) + "_tasks" for num in [10**3, 10**4, 10**5]])
+    "num_tasks", [10**3, 10**4],
+    ids=[str(num) + "_tasks" for num in [10**3, 10**4]])
 def test_task_forward(benchmark, num_tasks):
     with _ray_start_cluster(num_cpus=16, object_store_memory=10**6) as cluster:
         cluster.add_node(resources={"my_resource": 100})
