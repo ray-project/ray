@@ -177,7 +177,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   ///
   /// \param[in] service The gRPC-generated `AsyncService`.
   /// \param[in] request_call_function Pointer to the `AsyncService::RequestMethod`
-  //  fucntion.
+  //  function.
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] cq The `CompletionQueue`.
@@ -210,7 +210,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// The gRPC-generated `AsyncService`.
   AsyncService &service_;
 
-  /// Pointer to the `AsyncService::RequestMethod` fucntion.
+  /// Pointer to the `AsyncService::RequestMethod` function.
   RequestCallFunction<GrpcService, Request, Reply> request_call_function_;
 
   /// The service handler that handles the request.

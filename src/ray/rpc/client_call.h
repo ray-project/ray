@@ -70,7 +70,7 @@ class ClientCallImpl : public ClientCall {
   friend class ClientCallManager;
 };
 
-/// Peprents the generic siganature of a `FooService::Stub::PreapreAsyncBar`
+/// Peprents the generic signature of a `FooService::Stub::PrepareAsyncBar`
 /// function, where `Foo` is the service name and `Bar` is the rpc method name.
 ///
 /// \tparam GrpcService Type of the gRPC-generated service class.
@@ -106,7 +106,7 @@ class ClientCallManager {
   ///
   /// \param[in] stub The gRPC-generated stub.
   /// \param[in] prepare_async_function Pointer to the gRPC-generated
-  /// `FooService::Stub::PreapreAsyncBar` function.
+  /// `FooService::Stub::PrepareAsyncBar` function.
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   ///

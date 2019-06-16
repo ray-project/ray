@@ -1206,7 +1206,7 @@ void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
   for (int i = 0; i < request.uncommitted_tasks_size(); i++) {
     const std::string &task_message = request.uncommitted_tasks(i);
     const Task task(*flatbuffers::GetRoot<protocol::Task>(
-        reinterpret_cast<const uint8_t *>(task_message.c_str())));
+        reinterpret_cast<const uint8_t *>(task_message.data())));
     RAY_CHECK(uncommitted_lineage.SetEntry(std::move(task), GcsStatus::UNCOMMITTED));
   }
   const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
