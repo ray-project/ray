@@ -21,20 +21,6 @@ from ray.tune.schedulers import AsyncHyperBandScheduler
 EPOCH_SIZE = 512
 TEST_SIZE = 256
 datasets.MNIST("~/data", train=True, download=True)
-parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
-parser.add_argument(
-    "--cuda", action="store_true", default=False, help="Enables GPU training")
-parser.add_argument(
-    "--seed",
-    type=int,
-    default=1,
-    metavar="S",
-    help="random seed (default: 1)")
-parser.add_argument(
-    "--smoke-test", action="store_true", help="Finish quickly for testing")
-parser.add_argument(
-    "--ray-redis-address",
-    help="Address of Ray cluster for seamless distributed execution.")
 
 
 class Net(nn.Module):
@@ -111,6 +97,20 @@ def train_mnist(config):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
+    parser.add_argument(
+        "--cuda", action="store_true", default=False, help="Enables GPU training")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=1,
+        metavar="S",
+        help="random seed (default: 1)")
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--ray-redis-address",
+        help="Address of Ray cluster for seamless distributed execution.")
     args = parser.parse_args()
     if args.ray_redis_address:
         ray.init(redis_address=args.ray_redis_address)
