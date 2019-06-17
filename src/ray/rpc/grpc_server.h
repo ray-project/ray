@@ -36,8 +36,11 @@ class GrpcServer {
 
   /// Destruct this gRPC server.
   ~GrpcServer() {
-    server_->Shutdown();
+    // shutdown the server forcelly after 200ms, even some requests haven't finished
+    auto deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(200);
+    server_->Shutdown(deadline);
     cq_->Shutdown();
+    RAY_LOG(INFO) << "gRPC server of " << name_ << " shutdown.";
   }
 
   /// Initialize and run this server.
@@ -78,6 +81,7 @@ class GrpcServer {
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.
   std::unique_ptr<::grpc::Server> server_;
+  std::thread polling_thread_;
 };
 
 }  // namespace rpc

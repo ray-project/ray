@@ -252,7 +252,7 @@ ray::Status ObjectManager::SendPullRequest(const ObjectID &object_id,
   auto callback = [](const Status &status, const rpc::PullReply &reply) {};
   rpc::PullRequest pull_request;
   pull_request.set_object_id(object_id.Binary());
-  pull_request.set_client_id(client_id.Binary());
+  pull_request.set_client_id(client_id_.Binary());
   rpc_client->Pull(pull_request, callback);
   return Status::OK();
 }
@@ -380,8 +380,8 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
     uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
 
-    RAY_LOG(INFO) << "Send object chunk of " << object_id << " to client " << client_id
-                  << ", number of chunks: " << num_chunks << ", total data size: " << data_size;
+    RAY_LOG(DEBUG) << "Send object chunk of " << object_id << " to client " << client_id
+                   << ", number of chunks: " << num_chunks << ", total data size: " << data_size;
 
     UniqueID push_id = UniqueID::FromRandom();
     for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
@@ -413,7 +413,7 @@ ray::Status ObjectManager::SendObjectChunk(
   push_request.set_metadata_size(metadata_size);
   push_request.set_chunk_index(chunk_index);
 
-  // Send data
+  // Get data
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
@@ -651,10 +651,8 @@ void ObjectManager::HandlePushRequest(const rpc::PushRequest &request, rpc::Push
                                    chunk_index, data);
   double end_time = current_sys_time_seconds();
 
-  // Notify the main thread that we have finished receiving the object.
   HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time,
                         status);
-
 }
 
 ray::Status ObjectManager::ReceiveObjectChunk(
@@ -703,8 +701,6 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request, rpc::Pull
 
 void ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request, rpc::FreeObjectsReply *reply,
                               rpc::RequestDoneCallback done_callback) {
-  RAY_LOG(INFO) << "Receive push request for object ["
-                << ObjectID::FromBinary(request.object_ids()[0]) << "].";
   std::vector<ObjectID> object_ids;
   for (const auto& e: request.object_ids()) {
     object_ids.emplace_back(ObjectID::FromBinary(e));
@@ -731,6 +727,7 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
   for (const auto &connection_info : remote_connections) {
     auto rpc_client = GetRpcClient(connection_info.client_id);
     if (rpc_client != nullptr) {
+      // gRPC async call
       rpc_client->FreeObjects(free_objects_request, nullptr);
     }
   }

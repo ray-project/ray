@@ -34,11 +34,8 @@ class MockServer {
       : config_(object_manager_config),
         gcs_client_(gcs_client),
         object_manager_(main_service, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
-        object_manager_server_(config_.object_manager_port, main_service, object_manager_) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
     RAY_CHECK_OK(RegisterGcs(main_service));
-    // Start listening server
-    object_manager_server_.Run();
   }
 
   ~MockServer() { RAY_CHECK_OK(gcs_client_->client_table().Disconnect()); }
@@ -62,7 +59,6 @@ class MockServer {
   ObjectManagerConfig config_;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   ObjectManager object_manager_;
-  rpc::ObjectManagerServer object_manager_server_;
 };
 
 class TestObjectManagerBase : public ::testing::Test {

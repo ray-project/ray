@@ -27,6 +27,7 @@ void GrpcServer::Run() {
   // Start a thread that polls incoming requests.
   std::thread polling_thread(&GrpcServer::PollEventsFromCompletionQueue, this);
   polling_thread.detach();
+  //polling_thread_ = std::thread(&GrpcServer::PollEventsFromCompletionQueue, this);
 }
 
 void GrpcServer::PollEventsFromCompletionQueue() {

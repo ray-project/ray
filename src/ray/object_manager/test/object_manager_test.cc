@@ -28,11 +28,8 @@ class MockServer {
       : config_(object_manager_config),
         gcs_client_(gcs_client),
         object_manager_(main_service, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
-        object_manager_server_(config_.object_manager_port, main_service, object_manager_) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
     RAY_CHECK_OK(RegisterGcs(main_service));
-    // Start listening server
-    object_manager_server_.Run();
   }
 
   ~MockServer() { RAY_CHECK_OK(gcs_client_->client_table().Disconnect()); }
@@ -56,7 +53,6 @@ class MockServer {
   ObjectManagerConfig config_;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   ObjectManager object_manager_;
-  rpc::ObjectManagerServer object_manager_server_;
 };
 
 class TestObjectManagerBase : public ::testing::Test {
@@ -313,7 +309,6 @@ class TestObjectManager : public TestObjectManagerBase {
   void NextWaitTest() {
     int data_size = 600;
     current_wait_test += 1;
-    RAY_LOG(INFO) << "Next wait test, current wait test: " << current_wait_test;
     switch (current_wait_test) {
     case 0: {
       // Ensure timeout_ms = 0 is handled correctly.
@@ -359,12 +354,14 @@ class TestObjectManager : public TestObjectManagerBase {
       num_objects += 1;
       object_ids.push_back(ObjectID::FromRandom());
     }
+
     boost::posix_time::ptime start_time = boost::posix_time::second_clock::local_time();
     RAY_CHECK_OK(server1->object_manager_.Wait(
         object_ids, timeout_ms, required_objects, false,
         [this, object_ids, num_objects, timeout_ms, required_objects, start_time](
             const std::vector<ray::ObjectID> &found,
             const std::vector<ray::ObjectID> &remaining) {
+
           int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
                                 .total_milliseconds();
           RAY_LOG(DEBUG) << "elapsed " << elapsed;
