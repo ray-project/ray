@@ -265,7 +265,7 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
   task_lease_data->set_node_manager_id(client_id_.Hex());
   task_lease_data->set_acquired_at(current_sys_time_ms());
   task_lease_data->set_timeout(it->second.lease_period);
-  RAY_CHECK_OK(task_lease_table_.Add(DriverID::Nil(), task_id, task_lease_data, nullptr));
+  RAY_CHECK_OK(task_lease_table_.Add(JobID::Nil(), task_id, task_lease_data, nullptr));
 
   auto period = boost::posix_time::milliseconds(it->second.lease_period / 2);
   it->second.lease_timer->expires_from_now(period);

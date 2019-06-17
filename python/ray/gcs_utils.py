@@ -7,7 +7,7 @@ from ray.core.generated.ray.protocol.Task import Task
 from ray.core.generated.gcs_pb2 import (
     ActorCheckpointIdData,
     ClientTableData,
-    DriverTableData,
+    JobTableData,
     ErrorTableData,
     ErrorType,
     GcsEntry,
@@ -23,7 +23,7 @@ from ray.core.generated.gcs_pb2 import (
 __all__ = [
     "ActorCheckpointIdData",
     "ClientTableData",
-    "DriverTableData",
+    "JobTableData",
     "ErrorTableData",
     "ErrorType",
     "GcsEntry",
@@ -48,8 +48,8 @@ XRAY_HEARTBEAT_CHANNEL = str(
 XRAY_HEARTBEAT_BATCH_CHANNEL = str(
     TablePubsub.Value("HEARTBEAT_BATCH_PUBSUB")).encode("ascii")
 
-# xray driver updates
-XRAY_DRIVER_CHANNEL = str(TablePubsub.Value("DRIVER_PUBSUB")).encode("ascii")
+# xray job updates
+XRAY_JOB_CHANNEL = str(TablePubsub.Value("JOB_PUBSUB")).encode("ascii")
 
 # These prefixes must be kept up-to-date with the TablePrefix enum in
 # gcs.proto.

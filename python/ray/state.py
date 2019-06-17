@@ -316,7 +316,7 @@ class GlobalState(object):
             function_descriptor_list)
 
         task_spec_info = {
-            "DriverID": task.driver_id().hex(),
+            "JobID": task.job_id().hex(),
             "TaskID": task.task_id().hex(),
             "ParentTaskID": task.parent_task_id().hex(),
             "ParentCounter": task.parent_counter(),
@@ -826,7 +826,7 @@ class GlobalState(object):
         Returns:
             A list of the error messages for this driver.
         """
-        assert isinstance(driver_id, ray.DriverID)
+        assert isinstance(driver_id, ray.WorkerID)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ERROR_INFO"), "",
             driver_id.binary())
@@ -862,7 +862,7 @@ class GlobalState(object):
         self._check_connected()
 
         if driver_id is not None:
-            assert isinstance(driver_id, ray.DriverID)
+            assert isinstance(driver_id, ray.WorkerID)
             return self._error_messages(driver_id)
 
         error_table_keys = self.redis_client.keys(
@@ -1095,7 +1095,8 @@ def errors(include_cluster_errors=True):
         Error messages pushed from the cluster.
     """
     worker = ray.worker.global_worker
-    error_messages = state.error_messages(driver_id=worker.task_driver_id)
+    error_messages = state.error_messages(
+        driver_id=ray.utils.compute_driver_id_from_job_id(worker.current_job_id))
     if include_cluster_errors:
-        error_messages += state.error_messages(driver_id=ray.DriverID.nil())
+        error_messages += state.error_messages(driver_id=ray.WorkerID.nil())
     return error_messages

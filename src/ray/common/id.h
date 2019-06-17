@@ -17,7 +17,7 @@
 
 namespace ray {
 
-class DriverID;
+class WorkerID;
 class UniqueID;
 
 // Declaration.
@@ -72,7 +72,7 @@ class TaskID : public BaseID<TaskID> {
  public:
   TaskID() : BaseID() {}
   static size_t Size() { return kTaskIDSize; }
-  static TaskID GetDriverTaskID(const DriverID &driver_id);
+  static TaskID GetDriverTaskID(const WorkerID &driver_id);
 
  private:
   uint8_t id_[kTaskIDSize];
@@ -152,12 +152,18 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
 /// Generate a task ID from the given info.
 ///
-/// \param driver_id The driver that creates the task.
+/// \param job_id The job that creates the task.
 /// \param parent_task_id The parent task of this task.
 /// \param parent_task_counter The task index of the worker.
 /// \return The task ID generated from the given info.
-const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
+const TaskID GenerateTaskId(const JobID &job_id, const TaskID &parent_task_id,
                             int parent_task_counter);
+
+/// A helper function to compute a driver id from the given job id.
+const WorkerID ComputeDriverId(const JobID &job_id);
+
+/// A helper function to compute a job id from the given driver id.
+const JobID ComputeJobId(const WorkerID &driver_id);
 
 template <typename T>
 BaseID<T>::BaseID() {

@@ -102,12 +102,12 @@ class WorkerPool {
   /// \return The total count of all workers (actor and non-actor) in the pool.
   uint32_t Size(const Language &language) const;
 
-  /// Get all the workers which are running tasks for a given driver.
+  /// Get all the workers which are running tasks for a given job.
   ///
-  /// \param driver_id The driver ID.
-  /// \return A list containing all the workers which are running tasks for the driver.
-  std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
-      const DriverID &driver_id) const;
+  /// \param job_id The job ID.
+  /// \return A list containing all the workers which are running tasks for the job.
+  std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForJob(
+      const JobID &job_id) const;
 
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.

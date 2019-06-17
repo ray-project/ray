@@ -240,7 +240,7 @@ class Monitor(object):
                 if channel == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL:
                     # Similar functionality as raylet info channel
                     message_handler = self.xray_heartbeat_batch_handler
-                elif channel == ray.gcs_utils.XRAY_DRIVER_CHANNEL:
+                elif channel == ray.gcs_utils.XRAY_JOB_CHANNEL:
                     # Handles driver death.
                     message_handler = self.xray_driver_removed_handler
                 else:
@@ -298,7 +298,7 @@ class Monitor(object):
         """
         # Initialize the subscription channel.
         self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-        self.subscribe(ray.gcs_utils.XRAY_DRIVER_CHANNEL)
+        self.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
 
         # TODO(rkn): If there were any dead clients at startup, we should clean
         # up the associated state in the state tables.

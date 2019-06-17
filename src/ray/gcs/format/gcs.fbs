@@ -18,8 +18,8 @@ table Arg {
 }
 
 table TaskInfo {
-  // ID of the driver that created this task.
-  driver_id: string;
+  // ID of the job that created this task.
+  job_id: string;
   // Task ID of the task.
   task_id: string;
   // Task ID of the parent task.
