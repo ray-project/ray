@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     ray.init()
     sched = AsyncHyperBandScheduler(
-        time_attr="timesteps_total",
+        time_attr="training_iteration",
         metric="mean_accuracy",
         mode="max",
         max_t=400,

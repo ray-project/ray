@@ -22,7 +22,7 @@ class TuneReporterCallback(keras.callbacks.Callback):
         for metric in list(logs):
             if "loss" in metric and "neg_" not in metric:
                 logs["neg_" + metric] = -logs[metric]
-        self.reporter(keras_info=logs)
+        self.reporter(keras_info=logs, mean_accuracy=logs["acc"])
 
     def on_epoch_end(self, batch, logs={}):
         if not self.freq == "epoch":
@@ -31,4 +31,4 @@ class TuneReporterCallback(keras.callbacks.Callback):
         for metric in list(logs):
             if "loss" in metric and "neg_" not in metric:
                 logs["neg_" + metric] = -logs[metric]
-        self.reporter(keras_info=logs)
+        self.reporter(keras_info=logs, mean_accuracy=logs["acc"])
