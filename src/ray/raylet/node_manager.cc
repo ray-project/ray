@@ -845,8 +845,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   client->SetClientID(from_flatbuf<ClientID>(*message->worker_id()));
+  // XXX
+  rpc::Language language = static_cast<rpc::Language>(message->language());
   auto worker =
-      std::make_shared<Worker>(message->worker_pid(), message->language(), client);
+      std::make_shared<Worker>(message->worker_pid(), language, client);
   if (message->is_worker()) {
     // Register the new worker.
     worker_pool_.RegisterWorker(std::move(worker));
@@ -1043,14 +1045,16 @@ void NodeManager::ProcessDisconnectClientMessage(
 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
-  auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  TaskExecutionSpecification task_execution_spec(
-      from_flatbuf<ObjectID>(*message->execution_dependencies()));
-  TaskSpecification task_spec(*message->task_spec());
-  Task task(task_execution_spec, task_spec);
+//  auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
+//  TaskExecutionSpecification task_execution_spec(
+//      from_flatbuf<ObjectID>(*message->execution_dependencies()));
+//  TaskSpecification task_spec(*message->task_spec());
+//  Task task(task_execution_spec, task_spec);
+  // XXX
+  rpc::Task message;
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
-  SubmitTask(task, Lineage());
+  SubmitTask(Task(message), Lineage());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1217,10 +1221,9 @@ void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;
   for (int i = 0; i < request.uncommitted_tasks_size(); i++) {
-    const std::string &task_message = request.uncommitted_tasks(i);
-    const Task task(*flatbuffers::GetRoot<protocol::Task>(
-        reinterpret_cast<const uint8_t *>(task_message.data())));
-    RAY_CHECK(uncommitted_lineage.SetEntry(std::move(task), GcsStatus::UNCOMMITTED));
+    std::unique_ptr<rpc::Task> message_copy(new rpc::Task(request.uncommitted_tasks(i)));
+    Task task(std::move(message_copy));
+    RAY_CHECK(uncommitted_lineage.SetEntry(task, GcsStatus::UNCOMMITTED));
   }
   const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
   RAY_LOG(DEBUG) << "Received forwarded task " << task.GetTaskSpecification().TaskId()
@@ -1762,9 +1765,10 @@ bool NodeManager::AssignTask(const Task &task) {
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
   auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
-  auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
-                                              fbb.CreateVector(resource_id_set_flatbuf));
-  fbb.Finish(message);
+  // XXX
+//  auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
+//                                              fbb.CreateVector(resource_id_set_flatbuf));
+//  fbb.Finish(message);
   const auto &task_id = spec.TaskId();
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
@@ -2231,8 +2235,8 @@ void NodeManager::ForwardTask(
   // Prepare the request message.
   rpc::ForwardTaskRequest request;
   request.set_task_id(task_id.Binary());
-  for (auto &entry : uncommitted_lineage.GetEntries()) {
-    request.add_uncommitted_tasks(entry.second.TaskData().Serialize());
+  for (auto &task_entry : uncommitted_lineage.GetEntries()) {
+    request.add_uncommitted_tasks()->CopyFrom(task_entry.second.TaskData().GetMessage());
   }
 
   // Move the FORWARDING task to the SWAP queue so that we remember that we

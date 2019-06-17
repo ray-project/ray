@@ -220,12 +220,14 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
                                      const ray::raylet::TaskSpecification &task_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
-  auto message = ray::protocol::CreateSubmitTaskRequest(
-      fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
+//  flatbuffers::FlatBufferBuilder fbb;
+//  auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
+//  auto message = ray::protocol::CreateSubmitTaskRequest(
+//      fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
+//  fbb.Finish(message);
+//  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
+// XXX
+   return ray::Status::OK();
 }
 
 ray::Status RayletClient::GetTask(
@@ -262,8 +264,9 @@ ray::Status RayletClient::GetTask(
   }
 
   // Return the copy of the task spec and pass ownership to the caller.
-  task_spec->reset(new ray::raylet::TaskSpecification(
-      string_from_flatbuf(*reply_message->task_spec())));
+  // XXX
+//  task_spec->reset(new ray::raylet::TaskSpecification(
+//      string_from_flatbuf(*reply_message->task_spec())));
   return ray::Status::OK();
 }
 

@@ -12,6 +12,16 @@ COPTS = ["-DRAY_USE_GLOG"]
 # === Begin of protobuf definitions ===
 
 proto_library(
+    name = "common_proto",
+    srcs = ["src/ray/protobuf/common.proto"],
+)
+
+cc_proto_library(
+    name = "common_cc_proto",
+    deps = [":common_proto"],
+)
+
+proto_library(
     name = "gcs_proto",
     srcs = ["src/ray/protobuf/gcs.proto"],
     visibility = ["//java:__subpackages__"],
@@ -30,6 +40,7 @@ python_proto_compile(
 proto_library(
     name = "node_manager_proto",
     srcs = ["src/ray/protobuf/node_manager.proto"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
@@ -210,6 +221,7 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_fbs",
+        ":common_cc_proto",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",

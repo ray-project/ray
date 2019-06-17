@@ -9,6 +9,8 @@
 #include "ray/common/client_connection.h"
 #include "ray/gcs/client.h"
 #include "ray/gcs/format/util.h"
+#include "ray/protobuf/common.pb.h"
+#include "ray/rpc/hash.h"
 #include "ray/raylet/task.h"
 #include "ray/raylet/worker.h"
 
@@ -43,6 +45,16 @@ class WorkerPool {
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
+
+  /// Asynchronously start a new worker process. Once the worker process has
+  /// registered with an external server, the process should create and
+  /// register num_workers_per_process_ workers, then add them to the pool.
+  /// Failure to start the worker process is a fatal error. If too many workers
+  /// are already being started, then this function will return without starting
+  /// any workers.
+  ///
+  /// \param language Which language this worker process should be.
+  void StartWorkerProcess(const Language &language);
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
@@ -100,7 +112,7 @@ class WorkerPool {
   ///
   /// \param language The requested language.
   /// \return The total count of all workers (actor and non-actor) in the pool.
-  uint32_t Size(const Language &language) const;
+  uint32_t Size(const rpc::Language &language) const;
 
   /// Get all the workers which are running tasks for a given job.
   ///
@@ -179,12 +191,12 @@ class WorkerPool {
   /// The number of workers per process.
   int num_workers_per_process_;
   /// Pool states per language.
-  std::unordered_map<Language, State> states_by_lang_;
+  std::unordered_map<rpc::Language, State> states_by_lang_;
 
  private:
   /// A helper function that returns the reference of the pool state
   /// for a given language.
-  State &GetStateForLanguage(const Language &language);
+  inline State &GetStateForLanguage(const rpc::Language &language);
 
   /// We'll push a warning to the user every time a multiple of this many
   /// workers has been started.
