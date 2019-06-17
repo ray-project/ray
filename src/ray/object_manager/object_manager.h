@@ -299,9 +299,6 @@ class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerSe
   void PullSendRequest(const ObjectID &object_id,
                        std::shared_ptr<SenderConnection> &conn);
 
-  std::shared_ptr<SenderConnection> CreateSenderConnection(
-      ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
-
   /// This is used to notify the main thread that the sending of a chunk has
   /// completed.
   ///
@@ -334,49 +331,16 @@ class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerSe
                              uint64_t chunk_index, double start_time_us,
                              double end_time_us, ray::Status status);
 
-  /// Begin executing a send.
-  /// Executes on send_service_ thread pool.
-  ray::Status ExecuteSendObject(const UniqueID &push_id, const ClientID &client_id,
-                                const ObjectID &object_id, uint64_t data_size,
-                                uint64_t metadata_size, uint64_t chunk_index,
-                                const RemoteConnectionInfo &connection_info);
-
-  /// This method synchronously sends the object id and object size
-  /// to the remote object manager.
-  /// Executes on send_service_ thread pool.
-  ray::Status SendObjectHeaders(const UniqueID &push_id, const ObjectID &object_id,
-                                uint64_t data_size, uint64_t metadata_size,
-                                uint64_t chunk_index,
-                                std::shared_ptr<SenderConnection> &conn);
-
-  /// This method initiates the actual object transfer.
-  /// Executes on send_service_ thread pool.
-  ray::Status SendObjectData(const ObjectID &object_id,
-                             const ObjectBufferPool::ChunkInfo &chunk_info,
-                             std::shared_ptr<SenderConnection> &conn);
-
-  /// Invoked when a remote object manager pushes an object to this object manager.
-  /// This will invoke the object receive on the receive_service_ thread pool.
-  void ReceivePushRequest(std::shared_ptr<TcpClientConnection> &conn,
-                          const uint8_t *message);
 
   /// Execute a receive on the receive_service_ thread pool.
   ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
                                    uint64_t data_size, uint64_t metadata_size,
                                    uint64_t chunk_index, TcpClientConnection &conn);
 
-  /// Handles receiving a pull request message.
-  void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
-                          const uint8_t *message);
   /// Handles freeing objects request.
   void ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
                           const uint8_t *message);
 
-  /// Handles connect message of a new client connection.
-  void ConnectClient(std::shared_ptr<TcpClientConnection> &conn, const uint8_t *message);
-  /// Handles disconnect message of an existing client connection.
-  void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
-                        const uint8_t *message);
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 

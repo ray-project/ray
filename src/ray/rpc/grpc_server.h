@@ -61,10 +61,10 @@ class GrpcServer {
   virtual void InitServerCallFactories(
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) = 0;
 
-  /// Start a background thread that keeps polling events from the
-  /// `ServerCompletionQueue`, and dispach the event to the `ServiceHandler` instances via
-  /// the `ServerCall` objects.
-  void StartPolling();
+  /// This function runs in a background thread. It keeps polling events from the
+  /// `ServerCompletionQueue`, and dispaches the event to the `ServiceHandler` instances
+  /// via the `ServerCall` objects.
+  void PollEventsFromCompletionQueue();
 
   /// The main event loop, to which the service handler functions will be posted.
   boost::asio::io_service &main_service_;
@@ -74,8 +74,6 @@ class GrpcServer {
   int port_;
   /// The `ServerCallFactory` objects.
   std::vector<std::unique_ptr<ServerCallFactory>> server_call_factories_;
-  /// The thread that polls events from the `ServerCompletionQueue`.
-  std::unique_ptr<std::thread> polling_thread_;
   /// The `ServerCompletionQueue` object used for polling events.
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.

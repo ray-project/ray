@@ -23,6 +23,7 @@ struct WorkerThreadContext {
   void SetCurrentTask(const raylet::TaskSpecification &spec) {
     SetCurrentTask(spec.TaskId());
   }
+
  private:
   /// The task ID for current task.
   TaskID current_task_id;

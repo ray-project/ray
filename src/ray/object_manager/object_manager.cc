@@ -117,12 +117,6 @@ ray::Status ObjectManager::SubscribeObjDeleted(
   return ray::Status::OK();
 }
 
-void ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request, rpc::FreeObjectsReply *reply,
-                              rpc::RequestDoneCallback done_callback) {
-  RAY_LOG(INFO) << "Receive push request for object ["
-                << ObjectID::FromBinary(request.object_ids()[0]) << "].";
-}
-
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Pull on " << client_id_ << " of object " << object_id;
   // Check if object is already local.
@@ -261,53 +255,6 @@ ray::Status ObjectManager::SendPullRequest(const ObjectID &object_id,
   pull_request.set_client_id(client_id.Binary());
   rpc_client->Pull(pull_request, callback);
   return Status::OK();
-}
-
-void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
-                                            const ClientID &client_id) {
-  // Acquire a message connection and send pull request.
-  ray::Status status;
-  std::shared_ptr<SenderConnection> conn;
-  // TODO(hme): There is no cap on the number of pull request connections.
-  connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id, &conn);
-
-  // Try to create a new connection to the remote object manager if one doesn't
-  // already exist.
-  if (conn == nullptr) {
-    RemoteConnectionInfo connection_info(client_id);
-    object_directory_->LookupRemoteConnectionInfo(connection_info);
-    if (connection_info.Connected()) {
-      conn = CreateSenderConnection(ConnectionPool::ConnectionType::MESSAGE,
-                                    connection_info);
-    } else {
-      RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
-    }
-  }
-
-  if (conn != nullptr) {
-    PullSendRequest(object_id, conn);
-    connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
-  }
-}
-
-void ObjectManager::PullSendRequest(const ObjectID &object_id,
-                                    std::shared_ptr<SenderConnection> &conn) {
-  // TODO(rkn): This would be a natural place to record a profile event
-  // indicating that a pull request was sent.
-
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = object_manager_protocol::CreatePullRequestMessage(
-      fbb, fbb.CreateString(client_id_.Binary()), fbb.CreateString(object_id.Binary()));
-  fbb.Finish(message);
-  conn->WriteMessageAsync(
-      static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
-      fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) {
-        if (!status.ok()) {
-          RAY_CHECK(status.IsIOError())
-              << "Failed to contact remote object manager during Pull";
-          connection_pool_.RemoveSender(conn);
-        }
-      });
 }
 
 void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
@@ -491,83 +438,6 @@ ray::Status ObjectManager::SendObjectChunk(
   // Do this regardless of whether it failed or succeeded.
   buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
   return Status::OK();
-}
-
-ray::Status ObjectManager::ExecuteSendObject(
-    const UniqueID &push_id, const ClientID &client_id, const ObjectID &object_id,
-    uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
-    const RemoteConnectionInfo &connection_info) {
-  RAY_LOG(DEBUG) << "ExecuteSendObject on " << client_id_ << " to " << client_id
-                 << " of object " << object_id << " chunk " << chunk_index;
-  ray::Status status;
-  std::shared_ptr<SenderConnection> conn;
-  connection_pool_.GetSender(ConnectionPool::ConnectionType::TRANSFER, client_id, &conn);
-  if (conn == nullptr) {
-    conn =
-        CreateSenderConnection(ConnectionPool::ConnectionType::TRANSFER, connection_info);
-  }
-
-  if (conn != nullptr) {
-    status = SendObjectHeaders(push_id, object_id, data_size, metadata_size, chunk_index,
-                               conn);
-    if (!status.ok()) {
-      RAY_CHECK(status.IsIOError())
-          << "Failed to contact remote object manager during Push";
-      connection_pool_.RemoveSender(conn);
-    }
-  }
-
-  return status;
-}
-
-ray::Status ObjectManager::SendObjectHeaders(const UniqueID &push_id,
-                                             const ObjectID &object_id,
-                                             uint64_t data_size, uint64_t metadata_size,
-                                             uint64_t chunk_index,
-                                             std::shared_ptr<SenderConnection> &conn) {
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
-      buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
-  ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
-
-  // Fail on status not okay. The object is local, and there is
-  // no other anticipated error here.
-  ray::Status status = chunk_status.second;
-  if (!chunk_status.second.ok()) {
-    RAY_LOG(WARNING) << "Attempting to push object " << object_id
-                     << " which is not local. It may have been evicted.";
-    RAY_RETURN_NOT_OK(status);
-  }
-
-  // Create buffer.
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = object_manager_protocol::CreatePushRequestMessage(
-      fbb, to_flatbuf(fbb, push_id), to_flatbuf(fbb, object_id), chunk_index, data_size,
-      metadata_size);
-  fbb.Finish(message);
-  status = conn->WriteMessage(
-      static_cast<int64_t>(object_manager_protocol::MessageType::PushRequest),
-      fbb.GetSize(), fbb.GetBufferPointer());
-  if (!status.ok()) {
-    return status;
-  }
-  return SendObjectData(object_id, chunk_info, conn);
-}
-
-ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
-                                          const ObjectBufferPool::ChunkInfo &chunk_info,
-                                          std::shared_ptr<SenderConnection> &conn) {
-  boost::system::error_code error;
-  std::vector<asio::const_buffer> buffer;
-  buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
-  Status status = conn->WriteBuffer(buffer);
-
-  // Do this regardless of whether it failed or succeeded.
-  buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
-
-  if (status.ok()) {
-    connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn);
-  }
-  return status;
 }
 
 void ObjectManager::CancelPull(const ObjectID &object_id) {
@@ -765,94 +635,6 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
                  << " remaining " << remaining.size();
 }
 
-std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
-    ConnectionPool::ConnectionType type, RemoteConnectionInfo info) {
-  std::shared_ptr<SenderConnection> conn =
-      SenderConnection::Create(*main_service_, info.client_id, info.ip, info.port);
-  if (conn == nullptr) {
-    RAY_LOG(ERROR) << "Failed to connect to remote object manager.";
-  } else {
-    // Register the new connection.
-    connection_pool_.RegisterSender(type, info.client_id, conn);
-    // Prepare client connection info buffer
-    flatbuffers::FlatBufferBuilder fbb;
-    bool is_transfer = (type == ConnectionPool::ConnectionType::TRANSFER);
-    auto message = object_manager_protocol::CreateConnectClientMessage(
-        fbb, to_flatbuf(fbb, client_id_), is_transfer);
-    fbb.Finish(message);
-    // Send synchronously.
-    // TODO(swang): Make this a WriteMessageAsync.
-    RAY_CHECK_OK(conn->WriteMessage(
-        static_cast<int64_t>(object_manager_protocol::MessageType::ConnectClient),
-        fbb.GetSize(), fbb.GetBufferPointer()));
-  }
-  return conn;
-}
-
-void ObjectManager::ProcessNewClient(TcpClientConnection &conn) {
-  conn.ProcessMessages();
-}
-
-void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
-                                         int64_t message_type, const uint8_t *message) {
-  const auto message_type_value =
-      static_cast<object_manager_protocol::MessageType>(message_type);
-  RAY_LOG(DEBUG) << "[ObjectManager] Message "
-                 << object_manager_protocol::EnumNameMessageType(message_type_value)
-                 << "(" << message_type << ") from object manager";
-  switch (message_type_value) {
-  /*
-  case object_manager_protocol::MessageType::PushRequest: {
-    ReceivePushRequest(conn, message);
-    break;
-  }
-  case object_manager_protocol::MessageType::PullRequest: {
-    ReceivePullRequest(conn, message);
-    break;
-  }
-  */
-  case object_manager_protocol::MessageType::ConnectClient: {
-    ConnectClient(conn, message);
-    break;
-  }
-  case object_manager_protocol::MessageType::FreeRequest: {
-    ReceiveFreeRequest(conn, message);
-    break;
-  }
-  case object_manager_protocol::MessageType::DisconnectClient: {
-    DisconnectClient(conn, message);
-    break;
-  }
-  default: { RAY_LOG(FATAL) << "invalid request " << message_type; }
-  }
-}
-
-void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
-                                  const uint8_t *message) {
-  // TODO: trash connection on failure.
-  auto info =
-      flatbuffers::GetRoot<object_manager_protocol::ConnectClientMessage>(message);
-  ClientID client_id = ClientID::FromBinary(info->client_id()->str());
-  bool is_transfer = info->is_transfer();
-  conn->SetClientID(client_id);
-  if (is_transfer) {
-    connection_pool_.RegisterReceiver(ConnectionPool::ConnectionType::TRANSFER, client_id,
-                                      conn);
-  } else {
-    connection_pool_.RegisterReceiver(ConnectionPool::ConnectionType::MESSAGE, client_id,
-                                      conn);
-  }
-  conn->ProcessMessages();
-}
-
-void ObjectManager::DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
-                                     const uint8_t *message) {
-  connection_pool_.RemoveReceiver(conn);
-
-  // We don't need to clean up unfulfilled_push_requests_ because the
-  // unfulfilled push timers will fire and clean it up.
-}
-
 /// Implementation of ObjectManagerServiceHandler
 void ObjectManager::HandlePushRequest(const rpc::PushRequest &request, rpc::PushReply *reply,
                        rpc::RequestDoneCallback done_callback) {
@@ -919,108 +701,15 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request, rpc::Pull
   Push(object_id, client_id);
 }
 
-void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
-                                       const uint8_t *message) {
-  // Serialize and push object to requesting client.
-  auto pr = flatbuffers::GetRoot<object_manager_protocol::PullRequestMessage>(message);
-  ObjectID object_id = ObjectID::FromBinary(pr->object_id()->str());
-  ClientID client_id = ClientID::FromBinary(pr->client_id()->str());
-
-  ProfileEventT profile_event;
-  profile_event.event_type = "receive_pull_request";
-  profile_event.start_time = current_sys_time_seconds();
-  profile_event.end_time = profile_event.start_time;
-  profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"]";
-  profile_events_.push_back(profile_event);
-
-  Push(object_id, client_id);
-  conn->ProcessMessages();
-}
-
-void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &conn,
-                                       const uint8_t *message) {
-  // Serialize.
-  auto object_header =
-      flatbuffers::GetRoot<object_manager_protocol::PushRequestMessage>(message);
-  const ObjectID object_id = ObjectID::FromBinary(object_header->object_id()->str());
-  uint64_t chunk_index = object_header->chunk_index();
-  uint64_t data_size = object_header->data_size();
-  uint64_t metadata_size = object_header->metadata_size();
-  receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
-    double start_time = current_sys_time_seconds();
-    const ClientID client_id = conn->GetClientId();
-    auto status = ExecuteReceiveObject(client_id, object_id, data_size, metadata_size,
-                                       chunk_index, *conn);
-    double end_time = current_sys_time_seconds();
-    // Notify the main thread that we have finished receiving the object.
-    main_service_->post(
-        [this, object_id, client_id, chunk_index, start_time, end_time, status]() {
-          HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time,
-                                status);
-        });
-  });
-}
-
-ray::Status ObjectManager::ExecuteReceiveObject(
-    const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
-    uint64_t metadata_size, uint64_t chunk_index, TcpClientConnection &conn) {
-  RAY_LOG(DEBUG) << "ExecuteReceiveObject on " << client_id_ << " from " << client_id
-                 << " of object " << object_id << " chunk " << chunk_index;
-
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
-      buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
-  ray::Status status;
-  ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
-  if (chunk_status.second.ok()) {
-    // Avoid handling this chunk if it's already being handled by another process.
-    std::vector<boost::asio::mutable_buffer> buffer;
-    buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
-    status = conn.ReadBuffer(buffer);
-    if (status.ok()) {
-      buffer_pool_.SealChunk(object_id, chunk_index);
-    } else {
-      // We may have not have read out the correct data, so abort this chunk.
-      buffer_pool_.AbortCreateChunk(object_id, chunk_index);
-      // TODO(hme): This chunk failed, so create a pull request for this chunk.
-    }
-  } else {
-    RAY_LOG(DEBUG) << "ExecuteReceiveObject failed: " << chunk_status.second.message();
-    // Read object into empty buffer.
-    uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
-    std::vector<uint8_t> mutable_vec;
-    mutable_vec.resize(buffer_length);
-    std::vector<boost::asio::mutable_buffer> buffer;
-    buffer.push_back(asio::buffer(mutable_vec, buffer_length));
-    status = conn.ReadBuffer(buffer);
-    // TODO(hme): If the object isn't local, create a pull request for this chunk.
+void ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request, rpc::FreeObjectsReply *reply,
+                              rpc::RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Receive push request for object ["
+                << ObjectID::FromBinary(request.object_ids()[0]) << "].";
+  std::vector<ObjectID> object_ids;
+  for (const auto& e: request.object_ids()) {
+    object_ids.emplace_back(ObjectID::FromBinary(e));
   }
-
-  RAY_LOG(DEBUG) << "ExecuteReceiveObject completed on " << client_id_ << " from "
-                 << client_id << " of object " << object_id << " chunk " << chunk_index
-                 << " at " << current_sys_time_ms();
-  if (status.ok()) {
-    // We successfully read the buffer, so we are ready to receive the next
-    // message.
-    conn.ProcessMessages();
-  } else {
-    // Close the connection by skipping the call to ProcessMessages.
-    RAY_LOG(ERROR) << "Failed to ExecuteReceiveObject from remote object manager, error: "
-                   << status;
-  }
-
-  return status;
-}
-
-void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
-                                       const uint8_t *message) {
-  auto free_request =
-      flatbuffers::GetRoot<object_manager_protocol::FreeRequestMessage>(message);
-  std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*free_request->object_ids());
-  // This RPC should come from another Object Manager.
-  // Keep this request local.
-  bool local_only = true;
-  FreeObjects(object_ids, local_only);
-  conn->ProcessMessages();
+  FreeObjects(object_ids, true /* local_only */);
 }
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
@@ -1033,32 +722,16 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
 
 void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids) {
   // This code path should be called from node manager.
-  flatbuffers::FlatBufferBuilder fbb;
-  flatbuffers::Offset<object_manager_protocol::FreeRequestMessage> request =
-      object_manager_protocol::CreateFreeRequestMessage(fbb, to_flatbuf(fbb, object_ids));
-  fbb.Finish(request);
+  rpc::FreeObjectsRequest free_objects_request;
+  for (const auto& e: object_ids) {
+    free_objects_request.add_object_ids(e.Binary());
+  }
 
   const auto remote_connections = object_directory_->LookupAllRemoteConnections();
   for (const auto &connection_info : remote_connections) {
-    std::shared_ptr<SenderConnection> conn;
-    connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE,
-                               connection_info.client_id, &conn);
-    if (conn == nullptr) {
-      conn = CreateSenderConnection(ConnectionPool::ConnectionType::MESSAGE,
-                                    connection_info);
-    }
-
-    if (conn != nullptr) {
-      conn->WriteMessageAsync(
-          static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
-          fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) {
-            if (!status.ok()) {
-              RAY_CHECK(status.IsIOError())
-                  << "Failed to contact remote object manager during Free";
-              connection_pool_.RemoveSender(conn);
-            }
-          });
-      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
+    auto rpc_client = GetRpcClient(connection_info.client_id);
+    if (rpc_client != nullptr) {
+      rpc_client->FreeObjects(free_objects_request, nullptr);
     }
   }
 }

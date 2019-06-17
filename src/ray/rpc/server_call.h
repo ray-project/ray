@@ -194,8 +194,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cq_(cq) {}
 
   ServerCall *CreateCall() const override {
-    // Create a new `ServerCall`. This object will eventually be deleted by `GrpcServer`'s
-    // polling thread.
+    // Create a new `ServerCall`. This object will eventually be deleted by
+    // `GrpcServer::PollEventsFromCompletionQueue`.
     auto call = new ServerCallImpl<ServiceHandler, Request, Reply>(
         *this, service_handler_, handle_request_function_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as

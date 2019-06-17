@@ -1,25 +1,17 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@build_stack_rules_proto//cpp:cpp_grpc_library.bzl", "cpp_grpc_library")
+load("@com_github_grpc_grpc//bazel:grpc_build_system.bzl", "grpc_proto_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
 
 COPTS = ["-DRAY_USE_GLOG"]
 
-# gRPC libraries.
-
-# node_manager.proto definition.
-proto_library(
-    name = "node_manager_proto",
+# Node manager gRPC lib.
+grpc_proto_library(
+    name = "node_manager_grpc_lib",
     srcs = ["src/ray/protobuf/node_manager.proto"],
-)
-
-# Node manager gRPC-genrated files.
-cpp_grpc_library(
-    name = "node_manager_grpc",
-    deps = [":node_manager_proto"],
 )
 
 # Node manager server and client.
@@ -34,19 +26,14 @@ cc_library(
     copts = COPTS,
     deps = [
         ":ray_common",
-        ":node_manager_grpc",
+        ":node_manager_grpc_lib",
         "@boost//:asio",
     ],
 )
 
-proto_library(
-    name = "object_manager_proto",
+grpc_proto_library(
+    name = "object_manager_grpc_lib",
     srcs = ["src/ray/protobuf/object_manager.proto"],
-)
-
-cpp_grpc_library(
-    name = "object_manager_grpc",
-    deps = [":object_manager_proto"],
 )
 
 cc_library(
@@ -55,15 +42,14 @@ cc_library(
         "src/ray/rpc/*.cc",
     ]),
     hdrs = glob([
-        "src/ray/rpc/object_manager_server.h",
-        "src/ray/rpc/object_manager_client.h",
         "src/ray/rpc/*.h",
     ]),
     copts = COPTS,
     deps = [
         ":ray_common",
-        ":object_manager_grpc",
+        ":object_manager_grpc_lib",
         "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 

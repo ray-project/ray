@@ -48,6 +48,13 @@ class ObjectManagerClient {
                                                                            callback);
   }
 
+  void FreeObjects(const FreeObjectsRequest &request, const ClientCallback<FreeObjectsReply> &callback) {
+    client_call_manager_
+        .CreateCall<ObjectManagerService, FreeObjectsRequest, FreeObjectsReply>(*stub_,
+                                                                &ObjectManagerService::Stub::PrepareAsyncFreeObjects, request,
+                                                                           callback);
+  }
+
  private:
   /// The gRPC-generated stub.
   std::unique_ptr<ObjectManagerService::Stub> stub_;

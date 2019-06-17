@@ -24,46 +24,44 @@ void GrpcServer::Run() {
     // Create and request calls from the factories.
     factory->CreateCall();
   }
-  // Start polling incoming requests.
-  StartPolling();
+  // Start a thread that polls incoming requests.
+  std::thread polling_thread(&GrpcServer::PollEventsFromCompletionQueue, this);
+  polling_thread.detach();
 }
 
-void GrpcServer::StartPolling() {
-  auto polling_func = [this]() {
-    void *tag;
-    bool ok;
-    while (cq_->Next(&tag, &ok)) {
-      ServerCall *server_call = static_cast<ServerCall *>(tag);
-      // `ok == false` indicates that the server has been shut down.
-      // We should delete the call object in this case.
-      bool delete_call = !ok;
-      if (ok) {
-        switch (server_call->GetState()) {
-        case ServerCallState::PENDING:
-          // We've received a new incoming request. Now this call object is used to
-          // track this request. So we need to create another call to handle next
-          // incoming request.
-          server_call->GetFactory().CreateCall();
-          server_call->SetState(ServerCallState::PROCESSING);
-          main_service_.post([server_call] { server_call->HandleRequest(); });
-          break;
-        case ServerCallState::SENDING_REPLY:
-          // The reply has been sent, this call can be deleted now.
-          // This event is triggered by `ServerCallImpl::SendReply`.
-          delete_call = true;
-          break;
-        default:
-          RAY_LOG(FATAL) << "Shouldn't reach here.";
-          break;
-        }
-      }
-      if (delete_call) {
-        delete server_call;
+void GrpcServer::PollEventsFromCompletionQueue() {
+  void *tag;
+  bool ok;
+  // Keep reading events from the `CompletionQueue` until it's shutdown.
+  while (cq_->Next(&tag, &ok)) {
+    ServerCall *server_call = static_cast<ServerCall *>(tag);
+    // `ok == false` indicates that the server has been shut down.
+    // We should delete the call object in this case.
+    bool delete_call = !ok;
+    if (ok) {
+      switch (server_call->GetState()) {
+      case ServerCallState::PENDING:
+        // We've received a new incoming request. Now this call object is used to
+        // track this request. So we need to create another call to handle next
+        // incoming request.
+        server_call->GetFactory().CreateCall();
+        server_call->SetState(ServerCallState::PROCESSING);
+        main_service_.post([server_call] { server_call->HandleRequest(); });
+        break;
+      case ServerCallState::SENDING_REPLY:
+        // The reply has been sent, this call can be deleted now.
+        // This event is triggered by `ServerCallImpl::SendReply`.
+        delete_call = true;
+        break;
+      default:
+        RAY_LOG(FATAL) << "Shouldn't reach here.";
+        break;
       }
     }
-  };
-
-  polling_thread_.reset(new std::thread(std::move(polling_func)));
+    if (delete_call) {
+      delete server_call;
+    }
+  }
 }
 
 }  // namespace rpc
