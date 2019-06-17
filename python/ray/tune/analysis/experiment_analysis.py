@@ -127,9 +127,9 @@ class ExperimentAnalysis(object):
     def get_best_logdir(self, metric, mode="max"):
         df = self.dataframe()
         if mode == "max":
-            return df.ix[df[metric].argmax()].logdir
+            return df.iloc[df[metric].idxmax()].logdir
         elif mode == "min":
-            return df.ix[df[metric].argmin()].logdir
+            return df.iloc[df[metric].idxmin()].logdir
 
     def get_best_info(self, metric, mode="max", flatten=True):
         """Retrieve the best trial based on the experiment metric.
