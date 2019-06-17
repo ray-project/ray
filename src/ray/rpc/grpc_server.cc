@@ -1,4 +1,4 @@
-#include "ray/rpc/grpc_server.h"
+#include "src/ray/rpc/grpc_server.h"
 
 namespace ray {
 namespace rpc {

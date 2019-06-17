@@ -272,8 +272,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_ids the The list of ObjectIDs to be deleted.
   void SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids);
 
-  /// Handle starting, running, and stopping asio io_service.
-  void StartIOService();
+  /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
   void RunRpcService();
   void StopRpcService();

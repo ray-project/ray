@@ -8,6 +8,26 @@ load("@//bazel:cython_library.bzl", "pyx_library")
 
 COPTS = ["-DRAY_USE_GLOG"]
 
+# grpc common lib
+cc_library(
+    name = "common_grpc_lib",
+    srcs = [
+        "src/ray/rpc/grpc_server.cc",
+    ],
+    hdrs = [
+        "src/ray/rpc/grpc_server.h",
+        "src/ray/rpc/server_call.h",
+        "src/ray/rpc/client_call.h",
+        "src/ray/rpc/util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++"
+    ]
+)
+
 # Node manager gRPC lib.
 grpc_proto_library(
     name = "node_manager_grpc_lib",
@@ -17,17 +37,17 @@ grpc_proto_library(
 # Node manager server and client.
 cc_library(
     name = "node_manager_rpc_lib",
-    srcs = glob([
-        "src/ray/rpc/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/rpc/*.h",
-    ]),
+    hdrs = [
+        "src/ray/rpc/node_manager_client.h",
+        "src/ray/rpc/node_manager_server.h",
+    ],
     copts = COPTS,
     deps = [
         ":ray_common",
         ":node_manager_grpc_lib",
+        ":common_grpc_lib",
         "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
@@ -36,17 +56,17 @@ grpc_proto_library(
     srcs = ["src/ray/protobuf/object_manager.proto"],
 )
 
+# Object manger rpc lib
 cc_library(
     name = "object_manager_rpc_lib",
-    srcs = glob([
-        "src/ray/rpc/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/rpc/*.h",
-    ]),
+    hdrs = [
+        "src/ray/rpc/object_manager_client.h",
+        "src/ray/rpc/object_manager_server.h",
+    ],
     copts = COPTS,
     deps = [
         ":ray_common",
+        ":common_grpc_lib",
         ":object_manager_grpc_lib",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -140,7 +160,6 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":stats_lib",
-        ":object_manager_rpc_lib",
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
