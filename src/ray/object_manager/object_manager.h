@@ -23,10 +23,10 @@
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
-#include "ray/rpc/object_manager_client.h"
-#include "ray/rpc/object_manager_server.h"
 #include "ray/object_manager/object_manager_client_connection.h"
 #include "ray/object_manager/object_store_notification_manager.h"
+#include "ray/rpc/object_manager_client.h"
+#include "ray/rpc/object_manager_server.h"
 
 namespace ray {
 
@@ -69,7 +69,8 @@ class ObjectManagerInterface {
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.
-class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerServiceHandler {
+class ObjectManager : public ObjectManagerInterface,
+                      public rpc::ObjectManagerServiceHandler {
   /// Implementation of object manager service
  public:
   void HandlePushRequest(const rpc::PushRequest &request, rpc::PushReply *reply,
@@ -85,9 +86,9 @@ class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerSe
                               uint64_t chunk_index,
                               std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
 
-  ray::Status ReceiveObjectChunk(
-      const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
-      uint64_t metadata_size, uint64_t chunk_index, const std::string& data);
+  ray::Status ReceiveObjectChunk(const ClientID &client_id, const ObjectID &object_id,
+                                 uint64_t data_size, uint64_t metadata_size,
+                                 uint64_t chunk_index, const std::string &data);
 
   ray::Status SendPullRequest(const ObjectID &object_id, const ClientID &client_id);
 
@@ -273,9 +274,9 @@ class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerSe
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
-  void RunSendService();
-  void RunReceiveService();
-  void StopIOService();
+  void StartRpcService();
+  void RunRpcService();
+  void StopRpcService();
 
   /// Handle an object being added to this node. This adds the object to the
   /// directory, pushes the object to other nodes if necessary, and cancels any
@@ -331,7 +332,6 @@ class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerSe
                              uint64_t chunk_index, double start_time_us,
                              double end_time_us, ray::Status status);
 
-
   /// Execute a receive on the receive_service_ thread pool.
   ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
                                    uint64_t data_size, uint64_t metadata_size,
@@ -350,28 +350,19 @@ class ObjectManager : public ObjectManagerInterface, public rpc::ObjectManagerSe
   ObjectStoreNotificationManager store_notification_;
   ObjectBufferPool buffer_pool_;
 
-  /// This runs on a thread pool dedicated to sending objects.
-  boost::asio::io_service send_service_;
-  /// This runs on a thread pool dedicated to receiving objects.
-  boost::asio::io_service receive_service_;
+  /// This runs on a thread pool dedicated to handle rpc requests
+  boost::asio::io_service rpc_service_;
 
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
   boost::asio::io_service *main_service_;
 
-  /// Used to create "work" for send_service_.
-  /// Without this, if send_service_ has no more sends to process, it will stop.
-  boost::asio::io_service::work send_work_;
-  /// Used to create "work" for receive_service_.
-  /// Without this, if receive_service_ has no more receives to process, it will stop.
-  boost::asio::io_service::work receive_work_;
+  boost::asio::io_service::work rpc_work_;
 
-  /// Runs the send service, which handle
-  /// all outgoing object transfers.
-  std::vector<std::thread> send_threads_;
-  /// Runs the receive service, which handle
-  /// all incoming object transfers.
-  std::vector<std::thread> receive_threads_;
+  /// Runs the rpc service, which handle all incoming rpc requests
+  ///
+  /// Some plasma operation is blocking call, use single thread to free main thread
+  std::thread rpc_thread_;
 
   /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;

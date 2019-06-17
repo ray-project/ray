@@ -32,19 +32,24 @@ class GrpcServer {
   /// will be posted.
   GrpcServer(const std::string &name, const uint32_t port,
              boost::asio::io_service &main_service)
-      : name_(name), port_(port), main_service_(main_service) {}
+      : name_(name), port_(port), main_service_(main_service), is_closed_(false) {}
 
   /// Destruct this gRPC server.
-  ~GrpcServer() {
-    // shutdown the server forcelly after 200ms, even some requests haven't finished
-    auto deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(200);
-    server_->Shutdown(deadline);
-    cq_->Shutdown();
-    RAY_LOG(INFO) << "gRPC server of " << name_ << " shutdown.";
-  }
+  ~GrpcServer() { Shutdown(); }
 
   /// Initialize and run this server.
   void Run();
+
+  // Shutdown this server
+  void Shutdown() {
+    if (!is_closed_) {
+      server_->Shutdown();
+      cq_->Shutdown();
+      polling_thread_.join();
+      is_closed_ = true;
+      RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
+    }
+  }
 
   /// Get the port of this gRPC server.
   int GetPort() const { return port_; }
@@ -54,15 +59,19 @@ class GrpcServer {
   /// to the given `ServerBuilder`.
   ///
   /// \param[in] builder The `ServerBuilder` instance to register services to.
-  virtual void RegisterServices(::grpc::ServerBuilder &builder) = 0;
+  virtual void RegisterServices(grpc::ServerBuilder &builder) = 0;
 
-  /// Subclasses should implement this method and initialize the `ServerCallFactory`
-  /// instances. The returned factories will be used to create `ServerCall` objects, each
-  /// of which is used to handle an incoming request.
+  /// Subclasses should implement this method to initialize the `ServerCallFactory`
+  /// instances, as well as specify maximum number of concurrent requests that gRPC
+  /// server can "accept" (not "handle"). Each factory will be used to create
+  /// `accept_concurrency` `ServerCall` objects, each of which will be used to accept and
+  /// handle an incoming request.
   ///
-  /// \param[out] server_call_factories The returned `ServerCallFactory` objects.
+  /// \param[out] server_call_factories_and_concurrencies The `ServerCallFactory` objects,
+  /// and the maximum number of concurrent requests that gRPC server can accept.
   virtual void InitServerCallFactories(
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) = 0;
+      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
+          *server_call_factories_and_concurrencies) = 0;
 
   /// This function runs in a background thread. It keeps polling events from the
   /// `ServerCompletionQueue`, and dispaches the event to the `ServiceHandler` instances
@@ -75,13 +84,16 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
-  /// The `ServerCallFactory` objects.
-  std::vector<std::unique_ptr<ServerCallFactory>> server_call_factories_;
+  /// The `ServerCallFactory` objects, and the maximum number of concurrent requests that
+  /// gRPC server can accept.
+  std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
+      server_call_factories_and_concurrencies_;
   /// The `ServerCompletionQueue` object used for polling events.
-  std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
+  std::unique_ptr<grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.
-  std::unique_ptr<::grpc::Server> server_;
+  std::unique_ptr<grpc::Server> server_;
   std::thread polling_thread_;
+  bool is_closed_;
 };
 
 }  // namespace rpc

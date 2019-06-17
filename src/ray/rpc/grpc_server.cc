@@ -6,9 +6,9 @@ namespace rpc {
 void GrpcServer::Run() {
   std::string server_address("0.0.0.0:" + std::to_string(port_));
 
-  ::grpc::ServerBuilder builder;
+  grpc::ServerBuilder builder;
   // TODO(hchen): Add options for authentication.
-  builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials(), &port_);
+  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Allow subclasses to register concrete services.
   RegisterServices(builder);
   // Get hold of the completion queue used for the asynchronous communication
@@ -19,15 +19,16 @@ void GrpcServer::Run() {
   RAY_LOG(DEBUG) << name_ << " server started, listening on port " << port_ << ".";
 
   // Allow subclasses to initialize the server call factories.
-  InitServerCallFactories(&server_call_factories_);
-  for (auto &factory : server_call_factories_) {
-    // Create and request calls from the factories.
-    factory->CreateCall();
+  InitServerCallFactories(&server_call_factories_and_concurrencies_);
+  for (auto &entry : server_call_factories_and_concurrencies_) {
+    for (int i = 0; i < entry.second; i++) {
+      // Create and request calls from the factory.
+      entry.first->CreateCall();
+    }
   }
   // Start a thread that polls incoming requests.
-  std::thread polling_thread(&GrpcServer::PollEventsFromCompletionQueue, this);
-  polling_thread.detach();
-  //polling_thread_ = std::thread(&GrpcServer::PollEventsFromCompletionQueue, this);
+  polling_thread_ = std::thread(&GrpcServer::PollEventsFromCompletionQueue, this);
+  //polling_thread.detach();
 }
 
 void GrpcServer::PollEventsFromCompletionQueue() {
@@ -47,7 +48,13 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         // incoming request.
         server_call->GetFactory().CreateCall();
         server_call->SetState(ServerCallState::PROCESSING);
-        main_service_.post([server_call] { server_call->HandleRequest(); });
+        if (!main_service_.stopped()) {
+          main_service_.post([server_call] { server_call->HandleRequest(); });
+        } else {
+          // TODO: should send reply here
+          RAY_LOG(DEBUG) << "Service has stopped.";
+          delete_call = true;
+        }
         break;
       case ServerCallState::SENDING_REPLY:
         // The reply has been sent, this call can be deleted now.

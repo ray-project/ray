@@ -40,6 +40,10 @@ class ServerCallFactory;
 ///     will be called, and the state becomes `SENDING_REPLY`.
 /// (4) When the reply is sent, an event will be gotten from the `CompletionQueue`.
 ///     `GrpcServer` will then delete this call.
+///
+/// NOTE(hchen): Compared to `ServerCallImpl`, this abstract interface doesn't use
+/// template. This allows the users (e.g., `GrpcServer`) not having to use
+/// template as well.
 class ServerCall {
  public:
   /// Get the state of this `ServerCall`.
@@ -137,10 +141,10 @@ class ServerCallImpl : public ServerCall {
 
   /// Context for the request, allowing to tweak aspects of it such as the use
   /// of compression, authentication, as well as to send metadata back to the client.
-  ::grpc::ServerContext context_;
+  grpc::ServerContext context_;
 
   /// The reponse writer.
-  ::grpc::ServerAsyncResponseWriter<Reply> response_writer_;
+  grpc::ServerAsyncResponseWriter<Reply> response_writer_;
 
   /// The request message.
   Request request_;
@@ -159,8 +163,8 @@ class ServerCallImpl : public ServerCall {
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
 using RequestCallFunction = void (GrpcService::AsyncService::*)(
-    ::grpc::ServerContext *, Request *, ::grpc::ServerAsyncResponseWriter<Reply> *,
-    ::grpc::CompletionQueue *, ::grpc::ServerCompletionQueue *, void *);
+    grpc::ServerContext *, Request *, grpc::ServerAsyncResponseWriter<Reply> *,
+    grpc::CompletionQueue *, grpc::ServerCompletionQueue *, void *);
 
 /// Implementation of `ServerCallFactory`
 ///
@@ -177,7 +181,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   ///
   /// \param[in] service The gRPC-generated `AsyncService`.
   /// \param[in] request_call_function Pointer to the `AsyncService::RequestMethod`
-  //  fucntion.
+  //  function.
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] cq The `CompletionQueue`.
@@ -186,7 +190,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
-      const std::unique_ptr<::grpc::ServerCompletionQueue> &cq)
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
@@ -210,7 +214,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// The gRPC-generated `AsyncService`.
   AsyncService &service_;
 
-  /// Pointer to the `AsyncService::RequestMethod` fucntion.
+  /// Pointer to the `AsyncService::RequestMethod` function.
   RequestCallFunction<GrpcService, Request, Reply> request_call_function_;
 
   /// The service handler that handles the request.
@@ -220,7 +224,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;
 
   /// The `CompletionQueue`.
-  const std::unique_ptr<::grpc::ServerCompletionQueue> &cq_;
+  const std::unique_ptr<grpc::ServerCompletionQueue> &cq_;
 };
 
 }  // namespace rpc

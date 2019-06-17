@@ -16,11 +16,12 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       object_directory_(std::move(object_directory)),
       store_notification_(main_service, config_.store_socket_name),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
-      send_work_(send_service_),
-      receive_work_(receive_service_),
+      rpc_work_(rpc_service_),
+      // send_work_(send_service_),
+      // receive_work_(receive_service_),
       connection_pool_(),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-      object_manager_server_(config_.object_manager_port, main_service, *this),
+      object_manager_server_(config_.object_manager_port, rpc_service_, *this),
       client_call_manager_(main_service) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
@@ -33,37 +34,25 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
 
-  StartIOService();
   RAY_LOG(INFO) << "object manager server listen on port " << config_.object_manager_port;
+  StartRpcService();
   object_manager_server_.Run();
 }
 
-ObjectManager::~ObjectManager() { StopIOService(); }
+ObjectManager::~ObjectManager() { StopRpcService(); }
 
 void ObjectManager::RegisterGcs() { object_directory_->RegisterBackend(); }
 
-void ObjectManager::StartIOService() {
-  for (int i = 0; i < config_.max_sends; ++i) {
-    send_threads_.emplace_back(std::thread(&ObjectManager::RunSendService, this));
-  }
-  for (int i = 0; i < config_.max_receives; ++i) {
-    receive_threads_.emplace_back(std::thread(&ObjectManager::RunReceiveService, this));
-  }
+void ObjectManager::RunRpcService() { rpc_service_.run(); }
+
+void ObjectManager::StartRpcService() {
+  rpc_thread_ = std::thread(&ObjectManager::RunRpcService, this);
 }
 
-void ObjectManager::RunSendService() { send_service_.run(); }
-
-void ObjectManager::RunReceiveService() { receive_service_.run(); }
-
-void ObjectManager::StopIOService() {
-  send_service_.stop();
-  for (int i = 0; i < config_.max_sends; ++i) {
-    send_threads_[i].join();
-  }
-  receive_service_.stop();
-  for (int i = 0; i < config_.max_receives; ++i) {
-    receive_threads_[i].join();
-  }
+void ObjectManager::StopRpcService() {
+  rpc_service_.stop();
+  rpc_thread_.join();
+  object_manager_server_.Shutdown();
 }
 
 void ObjectManager::HandleObjectAdded(
@@ -381,7 +370,8 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
 
     RAY_LOG(DEBUG) << "Send object chunk of " << object_id << " to client " << client_id
-                   << ", number of chunks: " << num_chunks << ", total data size: " << data_size;
+                   << ", number of chunks: " << num_chunks
+                   << ", total data size: " << data_size;
 
     UniqueID push_id = UniqueID::FromRandom();
     for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
@@ -636,31 +626,35 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 }
 
 /// Implementation of ObjectManagerServiceHandler
-void ObjectManager::HandlePushRequest(const rpc::PushRequest &request, rpc::PushReply *reply,
-                       rpc::RequestDoneCallback done_callback) {
+void ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
+                                      rpc::PushReply *reply,
+                                      rpc::RequestDoneCallback done_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
   // Serialize.
   uint64_t chunk_index = request.chunk_index();
   uint64_t metadata_size = request.metadata_size();
   uint64_t data_size = request.data_size();
-  const std::string& data = request.data();
+  const std::string &data = request.data();
 
   double start_time = current_sys_time_seconds();
   auto status = ReceiveObjectChunk(client_id, object_id, data_size, metadata_size,
                                    chunk_index, data);
   double end_time = current_sys_time_seconds();
 
-  HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time,
-                        status);
+  HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time, status);
+  done_callback(status);
 }
 
-ray::Status ObjectManager::ReceiveObjectChunk(
-    const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
-    uint64_t metadata_size, uint64_t chunk_index, const std::string& data) {
+ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
+                                              const ObjectID &object_id,
+                                              uint64_t data_size, uint64_t metadata_size,
+                                              uint64_t chunk_index,
+                                              const std::string &data) {
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << client_id_ << " from " << client_id
                  << " of object " << object_id << " chunk index: " << chunk_index
-                 << ", chunk data size: " << data.size() << ", object size: " << data_size;
+                 << ", chunk data size: " << data.size()
+                 << ", object size: " << data_size;
 
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
@@ -675,15 +669,12 @@ ray::Status ObjectManager::ReceiveObjectChunk(
                      << object_id << " failed: " << chunk_status.second.message();
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
-
-  RAY_LOG(DEBUG) << "ReceiveObjectChunk completed on " << client_id_ << " from "
-                 << client_id << " of object " << object_id << " chunk index: " << chunk_index
-                 << " at " << current_sys_time_ms();
   return status;
 }
 
-void ObjectManager::HandlePullRequest(const rpc::PullRequest &request, rpc::PullReply *reply,
-                       rpc::RequestDoneCallback done_callback) {
+void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
+                                      rpc::PullReply *reply,
+                                      rpc::RequestDoneCallback done_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
   RAY_LOG(DEBUG) << "Receive pull request from client " << client_id << " for object ["
@@ -697,15 +688,18 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request, rpc::Pull
   profile_events_.push_back(profile_event);
 
   Push(object_id, client_id);
+  done_callback(Status::OK());
 }
 
-void ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request, rpc::FreeObjectsReply *reply,
-                              rpc::RequestDoneCallback done_callback) {
+void ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
+                                             rpc::FreeObjectsReply *reply,
+                                             rpc::RequestDoneCallback done_callback) {
   std::vector<ObjectID> object_ids;
-  for (const auto& e: request.object_ids()) {
+  for (const auto &e : request.object_ids()) {
     object_ids.emplace_back(ObjectID::FromBinary(e));
   }
   FreeObjects(object_ids, true /* local_only */);
+  done_callback(Status::OK());
 }
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
@@ -719,7 +713,7 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
 void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids) {
   // This code path should be called from node manager.
   rpc::FreeObjectsRequest free_objects_request;
-  for (const auto& e: object_ids) {
+  for (const auto &e : object_ids) {
     free_objects_request.add_object_ids(e.Binary());
   }
 
@@ -733,7 +727,8 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
   }
 }
 
-std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(const ClientID &client_id) {
+std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
+    const ClientID &client_id) {
   auto it = object_manager_clients_.find(client_id);
   if (it == object_manager_clients_.end()) {
     RemoteConnectionInfo connection_info(client_id);
@@ -741,13 +736,13 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(const Clie
     if (!connection_info.Connected()) {
       return nullptr;
     }
-    auto object_manager_client =
-        std::make_shared<rpc::ObjectManagerClient>(
-          connection_info.ip, connection_info.port, client_call_manager_);
+    auto object_manager_client = std::make_shared<rpc::ObjectManagerClient>(
+        connection_info.ip, connection_info.port, client_call_manager_);
     if (!object_manager_client) {
       return nullptr;
     }
-    it = object_manager_clients_.emplace(client_id, std::move(object_manager_client)).first;
+    it = object_manager_clients_.emplace(client_id, std::move(object_manager_client))
+             .first;
   }
   return it->second;
 }

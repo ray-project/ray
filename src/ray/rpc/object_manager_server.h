@@ -47,21 +47,24 @@ class ObjectManagerServer : public GrpcServer {
   }
 
   void InitServerCallFactories(
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
+          *server_call_factories_and_concurrencies) override {
     // Initialize the factory for `Push` requests.
     std::unique_ptr<ServerCallFactory> push_call_factory(
         new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
                                   PushRequest, PushReply>(
             service_, &ObjectManagerService::AsyncService::RequestPush, service_handler_,
             &ObjectManagerServiceHandler::HandlePushRequest, cq_));
-    server_call_factories->push_back(std::move(push_call_factory));
+    server_call_factories_and_concurrencies->emplace_back(std::move(push_call_factory), 100);
+
     // Initialize the factory for `Pull` requests.
     std::unique_ptr<ServerCallFactory> pull_call_factory(
         new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
                                   PullRequest, PullReply>(
             service_, &ObjectManagerService::AsyncService::RequestPull, service_handler_,
             &ObjectManagerServiceHandler::HandlePullRequest, cq_));
-    server_call_factories->push_back(std::move(pull_call_factory));
+    server_call_factories_and_concurrencies->emplace_back(std::move(pull_call_factory), 10);
+
     // Initialize the factory for `FreeObjects` requests.
     std::unique_ptr<ServerCallFactory> free_objects_call_factory(
         new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
@@ -69,7 +72,7 @@ class ObjectManagerServer : public GrpcServer {
             service_, &ObjectManagerService::AsyncService::RequestFreeObjects,
             service_handler_, &ObjectManagerServiceHandler::HandleFreeObjectsRequest,
             cq_));
-    server_call_factories->push_back(std::move(free_objects_call_factory));
+    server_call_factories_and_concurrencies->emplace_back(std::move(free_objects_call_factory), 1);
   }
 
  private:
