@@ -70,10 +70,9 @@ def train_mnist(config):
     use_cuda = config.get("use_gpu") and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    mnist_transforms = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307, ), (0.3081, ))
-    ])
+    mnist_transforms = transforms.Compose(
+        [transforms.ToTensor(),
+         transforms.Normalize((0.1307, ), (0.3081, ))])
 
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST(
@@ -99,7 +98,10 @@ def train_mnist(config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
     parser.add_argument(
-        "--cuda", action="store_true", default=False, help="Enables GPU training")
+        "--cuda",
+        action="store_true",
+        default=False,
+        help="Enables GPU training")
     parser.add_argument(
         "--seed",
         type=int,
