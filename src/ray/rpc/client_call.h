@@ -62,14 +62,14 @@ class ClientCallImpl : public ClientCall {
   ClientCallback<Reply> callback_;
 
   /// The response reader.
-  std::unique_ptr<::grpc::ClientAsyncResponseReader<Reply>> response_reader_;
+  std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> response_reader_;
 
   /// gRPC status of this request.
-  ::grpc::Status status_;
+  grpc::Status status_;
 
   /// Context for the client. It could be used to convey extra information to
   /// the server and/or tweak certain RPC behaviors.
-  ::grpc::ClientContext context_;
+  grpc::ClientContext context_;
 
   friend class ClientCallManager;
 };
@@ -81,9 +81,9 @@ class ClientCallImpl : public ClientCall {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
-using PrepareAsyncFunction = std::unique_ptr<::grpc::ClientAsyncResponseReader<Reply>> (
-    GrpcService::Stub::*)(::grpc::ClientContext *context, const Request &request,
-                          ::grpc::CompletionQueue *cq);
+using PrepareAsyncFunction = std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> (
+    GrpcService::Stub::*)(grpc::ClientContext *context, const Request &request,
+                          grpc::CompletionQueue *cq);
 
 /// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
 /// `ClientCall` objects.
@@ -160,7 +160,7 @@ class ClientCallManager {
   boost::asio::io_service &main_service_;
 
   /// The gRPC `CompletionQueue` object used to poll events.
-  ::grpc::CompletionQueue cq_;
+  grpc::CompletionQueue cq_;
 };
 
 }  // namespace rpc

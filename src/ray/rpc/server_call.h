@@ -141,10 +141,10 @@ class ServerCallImpl : public ServerCall {
 
   /// Context for the request, allowing to tweak aspects of it such as the use
   /// of compression, authentication, as well as to send metadata back to the client.
-  ::grpc::ServerContext context_;
+  grpc::ServerContext context_;
 
   /// The reponse writer.
-  ::grpc::ServerAsyncResponseWriter<Reply> response_writer_;
+  grpc::ServerAsyncResponseWriter<Reply> response_writer_;
 
   /// The request message.
   Request request_;
@@ -163,8 +163,8 @@ class ServerCallImpl : public ServerCall {
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
 using RequestCallFunction = void (GrpcService::AsyncService::*)(
-    ::grpc::ServerContext *, Request *, ::grpc::ServerAsyncResponseWriter<Reply> *,
-    ::grpc::CompletionQueue *, ::grpc::ServerCompletionQueue *, void *);
+    grpc::ServerContext *, Request *, grpc::ServerAsyncResponseWriter<Reply> *,
+    grpc::CompletionQueue *, grpc::ServerCompletionQueue *, void *);
 
 /// Implementation of `ServerCallFactory`
 ///
@@ -190,7 +190,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
-      const std::unique_ptr<::grpc::ServerCompletionQueue> &cq)
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
@@ -224,7 +224,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;
 
   /// The `CompletionQueue`.
-  const std::unique_ptr<::grpc::ServerCompletionQueue> &cq_;
+  const std::unique_ptr<grpc::ServerCompletionQueue> &cq_;
 };
 
 }  // namespace rpc

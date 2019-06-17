@@ -38,7 +38,7 @@ class NodeManagerServer : public GrpcServer {
       : GrpcServer("NodeManager", port, main_service),
         service_handler_(service_handler){};
 
-  void RegisterServices(::grpc::ServerBuilder &builder) override {
+  void RegisterServices(grpc::ServerBuilder &builder) override {
     /// Register `NodeManagerService`.
     builder.RegisterService(&service_);
   }

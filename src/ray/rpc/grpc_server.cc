@@ -6,9 +6,9 @@ namespace rpc {
 void GrpcServer::Run() {
   std::string server_address("0.0.0.0:" + std::to_string(port_));
 
-  ::grpc::ServerBuilder builder;
+  grpc::ServerBuilder builder;
   // TODO(hchen): Add options for authentication.
-  builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials(), &port_);
+  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Allow subclasses to register concrete services.
   RegisterServices(builder);
   // Get hold of the completion queue used for the asynchronous communication

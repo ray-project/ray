@@ -51,7 +51,7 @@ class GrpcServer {
   /// to the given `ServerBuilder`.
   ///
   /// \param[in] builder The `ServerBuilder` instance to register services to.
-  virtual void RegisterServices(::grpc::ServerBuilder &builder) = 0;
+  virtual void RegisterServices(grpc::ServerBuilder &builder) = 0;
 
   /// Subclasses should implement this method to initialize the `ServerCallFactory`
   /// instances, as well as specify maximum number of concurrent requests that gRPC
@@ -81,9 +81,9 @@ class GrpcServer {
   std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
       server_call_factories_and_concurrencies_;
   /// The `ServerCompletionQueue` object used for polling events.
-  std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
+  std::unique_ptr<grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.
-  std::unique_ptr<::grpc::Server> server_;
+  std::unique_ptr<grpc::Server> server_;
 };
 
 }  // namespace rpc
