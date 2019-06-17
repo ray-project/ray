@@ -164,7 +164,10 @@ void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
   state.registered_workers.insert(std::move(worker));
 
   auto it = state.starting_worker_processes.find(pid);
-  RAY_CHECK(it != state.starting_worker_processes.end());
+  if (it == state.starting_worker_processes.end()) {
+    RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
+    return;
+  }
   it->second--;
   if (it->second == 0) {
     state.starting_worker_processes.erase(it);
