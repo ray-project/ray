@@ -48,11 +48,30 @@ class ActorHandle {
         task_counter_(0),
         num_forks_(0) {}
 
+  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
+              const ObjectID &actor_cursor, int task_counter, int num_forks)
+      : actor_id_(actor_id),
+        actor_handle_id_(actor_handle_id),
+        actor_cursor_(actor_cursor),
+        task_counter_(task_counter),
+        num_forks_(num_forks) {}
+
   /// ID of the actor.
   const ray::ActorID &ActorID() const { return actor_id_; };
 
   /// ID of this actor handle.
   const ray::ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
+
+  /// The unique id of the last return of the last task.
+  /// It's used as a dependency for the next task.
+  const ObjectID &ActorCursor() const { return actor_cursor_; };
+
+  /// The number of tasks that have been invoked on this actor.
+  const int TaskCounter() const { return task_counter_; };
+
+  /// The number of times that this actor handle has been forked.
+  /// It's used to make sure ids of actor handles are unique.
+  const int NumForks() const { return num_forks_; };
 
   std::unique_ptr<ActorHandle> Fork() {
     auto new_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
@@ -63,9 +82,6 @@ class ActorHandle {
   }
 
  private:
-  /// Cursor of this actor.
-  const ObjectID &ActorCursor() const { return actor_cursor_; };
-
   /// Set actor cursor.
   void SetActorCursor(const ObjectID &actor_cursor) { actor_cursor_ = actor_cursor; };
 
@@ -81,9 +97,10 @@ class ActorHandle {
   const ray::ActorID actor_id_;
   /// ID of this actor handle.
   const ray::ActorHandleID actor_handle_id_;
-  /// ID of this actor cursor.
+  /// The unique id of the last return of the last task.
+  /// It's used as a dependency for the next task.
   ObjectID actor_cursor_;
-  /// Counter for tasks from this handle.
+  /// The number of tasks that have been invoked on this actor.
   int task_counter_;
   /// The number of times that this actor handle has been forked.
   /// It's used to make sure ids of actor handles are unique.

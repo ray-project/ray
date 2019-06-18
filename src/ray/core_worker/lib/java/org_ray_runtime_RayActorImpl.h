@@ -14,6 +14,56 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_fork(JNIEnv *, jclass, jlong);
 
+/*
+ * Class:     org_ray_runtime_RayActorImpl
+ * Method:    getActorId
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorId(JNIEnv *,
+                                                                          jclass, jlong);
+
+/*
+ * Class:     org_ray_runtime_RayActorImpl
+ * Method:    getActorHandleId
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorHandleId(JNIEnv *,
+                                                                                jclass,
+                                                                                jlong);
+
+/*
+ * Class:     org_ray_runtime_RayActorImpl
+ * Method:    getActorCursor
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorCursor(JNIEnv *,
+                                                                              jclass,
+                                                                              jlong);
+
+/*
+ * Class:     org_ray_runtime_RayActorImpl
+ * Method:    getTaskCounter
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_org_ray_runtime_RayActorImpl_getTaskCounter(JNIEnv *, jclass,
+                                                                        jlong);
+
+/*
+ * Class:     org_ray_runtime_RayActorImpl
+ * Method:    getNumForks
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_org_ray_runtime_RayActorImpl_getNumForks(JNIEnv *, jclass,
+                                                                     jlong);
+
+/*
+ * Class:     org_ray_runtime_RayActorImpl
+ * Method:    createActor
+ * Signature: ([B[B[BII)J
+ */
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_createActor(
+    JNIEnv *, jclass, jbyteArray, jbyteArray, jbyteArray, jint, jint);
+
 #ifdef __cplusplus
 }
 #endif

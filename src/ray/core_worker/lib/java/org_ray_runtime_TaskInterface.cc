@@ -148,9 +148,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterface_createActor(
   ReleaseTaskArgs(env, byte_arrays_to_be_released, byte_pointers_to_be_released);
 
   ThrowRayExceptionIfNotOK(env, status);
-  auto actor_id =
-      JByteArrayFromUniqueId<ray::ActorID>(env, actor_handle->ActorID()).GetJByteArray();
-  // TODO: when to free ActorHandle?
+  // TODO: free ActorHandle
   return reinterpret_cast<jlong>(actor_handle.release());
 }
 
