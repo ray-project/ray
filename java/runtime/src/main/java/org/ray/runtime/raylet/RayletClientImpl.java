@@ -190,10 +190,16 @@ public class RayletClientImpl implements RayletClient {
     JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
+
+    // Deserialize dynamic worker options.
+    List<String> dynamicWorkerOptions = new ArrayList<>();
+    for (int i = 0; i < info.dynamicWorkerOptionsLength(); ++i) {
+      dynamicWorkerOptions.add(info.dynamicWorkerOptions(i));
+    }
+
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
         maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
-        args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor,
-        info.workerCommandPrefix(), info.workerCommandSuffix());
+        args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -276,8 +282,13 @@ public class RayletClientImpl implements RayletClient {
       functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
     }
 
-    final int workerCommandPrefixOffset = fbb.createString(task.workerCommandPrefix);
-    final int workerCommandSuffixOffset = fbb.createString(task.workerCommandSuffix);
+    // TODO(qwang):
+
+    int [] dynamicWorkerOptionsOffsets = new int[task.dynamicWorkerOptions.size()];
+    for (int index = 0; index < task.dynamicWorkerOptions.size(); ++index) {
+      dynamicWorkerOptionsOffsets[index] = fbb.createString(task.dynamicWorkerOptions.get(index));
+    }
+    int dynamicWorkerOptionsOffset = fbb.createVectorOfTables(dynamicWorkerOptionsOffsets);
 
     int root = TaskInfo.createTaskInfo(
         fbb,
@@ -298,8 +309,7 @@ public class RayletClientImpl implements RayletClient {
         requiredPlacementResourcesOffset,
         language,
         functionDescriptorOffset,
-        workerCommandPrefixOffset,
-        workerCommandSuffixOffset);
+        dynamicWorkerOptionsOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
 

@@ -38,10 +38,6 @@ public class RunManager {
   private static final DateTimeFormatter DATE_TIME_FORMATTER =
       DateTimeFormatter.ofPattern("Y-M-d_H-m-s");
 
-  private static final String PREFIX_PLACEHOLDER = "__PREFIX_PLACEHOLDER__";
-
-  private static final String SUFFIX_PLACEHOLDER = "__SUFFIX_PLACEHOLDER__";
-
   private static final String WORKER_CLASS = "org.ray.runtime.runner.worker.DefaultWorker";
 
   private RayConfig rayConfig;
@@ -285,7 +281,6 @@ public class RunManager {
 
   private String buildWorkerCommandRaylet() {
     List<String> cmd = new ArrayList<>();
-    cmd.add(PREFIX_PLACEHOLDER);
     cmd.add("java");
     cmd.add("-classpath");
 
@@ -325,7 +320,7 @@ public class RunManager {
     cmd.addAll(rayConfig.jvmParameters);
 
     // jvm options
-    cmd.add(SUFFIX_PLACEHOLDER);
+    cmd.add("RAY_WORKER_OPTION_0");
 
     // Main class
     cmd.add(WORKER_CLASS);

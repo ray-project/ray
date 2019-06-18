@@ -119,7 +119,7 @@ void WorkerPool::StartWorkerProcess(const Language &language,
 
   std::vector<std::string> dynamic_worker_options;
   if (task_spec != nullptr && task_spec->IsActorCreationTask()) {
-    dynamic_worker_options = task_spec.DynamicWorkerOptions();
+    dynamic_worker_options = task_spec->DynamicWorkerOptions();
   }
 
   // Extract pointers from the worker command to pass into execvp.
@@ -130,8 +130,10 @@ void WorkerPool::StartWorkerProcess(const Language &language,
         kWorkerOptionPlaceHolderPrefix + std::to_string(dynamic_option_index);
 
     if (token == option_placeholder) {
-      RAY_CHECK(dynamic_option_index < dynamic_worker_options.size());
-      worker_command_args.push_back(dynamic_worker_options[dynamic_option_index].c_str());
+      if (!dynamic_worker_options.empty()) {
+        RAY_CHECK(dynamic_option_index < dynamic_worker_options.size());
+        worker_command_args.push_back(dynamic_worker_options[dynamic_option_index].c_str());
+      }
     } else {
       worker_command_args.push_back(token.c_str());
     }

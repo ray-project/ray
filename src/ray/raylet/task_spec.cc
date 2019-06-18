@@ -81,10 +81,10 @@ TaskSpecification::TaskSpecification(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const Language &language, const std::vector<std::string> &function_descriptor,
-    const Language &language, const std::vector<std::string> &dynamic_worker_options)
+    const std::vector<std::string> &dynamic_worker_options)
     : spec_() {
   // check
-  if (actor_creation_id.Nil()) {
+  if (actor_creation_id.IsNil()) {
     RAY_CHECK(dynamic_worker_options.size() == 0)
         << "`dynamic_worker_options` only can be specified for actor creating tasks.";
   }
@@ -108,7 +108,7 @@ TaskSpecification::TaskSpecification(
       map_to_flatbuf(fbb, required_resources),
       map_to_flatbuf(fbb, required_placement_resources), language,
       string_vec_to_flatbuf(fbb, function_descriptor),
-      string_vec_to_flatbuf(fbb, dynamic_worker_options),
+      string_vec_to_flatbuf(fbb, dynamic_worker_options));
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
