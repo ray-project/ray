@@ -54,7 +54,7 @@ public class WaitTest extends BaseTest {
 
   @Test
   public void testWaitInWorker() {
-    // Call a task in advance to warm up the cluster to avoid too slow to start workers.
+    // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
     warmUpCluster();
 
     RayObject<Object> res = Ray.call(WaitTest::waitInWorker);
