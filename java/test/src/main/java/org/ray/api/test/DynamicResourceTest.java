@@ -31,17 +31,21 @@ public class DynamicResourceTest extends BaseTest {
     Assert.assertEquals(result.getReady().size(), 0);
 
     Ray.setResource("A", 10.0);
+    boolean resourceReady = TestUtils.waitForCondition(()-> {
+      List<NodeInfo> nodes = Ray.getRuntimeContext().getAllNodeInfo();
+      if(nodes.size() != 1) {
+        return false;
+      }
+      return (0 == Double.compare(10.0, nodes.get(0).resources.get("A")));
+    }, 2000);
+
+    Assert.assertTrue(resourceReady);
 
     // Assert ray call result.
     result = Ray.wait(ImmutableList.of(obj), 1, 1000);
     Assert.assertEquals(result.getReady().size(), 1);
     Assert.assertEquals(Ray.get(obj.getId()), "hi");
 
-    TimeUnit.SECONDS.sleep(1);
-    // Assert node info.
-    List<NodeInfo> nodes = Ray.getRuntimeContext().getAllNodeInfo();
-    Assert.assertEquals(nodes.size(), 1);
-    Assert.assertEquals(nodes.get(0).resources.get("A"), 10.0);
   }
 
 }
