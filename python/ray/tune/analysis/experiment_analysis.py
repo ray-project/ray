@@ -76,6 +76,14 @@ class ExperimentAnalysis(object):
         self.trials = trials
         self._dataframe = None
 
+    def get_all_trial_dataframes(self):
+        trial_dfs = {}
+        for checkpoint in self._checkpoints:
+            logdir = checkpoint["logdir"]
+            progress = max(glob.glob(os.path.join(logdir, "progress.csv")))
+            trial_dfs[checkpoint["trial_id"]] = pd.read_csv(progress)
+        return trial_dfs
+
     def dataframe(self, refresh=False):
         """Returns a pandas.DataFrame object constructed from the trials.
 

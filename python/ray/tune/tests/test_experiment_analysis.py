@@ -36,7 +36,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             local_dir=self.test_dir,
             return_trials=False,
             stop={"training_iteration": 1},
-            num_samples=10,
+            num_samples=self.num_samples,
             config={
                 "width": sample_from(
                     lambda spec: 10 + int(90 * random.random())),
@@ -124,6 +124,14 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         logdir2 = self.ea.get_best_logdir(self.metric, mode="min")
         self.assertTrue(logdir2.startswith(self.test_path))
         self.assertNotEquals(logdir, logdir2)
+
+    def testAllDataframes(self):
+        dataframes = self.ea.get_all_trial_dataframes()
+        self.assertTrue(len(dataframes) == self.num_samples)
+
+        self.assertTrue(isinstance(dataframes, dict))
+        for df in dataframes.values():
+            self.assertEqual(df.training_iteration.max(), 1)
 
 
 if __name__ == "__main__":
