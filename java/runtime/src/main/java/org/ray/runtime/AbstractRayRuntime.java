@@ -165,13 +165,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  @SuppressWarnings("unchecked")
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
                                      Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(worker.getCurrentDriverId(), actorFactoryFunc).functionDescriptor;
     FunctionArg[] functionArgs = ArgumentsBuilder.wrap(args, false);
-    return (RayActor<T>) worker.getTaskInterface().createActor(functionDescriptor, functionArgs,
+    return worker.getTaskInterface().createActor(functionDescriptor, functionArgs,
         options);
   }
 
@@ -228,7 +227,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   private int getNumReturns(RayActor<?> actor) {
-    return actor == null || actor.getId().isNil() ? 1 : 2;
+    return actor == null ? 1 : 2;
   }
 
   public void loop() {

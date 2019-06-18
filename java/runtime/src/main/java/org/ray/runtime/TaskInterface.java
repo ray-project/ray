@@ -32,14 +32,14 @@ public class TaskInterface {
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
 
-  public RayActorImpl<?> createActor(FunctionDescriptor functionDescriptor, FunctionArg[] args,
-                                     ActorCreationOptions options) {
+  public <T> RayActorImpl<T> createActor(FunctionDescriptor functionDescriptor, FunctionArg[] args,
+                                         ActorCreationOptions options) {
     NativeRayFunction nativeRayFunction = new NativeRayFunction(functionDescriptor);
     List<NativeTaskArg> nativeArgs =
         Arrays.stream(args).map(NativeTaskArg::new).collect(Collectors.toList());
     NativeActorCreationOptions nativeActorCreationOptions = new NativeActorCreationOptions(options);
-    return createActor(nativeCoreWorker, nativeRayFunction, nativeArgs,
-        nativeActorCreationOptions);
+    return new RayActorImpl<>(createActor(nativeCoreWorker, nativeRayFunction, nativeArgs,
+        nativeActorCreationOptions));
   }
 
   public List<ObjectId> submitActorTask(RayActorImpl<?> actor, FunctionDescriptor functionDescriptor,
@@ -58,10 +58,10 @@ public class TaskInterface {
                                                 List<NativeTaskArg> args,
                                                 NativeTaskOptions taskOptions);
 
-  private static native RayActorImpl<?> createActor(long nativeCoreWorker,
-                                                    NativeRayFunction rayFunction,
-                                                    List<NativeTaskArg> args,
-                                                    NativeActorCreationOptions actorCreationOptions);
+  private static native long createActor(long nativeCoreWorker,
+                                         NativeRayFunction rayFunction,
+                                         List<NativeTaskArg> args,
+                                         NativeActorCreationOptions actorCreationOptions);
 
   private static native List<byte[]> submitActorTask(long nativeCoreWorker,
                                                      long nativeActorHandle,

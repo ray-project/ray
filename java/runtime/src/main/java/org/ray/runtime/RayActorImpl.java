@@ -1,20 +1,13 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import org.ray.api.RayActor;
-import org.ray.api.id.UniqueId;
 
 public class RayActorImpl<T> implements RayActor<T>, Externalizable {
-
-  public static final RayActorImpl NIL = new RayActorImpl(UniqueId.NIL, 0);
-
-  /**
-   * Id of this actor.
-   */
-  private UniqueId id;
 
   /**
    * Address of native actor handle.
@@ -22,21 +15,11 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
   private long nativeActorHandle;
 
   public RayActorImpl() {
-    this(UniqueId.NIL, 0);
+    this(0);
   }
 
-  public RayActorImpl(UniqueId id, long nativeActorHandle) {
-    this.id = id;
+  public RayActorImpl(long nativeActorHandle) {
     this.nativeActorHandle = nativeActorHandle;
-  }
-
-  public RayActorImpl(byte[] idBytes, long nativeActorHandle) {
-    this(new UniqueId(idBytes), nativeActorHandle);
-  }
-
-  @Override
-  public UniqueId getId() {
-    return id;
   }
 
   public long getNativeActorHandle() {
@@ -44,21 +27,9 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
   }
 
   public RayActorImpl<T> fork() {
-    throw new UnsupportedOperationException();
-//    RayActorImpl<T> ret = new RayActorImpl<>();
-//    ret.id = this.id;
-//    ret.taskCounter = 0;
-//    ret.numForks = 0;
-//    ret.taskCursor = this.taskCursor;
-//    ret.handleId = this.computeNextActorHandleId();
-//    newActorHandles.add(ret.handleId);
-//    return ret;
+    Preconditions.checkState(nativeActorHandle != 0);
+    return new RayActorImpl<>(fork(nativeActorHandle));
   }
-
-//  protected UniqueId computeNextActorHandleId() {
-//    byte[] bytes = Sha1Digestor.digest(handleId.getBytes(), ++numForks);
-//    return new UniqueId(bytes);
-//  }
 
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
@@ -79,4 +50,6 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
 //    this.taskCounter = (int) in.readObject();
 //    this.numForks = (int) in.readObject();
   }
+
+  private static native long fork(long nativeActorHandle);
 }

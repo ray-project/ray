@@ -42,9 +42,6 @@ extern jclass java_native_actor_creation_options_class;
 extern jfieldID java_native_actor_creation_options_max_reconstructions;
 extern jfieldID java_native_actor_creation_options_resources;
 
-extern jclass java_ray_actor_impl_class;
-extern jmethodID java_ray_actor_impl_init;
-
 inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
   if (!status.ok()) {
     jclass exception_class = env->FindClass("org/ray/api/exception/RayException");

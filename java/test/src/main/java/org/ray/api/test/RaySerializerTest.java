@@ -11,13 +11,14 @@ public class RaySerializerTest {
 
   @Test
   public void testSerializePyActor() {
-    final UniqueId pyActorId = UniqueId.randomId();
-    RayPyActor pyActor = new RayPyActorImpl(pyActorId, "test", "RaySerializerTest");
-    byte[] bytes = Serializer.encode(pyActor);
-    RayPyActor result = Serializer.decode(bytes);
-    Assert.assertEquals(result.getId(), pyActorId);
-    Assert.assertEquals(result.getModuleName(), "test");
-    Assert.assertEquals(result.getClassName(), "RaySerializerTest");
+    throw new UnsupportedOperationException();
+//    final UniqueId pyActorId = UniqueId.randomId();
+//    RayPyActor pyActor = new RayPyActorImpl(pyActorId, "test", "RaySerializerTest");
+//    byte[] bytes = Serializer.encode(pyActor);
+//    RayPyActor result = Serializer.decode(bytes);
+//    Assert.assertEquals(result.getId(), pyActorId);
+//    Assert.assertEquals(result.getModuleName(), "test");
+//    Assert.assertEquals(result.getClassName(), "RaySerializerTest");
   }
 
 }

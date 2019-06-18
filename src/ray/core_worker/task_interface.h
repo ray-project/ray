@@ -1,8 +1,6 @@
 #ifndef RAY_CORE_WORKER_TASK_INTERFACE_H
 #define RAY_CORE_WORKER_TASK_INTERFACE_H
 
-#include <list>
-
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -47,13 +45,22 @@ class ActorHandle {
       : actor_id_(actor_id),
         actor_handle_id_(actor_handle_id),
         actor_cursor_(ObjectID::FromBinary(actor_id.Binary())),
-        task_counter_(0) {}
+        task_counter_(0),
+        num_forks_(0) {}
 
   /// ID of the actor.
   const ray::ActorID &ActorID() const { return actor_id_; };
 
   /// ID of this actor handle.
   const ray::ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
+
+  std::unique_ptr<ActorHandle> Fork() {
+    auto new_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
+        actor_id_, ComputeNextActorHandleId(actor_handle_id_, ++num_forks_)));
+    new_handle->actor_cursor_ = actor_cursor_;
+    new_actor_handles_.push_back(new_handle->actor_handle_id_);
+    return new_handle;
+  }
 
  private:
   /// Cursor of this actor.
@@ -65,13 +72,9 @@ class ActorHandle {
   /// Increase task counter.
   int IncreaseTaskCounter() { return task_counter_++; }
 
-  std::list<ray::ActorHandleID> GetNewActorHandle() {
-    // TODO(zhijunfu): implement this.
-    return std::list<ray::ActorHandleID>();
-  }
+  std::vector<ray::ActorHandleID> GetNewActorHandles() { return new_actor_handles_; }
 
-  void ClearNewActorHandles() { /* TODO(zhijunfu): implement this. */
-  }
+  void ClearNewActorHandles() { new_actor_handles_.clear(); }
 
  private:
   /// ID of the actor.
@@ -82,6 +85,14 @@ class ActorHandle {
   ObjectID actor_cursor_;
   /// Counter for tasks from this handle.
   int task_counter_;
+  /// The number of times that this actor handle has been forked.
+  /// It's used to make sure ids of actor handles are unique.
+  int num_forks_;
+  /// The new actor handles that were created from this handle
+  /// since the last task on this handle was submitted. This is
+  /// used to garbage-collect dummy objects that are no longer
+  /// necessary in the backend.
+  std::vector<ray::ActorHandleID> new_actor_handles_;
 
   friend class CoreWorkerTaskInterface;
 };

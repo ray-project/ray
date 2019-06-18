@@ -39,7 +39,6 @@ public class ActorTest extends BaseTest {
   public void testCreateAndCallActor() {
     // Test creating an actor from a constructor
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
-    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
     Assert.assertEquals(Integer.valueOf(11), Ray.call(Counter::increase, actor, 10).get());

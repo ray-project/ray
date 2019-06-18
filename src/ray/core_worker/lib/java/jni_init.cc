@@ -32,9 +32,6 @@ jclass java_native_actor_creation_options_class;
 jfieldID java_native_actor_creation_options_max_reconstructions;
 jfieldID java_native_actor_creation_options_resources;
 
-jclass java_ray_actor_impl_class;
-jmethodID java_ray_actor_impl_init;
-
 jint JNI_VERSION = JNI_VERSION_1_8;
 
 #define LOAD_CLASS(variable_name, class_name)                     \
@@ -97,10 +94,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_native_actor_creation_options_class, "resources",
                       "Lorg/ray/runtime/nativeTypes/NativeResources;");
 
-  LOAD_CLASS(java_ray_actor_impl_class, "org/ray/runtime/RayActorImpl");
-  java_ray_actor_impl_init =
-      env->GetMethodID(java_ray_actor_impl_class, "<init>", "([BJ)V");
-
   return JNI_VERSION;
 }
 
@@ -116,5 +109,4 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_native_resources_class);
   env->DeleteGlobalRef(java_native_task_options_class);
   env->DeleteGlobalRef(java_native_actor_creation_options_class);
-  env->DeleteGlobalRef(java_ray_actor_impl_class);
 }

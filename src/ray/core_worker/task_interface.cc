@@ -100,13 +100,13 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   auto task_arguments = BuildTaskArguments(args);
   auto language = core_worker_.ToTaskLanguage(function.language);
 
-  std::vector<ActorHandleID> new_actor_handles;
   ray::raylet::TaskSpecification spec(
       context.GetCurrentDriverID(), context.GetCurrentTaskID(), next_task_index,
       ActorID::Nil(), actor_creation_dummy_object_id, 0, actor_handle.ActorID(),
-      actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(), new_actor_handles,
-      task_arguments, num_returns, task_options.resources, task_options.resources,
-      language, function.function_descriptor);
+      actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(),
+      actor_handle.GetNewActorHandles(), task_arguments, num_returns,
+      task_options.resources, task_options.resources, language,
+      function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
   execution_dependencies.push_back(actor_handle.ActorCursor());

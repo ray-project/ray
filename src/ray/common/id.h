@@ -159,6 +159,13 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
                             int parent_task_counter);
 
+/// Compute the next actor handle ID of a new actor handle during a fork operation.
+///
+/// \param actor_handle_id The actor handle ID of original actor.
+/// \param num_forks The count of forks of original actor.
+const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
+                                             int64_t num_forks);
+
 template <typename T>
 BaseID<T>::BaseID() {
   // Using const_cast to directly change data is dangerous. The cached

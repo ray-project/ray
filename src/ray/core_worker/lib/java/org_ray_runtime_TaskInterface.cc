@@ -129,9 +129,9 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_submitTask(
  * Class:     org_ray_runtime_TaskInterface
  * Method:    createActor
  * Signature:
- * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeActorCreationOptions;)Lorg/ray/runtime/RayActorImpl;
+ * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeActorCreationOptions;)J
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_createActor(
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterface_createActor(
     JNIEnv *env, jclass p, jlong nativeCoreWorker, jobject rayFunction, jobject taskArgs,
     jobject actorCreationOptions) {
   auto ray_function = ToRayFunction(env, rayFunction);
@@ -151,9 +151,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_createActor(
   auto actor_id =
       JByteArrayFromUniqueId<ray::ActorID>(env, actor_handle->ActorID()).GetJByteArray();
   // TODO: when to free ActorHandle?
-  auto actor_handle_address = reinterpret_cast<jlong>(actor_handle.release());
-  return env->NewObject(java_ray_actor_impl_class, java_ray_actor_impl_init, actor_id,
-                        actor_handle_address);
+  return reinterpret_cast<jlong>(actor_handle.release());
 }
 
 /*
