@@ -26,7 +26,8 @@ public class ActorReconstructionTest extends BaseTest {
     private boolean wasCurrentActorReconstructed = false;
 
     public Counter() {
-      wasCurrentActorReconstructed = Ray.getRuntimeContext().wasCurrentActorReconstructed();
+      // TODO
+//      wasCurrentActorReconstructed = Ray.getRuntimeContext().wasCurrentActorReconstructed();
     }
 
     public boolean wasCurrentActorReconstructed() {

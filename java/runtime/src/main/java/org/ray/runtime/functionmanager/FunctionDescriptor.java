@@ -1,5 +1,7 @@
 package org.ray.runtime.functionmanager;
 
+import java.util.List;
+
 /**
  * Base interface of a Ray task's function descriptor.
  *
@@ -7,5 +9,5 @@ package org.ray.runtime.functionmanager;
  * load a function in workers.
  */
 public interface FunctionDescriptor {
-
+  List<String> toList();
 }

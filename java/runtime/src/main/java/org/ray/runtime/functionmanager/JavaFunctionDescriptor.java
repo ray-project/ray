@@ -1,6 +1,8 @@
 package org.ray.runtime.functionmanager;
 
 import com.google.common.base.Objects;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Represents metadata of Java function.
@@ -48,5 +50,10 @@ public final class JavaFunctionDescriptor implements FunctionDescriptor {
   @Override
   public int hashCode() {
     return Objects.hashCode(className, name, typeDescriptor);
+  }
+
+  @Override
+  public List<String> toList() {
+    return Arrays.asList(className, name, typeDescriptor);
   }
 }

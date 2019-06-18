@@ -65,7 +65,6 @@ define_java_module(
     ],
     deps = [
         ":org_ray_ray_api",
-        "@plasma//:org_apache_arrow_arrow_plasma",
         "@maven//:com_github_davidmoten_flatbuffers_java",
         "@maven//:com_google_guava_guava",
         "@maven//:com_typesafe_config",
@@ -93,7 +92,6 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@plasma//:org_apache_arrow_arrow_plasma",
         "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
@@ -210,7 +208,6 @@ filegroup(
         "//:raylet",
         "//:core_worker_library_java",
         "@plasma//:plasma_store_server",
-        "@plasma//:plasma_client_java",
     ],
 )
 
@@ -220,7 +217,6 @@ genrule(
     srcs = [
         ":java_native_deps",
         ":generate_java_gcs_fbs",
-        "@plasma//:org_apache_arrow_arrow_plasma",
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """
@@ -241,9 +237,6 @@ genrule(
         for f in $(locations //java:generate_java_gcs_fbs); do
             cp $$f $$GENERATED_DIR
         done
-        # Install plasma jar to local maven repo.
-        mvn install:install-file -Dfile=$(locations @plasma//:org_apache_arrow_arrow_plasma) -Dpackaging=jar \
-            -DgroupId=org.apache.arrow -DartifactId=arrow-plasma -Dversion=0.13.0-SNAPSHOT
         echo $$(date) > $@
     """,
     local = 1,

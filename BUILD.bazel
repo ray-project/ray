@@ -478,10 +478,10 @@ pyx_library(
 
 cc_binary(
     name = "libcore_worker_library_java.so",
-    srcs = [
-        "src/ray/core_worker/lib/java/org_ray_runtime_CoreWorkerProxy.h",
-        "src/ray/core_worker/lib/java/org_ray_runtime_CoreWorkerProxy.cc",
-        "src/ray/common/java/jni_helper.h",
+    srcs = glob([
+        "src/ray/core_worker/lib/java/*.h",
+        "src/ray/core_worker/lib/java/*.cc",
+    ]) + [
         "@bazel_tools//tools/jdk:jni_header",
     ] + select({
         "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],

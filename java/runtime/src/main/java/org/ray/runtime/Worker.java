@@ -1,33 +1,28 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import java.util.ArrayList;
+import java.lang.reflect.Modifier;
 import java.util.List;
-import org.ray.api.Checkpointable;
-import org.ray.api.Checkpointable.Checkpoint;
-import org.ray.api.Checkpointable.CheckpointContext;
 import org.ray.api.exception.RayTaskException;
 import org.ray.api.id.ObjectId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.config.RunMode;
+import org.ray.runtime.config.WorkerMode;
+import org.ray.runtime.functionmanager.FunctionManager;
+import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.task.ArgumentsBuilder;
-import org.ray.runtime.task.TaskSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * The worker, which pulls tasks from {@link org.ray.runtime.raylet.RayletClient} and executes them
- * continuously.
- */
 public class Worker {
-
   private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
 
-  // TODO(hchen): Use the C++ config.
-  private static final int NUM_ACTOR_CHECKPOINTS_TO_KEEP = 20;
+  private final long nativeCoreWorker;
 
-  private final AbstractRayRuntime runtime;
+  private final ObjectInterface objectInterface;
+  private final TaskInterface taskInterface;
+  private final FunctionManager functionManager;
 
   /**
    * The current actor object, if this worker is an actor, otherwise null.
@@ -35,77 +30,56 @@ public class Worker {
   private Object currentActor = null;
 
   /**
-   * Id of the current actor object, if the worker is an actor, otherwise NIL.
-   */
-  private UniqueId currentActorId = UniqueId.NIL;
-
-  /**
    * The exception that failed the actor creation task, if any.
    */
   private Exception actorCreationException = null;
 
-  /**
-   * Number of tasks executed since last actor checkpoint.
-   */
-  private int numTasksSinceLastCheckpoint = 0;
+  private ClassLoader currentClassLoader;
 
-  /**
-   * IDs of this actor's previous checkpoints.
-   */
-  private List<UniqueId> checkpointIds;
-
-  /**
-   * Timestamp of the last actor checkpoint.
-   */
-  private long lastCheckpointTimestamp = 0;
-
-
-  public Worker(AbstractRayRuntime runtime) {
-    this.runtime = runtime;
+  Worker(WorkerMode workerMode, FunctionManager functionManager, String storeSocket,
+         String rayletSocket, UniqueId driverId) {
+    this.functionManager = functionManager;
+    nativeCoreWorker = createCoreWorker(workerMode.value(), storeSocket, rayletSocket,
+        driverId.getBytes());
+    objectInterface = new ObjectInterface(nativeCoreWorker);
+    taskInterface = new TaskInterface(nativeCoreWorker);
   }
 
-  public UniqueId getCurrentActorId() {
-    return currentActorId;
-  }
+  private void runTaskCallback(List<String> rayFunctionInfo, List<byte[]> argsBytes,
+                               byte[] taskIdBytes, int numReturns) {
+    TaskId taskId = new TaskId(taskIdBytes);
+    String taskInfo = taskId + " " + String.join(".", rayFunctionInfo);
+    LOGGER.debug("Executing task {}", taskInfo);
+    Preconditions.checkState(numReturns == 1);
 
-  public void loop() {
-    while (true) {
-      LOGGER.info("Fetching new task in thread {}.", Thread.currentThread().getName());
-      TaskSpec task = runtime.getRayletClient().getTask();
-      execute(task);
-    }
-  }
-
-  /**
-   * Execute a task.
-   */
-  public void execute(TaskSpec spec) {
-    LOGGER.debug("Executing task {}", spec);
-    ObjectId returnId = spec.returnIds[0];
+    ObjectId returnId = new ObjectId(getTaskReturnId(taskIdBytes, 1));
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
       // Get method
-      RayFunction rayFunction = runtime.getFunctionManager()
-          .getFunction(spec.driverId, spec.getJavaFunctionDescriptor());
-      // Set context
-      runtime.getWorkerContext().setCurrentTask(spec, rayFunction.classLoader);
+      RayFunction rayFunction = functionManager
+          .getFunction(getCurrentDriverId(), getJavaFunctionDescriptor(rayFunctionInfo));
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
+      currentClassLoader = rayFunction.classLoader;
+      boolean isActorCreationTask = rayFunction.isConstructor();
+      boolean isActorTask =
+          !isActorCreationTask && !Modifier.isStatic(rayFunction.getMethod().getModifiers());
 
-      if (spec.isActorCreationTask()) {
-        currentActorId = new UniqueId(returnId.getBytes());
-      }
+//      if (isActorCreationTask) {
+//        currentActorId = new UniqueId(returnId.getBytes());
+//      }
 
       // Get local actor object and arguments.
       Object actor = null;
-      if (spec.isActorTask()) {
-        Preconditions.checkState(spec.actorId.equals(currentActorId));
+      if (isActorTask) {
+        // TODO: check is in core worker?
+        // Preconditions.checkState(spec.actorId.equals(currentActorId));
         if (actorCreationException != null) {
           throw actorCreationException;
         }
         actor = currentActor;
 
       }
-      Object[] args = ArgumentsBuilder.unwrap(spec, rayFunction.classLoader);
+      Object[] args = ArgumentsBuilder.unwrap(argsBytes, rayFunction.classLoader);
       // Execute the task.
       Object result;
       if (!rayFunction.isConstructor()) {
@@ -114,82 +88,65 @@ public class Worker {
         result = rayFunction.getConstructor().newInstance(args);
       }
       // Set result
-      if (!spec.isActorCreationTask()) {
-        if (spec.isActorTask()) {
-          maybeSaveCheckpoint(actor, spec.actorId);
+      if (!isActorCreationTask) {
+        if (isActorTask) {
+          // TODO
+          // maybeSaveCheckpoint(actor, spec.actorId);
         }
-        runtime.put(returnId, result);
+        objectInterface.put(returnId, result);
       } else {
-        maybeLoadCheckpoint(result, new UniqueId(returnId.getBytes()));
+        // TODO
+        // maybeLoadCheckpoint(result, new UniqueId(returnId.getBytes()));
         currentActor = result;
       }
-      LOGGER.debug("Finished executing task {}", spec.taskId);
+      LOGGER.debug("Finished executing task {}", taskInfo);
     } catch (Exception e) {
-      LOGGER.error("Error executing task " + spec, e);
-      if (!spec.isActorCreationTask()) {
-        runtime.put(returnId, new RayTaskException("Error executing task " + spec, e));
-      } else {
-        actorCreationException = e;
-      }
+      LOGGER.error("Error executing task " + taskInfo, e);
+      // TODO
+//      if (!isActorCreationTask) {
+      objectInterface.put(returnId, new RayTaskException("Error executing task " + taskId,
+          e));
+//      } else {
+//        actorCreationException = e;
+//      }
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);
+      currentClassLoader = null;
     }
   }
 
-  private void maybeSaveCheckpoint(Object actor, UniqueId actorId) {
-    if (!(actor instanceof Checkpointable)) {
-      return;
-    }
-    if (runtime.getRayConfig().runMode == RunMode.SINGLE_PROCESS) {
-      // Actor checkpointing isn't implemented for SINGLE_PROCESS mode yet.
-      return;
-    }
-    CheckpointContext checkpointContext = new CheckpointContext(actorId,
-        ++numTasksSinceLastCheckpoint, System.currentTimeMillis() - lastCheckpointTimestamp);
-    Checkpointable checkpointable = (Checkpointable) actor;
-    if (!checkpointable.shouldCheckpoint(checkpointContext)) {
-      return;
-    }
-    numTasksSinceLastCheckpoint = 0;
-    lastCheckpointTimestamp = System.currentTimeMillis();
-    UniqueId checkpointId = runtime.rayletClient.prepareCheckpoint(actorId);
-    checkpointIds.add(checkpointId);
-    if (checkpointIds.size() > NUM_ACTOR_CHECKPOINTS_TO_KEEP) {
-      ((Checkpointable) actor).checkpointExpired(actorId, checkpointIds.get(0));
-      checkpointIds.remove(0);
-    }
-    checkpointable.saveCheckpoint(actorId, checkpointId);
+  private JavaFunctionDescriptor getJavaFunctionDescriptor(List<String> rayFunctionInfo) {
+    Preconditions.checkState(rayFunctionInfo != null && rayFunctionInfo.size() == 3);
+    return new JavaFunctionDescriptor(rayFunctionInfo.get(0), rayFunctionInfo.get(1),
+        rayFunctionInfo.get(2));
   }
 
-  private void maybeLoadCheckpoint(Object actor, UniqueId actorId) {
-    if (!(actor instanceof Checkpointable)) {
-      return;
-    }
-    if (runtime.getRayConfig().runMode == RunMode.SINGLE_PROCESS) {
-      // Actor checkpointing isn't implemented for SINGLE_PROCESS mode yet.
-      return;
-    }
-    numTasksSinceLastCheckpoint = 0;
-    lastCheckpointTimestamp = System.currentTimeMillis();
-    checkpointIds = new ArrayList<>();
-    List<Checkpoint> availableCheckpoints
-        = runtime.getGcsClient().getCheckpointsForActor(actorId);
-    if (availableCheckpoints.isEmpty()) {
-      return;
-    }
-    UniqueId checkpointId = ((Checkpointable) actor).loadCheckpoint(actorId, availableCheckpoints);
-    if (checkpointId != null) {
-      boolean checkpointValid = false;
-      for (Checkpoint checkpoint : availableCheckpoints) {
-        if (checkpoint.checkpointId.equals(checkpointId)) {
-          checkpointValid = true;
-          break;
-        }
-      }
-      Preconditions.checkArgument(checkpointValid,
-          "'loadCheckpoint' must return a checkpoint ID that exists in the "
-              + "'availableCheckpoints' list, or null.");
-      runtime.rayletClient.notifyActorResumedFromCheckpoint(actorId, checkpointId);
-    }
+  public void loop() {
+    runCoreWorker(nativeCoreWorker, this);
   }
+
+  public ObjectInterface getObjectInterface() {
+    return objectInterface;
+  }
+
+  public TaskInterface getTaskInterface() {
+    return taskInterface;
+  }
+
+  public ClassLoader getCurrentClassLoader() {
+    return currentClassLoader;
+  }
+
+  public UniqueId getCurrentDriverId() {
+    return new UniqueId(getCurrentDriverId(nativeCoreWorker));
+  }
+
+  private static native long createCoreWorker(int workerMode, String storeSocket,
+                                              String rayletSocket, byte[] driverId);
+
+  private static native void runCoreWorker(long nativeCoreWorker, Worker worker);
+
+  private static native byte[] getCurrentDriverId(long nativeCoreWorker);
+
+  private static native byte[] getTaskReturnId(byte[] taskId, long returnIndex);
 }

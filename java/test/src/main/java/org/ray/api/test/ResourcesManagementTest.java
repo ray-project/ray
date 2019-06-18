@@ -43,7 +43,7 @@ public class ResourcesManagementTest extends BaseTest {
     }
   }
 
-  @Test
+  @Test(enabled = false)
   public void testMethods() {
     TestUtils.skipTestUnderSingleProcess();
     CallOptions callOptions1 =

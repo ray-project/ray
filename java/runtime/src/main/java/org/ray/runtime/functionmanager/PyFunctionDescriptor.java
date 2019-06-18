@@ -1,5 +1,8 @@
 package org.ray.runtime.functionmanager;
 
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * Represents metadata of a Python function.
  */
@@ -20,6 +23,11 @@ public class PyFunctionDescriptor implements FunctionDescriptor {
   @Override
   public String toString() {
     return moduleName + "." + className + "." + functionName;
+  }
+
+  @Override
+  public List<String> toList() {
+    return Arrays.asList(moduleName, className, functionName);
   }
 }
 

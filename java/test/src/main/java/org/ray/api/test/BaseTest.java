@@ -5,6 +5,8 @@ import java.io.File;
 import java.lang.reflect.Method;
 import java.util.List;
 import org.ray.api.Ray;
+import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.config.RayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.AfterMethod;
@@ -22,9 +24,10 @@ public class BaseTest {
         + method.getDeclaringClass().getName() + "." + method.getName());
     Ray.init();
     // These files need to be deleted after each test case.
+    RayConfig rayConfig = ((AbstractRayRuntime)Ray.internal()).getRayConfig();
     filesToDelete = ImmutableList.of(
-        new File(Ray.getRuntimeContext().getRayletSocketName()),
-        new File(Ray.getRuntimeContext().getObjectStoreSocketName())
+        new File(rayConfig.rayletSocketName),
+        new File(rayConfig.objectStoreSocketName)
     );
     // Make sure the files will be deleted even if the test doesn't exit gracefully.
     filesToDelete.forEach(File::deleteOnExit);

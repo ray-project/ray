@@ -32,6 +32,8 @@ class CoreWorker {
   /// Language of this worker.
   enum WorkerLanguage Language() const { return language_; }
 
+  WorkerContext Context() const { return worker_context_; }
+
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
   CoreWorkerTaskInterface &Tasks() { return task_interface_; }

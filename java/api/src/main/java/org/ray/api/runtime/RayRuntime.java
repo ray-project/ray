@@ -10,7 +10,6 @@ import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
-import org.ray.api.runtimecontext.RuntimeContext;
 
 /**
  * Base interface of a Ray runtime.
@@ -106,8 +105,6 @@ public interface RayRuntime {
    */
   <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
       ActorCreationOptions options);
-
-  RuntimeContext getRuntimeContext();
 
   /**
    * Invoke a remote Python function.

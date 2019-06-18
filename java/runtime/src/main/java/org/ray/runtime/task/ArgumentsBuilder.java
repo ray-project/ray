@@ -55,27 +55,9 @@ public class ArgumentsBuilder {
   }
 
   /**
-   * Convert task spec arguments to real function arguments.
+   * Convert list of byte array to real function arguments.
    */
-  public static Object[] unwrap(TaskSpec task, ClassLoader classLoader) {
-    Object[] realArgs = new Object[task.args.length];
-    List<ObjectId> idsToFetch = new ArrayList<>();
-    List<Integer> indices = new ArrayList<>();
-    for (int i = 0; i < task.args.length; i++) {
-      FunctionArg arg = task.args[i];
-      if (arg.id != null) {
-        // pass by reference
-        idsToFetch.add(arg.id);
-        indices.add(i);
-      } else {
-        // pass by value
-        realArgs[i] = Serializer.decode(arg.data, classLoader);
-      }
-    }
-    List<Object> objects = Ray.get(idsToFetch);
-    for (int i = 0; i < objects.size(); i++) {
-      realArgs[indices.get(i)] = objects.get(i);
-    }
-    return realArgs;
+  public static Object[] unwrap(List<byte[]> args, ClassLoader classLoader) {
+    return args.stream().map(arg -> Serializer.decode(arg, classLoader)).toArray();
   }
 }
