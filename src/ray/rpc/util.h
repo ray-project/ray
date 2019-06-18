@@ -27,7 +27,6 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
   }
 }
 
-
 }  // namespace rpc
 }  // namespace ray
 

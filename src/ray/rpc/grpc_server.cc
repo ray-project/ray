@@ -28,7 +28,6 @@ void GrpcServer::Run() {
   }
   // Start a thread that polls incoming requests.
   polling_thread_ = std::thread(&GrpcServer::PollEventsFromCompletionQueue, this);
-  //polling_thread.detach();
 }
 
 void GrpcServer::PollEventsFromCompletionQueue() {
@@ -73,5 +72,4 @@ void GrpcServer::PollEventsFromCompletionQueue() {
 }
 
 }  // namespace rpc
-
 }  // namespace ray

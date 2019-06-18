@@ -2227,7 +2227,6 @@ void NodeManager::ForwardTask(
                  << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
 
   // Prepare the request message.
-
   rpc::ForwardTaskRequest request;
   request.set_task_id(task_id.Binary());
   for (auto &entry : uncommitted_lineage.GetEntries()) {

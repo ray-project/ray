@@ -164,7 +164,6 @@ class ClientCallManager {
 };
 
 }  // namespace rpc
-
 }  // namespace ray
 
 #endif
