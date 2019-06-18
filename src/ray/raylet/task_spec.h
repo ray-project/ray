@@ -128,8 +128,7 @@ class TaskSpecification {
   /// will default to be equal to the required_resources argument.
   /// \param language The language of the worker that must execute the function.
   /// \param function_descriptor The function descriptor.
-  /// \param worker_command_prefix The prefix string for starting an actor worker.
-  /// \param worker_command_suffix The suffix string for starting an actor worker.
+  /// \param dynamic_worker_options The dynamic options for starting an actor worker.
   TaskSpecification(
       const DriverID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
       const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
@@ -141,8 +140,7 @@ class TaskSpecification {
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const Language &language, const std::vector<std::string> &function_descriptor,
-      const std::string &worker_command_prefix = "",
-      const std::string &worker_command_suffix = "");
+      const std::vector<std::string> &dynamic_worker_options = {});
 
   /// Deserialize a task specification from a string.
   ///
@@ -218,9 +216,7 @@ class TaskSpecification {
   ObjectID ActorDummyObject() const;
   std::vector<ActorHandleID> NewActorHandles() const;
 
-  // Methods specific to actor creating tasks.
-  std::string WorkerCommandPrefix() const;
-  std::string WorkerCommandSuffix() const;
+  std::vector<std::string> DynamicWorkerOptions() const;
 
  private:
   /// Assign the specification data from a pointer.

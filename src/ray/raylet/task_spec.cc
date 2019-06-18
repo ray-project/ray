@@ -81,12 +81,17 @@ TaskSpecification::TaskSpecification(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const Language &language, const std::vector<std::string> &function_descriptor,
-    const std::string &worker_command_prefix, const std::string &worker_command_suffix)
+    const Language &language, const std::vector<std::string> &dynamic_worker_options)
     : spec_() {
+  // check
+  if (actor_creation_id.Nil()) {
+    RAY_CHECK(dynamic_worker_options.size() == 0)
+        << "`dynamic_worker_options` only can be specified for actor creating tasks.";
+  }
+
   flatbuffers::FlatBufferBuilder fbb;
 
   TaskID task_id = GenerateTaskId(driver_id, parent_task_id, parent_counter);
-
   // Add argument object IDs.
   std::vector<flatbuffers::Offset<Arg>> arguments;
   for (auto &argument : task_arguments) {
@@ -103,8 +108,7 @@ TaskSpecification::TaskSpecification(
       map_to_flatbuf(fbb, required_resources),
       map_to_flatbuf(fbb, required_placement_resources), language,
       string_vec_to_flatbuf(fbb, function_descriptor),
-      fbb.CreateString(worker_command_prefix.c_str(), worker_command_prefix.size()),
-      fbb.CreateString(worker_command_suffix.c_str(), worker_command_suffix.size()));
+      string_vec_to_flatbuf(fbb, dynamic_worker_options),
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -261,14 +265,11 @@ std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
   return ids_from_flatbuf<ActorHandleID>(*message->new_actor_handles());
 }
 
-std::string TaskSpecification::WorkerCommandPrefix() const {
+std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
+  RAY_CHECK(IsActorCreationTask())
+       << "This method only can be called for actor creating tasks.";
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return string_from_flatbuf(*message->worker_command_prefix());
-}
-
-std::string TaskSpecification::WorkerCommandSuffix() const {
-  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return string_from_flatbuf(*message->worker_command_suffix());
+  return string_vec_from_flatbuf(*message->dynamic_worker_options());
 }
 
 }  // namespace raylet

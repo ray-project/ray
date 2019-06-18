@@ -117,24 +117,21 @@ void WorkerPool::StartWorkerProcess(const Language &language,
                  << state.idle_actor.size() << " actor workers, and " << state.idle.size()
                  << " non-actor workers";
 
-  std::string prefix = "";
-  std::string suffix = "";
+  std::vector<std::string> dynamic_worker_options;
   if (task_spec != nullptr && task_spec->IsActorCreationTask()) {
-    prefix = task_spec->WorkerCommandPrefix();
-    suffix = task_spec->WorkerCommandSuffix();
+    dynamic_worker_options = task_spec.DynamicWorkerOptions();
   }
 
   // Extract pointers from the worker command to pass into execvp.
   std::vector<const char *> worker_command_args;
+  size_t dynamic_option_index = 0;
   for (auto const &token : state.worker_command) {
-    if (token == kPrefixPlaceholder) {
-      if (!prefix.empty()) {
-        worker_command_args.push_back(prefix.c_str());
-      }
-    } else if (token == kSuffixPlaceholder) {
-      if (!suffix.empty()) {
-        worker_command_args.push_back(suffix.c_str());
-      }
+    const auto option_placeholder =
+        kWorkerOptionPlaceHolderPrefix + std::to_string(dynamic_option_index);
+
+    if (token == option_placeholder) {
+      RAY_CHECK(dynamic_option_index < dynamic_worker_options.size());
+      worker_command_args.push_back(dynamic_worker_options[dynamic_option_index].c_str());
     } else {
       worker_command_args.push_back(token.c_str());
     }
@@ -151,10 +148,10 @@ void WorkerPool::StartWorkerProcess(const Language &language,
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
     state.starting_worker_processes.emplace(
         std::make_pair(pid, num_workers_per_process_));
-    if (!prefix.empty() || !suffix.empty()) {
+    if (!dynamic_worker_options.empty()) {
       RAY_CHECK(task_spec != nullptr)
           << "task_spec should not be nullptr "
-             "since we specified prefix or suffix for worker command";
+             "because we specified dynamic worker options for this task.";
       state.starting_dedicated_worker_processes[pid] = task_spec->TaskId();
     }
     return;
@@ -259,15 +256,18 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   std::shared_ptr<Worker> worker = nullptr;
   if (task_spec.IsActorCreationTask()) {
     // code path of actor creation task.
-    if (task_spec.WorkerCommandPrefix().empty() &&
-        task_spec.WorkerCommandSuffix().empty()) {
-      // There is no prefix and suffix of command. Pop a worker from idle worker pool of
-      // non-actor.
+    if (task_spec.DynamicWorkerOptions().empty()) {
+      // There is no dynamic worker options of this task. Pop a worker
+      // from idle worker pool of non-actor.
       if (!state.idle.empty()) {
         worker = std::move(*state.idle.begin());
         state.idle.erase(state.idle.begin());
+      } else {
+        RAY_LOG(DEBUG) << "There is no idle worker for the task "
+                       << task_spec.TaskId() << " .";
       }
     } else {
+      // Dynamic worker options is not empty. Try to pop it from idle dedicated pool.
       auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
       if (it != state.idle_dedicated_workers.end()) {
         worker = std::move(it->second);
