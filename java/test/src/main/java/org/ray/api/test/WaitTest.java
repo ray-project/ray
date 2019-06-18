@@ -54,6 +54,9 @@ public class WaitTest extends BaseTest {
 
   @Test
   public void testWaitInWorker() {
+    // Call a task in advance to warm up the cluster to avoid too slow to start workers.
+    warmUpCluster();
+
     RayObject<Object> res = Ray.call(WaitTest::waitInWorker);
     res.get();
   }
@@ -70,5 +73,10 @@ public class WaitTest extends BaseTest {
     } catch (NullPointerException e) {
       Assert.assertTrue(true);
     }
+  }
+
+  private void warmUpCluster() {
+    RayObject<String> obj = Ray.call(WaitTest::hi);
+    Assert.assertEquals(obj.get(), "hi");
   }
 }
