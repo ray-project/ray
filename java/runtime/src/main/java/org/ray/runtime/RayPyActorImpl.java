@@ -22,12 +22,15 @@ public class RayPyActorImpl extends RayActorImpl implements RayPyActor {
 
   // Note that this empty constructor must be public
   // since it'll be needed when deserializing.
-  public RayPyActorImpl() {}
+  public RayPyActorImpl() {
+    throw new UnsupportedOperationException();
+  }
 
   public RayPyActorImpl(UniqueId id, String moduleName, String className) {
-    super(id);
-    this.moduleName = moduleName;
-    this.className = className;
+    throw new UnsupportedOperationException();
+//    super(id);
+//    this.moduleName = moduleName;
+//    this.className = className;
   }
 
   @Override
@@ -41,16 +44,17 @@ public class RayPyActorImpl extends RayActorImpl implements RayPyActor {
   }
 
   public RayPyActorImpl fork() {
-    RayPyActorImpl ret = new RayPyActorImpl();
-    ret.id = this.id;
-    ret.taskCounter = 0;
-    ret.numForks = 0;
-    ret.taskCursor = this.taskCursor;
-    ret.moduleName = this.moduleName;
-    ret.className = this.className;
-    ret.handleId = this.computeNextActorHandleId();
-    newActorHandles.add(ret.handleId);
-    return ret;
+    throw new UnsupportedOperationException();
+//    RayPyActorImpl ret = new RayPyActorImpl();
+//    ret.id = this.id;
+//    ret.taskCounter = 0;
+//    ret.numForks = 0;
+//    ret.taskCursor = this.taskCursor;
+//    ret.moduleName = this.moduleName;
+//    ret.className = this.className;
+//    ret.handleId = this.computeNextActorHandleId();
+//    newActorHandles.add(ret.handleId);
+//    return ret;
   }
 
   @Override

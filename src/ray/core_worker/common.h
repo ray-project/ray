@@ -68,6 +68,18 @@ class TaskArg {
   const std::shared_ptr<Buffer> data_;
 };
 
+/// Information of a task
+struct TaskInfo {
+  /// The ID of task.
+  const TaskID task_id;
+  /// The driver ID.
+  const DriverID driver_id;
+  /// Whether this task is to create an actor.
+  const bool is_actor_creation_task;
+  /// Whether this task is to execute a function of an actor.
+  const bool is_actor_task;
+};
+
 /// Task specification, which includes the immutable information about the task
 /// which are determined at the submission time.
 /// TODO(zhijunfu): this can be removed after everything is moved to protobuf.

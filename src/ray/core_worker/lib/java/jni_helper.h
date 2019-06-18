@@ -30,10 +30,20 @@ extern jclass java_native_task_arg_class;
 extern jfieldID java_native_task_arg_id;
 extern jfieldID java_native_task_arg_data;
 
+extern jclass java_native_resources_class;
+extern jfieldID java_native_resources_keys;
+extern jfieldID java_native_resources_values;
+
 extern jclass java_native_task_options_class;
 extern jfieldID java_native_task_options_num_returns;
-extern jfieldID java_native_task_options_resource_keys;
-extern jfieldID java_native_task_options_resource_values;
+extern jfieldID java_native_task_options_resources;
+
+extern jclass java_native_actor_creation_options_class;
+extern jfieldID java_native_actor_creation_options_max_reconstructions;
+extern jfieldID java_native_actor_creation_options_resources;
+
+extern jclass java_ray_actor_impl_class;
+extern jmethodID java_ray_actor_impl_init;
 
 inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
   if (!status.ok()) {
@@ -127,11 +137,23 @@ inline jobject NativeBufferVectorToJavaBinaryList(
     JNIEnv *env, const std::vector<std::shared_ptr<ray::Buffer>> &native_vector) {
   return NativeVectorToJavaList<std::shared_ptr<ray::Buffer>>(
       env, native_vector, [](JNIEnv *env, const std::shared_ptr<ray::Buffer> &arg) {
-        jbyteArray arg_byte_array = env->NewByteArray(arg->Size());
-        env->SetByteArrayRegion(arg_byte_array, 0, arg->Size(),
-                                reinterpret_cast<const jbyte *>(arg->Data()));
-        return arg_byte_array;
+        if (arg) {
+          jbyteArray arg_byte_array = env->NewByteArray(arg->Size());
+          env->SetByteArrayRegion(arg_byte_array, 0, arg->Size(),
+                                  reinterpret_cast<const jbyte *>(arg->Data()));
+          return arg_byte_array;
+        } else {
+          return (jbyteArray) nullptr;
+        }
       });
+}
+
+template <typename ID>
+inline jobject NativeUniqueIdVectorToJavaBinaryList(
+    JNIEnv *env, const std::vector<ID> &native_vector) {
+  return NativeVectorToJavaList<ID>(env, native_vector, [](JNIEnv *env, const ID &id) {
+    return JByteArrayFromUniqueId<ID>(env, id).GetJByteArray();
+  });
 }
 
 #endif  // RAY_COMMON_JAVA_JNI_HELPER_H

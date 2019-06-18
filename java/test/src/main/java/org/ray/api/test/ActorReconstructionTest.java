@@ -2,6 +2,7 @@ package org.ray.api.test;
 
 import static org.ray.runtime.util.SystemUtil.pid;
 
+
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -26,7 +27,7 @@ public class ActorReconstructionTest extends BaseTest {
     private boolean wasCurrentActorReconstructed = false;
 
     public Counter() {
-      // TODO
+      throw new UnsupportedOperationException();
 //      wasCurrentActorReconstructed = Ray.getRuntimeContext().wasCurrentActorReconstructed();
     }
 
@@ -46,41 +47,42 @@ public class ActorReconstructionTest extends BaseTest {
 
   @Test
   public void testActorReconstruction() throws InterruptedException, IOException {
-    TestUtils.skipTestUnderSingleProcess();
-    ActorCreationOptions options =
-        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
-    RayActor<Counter> actor = Ray.createActor(Counter::new, options);
-    // Call increase 3 times.
-    for (int i = 0; i < 3; i++) {
-      Ray.call(Counter::increase, actor).get();
-    }
-
-    Assert.assertFalse(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
-
-    // Kill the actor process.
-    int pid = Ray.call(Counter::getPid, actor).get();
-    Runtime.getRuntime().exec("kill -9 " + pid);
-    // Wait for the actor to be killed.
-    TimeUnit.SECONDS.sleep(1);
-
-    // Try calling increase on this actor again and check the value is now 4.
-    int value = Ray.call(Counter::increase, actor).get();
-    Assert.assertEquals(value, 4);
-
-    Assert.assertTrue(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
-
-    // Kill the actor process again.
-    pid = Ray.call(Counter::getPid, actor).get();
-    Runtime.getRuntime().exec("kill -9 " + pid);
-    TimeUnit.SECONDS.sleep(1);
-
-    // Try calling increase on this actor again and this should fail.
-    try {
-      Ray.call(Counter::increase, actor).get();
-      Assert.fail("The above task didn't fail.");
-    } catch (RayActorException e) {
-      // We should receive a RayActorException because the actor is dead.
-    }
+    throw new UnsupportedOperationException();
+//    TestUtils.skipTestUnderSingleProcess();
+//    ActorCreationOptions options =
+//        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
+//    RayActor<Counter> actor = Ray.createActor(Counter::new, options);
+//    // Call increase 3 times.
+//    for (int i = 0; i < 3; i++) {
+//      Ray.call(Counter::increase, actor).get();
+//    }
+//
+//    Assert.assertFalse(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
+//
+//    // Kill the actor process.
+//    int pid = Ray.call(Counter::getPid, actor).get();
+//    Runtime.getRuntime().exec("kill -9 " + pid);
+//    // Wait for the actor to be killed.
+//    TimeUnit.SECONDS.sleep(1);
+//
+//    // Try calling increase on this actor again and check the value is now 4.
+//    int value = Ray.call(Counter::increase, actor).get();
+//    Assert.assertEquals(value, 4);
+//
+//    Assert.assertTrue(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
+//
+//    // Kill the actor process again.
+//    pid = Ray.call(Counter::getPid, actor).get();
+//    Runtime.getRuntime().exec("kill -9 " + pid);
+//    TimeUnit.SECONDS.sleep(1);
+//
+//    // Try calling increase on this actor again and this should fail.
+//    try {
+//      Ray.call(Counter::increase, actor).get();
+//      Assert.fail("The above task didn't fail.");
+//    } catch (RayActorException e) {
+//      // We should receive a RayActorException because the actor is dead.
+//    }
   }
 
   public static class CheckpointableCounter extends Counter implements Checkpointable {
@@ -127,26 +129,27 @@ public class ActorReconstructionTest extends BaseTest {
 
   @Test
   public void testActorCheckpointing() throws IOException, InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
-    ActorCreationOptions options =
-        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
-    RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
-    // Call increase 3 times.
-    for (int i = 0; i < 3; i++) {
-      Ray.call(CheckpointableCounter::increase, actor).get();
-    }
-    // Assert that the actor wasn't resumed from a checkpoint.
-    Assert.assertFalse(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
-    int pid = Ray.call(CheckpointableCounter::getPid, actor).get();
-    Runtime.getRuntime().exec("kill -9 " + pid);
-    // Wait for the actor to be killed.
-    TimeUnit.SECONDS.sleep(1);
-
-    // Try calling increase on this actor again and check the value is now 4.
-    int value = Ray.call(CheckpointableCounter::increase, actor).get();
-    Assert.assertEquals(value, 4);
-    // Assert that the actor was resumed from a checkpoint.
-    Assert.assertTrue(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
+    throw new UnsupportedOperationException();
+//    TestUtils.skipTestUnderSingleProcess();
+//    ActorCreationOptions options =
+//        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
+//    RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
+//    // Call increase 3 times.
+//    for (int i = 0; i < 3; i++) {
+//      Ray.call(CheckpointableCounter::increase, actor).get();
+//    }
+//    // Assert that the actor wasn't resumed from a checkpoint.
+//    Assert.assertFalse(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
+//    int pid = Ray.call(CheckpointableCounter::getPid, actor).get();
+//    Runtime.getRuntime().exec("kill -9 " + pid);
+//    // Wait for the actor to be killed.
+//    TimeUnit.SECONDS.sleep(1);
+//
+//    // Try calling increase on this actor again and check the value is now 4.
+//    int value = Ray.call(CheckpointableCounter::increase, actor).get();
+//    Assert.assertEquals(value, 4);
+//    // Assert that the actor was resumed from a checkpoint.
+//    Assert.assertTrue(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
   }
 }
 

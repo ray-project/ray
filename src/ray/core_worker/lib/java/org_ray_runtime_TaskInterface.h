@@ -17,6 +17,26 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_submitTask(JNIEnv *
                                                                         jlong, jobject,
                                                                         jobject, jobject);
 
+/*
+ * Class:     org_ray_runtime_TaskInterface
+ * Method:    createActor
+ * Signature:
+ * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeActorCreationOptions;)Lorg/ray/runtime/RayActorImpl;
+ */
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_createActor(JNIEnv *, jclass,
+                                                                         jlong, jobject,
+                                                                         jobject,
+                                                                         jobject);
+
+/*
+ * Class:     org_ray_runtime_TaskInterface
+ * Method:    submitActorTask
+ * Signature:
+ * (JJLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeTaskOptions;)Ljava/util/List;
+ */
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_submitActorTask(
+    JNIEnv *, jclass, jlong, jlong, jobject, jobject, jobject);
+
 #ifdef __cplusplus
 }
 #endif

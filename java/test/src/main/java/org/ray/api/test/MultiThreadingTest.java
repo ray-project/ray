@@ -43,7 +43,7 @@ public class MultiThreadingTest extends BaseTest {
   }
 
   public static String testMultiThreading() {
-    // TODO
+    throw new UnsupportedOperationException();
 //    Random random = new Random();
 //    // Test calling normal functions.
 //    runTestCaseInMultipleThreads(() -> {
@@ -88,8 +88,8 @@ public class MultiThreadingTest extends BaseTest {
 //      WaitResult<Integer> result = Ray.wait(ImmutableList.of(obj), 1, 1000);
 //      Assert.assertEquals(1, result.getReady().size());
 //    }, 1);
-
-    return "ok";
+//
+//    return "ok";
   }
 
   @Test

@@ -17,7 +17,6 @@ import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.task.ArgumentsBuilder;
@@ -144,41 +143,36 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(worker.getCurrentDriverId(), func).functionDescriptor;
     FunctionArg[] functionArgs = ArgumentsBuilder.wrap(args, false);
+    int numReturns = getNumReturns(null);
     List<ObjectId> returnIds = worker.getTaskInterface().submitTask(functionDescriptor,
-        functionArgs, 1, options == null ? null : options.resources);
+        functionArgs, numReturns, options);
     return new RayObjectImpl(returnIds.get(0));
   }
 
   @Override
   public RayObject call(RayFunc func, RayActor<?> actor, Object[] args) {
-    throw new UnsupportedOperationException();
-//    if (!(actor instanceof RayActorImpl)) {
-//      throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
-//    }
-//    RayActorImpl<?> actorImpl = (RayActorImpl) actor;
-//    TaskSpec spec;
-//    synchronized (actor) {
-//      spec = createTaskSpec(func, null, actorImpl, args, false, null);
-//      spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
-//      actorImpl.setTaskCursor(spec.returnIds[1]);
-//      actorImpl.clearNewActorHandles();
-//    }
-//    rayletClient.submitTask(spec);
-//    return new RayObjectImpl(spec.returnIds[0]);
+    if (!(actor instanceof RayActorImpl)) {
+      throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
+    }
+    RayActorImpl<?> actorImpl = (RayActorImpl) actor;
+    FunctionDescriptor functionDescriptor =
+        functionManager.getFunction(worker.getCurrentDriverId(), func).functionDescriptor;
+    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(args, false);
+    int numReturns = getNumReturns(actor);
+    List<ObjectId> returnIds = worker.getTaskInterface().submitActorTask(actorImpl,
+        functionDescriptor, functionArgs, numReturns, null);
+    return new RayObjectImpl(returnIds.get(0));
   }
 
   @Override
   @SuppressWarnings("unchecked")
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
                                      Object[] args, ActorCreationOptions options) {
-    throw new UnsupportedOperationException();
-//    TaskSpec spec = createTaskSpec(actorFactoryFunc, null, RayActorImpl.NIL,
-//        args, true, options);
-//    RayActorImpl<?> actor = new RayActorImpl(new UniqueId(spec.returnIds[0].getBytes()));
-//    actor.increaseTaskCounter();
-//    actor.setTaskCursor(spec.returnIds[0]);
-//    rayletClient.submitTask(spec);
-//    return (RayActor<T>) actor;
+    FunctionDescriptor functionDescriptor =
+        functionManager.getFunction(worker.getCurrentDriverId(), actorFactoryFunc).functionDescriptor;
+    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(args, false);
+    return (RayActor<T>) worker.getTaskInterface().createActor(functionDescriptor, functionArgs,
+        options);
   }
 
 //  private void checkPyArguments(Object[] args) {
@@ -231,6 +225,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 //    actor.setTaskCursor(spec.returnIds[0]);
 //    rayletClient.submitTask(spec);
 //    return actor;
+  }
+
+  private int getNumReturns(RayActor<?> actor) {
+    return actor == null || actor.getId().isNil() ? 1 : 2;
   }
 
   public void loop() {

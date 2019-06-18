@@ -52,11 +52,12 @@ public class ActorTest extends BaseTest {
 
   @Test
   public void testCreateActorFromFactory() {
-    // Test creating an actor from a factory method
-    RayActor<Counter> actor = Ray.createActor(ActorTest::factory, 1);
-    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
-    // Test calling an actor
-    Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
+    throw new UnsupportedOperationException();
+//    // Test creating an actor from a factory method
+//    RayActor<Counter> actor = Ray.createActor(ActorTest::factory, 1);
+//    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+//    // Test calling an actor
+//    Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
   }
 
   @RayRemote
@@ -90,7 +91,7 @@ public class ActorTest extends BaseTest {
 
   @Test
   public void testUnreconstructableActorObject() throws InterruptedException {
-    // TODO
+    throw new UnsupportedOperationException();
 //    TestUtils.skipTestUnderSingleProcess();
 //    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
 //    // Call an actor method.

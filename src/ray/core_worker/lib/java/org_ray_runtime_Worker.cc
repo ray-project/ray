@@ -33,12 +33,12 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_createCoreWorker(
 JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *env, jclass o,
                                                                  jlong nativeCoreWorker,
                                                                  jobject javaCoreWorker) {
-  jmethodID run_task_method =
-      env->GetMethodID(o, "runTaskCallback", "(Ljava/util/List;Ljava/util/List;[BI)V");
+  jmethodID run_task_method = env->GetMethodID(
+      o, "runTaskCallback", "(Ljava/util/List;Ljava/util/List;[B[BZZI)V");
   auto executor_func = [env, javaCoreWorker, run_task_method](
                            const ray::RayFunction &ray_function,
                            const std::vector<std::shared_ptr<ray::Buffer>> &args,
-                           const TaskID &task_id, int num_returns) {
+                           const ray::TaskInfo &task_info, int num_returns) {
     // convert RayFunction
     jobject ray_function_array_list =
         NativeStringVectorToJavaStringList(env, ray_function.function_descriptor);
@@ -46,17 +46,21 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *env, jc
     jobject args_array_list = NativeBufferVectorToJavaBinaryList(env, args);
     // convert task id
     jbyteArray task_id_byte_array =
-        JByteArrayFromUniqueId<ray::TaskID>(env, task_id).GetJByteArray();
+        JByteArrayFromUniqueId<ray::TaskID>(env, task_info.task_id).GetJByteArray();
+    // convert driver id
+    jbyteArray driver_id_byte_array =
+        JByteArrayFromUniqueId<ray::DriverID>(env, task_info.driver_id).GetJByteArray();
 
     // invoke Java method
     env->CallVoidMethod(javaCoreWorker, run_task_method, ray_function_array_list,
-                        args_array_list, task_id_byte_array, (jint)num_returns);
+                        args_array_list, task_id_byte_array, driver_id_byte_array,
+                        (jboolean)task_info.is_actor_creation_task,
+                        (jboolean)task_info.is_actor_task, (jint)num_returns);
     return ray::Status::OK();
   };
 
-  auto status = (reinterpret_cast<ray::CoreWorker *>(nativeCoreWorker))
-                    ->Execution()
-                    .Run(executor_func);
+  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorker);
+  auto status = core_worker->Execution().Run(executor_func);
   ThrowRayExceptionIfNotOK(env, status);
 }
 
@@ -67,9 +71,8 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *env, jc
  */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_Worker_getCurrentDriverId(
     JNIEnv *env, jclass o, jlong nativeCoreWorker) {
-  ray::DriverID driver_id = (reinterpret_cast<ray::CoreWorker *>(nativeCoreWorker))
-                                ->Context()
-                                .GetCurrentDriverID();
+  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorker);
+  ray::DriverID driver_id = core_worker->Context().GetCurrentDriverID();
   return JByteArrayFromUniqueId<ray::DriverID>(env, driver_id).GetJByteArray();
 }
 

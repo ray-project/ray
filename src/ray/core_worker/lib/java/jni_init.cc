@@ -20,10 +20,20 @@ jclass java_native_task_arg_class;
 jfieldID java_native_task_arg_id;
 jfieldID java_native_task_arg_data;
 
+jclass java_native_resources_class;
+jfieldID java_native_resources_keys;
+jfieldID java_native_resources_values;
+
 jclass java_native_task_options_class;
 jfieldID java_native_task_options_num_returns;
-jfieldID java_native_task_options_resource_keys;
-jfieldID java_native_task_options_resource_values;
+jfieldID java_native_task_options_resources;
+
+jclass java_native_actor_creation_options_class;
+jfieldID java_native_actor_creation_options_max_reconstructions;
+jfieldID java_native_actor_creation_options_resources;
+
+jclass java_ray_actor_impl_class;
+jmethodID java_ray_actor_impl_init;
 
 jint JNI_VERSION = JNI_VERSION_1_8;
 
@@ -65,14 +75,31 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_native_task_arg_id = env->GetFieldID(java_native_task_arg_class, "id", "[B");
   java_native_task_arg_data = env->GetFieldID(java_native_task_arg_class, "data", "[B");
 
+  LOAD_CLASS(java_native_resources_class, "org/ray/runtime/nativeTypes/NativeResources");
+  java_native_resources_keys =
+      env->GetFieldID(java_native_resources_class, "keys", "Ljava/util/List;");
+  java_native_resources_values =
+      env->GetFieldID(java_native_resources_class, "values", "Ljava/util/List;");
+
   LOAD_CLASS(java_native_task_options_class,
              "org/ray/runtime/nativeTypes/NativeTaskOptions");
   java_native_task_options_num_returns =
       env->GetFieldID(java_native_task_options_class, "numReturns", "I");
-  java_native_task_options_resource_keys =
-      env->GetFieldID(java_native_task_options_class, "resourceKeys", "Ljava/util/List;");
-  java_native_task_options_resource_values = env->GetFieldID(
-      java_native_task_options_class, "resourceValues", "Ljava/util/List;");
+  java_native_task_options_resources =
+      env->GetFieldID(java_native_task_options_class, "resources",
+                      "Lorg/ray/runtime/nativeTypes/NativeResources;");
+
+  LOAD_CLASS(java_native_actor_creation_options_class,
+             "org/ray/runtime/nativeTypes/NativeActorCreationOptions");
+  java_native_actor_creation_options_max_reconstructions = env->GetFieldID(
+      java_native_actor_creation_options_class, "maxReconstructions", "J");
+  java_native_actor_creation_options_resources =
+      env->GetFieldID(java_native_actor_creation_options_class, "resources",
+                      "Lorg/ray/runtime/nativeTypes/NativeResources;");
+
+  LOAD_CLASS(java_ray_actor_impl_class, "org/ray/runtime/RayActorImpl");
+  java_ray_actor_impl_init =
+      env->GetMethodID(java_ray_actor_impl_class, "<init>", "([BJ)V");
 
   return JNI_VERSION;
 }
@@ -86,5 +113,8 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_array_list_class);
   env->DeleteGlobalRef(java_native_ray_function_class);
   env->DeleteGlobalRef(java_native_task_arg_class);
+  env->DeleteGlobalRef(java_native_resources_class);
   env->DeleteGlobalRef(java_native_task_options_class);
+  env->DeleteGlobalRef(java_native_actor_creation_options_class);
+  env->DeleteGlobalRef(java_ray_actor_impl_class);
 }
