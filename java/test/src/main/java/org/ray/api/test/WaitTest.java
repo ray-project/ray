@@ -28,6 +28,9 @@ public class WaitTest extends BaseTest {
   }
 
   private static void testWait() {
+    // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
+    warmUpCluster();
+
     RayObject<String> obj1 = Ray.call(WaitTest::hi);
     RayObject<String> obj2 = Ray.call(WaitTest::delayedHi);
 
@@ -54,9 +57,6 @@ public class WaitTest extends BaseTest {
 
   @Test
   public void testWaitInWorker() {
-    // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
-    warmUpCluster();
-
     RayObject<Object> res = Ray.call(WaitTest::waitInWorker);
     res.get();
   }
@@ -75,7 +75,7 @@ public class WaitTest extends BaseTest {
     }
   }
 
-  private void warmUpCluster() {
+  public static void warmUpCluster() {
     RayObject<String> obj = Ray.call(WaitTest::hi);
     Assert.assertEquals(obj.get(), "hi");
   }
