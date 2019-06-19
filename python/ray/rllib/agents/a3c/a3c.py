@@ -30,7 +30,7 @@ DEFAULT_CONFIG = with_common_config({
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
     # sample_batch_size by up to 5x due to async buffering of batches.
-    "sample_async": True,
+    "sample_async": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
