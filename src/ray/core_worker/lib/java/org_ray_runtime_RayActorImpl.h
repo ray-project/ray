@@ -33,36 +33,19 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorHandleId(
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    getActorCursor
+ * Method:    serialize
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorCursor(JNIEnv *,
-                                                                              jclass,
-                                                                              jlong);
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_serialize(JNIEnv *, jclass,
+                                                                         jlong);
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    getTaskCounter
- * Signature: (J)I
+ * Method:    deserialize
+ * Signature: ([B)J
  */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_RayActorImpl_getTaskCounter(JNIEnv *, jclass,
-                                                                        jlong);
-
-/*
- * Class:     org_ray_runtime_RayActorImpl
- * Method:    getNumForks
- * Signature: (J)I
- */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_RayActorImpl_getNumForks(JNIEnv *, jclass,
-                                                                     jlong);
-
-/*
- * Class:     org_ray_runtime_RayActorImpl
- * Method:    createActor
- * Signature: ([B[B[BII)J
- */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_createActor(
-    JNIEnv *, jclass, jbyteArray, jbyteArray, jbyteArray, jint, jint);
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_deserialize(JNIEnv *, jclass,
+                                                                      jbyteArray);
 
 #ifdef __cplusplus
 }

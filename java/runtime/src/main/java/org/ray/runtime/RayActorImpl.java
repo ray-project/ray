@@ -23,6 +23,19 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
     this.nativeActorHandle = nativeActorHandle;
   }
 
+
+  @Override
+  public UniqueId getId() {
+    Preconditions.checkState(nativeActorHandle != 0);
+    return new UniqueId(getActorId(nativeActorHandle));
+  }
+
+  @Override
+  public UniqueId getHandleId() {
+    Preconditions.checkState(nativeActorHandle != 0);
+    return new UniqueId(getActorHandleId(nativeActorHandle));
+  }
+
   public long getNativeActorHandle() {
     return nativeActorHandle;
   }
@@ -35,23 +48,14 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
     Preconditions.checkState(nativeActorHandle != 0);
-    out.writeObject(new UniqueId(getActorId(nativeActorHandle)));
-    out.writeObject(new UniqueId(getActorHandleId(nativeActorHandle)));
-    out.writeObject(new UniqueId(getActorCursor(nativeActorHandle)));
-    out.writeObject(getTaskCounter(nativeActorHandle));
-    out.writeObject(getNumForks(nativeActorHandle));
+    out.writeObject(serialize(nativeActorHandle));
   }
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     Preconditions.checkState(nativeActorHandle == 0);
-    UniqueId actorId = (UniqueId) in.readObject();
-    UniqueId actorHandleId = (UniqueId) in.readObject();
-    UniqueId actorCursor = (UniqueId) in.readObject();
-    int taskCounter = (int) in.readObject();
-    int numForks = (int) in.readObject();
-    this.nativeActorHandle = createActor(actorId.getBytes(), actorHandleId.getBytes(),
-        actorCursor.getBytes(), taskCounter, numForks);
+    byte[] data = (byte[]) in.readObject();
+    this.nativeActorHandle = deserialize(data);
   }
 
   private static native long fork(long nativeActorHandle);
@@ -60,12 +64,7 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
 
   private static native byte[] getActorHandleId(long nativeActorHandle);
 
-  private static native byte[] getActorCursor(long nativeActorHandle);
+  private static native byte[] serialize(long nativeActorHandle);
 
-  private static native int getTaskCounter(long nativeActorHandle);
-
-  private static native int getNumForks(long nativeActorHandle);
-
-  private static native long createActor(byte[] actorId, byte[] actorHandleId, byte[] actorCursor
-      , int taskCounter, int numForks);
+  private static native long deserialize(byte[] data);
 }

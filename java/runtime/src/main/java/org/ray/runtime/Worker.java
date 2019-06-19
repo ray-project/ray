@@ -107,8 +107,8 @@ public class Worker {
       LOGGER.debug("Finished executing task {}", taskInfo);
     } catch (Exception e) {
       LOGGER.error("Error executing task " + taskInfo, e);
-      // TODO
       if (!isActorCreationTask) {
+        // TODO: more detailed information about this task
         objectInterface.put(returnId, new RayTaskException("Error executing task " + taskId,
             e));
       } else {

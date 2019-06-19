@@ -153,4 +153,15 @@ inline jobject NativeUniqueIdVectorToJavaBinaryList(
   });
 }
 
+template <typename ReturnT>
+inline ReturnT ReadBinary(JNIEnv *env, const jbyteArray &binary,
+                          std::function<ReturnT(const ray::Buffer &)> reader) {
+  auto data_size = env->GetArrayLength(binary);
+  jbyte *data = env->GetByteArrayElements(binary, nullptr);
+  ray::LocalMemoryBuffer buffer(reinterpret_cast<uint8_t *>(data), data_size);
+  auto result = reader(buffer);
+  env->ReleaseByteArrayElements(binary, data, JNI_ABORT);
+  return result;
+}
+
 #endif  // RAY_COMMON_JAVA_JNI_HELPER_H

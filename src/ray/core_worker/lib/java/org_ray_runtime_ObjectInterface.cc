@@ -6,17 +6,6 @@
 #include "ray/core_worker/lib/java/jni_helper.h"
 #include "ray/core_worker/object_interface.h"
 
-template <typename ReturnT>
-inline ReturnT ReadBinary(JNIEnv *env, const jbyteArray &binary,
-                          std::function<ReturnT(const ray::Buffer &)> reader) {
-  auto data_size = env->GetArrayLength(binary);
-  jbyte *data = env->GetByteArrayElements(binary, nullptr);
-  ray::LocalMemoryBuffer buffer(reinterpret_cast<uint8_t *>(data), data_size);
-  auto result = reader(buffer);
-  env->ReleaseByteArrayElements(binary, data, JNI_ABORT);
-  return result;
-}
-
 inline ray::CoreWorkerObjectInterface &GetObjectInterface(jlong nativeCoreWorker) {
   return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorker)->Objects();
 }

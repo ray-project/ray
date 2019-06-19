@@ -6,6 +6,7 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/transport/transport.h"
+#include "ray/protobuf/core_worker.pb.h"
 #include "ray/raylet/task.h"
 
 namespace ray {
@@ -79,6 +80,26 @@ class ActorHandle {
     new_handle->actor_cursor_ = actor_cursor_;
     new_actor_handles_.push_back(new_handle->actor_handle_id_);
     return new_handle;
+  }
+
+  void Serialize(std::string *output) const {
+    ray::rpc::ActorHandle temp;
+    temp.set_actor_id(actor_id_.Binary());
+    temp.set_actor_handle_id(actor_handle_id_.Binary());
+    temp.set_actor_cursor(actor_cursor_.Binary());
+    temp.set_task_counter(task_counter_);
+    temp.set_num_forks(num_forks_);
+    temp.SerializeToString(output);
+  }
+
+  static std::unique_ptr<ActorHandle> Deserialize(const std::string &data) {
+    ray::rpc::ActorHandle temp;
+    temp.ParseFromString(data);
+    return std::unique_ptr<ActorHandle>(
+        new ActorHandle(ray::ActorID::FromBinary(temp.actor_id()),
+                        ray::ActorHandleID::FromBinary(temp.actor_handle_id()),
+                        ray::ObjectID::FromBinary(temp.actor_cursor()),
+                        temp.task_counter(), temp.num_forks()));
   }
 
  private:

@@ -51,34 +51,31 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorHandleId(
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    getActorCursor
+ * Method:    serialize
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorCursor(
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_serialize(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return JByteArrayFromUniqueId<ray::ObjectID>(
-             env, GetActorHandle(nativeActorHandle).ActorCursor())
-      .GetJByteArray();
+  std::string output;
+  GetActorHandle(nativeActorHandle).Serialize(&output);
+  jbyteArray bytes = env->NewByteArray(output.size());
+  env->SetByteArrayRegion(bytes, 0, output.size(),
+                          reinterpret_cast<const jbyte *>(output.c_str()));
+  return bytes;
 }
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    getTaskCounter
- * Signature: (J)I
+ * Method:    deserialize
+ * Signature: ([B)J
  */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_RayActorImpl_getTaskCounter(
-    JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return (jint)GetActorHandle(nativeActorHandle).TaskCounter();
-}
-
-/*
- * Class:     org_ray_runtime_RayActorImpl
- * Method:    getNumForks
- * Signature: (J)I
- */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_RayActorImpl_getNumForks(
-    JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return (jint)GetActorHandle(nativeActorHandle).NumForks();
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_deserialize(JNIEnv *env,
+                                                                      jclass o,
+                                                                      jbyteArray data) {
+  auto binary = ReadBinary<std::string>(env, data, [](const ray::Buffer &buffer) {
+    return std::string(reinterpret_cast<char *>(buffer.Data()), buffer.Size());
+  });
+  return reinterpret_cast<jlong>(ray::ActorHandle::Deserialize(binary).release());
 }
 
 /*
