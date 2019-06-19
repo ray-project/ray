@@ -48,6 +48,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return rayConfig;
   }
 
+  public Worker getWorker() {
+    return worker;
+  }
+
   @Override
   public <T> RayObject<T> put(T obj) {
     ObjectId objectId = worker.getObjectInterface().put(obj);

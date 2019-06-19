@@ -2,10 +2,15 @@ package org.ray.runtime;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.ray.api.exception.RayException;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.util.Serializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ObjectInterface {
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
+
   private final long nativeCoreWorker;
 
   public ObjectInterface(long nativeCoreWorker) {
@@ -31,12 +36,11 @@ public class ObjectInterface {
   }
 
   public void putSerialized(ObjectId objectId, byte[] binary) {
-//    try {
-    put(nativeCoreWorker, objectId.getBytes(), binary);
-//    TODO: how to handle duplicated object ID error?
-//    } catch (DuplicateObjectException e) {
-//      LOGGER.warn(e.getMessage());
-//    }
+    try {
+      put(nativeCoreWorker, objectId.getBytes(), binary);
+    } catch (RayException e) {
+      LOGGER.warn(e.getMessage());
+    }
   }
 
   public List<byte[]> get(List<ObjectId> objectIds, long timeoutMs) {
@@ -62,7 +66,7 @@ public class ObjectInterface {
   private static native List<byte[]> get(long nativeCoreWorker, List<byte[]> ids, long timeoutMs);
 
   private static native List<Boolean> wait(long nativeCoreWorker, List<byte[]> objectIds,
-                                       int numObjects, long timeoutMs);
+                                           int numObjects, long timeoutMs);
 
   private static native void delete(long nativeCoreWorker, List<byte[]> objectIds, boolean localOnly,
                                     boolean deleteCreatingTasks);
