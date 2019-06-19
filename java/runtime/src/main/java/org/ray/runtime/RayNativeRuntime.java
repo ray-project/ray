@@ -27,12 +27,12 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   static {
     try {
-      LOGGER.debug("Loading nativeTypes libraries.");
-      // Load nativeTypes libraries.
+      LOGGER.debug("Loading native libraries.");
+      // Load native libraries.
       String[] libraries = new String[] {"core_worker_library_java"};
       for (String library : libraries) {
         String fileName = System.mapLibraryName(library);
-        // Copy the file from resources to a temp dir, and load the nativeTypes library.
+        // Copy the file from resources to a temp dir, and load the native library.
         File file = File.createTempFile(fileName, "");
         file.deleteOnExit();
         InputStream in = RayNativeRuntime.class.getResourceAsStream("/" + fileName);
@@ -42,7 +42,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       }
       LOGGER.debug("Native libraries loaded.");
     } catch (IOException e) {
-      throw new RuntimeException("Couldn't load nativeTypes libraries.", e);
+      throw new RuntimeException("Couldn't load native libraries.", e);
     }
   }
 
