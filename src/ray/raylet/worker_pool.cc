@@ -133,6 +133,7 @@ void WorkerPool::StartWorkerProcess(const Language &language,
       if (!dynamic_worker_options.empty()) {
         RAY_CHECK(dynamic_option_index < dynamic_worker_options.size());
         worker_command_args.push_back(dynamic_worker_options[dynamic_option_index].c_str());
+        ++dynamic_option_index;
       }
     } else {
       worker_command_args.push_back(token.c_str());
@@ -239,7 +240,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
     state.starting_dedicated_worker_processes.erase(it);
     state.idle_dedicated_workers[task_id] = std::move(worker);
 
-    // Return to not put this worker to idle pool.
+    // Return to do not put this worker to idle pool.
     return;
   }
 

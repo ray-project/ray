@@ -213,23 +213,23 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   ASSERT_NE(worker_pool_.PopWorker(java_task_spec), nullptr);
 }
 
-TEST_F(WorkerPoolTest, StartWorkerWithPrefixAndSuffix) {
+TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   const std::vector<std::string> java_worker_command = {
-      kPrefixPlaceholder, "dummy_java_worker_command", kSuffixPlaceholder};
+      "RAY_WORKER_OPTION_0", "dummy_java_worker_command", "RAY_WORKER_OPTION_1"};
   SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                      {Language::JAVA, java_worker_command}});
 
   TaskSpecification task_spec(DriverID::Nil(), TaskID::Nil(), 0, ActorID::FromRandom(),
                               ObjectID::Nil(), 0, ActorID::Nil(), ActorHandleID::Nil(), 0,
                               {}, {}, 0, {}, {}, Language::JAVA, {"", "", ""},
-                              "test_prefix", "test_suffix");
+                              {"test_op_0", "test_op_1"});
   worker_pool_.StartWorkerProcess(Language::JAVA, &task_spec);
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
   ASSERT_EQ(3, real_command.size());
-  ASSERT_EQ("test_prefix", real_command[0]);
+  ASSERT_EQ("test_op_0", real_command[0]);
   ASSERT_EQ("dummy_java_worker_command", real_command[1]);
-  ASSERT_EQ("test_suffix", real_command[2]);
+  ASSERT_EQ("test_op_1", real_command[2]);
 }
 
 }  // namespace raylet
