@@ -282,8 +282,6 @@ public class RayletClientImpl implements RayletClient {
       functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
     }
 
-    // TODO(qwang):
-
     int [] dynamicWorkerOptionsOffsets = new int[task.dynamicWorkerOptions.size()];
     for (int index = 0; index < task.dynamicWorkerOptions.size(); ++index) {
       dynamicWorkerOptionsOffsets[index] = fbb.createString(task.dynamicWorkerOptions.get(index));
