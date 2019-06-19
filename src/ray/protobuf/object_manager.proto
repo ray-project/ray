@@ -51,9 +51,12 @@ message FreeObjectsRequest {
   repeated bytes object_ids = 1;
 }
 
-message PushReply {}
-message PullReply {}
-message FreeObjectsReply {}
+message PushReply {
+}
+message PullReply {
+}
+message FreeObjectsReply {
+}
 
 service ObjectManagerService {
   rpc Push(PushRequest) returns (PushReply);

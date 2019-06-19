@@ -191,16 +191,17 @@ class TestObjectManager : public TestObjectManagerBase {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback([this](
-        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-      ClientID parsed_id = ClientID::FromBinary(data.client_id);
-      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-        num_connected_clients += 1;
-      }
-      if (num_connected_clients == 2) {
-        StartTests();
-      }
-    });
+    gcs_client_1->client_table().RegisterClientAddedCallback(
+        [this](gcs::AsyncGcsClient *client, const ClientID &id,
+               const ClientTableDataT &data) {
+          ClientID parsed_id = ClientID::FromBinary(data.client_id);
+          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+            num_connected_clients += 1;
+          }
+          if (num_connected_clients == 2) {
+            StartTests();
+          }
+        });
   }
 
   void StartTests() {
@@ -263,9 +264,10 @@ class TestObjectManager : public TestObjectManagerBase {
     UniqueID sub_id = ray::UniqueID::FromRandom();
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
-        sub_id, object_1, [this, sub_id, object_1, object_2](
-                              const ray::ObjectID &object_id,
-                              const std::unordered_set<ray::ClientID> &clients) {
+        sub_id, object_1,
+        [this, sub_id, object_1, object_2](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }
@@ -359,7 +361,6 @@ class TestObjectManager : public TestObjectManagerBase {
         [this, object_ids, num_objects, timeout_ms, required_objects, start_time](
             const std::vector<ray::ObjectID> &found,
             const std::vector<ray::ObjectID> &remaining) {
-
           int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
                                 .total_milliseconds();
           RAY_LOG(DEBUG) << "elapsed " << elapsed;
