@@ -39,7 +39,8 @@ class ObjectManagerServer : public GrpcServer {
   /// \param[in] handler The service handler that actually handle the requests.
   ObjectManagerServer(const uint32_t port, boost::asio::io_service &main_service,
                       ObjectManagerServiceHandler &service_handler)
-      : GrpcServer("ObjectManager", port, main_service), service_handler_(service_handler){};
+      : GrpcServer("ObjectManager", port, main_service),
+        service_handler_(service_handler){};
 
   void RegisterServices(::grpc::ServerBuilder &builder) override {
     /// Register `ObjectManagerService`.
@@ -55,7 +56,8 @@ class ObjectManagerServer : public GrpcServer {
                                   PushRequest, PushReply>(
             service_, &ObjectManagerService::AsyncService::RequestPush, service_handler_,
             &ObjectManagerServiceHandler::HandlePushRequest, cq_));
-    server_call_factories_and_concurrencies->emplace_back(std::move(push_call_factory), 30);
+    server_call_factories_and_concurrencies->emplace_back(std::move(push_call_factory),
+                                                          30);
 
     // Initialize the factory for `Pull` requests.
     std::unique_ptr<ServerCallFactory> pull_call_factory(
@@ -63,7 +65,8 @@ class ObjectManagerServer : public GrpcServer {
                                   PullRequest, PullReply>(
             service_, &ObjectManagerService::AsyncService::RequestPull, service_handler_,
             &ObjectManagerServiceHandler::HandlePullRequest, cq_));
-    server_call_factories_and_concurrencies->emplace_back(std::move(pull_call_factory), 2);
+    server_call_factories_and_concurrencies->emplace_back(std::move(pull_call_factory),
+                                                          2);
 
     // Initialize the factory for `FreeObjects` requests.
     std::unique_ptr<ServerCallFactory> free_objects_call_factory(
@@ -72,7 +75,8 @@ class ObjectManagerServer : public GrpcServer {
             service_, &ObjectManagerService::AsyncService::RequestFreeObjects,
             service_handler_, &ObjectManagerServiceHandler::HandleFreeObjectsRequest,
             cq_));
-    server_call_factories_and_concurrencies->emplace_back(std::move(free_objects_call_factory), 1);
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(free_objects_call_factory), 1);
   }
 
  private:

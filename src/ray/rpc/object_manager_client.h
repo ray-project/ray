@@ -6,10 +6,10 @@
 #include <grpcpp/grpcpp.h>
 
 #include "ray/common/status.h"
-#include "src/ray/rpc/client_call.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
+#include "src/ray/rpc/client_call.h"
 
 namespace ray {
 namespace rpc {
@@ -30,29 +30,26 @@ class ObjectManagerClient {
     stub_ = ObjectManagerService::NewStub(channel);
   };
 
-  /// Forward a task and its uncommitted lineage.
+  /// Push object to remote object manager
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   void Push(const PushRequest &request, const ClientCallback<PushReply> &callback) {
-    client_call_manager_
-        .CreateCall<ObjectManagerService, PushRequest, PushReply>(*stub_,
-                                                                &ObjectManagerService::Stub::PrepareAsyncPush, request,
-                                                                           callback);
+    client_call_manager_.CreateCall<ObjectManagerService, PushRequest, PushReply>(
+        *stub_, &ObjectManagerService::Stub::PrepareAsyncPush, request, callback);
   }
 
   void Pull(const PullRequest &request, const ClientCallback<PullReply> &callback) {
-    client_call_manager_
-        .CreateCall<ObjectManagerService, PullRequest, PullReply>(*stub_,
-                                                                &ObjectManagerService::Stub::PrepareAsyncPull, request,
-                                                                           callback);
+    client_call_manager_.CreateCall<ObjectManagerService, PullRequest, PullReply>(
+        *stub_, &ObjectManagerService::Stub::PrepareAsyncPull, request, callback);
   }
 
-  void FreeObjects(const FreeObjectsRequest &request, const ClientCallback<FreeObjectsReply> &callback) {
+  void FreeObjects(const FreeObjectsRequest &request,
+                   const ClientCallback<FreeObjectsReply> &callback) {
     client_call_manager_
-        .CreateCall<ObjectManagerService, FreeObjectsRequest, FreeObjectsReply>(*stub_,
-                                                                &ObjectManagerService::Stub::PrepareAsyncFreeObjects, request,
-                                                                           callback);
+        .CreateCall<ObjectManagerService, FreeObjectsRequest, FreeObjectsReply>(
+            *stub_, &ObjectManagerService::Stub::PrepareAsyncFreeObjects, request,
+            callback);
   }
 
  private:

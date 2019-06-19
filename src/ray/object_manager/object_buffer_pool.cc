@@ -108,7 +108,8 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
     create_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
         std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size)));
-    RAY_LOG(DEBUG) << "Create object " << object_id << ", number of chunks: " << num_chunks
+    RAY_LOG(DEBUG) << "Create object " << object_id
+                   << ", number of chunks: " << num_chunks
                    << ", chunk index: " << chunk_index;
     RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
@@ -156,8 +157,8 @@ void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk
     RAY_ARROW_CHECK_OK(store_client_.Seal(plasma_id));
     RAY_ARROW_CHECK_OK(store_client_.Release(plasma_id));
     create_buffer_state_.erase(object_id);
-    RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id << ", last chunk index: "
-                   << chunk_index;
+    RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
+                   << ", last chunk index: " << chunk_index;
   }
 }
 

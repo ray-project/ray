@@ -73,10 +73,30 @@ class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
   /// Implementation of object manager service
  public:
+  /// Handle push request from remote object manager
+  ///
+  /// Push request will contain the object which is specified by pull request
+  /// the object will be transfered by a sequence of chunks.
+  ///
+  /// \param request Push request including the object chunk data
+  /// \param reply Reply to the sender
+  /// \param done_callback Callback of the request
   void HandlePushRequest(const rpc::PushRequest &request, rpc::PushReply *reply,
                          rpc::RequestDoneCallback done_callback);
+
+  /// Handle pull request from remote object manager
+  ///
+  /// \param request Pull request
+  /// \param reply Reply
+  /// \param done_callback Callback of request
   void HandlePullRequest(const rpc::PullRequest &request, rpc::PullReply *reply,
                          rpc::RequestDoneCallback done_callback);
+
+  /// Handle free objects request
+  ///
+  /// \param request Free objects request
+  /// \param reply Reply
+  /// \param done_callback
   void HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
                                 rpc::FreeObjectsReply *reply,
                                 rpc::RequestDoneCallback done_callback);
@@ -92,6 +112,9 @@ class ObjectManager : public ObjectManagerInterface,
 
   ray::Status SendPullRequest(const ObjectID &object_id, const ClientID &client_id);
 
+  /// Get the rpc client according to the client ID
+  ///
+  /// \param client_id Remote client id, will send rpc request to it
   std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const ClientID &client_id);
 
  public:
