@@ -15,16 +15,16 @@ cc_library(
         "src/ray/rpc/grpc_server.cc",
     ],
     hdrs = [
+        "src/ray/rpc/client_call.h",
         "src/ray/rpc/grpc_server.h",
         "src/ray/rpc/server_call.h",
-        "src/ray/rpc/client_call.h",
         "src/ray/rpc/util.h",
     ],
     copts = COPTS,
     deps = [
         ":ray_common",
         "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++"
+        "@com_github_grpc_grpc//:grpc++",
     ]
 )
 
@@ -43,9 +43,9 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
-        ":ray_common",
-        ":node_manager_grpc_lib",
         ":common_grpc_lib",
+        ":node_manager_grpc_lib",
+        ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -65,9 +65,9 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
-        ":ray_common",
         ":common_grpc_lib",
         ":object_manager_grpc_lib",
+        ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
