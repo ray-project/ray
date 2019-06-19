@@ -16,7 +16,7 @@ void GrpcServer::Run() {
   cq_ = builder.AddCompletionQueue();
   // Build and start server.
   server_ = builder.BuildAndStart();
-  RAY_LOG(DEBUG) << name_ << " server started, listening on port " << port_ << ".";
+  RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
   // Allow subclasses to initialize the server call factories.
   InitServerCallFactories(&server_call_factories_and_concurrencies_);

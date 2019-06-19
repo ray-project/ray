@@ -85,6 +85,7 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
   client_info.raylet_socket_name = raylet_socket_name;
   client_info.object_store_socket_name = object_store_socket_name;
   client_info.node_manager_port = node_manager_.GetServerPort();
+  client_info.object_manager_port = object_manager_.GetServerPort();
   // Add resource information.
   for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
     client_info.resources_total_label.push_back(resource_pair.first);

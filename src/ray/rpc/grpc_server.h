@@ -92,7 +92,9 @@ class GrpcServer {
   std::unique_ptr<grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.
   std::unique_ptr<grpc::Server> server_;
+  /// The polling thread used to check the completion queue
   std::thread polling_thread_;
+  /// Flag indicates whether this server has closed
   bool is_closed_;
 };
 

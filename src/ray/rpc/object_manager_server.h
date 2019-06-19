@@ -23,8 +23,10 @@ class ObjectManagerServiceHandler {
   /// \param[in] done_callback The callback to be called when the request is done.
   virtual void HandlePushRequest(const PushRequest &request, PushReply *reply,
                                  RequestDoneCallback done_callback) = 0;
+  /// Handle a `Pull` request
   virtual void HandlePullRequest(const PullRequest &request, PullReply *reply,
                                  RequestDoneCallback done_callback) = 0;
+  /// Handle a `FreeObjects` request
   virtual void HandleFreeObjectsRequest(const FreeObjectsRequest &request,
                                         FreeObjectsReply *reply,
                                         RequestDoneCallback done_callback) = 0;

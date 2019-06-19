@@ -32,7 +32,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
 
-  RAY_LOG(INFO) << "object manager server listen on port " << config_.object_manager_port;
   StartRpcService();
   object_manager_server_.Run();
 }
@@ -194,7 +193,10 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Sending pull request from " << client_id_ << " to " << client_id
                  << " of object " << object_id;
   // Try pulling from the client.
-  (void)SendPullRequest(object_id, client_id);
+  auto st = SendPullRequest(object_id, client_id);
+  if (!st.ok()) {
+    RAY_LOG(WARNING) << "Send pull request failed due to " << st.message();
+  }
 
   // If there are more clients to try, try them in succession, with a timeout
   // in between each try.
@@ -736,6 +738,7 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
     }
     auto object_manager_client = std::make_shared<rpc::ObjectManagerClient>(
         connection_info.ip, connection_info.port, client_call_manager_);
+
     if (!object_manager_client) {
       return nullptr;
     }

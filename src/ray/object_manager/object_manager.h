@@ -117,6 +117,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param client_id Remote client id, will send rpc request to it
   std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const ClientID &client_id);
 
+  /// Get the port of the object manager rpc server.
+  int GetServerPort() const { return object_manager_server_.GetPort(); }
+
  public:
   /// Takes user-defined ObjectDirectoryInterface implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
