@@ -3,7 +3,6 @@ package org.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
@@ -22,8 +21,12 @@ public class DynamicResourceTest extends BaseTest {
   }
 
   @Test
-  public void testSetResource() throws InterruptedException {
+  public void testSetResource() {
     TestUtils.skipTestUnderSingleProcess();
+
+    // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
+    TestUtils.warmUpCluster();
+
     CallOptions op1 =
         new CallOptions.Builder().setResources(ImmutableMap.of("A", 10.0)).createCallOptions();
     RayObject<String> obj = Ray.call(DynamicResourceTest::sayHi, op1);
@@ -31,9 +34,9 @@ public class DynamicResourceTest extends BaseTest {
     Assert.assertEquals(result.getReady().size(), 0);
 
     Ray.setResource("A", 10.0);
-    boolean resourceReady = TestUtils.waitForCondition(()-> {
+    boolean resourceReady = TestUtils.waitForCondition(() -> {
       List<NodeInfo> nodes = Ray.getRuntimeContext().getAllNodeInfo();
-      if(nodes.size() != 1) {
+      if (nodes.size() != 1) {
         return false;
       }
       return (0 == Double.compare(10.0, nodes.get(0).resources.get("A")));
