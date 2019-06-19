@@ -101,3 +101,11 @@ def ray_deps_setup():
         # `https://github.com/jupp0r/prometheus-cpp/pull/225` getting merged.
         urls = ["https://github.com/jovany-wang/prometheus-cpp/archive/master.zip"],
     )
+
+    http_archive(
+        name = "com_github_grpc_grpc",
+        urls = [
+            "https://github.com/grpc/grpc/archive/7741e806a213cba63c96234f16d712a8aa101a49.tar.gz",
+        ],
+        strip_prefix = "grpc-7741e806a213cba63c96234f16d712a8aa101a49",
+    )
