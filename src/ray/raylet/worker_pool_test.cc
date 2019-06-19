@@ -45,7 +45,6 @@ class WorkerPoolMock : public WorkerPool {
   pid_t LastStartedWorkerProcess() const { return last_worker_pid_; }
 
   const std::vector<std::string> &GetWorkerCommand(int pid) {
-    RAY_CHECK(worker_commands_by_pid.count(pid) != 0) << "Invalid argument.";
     return worker_commands_by_pid[pid];
   }
 

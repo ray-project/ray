@@ -83,12 +83,6 @@ TaskSpecification::TaskSpecification(
     const Language &language, const std::vector<std::string> &function_descriptor,
     const std::vector<std::string> &dynamic_worker_options)
     : spec_() {
-  // check
-  if (actor_creation_id.IsNil()) {
-    RAY_CHECK(dynamic_worker_options.size() == 0)
-        << "`dynamic_worker_options` only can be specified for actor creating tasks.";
-  }
-
   flatbuffers::FlatBufferBuilder fbb;
 
   TaskID task_id = GenerateTaskId(driver_id, parent_task_id, parent_counter);
@@ -266,8 +260,6 @@ std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
 }
 
 std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
-  RAY_CHECK(IsActorCreationTask())
-       << "This method only can be called for actor creating tasks.";
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return string_vec_from_flatbuf(*message->dynamic_worker_options());
 }
