@@ -158,7 +158,6 @@ void WorkerPool::StartWorkerProcess(const Language &language,
              "because we specified dynamic worker options for this task.";
       state.starting_dedicated_worker_processes[pid] = task_spec->TaskId();
     }
-    return;
   }
 }
 
@@ -258,39 +257,45 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   const auto &actor_id = task_spec.ActorId();
 
   std::shared_ptr<Worker> worker = nullptr;
-  if (task_spec.IsActorCreationTask()) {
-    // code path of actor creation task.
-    if (task_spec.DynamicWorkerOptions().empty()) {
-      // There is no dynamic worker options of this task. Pop a worker
-      // from idle worker pool of non-actor.
-      if (!state.idle.empty()) {
-        worker = std::move(*state.idle.begin());
-        state.idle.erase(state.idle.begin());
-      } else {
-        RAY_LOG(DEBUG) << "There is no idle worker for the task " << task_spec.TaskId();
-      }
-    } else {
-      // Dynamic worker options is not empty. Try to pop it from idle dedicated pool.
-      auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
-      if (it != state.idle_dedicated_workers.end()) {
-        worker = std::move(it->second);
-        state.idle_dedicated_workers.erase(it);
-      }
+  if (task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) {
+    // Code path of actor creation task with dynamic worker options.
+    // Try to pop it from idle dedicated pool.
+    auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
+    if (it != state.idle_dedicated_workers.end()) {
+      // There is a idle dedicated worker for this task.
+      worker = std::move(it->second);
+      state.idle_dedicated_workers.erase(it);
+    } else if (!PendingRegistrationForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
+      // We are not pending a registration from a worker for this task,
+      // so start a new worker process for this task.
+      StartWorkerProcess(task_spec.Getlanguage(), &task_spec);
     }
   } else if (!task_spec.IsActorTask()) {
-    // code path of normal task.
+    // Code path of normal task or actor creation task without dynamic worker options.
     if (!state.idle.empty()) {
       worker = std::move(*state.idle.begin());
       state.idle.erase(state.idle.begin());
+    } else {
+      // There are no more non-actor workers available to execute this task.
+      // Start a new worker process.
+      StartWorkerProcess(spec.GetLanguage());
+      // Push an error message to the user if the worker pool tells us that it is
+      // getting too big.
+      const std::string warning_message = worker_pool_.WarningAboutSize();
+      if (warning_message != "") {
+        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+          DriverID::Nil(), "worker_pool_large", warning_message, current_time_ms()));
+      }
     }
   } else {
-    // code path of actor task.
+    // Code path of actor task.
     auto actor_entry = state.idle_actor.find(actor_id);
     if (actor_entry != state.idle_actor.end()) {
       worker = std::move(actor_entry->second);
       state.idle_actor.erase(actor_entry);
     }
   }
+
   return worker;
 }
 
@@ -332,6 +337,17 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
   }
 
   return workers;
+}
+
+bool WorkerPool::HasWorkerForTask(const TaskID &task_id) const {
+  for (const auto &it : starting_dedicated_worker_processes) {
+    if (it.second == task_id) {
+      return true;
+    }
+  }
+
+  auto it = idle_dedicated_workers.find(task_id);
+  return (it != idle_dedicated_workers.end());
 }
 
 std::string WorkerPool::WarningAboutSize() {

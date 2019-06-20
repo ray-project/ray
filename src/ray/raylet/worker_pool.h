@@ -120,6 +120,12 @@ class WorkerPool {
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
       const DriverID &driver_id) const;
 
+  /// Whether we're starting a worker for this task.
+  ///
+  /// \param task_id The task that we want to query.
+  /// \return True if there is a worker being starting, otherwise false.
+  bool HasWorkerForTask(const TaskID &task_id) const;
+
   /// Whether we are pending a registration from a worker for the given task.
   /// Note that, this is only used for actor creation task.
   ///
