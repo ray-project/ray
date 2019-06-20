@@ -25,7 +25,7 @@ cc_library(
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
-    ]
+    ],
 )
 
 # Node manager gRPC lib.

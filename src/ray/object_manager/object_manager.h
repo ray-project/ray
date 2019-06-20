@@ -6,6 +6,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <random>
 #include <thread>
 
@@ -418,6 +419,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.
   std::vector<ProfileEventT> profile_events_;
+
+  /// mutex lock used to protect profile_events_, profile_events_ is used in main thread
+  /// and rpc thread
+  std::mutex profile_mutex_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

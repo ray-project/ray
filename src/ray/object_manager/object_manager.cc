@@ -279,6 +279,7 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
   profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
                              std::to_string(chunk_index) + ",\"" + status.ToString() +
                              "\"]";
+  std::lock_guard<std::mutex> lock(profile_mutex_);
   profile_events_.push_back(profile_event);
 }
 
@@ -299,6 +300,7 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
   profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
                              std::to_string(chunk_index) + ",\"" + status.ToString() +
                              "\"]";
+  std::lock_guard<std::mutex> lock(profile_mutex_);
   profile_events_.push_back(profile_event);
 }
 
@@ -685,7 +687,10 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
   profile_event.start_time = current_sys_time_seconds();
   profile_event.end_time = profile_event.start_time;
   profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"]";
-  profile_events_.push_back(profile_event);
+  {
+    std::lock_guard<std::mutex> lock(profile_mutex_);
+    profile_events_.push_back(profile_event);
+  }
 
   Push(object_id, client_id);
   done_callback(Status::OK());
@@ -753,11 +758,13 @@ ProfileTableDataT ObjectManager::GetAndResetProfilingInfo() {
   profile_info.component_type = "object_manager";
   profile_info.component_id = client_id_.Binary();
 
-  for (auto const &profile_event : profile_events_) {
-    profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
+  {
+    std::lock_guard<std::mutex> lock(profile_mutex_);
+    for (auto const &profile_event : profile_events_) {
+      profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
+    }
+    profile_events_.clear();
   }
-
-  profile_events_.clear();
 
   return profile_info;
 }
