@@ -335,13 +335,11 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
 }
 
 bool WorkerPool::HasWorkerForTask(const Language &language, const TaskID &task_id) {
-  auto &state = GetStateForLanguage(language);
-  for (const auto &it : state.starting_dedicated_worker_processes) {
-    if (it.second == task_id) {
-      return true;
-    }
+  if (PendingRegistrationForTask(language, task_id)) {
+    return true;
   }
 
+  auto &state = GetStateForLanguage(language);
   auto it = state.idle_dedicated_workers.find(task_id);
   return it != state.idle_dedicated_workers.end();
 }

@@ -43,18 +43,6 @@ class WorkerPool {
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
 
-  /// Asynchronously start a new worker process. Once the worker process has
-  /// registered with an external server, the process should create and
-  /// register num_workers_per_process_ workers, then add them to the pool.
-  /// Failure to start the worker process is a fatal error. If too many workers
-  /// are already being started, then this function will return without starting
-  /// any workers.
-  ///
-  /// \param language Which language this worker process should be.
-  /// \param task_spec The task specification that we provide for get more information.
-  void StartWorkerProcess(const Language &language,
-                          const TaskSpecification *task_spec = nullptr);
-
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
@@ -127,13 +115,6 @@ class WorkerPool {
   /// \return True if there is a worker being starting, otherwise false.
   bool HasWorkerForTask(const Language &language, const TaskID &task_id);
 
-  /// Whether we are pending a registration from a worker for the given task.
-  /// Note that, this is only used for actor creation task.
-  ///
-  /// \param language The required language.
-  /// \param task_id The task that we'll query by.
-  bool PendingRegistrationForTask(const Language &language, const TaskID &task_id);
-
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -190,6 +171,26 @@ class WorkerPool {
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
+  /// Whether we are pending a registration from a worker for the given task.
+  /// Note that, this is only used for actor creation task.
+  ///
+  /// \param language The required language.
+  /// \param task_id The task that we'll query by.
+  bool PendingRegistrationForTask(const Language &language, const TaskID &task_id);
+
+  /// Asynchronously start a new worker process. Once the worker process has
+  /// registered with an external server, the process should create and
+  /// register num_workers_per_process_ workers, then add them to the pool.
+  /// Failure to start the worker process is a fatal error. If too many workers
+  /// are already being started, then this function will return without starting
+  /// any workers.
+  ///
+  /// \param language Which language this worker process should be.
+  /// \param task_spec The task specification that we provide for get more information.
+  void StartWorkerProcess(const Language &language,
+                          const TaskSpecification *task_spec = nullptr);
+
+ private:
   /// We'll push a warning to the user every time a multiple of this many
   /// workers has been started.
   int multiple_for_warning_;
