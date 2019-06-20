@@ -17,7 +17,6 @@ ACTOR_DIED_STR = "ACTOR_DIED_SIGNAL"
 
 logger = logging.getLogger(__name__)
 
-
 class Signal(object):
     """Base class for Ray signals."""
     pass
@@ -76,10 +75,8 @@ def send(signal):
         source_key = ray.worker.global_worker.current_task_id.hex()
 
     encoded_signal = ray.utils.binary_to_hex(cloudpickle.dumps(signal))
-    ray.worker.global_worker.redis_client.execute_command("XADD " +
-                                                          source_key +
-                                                          " * signal " +
-                                                          encoded_signal)
+    ray.worker.global_worker.redis_client.execute_command(
+        "XADD " + source_key + " * signal " + encoded_signal)
 
 
 def receive(sources, timeout=None):
@@ -171,8 +168,8 @@ def receive(sources, timeout=None):
                     # r[1] contains a list with elements (key, value), in our
                     # case we only have one key "signal" and the value is the
                     # signal.
-                    signal = cloudpickle.loads(ray.utils.hex_to_binary(
-                        r[1][1]))
+                    signal = cloudpickle.loads(
+                        ray.utils.hex_to_binary(r[1][1]))
                     results.append((s, signal))
 
     return results
