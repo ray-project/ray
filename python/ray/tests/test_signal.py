@@ -361,6 +361,8 @@ def test_non_integral_receive_timeout(ray_start_regular):
         signal.send(UserSignal(value))
 
     a = send_signal.remote(0)
+    # make sure send_signal had a chance to execute
+    ray.get(a)
 
     result_list = ray.experimental.signal.receive([a], timeout=0.1)
 
@@ -378,9 +380,8 @@ def test_small_receive_timeout(ray_start_regular):
         signal.send(UserSignal(value))
 
     a = send_signal.remote(0)
-
-    # wait for a bit to give send_signal time to execute
-    time.sleep(1)
+    # make sure send_signal had a chance to execute
+    ray.get(a)
 
     result_list = ray.experimental.signal.receive([a], timeout=small_timeout)
 
