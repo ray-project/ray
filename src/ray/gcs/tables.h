@@ -9,12 +9,14 @@
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/gcs/gcs_entry.h"
 #include "ray/util/logging.h"
 
-#include "ray/gcs/format/gcs_generated.h"
+//#include "ray/gcs/format/gcs_generated.h"
 #include "ray/gcs/redis_context.h"
 // TODO(rkn): Remove this include.
-#include "ray/raylet/format/node_manager_generated.h"
+//#include "ray/raylet/format/node_manager_generated.h"
+#include "ray/protobuf/gcs.pb.h"
 
 struct redisAsyncContext;
 
@@ -48,13 +50,12 @@ class PubsubInterface {
 template <typename ID, typename Data>
 class LogInterface {
  public:
-  using DataT = typename Data::NativeTableType;
   using WriteCallback =
-      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+      std::function<void(AsyncGcsClient *client, const ID &id, const Data &data)>;
   virtual Status Append(const DriverID &driver_id, const ID &id,
-                        std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
+                        std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
   virtual Status AppendAt(const DriverID &driver_id, const ID &task_id,
-                          std::shared_ptr<DataT> &data, const WriteCallback &done,
+                          std::shared_ptr<Data> &data, const WriteCallback &done,
                           const WriteCallback &failure, int log_length) = 0;
   virtual ~LogInterface(){};
 };
@@ -72,12 +73,11 @@ class LogInterface {
 template <typename ID, typename Data>
 class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
  public:
-  using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
-                                      const std::vector<DataT> &data)>;
+                                      const std::vector<Data> &data)>;
   using NotificationCallback = std::function<void(AsyncGcsClient *client, const ID &id,
-                                                  const GcsChangeMode change_mode,
-                                                  const std::vector<DataT> &data)>;
+                                                  const rpc::GcsChangeMode change_mode,
+                                                  const std::vector<Data> &data)>;
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
@@ -86,7 +86,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
 
   struct CallbackData {
     ID id;
-    std::shared_ptr<DataT> data;
+    std::shared_ptr<Data> data;
     Callback callback;
     // An optional callback to call for subscription operations, where the
     // first message is a notification of subscription success.
@@ -98,8 +98,8 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   Log(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
       : shard_contexts_(contexts),
         client_(client),
-        pubsub_channel_(TablePubsub::NO_PUBLISH),
-        prefix_(TablePrefix::UNUSED),
+        pubsub_channel_(rpc::TablePubsub::NO_PUBLISH),
+        prefix_(rpc::TablePrefix::UNUSED),
         subscribe_callback_index_(-1){};
 
   /// Append a log entry to a key.
@@ -111,7 +111,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Append(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Append(const DriverID &driver_id, const ID &id, std::shared_ptr<Data> &data,
                 const WriteCallback &done);
 
   /// Append a log entry to a key if and only if the log has the given number
@@ -126,7 +126,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param log_length The number of entries that the log must have for the
   /// append to succeed.
   /// \return Status
-  Status AppendAt(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status AppendAt(const DriverID &driver_id, const ID &id, std::shared_ptr<Data> &data,
                   const WriteCallback &done, const WriteCallback &failure,
                   int log_length);
 
@@ -238,12 +238,12 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   AsyncGcsClient *client_;
   /// The pubsub channel to subscribe to for notifications about keys in this
   /// table. If no notifications are required, this should be set to
-  /// TablePubsub_NO_PUBLISH. If notifications are required, then this must be
+  /// rpc::TablePubsub_NO_PUBLISH. If notifications are required, then this must be
   /// unique across all instances of Log.
-  TablePubsub pubsub_channel_;
+  rpc::TablePubsub pubsub_channel_;
   /// The prefix to use for keys in this table. This must be unique across all
   /// instances of Log.
-  TablePrefix prefix_;
+  rpc::TablePrefix prefix_;
   /// The index in the RedisCallbackManager for the callback that is called
   /// when we receive notifications. This is >= 0 iff we have subscribed to the
   /// table, otherwise -1.
@@ -259,10 +259,9 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
 template <typename ID, typename Data>
 class TableInterface {
  public:
-  using DataT = typename Data::NativeTableType;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
   virtual Status Add(const DriverID &driver_id, const ID &task_id,
-                     std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
+                     std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
   virtual ~TableInterface(){};
 };
 
@@ -280,9 +279,8 @@ class Table : private Log<ID, Data>,
               public TableInterface<ID, Data>,
               virtual public PubsubInterface<ID> {
  public:
-  using DataT = typename Log<ID, Data>::DataT;
   using Callback =
-      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+      std::function<void(AsyncGcsClient *client, const ID &id, const Data &data)>;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
   /// The callback to call when a Lookup call returns an empty entry.
   using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
@@ -305,7 +303,7 @@ class Table : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Add(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Add(const DriverID &driver_id, const ID &id, std::shared_ptr<Data> &data,
              const WriteCallback &done);
 
   /// Lookup an entry asynchronously.
@@ -369,12 +367,11 @@ class Table : private Log<ID, Data>,
 template <typename ID, typename Data>
 class SetInterface {
  public:
-  using DataT = typename Data::NativeTableType;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const DriverID &driver_id, const ID &id,
-                     std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
+  virtual Status Add(const DriverID &driver_id, const ID &id, std::shared_ptr<Data> &data,
+                     const WriteCallback &done) = 0;
   virtual Status Remove(const DriverID &driver_id, const ID &id,
-                        std::shared_ptr<DataT> &data, const WriteCallback &done) = 0;
+                        std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
   virtual ~SetInterface(){};
 };
 
@@ -392,7 +389,6 @@ class Set : private Log<ID, Data>,
             public SetInterface<ID, Data>,
             virtual public PubsubInterface<ID> {
  public:
-  using DataT = typename Log<ID, Data>::DataT;
   using Callback = typename Log<ID, Data>::Callback;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
   using NotificationCallback = typename Log<ID, Data>::NotificationCallback;
@@ -414,7 +410,7 @@ class Set : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Add(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Add(const DriverID &driver_id, const ID &id, std::shared_ptr<Data> &data,
              const WriteCallback &done);
 
   /// Remove an entry from the set.
@@ -425,7 +421,7 @@ class Set : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Remove(const DriverID &driver_id, const ID &id, std::shared_ptr<DataT> &data,
+  Status Remove(const DriverID &driver_id, const ID &id, std::shared_ptr<Data> &data,
                 const WriteCallback &done);
 
   Status Subscribe(const DriverID &driver_id, const ClientID &client_id,
@@ -454,8 +450,7 @@ class Set : private Log<ID, Data>,
 template <typename ID, typename Data>
 class HashInterface {
  public:
-  using DataT = typename Data::NativeTableType;
-  using DataMap = std::unordered_map<std::string, std::shared_ptr<DataT>>;
+  using DataMap = std::unordered_map<std::string, std::shared_ptr<Data>>;
   // Reuse Log's SubscriptionCallback when Subscribe is successfully called.
   using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
 
@@ -485,7 +480,7 @@ class HashInterface {
   /// \return Void
   using HashNotificationCallback =
       std::function<void(AsyncGcsClient *client, const ID &id,
-                         const GcsChangeMode change_mode, const DataMap &data)>;
+                         const rpc::GcsChangeMode change_mode, const DataMap &data)>;
 
   /// Add entries of a hash table.
   ///
@@ -544,8 +539,7 @@ class Hash : private Log<ID, Data>,
              public HashInterface<ID, Data>,
              virtual public PubsubInterface<ID> {
  public:
-  using DataT = typename Log<ID, Data>::DataT;
-  using DataMap = std::unordered_map<std::string, std::shared_ptr<DataT>>;
+  using DataMap = std::unordered_map<std::string, std::shared_ptr<Data>>;
   using HashCallback = typename HashInterface<ID, Data>::HashCallback;
   using HashRemoveCallback = typename HashInterface<ID, Data>::HashRemoveCallback;
   using HashNotificationCallback =
@@ -590,59 +584,59 @@ class Hash : private Log<ID, Data>,
   using Log<ID, Data>::num_lookups_;
 };
 
-class DynamicResourceTable : public Hash<ClientID, RayResource> {
+class DynamicResourceTable : public Hash<ClientID, rpc::RayResource> {
  public:
   DynamicResourceTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                        AsyncGcsClient *client)
       : Hash(contexts, client) {
-    pubsub_channel_ = TablePubsub::NODE_RESOURCE;
-    prefix_ = TablePrefix::NODE_RESOURCE;
+    pubsub_channel_ = rpc::TablePubsub::NODE_RESOURCE_PUBSUB;
+    prefix_ = rpc::TablePrefix::NODE_RESOURCE;
   };
 
   virtual ~DynamicResourceTable(){};
 };
 
-class ObjectTable : public Set<ObjectID, ObjectTableData> {
+class ObjectTable : public Set<ObjectID, rpc::ObjectTableData> {
  public:
   ObjectTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
               AsyncGcsClient *client)
       : Set(contexts, client) {
-    pubsub_channel_ = TablePubsub::OBJECT;
-    prefix_ = TablePrefix::OBJECT;
+    pubsub_channel_ = rpc::TablePubsub::OBJECT_PUBSUB;
+    prefix_ = rpc::TablePrefix::OBJECT;
   };
 
   virtual ~ObjectTable(){};
 };
 
-class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
+class HeartbeatTable : public Table<ClientID, rpc::HeartbeatTableData> {
  public:
   HeartbeatTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                  AsyncGcsClient *client)
       : Table(contexts, client) {
-    pubsub_channel_ = TablePubsub::HEARTBEAT;
-    prefix_ = TablePrefix::HEARTBEAT;
+    pubsub_channel_ = rpc::TablePubsub::HEARTBEAT_PUBSUB;
+    prefix_ = rpc::TablePrefix::HEARTBEAT;
   }
   virtual ~HeartbeatTable() {}
 };
 
-class HeartbeatBatchTable : public Table<ClientID, HeartbeatBatchTableData> {
+class HeartbeatBatchTable : public Table<ClientID, rpc::HeartbeatBatchTableData> {
  public:
   HeartbeatBatchTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                       AsyncGcsClient *client)
       : Table(contexts, client) {
-    pubsub_channel_ = TablePubsub::HEARTBEAT_BATCH;
-    prefix_ = TablePrefix::HEARTBEAT_BATCH;
+    pubsub_channel_ = rpc::TablePubsub::HEARTBEAT_BATCH_PUBSUB;
+    prefix_ = rpc::TablePrefix::HEARTBEAT_BATCH;
   }
   virtual ~HeartbeatBatchTable() {}
 };
 
-class DriverTable : public Log<DriverID, DriverTableData> {
+class DriverTable : public Log<DriverID, rpc::DriverTableData> {
  public:
   DriverTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
               AsyncGcsClient *client)
       : Log(contexts, client) {
-    pubsub_channel_ = TablePubsub::DRIVER;
-    prefix_ = TablePrefix::DRIVER;
+    pubsub_channel_ = rpc::TablePubsub::DRIVER_PUBSUB;
+    prefix_ = rpc::TablePrefix::DRIVER;
   };
 
   virtual ~DriverTable() {}
@@ -655,54 +649,56 @@ class DriverTable : public Log<DriverID, DriverTableData> {
   Status AppendDriverData(const DriverID &driver_id, bool is_dead);
 };
 
-class FunctionTable : public Table<ObjectID, FunctionTableData> {
+class FunctionTable : public Table<ObjectID, rpc::FunctionTableData> {
  public:
   FunctionTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                 AsyncGcsClient *client)
       : Table(contexts, client) {
-    pubsub_channel_ = TablePubsub::NO_PUBLISH;
-    prefix_ = TablePrefix::FUNCTION;
+    pubsub_channel_ = rpc::TablePubsub::NO_PUBLISH;
+    prefix_ = rpc::TablePrefix::FUNCTION;
   };
 };
 
-using ClassTable = Table<ActorClassID, ClassTableData>;
+using ClassTable = Table<ActorClassID, rpc::ClassTableData>;
 
 /// Actor table starts with an ALIVE entry, which represents the first time the actor
 /// is created. This may be followed by 0 or more pairs of RECONSTRUCTING, ALIVE entries,
 /// which represent each time the actor fails (RECONSTRUCTING) and gets recreated (ALIVE).
 /// These may be followed by a DEAD entry, which means that the actor has failed and will
 /// not be reconstructed.
-class ActorTable : public Log<ActorID, ActorTableData> {
+class ActorTable : public Log<ActorID, rpc::ActorTableData> {
  public:
   ActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
              AsyncGcsClient *client)
       : Log(contexts, client) {
-    pubsub_channel_ = TablePubsub::ACTOR;
-    prefix_ = TablePrefix::ACTOR;
+    pubsub_channel_ = rpc::TablePubsub::ACTOR_PUBSUB;
+    prefix_ = rpc::TablePrefix::ACTOR;
   }
 };
 
-class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
+class TaskReconstructionLog : public Log<TaskID, rpc::TaskReconstructionData> {
  public:
   TaskReconstructionLog(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                         AsyncGcsClient *client)
       : Log(contexts, client) {
-    prefix_ = TablePrefix::TASK_RECONSTRUCTION;
+    prefix_ = rpc::TablePrefix::TASK_RECONSTRUCTION;
   }
 };
 
-class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
+class TaskLeaseTable : public Table<TaskID, rpc::TaskLeaseData> {
  public:
   TaskLeaseTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                  AsyncGcsClient *client)
       : Table(contexts, client) {
-    pubsub_channel_ = TablePubsub::TASK_LEASE;
-    prefix_ = TablePrefix::TASK_LEASE;
+    pubsub_channel_ = rpc::TablePubsub::TASK_LEASE_PUBSUB;
+    prefix_ = rpc::TablePrefix::TASK_LEASE;
   }
 
   Status Add(const DriverID &driver_id, const TaskID &id,
-             std::shared_ptr<TaskLeaseDataT> &data, const WriteCallback &done) override {
-    RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(driver_id, id, data, done)));
+             std::shared_ptr<rpc::TaskLeaseData> &data,
+             const WriteCallback &done) override {
+    RAY_RETURN_NOT_OK(
+        (Table<TaskID, rpc::TaskLeaseData>::Add(driver_id, id, data, done)));
     // Mark the entry for expiration in Redis. It's okay if this command fails
     // since the lease entry itself contains the expiration period. In the
     // worst case, if the command fails, then a client that looks up the lease
@@ -710,28 +706,28 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
     // TODO(swang): Use a common helper function to format the key instead of
     // hardcoding it to match the Redis module.
     std::vector<std::string> args = {"PEXPIRE",
-                                     EnumNameTablePrefix(prefix_) + id.Binary(),
-                                     std::to_string(data->timeout)};
+                                     rpc::TablePrefix_Name(prefix_) + id.Binary(),
+                                     std::to_string(data->timeout())};
 
     return GetRedisContext(id)->RunArgvAsync(args);
   }
 };
 
-class ActorCheckpointTable : public Table<ActorCheckpointID, ActorCheckpointData> {
+class ActorCheckpointTable : public Table<ActorCheckpointID, rpc::ActorCheckpointData> {
  public:
   ActorCheckpointTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                        AsyncGcsClient *client)
       : Table(contexts, client) {
-    prefix_ = TablePrefix::ACTOR_CHECKPOINT;
+    prefix_ = rpc::TablePrefix::ACTOR_CHECKPOINT;
   };
 };
 
-class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
+class ActorCheckpointIdTable : public Table<ActorID, rpc::ActorCheckpointIdData> {
  public:
   ActorCheckpointIdTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                          AsyncGcsClient *client)
       : Table(contexts, client) {
-    prefix_ = TablePrefix::ACTOR_CHECKPOINT_ID;
+    prefix_ = rpc::TablePrefix::ACTOR_CHECKPOINT_ID;
   };
 
   /// Add a checkpoint id to an actor, and remove a previous checkpoint if the
@@ -747,13 +743,13 @@ class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
 
 namespace raylet {
 
-class TaskTable : public Table<TaskID, ray::protocol::Task> {
+class TaskTable : public Table<TaskID, rpc::TaskTableData> {
  public:
   TaskTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
             AsyncGcsClient *client)
       : Table(contexts, client) {
-    pubsub_channel_ = TablePubsub::RAYLET_TASK;
-    prefix_ = TablePrefix::RAYLET_TASK;
+    pubsub_channel_ = rpc::TablePubsub::RAYLET_TASK_PUBSUB;
+    prefix_ = rpc::TablePrefix::RAYLET_TASK;
   }
 
   TaskTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
@@ -765,13 +761,13 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
 
 }  // namespace raylet
 
-class ErrorTable : private Log<DriverID, ErrorTableData> {
+class ErrorTable : private Log<DriverID, rpc::ErrorTableData> {
  public:
   ErrorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
              AsyncGcsClient *client)
       : Log(contexts, client) {
-    pubsub_channel_ = TablePubsub::ERROR_INFO;
-    prefix_ = TablePrefix::ERROR_INFO;
+    pubsub_channel_ = rpc::TablePubsub::ERROR_INFO_PUBSUB;
+    prefix_ = rpc::TablePrefix::ERROR_INFO;
   };
 
   /// Push an error message for a specific job.
@@ -795,19 +791,19 @@ class ErrorTable : private Log<DriverID, ErrorTableData> {
   std::string DebugString() const;
 };
 
-class ProfileTable : private Log<UniqueID, ProfileTableData> {
+class ProfileTable : private Log<UniqueID, rpc::ProfileTableData> {
  public:
   ProfileTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                AsyncGcsClient *client)
       : Log(contexts, client) {
-    prefix_ = TablePrefix::PROFILE;
+    prefix_ = rpc::TablePrefix::PROFILE;
   };
 
   /// Add a batch of profiling events to the profile table.
   ///
   /// \param profile_events The profile events to record.
   /// \return Status.
-  Status AddProfileEventBatch(const ProfileTableData &profile_events);
+  Status AddProfileEventBatch(const rpc::ProfileTableData &profile_events);
 
   /// Returns debug string for class.
   ///
@@ -815,9 +811,9 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
   std::string DebugString() const;
 };
 
-using CustomSerializerTable = Table<UniqueID, CustomSerializerData>;
+using CustomSerializerTable = Table<UniqueID, rpc::CustomSerializerData>;
 
-using ConfigTable = Table<ConfigID, ConfigTableData>;
+using ConfigTable = Table<ConfigID, rpc::ConfigTableData>;
 
 /// \class ClientTable
 ///
@@ -828,10 +824,10 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 /// it should append an entry to the log indicating that it is dead. A client
 /// that is marked as dead should never again be marked as alive; if it needs
 /// to reconnect, it must connect with a different ClientID.
-class ClientTable : public Log<ClientID, ClientTableData> {
+class ClientTable : public Log<ClientID, rpc::ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
-      AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
+      AsyncGcsClient *client, const ClientID &id, const rpc::ClientTableData &data)>;
   using DisconnectCallback = std::function<void(void)>;
   ClientTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
               AsyncGcsClient *client, const ClientID &client_id)
@@ -842,11 +838,11 @@ class ClientTable : public Log<ClientID, ClientTableData> {
         disconnected_(false),
         client_id_(client_id),
         local_client_() {
-    pubsub_channel_ = TablePubsub::CLIENT;
-    prefix_ = TablePrefix::CLIENT;
+    pubsub_channel_ = rpc::TablePubsub::CLIENT_PUBSUB;
+    prefix_ = rpc::TablePrefix::CLIENT;
 
     // Set the local client's ID.
-    local_client_.client_id = client_id.Binary();
+    local_client_.set_client_id(client_id.Binary());
   };
 
   /// Connect as a client to the GCS. This registers us in the client table
@@ -855,7 +851,7 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// \param Information about the connecting client. This must have the
   /// same client_id as the one set in the client table.
   /// \return Status
-  ray::Status Connect(const ClientTableDataT &local_client);
+  ray::Status Connect(const rpc::ClientTableData &local_client);
 
   /// Disconnect the client from the GCS. The client ID assigned during
   /// registration should never be reused after disconnecting.
@@ -898,7 +894,7 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// about the client in the cache, then the reference will be modified to
   /// contain that information. Else, the reference will be updated to contain
   /// a nil client ID.
-  void GetClient(const ClientID &client, ClientTableDataT &client_info) const;
+  void GetClient(const ClientID &client, rpc::ClientTableData &client_info) const;
 
   /// Get the local client's ID.
   ///
@@ -908,7 +904,7 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// Get the local client's information.
   ///
   /// \return The local client's information.
-  const ClientTableDataT &GetLocalClient() const;
+  const rpc::ClientTableData &GetLocalClient() const;
 
   /// Check whether the given client is removed.
   ///
@@ -919,7 +915,7 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// Get the information of all clients.
   ///
   /// \return The client ID to client information map.
-  const std::unordered_map<ClientID, ClientTableDataT> &GetAllClients() const;
+  const std::unordered_map<ClientID, rpc::ClientTableData> &GetAllClients() const;
 
   /// Lookup the client data in the client table.
   ///
@@ -940,15 +936,16 @@ class ClientTable : public Log<ClientID, ClientTableData> {
 
  private:
   /// Handle a client table notification.
-  void HandleNotification(AsyncGcsClient *client, const ClientTableDataT &notifications);
+  void HandleNotification(AsyncGcsClient *client,
+                          const rpc::ClientTableData &notifications);
   /// Handle this client's successful connection to the GCS.
-  void HandleConnected(AsyncGcsClient *client, const ClientTableDataT &client_data);
+  void HandleConnected(AsyncGcsClient *client, const rpc::ClientTableData &client_data);
   /// Whether this client has called Disconnect().
   bool disconnected_;
   /// This client's ID.
   const ClientID client_id_;
   /// Information about this client.
-  ClientTableDataT local_client_;
+  rpc::ClientTableData local_client_;
   /// The callback to call when a new client is added.
   ClientTableCallback client_added_callback_;
   /// The callback to call when a client is removed.
@@ -958,7 +955,7 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// The callback to call when a resource is deleted.
   ClientTableCallback resource_deleted_callback_;
   /// A cache for information about all clients.
-  std::unordered_map<ClientID, ClientTableDataT> client_cache_;
+  std::unordered_map<ClientID, rpc::ClientTableData> client_cache_;
   /// The set of removed clients.
   std::unordered_set<ClientID> removed_clients_;
 };

@@ -9,7 +9,7 @@
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 
-#include "ray/gcs/format/gcs_generated.h"
+#include "ray/protobuf/gcs.pb.h"
 
 extern "C" {
 #include "ray/thirdparty/hiredis/adapters/ae.h"
@@ -126,9 +126,9 @@ class RedisContext {
   /// -1 for unused. If set, then data must be provided.
   /// \return Status.
   template <typename ID>
-  Status RunAsync(const std::string &command, const ID &id, const uint8_t *data,
-                  int64_t length, const TablePrefix prefix,
-                  const TablePubsub pubsub_channel, RedisCallback redisCallback,
+  Status RunAsync(const std::string &command, const ID &id, const void *data,
+                  size_t length, const rpc::TablePrefix prefix,
+                  const rpc::TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
 
   /// Run an arbitrary Redis command without a callback.
@@ -144,7 +144,7 @@ class RedisContext {
   /// \param redisCallback The callback function that the notification calls.
   /// \param out_callback_index The output pointer to callback index.
   /// \return Status.
-  Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
+  Status SubscribeAsync(const ClientID &client_id, const rpc::TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
   redisContext *sync_context() { return context_; }
   redisAsyncContext *async_context() { return async_context_; }
@@ -158,8 +158,8 @@ class RedisContext {
 
 template <typename ID>
 Status RedisContext::RunAsync(const std::string &command, const ID &id,
-                              const uint8_t *data, int64_t length,
-                              const TablePrefix prefix, const TablePubsub pubsub_channel,
+                              const void *data, size_t length,
+                              const rpc::TablePrefix prefix, const rpc::TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
   int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, false);
   if (length > 0) {

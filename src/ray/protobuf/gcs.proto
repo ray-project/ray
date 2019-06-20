@@ -64,6 +64,12 @@ message GcsEntry {
   repeated string entries = 3;
 }
 
+message GcsMapEntry {
+  GcsChangeMode change_mode = 1;
+  string id = 2;
+  map<string, string> entries = 3;
+}
+
 message FunctionTableData {
   Language language = 1;
   string name = 2;
@@ -94,6 +100,8 @@ enum SchedulingState {
   LOST = 32;
   RECONSTRUCTING = 64;
 }
+
+message TaskTableData {}
 
 message ClassTableData {}
 

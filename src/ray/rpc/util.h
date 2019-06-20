@@ -1,6 +1,7 @@
 #ifndef RAY_RPC_UTIL_H
 #define RAY_RPC_UTIL_H
 
+#include <google/protobuf/map.h>
 #include <grpcpp/grpcpp.h>
 
 #include "ray/common/status.h"
@@ -25,6 +26,31 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
   } else {
     return Status::IOError(grpc_status.error_message());
   }
+}
+
+template <class K, class V>
+inline std::unordered_map<K, V> MapFromProtobuf(::google::protobuf::Map<K, V> pb_map) {
+  return std::unordered_map<K, V>(pb_map.begin(), pb_map.end());
+}
+
+template <class T>
+inline std::vector<T> VectorFromProtobuf(
+    const ::google::protobuf::RepeatedPtrField<T> &pb_repeated) {
+  std::vector<T> vector(static_cast<size_t>(pb_repeated.size()));
+  for (const auto &item : pb_repeated) {
+    vector.push_back(item);
+  }
+  return vector;
+}
+
+template <class ID>
+inline std::vector<ID> IdVectorFromProtobuf(
+    const ::google::protobuf::RepeatedPtrField<::std::string> &pb_repeated) {
+  auto str_vec = VectorFromProtobuf(pb_repeated);
+  std::vector<ID> ret(str_vec.size());
+  std::transform(str_vec.begin(), str_vec.end(), std::back_inserter(ret),
+                 &ID::FromBinary);
+  return ret;
 }
 
 }  // namespace rpc
