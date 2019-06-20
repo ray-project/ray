@@ -1727,7 +1727,7 @@ bool NodeManager::AssignTask(const Task &task) {
     const std::string warning_message = worker_pool_.WarningAboutSize();
     if (warning_message != "") {
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        DriverID::Nil(), "worker_pool_large", warning_message, current_time_ms()));
+          DriverID::Nil(), "worker_pool_large", warning_message, current_time_ms()));
     }
 
     // There are no workers that can execute this task.
@@ -2204,7 +2204,7 @@ void NodeManager::ForwardTask(
   if (worker_pool_.HasWorkerForTask(spec.GetLanguage(), task_id)) {
     RAY_LOG(DEBUG) << "There is a worker being starting for this task,"
                    << "so we shouldn't forward this task to another node.";
-    return ;
+    return;
   }
 
   // Get and serialize the task's unforwarded, uncommitted lineage.
