@@ -1722,6 +1722,14 @@ bool NodeManager::AssignTask(const Task &task) {
   // Try to get an idle worker that can execute this task.
   std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
   if (worker == nullptr) {
+    // Push an error message to the user if the worker pool tells us that it is
+    // getting too big.
+    const std::string warning_message = worker_pool_.WarningAboutSize();
+    if (warning_message != "") {
+      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+        DriverID::Nil(), "worker_pool_large", warning_message, current_time_ms()));
+    }
+
     // There are no workers that can execute this task.
     // We couldn't assign this task, as no worker available.
     return false;
@@ -2193,7 +2201,7 @@ void NodeManager::ForwardTask(
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
 
-  if (worker_pool_.HasWorkerForTask(task_id)) {
+  if (worker_pool_.HasWorkerForTask(spec.GetLanguage(), task_id)) {
     RAY_LOG(INFO) << "There is a worker being starting for this task,"
                   << "so we shouldn't forward this task to another node.";
     return ;

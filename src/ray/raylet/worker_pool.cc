@@ -10,6 +10,7 @@
 #include "ray/common/status.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -158,6 +159,7 @@ void WorkerPool::StartWorkerProcess(const Language &language,
              "because we specified dynamic worker options for this task.";
       state.starting_dedicated_worker_processes[pid] = task_spec->TaskId();
     }
+    return;
   }
 }
 
@@ -268,7 +270,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     } else if (!PendingRegistrationForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
-      StartWorkerProcess(task_spec.Getlanguage(), &task_spec);
+      StartWorkerProcess(task_spec.GetLanguage(), &task_spec);
     }
   } else if (!task_spec.IsActorTask()) {
     // Code path of normal task or actor creation task without dynamic worker options.
@@ -278,14 +280,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     } else {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
-      StartWorkerProcess(spec.GetLanguage());
-      // Push an error message to the user if the worker pool tells us that it is
-      // getting too big.
-      const std::string warning_message = worker_pool_.WarningAboutSize();
-      if (warning_message != "") {
-        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          DriverID::Nil(), "worker_pool_large", warning_message, current_time_ms()));
-      }
+      StartWorkerProcess(task_spec.GetLanguage());
     }
   } else {
     // Code path of actor task.
@@ -339,15 +334,16 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
   return workers;
 }
 
-bool WorkerPool::HasWorkerForTask(const TaskID &task_id) const {
-  for (const auto &it : starting_dedicated_worker_processes) {
+bool WorkerPool::HasWorkerForTask(const Language &language, const TaskID &task_id) {
+  auto &state = GetStateForLanguage(language);
+  for (const auto &it : state.starting_dedicated_worker_processes) {
     if (it.second == task_id) {
       return true;
     }
   }
 
-  auto it = idle_dedicated_workers.find(task_id);
-  return (it != idle_dedicated_workers.end());
+  auto it = state.idle_dedicated_workers.find(task_id);
+  return it != state.idle_dedicated_workers.end();
 }
 
 std::string WorkerPool::WarningAboutSize() {

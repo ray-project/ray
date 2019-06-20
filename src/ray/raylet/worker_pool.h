@@ -122,9 +122,10 @@ class WorkerPool {
 
   /// Whether we're starting a worker for this task.
   ///
+  /// \param language The required language.
   /// \param task_id The task that we want to query.
   /// \return True if there is a worker being starting, otherwise false.
-  bool HasWorkerForTask(const TaskID &task_id) const;
+  bool HasWorkerForTask(const Language &language, const TaskID &task_id);
 
   /// Whether we are pending a registration from a worker for the given task.
   /// Note that, this is only used for actor creation task.
