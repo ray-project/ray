@@ -29,6 +29,11 @@ class WorkerPoolMock : public WorkerPool {
     states_by_lang_.clear();
   }
 
+  void StartWorkerProcess(const Language &language,
+                     const TaskSpecification *task_spec = nullptr) {
+    WorkerPool::StartWorkerProcess(language, task_spec);
+  }
+
   pid_t StartProcess(const std::vector<const char *> &worker_command_args) override {
     last_worker_pid_ += 1;
     std::vector<std::string> local_worker_commands_args;

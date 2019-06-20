@@ -131,6 +131,18 @@ class WorkerPool {
   std::string WarningAboutSize();
 
  protected:
+  /// Asynchronously start a new worker process. Once the worker process has
+  /// registered with an external server, the process should create and
+  /// register num_workers_per_process_ workers, then add them to the pool.
+  /// Failure to start the worker process is a fatal error. If too many workers
+  /// are already being started, then this function will return without starting
+  /// any workers.
+  ///
+  /// \param language Which language this worker process should be.
+  /// \param task_spec The task specification that we provide for get more information.
+  void StartWorkerProcess(const Language &language,
+                          const TaskSpecification *task_spec = nullptr);
+
   /// The implementation of how to start a new worker process with command arguments.
   ///
   /// \param worker_command_args The command arguments of new worker process.
@@ -177,18 +189,6 @@ class WorkerPool {
   /// \param language The required language.
   /// \param task_id The task that we want to query.
   bool PendingRegistrationForTask(const Language &language, const TaskID &task_id);
-
-  /// Asynchronously start a new worker process. Once the worker process has
-  /// registered with an external server, the process should create and
-  /// register num_workers_per_process_ workers, then add them to the pool.
-  /// Failure to start the worker process is a fatal error. If too many workers
-  /// are already being started, then this function will return without starting
-  /// any workers.
-  ///
-  /// \param language Which language this worker process should be.
-  /// \param task_spec The task specification that we provide for get more information.
-  void StartWorkerProcess(const Language &language,
-                          const TaskSpecification *task_spec = nullptr);
 
  private:
   /// We'll push a warning to the user every time a multiple of this many
