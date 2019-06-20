@@ -705,6 +705,7 @@ cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         ":ray_common",
+        ":gcs_cc_proto",
     ],
 )
 

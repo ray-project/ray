@@ -10,39 +10,43 @@ enum Language {
 
 // These indexes are mapped to strings in ray_redis_module.cc.
 enum TablePrefix {
-  UNUSED = 0;
-  TASK = 1;
-  RAYLET_TASK = 2;
-  CLIENT = 3;
-  OBJECT = 4;
-  ACTOR = 5;
-  FUNCTION = 6;
-  TASK_RECONSTRUCTION = 7;
-  HEARTBEAT = 8;
-  HEARTBEAT_BATCH = 9;
-  ERROR_INFO = 10;
-  DRIVER = 11;
-  PROFILE = 12;
-  TASK_LEASE = 13;
-  ACTOR_CHECKPOINT = 14;
-  ACTOR_CHECKPOINT_ID = 15;
-  NODE_RESOURCE = 16;
+  TABLE_PREFIX_MIN = 0;
+  UNUSED = 1;
+  TASK = 2;
+  RAYLET_TASK = 3;
+  CLIENT = 4;
+  OBJECT = 5;
+  ACTOR = 6;
+  FUNCTION = 7;
+  TASK_RECONSTRUCTION = 8;
+  HEARTBEAT = 9;
+  HEARTBEAT_BATCH = 10;
+  ERROR_INFO = 11;
+  DRIVER = 12;
+  PROFILE = 13;
+  TASK_LEASE = 14;
+  ACTOR_CHECKPOINT = 15;
+  ACTOR_CHECKPOINT_ID = 16;
+  NODE_RESOURCE = 17;
+  TABLE_PREFIX_MAX = 18;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
 enum TablePubsub {
-  NO_PUBLISH = 0;
-  TASK_PUBSUB = 1;
-  RAYLET_TASK_PUBSUB = 2;
-  CLIENT_PUBSUB = 3;
-  OBJECT_PUBSUB = 4;
-  ACTOR_PUBSUB = 5;
-  HEARTBEAT_PUBSUB = 6;
-  HEARTBEAT_BATCH_PUBSUB = 7;
-  ERROR_INFO_PUBSUB = 8;
-  TASK_LEASE_PUBSUB = 9;
-  DRIVER_PUBSUB = 10;
-  NODE_RESOURCE_PUBSUB = 11;
+  TABLE_PUBSUB_MIN = 0;
+  NO_PUBLISH = 1;
+  TASK_PUBSUB = 2;
+  RAYLET_TASK_PUBSUB = 3;
+  CLIENT_PUBSUB = 4;
+  OBJECT_PUBSUB = 5;
+  ACTOR_PUBSUB = 6;
+  HEARTBEAT_PUBSUB = 7;
+  HEARTBEAT_BATCH_PUBSUB = 8;
+  ERROR_INFO_PUBSUB = 9;
+  TASK_LEASE_PUBSUB = 10;
+  DRIVER_PUBSUB = 11;
+  NODE_RESOURCE_PUBSUB = 12;
+  TABLE_PUBSUB_MAX = 13;
 }
 
 enum GcsChangeMode {
@@ -54,12 +58,6 @@ message GcsEntry {
   GcsChangeMode change_mode = 1;
   string id = 2;
   repeated string entries = 3;
-}
-
-message GcsMapEntry {
-  GcsChangeMode change_mode = 1;
-  string id = 2;
-  map<string, string> entries = 3;
 }
 
 message FunctionTableData {
@@ -184,6 +182,7 @@ message ClientTableData {
   int32 object_manager_port = 6;
   // Enum to store the entry type in the log
   EntryType entry_type = 7;
+
   repeated string resources_total_label = 8;
   repeated double resources_total_capacity = 9;
 }

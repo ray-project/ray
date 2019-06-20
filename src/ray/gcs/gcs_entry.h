@@ -54,58 +54,6 @@ class GcsEntry : public rpc::ConstMessageWrapper<rpc::GcsEntry> {
   }
 };
 
-template <class ID, class Entry>
-class GcsMapEntry : public rpc::ConstMessageWrapper<rpc::GcsMapEntry> {
- public:
-  explicit GcsMapEntry(const rpc::GcsMapEntry &message) : ConstMessageWrapper(message) {}
-
-  explicit GcsMapEntry(const std::string &data)
-      : ConstMessageWrapper(ParseGcsEntryMessage(data)) {}
-
-  GcsMapEntry(const ID &id, const rpc::GcsChangeMode &change_mode,
-           const std::unordered_map<std::string, std::shared_ptr<Entry>> &entries)
-      : ConstMessageWrapper(CreateGcsEntryMessage(id, change_mode, entries)) {}
-
-  const ID GetId() { return ID::FromBinary(message_->id()); }
-
-  const rpc::GcsChangeMode GetChangeMode() { return message_->change_mode(); }
-
-  const std::unordered_map<std::string, std::shared_ptr<Entry>> GetEntries() {
-    std::unordered_map<std::string, std::shared_ptr<Entry>> map;
-    for (const auto &pair : message_->entries()) {
-      if (pair.second.empty()) {
-        map.emplace(pair.first, nullptr);
-      } else {
-        // XXX
-        auto entry = std::make_shared<Entry>();
-        map.emplace(pair.first, std::move(entry));
-      }
-    }
-    return map;
-  }
-
- private:
-  inline static std::unique_ptr<const rpc::GcsMapEntry> ParseGcsEntryMessage(
-      const std::string &data) {
-    auto *gcs_entry = new rpc::GcsMapEntry();
-    gcs_entry->ParseFromString(data);
-    return std::unique_ptr<const rpc::GcsMapEntry>(gcs_entry);
-  }
-
-  static inline std::unique_ptr<const rpc::GcsMapEntry> CreateGcsEntryMessage(
-      const ID &id, const rpc::GcsChangeMode &change_mode,
-      const std::unordered_map<std::string, std::shared_ptr<Entry>> &entries) {
-    auto *gcs_entry = new rpc::GcsMapEntry();
-    gcs_entry->set_id(id.Binary());
-    gcs_entry->set_change_mode(change_mode);
-    for (const auto &entry : entries) {
-      std::string str;
-      entry.second->SerializeToString(&str);
-      (*gcs_entry->mutable_entries())[entry.first] = std::move(str);
-    }
-    return std::unique_ptr<const rpc::GcsMapEntry>(gcs_entry);
-  }
-};
 }  // namespace gcs
 
 }  // namespace ray
