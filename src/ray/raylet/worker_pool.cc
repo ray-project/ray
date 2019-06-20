@@ -127,7 +127,7 @@ void WorkerPool::StartWorkerProcess(const Language &language,
   size_t dynamic_option_index = 0;
   for (auto const &token : state.worker_command) {
     const auto option_placeholder =
-        kWorkerOptionPlaceHolderPrefix + std::to_string(dynamic_option_index);
+      kWorkerDynamicOptionPlaceholderPrefix + std::to_string(dynamic_option_index);
 
     if (token == option_placeholder) {
       if (!dynamic_worker_options.empty()) {

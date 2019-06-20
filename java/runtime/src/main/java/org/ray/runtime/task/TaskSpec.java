@@ -109,12 +109,7 @@ public class TaskSpec {
     this.newActorHandles = newActorHandles;
     this.args = args;
     this.numReturns = numReturns;
-
-    if (dynamicWorkerOptions == null) {
-      this.dynamicWorkerOptions = new ArrayList<>();
-    } else {
-      this.dynamicWorkerOptions =dynamicWorkerOptions;
-    }
+    this.dynamicWorkerOptions = dynamicWorkerOptions;
 
     returnIds = new ObjectId[numReturns];
     for (int i = 0; i < numReturns; ++i) {
