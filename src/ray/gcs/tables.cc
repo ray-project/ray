@@ -135,7 +135,8 @@ Status Log<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clien
       if (subscribe != nullptr) {
         // Parse the notification.
         GcsEntry<ID, Data> gcs_entry(data);
-        subscribe(client_, gcs_entry.GetId(), gcs_entry.GetChangeMode(), gcs_entry.GetEntries());
+        subscribe(client_, gcs_entry.GetId(), gcs_entry.GetChangeMode(),
+                  gcs_entry.GetEntries());
       }
     }
   };
@@ -325,11 +326,16 @@ Status Hash<ID, Data>::Update(const DriverID &driver_id, const ID &id,
       (done)(client_, id, data_map);
     }
   };
-  GcsMapEntry<ID, Data> gcs_map_entry(id, rpc::GcsChangeMode::APPEND_OR_ADD, data_map);
-  std::string str = gcs_map_entry.Serialize();
-  return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, str.data(),
-                                       str.size(), prefix_, pubsub_channel_,
-                                       std::move(callback));
+  rpc::GcsEntry gcs_entry;
+  gcs_entry.set_id(id.Binary());
+  gcs_entry.set_change_mode(rpc::GcsChangeMode::APPEND_OR_ADD);
+  for (const auto &pair : data_map) {
+    gcs_entry.add_entries(pair.first);
+    gcs_entry.add_entries(pair.second->SerializeAsString());
+  }
+  std::string str = gcs_entry.SerializeAsString();
+  return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, str.data(), str.size(),
+                                       prefix_, pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
@@ -342,13 +348,15 @@ Status Hash<ID, Data>::RemoveEntries(const DriverID &driver_id, const ID &id,
       (remove_callback)(client_, id, keys);
     }
   };
-//  GcsEntry<ID, std::string> gcs_entry(id, rpc::GcsChangeMode::REMOVE, keys);
-//  std::string str = gcs_entry.Serialize();
-// XXX
-   std::string str;
-  return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, str.data(),
-                                       str.size(), prefix_, pubsub_channel_,
-                                       std::move(callback));
+  rpc::GcsEntry gcs_entry;
+  gcs_entry.set_id(id.Binary());
+  gcs_entry.set_change_mode(rpc::GcsChangeMode::REMOVE);
+  for (const auto &key : keys) {
+    gcs_entry.add_entries(key);
+  }
+  std::string str = gcs_entry.SerializeAsString();
+  return GetRedisContext(id)->RunAsync("RAY.HASH_UPDATE", id, str.data(), str.size(),
+                                       prefix_, pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
@@ -368,9 +376,19 @@ Status Hash<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
       DataMap results;
       if (!reply.IsNil()) {
         const auto data = reply.ReadAsString();
-        GcsMapEntry<ID, Data> gcs_map_entry(reply.ReadAsString());
-        RAY_CHECK(gcs_map_entry.GetId() == id);
-        lookup(client_, id, gcs_map_entry.GetEntries());
+        rpc::GcsEntry gcs_entry;
+        gcs_entry.ParseFromString(reply.ReadAsString());
+        RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
+        RAY_CHECK(gcs_entry.entries_size() % 2 == 0);
+        DataMap result;
+        for (int i = 0; i < gcs_entry.entries_size(); i += 2) {
+          const auto &key = gcs_entry.entries(i);
+          const auto value = std::make_shared<Data>();
+          value->ParseFromString(gcs_entry.entries(i + 1));
+          result.emplace(key, std::move(value));
+        }
+
+        lookup(client_, id, result);
       } else {
         lookup(client_, id, {});
       }
@@ -399,8 +417,24 @@ Status Hash<ID, Data>::Subscribe(const DriverID &driver_id, const ClientID &clie
       // Data is provided. This is the callback for a message.
       if (subscribe != nullptr) {
         // Parse the notification.
-        GcsMapEntry<ID, Data> gcs_map_entry(data);
-        subscribe(client_, gcs_map_entry.GetId(), gcs_map_entry.GetChangeMode(), gcs_map_entry.GetEntries());
+        rpc::GcsEntry gcs_entry;
+        gcs_entry.ParseFromString(data);
+        ID id = ID::FromBinary(gcs_entry.id());
+        DataMap data_map;
+        if (gcs_entry.change_mode() == rpc::GcsChangeMode::REMOVE) {
+          for (const auto &key : gcs_entry.entries()) {
+            data_map.emplace(key, std::shared_ptr<Data>());
+          }
+        } else {
+          RAY_CHECK(gcs_entry.entries_size() % 2 == 0);
+          for (int i = 0; i < gcs_entry.entries_size(); i += 2) {
+            const auto &key = gcs_entry.entries(i);
+            const auto value = std::make_shared<Data>();
+            value->ParseFromString(gcs_entry.entries(i + 1));
+            data_map.emplace(key, std::move(value));
+          }
+        }
+        subscribe(client_, id, gcs_entry.change_mode(), data_map);
       }
     }
   };
@@ -450,7 +484,8 @@ void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callbac
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() && (entry.second.entry_type() == rpc::ClientTableData::INSERTION)) {
+    if (!entry.first.IsNil() &&
+        (entry.second.entry_type() == rpc::ClientTableData::INSERTION)) {
       client_added_callback_(client_, entry.first, entry.second);
     }
   }
@@ -460,7 +495,8 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() && entry.second.entry_type() == rpc::ClientTableData::DELETION) {
+    if (!entry.first.IsNil() &&
+        entry.second.entry_type() == rpc::ClientTableData::DELETION) {
       client_removed_callback_(client_, entry.first, entry.second);
     }
   }
@@ -482,7 +518,8 @@ void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &cal
   resource_deleted_callback_ = callback;
   // Call the callback for any clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() && entry.second.entry_type() == rpc::ClientTableData::RES_DELETE) {
+    if (!entry.first.IsNil() &&
+        entry.second.entry_type() == rpc::ClientTableData::RES_DELETE) {
       resource_deleted_callback_(client_, entry.first, entry.second);
     }
   }
@@ -503,8 +540,9 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
     // was alive and is now dead or resources have been updated.
     bool was_not_deleted = (entry->second.entry_type() != rpc::ClientTableData::DELETION);
     bool is_deleted = (data.entry_type() == rpc::ClientTableData::DELETION);
-    bool is_res_modified = ((data.entry_type() == rpc::ClientTableData::RES_CREATEUPDATE) ||
-                            (data.entry_type() == rpc::ClientTableData::RES_DELETE));
+    bool is_res_modified =
+        ((data.entry_type() == rpc::ClientTableData::RES_CREATEUPDATE) ||
+         (data.entry_type() == rpc::ClientTableData::RES_DELETE));
     is_notif_new = (was_not_deleted && (is_deleted || is_res_modified));
     // Once a client with a given ID has been removed, it should never be added
     // again. If the entry was in the cache and the client was deleted, check
@@ -547,8 +585,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
                                    existing_resource_label);
         // Resource already exists, set capacity if updation call..
         if (data.entry_type() == rpc::ClientTableData::RES_CREATEUPDATE) {
-//          cache_data.mutable_resources_total_capacity()[index] = capacity;
-// XXX:639
+          //          cache_data.mutable_resources_total_capacity()[index] = capacity;
+          // XXX:639
         }
         // .. delete if deletion call.
         else if (data.entry_type() == rpc::ClientTableData::RES_DELETE) {
@@ -596,7 +634,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   }
 }
 
-void ClientTable::HandleConnected(AsyncGcsClient *client, const rpc::ClientTableData &data) {
+void ClientTable::HandleConnected(AsyncGcsClient *client,
+                                  const rpc::ClientTableData &data) {
   auto connected_client_id = ClientID::FromBinary(data.client_id());
   RAY_CHECK(client_id_ == connected_client_id)
       << connected_client_id << " " << client_id_;
@@ -627,32 +666,32 @@ Status ClientTable::Connect(const rpc::ClientTableData &local_client) {
     HandleConnected(client, data);
 
     // Callback for a notification from the client table.
-    auto notification_callback = [this](
-                                     AsyncGcsClient *client, const UniqueID &log_key,
-                                     const std::vector<rpc::ClientTableData> &notifications) {
-      RAY_CHECK(log_key == client_log_key_);
-      std::unordered_map<std::string, rpc::ClientTableData> connected_nodes;
-      std::unordered_map<std::string, rpc::ClientTableData> disconnected_nodes;
-      for (auto &notification : notifications) {
-        // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
-        // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
-        if (notification.entry_type() != rpc::ClientTableData::DELETION) {
-          connected_nodes.emplace(notification.client_id(), notification);
-        } else {
-          auto iter = connected_nodes.find(notification.client_id());
-          if (iter != connected_nodes.end()) {
-            connected_nodes.erase(iter);
+    auto notification_callback =
+        [this](AsyncGcsClient *client, const UniqueID &log_key,
+               const std::vector<rpc::ClientTableData> &notifications) {
+          RAY_CHECK(log_key == client_log_key_);
+          std::unordered_map<std::string, rpc::ClientTableData> connected_nodes;
+          std::unordered_map<std::string, rpc::ClientTableData> disconnected_nodes;
+          for (auto &notification : notifications) {
+            // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
+            // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
+            if (notification.entry_type() != rpc::ClientTableData::DELETION) {
+              connected_nodes.emplace(notification.client_id(), notification);
+            } else {
+              auto iter = connected_nodes.find(notification.client_id());
+              if (iter != connected_nodes.end()) {
+                connected_nodes.erase(iter);
+              }
+              disconnected_nodes.emplace(notification.client_id(), notification);
+            }
           }
-          disconnected_nodes.emplace(notification.client_id(), notification);
-        }
-      }
-      for (const auto &pair : connected_nodes) {
-        HandleNotification(client, pair.second);
-      }
-      for (const auto &pair : disconnected_nodes) {
-        HandleNotification(client, pair.second);
-      }
-    };
+          for (const auto &pair : connected_nodes) {
+            HandleNotification(client, pair.second);
+          }
+          for (const auto &pair : disconnected_nodes) {
+            HandleNotification(client, pair.second);
+          }
+        };
     // Callback to request notifications from the client table once we've
     // successfully subscribed.
     auto subscription_callback = [this](AsyncGcsClient *c) {
@@ -700,7 +739,8 @@ void ClientTable::GetClient(const ClientID &client_id,
   }
 }
 
-const std::unordered_map<ClientID, rpc::ClientTableData> &ClientTable::GetAllClients() const {
+const std::unordered_map<ClientID, rpc::ClientTableData> &ClientTable::GetAllClients()
+    const {
   return client_cache_;
 }
 
@@ -730,10 +770,8 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
     auto num_to_keep = RayConfig::instance().num_actor_checkpoints_to_keep();
     while (copy->timestamps().size() > num_to_keep) {
       // Delete the checkpoint from actor checkpoint table.
-      const auto &to_delete =
-          ActorCheckpointID::FromBinary(copy->checkpoint_ids(0));
-      RAY_LOG(DEBUG) << "Deleting checkpoint " << to_delete << " for actor "
-                     << actor_id;
+      const auto &to_delete = ActorCheckpointID::FromBinary(copy->checkpoint_ids(0));
+      RAY_LOG(DEBUG) << "Deleting checkpoint " << to_delete << " for actor " << actor_id;
       copy->mutable_checkpoint_ids()->erase(copy->mutable_checkpoint_ids()->begin());
       copy->mutable_timestamps()->erase(copy->mutable_timestamps()->begin());
       client_->actor_checkpoint_table().Delete(driver_id, to_delete);
