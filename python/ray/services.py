@@ -1255,7 +1255,8 @@ def build_java_worker_command(
         # above options.
         command += java_worker_options + " "
 
-    command += "RAY_WORKER_OPTION_0 org.ray.runtime.runner.worker.DefaultWorker"
+    command += "RAY_WORKER_OPTION_0 "
+    command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command
 
