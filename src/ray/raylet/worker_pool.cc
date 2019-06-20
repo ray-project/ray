@@ -132,7 +132,8 @@ void WorkerPool::StartWorkerProcess(const Language &language,
     if (token == option_placeholder) {
       if (!dynamic_worker_options.empty()) {
         RAY_CHECK(dynamic_option_index < dynamic_worker_options.size());
-        worker_command_args.push_back(dynamic_worker_options[dynamic_option_index].c_str());
+        worker_command_args.push_back(
+            dynamic_worker_options[dynamic_option_index].c_str());
         ++dynamic_option_index;
       }
     } else {
@@ -266,8 +267,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
         worker = std::move(*state.idle.begin());
         state.idle.erase(state.idle.begin());
       } else {
-        RAY_LOG(DEBUG) << "There is no idle worker for the task "
-                       << task_spec.TaskId() << " .";
+        RAY_LOG(DEBUG) << "There is no idle worker for the task " << task_spec.TaskId();
       }
     } else {
       // Dynamic worker options is not empty. Try to pop it from idle dedicated pool.
