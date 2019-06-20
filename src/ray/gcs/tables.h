@@ -659,8 +659,6 @@ class FunctionTable : public Table<ObjectID, rpc::FunctionTableData> {
   };
 };
 
-using ClassTable = Table<ActorClassID, rpc::ClassTableData>;
-
 /// Actor table starts with an ALIVE entry, which represents the first time the actor
 /// is created. This may be followed by 0 or more pairs of RECONSTRUCTING, ALIVE entries,
 /// which represent each time the actor fails (RECONSTRUCTING) and gets recreated (ALIVE).
@@ -810,10 +808,6 @@ class ProfileTable : private Log<UniqueID, rpc::ProfileTableData> {
   /// \return string.
   std::string DebugString() const;
 };
-
-using CustomSerializerTable = Table<UniqueID, rpc::CustomSerializerData>;
-
-using ConfigTable = Table<ConfigID, rpc::ConfigTableData>;
 
 /// \class ClientTable
 ///

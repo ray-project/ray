@@ -45,14 +45,6 @@ enum TablePubsub {
   NODE_RESOURCE_PUBSUB = 11;
 }
 
-// Enum for the entry type in the ClientTable
-enum EntryType {
-  INSERTION = 0;
-  DELETION = 1;
-  RES_CREATEUPDATE = 2;
-  RES_DELETE = 3;
-}
-
 enum GcsChangeMode {
   APPEND_OR_ADD = 0;
   REMOVE = 1;
@@ -90,18 +82,9 @@ message TaskReconstructionData {
   string node_manager_id = 2;
 }
 
-enum SchedulingState {
-  NONE = 0;
-  WAITING = 1;
-  SCHEDULED = 2;
-  QUEUED = 4;
-  RUNNING = 8;
-  DONE = 16;
-  LOST = 32;
-  RECONSTRUCTING = 64;
+message TaskTableData {
+  string task = 1;
 }
-
-message TaskTableData {}
 
 message ClassTableData {}
 
@@ -144,24 +127,21 @@ message ErrorTableData {
   double timestamp = 4;
 }
 
-message CustomSerializerData {}
-
-message ConfigTableData {}
-
-message ProfileEvent {
-  // The type of the event.
-  string event_type = 1;
-  // The start time of the event.
-  double start_time = 2;
-  // The end time of the event. If the event is a point event, then this should
-  // be the same as the start time.
-  double end_time = 3;
-  // Additional data associated with the event. This data must be serialized
-  // using JSON.
-  string extra_data = 4;
-}
-
 message ProfileTableData {
+  
+  message ProfileEvent {
+    // The type of the event.
+    string event_type = 1;
+    // The start time of the event.
+    double start_time = 2;
+    // The end time of the event. If the event is a point event, then this should
+    // be the same as the start time.
+    double end_time = 3;
+    // Additional data associated with the event. This data must be serialized
+    // using JSON.
+    string extra_data = 4;
+  }
+
   // The type of the component that generated the event, e.g., worker or
   // object_manager, or node_manager.
   string component_type = 1;
@@ -180,6 +160,14 @@ message RayResource {
   string resource_name = 1;
   // The total capacity of this resource type.
   double resource_capacity = 2;
+}
+
+// Enum for the entry type in the ClientTable
+enum EntryType {
+  INSERTION = 0;
+  DELETION = 1;
+  RES_CREATEUPDATE = 2;
+  RES_DELETE = 3;
 }
 
 message ClientTableData {

@@ -47,8 +47,6 @@ class RAY_EXPORT AsyncGcsClient {
   inline FunctionTable &function_table();
   // TODO: Some API for getting the error on the driver
   inline ClassTable &class_table();
-  inline CustomSerializerTable &custom_serializer_table();
-  inline ConfigTable &config_table();
   ObjectTable &object_table();
   raylet::TaskTable &raylet_task_table();
   ActorTable &actor_table();
@@ -82,7 +80,6 @@ class RAY_EXPORT AsyncGcsClient {
 
  private:
   std::unique_ptr<FunctionTable> function_table_;
-  std::unique_ptr<ClassTable> class_table_;
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
