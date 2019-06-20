@@ -2202,8 +2202,8 @@ void NodeManager::ForwardTask(
   auto task_id = spec.TaskId();
 
   if (worker_pool_.HasWorkerForTask(spec.GetLanguage(), task_id)) {
-    RAY_LOG(INFO) << "There is a worker being starting for this task,"
-                  << "so we shouldn't forward this task to another node.";
+    RAY_LOG(DEBUG) << "There is a worker being starting for this task,"
+                   << "so we shouldn't forward this task to another node.";
     return ;
   }
 

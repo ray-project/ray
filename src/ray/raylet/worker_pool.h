@@ -175,7 +175,7 @@ class WorkerPool {
   /// Note that, this is only used for actor creation task.
   ///
   /// \param language The required language.
-  /// \param task_id The task that we'll query by.
+  /// \param task_id The task that we want to query.
   bool PendingRegistrationForTask(const Language &language, const TaskID &task_id);
 
   /// Asynchronously start a new worker process. Once the worker process has

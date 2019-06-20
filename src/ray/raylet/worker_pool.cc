@@ -264,7 +264,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     // Try to pop it from idle dedicated pool.
     auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
     if (it != state.idle_dedicated_workers.end()) {
-      // There is a idle dedicated worker for this task.
+      // There is an idle dedicated worker for this task.
       worker = std::move(it->second);
       state.idle_dedicated_workers.erase(it);
     } else if (!PendingRegistrationForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
