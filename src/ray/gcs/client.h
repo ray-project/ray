@@ -46,7 +46,6 @@ class RAY_EXPORT AsyncGcsClient {
 
   inline FunctionTable &function_table();
   // TODO: Some API for getting the error on the driver
-  inline ClassTable &class_table();
   ObjectTable &object_table();
   raylet::TaskTable &raylet_task_table();
   ActorTable &actor_table();

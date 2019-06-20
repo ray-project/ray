@@ -86,8 +86,6 @@ message TaskTableData {
   string task = 1;
 }
 
-message ClassTableData {}
-
 message ActorTableData {
   enum ActorState {
     // Actor is alive.
@@ -128,7 +126,6 @@ message ErrorTableData {
 }
 
 message ProfileTableData {
-  
   message ProfileEvent {
     // The type of the event.
     string event_type = 1;
@@ -162,15 +159,15 @@ message RayResource {
   double resource_capacity = 2;
 }
 
-// Enum for the entry type in the ClientTable
-enum EntryType {
-  INSERTION = 0;
-  DELETION = 1;
-  RES_CREATEUPDATE = 2;
-  RES_DELETE = 3;
-}
-
 message ClientTableData {
+  // Enum for the entry type in the ClientTable
+  enum EntryType {
+    INSERTION = 0;
+    DELETION = 1;
+    RES_CREATEUPDATE = 2;
+    RES_DELETE = 3;
+  }
+
   // The client ID of the client that the message is about.
   string client_id = 1;
   // The IP address of the client's node manager.

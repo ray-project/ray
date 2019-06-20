@@ -370,8 +370,7 @@ Status Hash<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
         const auto data = reply.ReadAsString();
         GcsMapEntry<ID, Data> gcs_map_entry(reply.ReadAsString());
         RAY_CHECK(gcs_map_entry.GetId() == id);
-//        lookup(client_, id, gcs_map_entry.GetEntries());
-// XXX
+        lookup(client_, id, gcs_map_entry.GetEntries());
       } else {
         lookup(client_, id, {});
       }
@@ -451,7 +450,7 @@ void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callbac
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() && (entry.second.entry_type() == rpc::EntryType::INSERTION)) {
+    if (!entry.first.IsNil() && (entry.second.entry_type() == rpc::ClientTableData::INSERTION)) {
       client_added_callback_(client_, entry.first, entry.second);
     }
   }
@@ -461,7 +460,7 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() && entry.second.entry_type() == rpc::EntryType::DELETION) {
+    if (!entry.first.IsNil() && entry.second.entry_type() == rpc::ClientTableData::DELETION) {
       client_removed_callback_(client_, entry.first, entry.second);
     }
   }
@@ -473,7 +472,7 @@ void ClientTable::RegisterResourceCreateUpdatedCallback(
   // Call the callback for any clients that are cached.
   for (const auto &entry : client_cache_) {
     if (!entry.first.IsNil() &&
-        (entry.second.entry_type() == rpc::EntryType::RES_CREATEUPDATE)) {
+        (entry.second.entry_type() == rpc::ClientTableData::RES_CREATEUPDATE)) {
       resource_createupdated_callback_(client_, entry.first, entry.second);
     }
   }
@@ -483,7 +482,7 @@ void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &cal
   resource_deleted_callback_ = callback;
   // Call the callback for any clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() && entry.second.entry_type() == rpc::EntryType::RES_DELETE) {
+    if (!entry.first.IsNil() && entry.second.entry_type() == rpc::ClientTableData::RES_DELETE) {
       resource_deleted_callback_(client_, entry.first, entry.second);
     }
   }
@@ -502,16 +501,16 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   } else {
     // If the entry is in the cache, then the notification is new if the client
     // was alive and is now dead or resources have been updated.
-    bool was_not_deleted = (entry->second.entry_type() != rpc::EntryType::DELETION);
-    bool is_deleted = (data.entry_type() == rpc::EntryType::DELETION);
-    bool is_res_modified = ((data.entry_type() == rpc::EntryType::RES_CREATEUPDATE) ||
-                            (data.entry_type() == rpc::EntryType::RES_DELETE));
+    bool was_not_deleted = (entry->second.entry_type() != rpc::ClientTableData::DELETION);
+    bool is_deleted = (data.entry_type() == rpc::ClientTableData::DELETION);
+    bool is_res_modified = ((data.entry_type() == rpc::ClientTableData::RES_CREATEUPDATE) ||
+                            (data.entry_type() == rpc::ClientTableData::RES_DELETE));
     is_notif_new = (was_not_deleted && (is_deleted || is_res_modified));
     // Once a client with a given ID has been removed, it should never be added
     // again. If the entry was in the cache and the client was deleted, check
     // that this new notification is not an insertion.
-    if (entry->second.entry_type() == rpc::EntryType::DELETION) {
-      RAY_CHECK((data.entry_type() == rpc::EntryType::DELETION))
+    if (entry->second.entry_type() == rpc::ClientTableData::DELETION) {
+      RAY_CHECK((data.entry_type() == rpc::ClientTableData::DELETION))
           << "Notification for addition of a client that was already removed:"
           << client_id;
     }
@@ -519,18 +518,18 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
 
   // Add the notification to our cache. Notifications are idempotent.
   // If it is a new client or a client removal, add as is
-  if ((data.entry_type() == rpc::EntryType::INSERTION) ||
-      (data.entry_type() == rpc::EntryType::DELETION)) {
+  if ((data.entry_type() == rpc::ClientTableData::INSERTION) ||
+      (data.entry_type() == rpc::ClientTableData::DELETION)) {
     RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable Insertion/Deletion "
                       "notification for client id "
-                   << client_id << ". EntryType: " << int(data.entry_type())
+                   << client_id << ". ClientTableData: " << int(data.entry_type())
                    << ". Setting the client cache to data.";
     client_cache_[client_id] = data;
-  } else if ((data.entry_type() == rpc::EntryType::RES_CREATEUPDATE) ||
-             (data.entry_type() == rpc::EntryType::RES_DELETE)) {
+  } else if ((data.entry_type() == rpc::ClientTableData::RES_CREATEUPDATE) ||
+             (data.entry_type() == rpc::ClientTableData::RES_DELETE)) {
     RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable RES_CREATEUPDATE "
                       "notification for client id "
-                   << client_id << ". EntryType: " << int(data.entry_type())
+                   << client_id << ". ClientTableData: " << int(data.entry_type())
                    << ". Updating the client cache with the delta from the log.";
 
     rpc::ClientTableData &cache_data = client_cache_[client_id];
@@ -547,12 +546,12 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
         auto index = std::distance(cache_data.resources_total_label().begin(),
                                    existing_resource_label);
         // Resource already exists, set capacity if updation call..
-        if (data.entry_type() == rpc::EntryType::RES_CREATEUPDATE) {
+        if (data.entry_type() == rpc::ClientTableData::RES_CREATEUPDATE) {
 //          cache_data.mutable_resources_total_capacity()[index] = capacity;
 // XXX:639
         }
         // .. delete if deletion call.
-        else if (data.entry_type() == rpc::EntryType::RES_DELETE) {
+        else if (data.entry_type() == rpc::ClientTableData::RES_DELETE) {
           cache_data.mutable_resources_total_label()->erase(
               cache_data.resources_total_label().begin() + index);
           cache_data.mutable_resources_total_capacity()->erase(
@@ -561,7 +560,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
       } else {
         // Resource does not exist, create resource and add capacity if it was a resource
         // create call.
-        if (data.entry_type() == rpc::EntryType::RES_CREATEUPDATE) {
+        if (data.entry_type() == rpc::ClientTableData::RES_CREATEUPDATE) {
           cache_data.add_resources_total_label(resource_name);
           cache_data.add_resources_total_capacity(capacity);
         }
@@ -572,12 +571,12 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   // If the notification is new, call any registered callbacks.
   rpc::ClientTableData &cache_data = client_cache_[client_id];
   if (is_notif_new) {
-    if (data.entry_type() == rpc::EntryType::INSERTION) {
+    if (data.entry_type() == rpc::ClientTableData::INSERTION) {
       if (client_added_callback_ != nullptr) {
         client_added_callback_(client, client_id, cache_data);
       }
       RAY_CHECK(removed_clients_.find(client_id) == removed_clients_.end());
-    } else if (data.entry_type() == rpc::EntryType::DELETION) {
+    } else if (data.entry_type() == rpc::ClientTableData::DELETION) {
       // NOTE(swang): The client should be added to this data structure before
       // the callback gets called, in case the callback depends on the data
       // structure getting updated.
@@ -585,11 +584,11 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
       if (client_removed_callback_ != nullptr) {
         client_removed_callback_(client, client_id, cache_data);
       }
-    } else if (data.entry_type() == rpc::EntryType::RES_CREATEUPDATE) {
+    } else if (data.entry_type() == rpc::ClientTableData::RES_CREATEUPDATE) {
       if (resource_createupdated_callback_ != nullptr) {
         resource_createupdated_callback_(client, client_id, cache_data);
       }
-    } else if (data.entry_type() == rpc::EntryType::RES_DELETE) {
+    } else if (data.entry_type() == rpc::ClientTableData::RES_DELETE) {
       if (resource_deleted_callback_ != nullptr) {
         resource_deleted_callback_(client, client_id, cache_data);
       }
@@ -619,7 +618,7 @@ Status ClientTable::Connect(const rpc::ClientTableData &local_client) {
 
   // Construct the data to add to the client table.
   auto data = std::make_shared<rpc::ClientTableData>(local_client_);
-  data->set_entry_type(rpc::EntryType::INSERTION);
+  data->set_entry_type(rpc::ClientTableData::INSERTION);
   // Callback to handle our own successful connection once we've added
   // ourselves.
   auto add_callback = [this](AsyncGcsClient *client, const UniqueID &log_key,
@@ -637,7 +636,7 @@ Status ClientTable::Connect(const rpc::ClientTableData &local_client) {
       for (auto &notification : notifications) {
         // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
         // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
-        if (notification.entry_type() != rpc::EntryType::DELETION) {
+        if (notification.entry_type() != rpc::ClientTableData::DELETION) {
           connected_nodes.emplace(notification.client_id(), notification);
         } else {
           auto iter = connected_nodes.find(notification.client_id());
@@ -668,7 +667,7 @@ Status ClientTable::Connect(const rpc::ClientTableData &local_client) {
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto data = std::make_shared<rpc::ClientTableData>(local_client_);
-  data->set_entry_type(rpc::EntryType::DELETION);
+  data->set_entry_type(rpc::ClientTableData::DELETION);
   auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
                                        const rpc::ClientTableData &data) {
     HandleConnected(client, data);
@@ -686,7 +685,7 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   auto data = std::make_shared<rpc::ClientTableData>();
   data->set_client_id(dead_client_id.Binary());
-  data->set_entry_type(rpc::EntryType::DELETION);
+  data->set_entry_type(rpc::ClientTableData::DELETION);
   return Append(DriverID::Nil(), client_log_key_, data, nullptr);
 }
 
