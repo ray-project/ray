@@ -11,15 +11,12 @@ COPTS = ["-DRAY_USE_GLOG"]
 # grpc common lib
 cc_library(
     name = "common_grpc_lib",
-    srcs = [
-        "src/ray/rpc/grpc_server.cc",
-    ],
-    hdrs = [
-        "src/ray/rpc/client_call.h",
-        "src/ray/rpc/grpc_server.h",
-        "src/ray/rpc/server_call.h",
-        "src/ray/rpc/util.h",
-    ],
+    srcs = glob([
+        "src/ray/rpc/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/rpc/*.h",
+    ]),
     copts = COPTS,
     deps = [
         ":ray_common",
@@ -37,10 +34,9 @@ grpc_proto_library(
 # Node manager server and client.
 cc_library(
     name = "node_manager_rpc_lib",
-    hdrs = [
-        "src/ray/rpc/node_manager_client.h",
-        "src/ray/rpc/node_manager_server.h",
-    ],
+    hdrs = glob([
+        "src/ray/rpc/node_manager/*.h",
+    ]),
     copts = COPTS,
     deps = [
         ":common_grpc_lib",
@@ -59,10 +55,9 @@ grpc_proto_library(
 # Object manger rpc lib
 cc_library(
     name = "object_manager_rpc_lib",
-    hdrs = [
-        "src/ray/rpc/object_manager_client.h",
-        "src/ray/rpc/object_manager_server.h",
-    ],
+    hdrs = glob([
+        "src/ray/rpc/object_manager/*.h",
+    ]),
     copts = COPTS,
     deps = [
         ":common_grpc_lib",

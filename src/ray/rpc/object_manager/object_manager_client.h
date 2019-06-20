@@ -32,18 +32,26 @@ class ObjectManagerClient {
 
   /// Push object to remote object manager
   ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server
   void Push(const PushRequest &request, const ClientCallback<PushReply> &callback) {
     client_call_manager_.CreateCall<ObjectManagerService, PushRequest, PushReply>(
         *stub_, &ObjectManagerService::Stub::PrepareAsyncPush, request, callback);
   }
 
+  /// Pull object from remote object manager
+  ///
+  /// \param request The request message
+  /// \param callback The callback function that handles reply from server
   void Pull(const PullRequest &request, const ClientCallback<PullReply> &callback) {
     client_call_manager_.CreateCall<ObjectManagerService, PullRequest, PullReply>(
         *stub_, &ObjectManagerService::Stub::PrepareAsyncPull, request, callback);
   }
 
+  /// Tell remote object manager to free objects
+  ///
+  /// \param request The request message
+  /// \param callback  The callback function that handles reply
   void FreeObjects(const FreeObjectsRequest &request,
                    const ClientCallback<FreeObjectsReply> &callback) {
     client_call_manager_

@@ -58,6 +58,9 @@ class ServerCall {
 
   /// Get the factory that created this `ServerCall`.
   virtual const ServerCallFactory &GetFactory() const = 0;
+
+  /// Finish the `ServerCall`
+  virtual void Finish(Status status) = 0;
 };
 
 /// The factory that creates a particular kind of `ServerCall` objects.
@@ -114,19 +117,19 @@ class ServerCallImpl : public ServerCall {
                                                    // When the handler is done with the
                                                    // request, tell gRPC to finish this
                                                    // request.
-                                                   SendReply(status);
+                                                   Finish(status);
                                                  });
   }
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
 
- private:
   /// Tell gRPC to finish this request.
-  void SendReply(Status status) {
+  void Finish(Status status) override {
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
   }
 
+ private:
   /// State of this call.
   ServerCallState state_;
 

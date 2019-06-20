@@ -50,8 +50,10 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         if (!main_service_.stopped()) {
           main_service_.post([server_call] { server_call->HandleRequest(); });
         } else {
-          // TODO: should send reply here
-          RAY_LOG(DEBUG) << "Service has stopped.";
+          // Handle service for rpc call has stopped, we must handle the call here
+          // to send reply and remove it from cq
+          RAY_LOG(DEBUG) << "Handle service has been closed.";
+          server_call->Finish(Status::Invalid("HandleServiceClosed"));
           delete_call = true;
         }
         break;

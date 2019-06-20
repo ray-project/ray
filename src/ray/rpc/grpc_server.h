@@ -78,12 +78,12 @@ class GrpcServer {
   /// via the `ServerCall` objects.
   void PollEventsFromCompletionQueue();
 
-  /// The main event loop, to which the service handler functions will be posted.
-  boost::asio::io_service &main_service_;
   /// Name of this server, used for logging and debugging purpose.
   const std::string name_;
   /// Port of this server.
   int port_;
+  /// The main event loop, to which the service handler functions will be posted.
+  boost::asio::io_service &main_service_;
   /// The `ServerCallFactory` objects, and the maximum number of concurrent requests that
   /// gRPC server can accept.
   std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>

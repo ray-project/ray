@@ -5,8 +5,8 @@
 
 // clang-format off
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/node_manager_server.h"
-#include "ray/rpc/node_manager_client.h"
+#include "ray/rpc/node_manager/node_manager_server.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"

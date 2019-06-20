@@ -26,8 +26,8 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager_client_connection.h"
 #include "ray/object_manager/object_store_notification_manager.h"
-#include "ray/rpc/object_manager_client.h"
-#include "ray/rpc/object_manager_server.h"
+#include "ray/rpc/object_manager/object_manager_client.h"
+#include "ray/rpc/object_manager/object_manager_server.h"
 
 namespace ray {
 
@@ -52,6 +52,9 @@ struct ObjectManagerConfig {
   /// Negative: waiting infinitely.
   /// 0: giving up retrying immediately.
   int push_timeout_ms;
+  /// Number of threads of rpc service
+  /// Send and receive request in these threads
+  int rpc_service_threads_number;
 };
 
 struct LocalObjectInfo {
@@ -72,8 +75,9 @@ class ObjectManagerInterface {
 // TODO(hme): Add success/failure callbacks for push and pull.
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
-  /// Implementation of object manager service
  public:
+  /// Implementation of object manager service
+
   /// Handle push request from remote object manager
   ///
   /// Push request will contain the object which is specified by pull request
@@ -102,16 +106,39 @@ class ObjectManager : public ObjectManagerInterface,
                                 rpc::FreeObjectsReply *reply,
                                 rpc::RequestDoneCallback done_callback);
 
+  /// Send object to remote object manager
+  ///
+  /// Object will be transfered as a sequence of chunks, small object(defined in config)
+  /// contains only one chunk
+  /// \param push_id Unique push id to indicate this push request
+  /// \param object_id Object id
+  /// \param data_size Data size
+  /// \param metadata_size Metadata size
+  /// \param chunk_index Chunk index of this object chunk, start with 0
+  /// \param rpc_client Rpc client used to send message to remote object manager
   ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
                               uint64_t data_size, uint64_t metadata_size,
                               uint64_t chunk_index,
                               std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
 
+  /// Receive object chunk from remote object manager, small object may contain one chunk
+  ///
+  /// \param client_id Client id of remote object manager which sends this chunk
+  /// \param object_id Object id
+  /// \param data_size Data size
+  /// \param metadata_size Metadata size
+  /// \param chunk_index Chunk index
+  /// \param data Chunk data
   ray::Status ReceiveObjectChunk(const ClientID &client_id, const ObjectID &object_id,
                                  uint64_t data_size, uint64_t metadata_size,
                                  uint64_t chunk_index, const std::string &data);
 
-  ray::Status SendPullRequest(const ObjectID &object_id, const ClientID &client_id);
+  /// Send pull request
+  ///
+  /// \param object_id Object id
+  /// \param client_id Remote server client id
+  ray::Status SendPullRequest(const ObjectID &object_id, const ClientID &client_id,
+                              std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
 
   /// Get the rpc client according to the client ID
   ///
@@ -297,7 +324,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// Spread the Free request to all objects managers.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
-  void SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids);
+  void SpreadFreeObjectsRequest(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<std::shared_ptr<rpc::ObjectManagerClient>> &rpc_clients);
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
@@ -376,7 +405,7 @@ class ObjectManager : public ObjectManagerInterface,
   ObjectStoreNotificationManager store_notification_;
   ObjectBufferPool buffer_pool_;
 
-  /// This runs on a thread pool dedicated to handle rpc requests
+  /// Multi-thread asio service, deal with all send and receive request
   boost::asio::io_service rpc_service_;
 
   /// Weak reference to main service. We ensure this object is destroyed before
@@ -385,10 +414,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   boost::asio::io_service::work rpc_work_;
 
-  /// Runs the rpc service, which handle all incoming rpc requests
+  /// Runs the rpc service, which handle all send request and receive request
   ///
-  /// Some plasma operation is blocking call, use single thread to free main thread
-  std::thread rpc_thread_;
+  /// Data copy operations during request send and receive are done in this thread pool
+  std::vector<std::thread> rpc_threads_;
 
   /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;
@@ -430,11 +459,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// The gPRC server
   rpc::ObjectManagerServer object_manager_server_;
 
+  /// The client call manager used to deal with reply
   rpc::ClientCallManager client_call_manager_;
 
   /// clientID - object manager gRPC client
   std::unordered_map<ClientID, std::shared_ptr<rpc::ObjectManagerClient>>
-      object_manager_clients_;
+      remote_object_manager_clients_;
 };
 
 }  // namespace ray
