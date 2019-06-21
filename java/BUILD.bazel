@@ -149,37 +149,12 @@ java_binary(
 )
 
 flatbuffers_generated_files = [
-    "ActorCheckpointData.java",
-    "ActorCheckpointIdData.java",
-    "ActorState.java",
-    "ActorTableData.java",
     "Arg.java",
-    "ClassTableData.java",
-    "ClientTableData.java",
-    "ConfigTableData.java",
-    "CustomSerializerData.java",
-    "DriverTableData.java",
-    "EntryType.java",
-    "ErrorTableData.java",
-    "ErrorType.java",
-    "FunctionTableData.java",
-    "GcsEntry.java",
-    "HeartbeatBatchTableData.java",
-    "HeartbeatTableData.java",
     "Language.java",
-    "ObjectTableData.java",
     "ProfileEvent.java",
     "ProfileTableData.java",
     "RayResource.java",
-    "ResourcePair.java",
-    "SchedulingState.java",
-    "TablePrefix.java",
-    "TablePubsub.java",
     "TaskInfo.java",
-    "TaskLeaseData.java",
-    "TaskReconstructionData.java",
-    "TaskTableData.java",
-    "TaskTableTestAndUpdate.java",
 ]
 
 flatbuffer_java_library(
