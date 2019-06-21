@@ -101,8 +101,8 @@ pushd "$BUILD_DIR"
 # generated from https://github.com/ray-project/arrow-build from
 # the commit listed in the command.
 $PYTHON_EXECUTABLE -m pip install \
-    --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
-    --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9f35817b35f9d0614a736a497d70de2cf07fed52/index.html
+    --target="$ROOT_DIR/python/ray/pyarrow_files"
+    https://github.com/pcmoritz/crossbow/releases/download/build-13-wheel-linux-cp37m/pyarrow-0.13.0.dev450-cp36-cp36m-manylinux1_x86_64.whl
 export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
