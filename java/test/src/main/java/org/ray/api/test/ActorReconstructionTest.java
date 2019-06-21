@@ -2,7 +2,6 @@ package org.ray.api.test;
 
 import static org.ray.runtime.util.SystemUtil.pid;
 
-
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -27,8 +26,7 @@ public class ActorReconstructionTest extends BaseTest {
     private boolean wasCurrentActorReconstructed = false;
 
     public Counter() {
-      throw new UnsupportedOperationException();
-//      wasCurrentActorReconstructed = Ray.getRuntimeContext().wasCurrentActorReconstructed();
+      wasCurrentActorReconstructed = Ray.getRuntimeContext().wasCurrentActorReconstructed();
     }
 
     public boolean wasCurrentActorReconstructed() {

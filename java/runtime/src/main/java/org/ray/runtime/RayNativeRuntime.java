@@ -12,6 +12,7 @@ import java.nio.file.StandardCopyOption;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.WorkerMode;
+import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.runner.RunManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,6 +87,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager = new RunManager(rayConfig);
       manager.startRayProcesses(true);
     }
+
+    gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
     worker = new Worker(rayConfig.workerMode, functionManager,
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,

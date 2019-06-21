@@ -5,6 +5,7 @@ import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
+import org.ray.api.runtimecontext.RuntimeContext;
 
 /**
  * This class contains all public APIs of Ray.
@@ -136,5 +137,12 @@ public final class Ray extends RayCall {
    */
   public static void setResource(String resourceName, double capacity) {
     runtime.setResource(resourceName, capacity, UniqueId.NIL);
+  }
+
+  /**
+   * Get the runtime context.
+   */
+  public static RuntimeContext getRuntimeContext() {
+    return runtime.getRuntimeContext();
   }
 }

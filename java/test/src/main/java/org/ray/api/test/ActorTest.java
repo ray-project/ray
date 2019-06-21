@@ -12,6 +12,7 @@ import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.ObjectId;
+import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.GetResult;
 import org.ray.runtime.RayActorImpl;
@@ -44,6 +45,7 @@ public class ActorTest extends BaseTest {
     // Test creating an actor from a constructor
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     // Test calling an actor
+    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
     Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
     Assert.assertEquals(Integer.valueOf(11), Ray.call(Counter::increase, actor, 10).get());
   }
@@ -57,6 +59,7 @@ public class ActorTest extends BaseTest {
   public void testCreateActorFromFactory() {
     // Test creating an actor from a factory method
     RayActor<Counter> actor = Ray.createActor(ActorTest::factory, 1);
+    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
   }
@@ -123,7 +126,7 @@ public class ActorTest extends BaseTest {
       // Try getting the object again, this should throw an UnreconstructableException.
       value.get();
       Assert.fail("This line should not be reachable.");
-    } catch (UnreconstructableException e) {
+    } catch (UnreconstructableException ignored) {
     }
   }
 }

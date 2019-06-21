@@ -13,6 +13,7 @@ import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.proxyTypes.RayObjectValueProxy;
 import org.ray.runtime.task.ArgumentsBuilder;
+import org.ray.runtime.task.TaskInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +53,8 @@ public class Worker {
                                byte[] taskIdBytes, byte[] driverIdBytes,
                                boolean isActorCreationTask, boolean isActorTask, int numReturns) {
     TaskId taskId = new TaskId(taskIdBytes);
+    UniqueId driverId = new UniqueId(driverIdBytes);
+    workerContext.setCurrentTask(new TaskInfo(taskId, driverId, isActorCreationTask, isActorTask));
     String taskInfo = taskId + " " + String.join(".", rayFunctionInfo);
     LOGGER.debug("Executing task {}", taskInfo);
 //    Preconditions.checkState(numReturns == 1);
@@ -65,9 +68,9 @@ public class Worker {
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       workerContext.setCurrentClassLoader(rayFunction.classLoader);
 
-//      if (isActorCreationTask) {
-//        currentActorId = new UniqueId(returnId.getBytes());
-//      }
+      if (isActorCreationTask) {
+        workerContext.setCurrentActorId(new UniqueId(returnId.getBytes()));
+      }
 
       // Get local actor object and arguments.
       Object actor = null;
@@ -119,6 +122,7 @@ public class Worker {
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);
       workerContext.setCurrentClassLoader(null);
+      workerContext.setCurrentTask(null);
     }
   }
 

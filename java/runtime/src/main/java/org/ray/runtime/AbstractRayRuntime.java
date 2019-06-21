@@ -16,10 +16,12 @@ import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
+import org.ray.api.runtimecontext.RuntimeContext;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
+import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 
@@ -30,10 +32,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected RayConfig rayConfig;
   protected Worker worker;
   protected FunctionManager functionManager;
+  protected RuntimeContext runtimeContext;
+  protected GcsClient gcsClient;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     functionManager = new FunctionManager(rayConfig.driverResourcePath);
+    runtimeContext = new RuntimeContextImpl(this);
   }
 
   /**
@@ -210,5 +215,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public void loop() {
     worker.loop();
+  }
+
+  public RuntimeContext getRuntimeContext() {
+    return runtimeContext;
+  }
+
+  public GcsClient getGcsClient() {
+    return gcsClient;
   }
 }
