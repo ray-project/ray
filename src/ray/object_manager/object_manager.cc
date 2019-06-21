@@ -251,7 +251,14 @@ ray::Status ObjectManager::SendPullRequest(
   rpc::PullRequest pull_request;
   pull_request.set_object_id(object_id.Binary());
   pull_request.set_client_id(client_id_.Binary());
-  rpc_client->Pull(pull_request, nullptr);
+
+  rpc_client->Pull(pull_request, [object_id, client_id](const Status &status,
+                                                        const rpc::PullReply &reply) {
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Send pull " << object_id << " request to client " << client_id
+                       << " failed due to" << status.message();
+    }
+  });
   return Status::OK();
 }
 
@@ -386,14 +393,13 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
 
     UniqueID push_id = UniqueID::FromRandom();
     for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
-      double start_time = current_sys_time_seconds();
-      rpc_service_.post([this, push_id, object_id, data_size, metadata_size, chunk_index,
-                         rpc_client, client_id, start_time]() {
-        auto st = SendObjectChunk(push_id, object_id, data_size, metadata_size,
+      rpc_service_.post([this, push_id, object_id, client_id, data_size, metadata_size,
+                         chunk_index, rpc_client]() {
+        auto st = SendObjectChunk(push_id, object_id, client_id, data_size, metadata_size,
                                   chunk_index, rpc_client);
-        double end_time = current_sys_time_seconds();
-        if (st.ok()) {
-          HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time, st);
+        if (!st.ok()) {
+          RAY_LOG(WARNING) << "Send object " << object_id << " chunk failed due to "
+                           << st.message() << ", chunk index " << chunk_index;
         }
       });
     }
@@ -405,9 +411,10 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
 }
 
 ray::Status ObjectManager::SendObjectChunk(
-    const UniqueID &push_id, const ObjectID &object_id, uint64_t data_size,
-    uint64_t metadata_size, uint64_t chunk_index,
+    const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
+    uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
     std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
+  double start_time = current_sys_time_seconds();
   rpc::PushRequest push_request;
   // Set request header
   push_request.set_push_id(push_id.Binary());
@@ -436,7 +443,21 @@ ray::Status ObjectManager::SendObjectChunk(
   buffer.assign(chunk_info.data, chunk_info.data + chunk_info.buffer_length);
   push_request.set_data(std::move(buffer));
 
-  rpc_client->Push(push_request, nullptr);
+  // record the time cost between send chunk and receive reply
+  rpc::ClientCallback<rpc::PushReply> callback = [this, start_time, object_id, client_id,
+                                                  chunk_index](
+                                                     const Status &status,
+                                                     const rpc::PushReply &reply) {
+    // TODO: Just print warning here, should we try to resend this chunk?
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Send object " << object_id << " chunk to client " << client_id
+                       << " failed due to" << status.message()
+                       << ", chunk index: " << chunk_index;
+    }
+    double end_time = current_sys_time_seconds();
+    HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time, status);
+  };
+  rpc_client->Push(push_request, callback);
 
   // Do this regardless of whether it failed or succeeded.
   buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
@@ -746,7 +767,12 @@ void ObjectManager::SpreadFreeObjectsRequest(
   }
 
   for (auto &rpc_client : rpc_clients) {
-    rpc_client->FreeObjects(free_objects_request, nullptr);
+    rpc_client->FreeObjects(free_objects_request, [](const Status &status,
+                                                     const rpc::FreeObjectsReply &reply) {
+      if (!status.ok()) {
+        RAY_LOG(WARNING) << "Send free objects request failed due to" << status.message();
+      }
+    });
   }
 }
 
