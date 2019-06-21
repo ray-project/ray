@@ -183,7 +183,7 @@ class WorkerPool {
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
-  /// Whether we are pending a registration from a worker for the given task.
+  /// Whether there is a pending registration from a worker for the given task.
   /// Note that, this is only used for actor creation task.
   ///
   /// \param language The required language.
