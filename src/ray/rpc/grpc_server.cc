@@ -54,7 +54,6 @@ void GrpcServer::PollEventsFromCompletionQueue() {
           // to send reply and remove it from cq
           RAY_LOG(DEBUG) << "Handle service has been closed.";
           server_call->Finish(Status::Invalid("HandleServiceClosed"));
-          delete_call = true;
         }
         break;
       case ServerCallState::SENDING_REPLY:

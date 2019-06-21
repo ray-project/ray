@@ -96,8 +96,6 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
-    om_config_1.max_sends = max_sends;
-    om_config_1.max_receives = max_receives;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
     om_config_1.object_manager_port = 12345;
@@ -110,8 +108,6 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
     om_config_2.pull_timeout_ms = pull_timeout_ms;
-    om_config_2.max_sends = max_sends;
-    om_config_2.max_receives = max_receives;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
     om_config_2.object_manager_port = 23456;
@@ -173,9 +169,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
   uint push_timeout_ms;
 
-  int max_sends = 2;
-  int max_receives = 2;
-  uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 5));
+  uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
 };
 
 class TestObjectManager : public TestObjectManagerBase {

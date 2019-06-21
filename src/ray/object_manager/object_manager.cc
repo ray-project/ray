@@ -21,8 +21,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       object_manager_server_(config_.object_manager_port, rpc_service_, *this),
       client_call_manager_(main_service) {
-  RAY_CHECK(config_.max_sends > 0);
-  RAY_CHECK(config_.max_receives > 0);
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   client_id_ = object_directory_->GetLocalClientID();
   main_service_ = &main_service;
@@ -207,8 +205,9 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
       auto st = SendPullRequest(object_id, client_id, rpc_client);
     });
   } else {
-    RAY_LOG(WARNING) << "Send pull request from " << client_id_ << " to " << client_id
-                     << " of object " << object_id << " , setup rpc connection failed.";
+    RAY_LOG(ERROR) << "Couldn't send pull request from " << client_id_ << " to "
+                   << client_id << " of object " << object_id
+                   << " , setup rpc connection failed.";
   }
 
   // If there are more clients to try, try them in succession, with a timeout
@@ -387,8 +386,8 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
     uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
 
-    RAY_LOG(DEBUG) << "Send object chunk of " << object_id << " to client " << client_id
-                   << ", number of chunks: " << num_chunks
+    RAY_LOG(DEBUG) << "Sending object chunks of " << object_id << " to client "
+                   << client_id << ", number of chunks: " << num_chunks
                    << ", total data size: " << data_size;
 
     UniqueID push_id = UniqueID::FromRandom();
