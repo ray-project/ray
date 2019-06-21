@@ -47,12 +47,16 @@ def make_v1_wrapper(legacy_model_cls):
             with tf.variable_scope(self.name) as scope:
                 self.variable_scope = scope
 
+            self.graph = tf.get_default_graph()
+            print("DEFAULT GRAPH 2", tf.get_default_graph())
+
         @override(ModelV2)
         def get_initial_state(self):
             return self.initial_state
 
         @override(ModelV2)
         def __call__(self, input_dict, state, seq_lens):
+            print("DEFAULT GRAPH 3", tf.get_default_graph())
             if self.cur_instance:
                 # create a weight-sharing model copy
                 with tf.variable_scope(self.cur_instance.scope, reuse=True):
@@ -61,10 +65,11 @@ def make_v1_wrapper(legacy_model_cls):
                         self.num_outputs, self.model_config, state, seq_lens)
             else:
                 # create a new model instance
-                with tf.variable_scope(self.name):
-                    new_instance = self.legacy_model_cls(
-                        input_dict, self.obs_space, self.action_space,
-                        self.num_outputs, self.model_config, state, seq_lens)
+                with self.graph.as_default():
+                    with tf.variable_scope(self.name):
+                        new_instance = self.legacy_model_cls(
+                            input_dict, self.obs_space, self.action_space,
+                            self.num_outputs, self.model_config, state, seq_lens)
             self.cur_instance = new_instance
             self.variable_scope = new_instance.scope
             return new_instance.outputs, new_instance.state_out

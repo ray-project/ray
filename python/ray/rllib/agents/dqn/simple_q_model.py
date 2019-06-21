@@ -25,6 +25,7 @@ class SimpleQModel(TFModelV2):
 
         self.actions_model = tf.keras.Model(self.feature_input, layer_out)
         self.register_model_variables(self.actions_model)
+        print("DEFAULT GRAPH 1", tf.get_default_graph())
 
     def get_action_scores(self, state_embedding, hiddens):
         """Returns Q(s, a) given a state embedding tensor.

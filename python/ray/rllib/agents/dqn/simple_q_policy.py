@@ -9,7 +9,6 @@ from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.modelv2 import OutputSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy, \
@@ -70,7 +69,7 @@ def build_q_model(policy, obs_space, action_space, config):
     policy.q_model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
-        OutputSpec(action_space.n),
+        action_space.n,
         config["model"],
         framework="tf",
         name=Q_SCOPE,
@@ -79,7 +78,7 @@ def build_q_model(policy, obs_space, action_space, config):
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
-        OutputSpec(action_space.n),
+        action_space.n,
         config["model"],
         framework="tf",
         name=Q_TARGET_SCOPE,

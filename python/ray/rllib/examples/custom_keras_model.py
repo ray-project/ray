@@ -12,7 +12,7 @@ import argparse
 import ray
 from ray import tune
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+#from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
 from ray.rllib.utils import try_import_tf
 
@@ -26,7 +26,7 @@ parser.add_argument("--stop", type=int, default=200)
 class MyKerasModel(SimpleQModel):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        super(MyKerasModel, self).__init__(self, obs_space, action_space, num_outputs,
+        super(MyKerasModel, self).__init__(obs_space, action_space, num_outputs,
                            model_config, name)
 
         self.inputs = tf.keras.layers.Input(
@@ -44,7 +44,7 @@ class MyKerasModel(SimpleQModel):
     def forward(self, input_dict, state, seq_lens):
         self.prev_input = input_dict
         model_out, feature_out = self.base_model(input_dict["obs"])
-        return model_out, feature_out, state
+        return model_out, state
 
 #    def get_branch_output(self,
 #                          branch_type,

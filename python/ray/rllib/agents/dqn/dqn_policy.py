@@ -10,7 +10,6 @@ import ray
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog, Categorical
-from ray.rllib.models.modelv2 import OutputSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy, \

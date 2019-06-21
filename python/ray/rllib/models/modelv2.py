@@ -71,9 +71,7 @@ class ModelV2(object):
 
         Returns:
             (outputs, state): The model output tensor of size
-                [BATCH, output_spec.size] or a list of tensors corresponding to
-                output_spec.shape_list, and a list of state tensors of
-                shape [BATCH, state_size_i].
+                [BATCH, num_outputs]
         """
         raise NotImplementedError
 
@@ -155,10 +153,10 @@ class ModelV2(object):
         except AttributeError:
             raise ValueError("Output is not a tensor: {}".format(outputs))
         else:
-            if len(shape) != 2 or shape[1] != self.output_spec.size:
+            if len(shape) != 2 or shape[1] != self.num_outputs:
                 raise ValueError(
                     "Expected output shape of [None, {}], got {}".format(
-                        self.output_spec.size, shape))
+                        self.num_outputs, shape))
         if not isinstance(state, list):
             raise ValueError("State output is not a list: {}".format(state))
 
