@@ -21,7 +21,8 @@ class NodeStateAccessor {
 
   Status GetAll(std::vector<ClientTableDataT> *result);
 
-  Status AsyncGetAvailableResource(const ClientID &node_id,
+  Status AsyncGetAvailableResource(
+      const ClientID &node_id,
       DatumCallback<std::map<std::string, double>>::SingleItem callback);
 
  private:

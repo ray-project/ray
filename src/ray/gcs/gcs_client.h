@@ -1,13 +1,13 @@
 #ifndef RAY_GCS_GCS_CLIENT_H
 #define RAY_GCS_GCS_CLIENT_H
 
+#include <boost/asio.hpp>
 #include <string>
 #include <vector>
-#include <boost/asio.hpp>
-#include "ray/gcs/tables.h"
 #include "ray/common/status.h"
-#include "ray/util/logging.h"
 #include "ray/gcs/format/gcs_generated.h"
+#include "ray/gcs/tables.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -32,9 +32,9 @@ class ClientOption {
 class ClientInfo {
  public:
   enum class ClientType {
-   kClientTypeRaylet,
-   kClientTypeRayletMonitor,
-   kClientTypeWorker,
+    kClientTypeRaylet,
+    kClientTypeRayletMonitor,
+    kClientTypeWorker,
   };
 
   ClientType type_;

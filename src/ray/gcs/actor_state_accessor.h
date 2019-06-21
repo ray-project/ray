@@ -20,8 +20,9 @@ class ActorStateAccessor {
   Status AsyncGet(const DriverID &driver_id, const ActorID &actor_id,
                   DatumCallback<ActorTableDataT>::SingleItem callback);
 
-  Status AsyncGetCheckpointIds(const DriverID &driver_id, const ActorID &actor_id,
-                               DatumCallback<ActorCheckpointIdDataT>::SingleItem callback);
+  Status AsyncGetCheckpointIds(
+      const DriverID &driver_id, const ActorID &actor_id,
+      DatumCallback<ActorCheckpointIdDataT>::SingleItem callback);
 
  private:
   AsyncGcsClient *client_impl_{nullptr};

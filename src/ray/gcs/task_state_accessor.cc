@@ -8,10 +8,10 @@ namespace ray {
 namespace gcs {
 
 TaskStateAccessor::TaskStateAccessor(AsyncGcsClient *client_impl)
-    : client_impl_(client_impl) {
-}
+    : client_impl_(client_impl) {}
 
-Status TaskStateAccessor::AsyncGet(const DriverID &driver_id, const TaskID &task_id,
+Status TaskStateAccessor::AsyncGet(
+    const DriverID &driver_id, const TaskID &task_id,
     DatumCallback<ray::protocol::TaskT>::SingleItem callback) {
   auto on_successed = [callback](AsyncGcsClient *client, const TaskID &task_id,
                                  const ray::protocol::TaskT &task_spec) {
@@ -20,13 +20,12 @@ Status TaskStateAccessor::AsyncGet(const DriverID &driver_id, const TaskID &task
     ray::protocol::TaskT copy_task_spec;
     copy_task_spec.task_specification = task_spec.task_specification;
     copy_task_spec.task_execution_spec.reset(
-      new ray::protocol::TaskExecutionSpecificationT(*task_spec.task_execution_spec));
+        new ray::protocol::TaskExecutionSpecificationT(*task_spec.task_execution_spec));
     boost::optional<ray::protocol::TaskT> result(std::move(copy_task_spec));
     callback(Status::OK(), std::move(result));
   };
 
-  auto on_failed = [callback](AsyncGcsClient *client,
-                              const TaskID &task_id) {
+  auto on_failed = [callback](AsyncGcsClient *client, const TaskID &task_id) {
     boost::optional<ray::protocol::TaskT> result;
     callback(Status::KeyError("DriverID or TaskID not exist."), std::move(result));
   };

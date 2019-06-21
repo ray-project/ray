@@ -14,11 +14,10 @@ ActorStateAccessor::ActorStateAccessor(AsyncGcsClient *client_impl)
 }
 
 Status ActorStateAccessor::AsyncGet(const DriverID &driver_id, const ActorID &actor_id,
-    DatumCallback<ActorTableDataT>::SingleItem callback) {
+                                    DatumCallback<ActorTableDataT>::SingleItem callback) {
   auto inner_callback = [callback](AsyncGcsClient *client, const ActorID &actor_id,
                                    const std::vector<ActorTableDataT> &data) {
     boost::optional<ActorTableDataT> result;
-    // = data.empty() ? (boost::none) : data[0];
     if (!data.empty()) {
       RAY_CHECK(data.size() == 1);
       result = data[0];
@@ -30,8 +29,8 @@ Status ActorStateAccessor::AsyncGet(const DriverID &driver_id, const ActorID &ac
   return actor_table.Lookup(driver_id, actor_id, inner_callback);
 }
 
-Status ActorStateAccessor::AsyncGetCheckpointIds(const DriverID &driver_id,
-    const ActorID &actor_id,
+Status ActorStateAccessor::AsyncGetCheckpointIds(
+    const DriverID &driver_id, const ActorID &actor_id,
     DatumCallback<ActorCheckpointIdDataT>::SingleItem callback) {
   auto on_successed = [callback](AsyncGcsClient *client, const ActorID &actor_id,
                                  const ActorCheckpointIdDataT &data) {

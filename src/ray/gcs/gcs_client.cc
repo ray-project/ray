@@ -1,6 +1,6 @@
 #include "ray/gcs/gcs_client.h"
-#include "ray/gcs/client.h"
 #include "ray/gcs/actor_state_accessor.h"
+#include "ray/gcs/client.h"
 #include "ray/gcs/node_state_accessor.h"
 #include "ray/gcs/task_state_accessor.h"
 
@@ -10,15 +10,10 @@ namespace gcs {
 
 GcsClient::GcsClient(ClientOption option, ClientInfo info,
                      boost::asio::io_service &io_service)
-    : option_(std::move(option_)),
-      info_(std::move(info)),
-      io_service_(&io_service) {
-}
+    : option_(std::move(option_)), info_(std::move(info)), io_service_(&io_service) {}
 
 GcsClient::GcsClient(ClientOption option, ClientInfo info)
-    : option_(std::move(option_)),
-      info_(std::move(info)) {
-}
+    : option_(std::move(option_)), info_(std::move(info)) {}
 
 GcsClient::~GcsClient() {
   delete node_state_accessor_;
@@ -58,8 +53,8 @@ Status GcsClient::Connect() {
     // init thread pool
     io_service_ = new boost::asio::io_service;
     thread_pool_.emplace_back([this] {
-      boost::asio::io_service::work *worker
-        = new boost::asio::io_service::work(*io_service_);
+      boost::asio::io_service::work *worker =
+          new boost::asio::io_service::work(*io_service_);
       io_service_->run();
       delete worker;
     });

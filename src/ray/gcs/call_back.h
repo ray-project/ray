@@ -1,8 +1,8 @@
 #ifndef RAY_GCS_CALL_BACK_H
 #define RAY_GCS_CALL_BACK_H
 
-#include <vector>
 #include <boost/optional/optional.hpp>
+#include <vector>
 #include "ray/common/status.h"
 
 namespace ray {
@@ -16,7 +16,7 @@ class DatumCallback {
  public:
   using SingleItem = std::function<void(Status status, boost::optional<T> datum)>;
 
-  using MultiItem =std::function<void(Status status, std::vector<T> datums)>;
+  using MultiItem = std::function<void(Status status, std::vector<T> datums)>;
 };
 
 }  // namespace gcs
