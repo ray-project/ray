@@ -101,7 +101,7 @@ pushd "$BUILD_DIR"
 # generated from https://github.com/ray-project/arrow-build from
 # the commit listed in the command.
 $PYTHON_EXECUTABLE -m pip install \
-    --target="$ROOT_DIR/python/ray/pyarrow_files"
+    --target="$ROOT_DIR/python/ray/pyarrow_files" \
     https://github.com/pcmoritz/crossbow/releases/download/build-13-wheel-linux-cp37m/pyarrow-0.13.0.dev450-cp36-cp36m-manylinux1_x86_64.whl
 export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
 
