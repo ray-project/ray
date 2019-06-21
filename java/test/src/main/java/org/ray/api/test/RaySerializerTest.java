@@ -2,7 +2,6 @@ package org.ray.api.test;
 
 import org.ray.api.RayPyActor;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.RayPyActorImpl;
 import org.ray.runtime.util.Serializer;
 import org.testng.Assert;
 import org.testng.annotations.Test;

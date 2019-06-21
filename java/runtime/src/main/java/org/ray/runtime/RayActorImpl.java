@@ -5,57 +5,75 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.List;
 import org.ray.api.RayActor;
+import org.ray.api.RayPyActor;
 import org.ray.api.id.UniqueId;
 
-public class RayActorImpl<T> implements RayActor<T>, Externalizable {
-
+public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
   /**
    * Address of native actor handle.
    */
   private long nativeActorHandle;
 
-  public RayActorImpl() {
-    this(0);
-  }
-
   public RayActorImpl(long nativeActorHandle) {
+    Preconditions.checkState(nativeActorHandle != 0);
     this.nativeActorHandle = nativeActorHandle;
   }
 
-
-  @Override
-  public UniqueId getId() {
-    Preconditions.checkState(nativeActorHandle != 0);
-    return new UniqueId(getActorId(nativeActorHandle));
-  }
-
-  @Override
-  public UniqueId getHandleId() {
-    Preconditions.checkState(nativeActorHandle != 0);
-    return new UniqueId(getActorHandleId(nativeActorHandle));
+  public RayActorImpl() {
   }
 
   public long getNativeActorHandle() {
     return nativeActorHandle;
   }
 
-  public RayActorImpl<T> fork() {
-    Preconditions.checkState(nativeActorHandle != 0);
-    return new RayActorImpl<>(fork(nativeActorHandle));
+  @Override
+  public UniqueId getId() {
+    return new UniqueId(getActorId(nativeActorHandle));
+  }
+
+  @Override
+  public UniqueId getHandleId() {
+    return new UniqueId(getActorHandleId(nativeActorHandle));
+  }
+
+  public WorkerLanguage getLanguage() {
+    return WorkerLanguage.fromInteger(getLanguage(nativeActorHandle));
+  }
+
+  @Override
+  public String getModuleName() {
+    Preconditions.checkState(getLanguage() == WorkerLanguage.PYTHON);
+    return getActorDefinitionDescriptor(nativeActorHandle).get(0);
+  }
+
+  @Override
+  public String getClassName() {
+    Preconditions.checkState(getLanguage() == WorkerLanguage.PYTHON);
+    return getActorDefinitionDescriptor(nativeActorHandle).get(1);
+  }
+
+  public RayActorImpl fork() {
+    return new RayActorImpl(fork(nativeActorHandle));
+  }
+
+  public byte[] Binary() {
+    return serialize(nativeActorHandle);
+  }
+
+  public static RayActorImpl fromBinary(byte[] binary) {
+    return new RayActorImpl(deserialize(binary));
   }
 
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
-    Preconditions.checkState(nativeActorHandle != 0);
-    out.writeObject(serialize(nativeActorHandle));
+    out.writeObject(Binary());
   }
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-    Preconditions.checkState(nativeActorHandle == 0);
-    byte[] data = (byte[]) in.readObject();
-    this.nativeActorHandle = deserialize(data);
+    nativeActorHandle = deserialize((byte[]) in.readObject());
   }
 
   private static native long fork(long nativeActorHandle);
@@ -63,6 +81,10 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
   private static native byte[] getActorId(long nativeActorHandle);
 
   private static native byte[] getActorHandleId(long nativeActorHandle);
+
+  private static native int getLanguage(long nativeActorHandle);
+
+  private static native List<String> getActorDefinitionDescriptor(long nativeActorHandle);
 
   private static native byte[] serialize(long nativeActorHandle);
 

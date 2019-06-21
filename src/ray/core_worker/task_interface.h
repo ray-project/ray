@@ -42,17 +42,25 @@ struct ActorCreationOptions {
 /// A handle to an actor.
 class ActorHandle {
  public:
-  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id)
+  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
+              const WorkerLanguage actor_language,
+              const ActorDefinitionDescriptor &actor_definition_descriptor)
       : actor_id_(actor_id),
         actor_handle_id_(actor_handle_id),
+        actor_language_(actor_language),
+        actor_definition_descriptor_(actor_definition_descriptor),
         actor_cursor_(ObjectID::FromBinary(actor_id.Binary())),
         task_counter_(0),
         num_forks_(0) {}
 
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
+              const WorkerLanguage actor_language,
+              const ActorDefinitionDescriptor &actor_definition_descriptor,
               const ObjectID &actor_cursor, int task_counter, int num_forks)
       : actor_id_(actor_id),
         actor_handle_id_(actor_handle_id),
+        actor_language_(actor_language),
+        actor_definition_descriptor_(actor_definition_descriptor),
         actor_cursor_(actor_cursor),
         task_counter_(task_counter),
         num_forks_(num_forks) {}
@@ -62,6 +70,14 @@ class ActorHandle {
 
   /// ID of this actor handle.
   const ray::ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
+
+  /// Language of the actor.
+  const ray::WorkerLanguage ActorLanguage() const { return actor_language_; };
+  /// Descriptor of actor definition.
+  /// e.g. class info for Java actor. module and class info for Python actor.
+  const ray::ActorDefinitionDescriptor &ActorDefinitionDescriptor() const {
+    return actor_definition_descriptor_;
+  };
 
   /// The unique id of the last return of the last task.
   /// It's used as a dependency for the next task.
@@ -76,7 +92,8 @@ class ActorHandle {
 
   std::unique_ptr<ActorHandle> Fork() {
     auto new_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
-        actor_id_, ComputeNextActorHandleId(actor_handle_id_, ++num_forks_)));
+        actor_id_, ComputeNextActorHandleId(actor_handle_id_, ++num_forks_),
+        actor_language_, actor_definition_descriptor_));
     new_handle->actor_cursor_ = actor_cursor_;
     new_actor_handles_.push_back(new_handle->actor_handle_id_);
     return new_handle;
@@ -85,6 +102,11 @@ class ActorHandle {
   void Serialize(std::string *output) const {
     ray::rpc::ActorHandle temp;
     temp.set_actor_id(actor_id_.Binary());
+    temp.set_actor_handle_id(actor_handle_id_.Binary());
+    temp.set_actor_language((int)actor_language_);
+    for (auto &item : actor_definition_descriptor_) {
+      temp.add_actor_definition_descriptor(item);
+    }
     temp.set_actor_handle_id(actor_handle_id_.Binary());
     temp.set_actor_cursor(actor_cursor_.Binary());
     temp.set_task_counter(task_counter_);
@@ -95,11 +117,16 @@ class ActorHandle {
   static std::unique_ptr<ActorHandle> Deserialize(const std::string &data) {
     ray::rpc::ActorHandle temp;
     temp.ParseFromString(data);
-    return std::unique_ptr<ActorHandle>(
-        new ActorHandle(ray::ActorID::FromBinary(temp.actor_id()),
-                        ray::ActorHandleID::FromBinary(temp.actor_handle_id()),
-                        ray::ObjectID::FromBinary(temp.actor_cursor()),
-                        temp.task_counter(), temp.num_forks()));
+    ray::ActorDefinitionDescriptor actor_definition_descriptor;
+    for (auto &item : temp.actor_definition_descriptor()) {
+      actor_definition_descriptor.push_back(item);
+    }
+    return std::unique_ptr<ActorHandle>(new ActorHandle(
+        ray::ActorID::FromBinary(temp.actor_id()),
+        ray::ActorHandleID::FromBinary(temp.actor_handle_id()),
+        (WorkerLanguage)temp.actor_language(), actor_definition_descriptor,
+        ray::ObjectID::FromBinary(temp.actor_cursor()), temp.task_counter(),
+        temp.num_forks()));
   }
 
  private:
@@ -118,6 +145,11 @@ class ActorHandle {
   const ray::ActorID actor_id_;
   /// ID of this actor handle.
   const ray::ActorHandleID actor_handle_id_;
+  /// Language of the actor.
+  enum WorkerLanguage actor_language_;
+  /// Descriptor of actor definition.
+  /// e.g. class info for Java actor. module and class info for Python actor.
+  const ray::ActorDefinitionDescriptor actor_definition_descriptor_;
   /// The unique id of the last return of the last task.
   /// It's used as a dependency for the next task.
   ObjectID actor_cursor_;

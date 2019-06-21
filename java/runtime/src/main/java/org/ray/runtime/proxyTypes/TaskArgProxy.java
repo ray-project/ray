@@ -1,13 +1,13 @@
-package org.ray.runtime.nativeTypes;
+package org.ray.runtime.proxyTypes;
 
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.task.FunctionArg;
 
-public class NativeTaskArg {
+public class TaskArgProxy {
   public byte[] id;
   public byte[] data;
 
-  public NativeTaskArg(ObjectId id, byte[] data) {
+  public TaskArgProxy(ObjectId id, byte[] data) {
     if (id != null) {
       this.id = id.getBytes();
     } else {
@@ -15,7 +15,7 @@ public class NativeTaskArg {
     }
   }
 
-  public NativeTaskArg(FunctionArg functionArg) {
+  public TaskArgProxy(FunctionArg functionArg) {
     this(functionArg.id, functionArg.data);
   }
 }

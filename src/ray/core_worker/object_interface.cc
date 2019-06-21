@@ -15,21 +15,22 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(CoreWorker &core_worker)
           core_worker_.raylet_client_)));
 }
 
-Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id) {
+Status CoreWorkerObjectInterface::Put(const RayObjectValue &value, ObjectID *object_id) {
   ObjectID put_id = ObjectID::ForPut(core_worker_.worker_context_.GetCurrentTaskID(),
                                      core_worker_.worker_context_.GetNextPutIndex());
   *object_id = put_id;
-  return Put(buffer, put_id);
+  return Put(value, put_id);
 }
 
-Status CoreWorkerObjectInterface::Put(const Buffer &buffer, const ObjectID &object_id) {
+Status CoreWorkerObjectInterface::Put(const RayObjectValue &value,
+                                      const ObjectID &object_id) {
   auto type = static_cast<int>(StoreProviderType::PLASMA);
-  return store_providers_[type]->Put(buffer, object_id);
+  return store_providers_[type]->Put(value, object_id);
 }
 
-Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
-                                      int64_t timeout_ms,
-                                      std::vector<std::shared_ptr<Buffer>> *results) {
+Status CoreWorkerObjectInterface::Get(
+    const std::vector<ObjectID> &ids, int64_t timeout_ms,
+    std::vector<std::shared_ptr<RayObjectValue>> *results) {
   auto type = static_cast<int>(StoreProviderType::PLASMA);
   return store_providers_[type]->Get(
       ids, timeout_ms, core_worker_.worker_context_.GetCurrentTaskID(), results);

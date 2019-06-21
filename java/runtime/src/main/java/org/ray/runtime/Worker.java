@@ -1,7 +1,6 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import java.lang.reflect.Modifier;
 import java.util.List;
 import org.ray.api.Checkpointable;
 import org.ray.api.exception.RayTaskException;
@@ -12,6 +11,7 @@ import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
+import org.ray.runtime.proxyTypes.RayObjectValueProxy;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,18 +35,20 @@ public class Worker {
    */
   private Exception actorCreationException = null;
 
-  private ClassLoader currentClassLoader;
+  private WorkerContext workerContext;
 
   Worker(WorkerMode workerMode, FunctionManager functionManager, String storeSocket,
          String rayletSocket, UniqueId driverId) {
     this.functionManager = functionManager;
+    workerContext = new WorkerContext();
     nativeCoreWorker = createCoreWorker(workerMode.value(), storeSocket, rayletSocket,
         driverId.getBytes());
-    objectInterface = new ObjectInterface(nativeCoreWorker);
+    objectInterface = new ObjectInterface(nativeCoreWorker, workerContext);
     taskInterface = new TaskInterface(nativeCoreWorker);
   }
 
-  private void runTaskCallback(List<String> rayFunctionInfo, List<byte[]> argsBytes,
+  // This method is required by JNI
+  private void runTaskCallback(List<String> rayFunctionInfo, List<RayObjectValueProxy> argsBytes,
                                byte[] taskIdBytes, byte[] driverIdBytes,
                                boolean isActorCreationTask, boolean isActorTask, int numReturns) {
     TaskId taskId = new TaskId(taskIdBytes);
@@ -61,7 +63,7 @@ public class Worker {
       RayFunction rayFunction = functionManager
           .getFunction(getCurrentDriverId(), getJavaFunctionDescriptor(rayFunctionInfo));
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
-      currentClassLoader = rayFunction.classLoader;
+      workerContext.setCurrentClassLoader(rayFunction.classLoader);
 
 //      if (isActorCreationTask) {
 //        currentActorId = new UniqueId(returnId.getBytes());
@@ -78,7 +80,7 @@ public class Worker {
         actor = currentActor;
 
       }
-      Object[] args = ArgumentsBuilder.unwrap(argsBytes, rayFunction.classLoader);
+      Object[] args = ArgumentsBuilder.unwrap(this, argsBytes);
       // Execute the task.
       Object result;
       if (!rayFunction.isConstructor()) {
@@ -116,7 +118,7 @@ public class Worker {
       }
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);
-      currentClassLoader = null;
+      workerContext.setCurrentClassLoader(null);
     }
   }
 
@@ -195,8 +197,8 @@ public class Worker {
     return taskInterface;
   }
 
-  public ClassLoader getCurrentClassLoader() {
-    return currentClassLoader;
+  public WorkerContext getWorkerContext() {
+    return workerContext;
   }
 
   public UniqueId getCurrentDriverId() {

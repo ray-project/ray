@@ -66,11 +66,11 @@ public class FunctionManager {
   }
 
   /**
-   * Get the NativeRayFunction from a RayFunc instance (a lambda).
+   * Get the RayFunction from a RayFunc instance (a lambda).
    *
    * @param driverId current driver id.
    * @param func The lambda.
-   * @return A NativeRayFunction object.
+   * @return A RayFunction object.
    */
   public RayFunction getFunction(UniqueId driverId, RayFunc func) {
     JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
@@ -86,11 +86,11 @@ public class FunctionManager {
   }
 
   /**
-   * Get the NativeRayFunction from a function descriptor.
+   * Get the RayFunction from a function descriptor.
    *
    * @param driverId Current driver id.
    * @param functionDescriptor The function descriptor.
-   * @return A NativeRayFunction object.
+   * @return A RayFunction object.
    */
   public RayFunction getFunction(UniqueId driverId, JavaFunctionDescriptor functionDescriptor) {
     DriverFunctionTable driverFunctionTable = driverFunctionTables.get(driverId);

@@ -8,11 +8,14 @@ import org.nustaq.serialization.FSTObjectInput;
 import org.nustaq.serialization.FSTObjectOutput;
 import org.ray.runtime.RayActorImpl;
 
+/*
+ * This class is to support pass by value of an object which wraps an actor handle.
+ */
 public class RayActorSerializer extends FSTBasicObjectSerializer {
 
   @Override
   public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo,
-      FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
+                          FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
     ((RayActorImpl) toWrite).fork().writeExternal(out);
   }
 

@@ -5,6 +5,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/store_provider/store_provider.h"
 
 extern jclass java_boolean_class;
 extern jmethodID java_boolean_init;
@@ -22,25 +23,30 @@ extern jclass java_map_class;
 extern jmethodID java_map_entry_set;
 extern jmethodID java_array_list_init_with_capacity;
 
-extern jclass java_native_ray_function_class;
-extern jfieldID java_native_ray_function_worker_language;
-extern jfieldID java_native_ray_function_function_descriptor;
+extern jclass java_ray_function_proxy_class;
+extern jfieldID java_ray_function_proxy_worker_language;
+extern jfieldID java_ray_function_proxy_function_descriptor;
 
-extern jclass java_native_task_arg_class;
-extern jfieldID java_native_task_arg_id;
-extern jfieldID java_native_task_arg_data;
+extern jclass java_task_arg_proxy_class;
+extern jfieldID java_task_arg_proxy_id;
+extern jfieldID java_task_arg_proxy_data;
 
-extern jclass java_native_resources_class;
-extern jfieldID java_native_resources_keys;
-extern jfieldID java_native_resources_values;
+extern jclass java_resources_proxy_class;
+extern jfieldID java_resources_proxy_keys;
+extern jfieldID java_resources_proxy_values;
 
-extern jclass java_native_task_options_class;
-extern jfieldID java_native_task_options_num_returns;
-extern jfieldID java_native_task_options_resources;
+extern jclass java_task_options_proxy_class;
+extern jfieldID java_task_options_proxy_num_returns;
+extern jfieldID java_task_options_proxy_resources;
 
-extern jclass java_native_actor_creation_options_class;
-extern jfieldID java_native_actor_creation_options_max_reconstructions;
-extern jfieldID java_native_actor_creation_options_resources;
+extern jclass java_actor_creation_options_proxy_class;
+extern jfieldID java_actor_creation_options_proxy_max_reconstructions;
+extern jfieldID java_actor_creation_options_proxy_resources;
+
+extern jclass java_ray_object_value_proxy_class;
+extern jmethodID java_ray_object_value_proxy_init;
+extern jfieldID java_ray_object_value_proxy_data;
+extern jfieldID java_ray_object_value_proxy_metadata;
 
 inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
   if (!status.ok()) {
@@ -130,19 +136,17 @@ inline jobject NativeStringVectorToJavaStringList(
       [](JNIEnv *env, const std::string &str) { return env->NewStringUTF(str.c_str()); });
 }
 
-inline jobject NativeBufferVectorToJavaBinaryList(
-    JNIEnv *env, const std::vector<std::shared_ptr<ray::Buffer>> &native_vector) {
-  return NativeVectorToJavaList<std::shared_ptr<ray::Buffer>>(
-      env, native_vector, [](JNIEnv *env, const std::shared_ptr<ray::Buffer> &arg) {
-        if (arg) {
-          jbyteArray arg_byte_array = env->NewByteArray(arg->Size());
-          env->SetByteArrayRegion(arg_byte_array, 0, arg->Size(),
-                                  reinterpret_cast<const jbyte *>(arg->Data()));
-          return arg_byte_array;
-        } else {
-          return (jbyteArray) nullptr;
-        }
-      });
+inline jbyteArray NativeBufferToJavaByteArray(JNIEnv *env,
+                                              const std::shared_ptr<ray::Buffer> buffer) {
+  if (!buffer) {
+    return nullptr;
+  }
+  jbyteArray java_byte_array = env->NewByteArray(buffer->Size());
+  if (buffer->Size() > 0) {
+    env->SetByteArrayRegion(java_byte_array, 0, buffer->Size(),
+                            reinterpret_cast<const jbyte *>(buffer->Data()));
+  }
+  return java_byte_array;
 }
 
 template <typename ID>
@@ -156,12 +160,67 @@ inline jobject NativeUniqueIdVectorToJavaBinaryList(
 template <typename ReturnT>
 inline ReturnT ReadBinary(JNIEnv *env, const jbyteArray &binary,
                           std::function<ReturnT(const ray::Buffer &)> reader) {
+  if (!binary) {
+    return reader(ray::LocalMemoryBuffer(nullptr, 0));
+  }
   auto data_size = env->GetArrayLength(binary);
+  if (data_size == 0) {
+    return reader(ray::LocalMemoryBuffer(nullptr, 0));
+  }
   jbyte *data = env->GetByteArrayElements(binary, nullptr);
   ray::LocalMemoryBuffer buffer(reinterpret_cast<uint8_t *>(data), data_size);
   auto result = reader(buffer);
   env->ReleaseByteArrayElements(binary, data, JNI_ABORT);
   return result;
+}
+
+template <typename ReturnT>
+inline ReturnT ReadJavaRayObjectValueProxy(
+    JNIEnv *env, const jobject &java_obj,
+    std::function<ReturnT(const std::shared_ptr<ray::RayObjectValue> &)> reader) {
+  if (!java_obj) {
+    return reader(nullptr);
+  }
+  auto java_data =
+      (jbyteArray)env->GetObjectField(java_obj, java_ray_object_value_proxy_data);
+  auto java_metadata =
+      (jbyteArray)env->GetObjectField(java_obj, java_ray_object_value_proxy_metadata);
+  auto data_size = env->GetArrayLength(java_data);
+  jbyte *data = data_size > 0 ? env->GetByteArrayElements(java_data, nullptr) : nullptr;
+  auto metadata_size = java_metadata ? env->GetArrayLength(java_metadata) : 0;
+  jbyte *metadata =
+      metadata_size > 0 ? env->GetByteArrayElements(java_metadata, nullptr) : nullptr;
+  auto data_buffer = std::make_shared<ray::LocalMemoryBuffer>(
+      reinterpret_cast<uint8_t *>(data), data_size);
+  auto metadata_buffer = java_metadata
+                             ? std::make_shared<ray::LocalMemoryBuffer>(
+                                   reinterpret_cast<uint8_t *>(metadata), metadata_size)
+                             : nullptr;
+
+  auto native_obj = std::make_shared<ray::RayObjectValue>(data_buffer, metadata_buffer);
+  auto result = reader(native_obj);
+
+  if (data) {
+    env->ReleaseByteArrayElements(java_data, data, JNI_ABORT);
+  }
+  if (metadata) {
+    env->ReleaseByteArrayElements(java_metadata, metadata, JNI_ABORT);
+  }
+
+  return result;
+}
+
+inline jobject ToJavaRayObjectValueProxy(
+    JNIEnv *env, const std::shared_ptr<ray::RayObjectValue> &value) {
+  if (!value) {
+    return nullptr;
+  }
+  auto java_data = NativeBufferToJavaByteArray(env, value->GetData());
+  auto java_metadata = NativeBufferToJavaByteArray(env, value->GetMetadata());
+  auto java_obj =
+      env->NewObject(java_ray_object_value_proxy_class, java_ray_object_value_proxy_init,
+                     java_data, java_metadata);
+  return java_obj;
 }
 
 #endif  // RAY_COMMON_JAVA_JNI_HELPER_H

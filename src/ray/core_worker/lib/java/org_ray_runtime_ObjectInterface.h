@@ -10,21 +10,20 @@ extern "C" {
 /*
  * Class:     org_ray_runtime_ObjectInterface
  * Method:    put
- * Signature: (J[B)[B
+ * Signature: (JLorg/ray/runtime/proxyTypes/RayObjectValueProxy;)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_ObjectInterface_put__J_3B(JNIEnv *,
-                                                                            jclass, jlong,
-                                                                            jbyteArray);
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_ObjectInterface_put__JLorg_ray_runtime_proxyTypes_RayObjectValueProxy_2(
+    JNIEnv *, jclass, jlong, jobject);
 
 /*
  * Class:     org_ray_runtime_ObjectInterface
  * Method:    put
- * Signature: (J[B[B)V
+ * Signature: (J[BLorg/ray/runtime/proxyTypes/RayObjectValueProxy;)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_ObjectInterface_put__J_3B_3B(JNIEnv *, jclass,
-                                                                         jlong,
-                                                                         jbyteArray,
-                                                                         jbyteArray);
+JNIEXPORT void JNICALL
+Java_org_ray_runtime_ObjectInterface_put__J_3BLorg_ray_runtime_proxyTypes_RayObjectValueProxy_2(
+    JNIEnv *, jclass, jlong, jbyteArray, jobject);
 
 /*
  * Class:     org_ray_runtime_ObjectInterface

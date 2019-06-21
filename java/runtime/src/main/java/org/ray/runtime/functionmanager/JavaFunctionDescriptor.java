@@ -1,8 +1,12 @@
 package org.ray.runtime.functionmanager;
 
 import com.google.common.base.Objects;
+import com.google.common.base.Preconditions;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import org.ray.runtime.WorkerLanguage;
+import org.ray.runtime.util.StringUtil;
 
 /**
  * Represents metadata of Java function.
@@ -55,5 +59,10 @@ public final class JavaFunctionDescriptor implements FunctionDescriptor {
   @Override
   public List<String> toList() {
     return Arrays.asList(className, name, typeDescriptor);
+  }
+
+  @Override
+  public WorkerLanguage getLanguage() {
+    return WorkerLanguage.JAVA;
   }
 }

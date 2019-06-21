@@ -37,13 +37,15 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *env, jc
       o, "runTaskCallback", "(Ljava/util/List;Ljava/util/List;[B[BZZI)V");
   auto executor_func = [env, javaCoreWorker, run_task_method](
                            const ray::RayFunction &ray_function,
-                           const std::vector<std::shared_ptr<ray::Buffer>> &args,
+                           const std::vector<std::shared_ptr<ray::RayObjectValue>> &args,
                            const ray::TaskInfo &task_info, int num_returns) {
     // convert RayFunction
     jobject ray_function_array_list =
         NativeStringVectorToJavaStringList(env, ray_function.function_descriptor);
     // convert args
-    jobject args_array_list = NativeBufferVectorToJavaBinaryList(env, args);
+    jobject args_array_list =
+        NativeVectorToJavaList<std::shared_ptr<ray::RayObjectValue>>(
+            env, args, ToJavaRayObjectValueProxy);
     // convert task id
     jbyteArray task_id_byte_array =
         JByteArrayFromUniqueId<ray::TaskID>(env, task_info.task_id).GetJByteArray();

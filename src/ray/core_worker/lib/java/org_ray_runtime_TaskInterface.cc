@@ -13,11 +13,11 @@ inline ray::CoreWorkerTaskInterface &GetTaskInterface(jlong nativeCoreWorker) {
 inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject rayFunction) {
   std::vector<std::string> function_descriptor;
   JavaStringListToNativeStringVector(
-      env, env->GetObjectField(rayFunction, java_native_ray_function_function_descriptor),
+      env, env->GetObjectField(rayFunction, java_ray_function_proxy_function_descriptor),
       &function_descriptor);
   ray::RayFunction ray_function{
       static_cast<ray::WorkerLanguage>(
-          (int)env->GetIntField(rayFunction, java_native_ray_function_worker_language)),
+          (int)env->GetIntField(rayFunction, java_ray_function_proxy_worker_language)),
       function_descriptor};
   return ray_function;
 }
@@ -31,13 +31,13 @@ inline std::vector<ray::TaskArg> ToTaskArgs(
       [byte_arrays_to_be_released, byte_pointers_to_be_released](JNIEnv *env,
                                                                  jobject arg) {
         auto java_id =
-            static_cast<jbyteArray>(env->GetObjectField(arg, java_native_task_arg_id));
+            static_cast<jbyteArray>(env->GetObjectField(arg, java_task_arg_proxy_id));
         if (java_id) {
           return ray::TaskArg::PassByReference(
               UniqueIdFromJByteArray<ray::ObjectID>(env, java_id).GetId());
         }
         auto java_data =
-            static_cast<jbyteArray>(env->GetObjectField(arg, java_native_task_arg_data));
+            static_cast<jbyteArray>(env->GetObjectField(arg, java_task_arg_proxy_data));
         auto data_size = env->GetArrayLength(java_data);
         jbyte *data = env->GetByteArrayElements(java_data, nullptr);
         byte_arrays_to_be_released->push_back(java_data);
@@ -59,9 +59,9 @@ inline void ReleaseTaskArgs(JNIEnv *env,
 
 inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
                                                            jobject java_resources) {
-  jobject resource_keys = env->GetObjectField(java_resources, java_native_resources_keys);
+  jobject resource_keys = env->GetObjectField(java_resources, java_resources_proxy_keys);
   jobject resource_values =
-      env->GetObjectField(java_resources, java_native_resources_values);
+      env->GetObjectField(java_resources, java_resources_proxy_values);
   int resource_size = env->CallIntMethod(resource_keys, java_list_size);
   std::unordered_map<std::string, double> resources;
   for (int i = 0; i < resource_size; i++) {
@@ -74,9 +74,9 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
 }
 
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jobject taskOptions) {
-  int num_returns = env->GetIntField(taskOptions, java_native_task_options_num_returns);
+  int num_returns = env->GetIntField(taskOptions, java_task_options_proxy_num_returns);
   jobject java_resources =
-      env->GetObjectField(taskOptions, java_native_task_options_resources);
+      env->GetObjectField(taskOptions, java_task_options_proxy_resources);
   auto resources = ToResources(env, java_resources);
 
   ray::TaskOptions task_options{num_returns, resources};
@@ -86,9 +86,9 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jobject taskOptions) {
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
   uint64_t max_reconstructions = env->GetLongField(
-      actorCreationOptions, java_native_actor_creation_options_max_reconstructions);
+      actorCreationOptions, java_actor_creation_options_proxy_max_reconstructions);
   jobject java_resources = env->GetObjectField(
-      actorCreationOptions, java_native_actor_creation_options_resources);
+      actorCreationOptions, java_actor_creation_options_proxy_resources);
   auto resources = ToResources(env, java_resources);
 
   ray::ActorCreationOptions action_creation_options{max_reconstructions, resources};
@@ -103,7 +103,7 @@ extern "C" {
  * Class:     org_ray_runtime_TaskInterface
  * Method:    submitTask
  * Signature:
- * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeTaskOptions;)Ljava/util/List;
+ * (JLorg/ray/runtime/proxyTypes/RayFunctionProxy;Ljava/util/List;Lorg/ray/runtime/proxyTypes/TaskOptionsProxy;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_submitTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorker, jobject rayFunction, jobject taskArgs,
@@ -129,7 +129,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_submitTask(
  * Class:     org_ray_runtime_TaskInterface
  * Method:    createActor
  * Signature:
- * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeActorCreationOptions;)J
+ * (JLorg/ray/runtime/proxyTypes/RayFunctionProxy;Ljava/util/List;Lorg/ray/runtime/proxyTypes/ActorCreationOptionsProxy;)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterface_createActor(
     JNIEnv *env, jclass p, jlong nativeCoreWorker, jobject rayFunction, jobject taskArgs,
@@ -156,7 +156,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterface_createActor(
  * Class:     org_ray_runtime_TaskInterface
  * Method:    submitActorTask
  * Signature:
- * (JJLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeTaskOptions;)Ljava/util/List;
+ * (JJLorg/ray/runtime/proxyTypes/RayFunctionProxy;Ljava/util/List;Lorg/ray/runtime/proxyTypes/TaskOptionsProxy;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_submitActorTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorker, jlong nativeActorHandle,

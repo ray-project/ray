@@ -19,9 +19,9 @@ import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
+import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
-import org.ray.runtime.util.Serializer;
 
 /**
  * Core functionality to implement Ray APIs.
@@ -58,26 +58,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return new RayObjectImpl<>(objectId);
   }
 
-  public <T> void put(ObjectId objectId, T obj) {
-//    TaskId taskId = workerContext.getCurrentTaskId();
-//    LOGGER.debug("Putting object {}, for task {} ", objectId, taskId);
-    worker.getObjectInterface().put(objectId, obj);
-  }
-
-
-  /**
-   * Store a serialized object in the object store.
-   *
-   * @param obj The serialized Java object to be stored.
-   * @return A RayObject instance that represents the in-store object.
-   */
-  public RayObject<Object> putSerialized(byte[] obj) {
-//    TaskId taskId = workerContext.getCurrentTaskId();
-//    LOGGER.debug("Putting serialized object {}, for task {} ", objectId, taskId);
-    ObjectId objectId = worker.getObjectInterface().putSerialized(obj);
-    return new RayObjectImpl<>(objectId);
-  }
-
   @Override
   public <T> T get(ObjectId objectId) throws RayException {
     List<T> ret = get(ImmutableList.of(objectId));
@@ -87,17 +67,14 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public <T> List<T> get(List<ObjectId> objectIds) {
     // TODO: how to handle exception in get result without wait for all objects
-    // TODO: how to pass timeoutMs to wait infinitely?
-    // TODO: how to support deserializeFromMeta?
-    List<byte[]> binaryResults = worker.getObjectInterface().get(objectIds, Long.MAX_VALUE);
-    return binaryResults.stream().map(binaryResult -> {
-          Object obj =
-              Serializer.decode(binaryResult, worker.getCurrentClassLoader());
-          if (obj instanceof RayException) {
-            throw (RayException) obj;
+    List<GetResult<T>> results = worker.getObjectInterface().get(objectIds, -1);
+    return results.stream().map(result -> {
+          // check here because we wait infinitely.
+          Preconditions.checkState(result.exists);
+          if (result.exception != null) {
+            throw result.exception;
           } else {
-            //noinspection unchecked
-            return (T) obj;
+            return result.object;
           }
         }
     ).collect(Collectors.toList());
@@ -146,26 +123,16 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(worker.getCurrentDriverId(), func).functionDescriptor;
-    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(args, false);
-    int numReturns = getNumReturns(null);
-    List<ObjectId> returnIds = worker.getTaskInterface().submitTask(functionDescriptor,
-        functionArgs, numReturns, options);
-    return new RayObjectImpl(returnIds.get(0));
+    return call(functionDescriptor, args, options);
   }
 
   @Override
   public RayObject call(RayFunc func, RayActor<?> actor, Object[] args) {
-    if (!(actor instanceof RayActorImpl)) {
-      throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
-    }
-    RayActorImpl<?> actorImpl = (RayActorImpl) actor;
+    RayActorImpl actorImpl = (RayActorImpl) actor;
+    Preconditions.checkState(actorImpl.getLanguage() == WorkerLanguage.JAVA);
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(worker.getCurrentDriverId(), func).functionDescriptor;
-    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(args, false);
-    int numReturns = getNumReturns(actor);
-    List<ObjectId> returnIds = worker.getTaskInterface().submitActorTask(actorImpl,
-        functionDescriptor, functionArgs, numReturns, null);
-    return new RayObjectImpl(returnIds.get(0));
+    return call(actorImpl, functionDescriptor, args);
   }
 
   @Override
@@ -173,65 +140,72 @@ public abstract class AbstractRayRuntime implements RayRuntime {
                                      Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(worker.getCurrentDriverId(), actorFactoryFunc).functionDescriptor;
-    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(args, false);
-    return worker.getTaskInterface().createActor(functionDescriptor, functionArgs,
-        options);
+    //noinspection unchecked
+    return (RayActor<T>) createActor(WorkerLanguage.JAVA, functionDescriptor, args, options);
   }
 
-//  private void checkPyArguments(Object[] args) {
-//    for (Object arg : args) {
-//      Preconditions.checkArgument(
-//          (arg instanceof RayPyActor) || (arg instanceof byte[]),
-//          "Python argument can only be a RayPyActor or a byte array, not {}.",
-//          arg.getClass().getName());
-//    }
-//  }
+  private void checkPyArguments(Object[] args) {
+    for (Object arg : args) {
+      Preconditions.checkArgument(
+          (arg instanceof RayPyActor) || (arg instanceof byte[]),
+          "Python argument can only be a RayPyActor or a byte array, not {}.",
+          arg.getClass().getName());
+    }
+  }
 
   @Override
   public RayObject callPy(String moduleName, String functionName, Object[] args,
                           CallOptions options) {
-    throw new UnsupportedOperationException();
-//    checkPyArguments(args);
-//    PyFunctionDescriptor desc = new PyFunctionDescriptor(moduleName, "", functionName);
-//    TaskSpec spec = createTaskSpec(null, desc, RayPyActorImpl.NIL, args, false, options);
-//    rayletClient.submitTask(spec);
-//    return new RayObjectImpl(spec.returnIds[0]);
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, "", functionName);
+    return call(functionDescriptor, args, options);
   }
 
   @Override
   public RayObject callPy(RayPyActor pyActor, String functionName, Object... args) {
-    throw new UnsupportedOperationException();
-//    checkPyArguments(args);
-//    PyFunctionDescriptor desc = new PyFunctionDescriptor(pyActor.getModuleName(),
-//        pyActor.getClassName(), functionName);
-//    RayPyActorImpl actorImpl = (RayPyActorImpl) pyActor;
-//    TaskSpec spec;
-//    synchronized (pyActor) {
-//      spec = createTaskSpec(null, desc, actorImpl, args, false, null);
-//      spec.getExecutionDependencies().add(actorImpl.getTaskCursor());
-//      actorImpl.setTaskCursor(spec.returnIds[1]);
-//      actorImpl.clearNewActorHandles();
-//    }
-//    rayletClient.submitTask(spec);
-//    return new RayObjectImpl(spec.returnIds[0]);
+    RayActorImpl pyActorImpl = (RayActorImpl) pyActor;
+    Preconditions.checkState(pyActorImpl.getLanguage() == WorkerLanguage.PYTHON);
+    checkPyArguments(args);
+
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
+        pyActor.getClassName(), functionName);
+    return call(pyActorImpl, functionDescriptor, args);
   }
 
   @Override
   public RayPyActor createPyActor(String moduleName, String className, Object[] args,
                                   ActorCreationOptions options) {
-    throw new UnsupportedOperationException();
-//    checkPyArguments(args);
-//    PyFunctionDescriptor desc = new PyFunctionDescriptor(moduleName, className, "__init__");
-//    TaskSpec spec = createTaskSpec(null, desc, RayPyActorImpl.NIL, args, true, options);
-//    RayPyActorImpl actor = new RayPyActorImpl(spec.actorCreationId, moduleName, className);
-//    actor.increaseTaskCounter();
-//    actor.setTaskCursor(spec.returnIds[0]);
-//    rayletClient.submitTask(spec);
-//    return actor;
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, className, "__init__");
+    return createActor(WorkerLanguage.PYTHON, functionDescriptor, args, options);
   }
 
-  private int getNumReturns(RayActor<?> actor) {
-    return actor == null ? 1 : 2;
+  private RayObject call(FunctionDescriptor functionDescriptor,
+                         Object[] args, CallOptions options) {
+    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker, args,
+        functionDescriptor.getLanguage() != WorkerLanguage.JAVA);
+    List<ObjectId> returnIds = worker.getTaskInterface().submitTask(functionDescriptor,
+        functionArgs, 1, options);
+    return new RayObjectImpl(returnIds.get(0));
+  }
+
+  private RayObject call(RayActorImpl rayActorImpl, FunctionDescriptor functionDescriptor,
+                         Object[] args) {
+    Preconditions.checkState(rayActorImpl.getLanguage() == functionDescriptor.getLanguage());
+    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker, args,
+        rayActorImpl.getLanguage() != WorkerLanguage.JAVA);
+    List<ObjectId> returnIds = worker.getTaskInterface().submitActorTask(rayActorImpl,
+        functionDescriptor, functionArgs, 2, null);
+    return new RayObjectImpl(returnIds.get(0));
+  }
+
+  private RayActorImpl createActor(WorkerLanguage language, FunctionDescriptor functionDescriptor
+      , Object[] args, ActorCreationOptions options) {
+    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker, args,
+        language != WorkerLanguage.JAVA);
+    RayActorImpl actor = worker.getTaskInterface().createActor(functionDescriptor, functionArgs, options);
+    Preconditions.checkState(actor.getLanguage() == language);
+    return actor;
   }
 
   public void loop() {

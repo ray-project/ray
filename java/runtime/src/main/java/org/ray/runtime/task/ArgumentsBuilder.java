@@ -1,12 +1,13 @@
 package org.ray.runtime.task;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import org.ray.api.Ray;
-import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.ObjectInterface;
+import org.ray.runtime.Worker;
+import org.ray.runtime.proxyTypes.RayObjectValueProxy;
+import org.ray.runtime.util.RayObjectValueConverter;
 import org.ray.runtime.util.Serializer;
 
 public class ArgumentsBuilder {
@@ -20,29 +21,38 @@ public class ArgumentsBuilder {
   /**
    * Convert real function arguments to task spec arguments.
    */
-  public static FunctionArg[] wrap(Object[] args, boolean crossLanguage) {
+  public static FunctionArg[] wrap(Worker worker, Object[] args,
+                                   boolean crossLanguage) {
     FunctionArg[] ret = new FunctionArg[args.length];
     for (int i = 0; i < ret.length; i++) {
       Object arg = args[i];
       ObjectId id = null;
       byte[] data = null;
-      if (arg == null) {
-        data = Serializer.encode(null);
-      } else if (arg instanceof RayActor) {
-        data = Serializer.encode(arg);
-      } else if (arg instanceof RayObject) {
+      if (arg instanceof RayObject) {
         id = ((RayObject) arg).getId();
-      } else if (arg instanceof byte[] && crossLanguage) {
-        // If the argument is a byte array and will be used by a different language,
-        // do not inline this argument. Because the other language doesn't know how
-        // to deserialize it.
-        id = Ray.put(arg).getId();
-      } else {
-        byte[] serialized = Serializer.encode(arg);
-        if (serialized.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          id = ((AbstractRayRuntime) Ray.internal()).putSerialized(serialized).getId();
+      } else if (arg instanceof byte[]) {
+        if (crossLanguage || ((byte[]) arg).length > LARGEST_SIZE_PASS_BY_VALUE) {
+          // If the argument is a byte array and will be used by a different language
+          // or it's too large,
+          // do not inline this argument. Because the other language doesn't know how
+          // to deserialize it.
+          id = worker.getObjectInterface().put(arg);
         } else {
-          data = serialized;
+          // TODO: support pass by value with metadata
+          // Pass by value for byte array must call Serializer.encode(...) to keep type information.
+          // We could use RayObjectValueProxy.data here only after pass by value with metadata is
+          // supported.
+          data = Serializer.encode(arg);
+        }
+      } else {
+        RayObjectValueProxy rayObjectValueProxy =
+            worker.getWorkerContext().getRayObjectValueConverter().toValue(arg);
+        if (Arrays.equals(rayObjectValueProxy.metadata,
+            RayObjectValueConverter.FSTConverter.JAVA_OBJECT_META)
+            && rayObjectValueProxy.data.length <= LARGEST_SIZE_PASS_BY_VALUE) {
+          data = rayObjectValueProxy.data;
+        } else {
+          id = worker.getObjectInterface().putSerialized(rayObjectValueProxy);
         }
       }
       if (id != null) {
@@ -57,7 +67,7 @@ public class ArgumentsBuilder {
   /**
    * Convert list of byte array to real function arguments.
    */
-  public static Object[] unwrap(List<byte[]> args, ClassLoader classLoader) {
-    return args.stream().map(arg -> Serializer.decode(arg, classLoader)).toArray();
+  public static Object[] unwrap(Worker worker, List<RayObjectValueProxy> args) {
+    return args.stream().map(arg -> worker.getWorkerContext().getRayObjectValueConverter().fromValue(arg)).toArray();
   }
 }

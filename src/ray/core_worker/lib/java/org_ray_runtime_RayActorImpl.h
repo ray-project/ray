@@ -19,17 +19,33 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_fork(JNIEnv *, jclass,
  * Method:    getActorId
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorId(JNIEnv *,
-                                                                          jclass, jlong);
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorId(JNIEnv *, jclass,
+                                                                         jlong);
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    getActorHandleId
+ * Method:    getRayActorImplId
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorHandleId(JNIEnv *,
-                                                                                jclass,
-                                                                                jlong);
+                                                                               jclass,
+                                                                               jlong);
+
+/*
+ * Class:     org_ray_runtime_RayActorImpl
+ * Method:    getLanguage
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_org_ray_runtime_RayActorImpl_getLanguage(JNIEnv *, jclass,
+                                                                    jlong);
+
+/*
+ * Class:     org_ray_runtime_RayActorImpl
+ * Method:    getActorDefinitionDescriptor
+ * Signature: (J)Ljava/util/List;
+ */
+JNIEXPORT jobject JNICALL
+Java_org_ray_runtime_RayActorImpl_getActorDefinitionDescriptor(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
@@ -37,7 +53,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorHandleId(
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_serialize(JNIEnv *, jclass,
-                                                                         jlong);
+                                                                        jlong);
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
@@ -45,7 +61,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_serialize(JNIEnv 
  * Signature: ([B)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_deserialize(JNIEnv *, jclass,
-                                                                      jbyteArray);
+                                                                     jbyteArray);
 
 #ifdef __cplusplus
 }

@@ -3,15 +3,14 @@ package org.ray.runtime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.ray.api.RayActor;
 import org.ray.api.id.ObjectId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
-import org.ray.runtime.nativeTypes.NativeActorCreationOptions;
-import org.ray.runtime.nativeTypes.NativeRayFunction;
-import org.ray.runtime.nativeTypes.NativeTaskArg;
-import org.ray.runtime.nativeTypes.NativeTaskOptions;
+import org.ray.runtime.proxyTypes.ActorCreationOptionsProxy;
+import org.ray.runtime.proxyTypes.RayFunctionProxy;
+import org.ray.runtime.proxyTypes.TaskArgProxy;
+import org.ray.runtime.proxyTypes.TaskOptionsProxy;
 import org.ray.runtime.task.FunctionArg;
 
 public class TaskInterface {
@@ -23,49 +22,50 @@ public class TaskInterface {
 
   public List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, FunctionArg[] args,
                                    int numReturns, CallOptions options) {
-    NativeRayFunction nativeRayFunction = new NativeRayFunction(functionDescriptor);
-    List<NativeTaskArg> nativeArgs =
-        Arrays.stream(args).map(NativeTaskArg::new).collect(Collectors.toList());
-    NativeTaskOptions nativeTaskOptions = new NativeTaskOptions(numReturns, options);
-    List<byte[]> returnIds = submitTask(nativeCoreWorker, nativeRayFunction, nativeArgs,
-        nativeTaskOptions);
+    RayFunctionProxy rayFunctionProxy = new RayFunctionProxy(functionDescriptor);
+    List<TaskArgProxy> nativeArgs =
+        Arrays.stream(args).map(TaskArgProxy::new).collect(Collectors.toList());
+    TaskOptionsProxy taskOptionsProxy = new TaskOptionsProxy(numReturns, options);
+    List<byte[]> returnIds = submitTask(nativeCoreWorker, rayFunctionProxy, nativeArgs,
+        taskOptionsProxy);
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
 
-  public <T> RayActorImpl<T> createActor(FunctionDescriptor functionDescriptor, FunctionArg[] args,
-                                         ActorCreationOptions options) {
-    NativeRayFunction nativeRayFunction = new NativeRayFunction(functionDescriptor);
-    List<NativeTaskArg> nativeArgs =
-        Arrays.stream(args).map(NativeTaskArg::new).collect(Collectors.toList());
-    NativeActorCreationOptions nativeActorCreationOptions = new NativeActorCreationOptions(options);
-    return new RayActorImpl<>(createActor(nativeCoreWorker, nativeRayFunction, nativeArgs,
-        nativeActorCreationOptions));
+  public RayActorImpl createActor(FunctionDescriptor functionDescriptor, FunctionArg[] args,
+                                  ActorCreationOptions options) {
+    RayFunctionProxy rayFunctionProxy = new RayFunctionProxy(functionDescriptor);
+    List<TaskArgProxy> nativeArgs =
+        Arrays.stream(args).map(TaskArgProxy::new).collect(Collectors.toList());
+    ActorCreationOptionsProxy actorCreationOptionsProxy = new ActorCreationOptionsProxy(options);
+    long nativeActorHandle = createActor(nativeCoreWorker,
+        rayFunctionProxy, nativeArgs, actorCreationOptionsProxy);
+    return new RayActorImpl(nativeActorHandle);
   }
 
-  public List<ObjectId> submitActorTask(RayActorImpl<?> actor, FunctionDescriptor functionDescriptor,
+  public List<ObjectId> submitActorTask(RayActorImpl actor, FunctionDescriptor functionDescriptor,
                                         FunctionArg[] args, int numReturns, CallOptions options) {
-    NativeRayFunction nativeRayFunction = new NativeRayFunction(functionDescriptor);
-    List<NativeTaskArg> nativeArgs =
-        Arrays.stream(args).map(NativeTaskArg::new).collect(Collectors.toList());
-    NativeTaskOptions nativeTaskOptions = new NativeTaskOptions(numReturns, options);
+    RayFunctionProxy rayFunctionProxy = new RayFunctionProxy(functionDescriptor);
+    List<TaskArgProxy> nativeArgs =
+        Arrays.stream(args).map(TaskArgProxy::new).collect(Collectors.toList());
+    TaskOptionsProxy taskOptionsProxy = new TaskOptionsProxy(numReturns, options);
     List<byte[]> returnIds = submitActorTask(nativeCoreWorker, actor.getNativeActorHandle(),
-        nativeRayFunction, nativeArgs, nativeTaskOptions);
+        rayFunctionProxy, nativeArgs, taskOptionsProxy);
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
 
   private static native List<byte[]> submitTask(long nativeCoreWorker,
-                                                NativeRayFunction rayFunction,
-                                                List<NativeTaskArg> args,
-                                                NativeTaskOptions taskOptions);
+                                                RayFunctionProxy rayFunction,
+                                                List<TaskArgProxy> args,
+                                                TaskOptionsProxy taskOptions);
 
   private static native long createActor(long nativeCoreWorker,
-                                         NativeRayFunction rayFunction,
-                                         List<NativeTaskArg> args,
-                                         NativeActorCreationOptions actorCreationOptions);
+                                         RayFunctionProxy rayFunction,
+                                         List<TaskArgProxy> args,
+                                         ActorCreationOptionsProxy actorCreationOptions);
 
   private static native List<byte[]> submitActorTask(long nativeCoreWorker,
                                                      long nativeActorHandle,
-                                                     NativeRayFunction rayFunction,
-                                                     List<NativeTaskArg> args,
-                                                     NativeTaskOptions taskOptions);
+                                                     RayFunctionProxy rayFunction,
+                                                     List<TaskArgProxy> args,
+                                                     TaskOptionsProxy taskOptions);
 }

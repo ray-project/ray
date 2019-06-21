@@ -9,14 +9,21 @@ message ActorHandle {
   // ID of this actor handle.
   bytes actor_handle_id = 2;
 
+  // Language of the actor.
+  int32 actor_language = 3;
+
+  // Descriptor of actor definition.
+  // e.g. class info for Java actor. module and class info for Python actor.
+  repeated string actor_definition_descriptor = 4;
+
   // The unique id of the last return of the last task.
   // It's used as a dependency for the next task.
-  bytes actor_cursor = 3;
+  bytes actor_cursor = 5;
 
   // The number of tasks that have been invoked on this actor.
-  int32 task_counter = 4;
+  int32 task_counter = 6;
 
   // The number of times that this actor handle has been forked.
   // It's used to make sure ids of actor handles are unique.
-  int32 num_forks = 5;
+  int32 num_forks = 7;
 }

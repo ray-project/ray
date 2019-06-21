@@ -54,9 +54,22 @@ Status CoreWorkerTaskInterface::CreateActor(
   std::vector<ObjectID> return_ids;
   return_ids.push_back(ObjectID::ForTaskReturn(task_id, 1));
   ActorID actor_creation_id = ActorID::FromBinary(return_ids[0].Binary());
+  ray::ActorDefinitionDescriptor actor_definition_descriptor;
+  switch (function.language) {
+  case WorkerLanguage::PYTHON:
+    actor_definition_descriptor.push_back(function.function_descriptor[0]);
+    actor_definition_descriptor.push_back(function.function_descriptor[1]);
+    break;
+  case WorkerLanguage::JAVA:
+    actor_definition_descriptor.push_back(function.function_descriptor[0]);
+    break;
+  default:
+    return Status::Invalid("Invalid language.");
+  }
 
   *actor_handle = std::unique_ptr<ActorHandle>(
-      new ActorHandle(actor_creation_id, ActorHandleID::Nil()));
+      new ActorHandle(actor_creation_id, ActorHandleID::Nil(), function.language,
+                      actor_definition_descriptor));
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
