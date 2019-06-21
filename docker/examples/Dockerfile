@@ -6,7 +6,7 @@ FROM ray-project/deploy
 RUN conda install -y numpy
 RUN apt-get install -y zlib1g-dev
 # The following is needed to support TensorFlow 1.14
-RUN conda install -y -c anaconda wrapt=1.11.1
+RUN conda remove -y --force wrapt
 RUN pip install gym[atari] opencv-python-headless tensorflow lz4 keras pytest-timeout smart_open
 RUN pip install -U h5py  # Mutes FutureWarnings
 RUN pip install --upgrade bayesian-optimization

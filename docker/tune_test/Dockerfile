@@ -8,7 +8,7 @@ RUN pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.
 # We install this after the latest wheels -- this should not override the latest wheels.
 RUN apt-get install -y zlib1g-dev
 # The following is needed to support TensorFlow 1.14
-RUN conda install -y -c anaconda wrapt=1.11.1
+RUN conda remove -y --force wrapt
 RUN pip install gym[atari]==0.10.11 opencv-python-headless tensorflow lz4 keras pytest-timeout smart_open
 RUN pip install --upgrade bayesian-optimization
 RUN pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
