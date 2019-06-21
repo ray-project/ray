@@ -109,12 +109,14 @@ class WorkerPool {
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
       const DriverID &driver_id) const;
 
-  /// Whether we're starting a worker for this task.
+  /// Whether there is a pending worker for the given task.
+  /// Note that, this is only used for actor creation task with dynamic options.
+  /// And if the worker registered but isn't assigned a task,
+  /// the worker also is on pending state, and this'll return true.
   ///
   /// \param language The required language.
   /// \param task_id The task that we want to query.
-  /// \return True if there is a worker being starting, otherwise false.
-  bool HasWorkerForTask(const Language &language, const TaskID &task_id);
+  bool HasPendingWorkerForTask(const Language &language, const TaskID &task_id);
 
   /// Returns debug string for class.
   ///
@@ -164,9 +166,9 @@ class WorkerPool {
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<pid_t, int> starting_worker_processes;
-    /// A map for looking up the task id of actor creation task by the pid of
+    /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<pid_t, TaskID> starting_dedicated_worker_processes;
+    std::unordered_map<pid_t, TaskID> dedicated_workers_to_tasks;
   };
 
   /// The number of workers per process.
@@ -178,13 +180,6 @@ class WorkerPool {
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
-
-  /// Whether there is a pending registration from a worker for the given task.
-  /// Note that, this is only used for actor creation task.
-  ///
-  /// \param language The required language.
-  /// \param task_id The task that we want to query.
-  bool HasPendingRegistrationForTask(const Language &language, const TaskID &task_id);
 
   /// Generate a warning about the number of workers that have registered or
   /// started if appropriate.

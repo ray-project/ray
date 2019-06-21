@@ -224,11 +224,10 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
 
-  auto it = state.starting_dedicated_worker_processes.find(worker->Pid());
-  if (it != state.starting_dedicated_worker_processes.end()) {
-    // The worker is used for the specific actor creation task.
+  auto it = state.dedicated_workers_to_tasks.find(worker->Pid());
+  if (it != state.dedicated_workers_to_tasks.end()) {
+    // The worker is used for the specific actor creation task with dynamic options.
     const auto task_id = it->second;
-    state.starting_dedicated_worker_processes.erase(it);
     state.idle_dedicated_workers[task_id] = std::move(worker);
 
     // Return to do not put this worker to idle pool.
@@ -256,12 +255,15 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
       // There is an idle dedicated worker for this task.
       worker = std::move(it->second);
       state.idle_dedicated_workers.erase(it);
-    } else if (!HasPendingRegistrationForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
+      // Because we found a worker that can perform this task,
+      // we can remove it from dedicated_workers_to_tasks.
+      state.dedicated_workers_to_tasks.erase(worker->Pid());
+    } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
       auto pid = StartWorkerProcess(task_spec.GetLanguage(), task_spec.DynamicWorkerOptions());
       if (pid > 0) {
-        state.starting_dedicated_worker_processes[pid] = task_spec.TaskId();
+        state.dedicated_workers_to_tasks[pid] = task_spec.TaskId();
       }
     }
   } else if (!task_spec.IsActorTask()) {
@@ -336,16 +338,6 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
   return workers;
 }
 
-bool WorkerPool::HasWorkerForTask(const Language &language, const TaskID &task_id) {
-  if (HasPendingRegistrationForTask(language, task_id)) {
-    return true;
-  }
-
-  auto &state = GetStateForLanguage(language);
-  auto it = state.idle_dedicated_workers.find(task_id);
-  return it != state.idle_dedicated_workers.end();
-}
-
 std::string WorkerPool::WarningAboutSize() {
   int64_t num_workers_started_or_registered = 0;
   for (const auto &entry : states_by_lang_) {
@@ -368,15 +360,14 @@ std::string WorkerPool::WarningAboutSize() {
   return warning_message.str();
 }
 
-bool WorkerPool::HasPendingRegistrationForTask(const Language &language,
-                                               const TaskID &task_id) {
+bool WorkerPool::HasPendingWorkerForTask(const Language &language,
+                                         const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
-  for (const auto &item : state.starting_dedicated_worker_processes) {
-    if (item.second == task_id) {
+  for (const auto &it : state.dedicated_workers_to_tasks) {
+    if (it.second == task_id) {
       return true;
     }
   }
-
   return false;
 }
 
