@@ -364,7 +364,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
 
     int maxActorReconstruction = 0;
-    List<String> dynamicWorkerOptions = new ArrayList<>();
+    List<String> dynamicWorkerOptions = ImmutableList.of();
     if (taskOptions instanceof ActorCreationOptions) {
       maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
       String jvmOptions = ((ActorCreationOptions) taskOptions).jvmOptions;
