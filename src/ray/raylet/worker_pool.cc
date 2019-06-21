@@ -284,18 +284,8 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     }
   }
 
-  if (worker == nullptr) {
-    // Push an error message to the user if the worker pool tells us that it is
-    // getting too big.
-    const std::string warning_message = WarningAboutSize();
-    if (warning_message != "") {
-      if (gcs_client_ != nullptr) {
-        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-            DriverID::Nil(), "worker_pool_large", warning_message, current_time_ms()));
-      } else {
-        RAY_LOG(WARNING) << "Failed to push error message to user since gcs client is null.";
-      }
-    }
+  if (worker == nullptr && pid > 0) {
+    WarnAboutSize();
   }
 
   return worker;
@@ -341,7 +331,7 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
   return workers;
 }
 
-std::string WorkerPool::WarningAboutSize() {
+void WorkerPool::WarnAboutSize() {
   int64_t num_workers_started_or_registered = 0;
   for (const auto &entry : states_by_lang_) {
     num_workers_started_or_registered +=
@@ -352,6 +342,8 @@ std::string WorkerPool::WarningAboutSize() {
   int64_t multiple = num_workers_started_or_registered / multiple_for_warning_;
   std::stringstream warning_message;
   if (multiple >= 3 && multiple > last_warning_multiple_) {
+    // Push an error message to the user if the worker pool tells us that it is
+    // getting too big.
     last_warning_multiple_ = multiple;
     warning_message << "WARNING: " << num_workers_started_or_registered
                     << " workers have been started. This could be a result of using "
@@ -359,8 +351,14 @@ std::string WorkerPool::WarningAboutSize() {
                     << "using nested tasks "
                     << "(see https://github.com/ray-project/ray/issues/3644) for "
                     << "some a discussion of workarounds.";
+
+    if (gcs_client_ != nullptr) {
+      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+          DriverID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms()));
+    } else {
+      RAY_LOG(WARNING) << "Failed to push error message to user since gcs client is null.";
+    }
   }
-  return warning_message.str();
 }
 
 bool WorkerPool::HasPendingWorkerForTask(const Language &language,

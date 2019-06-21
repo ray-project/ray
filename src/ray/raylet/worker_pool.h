@@ -181,14 +181,9 @@ class WorkerPool {
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
-  /// Generate a warning about the number of workers that have registered or
-  /// started if appropriate.
-  ///
-  /// \return An empty string if no warning should be generated and otherwise a
-  /// string with a warning message.
-  std::string WarningAboutSize();
+  /// Push an warning message to user if worker pool is getting to big.
+  void WarnAboutSize();
 
- private:
   /// We'll push a warning to the user every time a multiple of this many
   /// workers has been started.
   int multiple_for_warning_;
