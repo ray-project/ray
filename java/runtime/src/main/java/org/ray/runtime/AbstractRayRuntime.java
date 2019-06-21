@@ -72,7 +72,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> List<T> get(List<ObjectId> objectIds) {
-    // TODO: how to handle exception in get result without wait for all objects
+    // TODO (kfstorm): how to handle exception in get result without wait for all objects
     List<GetResult<T>> results = worker.getObjectInterface().get(objectIds, -1);
     return results.stream().map(result -> {
           // check here because we wait infinitely.

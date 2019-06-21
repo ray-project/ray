@@ -97,7 +97,7 @@ public class Worker {
       // Get local actor object and arguments.
       Object actor = null;
       if (isActorTask) {
-        // TODO: check is in core worker?
+        // TODO (kfstorm): check is in core worker?
         // Preconditions.checkState(spec.actorId.equals(currentActorId));
         if (actorCreationException != null) {
           throw actorCreationException;
@@ -127,7 +127,7 @@ public class Worker {
     } catch (Exception e) {
       LOGGER.error("Error executing task " + taskInfo, e);
       if (!isActorCreationTask) {
-        // TODO: more detailed information about this task
+        // TODO (kfstorm): more detailed information about this task
         objectInterface.put(returnId, new RayTaskException("Error executing task " + taskId,
             e));
       } else {

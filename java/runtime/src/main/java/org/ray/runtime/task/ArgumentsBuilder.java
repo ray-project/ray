@@ -38,7 +38,7 @@ public class ArgumentsBuilder {
           // to deserialize it.
           id = worker.getObjectInterface().put(arg);
         } else {
-          // TODO: support pass by value with metadata
+          // TODO (kfstorm): support pass by value with metadata
           // Pass by value for byte array must call Serializer.encode(...) to keep type information.
           // We could use RayObjectValueProxy.data here only after pass by value with metadata is
           // supported.

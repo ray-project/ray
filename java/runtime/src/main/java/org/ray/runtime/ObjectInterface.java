@@ -82,10 +82,6 @@ public class ObjectInterface {
           // Otherwise, the object is valid.
           result = new GetResult<>(true, (T) object, null);
         }
-
-        // TODO: release
-//        // Release the object from object store..
-//        objectStore.get().release(binaryIds[i]);
       } else {
         // If both meta and data are null, the object doesn't exist in object store.
         result = new GetResult<>(false, null, null);

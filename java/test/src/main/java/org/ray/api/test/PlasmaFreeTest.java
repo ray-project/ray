@@ -1,7 +1,7 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
@@ -26,8 +26,7 @@ public class PlasmaFreeTest extends BaseTest {
     Assert.assertEquals("hello", helloString);
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
 
-    List<ObjectId> ids = new ArrayList<>();
-    ids.add(helloId.getId());
+    List<ObjectId> ids = Collections.singletonList(helloId.getId());
     final boolean result = TestUtils.waitForCondition(() -> !((AbstractRayRuntime) Ray.internal())
         .getWorker().getObjectInterface().get(ids, 0).get(0).exists, 50);
     Assert.assertTrue(result);

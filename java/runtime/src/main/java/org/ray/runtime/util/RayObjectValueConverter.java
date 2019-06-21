@@ -18,7 +18,7 @@ public class RayObjectValueConverter {
       new ErrorTypeConverter(RayWorkerException.INSTANCE, ErrorType.WORKER_DIED),
       new ErrorTypeConverter(RayActorException.INSTANCE, ErrorType.ACTOR_DIED),
       new ErrorTypeConverter(UnreconstructableException.INSTANCE, ErrorType.OBJECT_UNRECONSTRUCTABLE),
-      // TODO: support any exceptions to support cross-language.
+      // TODO (kfstorm): support any exceptions to support cross-language.
       new RayActorConverter(),
   };
 
@@ -176,7 +176,7 @@ public class RayObjectValueConverter {
     @Override
     public WrappedObject fromValue(RayObjectValueProxy objectValue) {
       if (Arrays.equals(objectValue.metadata, JAVA_OBJECT_META)
-          // TODO: remove this fallback behavior after support pass by value with metadata
+          // TODO (kfstorm): remove this fallback behavior after support pass by value with metadata
           || objectValue.metadata == null || objectValue.metadata.length == 0
       ) {
         return new WrappedObject(Serializer.decode(objectValue.data, classLoader));
