@@ -108,8 +108,8 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
     create_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
         std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size)));
-    RAY_LOG(DEBUG) << "Create object " << object_id
-                   << ", number of chunks: " << num_chunks
+    RAY_LOG(DEBUG) << "Created object " << object_id
+                   << " in plasma store, number of chunks: " << num_chunks
                    << ", chunk index: " << chunk_index;
     RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
