@@ -9,8 +9,8 @@ from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import (Dense, Dropout, Flatten, Conv2D, MaxPooling2D)
 
-from ray.tune.examples.utils import (TuneKerasCallback, get_mnist_data,
-                                     set_keras_threads)
+from ray.tune.integration.keras import TuneReporterCallback
+from ray.tune.examples.utils import get_mnist_data, set_keras_threads
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -52,7 +52,7 @@ def train_mnist(config, reporter):
         epochs=epochs,
         verbose=0,
         validation_data=(x_test, y_test),
-        callbacks=[TuneKerasCallback(reporter)])
+        callbacks=[TuneReporterCallback(reporter)])
 
 
 if __name__ == "__main__":
@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     ray.init()
     sched = AsyncHyperBandScheduler(
-        time_attr="timesteps_total",
+        time_attr="training_iteration",
         metric="mean_accuracy",
         mode="max",
         max_t=400,
