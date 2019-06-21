@@ -10,6 +10,7 @@
 #include "ray/gcs/format/util.h"
 #include "ray/raylet/task.h"
 #include "ray/raylet/worker.h"
+#include "ray/gcs/client.h"
 
 namespace ray {
 
@@ -37,7 +38,7 @@ class WorkerPool {
   /// language.
   WorkerPool(
       int num_worker_processes, int num_workers_per_process,
-      int maximum_startup_concurrency,
+      int maximum_startup_concurrency, std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
       const std::unordered_map<Language, std::vector<std::string>> &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -123,13 +124,6 @@ class WorkerPool {
   /// Record metrics.
   void RecordMetrics() const;
 
-  /// Generate a warning about the number of workers that have registered or
-  /// started if appropriate.
-  ///
-  /// \return An empty string if no warning should be generated and otherwise a
-  /// string with a warning message.
-  std::string WarningAboutSize();
-
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
@@ -139,9 +133,11 @@ class WorkerPool {
   /// any workers.
   ///
   /// \param language Which language this worker process should be.
-  /// \param task_spec The task specification that we provide for get more information.
-  void StartWorkerProcess(const Language &language,
-                          const TaskSpecification *task_spec = nullptr);
+  /// \param dynamic_options The dynamic options that we should add for worker command.
+  /// \return The id of the process that we started if it's positive,
+  /// otherwise it means we didn't start a process.
+  int StartWorkerProcess(const Language &language,
+                         const std::vector<std::string> dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   ///
@@ -188,7 +184,14 @@ class WorkerPool {
   ///
   /// \param language The required language.
   /// \param task_id The task that we want to query.
-  bool PendingRegistrationForTask(const Language &language, const TaskID &task_id);
+  bool HasPendingRegistrationForTask(const Language &language, const TaskID &task_id);
+
+  /// Generate a warning about the number of workers that have registered or
+  /// started if appropriate.
+  ///
+  /// \return An empty string if no warning should be generated and otherwise a
+  /// string with a warning message.
+  std::string WarningAboutSize();
 
  private:
   /// We'll push a warning to the user every time a multiple of this many
@@ -199,6 +202,8 @@ class WorkerPool {
   /// The last size at which a warning about the number of registered workers
   /// was generated.
   int64_t last_warning_multiple_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
 };
 
 }  // namespace raylet

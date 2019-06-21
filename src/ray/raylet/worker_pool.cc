@@ -43,11 +43,12 @@ namespace raylet {
 /// (num_worker_processes * num_workers_per_process) workers for each language.
 WorkerPool::WorkerPool(
     int num_worker_processes, int num_workers_per_process,
-    int maximum_startup_concurrency,
+    int maximum_startup_concurrency, std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
     const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
     : num_workers_per_process_(num_workers_per_process),
       multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
       maximum_startup_concurrency_(maximum_startup_concurrency),
+      gcs_client_(std::move(gcs_client)),
       last_warning_multiple_(0) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
   RAY_CHECK(maximum_startup_concurrency > 0);
@@ -100,8 +101,8 @@ uint32_t WorkerPool::Size(const Language &language) const {
   }
 }
 
-void WorkerPool::StartWorkerProcess(const Language &language,
-                                    const TaskSpecification *task_spec) {
+int WorkerPool::StartWorkerProcess(const Language &language,
+                                   const std::vector<std::string> dynamic_options) {
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
@@ -111,17 +112,12 @@ void WorkerPool::StartWorkerProcess(const Language &language,
     RAY_LOG(DEBUG) << "Worker not started, " << state.starting_worker_processes.size()
                    << " worker processes of language type " << static_cast<int>(language)
                    << " pending registration";
-    return;
+    return -1;
   }
   // Either there are no workers pending registration or the worker start is being forced.
   RAY_LOG(DEBUG) << "Starting new worker process, current pool has "
                  << state.idle_actor.size() << " actor workers, and " << state.idle.size()
                  << " non-actor workers";
-
-  std::vector<std::string> dynamic_worker_options;
-  if (task_spec != nullptr && task_spec->IsActorCreationTask()) {
-    dynamic_worker_options = task_spec->DynamicWorkerOptions();
-  }
 
   // Extract pointers from the worker command to pass into execvp.
   std::vector<const char *> worker_command_args;
@@ -131,10 +127,9 @@ void WorkerPool::StartWorkerProcess(const Language &language,
         kWorkerDynamicOptionPlaceholderPrefix + std::to_string(dynamic_option_index);
 
     if (token == option_placeholder) {
-      if (!dynamic_worker_options.empty()) {
-        RAY_CHECK(dynamic_option_index < dynamic_worker_options.size());
-        worker_command_args.push_back(
-            dynamic_worker_options[dynamic_option_index].c_str());
+      if (!dynamic_options.empty()) {
+        RAY_CHECK(dynamic_option_index < dynamic_options.size());
+        worker_command_args.push_back(dynamic_options[dynamic_option_index].c_str());
         ++dynamic_option_index;
       }
     } else {
@@ -147,19 +142,13 @@ void WorkerPool::StartWorkerProcess(const Language &language,
   if (pid < 0) {
     // Failure case.
     RAY_LOG(FATAL) << "Failed to fork worker process: " << strerror(errno);
-    return;
+    return -1;
   } else if (pid > 0) {
     // Parent process case.
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
     state.starting_worker_processes.emplace(
         std::make_pair(pid, num_workers_per_process_));
-    if (!dynamic_worker_options.empty()) {
-      RAY_CHECK(task_spec != nullptr)
-          << "task_spec should not be nullptr "
-             "because we specified dynamic worker options for this task.";
-      state.starting_dedicated_worker_processes[pid] = task_spec->TaskId();
-    }
-    return;
+    return pid;
   }
 }
 
@@ -267,10 +256,13 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
       // There is an idle dedicated worker for this task.
       worker = std::move(it->second);
       state.idle_dedicated_workers.erase(it);
-    } else if (!PendingRegistrationForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
+    } else if (!HasPendingRegistrationForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
-      StartWorkerProcess(task_spec.GetLanguage(), &task_spec);
+      auto pid = StartWorkerProcess(task_spec.GetLanguage(), task_spec.DynamicWorkerOptions());
+      if (pid > 0) {
+        state.starting_dedicated_worker_processes[pid] = task_spec.TaskId();
+      }
     }
   } else if (!task_spec.IsActorTask()) {
     // Code path of normal task or actor creation task without dynamic worker options.
@@ -288,6 +280,16 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     if (actor_entry != state.idle_actor.end()) {
       worker = std::move(actor_entry->second);
       state.idle_actor.erase(actor_entry);
+    }
+  }
+
+  if (worker == nullptr) {
+    // Push an error message to the user if the worker pool tells us that it is
+    // getting too big.
+    const std::string warning_message = WarningAboutSize();
+    if (warning_message != "") {
+      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+        DriverID::Nil(), "worker_pool_large", warning_message, current_time_ms()));
     }
   }
 
@@ -335,7 +337,7 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
 }
 
 bool WorkerPool::HasWorkerForTask(const Language &language, const TaskID &task_id) {
-  if (PendingRegistrationForTask(language, task_id)) {
+  if (HasPendingRegistrationForTask(language, task_id)) {
     return true;
   }
 
@@ -366,8 +368,8 @@ std::string WorkerPool::WarningAboutSize() {
   return warning_message.str();
 }
 
-bool WorkerPool::PendingRegistrationForTask(const Language &language,
-                                            const TaskID &task_id) {
+bool WorkerPool::HasPendingRegistrationForTask(const Language &language,
+                                               const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
   for (const auto &item : state.starting_dedicated_worker_processes) {
     if (item.second == task_id) {
