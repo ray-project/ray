@@ -18,17 +18,17 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public UniqueId getCurrentDriverId() {
-    return runtime.getWorker().getCurrentDriverId();
+    return runtime.getWorker().getWorkerContext().getCurrentDriverId();
   }
 
   @Override
   public UniqueId getCurrentActorId() {
     Worker worker = runtime.getWorker();
-    Preconditions.checkState(worker != null &&
-            worker.getWorkerContext().getCurrentActorId() != null &&
-            !worker.getWorkerContext().getCurrentActorId().isNil(),
+    Preconditions.checkState(worker != null);
+    UniqueId actorId = worker.getWorkerContext().getCurrentActorId();
+    Preconditions.checkState(actorId != null && !actorId.isNil(),
         "This method should only be called from an actor.");
-    return worker.getWorkerContext().getCurrentActorId();
+    return actorId;
   }
 
   @Override

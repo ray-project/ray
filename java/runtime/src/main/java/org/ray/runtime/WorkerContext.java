@@ -5,13 +5,17 @@ import org.ray.runtime.task.TaskInfo;
 import org.ray.runtime.util.RayObjectValueConverter;
 
 public class WorkerContext {
+  private final long nativeCoreWorker;
+
   private ClassLoader currentClassLoader;
 
   private RayObjectValueConverter rayObjectValueConverter = new RayObjectValueConverter(null);
 
   private TaskInfo currentTask;
 
-  private UniqueId currentActorId;
+  public WorkerContext(long nativeCoreWorker) {
+    this.nativeCoreWorker = nativeCoreWorker;
+  }
 
   public ClassLoader getCurrentClassLoader() {
     return currentClassLoader;
@@ -37,10 +41,20 @@ public class WorkerContext {
   }
 
   public UniqueId getCurrentActorId() {
-    return currentActorId;
+    return new UniqueId(getCurrentActorId(nativeCoreWorker));
   }
 
-  public void setCurrentActorId(UniqueId currentActorId) {
-    this.currentActorId = currentActorId;
+  public UniqueId getCurrentDriverId() {
+    return new UniqueId(getCurrentDriverId(nativeCoreWorker));
   }
+
+  public UniqueId getCurrentWorkerId() {
+    return new UniqueId(getCurrentWorkerId(nativeCoreWorker));
+  }
+
+  private static native byte[] getCurrentDriverId(long nativeCoreWorker);
+
+  private static native byte[] getCurrentWorkerId(long nativeCoreWorker);
+
+  private static native byte[] getCurrentActorId(long nativeCoreWorker);
 }

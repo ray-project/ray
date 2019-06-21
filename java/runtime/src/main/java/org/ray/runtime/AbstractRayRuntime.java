@@ -22,6 +22,7 @@ import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
+import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 
@@ -92,12 +93,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public void setResource(String resourceName, double capacity, UniqueId nodeId) {
-    throw new UnsupportedOperationException();
-//    Preconditions.checkArgument(Double.compare(capacity, 0) >= 0);
-//    if (nodeId == null) {
-//      nodeId = UniqueId.NIL;
-//    }
-//    rayletClient.setResource(resourceName, capacity, nodeId);
+    Preconditions.checkArgument(Double.compare(capacity, 0) >= 0);
+    if (nodeId == null) {
+      nodeId = UniqueId.NIL;
+    }
+    worker.getRayletClient().setResource(resourceName, capacity, nodeId);
   }
 
   @Override
@@ -127,7 +127,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getCurrentDriverId(), func).functionDescriptor;
+        functionManager.getFunction(worker.getWorkerContext().getCurrentDriverId(), func).functionDescriptor;
     return call(functionDescriptor, args, options);
   }
 
@@ -136,7 +136,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     RayActorImpl actorImpl = (RayActorImpl) actor;
     Preconditions.checkState(actorImpl.getLanguage() == WorkerLanguage.JAVA);
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getCurrentDriverId(), func).functionDescriptor;
+        functionManager.getFunction(worker.getWorkerContext().getCurrentDriverId(), func).functionDescriptor;
     return call(actorImpl, functionDescriptor, args);
   }
 
@@ -144,7 +144,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
                                      Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getCurrentDriverId(), actorFactoryFunc).functionDescriptor;
+        functionManager.getFunction(worker.getWorkerContext().getCurrentDriverId(), actorFactoryFunc).functionDescriptor;
     //noinspection unchecked
     return (RayActor<T>) createActor(WorkerLanguage.JAVA, functionDescriptor, args, options);
   }

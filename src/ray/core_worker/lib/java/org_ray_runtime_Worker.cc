@@ -68,18 +68,6 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *env, jc
 
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    getCurrentDriverId
- * Signature: (J)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_Worker_getCurrentDriverId(
-    JNIEnv *env, jclass o, jlong nativeCoreWorker) {
-  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorker);
-  ray::DriverID driver_id = core_worker->Context().GetCurrentDriverID();
-  return JByteArrayFromUniqueId<ray::DriverID>(env, driver_id).GetJByteArray();
-}
-
-/*
- * Class:     org_ray_runtime_Worker
  * Method:    getTaskReturnId
  * Signature: ([BJ)[B
  */

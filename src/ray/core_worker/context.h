@@ -22,6 +22,10 @@ class WorkerContext {
 
   void SetCurrentTask(const raylet::TaskSpecification &spec);
 
+  const ActorID &GetCurrentActorID() const;
+
+  void SetCurrentActorID(const ActorID &actor_id);
+
   int GetNextTaskIndex();
 
   int GetNextPutIndex();
@@ -35,6 +39,9 @@ class WorkerContext {
 
   /// Driver ID for this worker.
   DriverID current_driver_id;
+
+  /// ID of current actor.
+  ActorID current_actor_id;
 
  private:
   static WorkerThreadContext &GetThreadContext();

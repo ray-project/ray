@@ -43,7 +43,8 @@ WorkerContext::WorkerContext(WorkerType worker_type, const DriverID &driver_id)
       worker_id(worker_type == WorkerType::DRIVER
                     ? ClientID::FromBinary(driver_id.Binary())
                     : ClientID::FromRandom()),
-      current_driver_id(worker_type == WorkerType::DRIVER ? driver_id : DriverID::Nil()) {
+      current_driver_id(worker_type == WorkerType::DRIVER ? driver_id : DriverID::Nil()),
+      current_actor_id(ActorID::Nil()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to randmom ID via GetThreadContext).
@@ -67,7 +68,16 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
 
 void WorkerContext::SetCurrentTask(const raylet::TaskSpecification &spec) {
   current_driver_id = spec.DriverId();
+  if (spec.IsActorCreationTask()) {
+    current_actor_id = spec.ActorCreationId();
+  }
   GetThreadContext().SetCurrentTask(spec);
+}
+
+const ActorID &WorkerContext::GetCurrentActorID() const { return current_actor_id; }
+
+void WorkerContext::SetCurrentActorID(const ActorID &actor_id) {
+  current_actor_id = actor_id;
 }
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {

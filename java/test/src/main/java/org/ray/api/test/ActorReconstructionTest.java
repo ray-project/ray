@@ -126,27 +126,26 @@ public class ActorReconstructionTest extends BaseTest {
 
   @Test
   public void testActorCheckpointing() throws IOException, InterruptedException {
-    throw new UnsupportedOperationException();
-//    TestUtils.skipTestUnderSingleProcess();
-//    ActorCreationOptions options =
-//        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
-//    RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
-//    // Call increase 3 times.
-//    for (int i = 0; i < 3; i++) {
-//      Ray.call(CheckpointableCounter::increase, actor).get();
-//    }
-//    // Assert that the actor wasn't resumed from a checkpoint.
-//    Assert.assertFalse(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
-//    int pid = Ray.call(CheckpointableCounter::getPid, actor).get();
-//    Runtime.getRuntime().exec("kill -9 " + pid);
-//    // Wait for the actor to be killed.
-//    TimeUnit.SECONDS.sleep(1);
-//
-//    // Try calling increase on this actor again and check the value is now 4.
-//    int value = Ray.call(CheckpointableCounter::increase, actor).get();
-//    Assert.assertEquals(value, 4);
-//    // Assert that the actor was resumed from a checkpoint.
-//    Assert.assertTrue(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
+    TestUtils.skipTestUnderSingleProcess();
+    ActorCreationOptions options =
+        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
+    RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
+    // Call increase 3 times.
+    for (int i = 0; i < 3; i++) {
+      Ray.call(CheckpointableCounter::increase, actor).get();
+    }
+    // Assert that the actor wasn't resumed from a checkpoint.
+    Assert.assertFalse(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
+    int pid = Ray.call(CheckpointableCounter::getPid, actor).get();
+    Runtime.getRuntime().exec("kill -9 " + pid);
+    // Wait for the actor to be killed.
+    TimeUnit.SECONDS.sleep(1);
+
+    // Try calling increase on this actor again and check the value is now 4.
+    int value = Ray.call(CheckpointableCounter::increase, actor).get();
+    Assert.assertEquals(value, 4);
+    // Assert that the actor was resumed from a checkpoint.
+    Assert.assertTrue(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
   }
 }
 

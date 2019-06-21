@@ -9,10 +9,13 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.HashMap;
+import java.util.Map;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.gcs.GcsClient;
+import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.runner.RunManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,7 +93,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
-    worker = new Worker(rayConfig.workerMode, functionManager,
+    worker = new Worker(this, functionManager,
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
         rayConfig.workerMode == WorkerMode.DRIVER ? rayConfig.driverId : UniqueId.NIL);
 
@@ -112,25 +115,24 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
    * Register this worker or driver to GCS.
    */
   private void registerWorker() {
-    // TODO: implement in C++
-//    RedisClient redisClient = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-//    Map<String, String> workerInfo = new HashMap<>();
-//    String workerId = new String(workerContext.getCurrentWorkerId().getBytes());
-//    if (rayConfig.workerMode == WorkerMode.DRIVER) {
-//      workerInfo.put("node_ip_address", rayConfig.nodeIp);
-//      workerInfo.put("driver_id", workerId);
-//      workerInfo.put("start_time", String.valueOf(System.currentTimeMillis()));
-//      workerInfo.put("plasma_store_socket", rayConfig.objectStoreSocketName);
-//      workerInfo.put("raylet_socket", rayConfig.rayletSocketName);
-//      workerInfo.put("name", System.getProperty("user.dir"));
-//      //TODO: worker.redis_client.hmset(b"Drivers:" + worker.workerId, driver_info)
-//      redisClient.hmset("Drivers:" + workerId, workerInfo);
-//    } else {
-//      workerInfo.put("node_ip_address", rayConfig.nodeIp);
-//      workerInfo.put("plasma_store_socket", rayConfig.objectStoreSocketName);
-//      workerInfo.put("raylet_socket", rayConfig.rayletSocketName);
-//      //TODO: b"Workers:" + worker.workerId,
-//      redisClient.hmset("Workers:" + workerId, workerInfo);
-//    }
+    RedisClient redisClient = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+    Map<String, String> workerInfo = new HashMap<>();
+    String workerId = new String(worker.getWorkerContext().getCurrentWorkerId().getBytes());
+    if (rayConfig.workerMode == WorkerMode.DRIVER) {
+      workerInfo.put("node_ip_address", rayConfig.nodeIp);
+      workerInfo.put("driver_id", workerId);
+      workerInfo.put("start_time", String.valueOf(System.currentTimeMillis()));
+      workerInfo.put("plasma_store_socket", rayConfig.objectStoreSocketName);
+      workerInfo.put("raylet_socket", rayConfig.rayletSocketName);
+      workerInfo.put("name", System.getProperty("user.dir"));
+      //TODO: worker.redis_client.hmset(b"Drivers:" + worker.workerId, driver_info)
+      redisClient.hmset("Drivers:" + workerId, workerInfo);
+    } else {
+      workerInfo.put("node_ip_address", rayConfig.nodeIp);
+      workerInfo.put("plasma_store_socket", rayConfig.objectStoreSocketName);
+      workerInfo.put("raylet_socket", rayConfig.rayletSocketName);
+      //TODO: b"Workers:" + worker.workerId,
+      redisClient.hmset("Workers:" + workerId, workerInfo);
+    }
   }
 }

@@ -7,6 +7,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#undef org_ray_runtime_Worker_NUM_ACTOR_CHECKPOINTS_TO_KEEP
+#define org_ray_runtime_Worker_NUM_ACTOR_CHECKPOINTS_TO_KEEP 20L
 /*
  * Class:     org_ray_runtime_Worker
  * Method:    createCoreWorker
@@ -23,15 +25,6 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_createCoreWorker(JNIEnv *, j
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *, jclass, jlong,
                                                                  jobject);
-
-/*
- * Class:     org_ray_runtime_Worker
- * Method:    getCurrentDriverId
- * Signature: (J)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_Worker_getCurrentDriverId(JNIEnv *,
-                                                                            jclass,
-                                                                            jlong);
 
 /*
  * Class:     org_ray_runtime_Worker
