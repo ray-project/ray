@@ -44,7 +44,6 @@ class RAY_EXPORT AsyncGcsClient {
   /// one event loop should be attached at a time.
   Status Attach(boost::asio::io_service &io_service);
 
-  inline FunctionTable &function_table();
   // TODO: Some API for getting the error on the driver
   ObjectTable &object_table();
   raylet::TaskTable &raylet_task_table();
@@ -78,7 +77,6 @@ class RAY_EXPORT AsyncGcsClient {
   std::string DebugString() const;
 
  private:
-  std::unique_ptr<FunctionTable> function_table_;
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;

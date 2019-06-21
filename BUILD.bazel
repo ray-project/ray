@@ -442,7 +442,6 @@ cc_library(
     copts = COPTS,
     includes = [
         "src/ray/gcs/format",
-        "src/ray/gcs/gcs_entry.h",
     ],
     deps = [
         ":gcs_cc_proto",
