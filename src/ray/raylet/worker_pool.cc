@@ -142,7 +142,6 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   if (pid < 0) {
     // Failure case.
     RAY_LOG(FATAL) << "Failed to fork worker process: " << strerror(errno);
-    return -1;
   } else if (pid > 0) {
     // Parent process case.
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
@@ -150,6 +149,7 @@ int WorkerPool::StartWorkerProcess(const Language &language,
         std::make_pair(pid, num_workers_per_process_));
     return pid;
   }
+  return -1;
 }
 
 pid_t WorkerPool::StartProcess(const std::vector<const char *> &worker_command_args) {
@@ -246,6 +246,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   const auto &actor_id = task_spec.ActorId();
 
   std::shared_ptr<Worker> worker = nullptr;
+  int pid = -1;
   if (task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) {
     // Code path of actor creation task with dynamic worker options.
     // Try to pop it from idle dedicated pool.
@@ -260,7 +261,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
-      auto pid = StartWorkerProcess(task_spec.GetLanguage(), task_spec.DynamicWorkerOptions());
+      pid = StartWorkerProcess(task_spec.GetLanguage(), task_spec.DynamicWorkerOptions());
       if (pid > 0) {
         state.dedicated_workers_to_tasks[pid] = task_spec.TaskId();
       }
@@ -273,7 +274,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     } else {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
-      StartWorkerProcess(task_spec.GetLanguage());
+      pid = StartWorkerProcess(task_spec.GetLanguage());
     }
   } else {
     // Code path of actor task.
