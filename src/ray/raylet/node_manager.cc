@@ -336,7 +336,6 @@ void NodeManager::GetObjectManagerProfileInfo() {
   auto profile_info = object_manager_.GetAndResetProfilingInfo();
 
   if (profile_info.profile_events_size() > 0) {
-    flatbuffers::FlatBufferBuilder fbb;
     RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_info));
   }
 

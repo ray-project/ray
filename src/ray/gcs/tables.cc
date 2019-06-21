@@ -51,8 +51,7 @@ Status Log<ID, Data>::Append(const DriverID &driver_id, const ID &id,
       (done)(client_, id, *data);
     }
   };
-  std::string str;
-  data->SerializeToString(&str);
+  std::string str = data->SerializeAsString();
   return GetRedisContext(id)->RunAsync(GetLogAppendCommand(command_type_), id, str.data(),
                                        str.length(), prefix_, pubsub_channel_,
                                        std::move(callback));
@@ -75,8 +74,7 @@ Status Log<ID, Data>::AppendAt(const DriverID &driver_id, const ID &id,
       }
     }
   };
-  std::string str;
-  data->SerializeToString(&str);
+  std::string str = data->SerializeAsString();
   return GetRedisContext(id)->RunAsync(GetLogAppendCommand(command_type_), id, str.data(),
                                        str.length(), prefix_, pubsub_channel_,
                                        std::move(callback), log_length);
@@ -236,8 +234,7 @@ Status Table<ID, Data>::Add(const DriverID &driver_id, const ID &id,
       (done)(client_, id, *data);
     }
   };
-  std::string str;
-  data->SerializeToString(&str);
+  std::string str = data->SerializeAsString();
   return GetRedisContext(id)->RunAsync(GetTableAddCommand(command_type_), id, str.data(),
                                        str.length(), prefix_, pubsub_channel_,
                                        std::move(callback));
@@ -300,8 +297,7 @@ Status Set<ID, Data>::Add(const DriverID &driver_id, const ID &id,
       (done)(client_, id, *data);
     }
   };
-  std::string str;
-  data->SerializeToString(&str);
+  std::string str = data->SerializeAsString();
   return GetRedisContext(id)->RunAsync("RAY.SET_ADD", id, str.data(), str.length(),
                                        prefix_, pubsub_channel_, std::move(callback));
 }
@@ -315,8 +311,7 @@ Status Set<ID, Data>::Remove(const DriverID &driver_id, const ID &id,
       (done)(client_, id, *data);
     }
   };
-  std::string str;
-  data->SerializeToString(&str);
+  std::string str = data->SerializeAsString();
   return GetRedisContext(id)->RunAsync("RAY.SET_REMOVE", id, str.data(), str.length(),
                                        prefix_, pubsub_channel_, std::move(callback));
 }
@@ -392,18 +387,14 @@ Status Hash<ID, Data>::Lookup(const DriverID &driver_id, const ID &id,
         gcs_entry.ParseFromString(reply.ReadAsString());
         RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
         RAY_CHECK(gcs_entry.entries_size() % 2 == 0);
-        DataMap result;
         for (int i = 0; i < gcs_entry.entries_size(); i += 2) {
           const auto &key = gcs_entry.entries(i);
           const auto value = std::make_shared<Data>();
           value->ParseFromString(gcs_entry.entries(i + 1));
-          result.emplace(key, std::move(value));
+          results.emplace(key, std::move(value));
         }
-
-        lookup(client_, id, result);
-      } else {
-        lookup(client_, id, {});
       }
+      lookup(client_, id, results);
     }
   };
   std::vector<uint8_t> nil;
@@ -474,9 +465,9 @@ std::string ErrorTable::DebugString() const {
 }
 
 Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
+  // TODO(hchen): Change the parameter to shared_ptr to avoid copying data.
   auto data = std::make_shared<ProfileTableData>();
   data->CopyFrom(profile_events);
-  // XXX
   return Append(DriverID::Nil(), UniqueID::FromRandom(), data,
                 /*done_callback=*/nullptr);
 }
@@ -507,8 +498,7 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() &&
-        entry.second.entry_type() == ClientTableData::DELETION) {
+    if (!entry.first.IsNil() && entry.second.entry_type() == ClientTableData::DELETION) {
       client_removed_callback_(client_, entry.first, entry.second);
     }
   }
@@ -552,9 +542,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
     // was alive and is now dead or resources have been updated.
     bool was_not_deleted = (entry->second.entry_type() != ClientTableData::DELETION);
     bool is_deleted = (data.entry_type() == ClientTableData::DELETION);
-    bool is_res_modified =
-        ((data.entry_type() == ClientTableData::RES_CREATEUPDATE) ||
-         (data.entry_type() == ClientTableData::RES_DELETE));
+    bool is_res_modified = ((data.entry_type() == ClientTableData::RES_CREATEUPDATE) ||
+                            (data.entry_type() == ClientTableData::RES_DELETE));
     is_notif_new = (was_not_deleted && (is_deleted || is_res_modified));
     // Once a client with a given ID has been removed, it should never be added
     // again. If the entry was in the cache and the client was deleted, check
@@ -572,14 +561,14 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
       (data.entry_type() == ClientTableData::DELETION)) {
     RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable Insertion/Deletion "
                       "notification for client id "
-                   << client_id << ". ClientTableData: " << int(data.entry_type())
+                   << client_id << ". EntryType: " << int(data.entry_type())
                    << ". Setting the client cache to data.";
     client_cache_[client_id] = data;
   } else if ((data.entry_type() == ClientTableData::RES_CREATEUPDATE) ||
              (data.entry_type() == ClientTableData::RES_DELETE)) {
     RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable RES_CREATEUPDATE "
                       "notification for client id "
-                   << client_id << ". ClientTableData: " << int(data.entry_type())
+                   << client_id << ". EntryType: " << int(data.entry_type())
                    << ". Updating the client cache with the delta from the log.";
 
     ClientTableData &cache_data = client_cache_[client_id];
@@ -597,8 +586,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
                                    existing_resource_label);
         // Resource already exists, set capacity if updation call..
         if (data.entry_type() == ClientTableData::RES_CREATEUPDATE) {
-          //          cache_data.mutable_resources_total_capacity()[index] = capacity;
-          // XXX:639
+          cache_data.set_resources_total_capacity(index, capacity);
         }
         // .. delete if deletion call.
         else if (data.entry_type() == ClientTableData::RES_DELETE) {
@@ -646,8 +634,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   }
 }
 
-void ClientTable::HandleConnected(AsyncGcsClient *client,
-                                  const ClientTableData &data) {
+void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableData &data) {
   auto connected_client_id = ClientID::FromBinary(data.client_id());
   RAY_CHECK(client_id_ == connected_client_id)
       << connected_client_id << " " << client_id_;
@@ -678,32 +665,32 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
     HandleConnected(client, data);
 
     // Callback for a notification from the client table.
-    auto notification_callback =
-        [this](AsyncGcsClient *client, const UniqueID &log_key,
-               const std::vector<ClientTableData> &notifications) {
-          RAY_CHECK(log_key == client_log_key_);
-          std::unordered_map<std::string, ClientTableData> connected_nodes;
-          std::unordered_map<std::string, ClientTableData> disconnected_nodes;
-          for (auto &notification : notifications) {
-            // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
-            // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
-            if (notification.entry_type() != ClientTableData::DELETION) {
-              connected_nodes.emplace(notification.client_id(), notification);
-            } else {
-              auto iter = connected_nodes.find(notification.client_id());
-              if (iter != connected_nodes.end()) {
-                connected_nodes.erase(iter);
-              }
-              disconnected_nodes.emplace(notification.client_id(), notification);
-            }
+    auto notification_callback = [this](
+                                     AsyncGcsClient *client, const UniqueID &log_key,
+                                     const std::vector<ClientTableData> &notifications) {
+      RAY_CHECK(log_key == client_log_key_);
+      std::unordered_map<std::string, ClientTableData> connected_nodes;
+      std::unordered_map<std::string, ClientTableData> disconnected_nodes;
+      for (auto &notification : notifications) {
+        // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
+        // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
+        if (notification.entry_type() != ClientTableData::DELETION) {
+          connected_nodes.emplace(notification.client_id(), notification);
+        } else {
+          auto iter = connected_nodes.find(notification.client_id());
+          if (iter != connected_nodes.end()) {
+            connected_nodes.erase(iter);
           }
-          for (const auto &pair : connected_nodes) {
-            HandleNotification(client, pair.second);
-          }
-          for (const auto &pair : disconnected_nodes) {
-            HandleNotification(client, pair.second);
-          }
-        };
+          disconnected_nodes.emplace(notification.client_id(), notification);
+        }
+      }
+      for (const auto &pair : connected_nodes) {
+        HandleNotification(client, pair.second);
+      }
+      for (const auto &pair : disconnected_nodes) {
+        HandleNotification(client, pair.second);
+      }
+    };
     // Callback to request notifications from the client table once we've
     // successfully subscribed.
     auto subscription_callback = [this](AsyncGcsClient *c) {
@@ -751,8 +738,7 @@ void ClientTable::GetClient(const ClientID &client_id,
   }
 }
 
-const std::unordered_map<ClientID, ClientTableData> &ClientTable::GetAllClients()
-    const {
+const std::unordered_map<ClientID, ClientTableData> &ClientTable::GetAllClients() const {
   return client_cache_;
 }
 

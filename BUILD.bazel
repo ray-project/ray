@@ -589,8 +589,8 @@ flatbuffer_py_library(
         "Language.py",
         "ProfileEvent.py",
         "ProfileTableData.py",
-        "RayResource.py",
         "TaskInfo.py",
+        "ResourcePair.py"
     ],
     out_prefix = "python/ray/core/generated/",
 )

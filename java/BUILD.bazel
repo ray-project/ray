@@ -153,8 +153,8 @@ flatbuffers_generated_files = [
     "Language.java",
     "ProfileEvent.java",
     "ProfileTableData.java",
-    "RayResource.java",
     "TaskInfo.java",
+    "ResourcePair.java",
 ]
 
 flatbuffer_java_library(
