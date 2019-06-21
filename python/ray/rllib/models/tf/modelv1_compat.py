@@ -16,78 +16,82 @@ tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class ModelV1Wrapper(TFModelV2):
-    """Compatibility wrapper that allows V1 models to be used as ModelV2."""
+def make_v1_wrapper(legacy_model_cls):
 
-    def __init__(self, legacy_model_cls, obs_space, action_space, output_spec,
-                 model_config, name):
-        TFModelV2.__init__(self, obs_space, action_space, output_spec,
-                           model_config, name)
-        self.legacy_model_cls = legacy_model_cls
+    class ModelV1Wrapper(TFModelV2):
+        """Compatibility wrapper that allows V1 models to be used as ModelV2."""
 
-        # Tracks the last v1 model created by the call to forward
-        self.cur_instance = None
+        def __init__(self, obs_space, action_space, num_outputs,
+                     model_config, name):
+            TFModelV2.__init__(self, obs_space, action_space, num_outputs,
+                               model_config, name)
+            self.legacy_model_cls = legacy_model_cls
 
-        # XXX: Try to guess the initial state size. Since the size of the state
-        # is known only after forward() for V1 models, it might be wrong.
-        if model_config.get("use_lstm"):
-            cell_size = model_config.get("lstm_cell_size", 256)
-            self.initial_state = [
-                np.zeros(cell_size, np.float32),
-                np.zeros(cell_size, np.float32),
-            ]
-        else:
-            self.initial_state = []
+            # Tracks the last v1 model created by the call to forward
+            self.cur_instance = None
 
-        # Tracks branches created so far
-        self.branches_created = set()
+            # XXX: Try to guess the initial state size. Since the size of the state
+            # is known only after forward() for V1 models, it might be wrong.
+            if model_config.get("use_lstm"):
+                cell_size = model_config.get("lstm_cell_size", 256)
+                self.initial_state = [
+                    np.zeros(cell_size, np.float32),
+                    np.zeros(cell_size, np.float32),
+                ]
+            else:
+                self.initial_state = []
 
-        with tf.variable_scope(self.name) as scope:
-            self.variable_scope = scope
+            # Tracks branches created so far
+            self.branches_created = set()
 
-    @override(ModelV2)
-    def get_initial_state(self):
-        return self.initial_state
+            with tf.variable_scope(self.name) as scope:
+                self.variable_scope = scope
 
-    @override(ModelV2)
-    def __call__(self, input_dict, state, seq_lens):
-        if self.cur_instance:
-            # create a weight-sharing model copy
-            with tf.variable_scope(self.cur_instance.scope, reuse=True):
-                new_instance = self.legacy_model_cls(
-                    input_dict, self.obs_space, self.action_space,
-                    self.output_spec.size, self.model_config, state, seq_lens)
-        else:
-            # create a new model instance
-            with tf.variable_scope(self.name):
-                new_instance = self.legacy_model_cls(
-                    input_dict, self.obs_space, self.action_space,
-                    self.output_spec.size, self.model_config, state, seq_lens)
-        self.cur_instance = new_instance
-        self.variable_scope = new_instance.scope
-        return new_instance.outputs, new_instance.state_out
+        @override(ModelV2)
+        def get_initial_state(self):
+            return self.initial_state
 
-    @override(ModelV2)
-    def variables(self):
-        return _scope_vars(self.variable_scope)
+        @override(ModelV2)
+        def __call__(self, input_dict, state, seq_lens):
+            if self.cur_instance:
+                # create a weight-sharing model copy
+                with tf.variable_scope(self.cur_instance.scope, reuse=True):
+                    new_instance = self.legacy_model_cls(
+                        input_dict, self.obs_space, self.action_space,
+                        self.num_outputs, self.model_config, state, seq_lens)
+            else:
+                # create a new model instance
+                with tf.variable_scope(self.name):
+                    new_instance = self.legacy_model_cls(
+                        input_dict, self.obs_space, self.action_space,
+                        self.num_outputs, self.model_config, state, seq_lens)
+            self.cur_instance = new_instance
+            self.variable_scope = new_instance.scope
+            return new_instance.outputs, new_instance.state_out
 
-    @override(ModelV2)
-    def custom_loss(self, policy_loss, loss_inputs):
-        return self.cur_instance.custom_loss(policy_loss, loss_inputs)
+        @override(ModelV2)
+        def variables(self):
+            return super(ModelV1Wrapper, self).variables() + _scope_vars(self.variable_scope)
 
-    @override(ModelV2)
-    def metrics(self):
-        return self.cur_instance.custom_stats()
+        @override(ModelV2)
+        def custom_loss(self, policy_loss, loss_inputs):
+            return self.cur_instance.custom_loss(policy_loss, loss_inputs)
 
-    def branch_variable_scope(self, branch_type):
-        if branch_type in self.branches_created:
-            reuse = True
-        else:
-            self.branches_created.add(branch_type)
-            reuse = tf.AUTO_REUSE
+        @override(ModelV2)
+        def metrics(self):
+            return self.cur_instance.custom_stats()
 
-        with tf.variable_scope(self.variable_scope):
-            return tf.variable_scope(branch_type, reuse=reuse)
+        def branch_variable_scope(self, branch_type):
+            if branch_type in self.branches_created:
+                reuse = True
+            else:
+                self.branches_created.add(branch_type)
+                reuse = tf.AUTO_REUSE
+
+            with tf.variable_scope(self.variable_scope):
+                return tf.variable_scope(branch_type, reuse=reuse)
+
+    return ModelV1Wrapper
 
 #    @override(TFModelV2)
 #    def _get_branch_fallback(self,

@@ -10,7 +10,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.modelv2 import OutputSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.debug import log_once, summarize
@@ -141,7 +140,7 @@ class DynamicTFPolicy(TFPolicy):
             self.model = ModelCatalog.get_model_v2(
                 obs_space,
                 action_space,
-                OutputSpec(logit_dim),
+                logit_dim,
                 self.config["model"],
                 framework="tf")
         if existing_inputs:

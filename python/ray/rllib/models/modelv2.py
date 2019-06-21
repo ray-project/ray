@@ -9,18 +9,6 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-class OutputSpec(namedtuple("OutputSpec", ["size"])):
-    """Defines the tensor shape of the model output.
-
-    The model should return a single flat vector of shape [BATCH, size]. In
-    the future, more complex output types can be supported via OutputSpec.
-
-    Attributes:
-        size (int): size in units of the flat output vector (e.g., 16)
-    """
-    pass
-
-
 class ModelV2(object):
     """Defines a Keras-style abstract network model for use with RLlib.
 
@@ -32,25 +20,25 @@ class ModelV2(object):
             may have an `original_space` attribute that specifies how to
             unflatten the tensor into a ragged tensor.
         action_space (Space): action space of the target gym env
-        output_spec (OutputSpec): defines the output shape of the model
+        num_outputs (int): number of output units of the model
         model_config (dict): config for the model, documented in ModelCatalog
         name (str): name (scope) for the model
         framework (str): either "tf" or "torch"
     """
 
-    def __init__(self, obs_space, action_space, output_spec, model_config,
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name, framework):
-        """Initialize the model.
-
+        """Initialize the model.  
         This method should create any variables used by the model.
         """
 
         self.obs_space = obs_space
         self.action_space = action_space
-        self.output_spec = output_spec
+        self.num_outputs = num_outputs
         self.model_config = model_config
         self.name = name or "default_model"
         self.framework = framework
+        self.var_list = []
 
     def get_initial_state(self):
         """Get the initial recurrent state values for the model.
@@ -123,9 +111,12 @@ class ModelV2(object):
         """
         return {}
 
+    def register_model_variables(self, model):
+        self.var_list.extend(model.variables)
+
     def variables(self):
         """Returns the list of variables for this model."""
-        raise NotImplementedError
+        return self.var_list
 
     def trainable_variables(self):
         """Returns the list of trainable variables for this model."""

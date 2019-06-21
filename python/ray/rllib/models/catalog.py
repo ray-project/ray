@@ -16,7 +16,7 @@ from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
                                           MultiActionDistribution, Dirichlet)
 from ray.rllib.models.torch_action_dist import (TorchCategorical,
                                                 TorchDiagGaussian)
-from ray.rllib.models.tf.modelv1_compat import ModelV1Wrapper
+from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -233,8 +233,9 @@ class ModelCatalog(object):
 
         if framework == "tf":
             legacy_model_cls = ModelCatalog.get_model
-            wrapper = ModelCatalog._wrap_if_needed(ModelV1Wrapper, model_interface)
-            return wrapper(legacy_model_cls, obs_space, action_space,
+            wrapper = ModelCatalog._wrap_if_needed(
+                make_v1_wrapper(legacy_model_cls), model_interface)
+            return wrapper(obs_space, action_space,
                            num_outputs, model_config, name)
 
         raise NotImplementedError("TODO: support {} models".format(framework))

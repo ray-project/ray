@@ -11,8 +11,23 @@ tf = try_import_tf()
 class SimpleQModel(TFModelV2):
     """Extension of standard TFModel to provide Q values."""
 
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        super(SimpleQModel, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name)
+
+        self.feature_input = tf.keras.layers.Input(
+            shape=(None, num_outputs), name="features")
+
+        layer_1 = tf.keras.layers.Dense(256, name="layer1")(self.feature_input)
+        layer_2 = tf.keras.layers.Dense(256, name="layer2")(layer_1)
+        layer_out = tf.keras.layers.Dense(
+            num_outputs, name="out", activation=None)(layer_2)
+
+        self.actions_model = tf.keras.Model(self.feature_input, layer_out)
+        self.register_model_variables(self.actions_model)
+
     def get_action_scores(self, state_embedding, hiddens):
-        """Returns Q(s, a) given an state embedding tensor.
+        """Returns Q(s, a) given a state embedding tensor.
         
         Arguments:
             state_embedding (Tensor): embedding from the model layers
@@ -22,18 +37,4 @@ class SimpleQModel(TFModelV2):
             action scores Q(s, a) for each action.
         """
 
-        with self.branch_variable_scope("action_scores"):
-            action_out = state_embedding
-            num_actions = self.action_space.n
-
-            if hiddens:
-                for i in range(len(hiddens)):
-                    action_out = tf.layers.dense(
-                        action_out,
-                        units=hiddens[i],
-                        activation=tf.nn.relu,
-                        name="hidden_%d" % i)
-                action_out = tf.layers.dense(
-                    action_out, units=num_actions, activation=None)
-
-            return action_out
+        return self.actions_model(state_embedding)
