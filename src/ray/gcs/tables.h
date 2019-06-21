@@ -12,10 +12,7 @@
 #include "ray/gcs/gcs_entry.h"
 #include "ray/util/logging.h"
 
-//#include "ray/gcs/format/gcs_generated.h"
 #include "ray/gcs/redis_context.h"
-// TODO(rkn): Remove this include.
-//#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/protobuf/gcs.pb.h"
 
 struct redisAsyncContext;
@@ -23,6 +20,20 @@ struct redisAsyncContext;
 namespace ray {
 
 namespace gcs {
+
+using rpc::ObjectTableData;
+using rpc::TaskTableData;
+using rpc::ActorTableData;
+using rpc::TaskReconstructionData;
+using rpc::TaskLeaseData;
+using rpc::HeartbeatTableData;
+using rpc::ErrorTableData;
+using rpc::ClientTableData;
+using rpc::DriverTableData;
+using rpc::ProfileTableData;
+using rpc::ActorCheckpointData;
+using rpc::ActorCheckpointIdData;
+
 
 class RedisContext;
 

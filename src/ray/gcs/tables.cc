@@ -792,8 +792,6 @@ Status ActorCheckpointIdTable::AddCheckpointId(const DriverID &driver_id,
 
 template class Log<ObjectID, rpc::ObjectTableData>;
 template class Set<ObjectID, rpc::ObjectTableData>;
-// template class Log<TaskID, ray::protocol::Task>;
-// template class Table<TaskID, ray::protocol::Task>;
 template class Log<TaskID, rpc::TaskTableData>;
 template class Table<TaskID, rpc::TaskTableData>;
 template class Log<ActorID, rpc::ActorTableData>;

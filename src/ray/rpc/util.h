@@ -36,11 +36,13 @@ inline std::unordered_map<K, V> MapFromProtobuf(::google::protobuf::Map<K, V> pb
 template <class T>
 inline std::vector<T> VectorFromProtobuf(
     const ::google::protobuf::RepeatedPtrField<T> &pb_repeated) {
-  std::vector<T> vector(static_cast<size_t>(pb_repeated.size()));
-  for (const auto &item : pb_repeated) {
-    vector.push_back(item);
-  }
-  return vector;
+  return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
+}
+
+template <class T>
+inline std::vector<T> VectorFromProtobuf(
+    const ::google::protobuf::RepeatedField<T> &pb_repeated) {
+  return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
 }
 
 template <class ID>

@@ -176,7 +176,7 @@ const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) co
 }
 
 LineageCache::LineageCache(const ClientID &client_id,
-                           gcs::TableInterface<TaskID, protocol::Task> &task_storage,
+                           gcs::TableInterface<TaskID, TaskTableData> &task_storage,
                            gcs::PubsubInterface<TaskID> &task_pubsub,
                            uint64_t max_lineage_size)
     : client_id_(client_id), task_storage_(task_storage), task_pubsub_(task_pubsub) {}
@@ -292,15 +292,14 @@ void LineageCache::FlushTask(const TaskID &task_id) {
 
   gcs::raylet::TaskTable::WriteCallback task_callback =
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &id,
-             const protocol::TaskT &data) { HandleEntryCommitted(id); };
+             const TaskTableData &data) { HandleEntryCommitted(id); };
   auto task = lineage_.GetEntry(task_id);
   // TODO(swang): Make this better...
   flatbuffers::FlatBufferBuilder fbb;
   auto message = task->TaskData().ToFlatbuffer(fbb);
   fbb.Finish(message);
-  auto task_data = std::make_shared<protocol::TaskT>();
-  auto root = flatbuffers::GetRoot<protocol::Task>(fbb.GetBufferPointer());
-  root->UnPackTo(task_data.get());
+  auto task_data = std::make_shared<TaskTableData>();
+  task_data->set_task(reinterpret_cast<const char *>(fbb.GetBufferPointer()), fbb.GetSize());
   RAY_CHECK_OK(
       task_storage_.Add(DriverID(task->TaskData().GetTaskSpecification().DriverId()),
                         task_id, task_data, task_callback));
@@ -365,8 +364,6 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   for (const auto &child_id : children) {
     EvictTask(child_id);
   }
-
-  return;
 }
 
 void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
