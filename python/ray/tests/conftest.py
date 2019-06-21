@@ -55,6 +55,7 @@ def _ray_start(**kwargs):
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
 def ray_start_no_cpu(request):
