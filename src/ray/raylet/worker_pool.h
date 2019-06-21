@@ -112,7 +112,7 @@ class WorkerPool {
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.
   /// And if the worker registered but isn't assigned a task,
-  /// the worker also is on pending state, and this'll return true.
+  /// the worker also is in pending state, and this'll return true.
   ///
   /// \param language The required language.
   /// \param task_id The task that we want to query.
