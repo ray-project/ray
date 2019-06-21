@@ -30,7 +30,7 @@ class WorkerPoolMock : public WorkerPool {
   }
 
   void StartWorkerProcess(const Language &language,
-                     const TaskSpecification *task_spec = nullptr) {
+                          const TaskSpecification *task_spec = nullptr) {
     WorkerPool::StartWorkerProcess(language, task_spec);
   }
 
