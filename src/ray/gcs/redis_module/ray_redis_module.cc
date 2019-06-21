@@ -170,20 +170,6 @@ Status GetBroadcastKey(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_st
   return Status::OK();
 }
 
-/// This is a helper method to convert a redis module string to a flatbuffer
-/// string.
-///
-/// \param fbb The flatbuffer builder.
-/// \param redis_string The redis string.
-/// \return The flatbuffer string.
-flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
-    flatbuffers::FlatBufferBuilder &fbb, RedisModuleString *redis_string) {
-  size_t redis_string_size;
-  const char *redis_string_str =
-      RedisModule_StringPtrLen(redis_string, &redis_string_size);
-  return fbb.CreateString(redis_string_str, redis_string_size);
-}
-
 inline void CreateGcsEntry(RedisModuleString *id, GcsChangeMode change_mode,
                            const std::vector<RedisModuleString *> &entries,
                            GcsEntry *result) {
@@ -590,8 +576,6 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   gcs_entry.ParseFromArray(update_data_buf, update_data_len);
   *change_mode = gcs_entry.change_mode();
 
-  auto data_vec = flatbuffers::GetRoot<GcsEntry>(update_data_buf);
-  *change_mode = data_vec->change_mode();
   if (*change_mode == GcsChangeMode::APPEND_OR_ADD) {
     // This code path means they are updating command.
     size_t total_size = gcs_entry.entries_size();
@@ -715,7 +699,6 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
       return Status::RedisError("Empty list/set/hash or wrong type");
     }
     CreateGcsEntry(entry_id, GcsChangeMode::APPEND_OR_ADD, {}, gcs_entry);
-    std::vector<std::string> data;
     for (size_t i = 0; i < RedisModule_CallReplyLength(reply); i++) {
       RedisModuleCallReply *element = RedisModule_CallReplyArrayElement(reply, i);
       size_t len;
