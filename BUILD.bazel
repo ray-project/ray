@@ -11,6 +11,7 @@ COPTS = ["-DRAY_USE_GLOG"]
 proto_library(
     name = "gcs_proto",
     srcs = ["src/ray/protobuf/gcs.proto"],
+    visibility = ["//java:__subpackages__"],
 )
 
 cc_proto_library(

@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package ray.rpc;
 
+option java_multiple_files = true;
+option java_package = "org.ray.runtime.generated";
+
 enum Language {
   PYTHON = 0;
   CPP = 1;
@@ -58,12 +61,6 @@ message GcsEntry {
   GcsChangeMode change_mode = 1;
   string id = 2;
   repeated string entries = 3;
-}
-
-message FunctionTableData {
-  Language language = 1;
-  string name = 2;
-  string data = 3;
 }
 
 message ObjectTableData {
