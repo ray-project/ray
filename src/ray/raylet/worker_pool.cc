@@ -102,7 +102,7 @@ uint32_t WorkerPool::Size(const Language &language) const {
 }
 
 int WorkerPool::StartWorkerProcess(const Language &language,
-                                   const std::vector<std::string> dynamic_options) {
+                                   const std::vector<std::string> &dynamic_options) {
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
@@ -226,19 +226,18 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
 
   auto it = state.dedicated_workers_to_tasks.find(worker->Pid());
   if (it != state.dedicated_workers_to_tasks.end()) {
-    // The worker is used for the specific actor creation task with dynamic options.
+    // The worker is used for the actor creation task with dynamic options.
+    // Put it into idle dedicated worker pool.
     const auto task_id = it->second;
     state.idle_dedicated_workers[task_id] = std::move(worker);
-
-    // Return to do not put this worker to idle pool.
-    return;
-  }
-
-  // Add the worker to the idle pool.
-  if (worker->GetActorId().IsNil()) {
-    state.idle.insert(std::move(worker));
   } else {
-    state.idle_actor[worker->GetActorId()] = std::move(worker);
+    // The worker is not used for the actor creation task without dynamic options.
+    // Put the worker to the corresponding idle pool.
+    if (worker->GetActorId().IsNil()) {
+      state.idle.insert(std::move(worker));
+    } else {
+      state.idle_actor[worker->GetActorId()] = std::move(worker);
+    }
   }
 }
 

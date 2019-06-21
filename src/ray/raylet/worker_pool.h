@@ -139,7 +139,7 @@ class WorkerPool {
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
   int StartWorkerProcess(const Language &language,
-                         const std::vector<std::string> dynamic_options = {});
+                         const std::vector<std::string> &dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   ///
