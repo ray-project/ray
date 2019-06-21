@@ -21,7 +21,7 @@ class WorkerPoolMock : public WorkerPool {
   explicit WorkerPoolMock(
       const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
       : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY,
-                   worker_commands),
+                   nullptr, worker_commands),
         last_worker_pid_(0) {}
 
   ~WorkerPoolMock() {
@@ -30,8 +30,8 @@ class WorkerPoolMock : public WorkerPool {
   }
 
   void StartWorkerProcess(const Language &language,
-                          const TaskSpecification *task_spec = nullptr) {
-    WorkerPool::StartWorkerProcess(language, task_spec);
+                          const std::vector<std::string> &dynamic_options = {}) {
+    WorkerPool::StartWorkerProcess(language, dynamic_options);
   }
 
   pid_t StartProcess(const std::vector<const char *> &worker_command_args) override {
@@ -228,13 +228,11 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
                               ObjectID::Nil(), 0, ActorID::Nil(), ActorHandleID::Nil(), 0,
                               {}, {}, 0, {}, {}, Language::JAVA, {"", "", ""},
                               {"test_op_0", "test_op_1"});
-  worker_pool_.StartWorkerProcess(Language::JAVA, &task_spec);
+  worker_pool_.StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
-  ASSERT_EQ(3, real_command.size());
-  ASSERT_EQ("test_op_0", real_command[0]);
-  ASSERT_EQ("dummy_java_worker_command", real_command[1]);
-  ASSERT_EQ("test_op_1", real_command[2]);
+  ASSERT_EQ(real_command,
+      std::vector<std::string>({"test_op_0", "dummy_java_worker_command", "test_op_1"}));
 }
 
 }  // namespace raylet

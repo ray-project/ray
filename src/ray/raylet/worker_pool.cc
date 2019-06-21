@@ -290,8 +290,12 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     // getting too big.
     const std::string warning_message = WarningAboutSize();
     if (warning_message != "") {
-      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        DriverID::Nil(), "worker_pool_large", warning_message, current_time_ms()));
+      if (gcs_client_ != nullptr) {
+        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+            DriverID::Nil(), "worker_pool_large", warning_message, current_time_ms()));
+      } else {
+        RAY_LOG(WARNING) << "Failed to push error message to user since gcs client is null.";
+      }
     }
   }
 
