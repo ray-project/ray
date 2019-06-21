@@ -334,11 +334,10 @@ ray::Status RayletClient::PushError(const DriverID &driver_id, const std::string
   return conn_->WriteMessage(MessageType::PushErrorRequest, &fbb);
 }
 
-ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
+ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_events) {
   flatbuffers::FlatBufferBuilder fbb;
-//  auto message = CreateProfileTableData(fbb, &profile_events);
-//  fbb.Finish(message);
-// XXX
+  auto message = CreateProfileTableData(fbb, &profile_events);
+  fbb.Finish(message);
 
   auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);
   // Don't be too strict for profile errors. Just create logs and prevent it from crash.

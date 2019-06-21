@@ -792,8 +792,18 @@ void NodeManager::ProcessClientMessage(
     ProcessPushErrorRequestMessage(message_data);
   } break;
   case protocol::MessageType::PushProfileEventsRequest: {
-    auto message = flatbuffers::GetRoot<ProfileTableData>(message_data);
-    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(*message));
+    auto fbs_message = flatbuffers::GetRoot<ProfileTableDataT>(message_data);
+    ProfileTableData profile_table_data;
+    profile_table_data.set_component_type(fbs_message->component_type);
+    profile_table_data.set_component_id(fbs_message->component_id);
+    for (const auto &fbs_event : fbs_message->profile_events) {
+      ProfileEvent *event = profile_table_data.add_profile_events();
+      event->set_event_type(fbs_event->event_type);
+      event->set_start_time(fbs_event->start_time);
+      event->set_end_time(fbs_event->end_time);
+      event->set_extra_data(fbs_event->extra_data);
+    }
+    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_table_data));
   } break;
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);

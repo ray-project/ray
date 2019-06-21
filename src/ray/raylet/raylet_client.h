@@ -8,7 +8,6 @@
 
 #include "ray/common/status.h"
 #include "ray/raylet/task_spec.h"
-#include "ray/protobuf/gcs.pb.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
@@ -17,8 +16,6 @@ using ray::DriverID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::UniqueID;
-
-using ray::rpc::ProfileTableData;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
@@ -140,7 +137,7 @@ class RayletClient {
   ///
   /// \param profile_events A batch of profiling event information.
   /// \return ray::Status.
-  ray::Status PushProfileEvents(const ProfileTableData &profile_events);
+  ray::Status PushProfileEvents(const ProfileTableDataT &profile_events);
 
   /// Free a list of objects from object stores.
   ///
