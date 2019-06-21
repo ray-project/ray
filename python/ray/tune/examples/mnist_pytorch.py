@@ -103,12 +103,6 @@ if __name__ == "__main__":
         default=False,
         help="Enables GPU training")
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=1,
-        metavar="S",
-        help="random seed (default: 1)")
-    parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     parser.add_argument(
         "--ray-redis-address",
