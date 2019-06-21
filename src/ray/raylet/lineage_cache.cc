@@ -63,15 +63,6 @@ void LineageEntry::UpdateTaskData(const Task &task) {
 
 Lineage::Lineage() {}
 
-Lineage::Lineage(const protocol::ForwardTaskRequest &task_request) {
-  // Deserialize and set entries for the uncommitted tasks.
-  auto tasks = task_request.uncommitted_tasks();
-  for (auto it = tasks->begin(); it != tasks->end(); it++) {
-    const auto &task = **it;
-    RAY_CHECK(SetEntry(task, GcsStatus::UNCOMMITTED));
-  }
-}
-
 boost::optional<const LineageEntry &> Lineage::GetEntry(const TaskID &task_id) const {
   auto entry = entries_.find(task_id);
   if (entry != entries_.end()) {
@@ -149,20 +140,6 @@ boost::optional<LineageEntry> Lineage::PopEntry(const TaskID &task_id) {
 
 const std::unordered_map<const TaskID, LineageEntry> &Lineage::GetEntries() const {
   return entries_;
-}
-
-flatbuffers::Offset<protocol::ForwardTaskRequest> Lineage::ToFlatbuffer(
-    flatbuffers::FlatBufferBuilder &fbb, const TaskID &task_id) const {
-  RAY_CHECK(GetEntry(task_id));
-  // Serialize the task and object entries.
-  std::vector<flatbuffers::Offset<protocol::Task>> uncommitted_tasks;
-  for (const auto &entry : entries_) {
-    uncommitted_tasks.push_back(entry.second.TaskData().ToFlatbuffer(fbb));
-  }
-
-  auto request = protocol::CreateForwardTaskRequest(fbb, to_flatbuf(fbb, task_id),
-                                                    fbb.CreateVector(uncommitted_tasks));
-  return request;
 }
 
 const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) const {
@@ -295,11 +272,8 @@ void LineageCache::FlushTask(const TaskID &task_id) {
              const TaskTableData &data) { HandleEntryCommitted(id); };
   auto task = lineage_.GetEntry(task_id);
   // TODO(swang): Make this better...
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = task->TaskData().ToFlatbuffer(fbb);
-  fbb.Finish(message);
   auto task_data = std::make_shared<TaskTableData>();
-  task_data->set_task(reinterpret_cast<const char *>(fbb.GetBufferPointer()), fbb.GetSize());
+  task_data->set_task(task->TaskData().Serialize());
   RAY_CHECK_OK(
       task_storage_.Add(DriverID(task->TaskData().GetTaskSpecification().DriverId()),
                         task_id, task_data, task_callback));

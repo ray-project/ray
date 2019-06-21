@@ -4,13 +4,10 @@
 #include <gtest/gtest_prod.h>
 #include <boost/optional.hpp>
 
-// clang-format off
-#include "ray/common/common_protocol.h"
-#include "ray/raylet/task.h"
-#include "ray/gcs/tables.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-// clang-format on
+#include "ray/gcs/tables.h"
+#include "ray/raylet/task.h"
 
 namespace ray {
 
@@ -138,12 +135,6 @@ class Lineage {
   /// Construct an empty Lineage.
   Lineage();
 
-  /// Construct a Lineage from a ForwardTaskRequest.
-  ///
-  /// \param task_request The request to construct the lineage from. All
-  /// uncommitted tasks in the request will be added to the lineage.
-  Lineage(const protocol::ForwardTaskRequest &task_request);
-
   /// Get an entry from the lineage.
   ///
   /// \param entry_id The ID of the entry to get.
@@ -173,15 +164,6 @@ class Lineage {
   ///
   /// \return A const reference to the lineage entries.
   const std::unordered_map<const TaskID, LineageEntry> &GetEntries() const;
-
-  /// Serialize this lineage to a ForwardTaskRequest flatbuffer.
-  ///
-  /// \param entry_id The task ID to include in the ForwardTaskRequest
-  /// flatbuffer.
-  /// \return An offset to the serialized lineage. The serialization includes
-  /// all task and object entries in the lineage.
-  flatbuffers::Offset<protocol::ForwardTaskRequest> ToFlatbuffer(
-      flatbuffers::FlatBufferBuilder &fbb, const TaskID &entry_id) const;
 
   /// Return the IDs of tasks in the lineage that are dependent on the given
   /// task.
