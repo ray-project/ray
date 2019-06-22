@@ -359,7 +359,7 @@ If you are running Ray on a remote multi-user cluster where you do not have sudo
 
 .. code-block:: bash
 
-    $ export LOGDIR=~/ray_results/; export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir $LOGDIR
+    $ export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir=~/ray_results
 
 .. image:: ray-tune-tensorboard.png
 
