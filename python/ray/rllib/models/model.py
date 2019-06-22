@@ -80,6 +80,8 @@ class Model(object):
         if options.get("free_log_std"):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
+
+        ok = True
         try:
             restored = input_dict.copy()
             restored["obs"] = restore_original_dimensions(
@@ -87,6 +89,10 @@ class Model(object):
             self.outputs, self.last_layer = self._build_layers_v2(
                 restored, num_outputs, options)
         except NotImplementedError:
+            ok = False
+        # In TF 1.14, you cannot construct variable scopes in exception handlers
+        # so we have to set the OK flag and check it here:
+        if not ok:
             self.outputs, self.last_layer = self._build_layers(
                 input_dict["obs"], num_outputs, options)
 

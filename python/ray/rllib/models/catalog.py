@@ -227,7 +227,8 @@ class ModelCatalog(object):
             model_cls = _global_registry.get(RLLIB_MODEL,
                                              model_config["custom_model"])
             if issubclass(model_cls, ModelV2):
-                model_cls = ModelCatalog._wrap_if_needed(model_cls, model_interface)
+                if model_interface and not issubclass(model_cls, model_interface):
+                    raise ValueError("The given model must subclass", model_interface)
                 return model_cls(obs_space, action_space, num_outputs,
                                  model_config, name)
 
