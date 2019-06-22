@@ -354,15 +354,9 @@ void WorkerPool::WarnAboutSize() {
                     << "using nested tasks "
                     << "(see https://github.com/ray-project/ray/issues/3644) for "
                     << "some a discussion of workarounds.";
-
-    if (gcs_client_ != nullptr) {
-      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          DriverID::Nil(), "worker_pool_large", warning_message.str(),
-          current_time_ms()));
-    } else {
-      RAY_LOG(WARNING)
-          << "Failed to push error message to user since gcs client is null.";
-    }
+    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+        DriverID::Nil(), "worker_pool_large", warning_message.str(),
+        current_time_ms()));
   }
 }
 

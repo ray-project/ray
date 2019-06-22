@@ -147,6 +147,9 @@ class WorkerPool {
   /// \return The process ID of started worker process.
   virtual pid_t StartProcess(const std::vector<const char *> &worker_command_args);
 
+  /// Push an warning message to user if worker pool is getting to big.
+  virtual void WarnAboutSize();
+
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
@@ -182,9 +185,6 @@ class WorkerPool {
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
-
-  /// Push an warning message to user if worker pool is getting to big.
-  void WarnAboutSize();
 
   /// We'll push a warning to the user every time a multiple of this many
   /// workers has been started.

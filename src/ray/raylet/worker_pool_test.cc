@@ -47,6 +47,8 @@ class WorkerPoolMock : public WorkerPool {
     return last_worker_pid_;
   }
 
+  void WarnAboutSize() override {}
+
   pid_t LastStartedWorkerProcess() const { return last_worker_pid_; }
 
   const std::vector<std::string> &GetWorkerCommand(int pid) {
