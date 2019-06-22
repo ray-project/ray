@@ -232,7 +232,7 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
   ASSERT_EQ(real_command, std::vector<std::string>(
-      {"test_op_0", "dummy_java_worker_command", "test_op_1"}));
+                               {"test_op_0", "dummy_java_worker_command", "test_op_1"}));
 }
 
 }  // namespace raylet
