@@ -70,7 +70,7 @@ public class GcsClient {
         throw new RuntimeException("Received invaild protobuf data from GCS.");
       }
       final UniqueId clientId = UniqueId
-          .fromByteBuffer(data.getClientIdBytes().asReadOnlyByteBuffer());
+          .fromByteBuffer(data.getClientId().asReadOnlyByteBuffer());
 
       if (data.getEntryType() == EntryType.INSERTION) {
         //Code path of node insertion.
@@ -147,7 +147,7 @@ public class GcsClient {
       UniqueId[] checkpointIds = new UniqueId[data.getCheckpointIdsCount()];
       for (int i = 0; i < checkpointIds.length; i++) {
         checkpointIds[i] = UniqueId
-            .fromByteBuffer(data.getCheckpointIdsBytes(i).asReadOnlyByteBuffer());
+            .fromByteBuffer(data.getCheckpointIds(i).asReadOnlyByteBuffer());
       }
 
       for (int i = 0; i < checkpointIds.length; i++) {

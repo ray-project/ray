@@ -2010,7 +2010,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
              const TaskTableData &task_data) {
         // The task was in the GCS task table. Use the stored task spec to
         // re-execute the task.
-        auto message = flatbuffers::GetRoot<protocol::TaskT>(task_data.task().data());
+        auto message = flatbuffers::GetRoot<protocol::Task>(task_data.task().data());
         const Task task(*message);
         ResubmitTask(task);
       },

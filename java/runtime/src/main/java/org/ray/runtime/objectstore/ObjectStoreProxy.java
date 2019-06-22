@@ -29,12 +29,12 @@ public class ObjectStoreProxy {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ObjectStoreProxy.class);
 
-  private static final byte[] WORKER_EXCEPTION_META = String.valueOf(ErrorType.WORKER_DIED)
-      .getBytes();
-  private static final byte[] ACTOR_EXCEPTION_META = String.valueOf(ErrorType.ACTOR_DIED)
-      .getBytes();
+  private static final byte[] WORKER_EXCEPTION_META = String
+      .valueOf(ErrorType.WORKER_DIED.getNumber()).getBytes();
+  private static final byte[] ACTOR_EXCEPTION_META = String
+      .valueOf(ErrorType.ACTOR_DIED.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META = String
-      .valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE).getBytes();
+      .valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
 
   private static final byte[] RAW_TYPE_META = "RAW".getBytes();
 

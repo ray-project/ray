@@ -193,6 +193,7 @@ genrule(
         GENERATED_DIR=$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
         rm -rf $$GENERATED_DIR
         mkdir -p $$GENERATED_DIR
+        # TODO(hchen): Only copy files needed by Java.
         for f in $(locations //java:gcs_java_proto); do
             unzip $$f
             mv org/ray/runtime/generated/* $$GENERATED_DIR
@@ -202,6 +203,7 @@ genrule(
             chmod +w $$f
             cp $$f $$GENERATED_DIR
         done
+        python $$WORK_DIR/java/modify_generated_java_flatbuffers_files.py $$WORK_DIR
         echo $$(date) > $@
     """,
     local = 1,
@@ -228,7 +230,6 @@ genrule(
             chmod +w $$f
             cp $$f $$NATIVE_DEPS_DIR
         done
-        python $$WORK_DIR/java/modify_generated_java_flatbuffers_files.py $$WORK_DIR
         # Install plasma jar to local maven repo.
         mvn install:install-file -Dfile=$(locations @plasma//:org_apache_arrow_arrow_plasma) -Dpackaging=jar \
             -DgroupId=org.apache.arrow -DartifactId=arrow-plasma -Dversion=0.13.0-SNAPSHOT
