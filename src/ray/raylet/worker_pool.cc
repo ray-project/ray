@@ -355,8 +355,7 @@ void WorkerPool::WarnAboutSize() {
                     << "(see https://github.com/ray-project/ray/issues/3644) for "
                     << "some a discussion of workarounds.";
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        DriverID::Nil(), "worker_pool_large", warning_message.str(),
-        current_time_ms()));
+        DriverID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms()));
   }
 }
 
