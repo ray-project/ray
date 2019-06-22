@@ -258,12 +258,14 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
       // Because we found a worker that can perform this task,
       // we can remove it from dedicated_workers_to_tasks.
       state.dedicated_workers_to_tasks.erase(worker->Pid());
+      state.tasks_to_dedicated_workers.erase(task_spec.TaskId());
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
       pid = StartWorkerProcess(task_spec.GetLanguage(), task_spec.DynamicWorkerOptions());
       if (pid > 0) {
         state.dedicated_workers_to_tasks[pid] = task_spec.TaskId();
+        state.tasks_to_dedicated_workers[task_spec.TaskId()] = pid;
       }
     }
   } else if (!task_spec.IsActorTask()) {
@@ -355,9 +357,11 @@ void WorkerPool::WarnAboutSize() {
 
     if (gcs_client_ != nullptr) {
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          DriverID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms()));
+          DriverID::Nil(), "worker_pool_large", warning_message.str(),
+          current_time_ms()));
     } else {
-      RAY_LOG(WARNING) << "Failed to push error message to user since gcs client is null.";
+      RAY_LOG(WARNING)
+          << "Failed to push error message to user since gcs client is null.";
     }
   }
 }
@@ -365,12 +369,8 @@ void WorkerPool::WarnAboutSize() {
 bool WorkerPool::HasPendingWorkerForTask(const Language &language,
                                          const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
-  for (const auto &it : state.dedicated_workers_to_tasks) {
-    if (it.second == task_id) {
-      return true;
-    }
-  }
-  return false;
+  auto it = state.tasks_to_dedicated_workers.find(task_id);
+  return it != state.tasks_to_dedicated_workers.end();
 }
 
 std::string WorkerPool::DebugString() const {

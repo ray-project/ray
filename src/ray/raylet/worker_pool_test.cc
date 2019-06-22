@@ -20,8 +20,8 @@ class WorkerPoolMock : public WorkerPool {
 
   explicit WorkerPoolMock(
       const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
-      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY,
-                   nullptr, worker_commands),
+      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY, nullptr,
+                   worker_commands),
         last_worker_pid_(0) {}
 
   ~WorkerPoolMock() {
@@ -231,8 +231,8 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   worker_pool_.StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
-  ASSERT_EQ(real_command,
-      std::vector<std::string>({"test_op_0", "dummy_java_worker_command", "test_op_1"}));
+  ASSERT_EQ(real_command, std::vector<std::string>(
+      {"test_op_0", "dummy_java_worker_command", "test_op_1"}));
 }
 
 }  // namespace raylet

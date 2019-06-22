@@ -7,10 +7,10 @@
 #include <vector>
 
 #include "ray/common/client_connection.h"
+#include "ray/gcs/client.h"
 #include "ray/gcs/format/util.h"
 #include "ray/raylet/task.h"
 #include "ray/raylet/worker.h"
-#include "ray/gcs/client.h"
 
 namespace ray {
 
@@ -169,6 +169,8 @@ class WorkerPool {
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
     std::unordered_map<pid_t, TaskID> dedicated_workers_to_tasks;
+    /// A map for speeding up looking up the pending worker for the given task.
+    std::unordered_map<TaskID, pid_t> tasks_to_dedicated_workers;
   };
 
   /// The number of workers per process.
