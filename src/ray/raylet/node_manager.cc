@@ -83,7 +83,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
-                   config.maximum_startup_concurrency, config.worker_commands),
+                   config.maximum_startup_concurrency, gcs_client_,
+                   config.worker_commands),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
@@ -1723,18 +1724,6 @@ bool NodeManager::AssignTask(const Task &task) {
   std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
   if (worker == nullptr) {
     // There are no workers that can execute this task.
-    if (!spec.IsActorTask()) {
-      // There are no more non-actor workers available to execute this task.
-      // Start a new worker.
-      worker_pool_.StartWorkerProcess(spec.GetLanguage());
-      // Push an error message to the user if the worker pool tells us that it is
-      // getting too big.
-      const std::string warning_message = worker_pool_.WarningAboutSize();
-      if (warning_message != "") {
-        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-            DriverID::Nil(), "worker_pool_large", warning_message, current_time_ms()));
-      }
-    }
     // We couldn't assign this task, as no worker available.
     return false;
   }
@@ -2204,6 +2193,12 @@ void NodeManager::ForwardTask(
 
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
+
+  if (worker_pool_.HasPendingWorkerForTask(spec.GetLanguage(), task_id)) {
+    // There is a worker being starting for this task,
+    // so we shouldn't forward this task to another node.
+    return;
+  }
 
   // Get and serialize the task's unforwarded, uncommitted lineage.
   Lineage uncommitted_lineage;

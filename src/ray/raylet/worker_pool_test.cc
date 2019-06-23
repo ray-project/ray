@@ -1,6 +1,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/raylet/worker_pool.h"
 
@@ -14,20 +15,45 @@ int MAXIMUM_STARTUP_CONCURRENCY = 5;
 class WorkerPoolMock : public WorkerPool {
  public:
   WorkerPoolMock()
-      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY,
-                   {{Language::PYTHON, {"dummy_py_worker_command"}},
-                    {Language::JAVA, {"dummy_java_worker_command"}}}),
+      : WorkerPoolMock({{Language::PYTHON, {"dummy_py_worker_command"}},
+                        {Language::JAVA, {"dummy_java_worker_command"}}}) {}
+
+  explicit WorkerPoolMock(
+      const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
+      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY, nullptr,
+                   worker_commands),
         last_worker_pid_(0) {}
+
   ~WorkerPoolMock() {
     // Avoid killing real processes
     states_by_lang_.clear();
   }
 
-  pid_t StartProcess(const std::vector<const char *> &worker_command_args) override {
-    return ++last_worker_pid_;
+  void StartWorkerProcess(const Language &language,
+                          const std::vector<std::string> &dynamic_options = {}) {
+    WorkerPool::StartWorkerProcess(language, dynamic_options);
   }
 
+  pid_t StartProcess(const std::vector<const char *> &worker_command_args) override {
+    last_worker_pid_ += 1;
+    std::vector<std::string> local_worker_commands_args;
+    for (auto item : worker_command_args) {
+      if (item == nullptr) {
+        break;
+      }
+      local_worker_commands_args.push_back(std::string(item));
+    }
+    worker_commands_by_pid[last_worker_pid_] = std::move(local_worker_commands_args);
+    return last_worker_pid_;
+  }
+
+  void WarnAboutSize() override {}
+
   pid_t LastStartedWorkerProcess() const { return last_worker_pid_; }
+
+  const std::vector<std::string> &GetWorkerCommand(int pid) {
+    return worker_commands_by_pid[pid];
+  }
 
   int NumWorkerProcessesStarting() const {
     int total = 0;
@@ -39,6 +65,8 @@ class WorkerPoolMock : public WorkerPool {
 
  private:
   int last_worker_pid_;
+  // The worker commands by pid.
+  std::unordered_map<int, std::vector<std::string>> worker_commands_by_pid;
 };
 
 class WorkerPoolTest : public ::testing::Test {
@@ -61,6 +89,12 @@ class WorkerPoolTest : public ::testing::Test {
     return std::shared_ptr<Worker>(new Worker(pid, language, client));
   }
 
+  void SetWorkerCommands(
+      const std::unordered_map<Language, std::vector<std::string>> &worker_commands) {
+    WorkerPoolMock worker_pool(worker_commands);
+    this->worker_pool_ = std::move(worker_pool);
+  }
+
  protected:
   WorkerPoolMock worker_pool_;
   boost::asio::io_service io_service_;
@@ -72,10 +106,10 @@ class WorkerPoolTest : public ::testing::Test {
 };
 
 static inline TaskSpecification ExampleTaskSpec(
-    const ActorID actor_id = ActorID::Nil(),
-    const Language &language = Language::PYTHON) {
+    const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
+    const ActorID actor_creation_id = ActorID::Nil()) {
   std::vector<std::string> function_descriptor(3);
-  return TaskSpecification(DriverID::Nil(), TaskID::Nil(), 0, ActorID::Nil(),
+  return TaskSpecification(DriverID::Nil(), TaskID::Nil(), 0, actor_creation_id,
                            ObjectID::Nil(), 0, actor_id, ActorHandleID::Nil(), 0, {}, {},
                            0, {}, {}, language, function_descriptor);
 }
@@ -184,6 +218,23 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   worker_pool_.PushWorker(java_worker);
   // Check that the worker will be popped now for Java task
   ASSERT_NE(worker_pool_.PopWorker(java_task_spec), nullptr);
+}
+
+TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
+  const std::vector<std::string> java_worker_command = {
+      "RAY_WORKER_OPTION_0", "dummy_java_worker_command", "RAY_WORKER_OPTION_1"};
+  SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
+                     {Language::JAVA, java_worker_command}});
+
+  TaskSpecification task_spec(DriverID::Nil(), TaskID::Nil(), 0, ActorID::FromRandom(),
+                              ObjectID::Nil(), 0, ActorID::Nil(), ActorHandleID::Nil(), 0,
+                              {}, {}, 0, {}, {}, Language::JAVA, {"", "", ""},
+                              {"test_op_0", "test_op_1"});
+  worker_pool_.StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
+  const auto real_command =
+      worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
+  ASSERT_EQ(real_command, std::vector<std::string>(
+                              {"test_op_0", "dummy_java_worker_command", "test_op_1"}));
 }
 
 }  // namespace raylet
