@@ -319,6 +319,9 @@ public class RunManager {
 
     cmd.addAll(rayConfig.jvmParameters);
 
+    // jvm options
+    cmd.add("RAY_WORKER_OPTION_0");
+
     // Main class
     cmd.add(WORKER_CLASS);
     String command = Joiner.on(" ").join(cmd);
