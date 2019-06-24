@@ -1656,21 +1656,19 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             if msg is None:
                 threads_stopped.wait(timeout=0.01)
                 continue
-            gcs_entry = ray.gcs_utils.GcsEntry.GetRootAsGcsEntry(
-                msg["data"], 0)
-            assert gcs_entry.EntriesLength() == 1
-            error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
-                gcs_entry.Entries(0), 0)
-            driver_id = error_data.DriverId()
+            gcs_entry = ray.gcs_utils.GcsEntry.FromString(msg["data"])
+            assert len(gcs_entry.entries) == 1
+            error_data = ray.gcs_utils.ErrorTableData.FromString(
+                gcs_entry.entries[0])
+            driver_id = error_data.driver_id
             if driver_id not in [
                     worker.task_driver_id.binary(),
                     DriverID.nil().binary()
             ]:
                 continue
 
-            error_message = ray.utils.decode(error_data.ErrorMessage())
-            if (ray.utils.decode(
-                    error_data.Type()) == ray_constants.TASK_PUSH_ERROR):
+            error_message = error_data.error_message
+            if (error_data.type == ray_constants.TASK_PUSH_ERROR):
                 # Delay it a bit to see if we can suppress it
                 task_error_queue.put((error_message, time.time()))
             else:
@@ -1878,6 +1876,8 @@ def connect(node,
             {},  # resource_map.
             {},  # placement_resource_map.
         )
+        task_table_data = ray.gcs_utils.TaskTableData()
+        task_table_data.task = driver_task._serialized_raylet_task()
 
         # Add the driver task to the task table.
         ray.state.state._execute_command(driver_task.task_id(),
@@ -1885,7 +1885,7 @@ def connect(node,
                                          ray.gcs_utils.TablePrefix.Value('RAYLET_TASK'),
                                          ray.gcs_utils.TablePubsub.Value('RAYLET_TASK_PUBSUB'),
                                          driver_task.task_id().binary(),
-                                         driver_task._serialized_raylet_task())
+                                         task_table_data.SerializeToString())
 
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.

@@ -20,6 +20,7 @@ from ray.core.generated.gcs_pb2 import (
     ProfileTableData,
     TablePrefix,
     TablePubsub,
+    TaskTableData,
 )
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "TablePrefix",
     "TablePubsub",
     "Task",
+    "TaskTableData",
     "construct_error_message",
 ]
 
@@ -45,8 +47,10 @@ LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
 REPORTER_CHANNEL = "RAY_REPORTER"
 
 # xray heartbeats
-XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.Value('HEARTBEAT_PUBSUB')).encode("ascii")
-XRAY_HEARTBEAT_BATCH_CHANNEL = str(TablePubsub.Value('HEARTBEAT_BATCH_PUBSUB')).encode("ascii")
+XRAY_HEARTBEAT_CHANNEL = str(
+    TablePubsub.Value('HEARTBEAT_PUBSUB')).encode("ascii")
+XRAY_HEARTBEAT_BATCH_CHANNEL = str(
+    TablePubsub.Value('HEARTBEAT_BATCH_PUBSUB')).encode("ascii")
 
 # xray driver updates
 XRAY_DRIVER_CHANNEL = str(TablePubsub.Value('DRIVER_PUBSUB')).encode("ascii")
