@@ -25,6 +25,9 @@ namespace ray {
 
 namespace gcs {
 
+using rpc::TablePrefix;
+using rpc::TablePubsub;
+
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
  public:
@@ -127,8 +130,8 @@ class RedisContext {
   /// \return Status.
   template <typename ID>
   Status RunAsync(const std::string &command, const ID &id, const void *data,
-                  size_t length, const rpc::TablePrefix prefix,
-                  const rpc::TablePubsub pubsub_channel, RedisCallback redisCallback,
+                  size_t length, const TablePrefix prefix,
+                  const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
 
   /// Run an arbitrary Redis command without a callback.
@@ -144,7 +147,7 @@ class RedisContext {
   /// \param redisCallback The callback function that the notification calls.
   /// \param out_callback_index The output pointer to callback index.
   /// \return Status.
-  Status SubscribeAsync(const ClientID &client_id, const rpc::TablePubsub pubsub_channel,
+  Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
   redisContext *sync_context() { return context_; }
   redisAsyncContext *async_context() { return async_context_; }
@@ -157,9 +160,9 @@ class RedisContext {
 };
 
 template <typename ID>
-Status RedisContext::RunAsync(const std::string &command, const ID &id,
-                              const void *data, size_t length,
-                              const rpc::TablePrefix prefix, const rpc::TablePubsub pubsub_channel,
+Status RedisContext::RunAsync(const std::string &command, const ID &id, const void *data,
+                              size_t length, const TablePrefix prefix,
+                              const TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
   int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, false);
   if (length > 0) {

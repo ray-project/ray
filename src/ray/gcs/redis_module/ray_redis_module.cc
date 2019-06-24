@@ -170,6 +170,12 @@ Status GetBroadcastKey(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_st
   return Status::OK();
 }
 
+/// A helper function that creates `GcsEntry` protobuf object.
+///
+/// \param[in] id Id of the entry.
+/// \param[in] change_mode Change mode of the entry.
+/// \param[in] entries Vector of entries.
+/// \param[out] result The created `GcsEntry` object.
 inline void CreateGcsEntry(RedisModuleString *id, GcsChangeMode change_mode,
                            const std::vector<RedisModuleString *> &entries,
                            GcsEntry *result) {
@@ -632,7 +638,7 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
 /// key should be published to. When publishing to a specific client, the
 /// channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to remove from.
-/// \param data The GcsEntry flatbugger data used to update this hash table.
+/// \param data The GcsEntry protobuf data used to update this hash table.
 ///     1). For deletion, this is a list of keys.
 ///     2). For updating, this is a list of pairs with each key followed by the value.
 /// \return OK if the remove succeeds, or an error message string if the remove
@@ -649,7 +655,7 @@ int HashUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
   return Hash_DoPublish(ctx, new_argv.data());
 }
 
-/// A helper function to create and finish a GcsEntry, based on the
+/// A helper function to create a GcsEntry protobuf, based on the
 /// current value or values at the given key.
 ///
 /// \param ctx The Redis module context.
@@ -659,14 +665,14 @@ int HashUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
 /// \param prefix_str The string prefix associated with the open Redis key.
 /// When parsed, this is expected to be a TablePrefix.
 /// \param entry_id The UniqueID associated with the open Redis key.
-/// \param fbb A flatbuffer builder used to build the GcsEntry.
-Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
+/// \param[out] gcs_entry The created GcsEntry.
+Status TableEntryToProtobuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
                            RedisModuleString *prefix_str, RedisModuleString *entry_id,
                            GcsEntry *gcs_entry) {
   auto key_type = RedisModule_KeyType(table_key);
   switch (key_type) {
   case REDISMODULE_KEYTYPE_STRING: {
-    // Build the flatbuffer from the string data.
+    // Build the GcsEntry from the string data.
     CreateGcsEntry(entry_id, GcsChangeMode::APPEND_OR_ADD, {}, gcs_entry);
     size_t data_len = 0;
     char *data_buf = RedisModule_StringDMA(table_key, &data_len, REDISMODULE_READ);
@@ -694,7 +700,7 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
       reply = RedisModule_Call(ctx, "HGETALL", "s", table_key_str);
       break;
     }
-    // Build the flatbuffer from the set of log entries.
+    // Build the GcsEntry from the set of log entries.
     if (reply == nullptr || RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ARRAY) {
       return Status::RedisError("Empty list/set/hash or wrong type");
     }
@@ -743,10 +749,10 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   if (table_key == nullptr) {
     RedisModule_ReplyWithNull(ctx);
   } else {
-    // Serialize the data to a flatbuffer to return to the client.
+    // Serialize the data to a GcsEntry to return to the client.
     GcsEntry gcs_entry;
     REPLY_AND_RETURN_IF_NOT_OK(
-        TableEntryToFlatbuf(ctx, table_key, prefix_str, id, &gcs_entry));
+        TableEntryToProtobuf(ctx, table_key, prefix_str, id, &gcs_entry));
     std::string str = gcs_entry.SerializeAsString();
     RedisModule_ReplyWithStringBuffer(ctx, str.data(), str.size());
   }
@@ -864,7 +870,7 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleStrin
   // empty.
   GcsEntry gcs_entry;
   REPLY_AND_RETURN_IF_NOT_OK(
-      TableEntryToFlatbuf(ctx, table_key, prefix_str, id, &gcs_entry));
+      TableEntryToProtobuf(ctx, table_key, prefix_str, id, &gcs_entry));
   std::string str = gcs_entry.SerializeAsString();
   RedisModule_Call(ctx, "PUBLISH", "sb", client_channel, str.data(), str.size());
 

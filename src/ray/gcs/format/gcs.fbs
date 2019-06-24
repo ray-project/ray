@@ -1,3 +1,5 @@
+// TODO(hchen): Migrate data structures in this file to protobuf (`gcs.proto`).
+
 enum Language:int {
   PYTHON=0,
   JAVA=1,
