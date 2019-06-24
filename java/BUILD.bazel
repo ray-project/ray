@@ -94,11 +94,14 @@ define_java_module(
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
         "@plasma//:org_apache_arrow_arrow_plasma",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_sun_xml_bind_jaxb_core",
+        "@maven//:com_sun_xml_bind_jaxb_impl",
+        "@maven//:commons_io_commons_io",
+        "@maven//:javax_xml_bind_jaxb_api",
         "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
-        "@maven//:com_google_guava_guava",
-        "@maven//:commons_io_commons_io",
     ],
 )
 

@@ -4,6 +4,9 @@
 #include <boost/asio/steady_timer.hpp>
 
 // clang-format off
+#include "ray/rpc/client_call.h"
+#include "ray/rpc/node_manager_server.h"
+#include "ray/rpc/node_manager_client.h"
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
@@ -52,7 +55,7 @@ struct NodeManagerConfig {
   std::string session_dir;
 };
 
-class NodeManager {
+class NodeManager : public rpc::NodeManagerServiceHandler {
  public:
   /// Create a node manager.
   ///
@@ -86,15 +89,6 @@ class NodeManager {
   /// \return Void.
   void ProcessNewNodeManager(TcpClientConnection &node_manager_client);
 
-  /// Handle a message from a remote node manager.
-  ///
-  /// \param node_manager_client The connection to the remote node manager.
-  /// \param message_type The type of the message.
-  /// \param message The message contents.
-  /// \return Void.
-  void ProcessNodeManagerMessage(TcpClientConnection &node_manager_client,
-                                 int64_t message_type, const uint8_t *message);
-
   /// Subscribe to the relevant GCS tables and set up handlers.
   ///
   /// \return Status indicating whether this was done successfully or not.
@@ -107,6 +101,9 @@ class NodeManager {
 
   /// Record metrics.
   void RecordMetrics() const;
+
+  /// Get the port of the node manager rpc server.
+  int GetServerPort() const { return node_manager_server_.GetPort(); }
 
  private:
   /// Methods for handling clients.
@@ -450,15 +447,10 @@ class NodeManager {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
-  /// connect to a remote node manager.
-  ///
-  /// \param client_id The client ID for the remote node manager.
-  /// \param client_address The IP address for the remote node manager.
-  /// \param client_port The listening port for the remote node manager.
-  /// \return True if the connect succeeds.
-  ray::Status ConnectRemoteNodeManager(const ClientID &client_id,
-                                       const std::string &client_address,
-                                       int32_t client_port);
+  /// Handle a `ForwardTask` request.
+  void HandleForwardTask(const rpc::ForwardTaskRequest &request,
+                         rpc::ForwardTaskReply *reply,
+                         rpc::RequestDoneCallback done_callback) override;
 
   // GCS client ID for this node.
   ClientID client_id_;
@@ -505,9 +497,6 @@ class NodeManager {
   TaskDependencyManager task_dependency_manager_;
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
-  std::vector<ClientID> remote_clients_;
-  std::unordered_map<ClientID, std::shared_ptr<TcpServerConnection>>
-      remote_server_connections_;
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
@@ -515,6 +504,16 @@ class NodeManager {
   /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
+
+  /// The RPC server.
+  rpc::NodeManagerServer node_manager_server_;
+
+  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
+  rpc::ClientCallManager client_call_manager_;
+
+  /// Map from node ids to clients of the remote node managers.
+  std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
+      remote_node_manager_clients_;
 };
 
 }  // namespace raylet
