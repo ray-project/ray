@@ -2,6 +2,7 @@
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load("@build_stack_rules_proto//python:python_proto_compile.bzl", "python_proto_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
@@ -16,6 +17,11 @@ proto_library(
 
 cc_proto_library(
     name = "gcs_cc_proto",
+    deps = [":gcs_proto"],
+)
+
+python_proto_compile(
+    name = "gcs_py_proto",
     deps = [":gcs_proto"],
 )
 
@@ -691,6 +697,7 @@ genrule(
         "python/ray/_raylet.so",
         "//:python_sources",
         "//:python_gcs_fbs",
+        "//:gcs_py_proto",
         "//:python_node_manager_fbs",
         "//:redis-server",
         "//:redis-cli",
@@ -716,6 +723,9 @@ genrule(
         mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
         for f in $(locations //:python_node_manager_fbs); do
             cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/;
+        done &&
+        for f in $(locations //:gcs_py_proto); do
+            cp -f $$f $$WORK_DIR/python/ray/core/generated/;
         done &&
         echo $$WORK_DIR > $@
     """,
