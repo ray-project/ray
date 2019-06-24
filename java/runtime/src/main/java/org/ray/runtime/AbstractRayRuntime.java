@@ -201,7 +201,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker, args,
         rayActorImpl.getLanguage() != WorkerLanguage.JAVA);
     List<ObjectId> returnIds = worker.getTaskInterface().submitActorTask(rayActorImpl,
-        functionDescriptor, functionArgs, 2, null);
+        functionDescriptor, functionArgs, 1 /* core worker will plus it by 1, so put 1 here */,
+        null);
     return new RayObjectImpl(returnIds.get(0));
   }
 
