@@ -97,7 +97,7 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] factory The factory which created this call.
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
-  /// \param[in] io_service The event loop.  
+  /// \param[in] io_service The event loop.
   ServerCallImpl(
       const ServerCallFactory &factory, ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
@@ -116,12 +116,12 @@ class ServerCallImpl : public ServerCall {
   void HandleRequest() override {
     state_ = ServerCallState::PROCESSING;
     (service_handler_.*handle_request_function_)(request_, &reply_,
-                                                [this](Status status) {
-                                                  // When the handler is done with the
-                                                  // request, tell gRPC to finish this
-                                                  // request.
-                                                  SendReply(status);
-                                                });
+                                                 [this](Status status) {
+                                                   // When the handler is done with the
+                                                   // request, tell gRPC to finish this
+                                                   // request.
+                                                   SendReply(status);
+                                                 });
   }
 
   const ServerCallFactory &GetFactory() const override { return factory_; }

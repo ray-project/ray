@@ -25,7 +25,6 @@ class NodeManagerServiceHandler {
                                  RequestDoneCallback done_callback) = 0;
 };
 
-
 /// The `GrpcService` for `NodeManagerService`.
 class NodeManagerGrpcService : public GrpcService {
  public:
@@ -35,22 +34,22 @@ class NodeManagerGrpcService : public GrpcService {
   /// \param[in] handler The service handler that actually handle the requests.
   NodeManagerGrpcService(boost::asio::io_service &io_service,
                          NodeManagerServiceHandler &service_handler)
-      : GrpcService(io_service),
-        service_handler_(service_handler) {};
- 
+      : GrpcService(io_service), service_handler_(service_handler){};
+
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {  
+          *server_call_factories_and_concurrencies) override {
     // Initialize the factory for `ForwardTask` requests.
     std::unique_ptr<ServerCallFactory> forward_task_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
                                   ForwardTaskRequest, ForwardTaskReply>(
             service_, &NodeManagerService::AsyncService::RequestForwardTask,
-            service_handler_, &NodeManagerServiceHandler::HandleForwardTask, cq, main_service_));
+            service_handler_, &NodeManagerServiceHandler::HandleForwardTask, cq,
+            main_service_));
 
     // Set `ForwardTask`'s accept concurrency to 100.
     server_call_factories_and_concurrencies->emplace_back(
@@ -62,7 +61,7 @@ class NodeManagerGrpcService : public GrpcService {
   NodeManagerService::AsyncService service_;
 
   /// The service handler that actually handle the requests.
-  NodeManagerServiceHandler &service_handler_; 
+  NodeManagerServiceHandler &service_handler_;
 };
 
 }  // namespace rpc

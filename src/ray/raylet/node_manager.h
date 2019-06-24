@@ -509,7 +509,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   rpc::GrpcServer node_manager_server_;
 
   /// The RPC service.
-  rpc::NodeManagerGrpcService node_manager_service_;  
+  rpc::NodeManagerGrpcService node_manager_service_;
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
   rpc::ClientCallManager client_call_manager_;

@@ -32,8 +32,7 @@ class GrpcServer {
   ///  will be chosen.
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
-  GrpcServer(const std::string &name, const uint32_t port)
-      : name_(name), port_(port) {}
+  GrpcServer(const std::string &name, const uint32_t port) : name_(name), port_(port) {}
 
   /// Destruct this gRPC server.
   ~GrpcServer() {
@@ -53,7 +52,6 @@ class GrpcServer {
   void RegisterService(GrpcService &service);
 
  protected:
-
   /// This function runs in a background thread. It keeps polling events from the
   /// `ServerCompletionQueue`, and dispaches the event to the `ServiceHandler` instances
   /// via the `ServerCall` objects.
@@ -75,7 +73,6 @@ class GrpcServer {
   std::unique_ptr<grpc::Server> server_;
 };
 
-
 /// Base class that represents an abstract gRPC service.
 ///
 /// Subclass should implement `InitServerCallFactories` to decide
@@ -89,8 +86,7 @@ class GrpcService {
   ///  will be chosen.
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
-  GrpcService(boost::asio::io_service &main_service)
-      : main_service_(main_service) {}
+  GrpcService(boost::asio::io_service &main_service) : main_service_(main_service) {}
 
   /// Destruct this gRPC service.
   ~GrpcService() {}
