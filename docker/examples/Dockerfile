@@ -3,7 +3,7 @@
 FROM ray-project/deploy
 
 # This updates numpy to 1.14 and mutes errors from other libraries
-RUN conda install -y numpy
+RUN conda install -y numpy pytest-remotedata>=0.3.1
 RUN apt-get install -y zlib1g-dev
 # The following is needed to support TensorFlow 1.14
 RUN conda remove -y --force wrapt
@@ -12,6 +12,6 @@ RUN pip install -U h5py  # Mutes FutureWarnings
 RUN pip install --upgrade bayesian-optimization
 RUN pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
 RUN pip install --upgrade sigopt
-# RUN pip install --upgrade nevergrad
+RUN pip install --upgrade nevergrad
 RUN pip install --upgrade scikit-optimize
 RUN conda install pytorch-cpu torchvision-cpu -c pytorch
