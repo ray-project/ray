@@ -22,6 +22,6 @@ RUN conda install pytorch-cpu torchvision-cpu -c pytorch
 # We port the source code in so that we run the most up-to-date stress tests.
 ADD ray.tar /ray
 ADD git-rev /ray/git-rev
-RUN python /ray/python/ray/rllib/setup-rllib-dev.py --yes
+RUN python /ray/python/ray/setup-dev.py --yes
 
 WORKDIR /ray
