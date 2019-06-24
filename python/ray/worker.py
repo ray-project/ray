@@ -461,11 +461,11 @@ class Worker(object):
             # Otherwise, return an exception object based on
             # the error type.
             error_type = int(metadata)
-            if error_type == ErrorType.WORKER_DIED:
+            if error_type == ErrorType.Value('WORKER_DIED'):
                 return RayWorkerError()
-            elif error_type == ErrorType.ACTOR_DIED:
+            elif error_type == ErrorType.Value('ACTOR_DIED'):
                 return RayActorError()
-            elif error_type == ErrorType.OBJECT_UNRECONSTRUCTABLE:
+            elif error_type == ErrorType.Value('OBJECT_UNRECONSTRUCTABLE'):
                 return UnreconstructableError(ray.ObjectID(object_id.binary()))
             else:
                 assert False, "Unrecognized error type " + str(error_type)

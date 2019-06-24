@@ -304,11 +304,8 @@ class GlobalState(object):
         gcs_entries = gcs_utils.GcsEntry.FromString(message)
 
         assert len(gcs_entries.entries) == 1
-        print(task_id)
-        print(len(gcs_entries.entries[0]))
         task_table_data = gcs_utils.TaskTableData.FromString(
             gcs_entries.entries[0])
-        print(task_table_data.task)
         task_table_message = gcs_utils.Task.GetRootAsTask(
             task_table_data.task, 0)
 
@@ -372,7 +369,6 @@ class GlobalState(object):
                 key[len(gcs_utils.TablePrefix_RAYLET_TASK_string):]
                 for key in task_table_keys
             ]
-            print([ray.TaskID(id) for id in task_ids_binary])
 
             results = {}
             for task_id_binary in task_ids_binary:
@@ -911,7 +907,7 @@ class GlobalState(object):
         return {
             "ActorID": ray.utils.binary_to_hex(entry.actor_id),
             "CheckpointIds": checkpoint_ids,
-            "Timestamps": entry.timestamps,
+            "Timestamps": list(entry.timestamps),
         }
 
 

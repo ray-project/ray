@@ -9,6 +9,8 @@ load("@//bazel:cython_library.bzl", "pyx_library")
 
 COPTS = ["-DRAY_USE_GLOG"]
 
+# === Begin of protobuf definitions ===
+
 proto_library(
     name = "gcs_proto",
     srcs = ["src/ray/protobuf/gcs.proto"],
@@ -34,6 +36,8 @@ cc_proto_library(
     name = "node_manager_cc_proto",
     deps = ["node_manager_proto"],
 )
+
+# === End of protobuf definitions ===
 
 # Node manager gRPC lib.
 cc_grpc_library(

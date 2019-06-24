@@ -67,7 +67,7 @@ public class GcsClient {
       try {
         data = ClientTableData.parseFrom(result);
       } catch (InvalidProtocolBufferException e) {
-        throw new RuntimeException("Received invaild protobuf data from GCS.");
+        throw new RuntimeException("Received invalid protobuf data from GCS.");
       }
       final UniqueId clientId = UniqueId
           .fromByteBuffer(data.getClientId().asReadOnlyByteBuffer());
@@ -142,7 +142,7 @@ public class GcsClient {
       try {
         data = ActorCheckpointIdData.parseFrom(result);
       } catch (InvalidProtocolBufferException e) {
-        throw new RuntimeException("Received invaild protobuf data from GCS.");
+        throw new RuntimeException("Received invalid protobuf data from GCS.");
       }
       UniqueId[] checkpointIds = new UniqueId[data.getCheckpointIdsCount()];
       for (int i = 0; i < checkpointIds.length; i++) {
