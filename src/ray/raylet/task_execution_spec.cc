@@ -42,6 +42,10 @@ void TaskExecutionSpecification::SetActorVersion(int64_t version) {
   execution_spec_.actor_version = version;
 }
 
+int64_t TaskExecutionSpecification::ActorVersion() const {
+  return execution_spec_.actor_version;
+}
+
 int TaskExecutionSpecification::NumForwards() const {
   return execution_spec_.num_forwards;
 }

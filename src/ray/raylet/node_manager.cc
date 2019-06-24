@@ -1050,8 +1050,7 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
     // in our local registry. This should only be a problem for restarted
     // actors and nodes that have just joined the cluster.
     if (actor_entry != actor_registry_.end()) {
-      actor_version = (actor_entry->second.GetMaxReconstructions() -
-                       actor_entry->second.GetRemainingReconstructions());
+      actor_version = actor_entry->second.GetActorVersion();
     }
     task_execution_spec.SetActorVersion(actor_version);
   }
@@ -1533,6 +1532,14 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
             RAY_LOG(WARNING) << "A task was resubmitted, so we are ignoring it. This "
                              << "should only happen during reconstruction.";
             TreatTaskAsFailedIfLost(task);
+          } else if (task.GetTaskExecutionSpec().ActorVersion() <
+                     actor_entry->second.GetActorVersion()) {
+            // The task was for an older version of the actor, so do not
+            // execute it. The caller should handle the error once it receives
+            // the latest version notification from the actor table.
+            RAY_LOG(WARNING)
+                << "A task was submitted for this actor, but the actor has restarted "
+                << "since then";
           } else {
             // The task has not yet been executed. Queue the task for local
             // execution, bypassing placement.

@@ -72,11 +72,11 @@ class ActorRegistration {
   /// Get actor's driver ID.
   const DriverID GetDriverId() const;
 
-  /// Get the max number of times this actor should be reconstructed.
-  const int64_t GetMaxReconstructions() const;
-
   /// Get the remaining number of times this actor should be reconstructed.
   const int64_t GetRemainingReconstructions() const;
+
+  /// Get the number of times this actor has been restarted.
+  const int64_t GetActorVersion() const;
 
   /// Get the object that represents the actor's current state. This is the
   /// execution dependency returned by the task most recently executed on the

@@ -66,6 +66,10 @@ class TaskExecutionSpecification {
   /// \param version The version of the actor.
   void SetActorVersion(int64_t version);
 
+  /// Get the actor's version at the time that this task was submitted.
+  /// \return The actor version.
+  int64_t ActorVersion() const;
+
   /// Get the number of times this task has been forwarded.
   ///
   /// \return The number of times this task has been forwarded.

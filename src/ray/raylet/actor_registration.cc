@@ -46,12 +46,13 @@ const DriverID ActorRegistration::GetDriverId() const {
   return DriverID::FromBinary(actor_table_data_.driver_id);
 }
 
-const int64_t ActorRegistration::GetMaxReconstructions() const {
-  return actor_table_data_.max_reconstructions;
-}
-
 const int64_t ActorRegistration::GetRemainingReconstructions() const {
   return actor_table_data_.remaining_reconstructions;
+}
+
+const int64_t ActorRegistration::GetActorVersion() const {
+  return actor_table_data_.max_reconstructions -
+         actor_table_data_.remaining_reconstructions;
 }
 
 const std::unordered_map<ActorHandleID, ActorRegistration::FrontierLeaf>
