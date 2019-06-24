@@ -113,6 +113,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   auto task_arguments = BuildTaskArguments(args);
   auto language = core_worker_.ToTaskLanguage(function.language);
 
+  std::unique_lock<std::mutex> guard(actor_handle.mutex_);
+
   ray::raylet::TaskSpecification spec(
       context.GetCurrentDriverID(), context.GetCurrentTaskID(), next_task_index,
       ActorID::Nil(), actor_creation_dummy_object_id, 0, actor_handle.ActorID(),
@@ -127,6 +129,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   auto actor_cursor = (*return_ids).back();
   actor_handle.SetActorCursor(actor_cursor);
   actor_handle.ClearNewActorHandles();
+
+  guard.unlock();
 
   TaskSpec task(std::move(spec), execution_dependencies);
   auto status =

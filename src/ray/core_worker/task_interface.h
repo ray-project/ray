@@ -91,6 +91,7 @@ class ActorHandle {
   const int NumForks() const { return num_forks_; };
 
   std::unique_ptr<ActorHandle> Fork() {
+    std::unique_lock<std::mutex> guard(mutex_);
     auto new_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
         actor_id_, ComputeNextActorHandleId(actor_handle_id_, ++num_forks_),
         actor_language_, actor_definition_descriptor_));
@@ -99,7 +100,9 @@ class ActorHandle {
     return new_handle;
   }
 
-  void Serialize(std::string *output) const {
+  void Serialize(std::string *output) {
+    std::unique_lock<std::mutex> guard(mutex_);
+
     ray::rpc::ActorHandle temp;
     temp.set_actor_id(actor_id_.Binary());
     temp.set_actor_handle_id(actor_handle_id_.Binary());
@@ -163,6 +166,8 @@ class ActorHandle {
   /// used to garbage-collect dummy objects that are no longer
   /// necessary in the backend.
   std::vector<ray::ActorHandleID> new_actor_handles_;
+  /// Mutex to protect ActorHandle.
+  std::mutex mutex_;
 
   friend class CoreWorkerTaskInterface;
 };
