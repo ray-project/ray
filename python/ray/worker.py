@@ -1637,7 +1637,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
     error_pubsub_channel = str(
-        ray.gcs_utils.TablePubsub.ERROR_INFO).encode("ascii")
+        ray.gcs_utils.TablePubsub.Value('ERROR_INFO_PUBSUB')).encode("ascii")
     worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
     # worker.error_message_pubsub_client.psubscribe("*")
 
@@ -1882,8 +1882,8 @@ def connect(node,
         # Add the driver task to the task table.
         ray.state.state._execute_command(driver_task.task_id(),
                                          "RAY.TABLE_ADD",
-                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
-                                         ray.gcs_utils.TablePubsub.RAYLET_TASK,
+                                         ray.gcs_utils.TablePrefix.Value('RAYLET_TASK'),
+                                         ray.gcs_utils.TablePubsub.Value('RAYLET_TASK_PUBSUB'),
                                          driver_task.task_id().binary(),
                                          driver_task._serialized_raylet_task())
 

@@ -309,7 +309,7 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
     // TODO(rkn): What do we want to do if the send failed?
   }
 
-  ProfileEvent profile_event;
+  rpc::ProfileTableData::ProfileEvent profile_event;
   profile_event.set_event_type("transfer_send");
   profile_event.set_start_time(start_time);
   profile_event.set_end_time(end_time);
@@ -329,7 +329,7 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
     // TODO(rkn): What do we want to do if the send failed?
   }
 
-  ProfileEvent profile_event;
+  rpc::ProfileTableData::ProfileEvent profile_event;
   profile_event.set_event_type("transfer_receive");
   profile_event.set_start_time(start_time);
   profile_event.set_end_time(end_time);
@@ -801,7 +801,7 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
   ObjectID object_id = ObjectID::FromBinary(pr->object_id()->str());
   ClientID client_id = ClientID::FromBinary(pr->client_id()->str());
 
-  ProfileEvent profile_event;
+  rpc::ProfileTableData::ProfileEvent profile_event;
   profile_event.set_event_type("receive_pull_request");
   profile_event.set_start_time(current_sys_time_seconds());
   profile_event.set_end_time(profile_event.start_time());
@@ -938,8 +938,8 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
   }
 }
 
-ProfileTableData ObjectManager::GetAndResetProfilingInfo() {
-  ProfileTableData profile_info;
+rpc::ProfileTableData ObjectManager::GetAndResetProfilingInfo() {
+  rpc::ProfileTableData profile_info;
   profile_info.set_component_type("object_manager");
   profile_info.set_component_id(client_id_.Binary());
 

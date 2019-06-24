@@ -253,8 +253,8 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
 void NodeManager::HandleDriverTableUpdate(
     const DriverID &id, const std::vector<DriverTableData> &driver_data) {
   for (const auto &entry : driver_data) {
-    RAY_LOG(DEBUG) << "HandleDriverTableUpdate " << UniqueID::FromBinary(entry.driver_id())
-                   << " " << entry.is_dead();
+    RAY_LOG(DEBUG) << "HandleDriverTableUpdate "
+                   << UniqueID::FromBinary(entry.driver_id()) << " " << entry.is_dead();
     if (entry.is_dead()) {
       auto driver_id = DriverID::FromBinary(entry.driver_id());
       auto workers = worker_pool_.GetWorkersRunningTasksForDriver(driver_id);
@@ -377,8 +377,9 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
                                  client_data.node_manager_port(), client_call_manager_));
   remote_node_manager_clients_.emplace(client_id, std::move(client));
 
-  ResourceSet resources_total(rpc::VectorFromProtobuf(client_data.resources_total_label()),
-                              rpc::VectorFromProtobuf(client_data.resources_total_capacity()));
+  ResourceSet resources_total(
+      rpc::VectorFromProtobuf(client_data.resources_total_label()),
+      rpc::VectorFromProtobuf(client_data.resources_total_capacity()));
   cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
 }
 
@@ -437,8 +438,9 @@ void NodeManager::ResourceCreateUpdated(const ClientTableData &client_data) {
 
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from client id "
                  << client_id << ". Updating resource map.";
-  ResourceSet new_res_set(rpc::VectorFromProtobuf(client_data.resources_total_label()),
-                          rpc::VectorFromProtobuf(client_data.resources_total_capacity()));
+  ResourceSet new_res_set(
+      rpc::VectorFromProtobuf(client_data.resources_total_label()),
+      rpc::VectorFromProtobuf(client_data.resources_total_capacity()));
 
   const ResourceSet &old_res_set = cluster_resource_map_[client_id].GetTotalResources();
   ResourceSet difference_set = old_res_set.FindUpdatedResources(new_res_set);
@@ -471,8 +473,9 @@ void NodeManager::ResourceDeleted(const ClientTableData &client_data) {
   const ClientID client_id = ClientID::FromBinary(client_data.client_id());
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
 
-  ResourceSet new_res_set(rpc::VectorFromProtobuf(client_data.resources_total_label()),
-                          rpc::VectorFromProtobuf(client_data.resources_total_capacity()));
+  ResourceSet new_res_set(
+      rpc::VectorFromProtobuf(client_data.resources_total_label()),
+      rpc::VectorFromProtobuf(client_data.resources_total_capacity()));
   RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from client id " << client_id
                  << " with new resources: " << new_res_set.ToString()
                  << ". Updating resource map.";
@@ -593,7 +596,8 @@ void NodeManager::PublishActorStateTransition(
   auto success_callback = [](gcs::AsyncGcsClient *client, const ActorID &id,
                              const ActorTableData &data) {
     auto redis_context = client->primary_context();
-    if (data.state() == ActorTableData::DEAD || data.state() == ActorTableData::RECONSTRUCTING) {
+    if (data.state() == ActorTableData::DEAD ||
+        data.state() == ActorTableData::RECONSTRUCTING) {
       std::vector<std::string> args = {"XADD", id.Hex(), "*", "signal",
                                        "ACTOR_DIED_SIGNAL"};
       RAY_CHECK_OK(redis_context->RunArgvAsync(args));
@@ -630,7 +634,8 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   }
   RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
                  << ", node_manager_id = " << actor_registration.GetNodeManagerId()
-                 << ", state = " << ActorTableData::ActorState_Name(actor_registration.GetState())
+                 << ", state = "
+                 << ActorTableData::ActorState_Name(actor_registration.GetState())
                  << ", remaining_reconstructions = "
                  << actor_registration.GetRemainingReconstructions();
 
@@ -791,12 +796,14 @@ void NodeManager::ProcessClientMessage(
     ProcessPushErrorRequestMessage(message_data);
   } break;
   case protocol::MessageType::PushProfileEventsRequest: {
-    auto fbs_message = flatbuffers::GetRoot<ProfileTableDataT>(message_data);
-    ProfileTableData profile_table_data;
-    profile_table_data.set_component_type(fbs_message->component_type);
-    profile_table_data.set_component_id(fbs_message->component_id);
-    for (const auto &fbs_event : fbs_message->profile_events) {
-      ProfileEvent *event = profile_table_data.add_profile_events();
+    ProfileTableDataT fbs_message;
+    flatbuffers::GetRoot<ProfileTableData>(message_data)->UnPackTo(&fbs_message);
+    rpc::ProfileTableData profile_table_data;
+    profile_table_data.set_component_type(fbs_message.component_type);
+    profile_table_data.set_component_id(fbs_message.component_id);
+    for (const auto &fbs_event : fbs_message.profile_events) {
+      rpc::ProfileTableData::ProfileEvent *event =
+          profile_table_data.add_profile_events();
       event->set_event_type(fbs_event->event_type);
       event->set_start_time(fbs_event->start_time);
       event->set_end_time(fbs_event->end_time);
@@ -1881,12 +1888,15 @@ ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const Task &tas
     // Set all of the static fields for the actor. These fields will not
     // change even if the actor fails or is reconstructed.
     new_actor_data.set_actor_id(actor_id.Binary());
-    new_actor_data.set_actor_creation_dummy_object_id(task.GetTaskSpecification().ActorDummyObject().Binary());
+    new_actor_data.set_actor_creation_dummy_object_id(
+        task.GetTaskSpecification().ActorDummyObject().Binary());
     new_actor_data.set_driver_id(task.GetTaskSpecification().DriverId().Binary());
-    new_actor_data.set_max_reconstructions(task.GetTaskSpecification().MaxActorReconstructions());
+    new_actor_data.set_max_reconstructions(
+        task.GetTaskSpecification().MaxActorReconstructions());
     // This is the first time that the actor has been created, so the number
     // of remaining reconstructions is the max.
-    new_actor_data.set_remaining_reconstructions(task.GetTaskSpecification().MaxActorReconstructions());
+    new_actor_data.set_remaining_reconstructions(
+        task.GetTaskSpecification().MaxActorReconstructions());
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.
@@ -1895,12 +1905,14 @@ ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const Task &tas
     new_actor_data = actor_entry->second.GetTableData();
     // We are reconstructing the actor, so subtract its
     // remaining_reconstructions by 1.
-    new_actor_data.set_remaining_reconstructions(new_actor_data.remaining_reconstructions() - 1);
+    new_actor_data.set_remaining_reconstructions(
+        new_actor_data.remaining_reconstructions() - 1);
   }
 
   // Set the new fields for the actor's state to indicate that the actor is
   // now alive on this node manager.
-  new_actor_data.set_node_manager_id(gcs_client_->client_table().GetLocalClientId().Binary());
+  new_actor_data.set_node_manager_id(
+      gcs_client_->client_table().GetLocalClientId().Binary());
   new_actor_data.set_state(ActorTableData::ALIVE);
   return new_actor_data;
 }
@@ -1967,8 +1979,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
       PublishActorStateTransition(
           actor_id, new_actor_data,
           /*failure_callback=*/
-          [](gcs::AsyncGcsClient *client, const ActorID &id,
-             const ActorTableData &data) {
+          [](gcs::AsyncGcsClient *client, const ActorID &id, const ActorTableData &data) {
             // Only one node at a time should succeed at creating the actor.
             RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
           });
