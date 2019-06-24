@@ -281,9 +281,9 @@ void TestSet(const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   }
 
   // Check that lookup returns the added object entries.
-  auto lookup_callback = [object_id, managers](
-                             gcs::AsyncGcsClient *client, const ObjectID &id,
-                             const std::vector<ObjectTableData> &data) {
+  auto lookup_callback = [object_id, managers](gcs::AsyncGcsClient *client,
+                                               const ObjectID &id,
+                                               const std::vector<ObjectTableData> &data) {
     ASSERT_EQ(id, object_id);
     ASSERT_EQ(data.size(), managers.size());
     test->IncrementNumCallbacks();

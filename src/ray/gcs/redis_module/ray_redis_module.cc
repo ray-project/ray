@@ -667,8 +667,8 @@ int HashUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
 /// \param entry_id The UniqueID associated with the open Redis key.
 /// \param[out] gcs_entry The created GcsEntry.
 Status TableEntryToProtobuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
-                           RedisModuleString *prefix_str, RedisModuleString *entry_id,
-                           GcsEntry *gcs_entry) {
+                            RedisModuleString *prefix_str, RedisModuleString *entry_id,
+                            GcsEntry *gcs_entry) {
   auto key_type = RedisModule_KeyType(table_key);
   switch (key_type) {
   case REDISMODULE_KEYTYPE_STRING: {

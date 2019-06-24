@@ -461,11 +461,11 @@ class Worker(object):
             # Otherwise, return an exception object based on
             # the error type.
             error_type = int(metadata)
-            if error_type == ErrorType.Value('WORKER_DIED'):
+            if error_type == ErrorType.Value("WORKER_DIED"):
                 return RayWorkerError()
-            elif error_type == ErrorType.Value('ACTOR_DIED'):
+            elif error_type == ErrorType.Value("ACTOR_DIED"):
                 return RayActorError()
-            elif error_type == ErrorType.Value('OBJECT_UNRECONSTRUCTABLE'):
+            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
                 return UnreconstructableError(ray.ObjectID(object_id.binary()))
             else:
                 assert False, "Unrecognized error type " + str(error_type)
@@ -1637,7 +1637,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
     error_pubsub_channel = str(
-        ray.gcs_utils.TablePubsub.Value('ERROR_INFO_PUBSUB')).encode("ascii")
+        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")).encode("ascii")
     worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
     # worker.error_message_pubsub_client.psubscribe("*")
 
@@ -1880,12 +1880,12 @@ def connect(node,
         task_table_data.task = driver_task._serialized_raylet_task()
 
         # Add the driver task to the task table.
-        ray.state.state._execute_command(driver_task.task_id(),
-                                         "RAY.TABLE_ADD",
-                                         ray.gcs_utils.TablePrefix.Value('RAYLET_TASK'),
-                                         ray.gcs_utils.TablePubsub.Value('RAYLET_TASK_PUBSUB'),
-                                         driver_task.task_id().binary(),
-                                         task_table_data.SerializeToString())
+        ray.state.state._execute_command(
+            driver_task.task_id(), "RAY.TABLE_ADD",
+            ray.gcs_utils.TablePrefix.Value("RAYLET_TASK"),
+            ray.gcs_utils.TablePubsub.Value("RAYLET_TASK_PUBSUB"),
+            driver_task.task_id().binary(),
+            task_table_data.SerializeToString())
 
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.

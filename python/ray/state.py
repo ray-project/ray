@@ -11,7 +11,6 @@ import time
 import ray
 from ray.function_manager import FunctionDescriptor
 
-from ray.ray_constants import ID_SIZE
 from ray import (
     gcs_utils,
     services,
@@ -33,7 +32,7 @@ def _parse_client_table(redis_client):
     """
     NIL_CLIENT_ID = ray.ObjectID.nil().binary()
     message = redis_client.execute_command(
-        "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value('CLIENT'), "",
+        "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("CLIENT"), "",
         NIL_CLIENT_ID)
 
     # Handle the case where no clients are returned. This should only
@@ -75,8 +74,9 @@ def _parse_client_table(redis_client):
         # it cannot have previously been removed.
         else:
             assert client_id in node_info, "Client not found!"
-            assert node_info[client_id]["EntryType"] != gcs_utils.ClientTableData.DELETION, (
-                "Unexpected updation of deleted client.")
+            is_deletion = (node_info[client_id]["EntryType"] !=
+                           gcs_utils.ClientTableData.DELETION)
+            assert is_deletion, "Unexpected updation of deleted client."
             res_map = node_info[client_id]["Resources"]
             if client.entry_type == gcs_utils.ClientTableData.RES_CREATEUPDATE:
                 for res in resources:
@@ -240,8 +240,8 @@ class GlobalState(object):
 
         # Return information about a single object ID.
         message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
-                                        gcs_utils.TablePrefix.Value('OBJECT'), "",
-                                        object_id.binary())
+                                        gcs_utils.TablePrefix.Value("OBJECT"),
+                                        "", object_id.binary())
         if message is None:
             return {}
         gcs_entry = gcs_utils.GcsEntry.FromString(message)
@@ -273,8 +273,7 @@ class GlobalState(object):
             return self._object_table(object_id)
         else:
             # Return the entire object table.
-            object_keys = self._keys(gcs_utils.TablePrefix_OBJECT_string +
-                                     "*")
+            object_keys = self._keys(gcs_utils.TablePrefix_OBJECT_string + "*")
             object_ids_binary = {
                 key[len(gcs_utils.TablePrefix_OBJECT_string):]
                 for key in object_keys
@@ -298,7 +297,7 @@ class GlobalState(object):
         assert isinstance(task_id, ray.TaskID)
         message = self._execute_command(
             task_id, "RAY.TABLE_LOOKUP",
-            gcs_utils.TablePrefix.Value('RAYLET_TASK'), "", task_id.binary())
+            gcs_utils.TablePrefix.Value("RAYLET_TASK"), "", task_id.binary())
         if message is None:
             return {}
         gcs_entries = gcs_utils.GcsEntry.FromString(message)
@@ -398,8 +397,8 @@ class GlobalState(object):
         # TODO(rkn): This method should support limiting the number of log
         # events and should also support returning a window of events.
         message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
-                                        gcs_utils.TablePrefix.Value('PROFILE'), "",
-                                        batch_id.binary())
+                                        gcs_utils.TablePrefix.Value("PROFILE"),
+                                        "", batch_id.binary())
 
         if message is None:
             return []
@@ -432,8 +431,8 @@ class GlobalState(object):
 
     def profile_table(self):
         self._check_connected()
-        profile_table_keys = self._keys(
-            gcs_utils.TablePrefix_PROFILE_string + "*")
+        profile_table_keys = self._keys(gcs_utils.TablePrefix_PROFILE_string +
+                                        "*")
         batch_identifiers_binary = [
             key[len(gcs_utils.TablePrefix_PROFILE_string):]
             for key in profile_table_keys
@@ -829,7 +828,7 @@ class GlobalState(object):
         """
         assert isinstance(driver_id, ray.DriverID)
         message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value('ERROR_INFO'), "",
+            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ERROR_INFO"), "",
             driver_id.binary())
 
         # If there are no errors, return early.
@@ -891,7 +890,7 @@ class GlobalState(object):
         message = self._execute_command(
             actor_id,
             "RAY.TABLE_LOOKUP",
-            gcs_utils.TablePrefix.Value('ACTOR_CHECKPOINT_ID'),
+            gcs_utils.TablePrefix.Value("ACTOR_CHECKPOINT_ID"),
             "",
             actor_id.binary(),
         )

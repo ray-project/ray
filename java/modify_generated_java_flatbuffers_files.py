@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import os
 import sys
-
 """
 This script is used for modifying the generated java flatbuffer
 files for the reason: The package declaration in Java is different
@@ -46,6 +45,5 @@ def add_package_declarations(generated_root_path):
 if __name__ == "__main__":
     ray_home = sys.argv[1]
     root_path = os.path.join(
-        ray_home,
-        "java/runtime/src/main/java/org/ray/runtime/generated")
+        ray_home, "java/runtime/src/main/java/org/ray/runtime/generated")
     add_package_declarations(root_path)

@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import flatbuffers
-
 from ray.core.generated.ray.protocol.Task import Task
 
 from ray.core.generated.gcs_pb2 import (
@@ -31,7 +29,6 @@ __all__ = [
     "GcsEntry",
     "HeartbeatBatchTableData",
     "HeartbeatTableData",
-    "Language",
     "ObjectTableData",
     "ProfileTableData",
     "TablePrefix",
@@ -47,12 +44,12 @@ REPORTER_CHANNEL = "RAY_REPORTER"
 
 # xray heartbeats
 XRAY_HEARTBEAT_CHANNEL = str(
-    TablePubsub.Value('HEARTBEAT_PUBSUB')).encode("ascii")
+    TablePubsub.Value("HEARTBEAT_PUBSUB")).encode("ascii")
 XRAY_HEARTBEAT_BATCH_CHANNEL = str(
-    TablePubsub.Value('HEARTBEAT_BATCH_PUBSUB')).encode("ascii")
+    TablePubsub.Value("HEARTBEAT_BATCH_PUBSUB")).encode("ascii")
 
 # xray driver updates
-XRAY_DRIVER_CHANNEL = str(TablePubsub.Value('DRIVER_PUBSUB')).encode("ascii")
+XRAY_DRIVER_CHANNEL = str(TablePubsub.Value("DRIVER_PUBSUB")).encode("ascii")
 
 # These prefixes must be kept up-to-date with the TablePrefix enum in
 # gcs.proto.
