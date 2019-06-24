@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -72,16 +73,16 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> List<T> get(List<ObjectId> objectIds) {
-    // TODO (kfstorm): how to handle exception in get result without wait for all objects
     List<GetResult<T>> results = worker.getObjectInterface().get(objectIds, -1);
+    // Check exceptions before Preconditions.checkState(result.exists)
+    Optional<RayException> exception =
+        results.stream().filter(result -> result.exception != null).map(result -> result.exception).findFirst();
+    if (exception.isPresent()) {
+      throw exception.get();
+    }
     return results.stream().map(result -> {
-          // check here because we wait infinitely.
-          Preconditions.checkState(result.exists);
-          if (result.exception != null) {
-            throw result.exception;
-          } else {
-            return result.object;
-          }
+          Preconditions.checkState(result.exists, "Waited forever but result doesn't exist.");
+          return result.object;
         }
     ).collect(Collectors.toList());
   }

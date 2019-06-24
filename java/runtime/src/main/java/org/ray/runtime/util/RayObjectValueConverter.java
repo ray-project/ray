@@ -4,8 +4,10 @@ import com.google.common.base.Preconditions;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import org.ray.api.exception.RayActorException;
+import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.runtime.RayActorImpl;
@@ -13,6 +15,8 @@ import org.ray.runtime.generated.ErrorType;
 import org.ray.runtime.proxyTypes.RayObjectValueProxy;
 
 public class RayObjectValueConverter {
+  public static final byte[] JAVA_OBJECT_META = "JAVA_OBJECT".getBytes();
+
   private static final Converter[] fixedConverters = new Converter[] {
       new RawTypeConverter(),
       new ErrorTypeConverter(RayWorkerException.INSTANCE, ErrorType.WORKER_DIED),
@@ -22,14 +26,20 @@ public class RayObjectValueConverter {
       new RayActorConverter(),
   };
 
-  private final FSTConverter fstConverter;
+  private final FSTConverter[] fstConverters;
 
   public RayObjectValueConverter(ClassLoader classLoader) {
-    this.fstConverter = new FSTConverter(classLoader);
+    this.fstConverters = new FSTConverter[] {
+        new FSTConverter(String.valueOf(ErrorType.TASK_EXCEPTION).getBytes(),
+            obj -> obj instanceof RayTaskException, classLoader),
+        new FSTConverter(JAVA_OBJECT_META, obj -> true, classLoader),
+        // TODO (kfstorm): remove this fallback behavior after support pass by value with metadata
+        new FSTConverter(null, obj -> true, classLoader),
+    };
   }
 
   private Stream<Converter> getConverters() {
-    return Stream.concat(Arrays.stream(fixedConverters), Stream.of(fstConverter));
+    return Stream.concat(Arrays.stream(fixedConverters), Arrays.stream(fstConverters));
   }
 
   public RayObjectValueProxy toValue(Object object) {
@@ -106,13 +116,13 @@ public class RayObjectValueConverter {
     }
   }
 
-  static class SingleInstanceConverter implements Converter {
+  static class ErrorTypeConverter implements Converter {
     private final Object instance;
     private final RayObjectValueProxy instanceValue;
 
-    SingleInstanceConverter(Object instance, RayObjectValueProxy objectValue) {
-      this.instanceValue = objectValue;
+    ErrorTypeConverter(Object instance, int errorType) {
       this.instance = instance;
+      this.instanceValue = new RayObjectValueProxy(new byte[0], String.valueOf(errorType).getBytes());
     }
 
     @Override
@@ -130,12 +140,6 @@ public class RayObjectValueConverter {
         return new WrappedObject(instance);
       }
       return null;
-    }
-  }
-
-  static class ErrorTypeConverter extends SingleInstanceConverter {
-    ErrorTypeConverter(Object instance, int errorType) {
-      super(instance, new RayObjectValueProxy(new byte[0], String.valueOf(errorType).getBytes()));
     }
   }
 
@@ -159,26 +163,30 @@ public class RayObjectValueConverter {
     }
   }
 
-  public static class FSTConverter implements Converter {
-    public static final byte[] JAVA_OBJECT_META = "JAVA_OBJECT".getBytes();
-
+  static class FSTConverter implements Converter {
+    private final byte[] expectedMetadata;
+    private final Function<Object, Boolean> canConvert;
     private final ClassLoader classLoader;
 
-    public FSTConverter(ClassLoader classLoader) {
+    FSTConverter(byte[] expectedMetadata, Function<Object, Boolean> canConvert, ClassLoader classLoader) {
+      this.expectedMetadata = expectedMetadata;
+      this.canConvert = canConvert;
       this.classLoader = classLoader;
     }
 
     @Override
     public RayObjectValueProxy toValue(Object object) {
-      return new RayObjectValueProxy(Serializer.encode(object, classLoader), JAVA_OBJECT_META);
+      if (canConvert.apply(object)) {
+        return new RayObjectValueProxy(Serializer.encode(object, classLoader), expectedMetadata);
+      }
+      return null;
     }
 
     @Override
     public WrappedObject fromValue(RayObjectValueProxy objectValue) {
-      if (Arrays.equals(objectValue.metadata, JAVA_OBJECT_META)
-          // TODO (kfstorm): remove this fallback behavior after support pass by value with metadata
-          || objectValue.metadata == null || objectValue.metadata.length == 0
-      ) {
+      if (((expectedMetadata == null || expectedMetadata.length == 0) &&
+          (objectValue.metadata == null || objectValue.metadata.length == 0)) ||
+          Arrays.equals(objectValue.metadata, expectedMetadata)) {
         return new WrappedObject(Serializer.decode(objectValue.data, classLoader));
       }
       return null;

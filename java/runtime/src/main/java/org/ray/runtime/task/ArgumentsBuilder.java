@@ -4,7 +4,6 @@ import java.util.Arrays;
 import java.util.List;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.ObjectInterface;
 import org.ray.runtime.Worker;
 import org.ray.runtime.proxyTypes.RayObjectValueProxy;
 import org.ray.runtime.util.RayObjectValueConverter;
@@ -47,8 +46,7 @@ public class ArgumentsBuilder {
       } else {
         RayObjectValueProxy rayObjectValueProxy =
             worker.getWorkerContext().getRayObjectValueConverter().toValue(arg);
-        if (Arrays.equals(rayObjectValueProxy.metadata,
-            RayObjectValueConverter.FSTConverter.JAVA_OBJECT_META)
+        if (Arrays.equals(rayObjectValueProxy.metadata, RayObjectValueConverter.JAVA_OBJECT_META)
             && rayObjectValueProxy.data.length <= LARGEST_SIZE_PASS_BY_VALUE) {
           data = rayObjectValueProxy.data;
         } else {
