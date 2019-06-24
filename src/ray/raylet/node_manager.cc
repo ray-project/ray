@@ -181,42 +181,45 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed =
-      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-             const ClientTableDataT &data) { ClientRemoved(data); };
+  auto node_manager_client_removed = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ClientRemoved(data);
+  };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Register a callback on the client table for resource create/update requests
-  auto node_manager_resource_createupdated =
-      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-             const ClientTableDataT &data) { ResourceCreateUpdated(data); };
+  auto node_manager_resource_createupdated = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ResourceCreateUpdated(data);
+  };
   gcs_client_->client_table().RegisterResourceCreateUpdatedCallback(
       node_manager_resource_createupdated);
 
   // Register a callback on the client table for resource delete requests
-  auto node_manager_resource_deleted =
-      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-             const ClientTableDataT &data) { ResourceDeleted(data); };
+  auto node_manager_resource_deleted = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ResourceDeleted(data);
+  };
   gcs_client_->client_table().RegisterResourceDeletedCallback(
       node_manager_resource_deleted);
 
   // Subscribe to heartbeat batches from the monitor.
-  const auto &heartbeat_batch_added =
-      [this](gcs::AsyncGcsClient *client, const ClientID &id,
-             const HeartbeatBatchTableDataT &heartbeat_batch) {
-        HeartbeatBatchAdded(heartbeat_batch);
-      };
+  const auto &heartbeat_batch_added = [this](
+      gcs::AsyncGcsClient *client, const ClientID &id,
+      const HeartbeatBatchTableDataT &heartbeat_batch) {
+    HeartbeatBatchAdded(heartbeat_batch);
+  };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
       DriverID::Nil(), ClientID::Nil(), heartbeat_batch_added,
       /*subscribe_callback=*/nullptr,
       /*done_callback=*/nullptr));
 
   // Subscribe to driver table updates.
-  const auto driver_table_handler =
-      [this](gcs::AsyncGcsClient *client, const DriverID &client_id,
-             const std::vector<DriverTableDataT> &driver_data) {
-        HandleDriverTableUpdate(client_id, driver_data);
-      };
+  const auto driver_table_handler = [this](
+      gcs::AsyncGcsClient *client, const DriverID &client_id,
+      const std::vector<DriverTableDataT> &driver_data) {
+    HandleDriverTableUpdate(client_id, driver_data);
+  };
   RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(
       DriverID::Nil(), ClientID::Nil(), driver_table_handler, nullptr));
 
@@ -1034,6 +1037,25 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   TaskExecutionSpecification task_execution_spec(
       from_flatbuf<ObjectID>(*message->execution_dependencies()));
   TaskSpecification task_spec(*message->task_spec());
+
+  // Set the current version of the actor that this task is for. This is used
+  // to determine task failure.
+  if (!task_spec.ActorId().IsNil()) {
+    const auto &actor_entry = actor_registry_.find(task_spec.ActorId());
+    int64_t actor_version = 0;
+    // If we have any information about the actor this task is for, use the
+    // latest version of the actor.
+    // TODO(swang): Ideally, we would use the latest global version of the
+    // actor (i.e., look up the actor table entry) if we don't already have it
+    // in our local registry. This should only be a problem for restarted
+    // actors and nodes that have just joined the cluster.
+    if (actor_entry != actor_registry_.end()) {
+      actor_version = (actor_entry->second.GetMaxReconstructions() -
+                       actor_entry->second.GetRemainingReconstructions());
+    }
+    task_execution_spec.SetActorVersion(actor_version);
+  }
+
   Task task(task_execution_spec, task_spec);
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.

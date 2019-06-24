@@ -38,6 +38,10 @@ void TaskExecutionSpecification::SetExecutionDependencies(
   }
 }
 
+void TaskExecutionSpecification::SetActorVersion(int64_t version) {
+  execution_spec_.actor_version = version;
+}
+
 int TaskExecutionSpecification::NumForwards() const {
   return execution_spec_.num_forwards;
 }

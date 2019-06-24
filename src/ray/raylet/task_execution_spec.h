@@ -61,6 +61,11 @@ class TaskExecutionSpecification {
   /// \param dependencies The value to set the execution dependencies to.
   void SetExecutionDependencies(const std::vector<ObjectID> &dependencies);
 
+  /// Set the actor's version at the time that this task was submitted.
+  ///
+  /// \param version The version of the actor.
+  void SetActorVersion(int64_t version);
+
   /// Get the number of times this task has been forwarded.
   ///
   /// \return The number of times this task has been forwarded.
