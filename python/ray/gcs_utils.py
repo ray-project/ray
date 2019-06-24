@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import flatbuffers
 
-from ray.core.generated.Language import Language
 from ray.core.generated.ray.protocol.Task import Task
 
 from ray.core.generated.gcs_pb2 import (

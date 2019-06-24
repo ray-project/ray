@@ -587,22 +587,6 @@ filegroup(
 )
 
 flatbuffer_py_library(
-    name = "python_gcs_fbs",
-    srcs = [
-        ":gcs_fbs_file",
-    ],
-    outs = [
-        "Arg.py",
-        "Language.py",
-        "ProfileEvent.py",
-        "ProfileTableData.py",
-        "TaskInfo.py",
-        "ResourcePair.py"
-    ],
-    out_prefix = "python/ray/core/generated/",
-)
-
-flatbuffer_py_library(
     name = "python_node_manager_fbs",
     srcs = [
         "src/ray/raylet/format/node_manager.fbs",
@@ -696,7 +680,6 @@ genrule(
     srcs = [
         "python/ray/_raylet.so",
         "//:python_sources",
-        "//:python_gcs_fbs",
         "//:gcs_py_proto",
         "//:python_node_manager_fbs",
         "//:redis-server",
@@ -719,7 +702,6 @@ genrule(
         cp -f $(location //:raylet_monitor) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
         cp -f $(location @plasma//:plasma_store_server) $$WORK_DIR/python/ray/core/src/plasma/ &&
         cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
-        for f in $(locations //:python_gcs_fbs); do cp -f $$f $$WORK_DIR/python/ray/core/generated/; done &&
         mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
         for f in $(locations //:python_node_manager_fbs); do
             cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/;
