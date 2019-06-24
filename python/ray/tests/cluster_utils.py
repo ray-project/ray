@@ -177,7 +177,7 @@ class Cluster(object):
             clients = ray.state._parse_client_table(redis_client)
             live_clients = [
                 client for client in clients
-                if client["EntryType"] == ClientTableData.EntryType.INSERTION
+                if client["EntryType"] == ClientTableData.INSERTION
             ]
 
             expected = len(self.list_all_nodes())

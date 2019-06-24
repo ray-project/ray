@@ -80,7 +80,7 @@ def construct_error_message(driver_id, error_type, message, timestamp):
     """
     data = ErrorTableData()
     data.driver_id = driver_id.binary()
-    data.error_type = error_type
-    data.message = message
+    data.type = error_type
+    data.error_message = message
     data.timestamp = timestamp
     return data.SerializeToString()
