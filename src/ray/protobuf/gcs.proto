@@ -5,6 +5,7 @@ package ray.rpc;
 option java_multiple_files = true;
 option java_package = "org.ray.runtime.generated";
 
+// Language of a worker or task.
 enum Language {
   PYTHON = 0;
   CPP = 1;
@@ -77,11 +78,16 @@ message TaskReconstructionData {
   bytes node_manager_id = 2;
 }
 
+// TODO(hchen): Task table currently still uses flatbuffers-defined data structure
+// (`Task` in `node_manager.fbs`), because a lot of code depends on that. This should
+// be migrated to protobuf very soon.
 message TaskTableData {
+  // Flatbuffers-serialized content of the task, see `src/ray/raylet/task.h`.
   bytes task = 1;
 }
 
 message ActorTableData {
+  // State of an actor.
   enum ActorState {
     // Actor is alive.
     ALIVE = 0;
@@ -121,6 +127,7 @@ message ErrorTableData {
 }
 
 message ProfileTableData {
+  // Represents a profile event.
   message ProfileEvent {
     // The type of the event.
     string event_type = 1;
@@ -180,6 +187,7 @@ message ClientTableData {
   // Enum to store the entry type in the log
   EntryType entry_type = 7;
 
+  // TODO(hchen): Define the following resources in map format.
   repeated string resources_total_label = 8;
   repeated double resources_total_capacity = 9;
 }
@@ -187,6 +195,7 @@ message ClientTableData {
 message HeartbeatTableData {
   // Node manager client id
   bytes client_id = 1;
+  // TODO(hchen): Define the following resources in map format.
   // Resource capacity currently available on this node manager.
   repeated string resources_available_label = 2;
   repeated double resources_available_capacity = 3;
