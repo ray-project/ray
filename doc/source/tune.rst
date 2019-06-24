@@ -7,9 +7,9 @@ Tune: Scalable Hyperparameter Search
 
 Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
 
-You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__. To get started with Tune, try going through `our tutorial of using Tune with Keras <https://github.com/ray-project/tutorial/blob/master/tune_exercises/Tutorial.ipynb>`__.
+You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__. To get started with Tune, try going through `our tutorial of using Tune with Keras or PyTorch <https://github.com/ray-project/tutorial/blob/master/tune_exercises/>`__.
 
-(Experimental): You can try out `the above tutorial on a free hosted server via Binder <https://mybinder.org/v2/gh/ray-project/tutorial/master?filepath=tune_exercises%2FTutorial.ipynb>`__.
+(Experimental): You can try out `the above tutorial on a free hosted server via Binder <https://mybinder.org/v2/gh/ray-project/tutorial/master?filepath=tune_exercises>`__.
 
 
 Features
@@ -51,45 +51,48 @@ You'll need to first `install ray <installation.html>`__ to import Tune.
 Quick Start
 ~~~~~~~~~~~
 
-This example runs a small grid search over a neural network training function using Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached. Tune works with any deep learning framework.
-
-Tune uses Ray as a backend, so we will first import and initialize Ray.
+This example runs a small grid search over a neural network training function using Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached. Tune works with any deep learning framework. Here is an example with PyTorch:
 
 .. code-block:: python
 
+    def train_mnist(config):
+        train_loader, test_loader = get_mnist_dataloaders()
+        model = Net(config).to(torch.device("cpu"))
+        optimizer = optim.SGD(
+            model.parameters(), lr=config["lr"], momentum=config["momentum"])
+        while True:
+            train(model, optimizer, train_loader, torch.device("cpu"))
+            acc = test(model, test_loader, torch.device("cpu"))
+            track.log(mean_accuracy=acc)
+
+    tune.run(
+        train_mnist,
+        stop={"mean_accuracy": 0.98},
+        num_samples=10,
+        config={
+            "lr": tune.uniform(0.001, 0.1),
+            "momentum": tune.uniform(0.1, 0.9)
+        })
+
+
+For massive parallelism, you can import and initialize Ray, and then run `ray submit`:
+
+.. code-block:: python
+
+    #your_script_using_tune.py
     import ray
     from ray import tune
 
-    ray.init()
+    ray.init(redis_address=[ray_redis_address])
+    ...
+    tune.run(...)
 
+Then, on command prompt:
 
-For the function you wish to tune, pass in a ``reporter`` object:
+.. code-block:: bash
 
-.. code-block:: python
-   :emphasize-lines: 1,9
+    ray submit [CLUSTER_YAML] [your_script_using_tune.py]
 
-    def train_func(config, reporter):  # add a reporter arg
-        model = ( ... )
-        optimizer = SGD(model.parameters(),
-                        momentum=config["momentum"])
-        dataset = ( ... )
-
-        for idx, (data, target) in enumerate(dataset):
-            accuracy = model.fit(data, target)
-            reporter(mean_accuracy=accuracy) # report metrics
-
-**Finally**, configure your search and execute it on your Ray cluster:
-
-.. code-block:: python
-
-    all_trials = tune.run(
-        train_func,
-        name="quick-start",
-        stop={"mean_accuracy": 99},
-        config={"momentum": tune.grid_search([0.1, 0.2])}
-    )
-
-Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
 
 Contribute to Tune
 ------------------
