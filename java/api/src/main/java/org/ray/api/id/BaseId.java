@@ -48,7 +48,7 @@ public abstract class BaseId implements Serializable {
           break;
         }
       }
-    isNilCache = localIsNil;
+      isNilCache = localIsNil;
     }
     return isNilCache;
   }

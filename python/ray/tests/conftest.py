@@ -56,7 +56,7 @@ def _ray_start(**kwargs):
     ray.shutdown()
 
 
-# The following fixture will start ray with no cpu
+# The following fixture will start ray with 0 cpu.
 @pytest.fixture
 def ray_start_no_cpu(request):
     param = getattr(request, "param", {})

@@ -13,9 +13,14 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public final int maxReconstructions;
 
-  private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions) {
+  public final String jvmOptions;
+
+  private ActorCreationOptions(Map<String, Double> resources,
+                               int maxReconstructions,
+                               String jvmOptions) {
     super(resources);
     this.maxReconstructions = maxReconstructions;
+    this.jvmOptions = jvmOptions;
   }
 
   /**
@@ -25,6 +30,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     private Map<String, Double> resources = new HashMap<>();
     private int maxReconstructions = NO_RECONSTRUCTION;
+    private String jvmOptions = "";
 
     public Builder setResources(Map<String, Double> resources) {
       this.resources = resources;
@@ -36,8 +42,13 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
+    public Builder setJvmOptions(String jvmOptions) {
+      this.jvmOptions = jvmOptions;
+      return this;
+    }
+
     public ActorCreationOptions createActorCreationOptions() {
-      return new ActorCreationOptions(resources, maxReconstructions);
+      return new ActorCreationOptions(resources, maxReconstructions, jvmOptions);
     }
   }
 

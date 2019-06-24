@@ -83,7 +83,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param reply Reply to the sender
   /// \param done_callback Callback of the request
   void HandlePushRequest(const rpc::PushRequest &request, rpc::PushReply *reply,
-                         rpc::RequestDoneCallback done_callback);
+                         rpc::RequestDoneCallback done_callback) override;
 
   /// Handle pull request from remote object manager
   ///
@@ -91,7 +91,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param reply Reply
   /// \param done_callback Callback of request
   void HandlePullRequest(const rpc::PullRequest &request, rpc::PullReply *reply,
-                         rpc::RequestDoneCallback done_callback);
+                         rpc::RequestDoneCallback done_callback) override;
 
   /// Handle free objects request
   ///
@@ -100,7 +100,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param done_callback
   void HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
                                 rpc::FreeObjectsReply *reply,
-                                rpc::RequestDoneCallback done_callback);
+                                rpc::RequestDoneCallback done_callback) override;
 
   /// Send object to remote object manager
   ///
