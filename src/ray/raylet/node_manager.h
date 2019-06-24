@@ -7,6 +7,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/node_manager_server.h"
 #include "ray/rpc/node_manager_client.h"
+#include "ray/rpc/worker_client.h"
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
@@ -514,6 +515,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Map from node ids to clients of the remote node managers.
   std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
       remote_node_manager_clients_;
+
+  /// The `ClientCallManager` object that is shared by all `WorkerClient`s.
+  rpc::ClientCallManager worker_client_call_manager_;
+
+  /// Map from node ids to clients of the local workers.
+  std::unordered_map<ClientID, std::unique_ptr<rpc::WorkerClient>>
+      worker_clients_;      
 };
 
 }  // namespace raylet

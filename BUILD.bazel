@@ -8,6 +8,26 @@ load("@//bazel:cython_library.bzl", "pyx_library")
 
 COPTS = ["-DRAY_USE_GLOG"]
 
+# grpc common lib
+cc_library(
+    name = "common_grpc_lib",
+    srcs = glob([
+        "src/ray/rpc/grpc_server.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/rpc/client_call.h",
+        "src/ray/rpc/server_call.h",
+        "src/ray/rpc/grpc_server.h",
+        "src/ray/rpc/util.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
 # Node manager gRPC lib.
 grpc_proto_library(
     name = "node_manager_grpc_lib",
@@ -17,15 +37,37 @@ grpc_proto_library(
 # Node manager server and client.
 cc_library(
     name = "node_manager_rpc_lib",
-    srcs = glob([
-        "src/ray/rpc/*.cc",
-    ]),
     hdrs = glob([
-        "src/ray/rpc/*.h",
+        "src/ray/rpc/node_manager_client.h",
+        "src/ray/rpc/node_manager_server.h",
     ]),
     copts = COPTS,
     deps = [
+        ":common_grpc_lib",
         ":node_manager_grpc_lib",
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# worker gRPC lib.
+grpc_proto_library(
+    name = "worker_grpc_lib",
+    srcs = ["src/ray/protobuf/worker.proto"],
+)
+
+# worker server and client.
+cc_library(
+    name = "worker_rpc_lib",
+    hdrs = glob([
+        "src/ray/rpc/worker_client.h",
+        "src/ray/rpc/worker_server.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":common_grpc_lib",
+        ":worker_grpc_lib",
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -115,6 +157,7 @@ cc_library(
         ":gcs_fbs",
         ":node_manager_fbs",
         ":node_manager_rpc_lib",
+        ":worker_rpc_lib",
         ":object_manager",
         ":ray_common",
         ":ray_util",
@@ -155,6 +198,7 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":raylet_lib",
+        ":worker_rpc_lib",
     ],
 )
 

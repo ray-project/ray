@@ -5,6 +5,9 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/transport/transport.h"
+#include "ray/rpc/client_call.h"
+#include "ray/rpc/worker_server.h"
+#include "ray/rpc/worker_client.h"
 
 namespace ray {
 
@@ -33,6 +36,7 @@ class CoreWorkerTaskExecutionInterface {
   Status Run(const TaskExecutor &executor);
 
  private:
+
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
   /// fetch its content from store and; for arguments that are passed by value,

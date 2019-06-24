@@ -101,7 +101,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                      config.max_lineage_size),
       actor_registry_(),
       node_manager_server_(config.node_manager_port, io_service, *this),
-      client_call_manager_(io_service) {
+      client_call_manager_(io_service),
+      worker_client_call_manager_(io_service) {
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -828,11 +829,26 @@ void NodeManager::ProcessClientMessage(
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
+  auto client_id = from_flatbuf<ClientID>(*message->client_id());
   client->SetClientID(from_flatbuf<ClientID>(*message->client_id()));
   auto worker =
-      std::make_shared<Worker>(message->worker_pid(), message->language(), client);
+      std::make_shared<Worker>(message->worker_pid(), message->language(), message->port(), client);
   if (message->is_worker()) {
     // Register the new worker.
+    if (worker->Port() > 0) {
+      auto entry = worker_clients_.find(client_id);
+      if (entry != worker_clients_.end()) {
+        RAY_LOG(WARNING) << "Received registration of a new worker that already exists: "
+                          << client_id;
+        return;
+      }
+
+      // Initialize a rpc client to the new worker.
+      std::unique_ptr<rpc::WorkerClient> client(
+          new rpc::WorkerClient("0.0.0.0", worker->Port(), worker_client_call_manager_));
+      worker_clients_.emplace(client_id, std::move(client));
+    }
+
     worker_pool_.RegisterWorker(std::move(worker));
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else {
@@ -1758,17 +1774,9 @@ bool NodeManager::AssignTask(const Task &task) {
     worker->SetTaskResourceIds(acquired_resources);
   }
 
-  ResourceIdSet resource_id_set =
-      worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
-  auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
-
-  auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
-                                              fbb.CreateVector(resource_id_set_flatbuf));
-  fbb.Finish(message);
-  const auto &task_id = spec.TaskId();
-  worker->Connection()->WriteMessageAsync(
-      static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, worker, task_id](ray::Status status) {
+  auto task_id = spec.TaskId();
+  auto finish_assign_task_callback =
+      [this, worker, task_id](Status status) {
         // Remove the ASSIGNED task from the SWAP queue.
         TaskState state;
         auto assigned_task = local_queues_.RemoveTask(task_id, &state);
@@ -1830,7 +1838,58 @@ bool NodeManager::AssignTask(const Task &task) {
           local_queues_.QueueTasks({assigned_task}, TaskState::READY);
           DispatchTasks(MakeTasksWithResources({assigned_task}));
         }
-      });
+  };
+
+  if (worker->Port() > 0) {
+    // Worker is listening on a port. Push the task directly to worker.
+    // Lookup worker client for this node_id and use it to send the request.
+    auto client_id = worker->Connection()->GetClientId();
+    auto client_entry = worker_clients_.find(client_id);
+    if (client_entry == worker_clients_.end()) {
+      // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
+      RAY_LOG(INFO) << "No worker found for client id " << client_id;
+      return false;
+    }
+    auto &client = client_entry->second;
+
+    // TODO(zhijunfu): PushTask() only sends the task spec to the worker, but
+    // doesn't include the task resource ids.
+    rpc::PushTaskRequest request;
+    request.set_task_id(task_id.Binary());
+    request.set_task_spec(task.Serialize());
+  
+    auto status = client->PushTask(request, [this, worker](
+                     Status status, const rpc::PushTaskReply &reply) {
+      // Worker has finished this task. The logic below is the same
+      // as ProcessGetTaskMessage(). 
+      // If the worker was assigned a task, mark it as finished.
+      RAY_CHECK(!worker->GetAssignedTaskId().IsNil());
+      FinishAssignedTask(*worker);
+
+      // Return the worker to the idle pool.
+      worker_pool_.PushWorker(std::move(worker));
+      // Local resource availability changed: invoke scheduling policy for local node.
+      const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+      cluster_resource_map_[local_client_id].SetLoadResources(
+          local_queues_.GetResourceLoad());
+      // Call task dispatch to assign work to the new worker.
+      DispatchTasks(local_queues_.GetReadyTasksWithResources());
+    });
+
+    finish_assign_task_callback(status);
+  } else {
+    ResourceIdSet resource_id_set =
+        worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
+    auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
+
+    auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
+                                                fbb.CreateVector(resource_id_set_flatbuf));
+    fbb.Finish(message);
+    const auto &task_id = spec.TaskId();
+    worker->Connection()->WriteMessageAsync(
+        static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
+        fbb.GetBufferPointer(), finish_assign_task_callback);
+  }
 
   // We assigned this task to a worker.
   // (Note this means that we sent the task to the worker. The assignment

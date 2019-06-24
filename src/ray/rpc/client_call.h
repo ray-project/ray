@@ -30,6 +30,8 @@ class ClientCall {
   /// The callback to be called by `ClientCallManager` when the reply of this request is
   /// received.
   virtual void OnReplyReceived() = 0;
+  /// Return status.
+  virtual ray::Status GetStatus() = 0;
 };
 
 class ClientCallManager;
@@ -48,7 +50,7 @@ template <class Reply>
 class ClientCallImpl : public ClientCall {
  public:
   void OnReplyReceived() override { callback_(GrpcStatusToRayStatus(status_), reply_); }
-
+  Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
  private:
   /// Constructor.
   ///

@@ -12,22 +12,28 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
       store_socket_(store_socket),
       raylet_socket_(raylet_socket),
       worker_context_(worker_type, driver_id),
-      raylet_client_(raylet_socket_, worker_context_.GetWorkerID(),
-                     (worker_type_ == ray::WorkerType::WORKER),
-                     worker_context_.GetCurrentDriverID(), ToTaskLanguage(language_)),
+      main_work_(main_service_),
+      worker_server_(0 /* let grpc to choose port */, main_service_, *this),
       task_interface_(*this),
       object_interface_(*this),
       task_execution_interface_(*this) {
-  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
-  // connect to Raylet after a number of retries, this needs to be changed
-  // so that the worker (java/python .etc) can retrieve and handle the error
-  // instead of crashing.
+
   auto status = store_client_.Connect(store_socket_);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"
                    << " core worker: " << status.message();
     throw std::runtime_error(status.message());
   }
+
+  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
+  // connect to Raylet after a number of retries, this needs to be changed
+  // so that the worker (java/python .etc) can retrieve and handle the error
+  // instead of crashing.
+  raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
+      raylet_socket_, worker_context_.GetWorkerID(),
+      (worker_type_ == ray::WorkerType::WORKER),
+      worker_context_.GetCurrentDriverID(), ToTaskLanguage(language_),
+      worker_server_.GetPort()));
 }
 
 ::Language CoreWorker::ToTaskLanguage(WorkerLanguage language) {
