@@ -11,9 +11,9 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::HeartbeatTableData;
-using rpc::HeartbeatBatchTableData;
 using rpc::ClientTableData;
+using rpc::HeartbeatBatchTableData;
+using rpc::HeartbeatTableData;
 
 class Monitor {
  public:

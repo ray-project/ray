@@ -20,26 +20,24 @@ namespace ray {
 
 namespace gcs {
 
-using rpc::TablePrefix;
-using rpc::TablePubsub;
-using rpc::GcsChangeMode;
-using rpc::GcsEntry;
-using rpc::ObjectTableData;
-using rpc::TaskTableData;
-using rpc::ActorTableData;
-using rpc::TaskReconstructionData;
-using rpc::TaskLeaseData;
-using rpc::HeartbeatTableData;
-using rpc::ErrorTableData;
-using rpc::ClientTableData;
-using rpc::DriverTableData;
-using rpc::ProfileTableData;
 using rpc::ActorCheckpointData;
 using rpc::ActorCheckpointIdData;
+using rpc::ActorTableData;
+using rpc::ClientTableData;
+using rpc::DriverTableData;
+using rpc::ErrorTableData;
+using rpc::GcsChangeMode;
+using rpc::GcsEntry;
+using rpc::HeartbeatBatchTableData;
+using rpc::HeartbeatTableData;
+using rpc::ObjectTableData;
+using rpc::ProfileTableData;
 using rpc::RayResource;
-using rpc::HeartbeatBatchTableData;
-using rpc::HeartbeatBatchTableData;
-
+using rpc::TablePrefix;
+using rpc::TablePubsub;
+using rpc::TaskLeaseData;
+using rpc::TaskReconstructionData;
+using rpc::TaskTableData;
 
 class RedisContext;
 
@@ -92,9 +90,9 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
  public:
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<Data> &data)>;
-  using NotificationCallback = std::function<void(AsyncGcsClient *client, const ID &id,
-                                                  const GcsChangeMode change_mode,
-                                                  const std::vector<Data> &data)>;
+  using NotificationCallback =
+      std::function<void(AsyncGcsClient *client, const ID &id,
+                         const GcsChangeMode change_mode, const std::vector<Data> &data)>;
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
@@ -700,18 +698,15 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
   }
 
   Status Add(const DriverID &driver_id, const TaskID &id,
-             std::shared_ptr<TaskLeaseData> &data,
-             const WriteCallback &done) override {
-    RAY_RETURN_NOT_OK(
-        (Table<TaskID, TaskLeaseData>::Add(driver_id, id, data, done)));
+             std::shared_ptr<TaskLeaseData> &data, const WriteCallback &done) override {
+    RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(driver_id, id, data, done)));
     // Mark the entry for expiration in Redis. It's okay if this command fails
     // since the lease entry itself contains the expiration period. In the
     // worst case, if the command fails, then a client that looks up the lease
     // entry will overestimate the expiration time.
     // TODO(swang): Use a common helper function to format the key instead of
     // hardcoding it to match the Redis module.
-    std::vector<std::string> args = {"PEXPIRE",
-                                     TablePrefix_Name(prefix_) + id.Binary(),
+    std::vector<std::string> args = {"PEXPIRE", TablePrefix_Name(prefix_) + id.Binary(),
                                      std::to_string(data->timeout())};
 
     return GetRedisContext(id)->RunArgvAsync(args);
@@ -937,8 +932,7 @@ class ClientTable : public Log<ClientID, ClientTableData> {
 
  private:
   /// Handle a client table notification.
-  void HandleNotification(AsyncGcsClient *client,
-                          const ClientTableData &notifications);
+  void HandleNotification(AsyncGcsClient *client, const ClientTableData &notifications);
   /// Handle this client's successful connection to the GCS.
   void HandleConnected(AsyncGcsClient *client, const ClientTableData &client_data);
   /// Whether this client has called Disconnect().

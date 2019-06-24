@@ -8,9 +8,9 @@ ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
 
 namespace {
 
+using ray::rpc::ClientTableData;
 using ray::rpc::GcsChangeMode;
 using ray::rpc::ObjectTableData;
-using ray::rpc::ClientTableData;
 
 /// Process a notification of the object table entries and store the result in
 /// client_ids. This assumes that client_ids already contains the result of the

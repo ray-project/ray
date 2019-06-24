@@ -315,9 +315,9 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
   profile_event.set_end_time(end_time);
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
-  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
-                             std::to_string(chunk_index) + ",\"" + status.ToString() +
-                             "\"]");
+  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() +
+                               "\"," + std::to_string(chunk_index) + ",\"" +
+                               status.ToString() + "\"]");
   profile_events_.push_back(profile_event);
 }
 
@@ -335,9 +335,9 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
   profile_event.set_end_time(end_time);
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
-  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
-                             std::to_string(chunk_index) + ",\"" + status.ToString() +
-                             "\"]");
+  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() +
+                               "\"," + std::to_string(chunk_index) + ",\"" +
+                               status.ToString() + "\"]");
   profile_events_.push_back(profile_event);
 }
 
@@ -764,7 +764,9 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &c
     DisconnectClient(conn, message);
     break;
   }
-  default: { RAY_LOG(FATAL) << "invalid request " << message_type; }
+  default: {
+    RAY_LOG(FATAL) << "invalid request " << message_type;
+  }
   }
 }
 
@@ -805,7 +807,8 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
   profile_event.set_event_type("receive_pull_request");
   profile_event.set_start_time(current_sys_time_seconds());
   profile_event.set_end_time(profile_event.start_time());
-  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"]");
+  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() +
+                               "\"]");
   profile_events_.push_back(profile_event);
 
   Push(object_id, client_id);

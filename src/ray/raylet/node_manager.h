@@ -25,12 +25,12 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::ClientTableData;
-using rpc::HeartbeatTableData;
-using rpc::HeartbeatBatchTableData;
-using rpc::DriverTableData;
 using rpc::ActorTableData;
+using rpc::ClientTableData;
+using rpc::DriverTableData;
 using rpc::ErrorType;
+using rpc::HeartbeatBatchTableData;
+using rpc::HeartbeatTableData;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
