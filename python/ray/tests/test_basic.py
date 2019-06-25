@@ -2736,15 +2736,17 @@ def test_duplicate_error_messages(shutdown_only):
 
     r = ray.worker.global_worker.redis_client
 
-    r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.binary(),
-                      error_data)
+    r.execute_command("RAY.TABLE_APPEND",
+                      ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
+                      ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"),
+                      driver_id.binary(), error_data)
 
     # Before https://github.com/ray-project/ray/pull/3316 this would
     # give an error
-    r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.binary(),
-                      error_data)
+    r.execute_command("RAY.TABLE_APPEND",
+                      ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
+                      ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"),
+                      driver_id.binary(), error_data)
 
 
 @pytest.mark.skipif(

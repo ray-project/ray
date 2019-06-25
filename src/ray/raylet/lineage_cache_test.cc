@@ -13,7 +13,7 @@ namespace ray {
 
 namespace raylet {
 
-class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
+class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
                 public gcs::PubsubInterface<TaskID> {
  public:
   MockGcs() {}
@@ -23,15 +23,15 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
   }
 
   Status Add(const DriverID &driver_id, const TaskID &task_id,
-             std::shared_ptr<protocol::TaskT> &task_data,
-             const gcs::TableInterface<TaskID, protocol::Task>::WriteCallback &done) {
+             std::shared_ptr<TaskTableData> &task_data,
+             const gcs::TableInterface<TaskID, TaskTableData>::WriteCallback &done) {
     task_table_[task_id] = task_data;
     auto callback = done;
     // If we requested notifications for this task ID, send the notification as
     // part of the callback.
     if (subscribed_tasks_.count(task_id) == 1) {
       callback = [this, done](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
-                              const protocol::TaskT &data) {
+                              const TaskTableData &data) {
         done(client, task_id, data);
         // If we're subscribed to the task to be added, also send a
         // subscription notification.
@@ -45,14 +45,14 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     return ray::Status::OK();
   }
 
-  Status RemoteAdd(const TaskID &task_id, std::shared_ptr<protocol::TaskT> task_data) {
+  Status RemoteAdd(const TaskID &task_id, std::shared_ptr<TaskTableData> task_data) {
     task_table_[task_id] = task_data;
     // Send a notification after the add if the lineage cache requested
     // notifications for this key.
     bool send_notification = (subscribed_tasks_.count(task_id) == 1);
     auto callback = [this, send_notification](ray::gcs::AsyncGcsClient *client,
                                               const TaskID &task_id,
-                                              const protocol::TaskT &data) {
+                                              const TaskTableData &data) {
       if (send_notification) {
         notification_callback_(client, task_id, data);
       }
@@ -84,7 +84,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     }
   }
 
-  const std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>> &TaskTable() const {
+  const std::unordered_map<TaskID, std::shared_ptr<TaskTableData>> &TaskTable() const {
     return task_table_;
   }
 
@@ -95,7 +95,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
   const int NumTaskAdds() const { return num_task_adds_; }
 
  private:
-  std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>> task_table_;
+  std::unordered_map<TaskID, std::shared_ptr<TaskTableData>> task_table_;
   std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
   gcs::raylet::TaskTable::WriteCallback notification_callback_;
   std::unordered_set<TaskID> subscribed_tasks_;
@@ -111,7 +111,7 @@ class LineageCacheTest : public ::testing::Test {
         mock_gcs_(),
         lineage_cache_(ClientID::FromRandom(), mock_gcs_, mock_gcs_, max_lineage_size_) {
     mock_gcs_.Subscribe([this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
-                               const ray::protocol::TaskT &data) {
+                               const TaskTableData &data) {
       lineage_cache_.HandleEntryCommitted(task_id);
       num_notifications_++;
     });
@@ -341,7 +341,7 @@ TEST_F(LineageCacheTest, TestEvictChain) {
   ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), tasks.size());
 
   // Simulate executing the task on a remote node and adding it to the GCS.
-  auto task_data = std::make_shared<protocol::TaskT>();
+  auto task_data = std::make_shared<TaskTableData>();
   RAY_CHECK_OK(
       mock_gcs_.RemoteAdd(tasks.at(1).GetTaskSpecification().TaskId(), task_data));
   mock_gcs_.Flush();
@@ -432,7 +432,7 @@ TEST_F(LineageCacheTest, TestEviction) {
 
   // Simulate executing the first task on a remote node and adding it to the
   // GCS.
-  auto task_data = std::make_shared<protocol::TaskT>();
+  auto task_data = std::make_shared<TaskTableData>();
   auto it = tasks.begin();
   RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
   it++;
@@ -490,7 +490,7 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   auto last_task = tasks.front();
   tasks.erase(tasks.begin());
   for (auto it = tasks.rbegin(); it != tasks.rend(); it++) {
-    auto task_data = std::make_shared<protocol::TaskT>();
+    auto task_data = std::make_shared<TaskTableData>();
     RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
     // Check that the remote task is flushed.
     num_tasks_flushed++;
@@ -500,7 +500,7 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   }
   // Flush the last task. The lineage should not get evicted until this task's
   // commit is received.
-  auto task_data = std::make_shared<protocol::TaskT>();
+  auto task_data = std::make_shared<TaskTableData>();
   RAY_CHECK_OK(mock_gcs_.RemoteAdd(last_task.GetTaskSpecification().TaskId(), task_data));
   num_tasks_flushed++;
   mock_gcs_.Flush();
@@ -536,7 +536,7 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
   // until after the final remote task is executed, since a task can only be
   // evicted once all of its ancestors have been committed.
   for (auto it = tasks.rbegin(); it != tasks.rend(); it++) {
-    auto task_data = std::make_shared<protocol::TaskT>();
+    auto task_data = std::make_shared<TaskTableData>();
     ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), lineage_size * 2);
     RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
     num_tasks_flushed++;

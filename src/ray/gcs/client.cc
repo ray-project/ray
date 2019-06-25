@@ -206,10 +206,6 @@ TaskLeaseTable &AsyncGcsClient::task_lease_table() { return *task_lease_table_; 
 
 ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 
-FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }
-
-ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
-
 HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
 HeartbeatBatchTable &AsyncGcsClient::heartbeat_batch_table() {
