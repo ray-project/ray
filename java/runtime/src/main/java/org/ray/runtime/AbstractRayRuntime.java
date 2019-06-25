@@ -23,7 +23,6 @@ import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
-import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 
@@ -50,14 +49,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public abstract void shutdown();
-
-  public RayConfig getRayConfig() {
-    return rayConfig;
-  }
-
-  public Worker getWorker() {
-    return worker;
-  }
 
   @Override
   public <T> RayObject<T> put(T obj) {
@@ -217,6 +208,14 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public void loop() {
     worker.loop();
+  }
+
+  public Worker getWorker() {
+    return worker;
+  }
+
+  public RayConfig getRayConfig() {
+    return rayConfig;
   }
 
   public RuntimeContext getRuntimeContext() {

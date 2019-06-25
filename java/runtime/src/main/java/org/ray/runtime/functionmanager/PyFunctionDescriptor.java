@@ -1,10 +1,8 @@
 package org.ray.runtime.functionmanager;
 
-import com.google.common.base.Preconditions;
 import java.util.Arrays;
 import java.util.List;
 import org.ray.runtime.WorkerLanguage;
-import org.ray.runtime.util.StringUtil;
 
 /**
  * Represents metadata of a Python function.

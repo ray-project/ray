@@ -1,4 +1,4 @@
-#include "ray/core_worker/lib/java/org_ray_runtime_raylet_RayletClientImpl.h"
+#include "ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h"
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
