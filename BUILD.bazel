@@ -19,11 +19,13 @@ proto_library(
 cc_proto_library(
     name = "common_cc_proto",
     deps = [":common_proto"],
+    visibility = ["//java:__subpackages__"],
 )
 
 proto_library(
     name = "gcs_proto",
     srcs = ["src/ray/protobuf/gcs.proto"],
+    deps = [":common_proto"],
     visibility = ["//java:__subpackages__"],
 )
 
@@ -220,7 +222,6 @@ cc_library(
     linkopts = ["-pthread"],
     deps = [
         ":gcs",
-        ":gcs_fbs",
         ":common_cc_proto",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -467,11 +468,7 @@ cc_library(
         ],
     ),
     copts = COPTS,
-    includes = [
-        "src/ray/gcs/format",
-    ],
     deps = [
-        ":gcs_fbs",
         ":ray_util",
         "@boost//:asio",
         "@plasma//:plasma_client",
@@ -526,15 +523,10 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/gcs/*.h",
-        "src/ray/gcs/format/*.h",
     ]),
     copts = COPTS,
-    includes = [
-        "src/ray/gcs/format",
-    ],
     deps = [
         ":gcs_cc_proto",
-        ":gcs_fbs",
         ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -575,13 +567,6 @@ FLATC_ARGS = [
 ]
 
 flatbuffer_cc_library(
-    name = "gcs_fbs",
-    srcs = ["src/ray/gcs/format/gcs.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/gcs/format/",
-)
-
-flatbuffer_cc_library(
     name = "common_fbs",
     srcs = ["@plasma//:cpp/src/plasma/format/common.fbs"],
     flatc_args = FLATC_ARGS,
@@ -592,8 +577,6 @@ flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
-    include_paths = ["src/ray/gcs/format"],
-    includes = [":gcs_fbs_includes"],
     out_prefix = "src/ray/raylet/format/",
 )
 
@@ -662,12 +645,6 @@ filegroup(
     visibility = ["//java:__subpackages__"],
 )
 
-filegroup(
-    name = "gcs_fbs_file",
-    srcs = ["src/ray/gcs/format/gcs.fbs"],
-    visibility = ["//java:__subpackages__"],
-)
-
 flatbuffer_py_library(
     name = "python_node_manager_fbs",
     srcs = [
@@ -692,10 +669,6 @@ flatbuffer_py_library(
         "ray/protocol/WaitReply.py",
         "ray/protocol/WaitRequest.py",
     ],
-    include_paths = [
-        "src/ray/gcs/format/",
-    ],
-    includes = ["src/ray/gcs/format/gcs.fbs"],
     out_prefix = "python/ray/core/generated/",
 )
 

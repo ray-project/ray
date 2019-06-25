@@ -12,27 +12,31 @@ namespace ray {
 
 namespace raylet {
 
+using rpc::MessageWrapper;
+using rpc::TaskExecutionSpec;
+using rpc::IdVectorFromProtobuf;
+
 /// \class TaskExecutionSpecification
 ///
 /// The task execution specification encapsulates all mutable information about
 /// the task. These fields may change at execution time, converse to the
 /// TaskSpecification that is determined at submission time.
-class TaskExecutionSpecification : public rpc::MessageWrapper<rpc::TaskExecutionSpec> {
+class TaskExecutionSpecification : public MessageWrapper<TaskExecutionSpec> {
  public:
-  explicit TaskExecutionSpecification(rpc::TaskExecutionSpec &message)
+  explicit TaskExecutionSpecification(TaskExecutionSpec &message)
       : MessageWrapper(message) {
-    dependencies_ = rpc::IdVectorFromProtobuf<ObjectID>(message_->dependencies());
+    dependencies_ = IdVectorFromProtobuf<ObjectID>(message_->dependencies());
   }
 
-  explicit TaskExecutionSpecification(std::unique_ptr<rpc::TaskExecutionSpec> message)
+  explicit TaskExecutionSpecification(std::unique_ptr<TaskExecutionSpec> message)
       : MessageWrapper(std::move(message)) {
-    dependencies_ = rpc::IdVectorFromProtobuf<ObjectID>(message_->dependencies());
+    dependencies_ = IdVectorFromProtobuf<ObjectID>(message_->dependencies());
   }
 
-  void Reset(rpc::TaskExecutionSpec &message) {
+  void Reset(TaskExecutionSpec &message) {
     message_unique_ptr.reset(nullptr);
     message_ = &message;
-    dependencies_ = rpc::IdVectorFromProtobuf<ObjectID>(message_->dependencies());
+    dependencies_ = IdVectorFromProtobuf<ObjectID>(message_->dependencies());
   }
 
   /// Get the task's execution dependencies.

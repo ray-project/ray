@@ -44,7 +44,7 @@ namespace raylet {
 WorkerPool::WorkerPool(
     int num_worker_processes, int num_workers_per_process,
     int maximum_startup_concurrency, std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-    const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
+    const std::unordered_map<Language, std::vector<std::string>, std::hash<int>> &worker_commands)
     : num_workers_per_process_(num_workers_per_process),
       multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
       maximum_startup_concurrency_(maximum_startup_concurrency),
@@ -91,7 +91,7 @@ WorkerPool::~WorkerPool() {
   }
 }
 
-uint32_t WorkerPool::Size(const rpc::Language &language) const {
+uint32_t WorkerPool::Size(const Language &language) const {
   const auto state = states_by_lang_.find(language);
   if (state == states_by_lang_.end()) {
     return 0;
@@ -299,7 +299,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
 
   stats::CurrentWorker().Record(
-      0, {{stats::LanguageKey, rpc::Language_Name(worker->GetLanguage())},
+      0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
 
   return RemoveWorker(state.idle, worker);
@@ -309,11 +309,11 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
   stats::CurrentDriver().Record(
-      0, {{stats::LanguageKey, rpc::Language_Name(driver->GetLanguage())},
+      0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(driver->Pid())}});
 }
 
-inline WorkerPool::State &WorkerPool::GetStateForLanguage(const rpc::Language &language) {
+inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
   auto state = states_by_lang_.find(language);
   RAY_CHECK(state != states_by_lang_.end()) << "Required Language isn't supported.";
   return state->second;
@@ -381,14 +381,14 @@ void WorkerPool::RecordMetrics() const {
     // Record worker.
     for (auto worker : entry.second.registered_workers) {
       stats::CurrentWorker().Record(
-          worker->Pid(), {{stats::LanguageKey, rpc::Language_Name(worker->GetLanguage())},
+          worker->Pid(), {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
                           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
     }
 
     // Record driver.
     for (auto driver : entry.second.registered_drivers) {
       stats::CurrentDriver().Record(
-          driver->Pid(), {{stats::LanguageKey, rpc::Language_Name(driver->GetLanguage())},
+          driver->Pid(), {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
                           {stats::WorkerPidKey, std::to_string(driver->Pid())}});
     }
   }

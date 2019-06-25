@@ -5,6 +5,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <vector>
+#include <ray/protobuf/gcs.pb.h>
 
 #include "ray/common/status.h"
 #include "ray/raylet/task_spec.h"
@@ -16,6 +17,9 @@ using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::UniqueID;
+
+using ray::rpc::Language;
+using ray::rpc::ProfileTableData;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
@@ -137,7 +141,7 @@ class RayletClient {
   ///
   /// \param profile_events A batch of profiling event information.
   /// \return ray::Status.
-  ray::Status PushProfileEvents(const ProfileTableDataT &profile_events);
+  ray::Status PushProfileEvents(const ProfileTableData &profile_events);
 
   /// Free a list of objects from object stores.
   ///

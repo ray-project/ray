@@ -208,9 +208,13 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 
   flatbuffers::FlatBufferBuilder fbb;
+//  auto message = ray::protocol::CreateRegisterClientRequest(
+//      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
+//      language);
+// XXX
   auto message = ray::protocol::CreateRegisterClientRequest(
       fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, job_id),
-      language);
+      XLanguage::PYTHON);
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -333,9 +337,9 @@ ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string 
   return conn_->WriteMessage(MessageType::PushErrorRequest, &fbb);
 }
 
-ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_events) {
+ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateProfileTableData(fbb, &profile_events);
+  auto message = fbb.CreateString(profile_events.SerializeAsString());
   fbb.Finish(message);
 
   auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);

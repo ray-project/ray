@@ -12,13 +12,15 @@ namespace ray {
 
 namespace raylet {
 
+using rpc::Language;
+
 /// Worker class encapsulates the implementation details of a worker. A worker
 /// is the execution container around a unit of Ray work, such as a task or an
 /// actor. Ray units of work execute in the context of a Worker.
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(pid_t pid, const rpc::Language &language,
+  Worker(pid_t pid, const Language &language,
          std::shared_ptr<LocalClientConnection> connection);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -29,7 +31,7 @@ class Worker {
   bool IsBlocked() const;
   /// Return the worker's PID.
   pid_t Pid() const;
-  rpc::Language GetLanguage() const;
+  Language GetLanguage() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   bool AddBlockedTaskId(const TaskID &task_id);
@@ -56,7 +58,7 @@ class Worker {
   /// The worker's PID.
   pid_t pid_;
   /// The language type of this worker.
-  rpc::Language language_;
+  Language language_;
   /// Connection state of a worker.
   std::shared_ptr<LocalClientConnection> connection_;
   /// The worker's currently assigned task.

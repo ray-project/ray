@@ -10,10 +10,14 @@ namespace rpc {
 template <class Message>
 class MessageWrapper {
  public:
-  explicit MessageWrapper(Message &message) : message_(&message) {}
+  explicit MessageWrapper(Message &message) : message_(&message) {
+    RAY_CHECK(message_ != nullptr);
+  }
 
   explicit MessageWrapper(std::unique_ptr<Message> message)
-      : message_unique_ptr(std::move(message)), message_(message_unique_ptr.get()) {}
+      : message_unique_ptr(std::move(message)), message_(message_unique_ptr.get()) {
+    RAY_CHECK(message_ != nullptr);
+  }
 
   MessageWrapper(const MessageWrapper<Message> &from)
       : MessageWrapper(std::unique_ptr<Message>(new Message(from.GetMessage()))) {}
@@ -34,10 +38,14 @@ class MessageWrapper {
 template <class Message>
 class ConstMessageWrapper {
  public:
-  explicit ConstMessageWrapper(const Message &message) : message_(&message) {}
+  explicit ConstMessageWrapper(const Message &message) : message_(&message) {
+    RAY_CHECK(message_ != nullptr);
+  }
 
   explicit ConstMessageWrapper(std::unique_ptr<const Message> message)
-  : message_unique_ptr(std::move(message)), message_(message_unique_ptr.get()) {}
+  : message_unique_ptr(std::move(message)), message_(message_unique_ptr.get()) {
+    RAY_CHECK(message_ != nullptr);
+  }
 
   ConstMessageWrapper(const ConstMessageWrapper<Message> &from)
       : ConstMessageWrapper(std::unique_ptr<Message>(new Message(from.GetMessage()))) {}

@@ -19,12 +19,15 @@ namespace ray {
 
 namespace raylet {
 
+using rpc::Language;
+using rpc::ConstMessageWrapper;
+
 /// \class TaskSpecification
 ///
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// TaskExecutionSpecification that may change at execution time.
-class TaskSpecification : public rpc::ConstMessageWrapper<rpc::TaskSpec> {
+class TaskSpecification : public ConstMessageWrapper<rpc::TaskSpec> {
  public:
   /// Deserialize a task specification from a flatbuffer.
   ///
@@ -37,11 +40,6 @@ class TaskSpecification : public rpc::ConstMessageWrapper<rpc::TaskSpec> {
   explicit TaskSpecification(std::unique_ptr<const rpc::TaskSpec> message)
       : ConstMessageWrapper(std::move(message)) {
     ComputeResources();
-  }
-  std::string SerializeAsString() const {
-    std::string ret;
-    message_->SerializeToString(&ret);
-    return ret;
   }
 
   // TODO(swang): Finalize and document these methods.
@@ -94,7 +92,7 @@ class TaskSpecification : public rpc::ConstMessageWrapper<rpc::TaskSpec> {
 
   bool IsDriverTask() const;
 
-  rpc::Language GetLanguage() const;
+  Language GetLanguage() const;
 
   // Methods specific to actor tasks.
   bool IsActorCreationTask() const;
