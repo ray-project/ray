@@ -1,4 +1,4 @@
-"""Example of using a custom ModelV2 Keras-stlye model.
+"""Example of using a custom ModelV2 Keras-style model.
 
 TODO(ekl): add this to docs once ModelV2 is fully implemented.
 """
@@ -90,8 +90,8 @@ class MyKerasQModel(SimpleQModel):
         return model_out, state
 
     def get_q_values(self, input_dict, model_out):
-        return self.q_value_head(
-            model_out)  # using default impl from SimpleQModel
+        # using default impl from SimpleQModel
+        return self.q_value_head(model_out)
 
 
 if __name__ == "__main__":

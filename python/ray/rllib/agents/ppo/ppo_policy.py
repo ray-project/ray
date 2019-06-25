@@ -202,12 +202,12 @@ class KLCoeffMixin(object):
         # KL Coefficient
         self.kl_coeff_val = config["kl_coeff"]
         self.kl_target = config["kl_target"]
-        self.kl_coeff = tf.get_variable(
-            initializer=tf.constant_initializer(self.kl_coeff_val),
-            name="kl_coeff",
-            shape=(),
-            trainable=False,
-            dtype=tf.float32)
+        self.kl_coeff = tf.get_variable(initializer=tf.constant_initializer(
+            self.kl_coeff_val),
+                                        name="kl_coeff",
+                                        shape=(),
+                                        trainable=False,
+                                        dtype=tf.float32)
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:
@@ -222,17 +222,6 @@ class ValueNetworkMixin(object):
     def __init__(self, obs_space, action_space, config):
         if config["use_gae"]:
             self.value_function = self.model.value_function()
-#
-#            if config["vf_share_layers"]:
-#                self.value_function = tf.reshape(
-#                    self.model.get_branch_output(
-#                        "value", 1,
-#                        feature_layer=self.feature_out), [-1])
-#            else:
-#                self.value_function = tf.reshape(
-#                    self.model.get_branch_output("value",
-#                                                 1,
-#                                                 feature_layer=None), [-1])
         else:
             self.value_function = tf.zeros(
                 shape=tf.shape(self.get_placeholder(SampleBatch.CUR_OBS))[:1])

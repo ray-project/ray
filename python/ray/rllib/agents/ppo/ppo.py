@@ -85,8 +85,8 @@ def choose_policy_optimizer(workers, config):
 def update_kl(trainer, fetches):
     if "kl" in fetches:
         # single-agent
-        trainer.workers.local_worker().for_policy(
-            lambda pi: pi.update_kl(fetches["kl"]))
+        trainer.workers.local_worker().for_policy(lambda pi: pi.update_kl(
+            fetches["kl"]))
     else:
 
         def update(pi, pi_id):
@@ -156,12 +156,11 @@ def validate_config(config):
         config["model"]["vf_share_layers"] = config["vf_share_layers"]
 
 
-PPOTrainer = build_trainer(
-    name="PPO",
-    default_config=DEFAULT_CONFIG,
-    default_policy=PPOTFPolicy,
-    make_policy_optimizer=choose_policy_optimizer,
-    validate_config=validate_config,
-    after_optimizer_step=update_kl,
-    before_train_step=warn_about_obs_filter,
-    after_train_result=warn_about_bad_reward_scales)
+PPOTrainer = build_trainer(name="PPO",
+                           default_config=DEFAULT_CONFIG,
+                           default_policy=PPOTFPolicy,
+                           make_policy_optimizer=choose_policy_optimizer,
+                           validate_config=validate_config,
+                           after_optimizer_step=update_kl,
+                           before_train_step=warn_about_obs_filter,
+                           after_train_result=warn_about_bad_reward_scales)
