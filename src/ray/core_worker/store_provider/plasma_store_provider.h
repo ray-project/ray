@@ -19,7 +19,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(plasma::PlasmaClient &store_client,
                                 std::mutex &store_client_mutex,
-                                RayletClient &raylet_client);
+                                std::unique_ptr<RayletClient> &raylet_client);
 
   /// Put an object with specified ID into object store.
   ///
@@ -68,7 +68,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   std::mutex &store_client_mutex_;
 
   /// Raylet client.
-  RayletClient &raylet_client_;
+  std::unique_ptr<RayletClient> &raylet_client_;
 };
 
 }  // namespace ray

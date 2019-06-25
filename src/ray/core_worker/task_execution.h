@@ -52,7 +52,17 @@ class CoreWorkerTaskExecutionInterface {
   CoreWorker &core_worker_;
 
   /// All the task task receivers supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskReceiver>> task_receivers;
+  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskReceiver>> task_receivers_;
+
+  /// The RPC server.
+  rpc::GrpcServer worker_server_;
+
+  /// event loop where tasks are processed.
+  boost::asio::io_service main_service_;
+
+  boost::asio::io_service::work main_work_;
+
+  friend class CoreWorker;
 };
 
 }  // namespace ray

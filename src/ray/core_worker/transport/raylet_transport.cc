@@ -1,31 +1,42 @@
 
 #include "ray/core_worker/transport/raylet_transport.h"
+#include "ray/raylet/task.h"
 
 namespace ray {
 
-CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(RayletClient &raylet_client)
+CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(
+    std::unique_ptr<RayletClient> &raylet_client)
     : raylet_client_(raylet_client) {}
 
 Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
-  return raylet_client_.SubmitTask(task.GetDependencies(), task.GetTaskSpecification());
+  RAY_CHECK(raylet_client_ != nullptr);
+  return raylet_client_->SubmitTask(task.GetDependencies(), task.GetTaskSpecification());
 }
 
-CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(RayletClient &raylet_client)
-    : raylet_client_(raylet_client) {}
+CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
+    boost::asio::io_service &io_service,
+    rpc::GrpcServer &server)
+    : task_service_(io_service, *this) {
+  
+  server.RegisterService(task_service_);
+}
 
-Status CoreWorkerRayletTaskReceiver::GetTasks(std::vector<TaskSpec> *tasks) {
-  std::unique_ptr<raylet::TaskSpecification> task_spec;
-  auto status = raylet_client_.GetTask(&task_spec);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Get task from raylet failed with error: "
-                   << ray::Status::IOError(status.message());
-    return status;
-  }
+void CoreWorkerRayletTaskReceiver::HandlePushTask(
+    const rpc::PushTaskRequest &request,
+    rpc::PushTaskReply *reply,
+    rpc::RequestDoneCallback done_callback) {
 
-  std::vector<ObjectID> dependencies;
-  RAY_CHECK((*tasks).empty());
-  (*tasks).emplace_back(*task_spec, dependencies);
+  const std::string &task_message = request.task_spec();
+  const raylet::Task task(*flatbuffers::GetRoot<protocol::Task>(
+      reinterpret_cast<const uint8_t *>(task_message.data())));  
+  const auto &spec = task.GetTaskSpecification();
 
+  auto status = task_handler_(spec);
+  done_callback(status);
+}
+
+Status CoreWorkerRayletTaskReceiver::SetTaskHandler(const TaskHandler &callback) {
+  task_handler_ = callback; 
   return Status::OK();
 }
 

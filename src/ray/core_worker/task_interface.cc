@@ -11,7 +11,7 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(CoreWorker &core_worker)
   task_submitters_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
-          new CoreWorkerRayletTaskSubmitter(*core_worker_.raylet_client_)));
+          new CoreWorkerRayletTaskSubmitter(core_worker_.raylet_client_)));
 }
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,

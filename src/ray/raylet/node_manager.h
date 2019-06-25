@@ -448,6 +448,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
+  /// Handle the case where a worker is available. This should be called when a new
+  /// worker is registered with a port greater than zero (which indicates it will
+  /// act as a rpc server), and when a worker finishes it assigned task, which is
+  /// indicated by a `GetTask` message (or a rpc reply if the worker is a rpc server).
+  /// 
+  /// \param worker Worker that is available.
+  /// \return void.
+  void HandleWorkerAvailable(std::shared_ptr<Worker> worker);
+
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
                          rpc::ForwardTaskReply *reply,
@@ -507,7 +516,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 
   /// The RPC server.
-  rpc::NodeManagerServer node_manager_server_;
+  rpc::GrpcServer node_manager_server_;
+
+  /// The RPC service.
+  rpc::NodeManagerGrpcService node_manager_service_;
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
   rpc::ClientCallManager client_call_manager_;
@@ -520,7 +532,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   rpc::ClientCallManager worker_client_call_manager_;
 
   /// Map from node ids to clients of the local workers.
-  std::unordered_map<ClientID, std::unique_ptr<rpc::WorkerClient>>
+  std::unordered_map<ClientID, std::unique_ptr<rpc::WorkerTaskClient>>
       worker_clients_;      
 };
 

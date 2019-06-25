@@ -8,14 +8,13 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/task_interface.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/rpc/worker_server.h"
 
 namespace ray {
 
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker : public rpc::WorkerServiceHandler {
+class CoreWorker {
  public:
   /// Construct a CoreWorker instance.
   ///
@@ -45,23 +44,15 @@ class CoreWorker : public rpc::WorkerServiceHandler {
   /// task execution.
   CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
-  /// Handle a `PushTask` request.
-  /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `done_callback` should be called.
-  ///
-  /// \param[in] request The request message.
-  /// \param[out] reply The reply message.
-  /// \param[in] done_callback The callback to be called when the request is done.
-  void HandlePushTask(const rpc::PushTaskRequest &request,
-                      rpc::PushTaskReply *reply,
-                      rpc::RequestDoneCallback done_callback) override { /* TODO */ }
-
  private:
   /// Translate from WorkLanguage to Language type (required by raylet client).
   ///
   /// \param[in] language Language for a task.
   /// \return Translated task language.
   ::Language ToTaskLanguage(WorkerLanguage language);
+
+  /// Initialize raylet client.
+  void InitializeRayletClient(int server_port);
 
   /// Type of this worker.
   const enum WorkerType worker_type_;
@@ -86,16 +77,6 @@ class CoreWorker : public rpc::WorkerServiceHandler {
 
   /// Raylet client.
   std::unique_ptr<RayletClient> raylet_client_;
-
-  /// Main IO service to execute tasks.
-  boost::asio::io_service main_service_;
-
-  /// To ensure the IO service will not stop when there are no tasks
-  /// to process.
-  boost::asio::io_service::work main_work_;
-
-  /// The RPC server for this worker.
-  rpc::WorkerServer worker_server_;
 
   /// The `CoreWorkerTaskInterface` instance.
   CoreWorkerTaskInterface task_interface_;

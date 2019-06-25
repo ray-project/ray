@@ -17,7 +17,7 @@ message PushTaskReply {
 }
 
 // Service for worker.
-service WorkerService {
+service WorkerTaskService {
   // Push a task to a worker.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
 }

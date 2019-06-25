@@ -15,19 +15,19 @@ namespace ray {
 namespace rpc {
 
 /// Client used for communicating with a remote worker server.
-class WorkerClient {
+class WorkerTaskClient {
  public:
   /// Constructor.
   ///
   /// \param[in] address Address of the worker server.
   /// \param[in] port Port of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  WorkerClient(const std::string &address, const int port,
+  WorkerTaskClient(const std::string &address, const int port,
                     ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = WorkerService::NewStub(channel);
+    stub_ = WorkerTaskService::NewStub(channel);
   };
 
   /// Push a task.
@@ -38,15 +38,15 @@ class WorkerClient {
   ray::Status PushTask(const PushTaskRequest &request,
                    const ClientCallback<PushTaskReply> &callback) {
     auto call = client_call_manager_
-        .CreateCall<WorkerService, PushTaskRequest, PushTaskReply>(
-            *stub_, &WorkerService::Stub::PrepareAsyncPushTask, request,
+        .CreateCall<WorkerTaskService, PushTaskRequest, PushTaskReply>(
+            *stub_, &WorkerTaskService::Stub::PrepareAsyncPushTask, request,
             callback);
     return call->GetStatus();
   }
 
  private:
   /// The gRPC-generated stub.
-  std::unique_ptr<WorkerService::Stub> stub_;
+  std::unique_ptr<WorkerTaskService::Stub> stub_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

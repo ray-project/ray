@@ -12,8 +12,6 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
       store_socket_(store_socket),
       raylet_socket_(raylet_socket),
       worker_context_(worker_type, driver_id),
-      main_work_(main_service_),
-      worker_server_(0 /* let grpc to choose port */, main_service_, *this),
       task_interface_(*this),
       object_interface_(*this),
       task_execution_interface_(*this) {
@@ -25,15 +23,24 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
     throw std::runtime_error(status.message());
   }
 
-  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
-  // connect to Raylet after a number of retries, this needs to be changed
-  // so that the worker (java/python .etc) can retrieve and handle the error
-  // instead of crashing.
-  raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-      raylet_socket_, worker_context_.GetWorkerID(),
-      (worker_type_ == ray::WorkerType::WORKER),
-      worker_context_.GetCurrentDriverID(), ToTaskLanguage(language_),
-      worker_server_.GetPort()));
+  // TODO(zhijunfu): For non-driver worker, the initialization of
+  // raylet client is delayed to when `TaskExecutionInterface::Run()`
+  // is called, as it is until that time the port for the worker 
+  // rpc server can be determined, and this information needs to be
+  // included when worker registers to raylet.
+  if (worker_type_ == WorkerType::DRIVER) {
+    InitializeRayletClient(0);
+  }
+}
+
+void CoreWorker::InitializeRayletClient(int server_port) {
+  if (raylet_client_ == nullptr) {
+    raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
+        raylet_socket_, worker_context_.GetWorkerID(),
+        (worker_type_ == ray::WorkerType::WORKER),
+        worker_context_.GetCurrentDriverID(), ToTaskLanguage(language_),
+        server_port));
+  }
 }
 
 ::Language CoreWorker::ToTaskLanguage(WorkerLanguage language) {

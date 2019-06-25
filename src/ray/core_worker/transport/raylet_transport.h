@@ -5,6 +5,7 @@
 
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
+#include "ray/rpc/worker_server.h"
 
 namespace ray {
 
@@ -14,7 +15,7 @@ namespace ray {
 
 class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerRayletTaskSubmitter(RayletClient &raylet_client);
+  CoreWorkerRayletTaskSubmitter(std::unique_ptr<RayletClient> &raylet_client);
 
   /// Submit a task for execution to raylet.
   ///
@@ -24,19 +25,35 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
 
  private:
   /// Raylet client.
-  RayletClient &raylet_client_;
+  std::unique_ptr<RayletClient> &raylet_client_;
 };
 
-class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver {
+class CoreWorkerRayletTaskReceiver
+    : public CoreWorkerTaskReceiver,
+      public rpc::WorkerTaskHandler {
  public:
-  CoreWorkerRayletTaskReceiver(RayletClient &raylet_client);
+  CoreWorkerRayletTaskReceiver(
+    boost::asio::io_service &io_service,
+    rpc::GrpcServer &server);
 
-  // Get tasks for execution from raylet.
-  virtual Status GetTasks(std::vector<TaskSpec> *tasks) override;
+  /// Handle a `PushTask` request.
+  /// The implementation can handle this request asynchronously. When hanling is done, the
+  /// `done_callback` should be called.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] done_callback The callback to be called when the request is done.
+  void HandlePushTask(const rpc::PushTaskRequest &request,
+                                 rpc::PushTaskReply *reply,
+                                 rpc::RequestDoneCallback done_callback) override;
+
+  Status SetTaskHandler(const TaskHandler &callback) override;                                 
 
  private:
-  /// Raylet client.
-  RayletClient &raylet_client_;
+
+  TaskHandler task_handler_;
+
+  rpc::WorkerTaskGrpcService task_service_;
 };
 
 }  // namespace ray

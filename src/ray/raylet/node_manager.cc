@@ -100,9 +100,10 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                      gcs_client_->raylet_task_table(), gcs_client_->raylet_task_table(),
                      config.max_lineage_size),
       actor_registry_(),
-      node_manager_server_(config.node_manager_port, io_service, *this),
+      node_manager_server_("NodeManager", config.node_manager_port),
+      node_manager_service_(io_service, *this),
       client_call_manager_(io_service),
-      worker_client_call_manager_(io_service) {
+      worker_client_call_manager_(io_service) {      
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -119,6 +120,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
   RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
+  node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.Run();
 }
 
@@ -835,7 +837,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       std::make_shared<Worker>(message->worker_pid(), message->language(), message->port(), client);
   if (message->is_worker()) {
     // Register the new worker.
-    if (worker->Port() > 0) {
+    bool use_push_task = (worker->Port() > 0);
+    if (use_push_task) {
       auto entry = worker_clients_.find(client_id);
       if (entry != worker_clients_.end()) {
         RAY_LOG(WARNING) << "Received registration of a new worker that already exists: "
@@ -844,13 +847,20 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       }
 
       // Initialize a rpc client to the new worker.
-      std::unique_ptr<rpc::WorkerClient> client(
-          new rpc::WorkerClient("0.0.0.0", worker->Port(), worker_client_call_manager_));
-      worker_clients_.emplace(client_id, std::move(client));
+      std::unique_ptr<rpc::WorkerTaskClient> grpc_client(
+          new rpc::WorkerTaskClient("0.0.0.0", worker->Port(), worker_client_call_manager_));
+      worker_clients_.emplace(client_id, std::move(grpc_client));
     }
 
     worker_pool_.RegisterWorker(std::move(worker));
-    DispatchTasks(local_queues_.GetReadyTasksWithResources());
+    if (use_push_task) {
+      auto registered_worker = worker_pool_.GetRegisteredWorker(client);
+      HandleWorkerAvailable(registered_worker);
+    } else {
+      // TODO(zhijunfu): this seems unnecessary as we already call
+      // `DispatchTasks` when this worker calls `GetTask`?
+      DispatchTasks(local_queues_.GetReadyTasksWithResources());
+    }
   } else {
     // Register the new driver. Note that here the driver_id in RegisterClientRequest
     // message is actually the ID of the driver task, while client_id represents the
@@ -917,14 +927,8 @@ void NodeManager::ProcessGetTaskMessage(
   if (!worker->GetAssignedTaskId().IsNil()) {
     FinishAssignedTask(*worker);
   }
-  // Return the worker to the idle pool.
-  worker_pool_.PushWorker(std::move(worker));
-  // Local resource availability changed: invoke scheduling policy for local node.
-  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  cluster_resource_map_[local_client_id].SetLoadResources(
-      local_queues_.GetResourceLoad());
-  // Call task dispatch to assign work to the new worker.
-  DispatchTasks(local_queues_.GetReadyTasksWithResources());
+
+  HandleWorkerAvailable(worker);
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -1862,21 +1866,32 @@ bool NodeManager::AssignTask(const Task &task) {
                      Status status, const rpc::PushTaskReply &reply) {
       // Worker has finished this task. The logic below is the same
       // as ProcessGetTaskMessage(). 
+      auto conn = worker->Connection();
+      auto registered_worker = worker_pool_.GetRegisteredWorker(conn);
+      if (registered_worker == nullptr) {
+        RAY_LOG(DEBUG) << "worker with pid " << worker->Pid()
+                       << " has already dead";
+        return;
+      }
+
       // If the worker was assigned a task, mark it as finished.
       RAY_CHECK(!worker->GetAssignedTaskId().IsNil());
       FinishAssignedTask(*worker);
 
-      // Return the worker to the idle pool.
-      worker_pool_.PushWorker(std::move(worker));
-      // Local resource availability changed: invoke scheduling policy for local node.
-      const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-      cluster_resource_map_[local_client_id].SetLoadResources(
-          local_queues_.GetResourceLoad());
-      // Call task dispatch to assign work to the new worker.
-      DispatchTasks(local_queues_.GetReadyTasksWithResources());
+      HandleWorkerAvailable(worker);
     });
 
-    finish_assign_task_callback(status);
+    // NOTE: we cannot directly call `finish_assign_task_callback` here because 
+    // it assumes the task is in SWAP queue, thus we need to delay invoking this
+    // function after the assigned tasks are moved from READY queue to SWAP queue
+    // in `DispatchTasks`.
+    // Another option is to move the tasks to SWAP queue here just before calling
+    // `finish_assign_task_callback` so we can save an io_service post, at the
+    // expense of calling `MoveTask` for each of the assigned tasks.
+    io_service_.post([status, finish_assign_task_callback]() {
+      finish_assign_task_callback(status); 
+    });
+    
   } else {
     ResourceIdSet resource_id_set =
         worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
@@ -2335,6 +2350,17 @@ void NodeManager::ForwardTask(
       on_error(status, task);
     }
   });
+}
+
+void NodeManager::HandleWorkerAvailable(std::shared_ptr<Worker> worker) {
+  // Return the worker to the idle pool.
+  worker_pool_.PushWorker(std::move(worker));
+  // Local resource availability changed: invoke scheduling policy for local node.
+  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+  cluster_resource_map_[local_client_id].SetLoadResources(
+      local_queues_.GetResourceLoad());
+  // Call task dispatch to assign work to the new worker.
+  DispatchTasks(local_queues_.GetReadyTasksWithResources());
 }
 
 void NodeManager::DumpDebugState() const {

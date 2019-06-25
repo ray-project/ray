@@ -7,26 +7,18 @@ namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     CoreWorker &core_worker)
-    : core_worker_(core_worker) {
-  task_receivers.emplace(
+    : core_worker_(core_worker),
+      worker_server_("Worker", 0 /* let grpc choose port */),
+      main_work_(main_service_) {
+  task_receivers_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-          new CoreWorkerRayletTaskReceiver(*core_worker_.raylet_client_)));
+          new CoreWorkerRayletTaskReceiver(
+          main_service_, worker_server_)));
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
-  while (true) {
-    std::vector<TaskSpec> tasks;
-    auto status =
-        task_receivers[static_cast<int>(TaskTransportType::RAYLET)]->GetTasks(&tasks);
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Getting task failed with error: "
-                     << ray::Status::IOError(status.message());
-      return status;
-    }
-
-    for (const auto &task : tasks) {
-      const auto &spec = task.GetTaskSpecification();
+  auto callback = [this, executor](const raylet::TaskSpecification &spec) {
       core_worker_.worker_context_.SetCurrentTask(spec);
 
       WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
@@ -41,15 +33,32 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
       if (spec.IsActorCreationTask() || spec.IsActorTask()) {
         RAY_CHECK(num_returns > 0);
         // Decrease to account for the dummy object id.
+        // TODO (zhijunfu): note this logic only applies to task submitted via raylet.
         num_returns--;
       }
 
-      status = executor(func, args, spec.TaskId(), num_returns);
+      auto status = executor(func, args, spec.TaskId(), num_returns);
       // TODO(zhijunfu):
       // 1. Check and handle failure.
       // 2. Save or load checkpoint.
-    }
+      return status;
+  };
+
+  for (auto &entry : task_receivers_) {
+    entry.second->SetTaskHandler(callback);
   }
+
+  // start rpc server after all the task receivers are properly initialized.
+  worker_server_.Run();
+
+  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
+  // connect to Raylet after a number of retries, this needs to be changed
+  // so that the worker (java/python .etc) can retrieve and handle the error
+  // instead of crashing.
+  core_worker_.InitializeRayletClient(worker_server_.GetPort());
+
+  // Run main IO service.
+  main_service_.run();
 
   // should never reach here.
   return Status::OK();
