@@ -106,19 +106,19 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   // Attempt to reconstruct the task by inserting an entry into the task
   // reconstruction log. This will fail if another node has already inserted
   // an entry for this reconstruction.
-  auto reconstruction_entry = std::make_shared<TaskReconstructionDataT>();
-  reconstruction_entry->num_reconstructions = reconstruction_attempt;
-  reconstruction_entry->node_manager_id = client_id_.Binary();
+  auto reconstruction_entry = std::make_shared<TaskReconstructionData>();
+  reconstruction_entry->set_num_reconstructions(reconstruction_attempt);
+  reconstruction_entry->set_node_manager_id(client_id_.Binary());
   RAY_CHECK_OK(task_reconstruction_log_.AppendAt(
       DriverID::Nil(), task_id, reconstruction_entry,
       /*success_callback=*/
       [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
-             const TaskReconstructionDataT &data) {
+             const TaskReconstructionData &data) {
         HandleReconstructionLogAppend(task_id, /*success=*/true);
       },
       /*failure_callback=*/
       [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
-             const TaskReconstructionDataT &data) {
+             const TaskReconstructionData &data) {
         HandleReconstructionLogAppend(task_id, /*success=*/false);
       },
       reconstruction_attempt));

@@ -8,18 +8,22 @@ ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
 
 namespace {
 
+using ray::rpc::ClientTableData;
+using ray::rpc::GcsChangeMode;
+using ray::rpc::ObjectTableData;
+
 /// Process a notification of the object table entries and store the result in
 /// client_ids. This assumes that client_ids already contains the result of the
 /// object table entries up to but not including this notification.
 void UpdateObjectLocations(const GcsChangeMode change_mode,
-                           const std::vector<ObjectTableDataT> &location_updates,
+                           const std::vector<ObjectTableData> &location_updates,
                            const ray::gcs::ClientTable &client_table,
                            std::unordered_set<ClientID> *client_ids) {
   // location_updates contains the updates of locations of the object.
   // with GcsChangeMode, we can determine whether the update mode is
   // addition or deletion.
   for (const auto &object_table_data : location_updates) {
-    ClientID client_id = ClientID::FromBinary(object_table_data.manager);
+    ClientID client_id = ClientID::FromBinary(object_table_data.manager());
     if (change_mode != GcsChangeMode::REMOVE) {
       client_ids->insert(client_id);
     } else {
@@ -42,7 +46,7 @@ void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback =
       [this](gcs::AsyncGcsClient *client, const ObjectID &object_id,
              const GcsChangeMode change_mode,
-             const std::vector<ObjectTableDataT> &location_updates) {
+             const std::vector<ObjectTableData> &location_updates) {
         // Objects are added to this map in SubscribeObjectLocations.
         auto it = listeners_.find(object_id);
         // Do nothing for objects we are not listening for.
@@ -79,9 +83,9 @@ ray::Status ObjectDirectory::ReportObjectAdded(
     const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
   // Append the addition entry to the object table.
-  auto data = std::make_shared<ObjectTableDataT>();
-  data->manager = client_id.Binary();
-  data->object_size = object_info.data_size;
+  auto data = std::make_shared<ObjectTableData>();
+  data->set_manager(client_id.Binary());
+  data->set_object_size(object_info.data_size);
   ray::Status status =
       gcs_client_->object_table().Add(DriverID::Nil(), object_id, data, nullptr);
   return status;
@@ -92,9 +96,9 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
     const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   // Append the eviction entry to the object table.
-  auto data = std::make_shared<ObjectTableDataT>();
-  data->manager = client_id.Binary();
-  data->object_size = object_info.data_size;
+  auto data = std::make_shared<ObjectTableData>();
+  data->set_manager(client_id.Binary());
+  data->set_object_size(object_info.data_size);
   ray::Status status =
       gcs_client_->object_table().Remove(DriverID::Nil(), object_id, data, nullptr);
   return status;
@@ -102,14 +106,14 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
 
 void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
-  ClientTableDataT client_data;
+  ClientTableData client_data;
   gcs_client_->client_table().GetClient(connection_info.client_id, client_data);
-  ClientID result_client_id = ClientID::FromBinary(client_data.client_id);
+  ClientID result_client_id = ClientID::FromBinary(client_data.client_id());
   if (!result_client_id.IsNil()) {
     RAY_CHECK(result_client_id == connection_info.client_id);
-    if (client_data.entry_type == EntryType::INSERTION) {
-      connection_info.ip = client_data.node_manager_address;
-      connection_info.port = static_cast<uint16_t>(client_data.object_manager_port);
+    if (client_data.entry_type() == ClientTableData::INSERTION) {
+      connection_info.ip = client_data.node_manager_address();
+      connection_info.port = static_cast<uint16_t>(client_data.object_manager_port());
     }
   }
 }
@@ -208,7 +212,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     status = gcs_client_->object_table().Lookup(
         DriverID::Nil(), object_id,
         [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
-                         const std::vector<ObjectTableDataT> &location_updates) {
+                         const std::vector<ObjectTableData> &location_updates) {
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
           UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, location_updates,
