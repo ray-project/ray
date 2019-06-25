@@ -76,7 +76,7 @@ class ModelV2(object):
         """
         raise NotImplementedError
 
-    def get_value_prediction(self):
+    def value_function(self):
         raise NotImplementedError
 
     def custom_loss(self, policy_loss, loss_inputs):

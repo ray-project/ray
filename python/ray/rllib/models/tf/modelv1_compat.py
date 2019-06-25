@@ -82,12 +82,12 @@ def make_v1_wrapper(legacy_model_cls):
             return self.cur_instance.custom_stats()
 
         @override(ModelV2)
-        def get_value_prediction(self):
+        def value_function(self):
             assert self.cur_instance, "must call forward first"
 
             with self._branch_variable_scope("value_function"):
                 # Simple case: sharing the feature layer
-                if True:  #self.vf_share_layers:
+                if self.model_config["vf_share_layers"]:
                     return tf.reshape(
                         linear(self.cur_instance.last_layer, 1,
                                "value_function", normc_initializer(1.0)), [-1])

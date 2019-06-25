@@ -48,6 +48,8 @@ MODEL_DEFAULTS = {
     # outputs to size `num_outputs`. If True, then the last hidden layer
     # should already match num_outputs.
     "no_final_linear": False,
+    # Whether layers should be shared for the value function.
+    "vf_share_layers": False,
 
     # == LSTM ==
     # Whether to wrap the model with a LSTM

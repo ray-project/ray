@@ -57,7 +57,7 @@ class MyKerasModel(TFModelV2):
         model_out, self._value_out = self.base_model(input_dict["obs"])
         return model_out, state
 
-    def get_value_prediction(self):
+    def value_function(self):
         return tf.reshape(self._value_out, [-1])
 
 
