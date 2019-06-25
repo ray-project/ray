@@ -208,13 +208,10 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 
   flatbuffers::FlatBufferBuilder fbb;
-//  auto message = ray::protocol::CreateRegisterClientRequest(
-//      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
-//      language);
-// XXX
   auto message = ray::protocol::CreateRegisterClientRequest(
       fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, job_id),
-      XLanguage::PYTHON);
+      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
+      language);
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -224,14 +221,12 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
                                      const ray::raylet::TaskSpecification &task_spec) {
-//  flatbuffers::FlatBufferBuilder fbb;
-//  auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
-//  auto message = ray::protocol::CreateSubmitTaskRequest(
-//      fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
-//  fbb.Finish(message);
-//  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
-// XXX
-   return ray::Status::OK();
+  flatbuffers::FlatBufferBuilder fbb;
+  auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
+  auto message = ray::protocol::CreateSubmitTaskRequest(
+      fbb, execution_dependencies_message, fbb.CreateString(task_spec.Serialize()));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
 ray::Status RayletClient::GetTask(
@@ -268,9 +263,9 @@ ray::Status RayletClient::GetTask(
   }
 
   // Return the copy of the task spec and pass ownership to the caller.
-  // XXX
-//  task_spec->reset(new ray::raylet::TaskSpecification(
-//      string_from_flatbuf(*reply_message->task_spec())));
+  std::unique_ptr<ray::rpc::TaskSpec> task_spec_message(new ray::rpc::TaskSpec());
+  task_spec_message->ParseFromString(string_from_flatbuf(*reply_message->task_spec()));
+  task_spec->reset(new ray::raylet::TaskSpecification(std::move(task_spec_message)));
   return ray::Status::OK();
 }
 

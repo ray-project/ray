@@ -1035,16 +1035,18 @@ void NodeManager::ProcessDisconnectClientMessage(
 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
-//  auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-//  TaskExecutionSpecification task_execution_spec(
-//      from_flatbuf<ObjectID>(*message->execution_dependencies()));
-//  TaskSpecification task_spec(*message->task_spec());
-//  Task task(task_execution_spec, task_spec);
-  // XXX
-  rpc::Task message;
+  auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
+  std::unique_ptr<rpc::Task> task_message;
+  for (const auto &depdency :
+       string_vec_from_flatbuf(*fbs_message->execution_dependencies())) {
+    task_message->mutable_task_execution_spec()->add_dependencies(depdency);
+  }
+  task_message->mutable_task_spec()->ParseFromArray(fbs_message->task_spec()->data(),
+                                                    fbs_message->task_spec()->size());
+
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
-  SubmitTask(Task(message), Lineage());
+  SubmitTask(Task(std::move(task_message)), Lineage());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1755,10 +1757,10 @@ bool NodeManager::AssignTask(const Task &task) {
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
   auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
-  // XXX
-//  auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
-//                                              fbb.CreateVector(resource_id_set_flatbuf));
-//  fbb.Finish(message);
+  
+  auto message = protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
+                                              fbb.CreateVector(resource_id_set_flatbuf));
+  fbb.Finish(message);
   const auto &task_id = spec.TaskId();
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),

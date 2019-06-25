@@ -2,6 +2,7 @@
 #define COMMON_PROTOCOL_H
 
 #include <unordered_map>
+#include <flatbuffers/flatbuffers.h>
 
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
