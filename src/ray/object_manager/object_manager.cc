@@ -764,9 +764,7 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &c
     DisconnectClient(conn, message);
     break;
   }
-  default: {
-    RAY_LOG(FATAL) << "invalid request " << message_type;
-  }
+  default: { RAY_LOG(FATAL) << "invalid request " << message_type; }
   }
 }
 

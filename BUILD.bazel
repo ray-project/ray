@@ -43,8 +43,8 @@ cc_proto_library(
 cc_grpc_library(
     name = "node_manager_cc_grpc",
     srcs = [":node_manager_proto"],
-    deps = [":node_manager_cc_proto"],
     grpc_only = True,
+    deps = [":node_manager_cc_proto"],
 )
 
 # Node manager server and client.
@@ -457,9 +457,9 @@ cc_library(
     deps = [
         ":gcs_cc_proto",
         ":gcs_fbs",
-        ":node_manager_rpc",
         ":hiredis",
         ":node_manager_fbs",
+        ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
@@ -674,8 +674,8 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//java:__subpackages__"],
     deps = [
-        ":ray_common",
         ":gcs_cc_proto",
+        ":ray_common",
     ],
 )
 
