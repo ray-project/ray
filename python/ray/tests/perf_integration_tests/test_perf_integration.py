@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.tests.conftest import _ray_start_cluster
 
 num_tasks_submitted = [10**n for n in range(0, 6)]
 num_tasks_ids = ["{}_tasks".format(i) for i in num_tasks_submitted]
@@ -41,3 +42,25 @@ def test_task_submission(benchmark, num_tasks):
     warmup()
     benchmark(benchmark_task_submission, num_tasks)
     ray.shutdown()
+
+
+def benchmark_task_forward(f, num_tasks):
+    ray.get([f.remote() for _ in range(num_tasks)])
+
+
+@pytest.mark.benchmark
+@pytest.mark.parametrize(
+    "num_tasks", [10**3, 10**4],
+    ids=[str(num) + "_tasks" for num in [10**3, 10**4]])
+def test_task_forward(benchmark, num_tasks):
+    with _ray_start_cluster(num_cpus=16, object_store_memory=10**6) as cluster:
+        cluster.add_node(resources={"my_resource": 100})
+        ray.init(redis_address=cluster.redis_address)
+
+        @ray.remote(resources={"my_resource": 0.001})
+        def f():
+            return 1
+
+        # Warm up
+        ray.get([f.remote() for _ in range(100)])
+        benchmark(benchmark_task_forward, f, num_tasks)

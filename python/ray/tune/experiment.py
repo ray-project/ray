@@ -176,6 +176,14 @@ class Experiment(object):
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")
 
+    @property
+    def local_dir(self):
+        return self.spec.get("local_dir")
+
+    @property
+    def checkpoint_dir(self):
+        return os.path.join(self.spec["local_dir"], self.name)
+
 
 def convert_to_experiment_list(experiments):
     """Produces a list of Experiment objects.

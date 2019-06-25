@@ -4,6 +4,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/transport/transport.h"
 
 namespace ray {
 
@@ -17,8 +18,7 @@ class TaskSpecification;
 /// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
-  CoreWorkerTaskExecutionInterface(CoreWorker &core_worker) : core_worker_(core_worker) {}
-
+  CoreWorkerTaskExecutionInterface(CoreWorker &core_worker);
   /// The callback provided app-language workers that executes tasks.
   ///
   /// \param ray_function[in] Information about the function to execute.
@@ -46,6 +46,9 @@ class CoreWorkerTaskExecutionInterface {
 
   /// Reference to the parent CoreWorker instance.
   CoreWorker &core_worker_;
+
+  /// All the task task receivers supported.
+  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskReceiver>> task_receivers;
 };
 
 }  // namespace ray

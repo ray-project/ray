@@ -2,38 +2,39 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import flatbuffers
-import ray.core.generated.ErrorTableData
-
-from ray.core.generated.ActorCheckpointIdData import ActorCheckpointIdData
-from ray.core.generated.ClientTableData import ClientTableData
-from ray.core.generated.DriverTableData import DriverTableData
-from ray.core.generated.ErrorTableData import ErrorTableData
-from ray.core.generated.GcsEntry import GcsEntry
-from ray.core.generated.HeartbeatBatchTableData import HeartbeatBatchTableData
-from ray.core.generated.HeartbeatTableData import HeartbeatTableData
-from ray.core.generated.Language import Language
-from ray.core.generated.ObjectTableData import ObjectTableData
-from ray.core.generated.ProfileTableData import ProfileTableData
-from ray.core.generated.TablePrefix import TablePrefix
-from ray.core.generated.TablePubsub import TablePubsub
-
 from ray.core.generated.ray.protocol.Task import Task
+
+from ray.core.generated.gcs_pb2 import (
+    ActorCheckpointIdData,
+    ClientTableData,
+    DriverTableData,
+    ErrorTableData,
+    ErrorType,
+    GcsEntry,
+    HeartbeatBatchTableData,
+    HeartbeatTableData,
+    ObjectTableData,
+    ProfileTableData,
+    TablePrefix,
+    TablePubsub,
+    TaskTableData,
+)
 
 __all__ = [
     "ActorCheckpointIdData",
     "ClientTableData",
     "DriverTableData",
     "ErrorTableData",
+    "ErrorType",
     "GcsEntry",
     "HeartbeatBatchTableData",
     "HeartbeatTableData",
-    "Language",
     "ObjectTableData",
     "ProfileTableData",
     "TablePrefix",
     "TablePubsub",
     "Task",
+    "TaskTableData",
     "construct_error_message",
 ]
 
@@ -42,13 +43,16 @@ LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
 REPORTER_CHANNEL = "RAY_REPORTER"
 
 # xray heartbeats
-XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
-XRAY_HEARTBEAT_BATCH_CHANNEL = str(TablePubsub.HEARTBEAT_BATCH).encode("ascii")
+XRAY_HEARTBEAT_CHANNEL = str(
+    TablePubsub.Value("HEARTBEAT_PUBSUB")).encode("ascii")
+XRAY_HEARTBEAT_BATCH_CHANNEL = str(
+    TablePubsub.Value("HEARTBEAT_BATCH_PUBSUB")).encode("ascii")
 
 # xray driver updates
-XRAY_DRIVER_CHANNEL = str(TablePubsub.DRIVER).encode("ascii")
+XRAY_DRIVER_CHANNEL = str(TablePubsub.Value("DRIVER_PUBSUB")).encode("ascii")
 
-# These prefixes must be kept up-to-date with the TablePrefix enum in gcs.fbs.
+# These prefixes must be kept up-to-date with the TablePrefix enum in
+# gcs.proto.
 # TODO(rkn): We should use scoped enums, in which case we should be able to
 # just access the flatbuffer generated values.
 TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
@@ -70,22 +74,9 @@ def construct_error_message(driver_id, error_type, message, timestamp):
     Returns:
         The serialized object.
     """
-    builder = flatbuffers.Builder(0)
-    driver_offset = builder.CreateString(driver_id.binary())
-    error_type_offset = builder.CreateString(error_type)
-    message_offset = builder.CreateString(message)
-
-    ray.core.generated.ErrorTableData.ErrorTableDataStart(builder)
-    ray.core.generated.ErrorTableData.ErrorTableDataAddDriverId(
-        builder, driver_offset)
-    ray.core.generated.ErrorTableData.ErrorTableDataAddType(
-        builder, error_type_offset)
-    ray.core.generated.ErrorTableData.ErrorTableDataAddErrorMessage(
-        builder, message_offset)
-    ray.core.generated.ErrorTableData.ErrorTableDataAddTimestamp(
-        builder, timestamp)
-    error_data_offset = ray.core.generated.ErrorTableData.ErrorTableDataEnd(
-        builder)
-    builder.Finish(error_data_offset)
-
-    return bytes(builder.Output())
+    data = ErrorTableData()
+    data.driver_id = driver_id.binary()
+    data.type = error_type
+    data.error_message = message
+    data.timestamp = timestamp
+    return data.SerializeToString()

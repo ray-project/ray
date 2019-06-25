@@ -128,6 +128,7 @@ class TaskSpecification {
   /// will default to be equal to the required_resources argument.
   /// \param language The language of the worker that must execute the function.
   /// \param function_descriptor The function descriptor.
+  /// \param dynamic_worker_options The dynamic options for starting an actor worker.
   TaskSpecification(
       const DriverID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
       const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
@@ -138,7 +139,8 @@ class TaskSpecification {
       int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const Language &language, const std::vector<std::string> &function_descriptor);
+      const Language &language, const std::vector<std::string> &function_descriptor,
+      const std::vector<std::string> &dynamic_worker_options = {});
 
   /// Deserialize a task specification from a string.
   ///
@@ -213,6 +215,8 @@ class TaskSpecification {
   int64_t ActorCounter() const;
   ObjectID ActorDummyObject() const;
   std::vector<ActorHandleID> NewActorHandles() const;
+
+  std::vector<std::string> DynamicWorkerOptions() const;
 
  private:
   /// Assign the specification data from a pointer.

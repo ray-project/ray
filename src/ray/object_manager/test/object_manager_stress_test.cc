@@ -11,6 +11,8 @@
 
 namespace ray {
 
+using rpc::ClientTableData;
+
 std::string store_executable;
 
 static inline void flushall_redis(void) {
@@ -52,10 +54,10 @@ class MockServer {
     std::string ip = endpoint.address().to_string();
     unsigned short object_manager_port = endpoint.port();
 
-    ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
-    client_info.node_manager_address = ip;
-    client_info.node_manager_port = object_manager_port;
-    client_info.object_manager_port = object_manager_port;
+    ClientTableData client_info = gcs_client_->client_table().GetLocalClient();
+    client_info.set_node_manager_address(ip);
+    client_info.set_node_manager_port(object_manager_port);
+    client_info.set_object_manager_port(object_manager_port);
     ray::Status status = gcs_client_->client_table().Connect(client_info);
     object_manager_.RegisterGcs();
     return status;
@@ -70,11 +72,11 @@ class MockServer {
   void HandleAcceptObjectManager(const boost::system::error_code &error) {
     ClientHandler<boost::asio::ip::tcp> client_handler =
         [this](TcpClientConnection &client) { object_manager_.ProcessNewClient(client); };
-    MessageHandler<boost::asio::ip::tcp> message_handler = [this](
-        std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-        const uint8_t *message) {
-      object_manager_.ProcessClientMessage(client, message_type, message);
-    };
+    MessageHandler<boost::asio::ip::tcp> message_handler =
+        [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
+               const uint8_t *message) {
+          object_manager_.ProcessClientMessage(client, message_type, message);
+        };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
         client_handler, message_handler, std::move(object_manager_socket_),
@@ -240,16 +242,17 @@ class StressTestObjectManager : public TestObjectManagerBase {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback([this](
-        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-      ClientID parsed_id = ClientID::FromBinary(data.client_id);
-      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-        num_connected_clients += 1;
-      }
-      if (num_connected_clients == 2) {
-        StartTests();
-      }
-    });
+    gcs_client_1->client_table().RegisterClientAddedCallback(
+        [this](gcs::AsyncGcsClient *client, const ClientID &id,
+               const ClientTableData &data) {
+          ClientID parsed_id = ClientID::FromBinary(data.client_id());
+          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+            num_connected_clients += 1;
+          }
+          if (num_connected_clients == 2) {
+            StartTests();
+          }
+        });
   }
 
   void StartTests() {
@@ -437,16 +440,16 @@ class StressTestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "All connected clients:"
                    << "\n";
-    ClientTableDataT data;
+    ClientTableData data;
     gcs_client_1->client_table().GetClient(client_id_1, data);
-    RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data.client_id) << "\n"
-                   << "ClientIp=" << data.node_manager_address << "\n"
-                   << "ClientPort=" << data.node_manager_port;
-    ClientTableDataT data2;
+    RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data.client_id()) << "\n"
+                   << "ClientIp=" << data.node_manager_address() << "\n"
+                   << "ClientPort=" << data.node_manager_port();
+    ClientTableData data2;
     gcs_client_1->client_table().GetClient(client_id_2, data2);
-    RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data2.client_id) << "\n"
-                   << "ClientIp=" << data2.node_manager_address << "\n"
-                   << "ClientPort=" << data2.node_manager_port;
+    RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data2.client_id()) << "\n"
+                   << "ClientIp=" << data2.node_manager_address() << "\n"
+                   << "ClientPort=" << data2.node_manager_port();
   }
 };
 

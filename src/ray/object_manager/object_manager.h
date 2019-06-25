@@ -180,7 +180,7 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \return All profiling information that has accumulated since the last call
   /// to this method.
-  ProfileTableDataT GetAndResetProfilingInfo();
+  rpc::ProfileTableData GetAndResetProfilingInfo();
 
   /// Returns debug string for class.
   ///
@@ -412,7 +412,7 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.
-  std::vector<ProfileEventT> profile_events_;
+  std::vector<rpc::ProfileTableData::ProfileEvent> profile_events_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
