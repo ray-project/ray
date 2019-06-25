@@ -89,9 +89,10 @@ table TaskExecutionSpecification {
   last_timestamp: double;
   // The number of times this task was spilled back by raylets.
   num_forwards: int;
-  // The number of times the actor has been restarted at the time of
-  // task submission.
-  actor_version: int;
+  // The task version. For non-actor tasks, this is the number of times the
+  // task has been executed before. For actor tasks, this is the number of
+  // times the actor has restarted before when the task was executed.
+  task_version: int;
 }
 
 table Task {

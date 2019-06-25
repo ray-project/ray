@@ -310,6 +310,10 @@ table TaskLeaseData {
   acquired_at: long;
   // The period that the lease is active for.
   timeout: long;
+  // The task version. For non-actor tasks, this is the number of times the
+  // task has been executed before. For actor tasks, this is the number of
+  // times the actor has restarted before when the task was executed.
+  task_version: int;
 }
 
 table DriverTableData {
