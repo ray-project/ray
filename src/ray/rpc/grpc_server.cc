@@ -35,7 +35,6 @@ void GrpcServer::Run() {
 
 void GrpcServer::RegisterService(GrpcService &service) {
   services_.emplace_back(service.GetGrpcService());
-
   service.InitServerCallFactories(cq_, &server_call_factories_and_concurrencies_);
 }
 

@@ -32,17 +32,6 @@ import ray.tests.utils
 
 logger = logging.getLogger(__name__)
 
-def test_forward(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
-    ray.init(redis_address=cluster.redis_address)
-    cluster.add_node(num_cpus=1, resources={"RemoteResource": 10})
-
-    @ray.remote(resources={"RemoteResource": 1})
-    def f():
-        return 1
-
-    ray.get([f.remote() for _ in range(10)])
 
 def test_simple_serialization(ray_start_regular):
     primitive_objects = [
@@ -3003,3 +2992,16 @@ def test_export_after_shutdown(ray_start_regular):
         ray.get(actor_handle.method.remote())
 
     ray.get(export_definitions_from_worker.remote(f, Actor))
+
+
+def test_forward(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(redis_address=cluster.redis_address)
+    cluster.add_node(num_cpus=1, resources={"RemoteResource": 10})
+
+    @ray.remote(resources={"RemoteResource": 1})
+    def f():
+        return 1
+
+    ray.get([f.remote() for _ in range(10)])
