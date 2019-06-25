@@ -3,6 +3,9 @@
 jclass java_boolean_class;
 jmethodID java_boolean_init;
 
+jclass java_double_class;
+jfieldID java_double_value;
+
 jclass java_list_class;
 jmethodID java_list_size;
 jmethodID java_list_get;
@@ -55,6 +58,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   LOAD_CLASS(java_boolean_class, "java/lang/Boolean");
   java_boolean_init = env->GetMethodID(java_boolean_class, "<init>", "(Z)V");
+
+  LOAD_CLASS(java_double_class, "java/lang/Double");
+  java_double_value = env->GetFieldID(java_double_class, "value", "D");
 
   LOAD_CLASS(java_list_class, "java/util/List");
   java_list_size = env->GetMethodID(java_list_class, "size", "()I");
@@ -116,6 +122,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION);
 
   env->DeleteGlobalRef(java_boolean_class);
+  env->DeleteGlobalRef(java_double_class);
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
   env->DeleteGlobalRef(java_ray_function_proxy_class);

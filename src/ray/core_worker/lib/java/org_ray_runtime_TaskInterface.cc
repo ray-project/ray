@@ -67,7 +67,8 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
   for (int i = 0; i < resource_size; i++) {
     std::string key = JavaStringToNativeString(
         env, (jstring)env->CallObjectMethod(resource_keys, java_list_get, (jint)i));
-    double value = env->CallDoubleMethod(resource_values, java_list_get, (jint)i);
+    jobject valueObject = env->CallObjectMethod(resource_values, java_list_get, (jint)i);
+    double value = env->GetDoubleField(valueObject, java_double_value);
     resources.emplace(key, value);
   }
   return resources;

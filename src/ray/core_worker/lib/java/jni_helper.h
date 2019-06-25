@@ -10,6 +10,9 @@
 extern jclass java_boolean_class;
 extern jmethodID java_boolean_init;
 
+extern jclass java_double_class;
+extern jfieldID java_double_value;
+
 extern jclass java_list_class;
 extern jmethodID java_list_size;
 extern jmethodID java_list_get;
