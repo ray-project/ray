@@ -71,9 +71,8 @@ class Model(object):
         if seq_lens is not None:
             self.seq_lens = seq_lens
         elif state_in:
-            self.seq_lens = tf.placeholder(dtype=tf.int32,
-                                           shape=[None],
-                                           name="seq_lens")
+            self.seq_lens = tf.placeholder(
+                dtype=tf.int32, shape=[None], name="seq_lens")
         else:
             self.seq_lens = None
 
@@ -98,9 +97,10 @@ class Model(object):
                 input_dict["obs"], num_outputs, options)
 
         if options.get("free_log_std", False):
-            log_std = tf.get_variable(name="log_std",
-                                      shape=[num_outputs],
-                                      initializer=tf.zeros_initializer)
+            log_std = tf.get_variable(
+                name="log_std",
+                shape=[num_outputs],
+                initializer=tf.zeros_initializer)
             self.outputs = tf.concat(
                 [self.outputs, 0.0 * self.outputs + log_std], 1)
 
@@ -270,19 +270,19 @@ def _unpack_obs(obs, space, tensorlib=tf):
                 obs_slice = obs[:, offset:offset + p.size]
                 offset += p.size
                 u.append(
-                    _unpack_obs(tensorlib.reshape(obs_slice,
-                                                  [-1] + list(p.shape)),
-                                v,
-                                tensorlib=tensorlib))
+                    _unpack_obs(
+                        tensorlib.reshape(obs_slice, [-1] + list(p.shape)),
+                        v,
+                        tensorlib=tensorlib))
         else:
             u = OrderedDict()
             for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
                 obs_slice = obs[:, offset:offset + p.size]
                 offset += p.size
-                u[k] = _unpack_obs(tensorlib.reshape(obs_slice,
-                                                     [-1] + list(p.shape)),
-                                   v,
-                                   tensorlib=tensorlib)
+                u[k] = _unpack_obs(
+                    tensorlib.reshape(obs_slice, [-1] + list(p.shape)),
+                    v,
+                    tensorlib=tensorlib)
         return u
     else:
         return obs

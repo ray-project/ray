@@ -110,14 +110,15 @@ class DynamicTFPolicy(TFPolicy):
                 prev_actions = existing_inputs[SampleBatch.PREV_ACTIONS]
                 prev_rewards = existing_inputs[SampleBatch.PREV_REWARDS]
         else:
-            obs = tf.placeholder(tf.float32,
-                                 shape=[None] + list(obs_space.shape),
-                                 name="observation")
+            obs = tf.placeholder(
+                tf.float32,
+                shape=[None] + list(obs_space.shape),
+                name="observation")
             if self._obs_include_prev_action_reward:
                 prev_actions = ModelCatalog.get_action_placeholder(
                     action_space)
-                prev_rewards = tf.placeholder(tf.float32, [None],
-                                              name="prev_reward")
+                prev_rewards = tf.placeholder(
+                    tf.float32, [None], name="prev_reward")
 
         self.input_dict = {
             SampleBatch.CUR_OBS: obs,
@@ -125,9 +126,8 @@ class DynamicTFPolicy(TFPolicy):
             SampleBatch.PREV_REWARDS: prev_rewards,
             "is_training": self._get_is_training_placeholder(),
         }
-        self.seq_lens = tf.placeholder(dtype=tf.int32,
-                                       shape=[None],
-                                       name="seq_lens")
+        self.seq_lens = tf.placeholder(
+            dtype=tf.int32, shape=[None], name="seq_lens")
 
         # Setup model
         self.dist_class, logit_dim = ModelCatalog.get_action_dist(
@@ -137,11 +137,12 @@ class DynamicTFPolicy(TFPolicy):
         elif make_model:
             self.model = make_model(self, obs_space, action_space, config)
         else:
-            self.model = ModelCatalog.get_model_v2(obs_space,
-                                                   action_space,
-                                                   logit_dim,
-                                                   self.config["model"],
-                                                   framework="tf")
+            self.model = ModelCatalog.get_model_v2(
+                obs_space,
+                action_space,
+                logit_dim,
+                self.config["model"],
+                framework="tf")
         if existing_inputs:
             self.state_in = [
                 v for k, v in existing_inputs.items()
@@ -154,9 +155,8 @@ class DynamicTFPolicy(TFPolicy):
                 tf.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
                 for s in self.model.get_initial_state()
             ]
-        self.model_out, self.state_out = self.model(self.input_dict,
-                                                    self.state_in,
-                                                    self.seq_lens)
+        self.model_out, self.state_out = self.model(
+            self.input_dict, self.state_in, self.seq_lens)
 
         # Setup action sampler
         if action_sampler_fn:
@@ -244,15 +244,15 @@ class DynamicTFPolicy(TFPolicy):
                                existing_inputs[len(self._loss_inputs) + i]))
         if rnn_inputs:
             rnn_inputs.append(("seq_lens", existing_inputs[-1]))
-        input_dict = OrderedDict([(k, existing_inputs[i])
-                                  for i, (k,
-                                          _) in enumerate(self._loss_inputs)] +
-                                 rnn_inputs)
-        instance = self.__class__(self.observation_space,
-                                  self.action_space,
-                                  self.config,
-                                  existing_inputs=input_dict,
-                                  existing_model=self.model)
+        input_dict = OrderedDict(
+            [(k, existing_inputs[i])
+             for i, (k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
+        instance = self.__class__(
+            self.observation_space,
+            self.action_space,
+            self.config,
+            existing_inputs=input_dict,
+            existing_model=self.model)
 
         loss = instance._do_loss_init(input_dict)
         loss_inputs = [(k, existing_inputs[i])
@@ -389,9 +389,9 @@ class DynamicTFPolicy(TFPolicy):
             gen_loss,
             # cast works around TypeError: Cannot convert provided value
             # to EagerTensor. Provided value: 0.0 Requested dtype: int64
-            [self.model_out] +
-            [tf.cast(v, tf.float32) for (k, v) in loss_inputs] +
-            [tf.cast(t, tf.float32) for t in graph_tensors],
+            [self.model_out] + [
+                tf.cast(v, tf.float32) for (k, v) in loss_inputs
+            ] + [tf.cast(t, tf.float32) for t in graph_tensors],
             Tout=[tf.float32] + [v.dtype for (k, v) in stat_items])
         stats = {
             k: stat_tensor

@@ -82,8 +82,8 @@ class PPOLoss(object):
 
         surrogate_loss = tf.minimum(
             advantages * logp_ratio,
-            advantages *
-            tf.clip_by_value(logp_ratio, 1 - clip_param, 1 + clip_param))
+            advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
+                                          1 + clip_param))
         self.mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         if use_gae:
@@ -93,10 +93,9 @@ class PPOLoss(object):
             vf_loss2 = tf.square(vf_clipped - value_targets)
             vf_loss = tf.maximum(vf_loss1, vf_loss2)
             self.mean_vf_loss = reduce_mean_valid(vf_loss)
-            loss = reduce_mean_valid(-surrogate_loss +
-                                     cur_kl_coeff * action_kl +
-                                     vf_loss_coeff * vf_loss -
-                                     entropy_coeff * curr_entropy)
+            loss = reduce_mean_valid(
+                -surrogate_loss + cur_kl_coeff * action_kl +
+                vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
         else:
             self.mean_vf_loss = tf.constant(0.0)
             loss = reduce_mean_valid(-surrogate_loss +
@@ -108,36 +107,37 @@ class PPOLoss(object):
 def ppo_surrogate_loss(policy, batch_tensors):
     if policy.state_in:
         max_seq_len = tf.reduce_max(policy.convert_to_eager(policy.seq_lens))
-        mask = tf.sequence_mask(policy.convert_to_eager(policy.seq_lens),
-                                max_seq_len)
+        mask = tf.sequence_mask(
+            policy.convert_to_eager(policy.seq_lens), max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
-        mask = tf.ones_like(batch_tensors[Postprocessing.ADVANTAGES],
-                            dtype=tf.bool)
+        mask = tf.ones_like(
+            batch_tensors[Postprocessing.ADVANTAGES], dtype=tf.bool)
 
-    policy.loss_obj = PPOLoss(policy.action_space,
-                              batch_tensors[Postprocessing.VALUE_TARGETS],
-                              batch_tensors[Postprocessing.ADVANTAGES],
-                              batch_tensors[SampleBatch.ACTIONS],
-                              batch_tensors[BEHAVIOUR_LOGITS],
-                              batch_tensors[SampleBatch.VF_PREDS],
-                              policy.action_dist,
-                              policy.convert_to_eager(policy.value_function),
-                              policy.convert_to_eager(policy.kl_coeff),
-                              mask,
-                              entropy_coeff=policy.config["entropy_coeff"],
-                              clip_param=policy.config["clip_param"],
-                              vf_clip_param=policy.config["vf_clip_param"],
-                              vf_loss_coeff=policy.config["vf_loss_coeff"],
-                              use_gae=policy.config["use_gae"])
+    policy.loss_obj = PPOLoss(
+        policy.action_space,
+        batch_tensors[Postprocessing.VALUE_TARGETS],
+        batch_tensors[Postprocessing.ADVANTAGES],
+        batch_tensors[SampleBatch.ACTIONS],
+        batch_tensors[BEHAVIOUR_LOGITS],
+        batch_tensors[SampleBatch.VF_PREDS],
+        policy.action_dist,
+        policy.convert_to_eager(policy.value_function),
+        policy.convert_to_eager(policy.kl_coeff),
+        mask,
+        entropy_coeff=policy.config["entropy_coeff"],
+        clip_param=policy.config["clip_param"],
+        vf_clip_param=policy.config["vf_clip_param"],
+        vf_loss_coeff=policy.config["vf_loss_coeff"],
+        use_gae=policy.config["use_gae"])
 
     return policy.loss_obj.loss
 
 
 def kl_and_loss_stats(policy, batch_tensors):
     return {
-        "cur_kl_coeff": tf.cast(policy.convert_to_eager(policy.kl_coeff),
-                                tf.float64),
+        "cur_kl_coeff": tf.cast(
+            policy.convert_to_eager(policy.kl_coeff), tf.float64),
         "cur_lr": tf.cast(policy.convert_to_eager(policy.cur_lr), tf.float64),
         "total_loss": policy.loss_obj.loss,
         "policy_loss": policy.loss_obj.mean_policy_loss,
@@ -175,11 +175,12 @@ def postprocess_ppo_gae(policy,
                                sample_batch[SampleBatch.ACTIONS][-1],
                                sample_batch[SampleBatch.REWARDS][-1],
                                *next_state)
-    batch = compute_advantages(sample_batch,
-                               last_r,
-                               policy.config["gamma"],
-                               policy.config["lambda"],
-                               use_gae=policy.config["use_gae"])
+    batch = compute_advantages(
+        sample_batch,
+        last_r,
+        policy.config["gamma"],
+        policy.config["lambda"],
+        use_gae=policy.config["use_gae"])
     return batch
 
 
@@ -193,8 +194,8 @@ def clip_gradients(policy, optimizer, loss):
         clipped_grads = list(zip(policy.grads, policy.var_list))
         return clipped_grads
     else:
-        return optimizer.compute_gradients(loss,
-                                           colocate_gradients_with_ops=True)
+        return optimizer.compute_gradients(
+            loss, colocate_gradients_with_ops=True)
 
 
 class KLCoeffMixin(object):
@@ -202,12 +203,12 @@ class KLCoeffMixin(object):
         # KL Coefficient
         self.kl_coeff_val = config["kl_coeff"]
         self.kl_target = config["kl_target"]
-        self.kl_coeff = tf.get_variable(initializer=tf.constant_initializer(
-            self.kl_coeff_val),
-                                        name="kl_coeff",
-                                        shape=(),
-                                        trainable=False,
-                                        dtype=tf.float32)
+        self.kl_coeff = tf.get_variable(
+            initializer=tf.constant_initializer(self.kl_coeff_val),
+            name="kl_coeff",
+            shape=(),
+            trainable=False,
+            dtype=tf.float32)
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:

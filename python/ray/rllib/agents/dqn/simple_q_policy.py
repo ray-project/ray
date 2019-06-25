@@ -74,14 +74,15 @@ def build_q_models(policy, obs_space, action_space, config):
     else:
         num_outputs = action_space.n
 
-    policy.q_model = ModelCatalog.get_model_v2(obs_space,
-                                               action_space,
-                                               num_outputs,
-                                               config["model"],
-                                               framework="tf",
-                                               name=Q_SCOPE,
-                                               model_interface=SimpleQModel,
-                                               q_hiddens=config["hiddens"])
+    policy.q_model = ModelCatalog.get_model_v2(
+        obs_space,
+        action_space,
+        num_outputs,
+        config["model"],
+        framework="tf",
+        name=Q_SCOPE,
+        model_interface=SimpleQModel,
+        q_hiddens=config["hiddens"])
 
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -115,16 +116,16 @@ def build_action_sampler(policy, q_model, input_dict, obs_space, action_space,
     random_valid_action_logits = tf.where(
         tf.equal(q_values, tf.float32.min),
         tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
-    random_actions = tf.squeeze(tf.multinomial(random_valid_action_logits, 1),
-                                axis=1)
+    random_actions = tf.squeeze(
+        tf.multinomial(random_valid_action_logits, 1), axis=1)
 
     chose_random = tf.random_uniform(
-        tf.stack([batch_size
-                  ]), minval=0, maxval=1, dtype=tf.float32) < policy.eps
+        tf.stack([batch_size]), minval=0, maxval=1,
+        dtype=tf.float32) < policy.eps
     stochastic_actions = tf.where(chose_random, random_actions,
                                   deterministic_actions)
-    action = tf.cond(policy.stochastic, lambda: stochastic_actions, lambda:
-                     deterministic_actions)
+    action = tf.cond(policy.stochastic, lambda: stochastic_actions,
+                     lambda: deterministic_actions)
     action_prob = None
 
     return action, action_prob
@@ -150,8 +151,8 @@ def build_q_losses(policy, batch_tensors):
 
     # compute estimate of best possible value starting from state at t + 1
     dones = tf.cast(batch_tensors[SampleBatch.DONES], tf.float32)
-    q_tp1_best_one_hot_selection = tf.one_hot(tf.argmax(q_tp1, 1),
-                                              policy.action_space.n)
+    q_tp1_best_one_hot_selection = tf.one_hot(
+        tf.argmax(q_tp1, 1), policy.action_space.n)
     q_tp1_best = tf.reduce_sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
     q_tp1_best_masked = (1.0 - dones) * q_tp1_best
 
@@ -177,7 +178,7 @@ def _compute_q_values(policy, model, obs, obs_space, action_space):
         "is_training": policy._get_is_training_placeholder(),
     }
     model_out, _ = model(input_dict, [], None)
-    return model.get_q_values(input_dict, model_out)
+    return model.get_q_values(model_out)
 
 
 def exploration_setting_inputs(policy):

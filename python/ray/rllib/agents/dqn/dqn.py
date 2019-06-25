@@ -207,17 +207,18 @@ def make_exploration_schedule(config, worker_index):
         assert config["num_workers"] > 1, \
             "This requires multiple workers"
         if worker_index >= 0:
-            exponent = (1 +
-                        worker_index / float(config["num_workers"] - 1) * 7)
+            exponent = (
+                1 + worker_index / float(config["num_workers"] - 1) * 7)
             return ConstantSchedule(0.4**exponent)
         else:
             # local ev should have zero exploration so that eval rollouts
             # run properly
             return ConstantSchedule(0.0)
-    return LinearSchedule(schedule_timesteps=int(
-        config["exploration_fraction"] * config["schedule_max_timesteps"]),
-                          initial_p=1.0,
-                          final_p=config["exploration_final_eps"])
+    return LinearSchedule(
+        schedule_timesteps=int(
+            config["exploration_fraction"] * config["schedule_max_timesteps"]),
+        initial_p=1.0,
+        final_p=config["exploration_final_eps"])
 
 
 def setup_exploration(trainer):
@@ -245,12 +246,11 @@ def add_trainer_metrics(trainer, result):
     global_timestep = trainer.optimizer.num_steps_sampled
     result.update(
         timesteps_this_iter=global_timestep - trainer.train_start_timestep,
-        info=dict(
-            {
-                "min_exploration": min(trainer.cur_exp_vals),
-                "max_exploration": max(trainer.cur_exp_vals),
-                "num_target_updates": trainer.state["num_target_updates"],
-            }, **trainer.optimizer.stats()))
+        info=dict({
+            "min_exploration": min(trainer.cur_exp_vals),
+            "max_exploration": max(trainer.cur_exp_vals),
+            "num_target_updates": trainer.state["num_target_updates"],
+        }, **trainer.optimizer.stats()))
 
 
 def update_target_if_needed(trainer, fetches):
@@ -267,16 +267,16 @@ def collect_metrics(trainer):
     if trainer.config["per_worker_exploration"]:
         # Only collect metrics from the third of workers with lowest eps
         result = trainer.collect_metrics(
-            selected_workers=trainer.workers.remote_workers()
-            [-len(trainer.workers.remote_workers()) // 3:])
+            selected_workers=trainer.workers.remote_workers()[
+                -len(trainer.workers.remote_workers()) // 3:])
     else:
         result = trainer.collect_metrics()
     return result
 
 
 def disable_exploration(trainer):
-    trainer.evaluation_workers.local_worker().foreach_policy(lambda p, _: p.
-                                                             set_epsilon(0))
+    trainer.evaluation_workers.local_worker().foreach_policy(
+        lambda p, _: p.set_epsilon(0))
 
 
 GenericOffPolicyTrainer = build_trainer(
@@ -296,4 +296,4 @@ GenericOffPolicyTrainer = build_trainer(
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
 
-DQNTrainer = DQNTrainer.with_updates(default_policy=SimpleQPolicy)
+SimpleQTrainer = DQNTrainer.with_updates(default_policy=SimpleQPolicy)

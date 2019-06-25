@@ -140,10 +140,11 @@ class ModelCatalog(object):
                 input_lens.append(action_size)
             if torch:
                 raise NotImplementedError
-            return partial(MultiActionDistribution,
-                           child_distributions=child_dist,
-                           action_space=action_space,
-                           input_lens=input_lens), sum(input_lens)
+            return partial(
+                MultiActionDistribution,
+                child_distributions=child_dist,
+                action_space=action_space,
+                input_lens=input_lens), sum(input_lens)
         elif isinstance(action_space, Simplex):
             if torch:
                 raise NotImplementedError
@@ -169,9 +170,8 @@ class ModelCatalog(object):
         """
 
         if isinstance(action_space, gym.spaces.Box):
-            return tf.placeholder(tf.float32,
-                                  shape=(None, action_space.shape[0]),
-                                  name="action")
+            return tf.placeholder(
+                tf.float32, shape=(None, action_space.shape[0]), name="action")
         elif isinstance(action_space, gym.spaces.Discrete):
             return tf.placeholder(tf.int64, shape=(None, ), name="action")
         elif isinstance(action_space, gym.spaces.Tuple):
@@ -183,17 +183,18 @@ class ModelCatalog(object):
                 else:
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
-            return tf.placeholder(tf.int64 if all_discrete else tf.float32,
-                                  shape=(None, size),
-                                  name="action")
+            return tf.placeholder(
+                tf.int64 if all_discrete else tf.float32,
+                shape=(None, size),
+                name="action")
         elif isinstance(action_space, Simplex):
-            return tf.placeholder(tf.float32,
-                                  shape=(None, action_space.shape[0]),
-                                  name="action")
+            return tf.placeholder(
+                tf.float32, shape=(None, action_space.shape[0]), name="action")
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
-            return tf.placeholder(tf.as_dtype(action_space.dtype),
-                                  shape=(None, len(action_space.nvec)),
-                                  name="action")
+            return tf.placeholder(
+                tf.as_dtype(action_space.dtype),
+                shape=(None, len(action_space.nvec)),
+                name="action")
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))
@@ -316,9 +317,8 @@ class ModelCatalog(object):
         if options.get("use_lstm"):
             copy = dict(input_dict)
             copy["obs"] = model.last_layer
-            feature_space = gym.spaces.Box(-1,
-                                           1,
-                                           shape=(model.last_layer.shape[1], ))
+            feature_space = gym.spaces.Box(
+                -1, 1, shape=(model.last_layer.shape[1], ))
             model = LSTM(copy, feature_space, action_space, num_outputs,
                          options, state_in, seq_lens)
 
@@ -336,13 +336,14 @@ class ModelCatalog(object):
         if options.get("custom_model"):
             model = options["custom_model"]
             logger.debug("Using custom model {}".format(model))
-            return _global_registry.get(RLLIB_MODEL, model)(input_dict,
-                                                            obs_space,
-                                                            action_space,
-                                                            num_outputs,
-                                                            options,
-                                                            state_in=state_in,
-                                                            seq_lens=seq_lens)
+            return _global_registry.get(RLLIB_MODEL, model)(
+                input_dict,
+                obs_space,
+                action_space,
+                num_outputs,
+                options,
+                state_in=state_in,
+                seq_lens=seq_lens)
 
         obs_rank = len(input_dict["obs"].shape) - 1
 
@@ -433,9 +434,8 @@ class ModelCatalog(object):
         if options.get("custom_preprocessor"):
             preprocessor = options["custom_preprocessor"]
             logger.info("Using custom preprocessor {}".format(preprocessor))
-            prep = _global_registry.get(RLLIB_PREPROCESSOR,
-                                        preprocessor)(observation_space,
-                                                      options)
+            prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
+                observation_space, options)
         else:
             cls = get_preprocessor(observation_space)
             prep = cls(observation_space, options)

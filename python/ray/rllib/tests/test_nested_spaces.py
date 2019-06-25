@@ -151,8 +151,9 @@ class TorchSpyModel(TorchModel):
             pickle.dumps((pos, front_cam, task)),
             overwrite=True)
         TorchSpyModel.capture_index += 1
-        return self.fc({"obs": input_dict["obs"]["sensors"]["position"]},
-                       hidden_state)
+        return self.fc({
+            "obs": input_dict["obs"]["sensors"]["position"]
+        }, hidden_state)
 
 
 class DictSpyModel(Model):
@@ -169,13 +170,14 @@ class DictSpyModel(Model):
             DictSpyModel.capture_index += 1
             return 0
 
-        spy_fn = tf.py_func(spy, [
-            input_dict["obs"]["sensors"]["position"],
-            input_dict["obs"]["sensors"]["front_cam"][0],
-            input_dict["obs"]["inner_state"]["job_status"]["task"]
-        ],
-                            tf.int64,
-                            stateful=True)
+        spy_fn = tf.py_func(
+            spy, [
+                input_dict["obs"]["sensors"]["position"],
+                input_dict["obs"]["sensors"]["front_cam"][0],
+                input_dict["obs"]["inner_state"]["job_status"]["task"]
+            ],
+            tf.int64,
+            stateful=True)
 
         with tf.control_dependencies([spy_fn]):
             output = tf.layers.dense(input_dict["obs"]["sensors"]["position"],
@@ -197,13 +199,14 @@ class TupleSpyModel(Model):
             TupleSpyModel.capture_index += 1
             return 0
 
-        spy_fn = tf.py_func(spy, [
-            input_dict["obs"][0],
-            input_dict["obs"][1][0],
-            input_dict["obs"][2],
-        ],
-                            tf.int64,
-                            stateful=True)
+        spy_fn = tf.py_func(
+            spy, [
+                input_dict["obs"][0],
+                input_dict["obs"][1][0],
+                input_dict["obs"][2],
+            ],
+            tf.int64,
+            stateful=True)
 
         with tf.control_dependencies([spy_fn]):
             output = tf.layers.dense(input_dict["obs"][0], num_outputs)
@@ -235,16 +238,17 @@ class NestedSpacesTest(unittest.TestCase):
     def doTestNestedDict(self, make_env, test_lstm=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
-        pg = PGTrainer(env="nested",
-                       config={
-                           "num_workers": 0,
-                           "sample_batch_size": 5,
-                           "train_batch_size": 5,
-                           "model": {
-                               "custom_model": "composite",
-                               "use_lstm": test_lstm,
-                           },
-                       })
+        pg = PGTrainer(
+            env="nested",
+            config={
+                "num_workers": 0,
+                "sample_batch_size": 5,
+                "train_batch_size": 5,
+                "model": {
+                    "custom_model": "composite",
+                    "use_lstm": test_lstm,
+                },
+            })
         pg.train()
 
         # Check that the model sees the correct reconstructed observations
@@ -263,15 +267,16 @@ class NestedSpacesTest(unittest.TestCase):
     def doTestNestedTuple(self, make_env):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
         register_env("nested2", make_env)
-        pg = PGTrainer(env="nested2",
-                       config={
-                           "num_workers": 0,
-                           "sample_batch_size": 5,
-                           "train_batch_size": 5,
-                           "model": {
-                               "custom_model": "composite2",
-                           },
-                       })
+        pg = PGTrainer(
+            env="nested2",
+            config={
+                "num_workers": 0,
+                "sample_batch_size": 5,
+                "train_batch_size": 5,
+                "model": {
+                    "custom_model": "composite2",
+                },
+            })
         pg.train()
 
         # Check that the model sees the correct reconstructed observations
@@ -293,8 +298,8 @@ class NestedSpacesTest(unittest.TestCase):
         self.doTestNestedDict(lambda _: NestedDictEnv(), test_lstm=True)
 
     def testNestedDictVector(self):
-        self.doTestNestedDict(lambda _: VectorEnv.wrap(lambda i: NestedDictEnv(
-        )))
+        self.doTestNestedDict(
+            lambda _: VectorEnv.wrap(lambda i: NestedDictEnv()))
 
     def testNestedDictServing(self):
         self.doTestNestedDict(lambda _: SimpleServing(NestedDictEnv()))
@@ -306,8 +311,8 @@ class NestedSpacesTest(unittest.TestCase):
         self.doTestNestedTuple(lambda _: NestedTupleEnv())
 
     def testNestedTupleVector(self):
-        self.doTestNestedTuple(lambda _: VectorEnv.wrap(lambda i:
-                                                        NestedTupleEnv()))
+        self.doTestNestedTuple(
+            lambda _: VectorEnv.wrap(lambda i: NestedTupleEnv()))
 
     def testNestedTupleServing(self):
         self.doTestNestedTuple(lambda _: SimpleServing(NestedTupleEnv()))
@@ -388,16 +393,17 @@ class NestedSpacesTest(unittest.TestCase):
     def testPyTorchModel(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)
         register_env("nested", lambda _: NestedDictEnv())
-        a2c = A2CTrainer(env="nested",
-                         config={
-                             "num_workers": 0,
-                             "use_pytorch": True,
-                             "sample_batch_size": 5,
-                             "train_batch_size": 5,
-                             "model": {
-                                 "custom_model": "composite",
-                             },
-                         })
+        a2c = A2CTrainer(
+            env="nested",
+            config={
+                "num_workers": 0,
+                "use_pytorch": True,
+                "sample_batch_size": 5,
+                "train_batch_size": 5,
+                "model": {
+                    "custom_model": "composite",
+                },
+            })
 
         a2c.train()
 

@@ -148,9 +148,8 @@ class ModelV2(object):
         """
 
         restored = input_dict.copy()
-        restored["obs"] = restore_original_dimensions(input_dict["obs"],
-                                                      self.obs_space,
-                                                      self.framework)
+        restored["obs"] = restore_original_dimensions(
+            input_dict["obs"], self.obs_space, self.framework)
         restored["obs_flat"] = input_dict["obs"]
         outputs, state = self.forward(restored, state, seq_lens)
 

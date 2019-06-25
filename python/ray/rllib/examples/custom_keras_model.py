@@ -32,8 +32,8 @@ class MyKerasModel(TFModelV2):
                  name):
         super(MyKerasModel, self).__init__(obs_space, action_space,
                                            num_outputs, model_config, name)
-        self.inputs = tf.keras.layers.Input(shape=obs_space.shape,
-                                            name="observations")
+        self.inputs = tf.keras.layers.Input(
+            shape=obs_space.shape, name="observations")
         layer_1 = tf.keras.layers.Dense(
             128,
             name="my_layer1",
@@ -69,8 +69,8 @@ class MyKerasQModel(SimpleQModel):
         super(MyKerasQModel,
               self).__init__(obs_space, action_space, num_outputs,
                              model_config, name, q_hiddens)
-        self.inputs = tf.keras.layers.Input(shape=obs_space.shape,
-                                            name="observations")
+        self.inputs = tf.keras.layers.Input(
+            shape=obs_space.shape, name="observations")
         layer_1 = tf.keras.layers.Dense(
             128,
             name="my_layer1",
@@ -89,7 +89,7 @@ class MyKerasQModel(SimpleQModel):
         model_out = self.base_model(input_dict["obs"])
         return model_out, state
 
-    def get_q_values(self, input_dict, model_out):
+    def get_q_values(self, model_out):
         # using default impl from SimpleQModel
         return self.q_value_head(model_out)
 
@@ -99,12 +99,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ModelCatalog.register_custom_model("keras_model", MyKerasModel)
     ModelCatalog.register_custom_model("keras_q_model", MyKerasQModel)
-    tune.run(args.run,
-             stop={"episode_reward_mean": args.stop},
-             config={
-                 "env": "CartPole-v0",
-                 "model": {
-                     "custom_model": "keras_q_model"
-                     if args.run == "DQN" else "keras_model"
-                 },
-             })
+    tune.run(
+        args.run,
+        stop={"episode_reward_mean": args.stop},
+        config={
+            "env": "CartPole-v0",
+            "model": {
+                "custom_model": "keras_q_model"
+                if args.run == "DQN" else "keras_model"
+            },
+        })

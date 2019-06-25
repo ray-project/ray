@@ -26,22 +26,25 @@ class FullyConnectedNetwork(TorchModel):
         last_layer_size = np.product(obs_space.shape)
         for size in hiddens:
             layers.append(
-                SlimFC(in_size=last_layer_size,
-                       out_size=size,
-                       initializer=normc_initializer(1.0),
-                       activation_fn=activation))
+                SlimFC(
+                    in_size=last_layer_size,
+                    out_size=size,
+                    initializer=normc_initializer(1.0),
+                    activation_fn=activation))
             last_layer_size = size
 
         self._hidden_layers = nn.Sequential(*layers)
 
-        self._logits = SlimFC(in_size=last_layer_size,
-                              out_size=num_outputs,
-                              initializer=normc_initializer(0.01),
-                              activation_fn=None)
-        self._value_branch = SlimFC(in_size=last_layer_size,
-                                    out_size=1,
-                                    initializer=normc_initializer(1.0),
-                                    activation_fn=None)
+        self._logits = SlimFC(
+            in_size=last_layer_size,
+            out_size=num_outputs,
+            initializer=normc_initializer(0.01),
+            activation_fn=None)
+        self._value_branch = SlimFC(
+            in_size=last_layer_size,
+            out_size=1,
+            initializer=normc_initializer(1.0),
+            activation_fn=None)
 
     @override(nn.Module)
     def forward(self, input_dict, hidden_state):

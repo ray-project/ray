@@ -23,8 +23,8 @@ class SimpleQModel(TFModelV2):
                                            num_outputs, model_config, name)
 
         # setup the Q head output (i.e., model for get_q_values)
-        self.model_out = tf.keras.layers.Input(shape=(num_outputs, ),
-                                               name="model_out")
+        self.model_out = tf.keras.layers.Input(
+            shape=(num_outputs, ), name="model_out")
 
         if q_hiddens:
             last_layer = self.model_out
@@ -32,22 +32,20 @@ class SimpleQModel(TFModelV2):
                 last_layer = tf.keras.layers.Dense(
                     n, name="q_hidden_{}".format(i),
                     activation=tf.nn.relu)(last_layer)
-            q_out = tf.keras.layers.Dense(action_space.n,
-                                          activation=None,
-                                          name="q_out")(last_layer)
+            q_out = tf.keras.layers.Dense(
+                action_space.n, activation=None, name="q_out")(last_layer)
         else:
             q_out = self.model_out
 
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
         self.register_variables(self.q_value_head.variables)
 
-    def get_q_values(self, input_dict, model_out, state, seq_lens):
+    def get_q_values(self, model_out):
         """Returns Q(s, a) given a feature tensor for the state.
 
         Override this in your custom model to customize the Q output head.
         
         Arguments:
-            input_dict (dict): raw model inputs
             model_out (Tensor): embedding from the model layers
 
         Returns:
