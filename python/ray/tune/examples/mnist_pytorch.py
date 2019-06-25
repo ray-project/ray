@@ -20,7 +20,6 @@ from ray.tune.schedulers import AsyncHyperBandScheduler
 # Change these values if you want the training to run quicker or slower.
 EPOCH_SIZE = 512
 TEST_SIZE = 256
-datasets.MNIST("~/data", train=True, download=True)
 
 
 class Net(nn.Module):
@@ -66,24 +65,27 @@ def test(model, data_loader, device):
     return correct / total
 
 
-def train_mnist(config):
-    use_cuda = config.get("use_gpu") and torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
-
+def get_data_loaders():
     mnist_transforms = transforms.Compose(
         [transforms.ToTensor(),
          transforms.Normalize((0.1307, ), (0.3081, ))])
 
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST(
-            "~/data", train=True, download=False, transform=mnist_transforms),
+            "~/data", train=True, download=True, transform=mnist_transforms),
         batch_size=64,
         shuffle=True)
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST("~/data", train=False, transform=mnist_transforms),
         batch_size=64,
         shuffle=True)
+    return train_loader, test_loader
 
+
+def train_mnist(config):
+    use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
+    train_loader, test_loader = get_data_loaders()
     model = Net(config).to(device)
 
     optimizer = optim.SGD(
