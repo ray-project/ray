@@ -3,29 +3,37 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/call_back.h"
-#include "ray/gcs/format/gcs_generated.h"
+#include "ray/gcs/tables.h"
 
 namespace ray {
 
 namespace gcs {
 
-class AsyncGcsClient;
+class GcsClientImpl;
 
 class ActorStateAccessor {
  public:
-  ActorStateAccessor(AsyncGcsClient *client_impl);
+  ActorStateAccessor(GcsClientImpl &client_impl);
 
   ~ActorStateAccessor() {}
 
   Status AsyncGet(const DriverID &driver_id, const ActorID &actor_id,
-                  DatumCallback<ActorTableDataT>::SingleItem callback);
+                  const DatumCallback<ActorTableData>::OptionalItem &callback);
+
+  Status AsyncAdd(const DriverID &driver_id, const ActorID &actor_id,
+                  std::shared_ptr<ActorTableData> data_ptr, size_t log_length,
+                  const StatusCallback &callback);
+
+  Status AsyncSubscribe(const DriverID &driver_id,
+                        const DatumCallback<ActorTableData>::MultiItem &subscribe,
+                        const StatusCallback &done);
 
   Status AsyncGetCheckpointIds(
       const DriverID &driver_id, const ActorID &actor_id,
-      DatumCallback<ActorCheckpointIdDataT>::SingleItem callback);
+      const DatumCallback<ActorCheckpointIdData>::OptionalItem &callback);
 
  private:
-  AsyncGcsClient *client_impl_{nullptr};
+  GcsClientImpl &client_impl_;
 };
 
 }  // namespace gcs

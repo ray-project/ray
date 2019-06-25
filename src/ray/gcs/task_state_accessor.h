@@ -3,30 +3,27 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/call_back.h"
-#include "ray/gcs/format/gcs_generated.h"
-// TODO(micafan) delete
-#include "ray/raylet/format/node_manager_generated.h"
+#include "ray/gcs/tables.h"
 
 namespace ray {
 
 namespace gcs {
 
-class AsyncGcsClient;
+class GcsClientImpl;
 
 class TaskStateAccessor {
  public:
-  TaskStateAccessor(AsyncGcsClient *client_impl);
+  TaskStateAccessor(GcsClientImpl &client_impl);
 
   ~TaskStateAccessor() {}
 
-  Status AsyncAdd(const std::vector<ray::protocol::TaskT> &task_specs,
-                  StatusCallback callback);
+  Status AsyncAdd(const std::vector<TaskTableData> &task_specs, StatusCallback callback);
 
   Status AsyncGet(const DriverID &driver_id, const TaskID &task_id,
-                  DatumCallback<ray::protocol::TaskT>::SingleItem callback);
+                  DatumCallback<TaskTableData>::OptionalItem callback);
 
  private:
-  AsyncGcsClient *client_impl_{nullptr};
+  GcsClientImpl &client_impl_;
 };
 
 }  // namespace gcs

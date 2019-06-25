@@ -5,8 +5,10 @@
 #include <string>
 #include <vector>
 #include "ray/common/status.h"
-#include "ray/gcs/format/gcs_generated.h"
+#include "ray/gcs/actor_state_accessor.h"
+#include "ray/gcs/node_state_accessor.h"
 #include "ray/gcs/tables.h"
+#include "ray/gcs/task_state_accessor.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -14,10 +16,6 @@ namespace ray {
 namespace gcs {
 
 class GcsClientImpl;
-
-class ActorStateAccessor;
-class NodeStateAccessor;
-class TaskStateAccessor;
 
 class ClientOption {
  public:
@@ -39,7 +37,7 @@ class ClientInfo {
 
   ClientType type_;
   ClientID id_;
-  ClientTableDataT node_info_;
+  ClientTableData node_info_;
 };
 
 class GcsClient {
@@ -48,40 +46,31 @@ class GcsClient {
 
   GcsClient(ClientOption option, ClientInfo info);
 
-  ~GcsClient();
-
   Status Connect();
 
-  Status Disconnect();
+  void Disconnect();
 
-  NodeStateAccessor *Node() {
+  NodeStateAccessor &Node() {
     RAY_CHECK(node_state_accessor_ != nullptr);
-    return node_state_accessor_;
+    return *node_state_accessor_;
   }
 
-  ActorStateAccessor *Actor() {
+  ActorStateAccessor &Actor() {
     RAY_CHECK(actor_state_accessor_ != nullptr);
-    return actor_state_accessor_;
+    return *actor_state_accessor_;
   }
 
-  TaskStateAccessor *Task() {
+  TaskStateAccessor &Task() {
     RAY_CHECK(task_state_accessor_ != nullptr);
-    return task_state_accessor_;
+    return *task_state_accessor_;
   }
 
  private:
-  ClientOption option_;
-  ClientInfo info_;
+  std::unique_ptr<GcsClientImpl> client_impl_;
 
-  boost::asio::io_service *io_service_{nullptr};
-  std::vector<std::thread> thread_pool_;
-
-  // GcsClientImpl
-  AsyncGcsClient *client_impl_{nullptr};
-
-  NodeStateAccessor *node_state_accessor_{nullptr};
-  ActorStateAccessor *actor_state_accessor_{nullptr};
-  TaskStateAccessor *task_state_accessor_{nullptr};
+  std::unique_ptr<NodeStateAccessor> node_state_accessor_;
+  std::unique_ptr<ActorStateAccessor> actor_state_accessor_;
+  std::unique_ptr<TaskStateAccessor> task_state_accessor_;
 };
 
 }  // namespace gcs
