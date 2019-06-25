@@ -14,6 +14,12 @@ grpc_proto_library(
     srcs = ["src/ray/protobuf/node_manager.proto"],
 )
 
+# Core worker gRPC lib.
+grpc_proto_library(
+    name = "core_worker_grpc_lib",
+    srcs = ["src/ray/protobuf/core_worker.proto"],
+)
+
 # Node manager server and client.
 cc_library(
     name = "node_manager_rpc_lib",
@@ -155,6 +161,7 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":raylet_lib",
+        ":core_worker_grpc_lib",
     ],
 )
 

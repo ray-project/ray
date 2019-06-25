@@ -54,9 +54,24 @@ Status CoreWorkerTaskInterface::CreateActor(
   std::vector<ObjectID> return_ids;
   return_ids.push_back(ObjectID::ForTaskReturn(task_id, 1));
   ActorID actor_creation_id = ActorID::FromBinary(return_ids[0].Binary());
+  ray::ActorDefinitionDescriptor actor_definition_descriptor;
+  switch (function.language) {
+  case WorkerLanguage::PYTHON:
+    RAY_CHECK(function.function_descriptor.size() == 3);
+    actor_definition_descriptor.push_back(function.function_descriptor[0]);
+    actor_definition_descriptor.push_back(function.function_descriptor[1]);
+    break;
+  case WorkerLanguage::JAVA:
+    RAY_CHECK(function.function_descriptor.size() == 3);
+    actor_definition_descriptor.push_back(function.function_descriptor[0]);
+    break;
+  default:
+    return Status::Invalid("Invalid language.");
+  }
 
   *actor_handle = std::unique_ptr<ActorHandle>(
-      new ActorHandle(actor_creation_id, ActorHandleID::Nil()));
+      new ActorHandle(actor_creation_id, ActorHandleID::Nil(), function.language,
+                      actor_definition_descriptor));
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
@@ -100,13 +115,15 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   auto task_arguments = BuildTaskArguments(args);
   auto language = core_worker_.ToTaskLanguage(function.language);
 
-  std::vector<ActorHandleID> new_actor_handles;
+  std::unique_lock<std::mutex> guard(actor_handle.mutex_);
+
   ray::raylet::TaskSpecification spec(
       context.GetCurrentDriverID(), context.GetCurrentTaskID(), next_task_index,
       ActorID::Nil(), actor_creation_dummy_object_id, 0, actor_handle.ActorID(),
-      actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(), new_actor_handles,
-      task_arguments, num_returns, task_options.resources, task_options.resources,
-      language, function.function_descriptor);
+      actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(),
+      actor_handle.GetNewActorHandles(), task_arguments, num_returns,
+      task_options.resources, task_options.resources, language,
+      function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
   execution_dependencies.push_back(actor_handle.ActorCursor());
@@ -114,6 +131,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   auto actor_cursor = (*return_ids).back();
   actor_handle.SetActorCursor(actor_cursor);
   actor_handle.ClearNewActorHandles();
+
+  guard.unlock();
 
   TaskSpec task(std::move(spec), execution_dependencies);
   auto status =

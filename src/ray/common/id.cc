@@ -129,6 +129,21 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   return TaskID::FromBinary(std::string(buff, buff + TaskID::Size()));
 }
 
+const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
+                                             int64_t num_forks) {
+  // Compute hashes.
+  SHA256_CTX ctx;
+  sha256_init(&ctx);
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(actor_handle_id.Data()),
+                actor_handle_id.Size());
+  sha256_update(&ctx, (const BYTE *)&num_forks, sizeof(num_forks));
+
+  // Compute the final task ID from the hash.
+  BYTE buff[DIGEST_SIZE];
+  sha256_final(&ctx, buff);
+  return ActorHandleID::FromBinary(std::string(buff, buff + ActorHandleID::Size()));
+}
+
 #define ID_OSTREAM_OPERATOR(id_type)                              \
   std::ostream &operator<<(std::ostream &os, const id_type &id) { \
     if (id.IsNil()) {                                             \

@@ -193,7 +193,7 @@ class CoreWorkerTest : public ::testing::Test {
       uint8_t array[] = {1, 2, 3};
       auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-      RayFunction func{ray::WorkerLanguage::PYTHON, {}};
+      RayFunction func{ray::WorkerLanguage::PYTHON, {"module", "class", "__init__"}};
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByValue(buffer));
 
@@ -297,6 +297,40 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   // Verify that these fields are thread-local.
   ASSERT_EQ(context.GetNextTaskIndex(), 3);
   ASSERT_EQ(context.GetNextPutIndex(), 3);
+}
+
+TEST_F(ZeroNodeTest, TestActorHandle) {
+  ActorHandle handle1(ActorID::FromRandom(), ActorHandleID::FromRandom(),
+                      WorkerLanguage::JAVA,
+                      {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
+
+  auto forkedHandle1 = handle1.Fork();
+  ASSERT_EQ(1, handle1.NumForks());
+  ASSERT_EQ(handle1.ActorID(), forkedHandle1->ActorID());
+  ASSERT_NE(handle1.ActorHandleID(), forkedHandle1->ActorHandleID());
+  ASSERT_EQ(handle1.ActorLanguage(), forkedHandle1->ActorLanguage());
+  RAY_LOG(INFO) << handle1.ActorDefinitionDescriptor().size();
+  RAY_LOG(INFO) << forkedHandle1->ActorDefinitionDescriptor().size();
+  ASSERT_EQ(handle1.ActorDefinitionDescriptor(),
+            forkedHandle1->ActorDefinitionDescriptor());
+  ASSERT_EQ(handle1.ActorCursor(), forkedHandle1->ActorCursor());
+  ASSERT_EQ(0, forkedHandle1->TaskCounter());
+  ASSERT_EQ(0, forkedHandle1->NumForks());
+  auto forkedHandle2 = handle1.Fork();
+  ASSERT_EQ(2, handle1.NumForks());
+  ASSERT_EQ(0, forkedHandle2->TaskCounter());
+  ASSERT_EQ(0, forkedHandle2->NumForks());
+
+  std::string buffer;
+  handle1.Serialize(&buffer);
+  auto handle2 = ActorHandle::Deserialize(buffer);
+  ASSERT_EQ(handle1.ActorID(), handle2->ActorID());
+  ASSERT_EQ(handle1.ActorHandleID(), handle2->ActorHandleID());
+  ASSERT_EQ(handle1.ActorLanguage(), handle2->ActorLanguage());
+  ASSERT_EQ(handle1.ActorDefinitionDescriptor(), handle2->ActorDefinitionDescriptor());
+  ASSERT_EQ(handle1.ActorCursor(), handle2->ActorCursor());
+  ASSERT_EQ(handle1.TaskCounter(), handle2->TaskCounter());
+  ASSERT_EQ(handle1.NumForks(), handle2->NumForks());
 }
 
 TEST_F(SingleNodeTest, TestObjectInterface) {
