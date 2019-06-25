@@ -29,6 +29,7 @@ class ModelV2(object):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name, framework):
         """Initialize the model.  
+
         This method should create any variables used by the model.
         """
 
@@ -75,6 +76,9 @@ class ModelV2(object):
         """
         raise NotImplementedError
 
+    def get_value_prediction(self, input_dict, model_out, state, seq_lens):
+        raise NotImplementedError
+
     def custom_loss(self, policy_loss, loss_inputs):
         """Override to customize the loss function used to optimize this model.
 
@@ -109,8 +113,9 @@ class ModelV2(object):
         """
         return {}
 
-    def register_model_variables(self, model):
-        self.var_list.extend(model.variables)
+    def register_model_variables(self, variables):
+        """Register the given list of variables with this model."""
+        self.var_list.extend(variables)
 
     def variables(self):
         """Returns the list of variables for this model."""
@@ -143,8 +148,9 @@ class ModelV2(object):
         """
 
         restored = input_dict.copy()
-        restored["obs"] = restore_original_dimensions(
-            input_dict["obs"], self.obs_space, self.framework)
+        restored["obs"] = restore_original_dimensions(input_dict["obs"],
+                                                      self.obs_space,
+                                                      self.framework)
         restored["obs_flat"] = input_dict["obs"]
         outputs, state = self.forward(restored, state, seq_lens)
 

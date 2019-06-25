@@ -24,29 +24,38 @@ class VisionNetwork(Model):
 
         with tf.name_scope("vision_net"):
             for i, (out_size, kernel, stride) in enumerate(filters[:-1], 1):
-                inputs = tf.layers.conv2d(
-                    inputs,
-                    out_size,
-                    kernel,
-                    stride,
-                    activation=activation,
-                    padding="same",
-                    name="conv{}".format(i))
+                inputs = tf.layers.conv2d(inputs,
+                                          out_size,
+                                          kernel,
+                                          stride,
+                                          activation=activation,
+                                          padding="same",
+                                          name="conv{}".format(i))
             out_size, kernel, stride = filters[-1]
-            fc1 = tf.layers.conv2d(
-                inputs,
-                out_size,
-                kernel,
-                stride,
-                activation=activation,
-                padding="valid",
-                name="fc1")
-            fc2 = tf.layers.conv2d(
-                fc1,
-                num_outputs, [1, 1],
-                activation=None,
-                padding="same",
-                name="fc2")
+
+            # skip final linear layer
+            if options.get("no_final_linear"):
+                fc_out = tf.layers.conv2d(inputs,
+                                          num_outputs,
+                                          kernel,
+                                          stride,
+                                          activation=activation,
+                                          padding="valid",
+                                          name="fc_out")
+                return flatten(fc_out), flatten(fc_out)
+
+            fc1 = tf.layers.conv2d(inputs,
+                                   out_size,
+                                   kernel,
+                                   stride,
+                                   activation=activation,
+                                   padding="valid",
+                                   name="fc1")
+            fc2 = tf.layers.conv2d(fc1,
+                                   num_outputs, [1, 1],
+                                   activation=None,
+                                   padding="same",
+                                   name="fc2")
             return flatten(fc2), flatten(fc1)
 
 

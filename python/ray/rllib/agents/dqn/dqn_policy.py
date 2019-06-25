@@ -68,10 +68,10 @@ class QLoss(object):
                 num_atoms)  # (batch_size, num_atoms, num_atoms)
             ml_delta = q_dist_tp1_best * (ub - b + floor_equal_ceil)
             mu_delta = q_dist_tp1_best * (b - lb)
-            ml_delta = tf.reduce_sum(
-                l_project * tf.expand_dims(ml_delta, -1), axis=1)
-            mu_delta = tf.reduce_sum(
-                u_project * tf.expand_dims(mu_delta, -1), axis=1)
+            ml_delta = tf.reduce_sum(l_project * tf.expand_dims(ml_delta, -1),
+                                     axis=1)
+            mu_delta = tf.reduce_sum(u_project * tf.expand_dims(mu_delta, -1),
+                                     axis=1)
             m = ml_delta + mu_delta
 
             # Rainbow paper claims that using this cross entropy loss for
@@ -90,10 +90,10 @@ class QLoss(object):
             q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
 
             # compute the error (potentially clipped)
-            self.td_error = (
-                q_t_selected - tf.stop_gradient(q_t_selected_target))
-            self.loss = tf.reduce_mean(
-                importance_weights * _huber_loss(self.td_error))
+            self.td_error = (q_t_selected -
+                             tf.stop_gradient(q_t_selected_target))
+            self.loss = tf.reduce_mean(importance_weights *
+                                       _huber_loss(self.td_error))
             self.stats = {
                 "mean_q": tf.reduce_mean(q_t_selected),
                 "min_q": tf.reduce_min(q_t_selected),
@@ -117,18 +117,20 @@ class QNetwork(object):
                  sigma0=0.5,
                  parameter_noise=False):
         self.model = model
-        model_outputs, feature_layer, state = model({
-            "obs": obs,
-            "is_training": is_training,
-        }, [], None)
+        model_outputs, feature_layer, state = model(
+            {
+                "obs": obs,
+                "is_training": is_training,
+            }, [], None)
 
         def build_action_value():
             if hiddens:
                 action_out = feature_layer
                 for i in range(len(hiddens)):
                     if use_noisy:
-                        action_out = self.noisy_layer(
-                            "hidden_%d" % i, action_out, hiddens[i], sigma0)
+                        action_out = self.noisy_layer("hidden_%d" % i,
+                                                      action_out, hiddens[i],
+                                                      sigma0)
                     elif parameter_noise:
                         import tensorflow.contrib.layers as layers
                         action_out = layers.fully_connected(
@@ -137,25 +139,24 @@ class QNetwork(object):
                             activation_fn=tf.nn.relu,
                             normalizer_fn=layers.layer_norm)
                     else:
-                        action_out = tf.layers.dense(
-                            action_out,
-                            units=hiddens[i],
-                            activation=tf.nn.relu,
-                            name="hidden_%d" % i)
+                        action_out = tf.layers.dense(action_out,
+                                                     units=hiddens[i],
+                                                     activation=tf.nn.relu,
+                                                     name="hidden_%d" % i)
             else:
                 # Avoid postprocessing the outputs. This enables custom models
                 # to be used for parametric action DQN.
                 action_out = model_outputs
             if use_noisy:
-                action_scores = self.noisy_layer(
-                    "output",
-                    action_out,
-                    num_actions * num_atoms,
-                    sigma0,
-                    non_linear=False)
+                action_scores = self.noisy_layer("output",
+                                                 action_out,
+                                                 num_actions * num_atoms,
+                                                 sigma0,
+                                                 non_linear=False)
             elif hiddens:
-                action_scores = tf.layers.dense(
-                    action_out, units=num_actions * num_atoms, activation=None)
+                action_scores = tf.layers.dense(action_out,
+                                                units=num_actions * num_atoms,
+                                                activation=None)
             else:
                 action_scores = model_outputs
             if num_atoms > 1:
@@ -163,12 +164,14 @@ class QNetwork(object):
                 # to represent the action value distribution
                 z = tf.range(num_atoms, dtype=tf.float32)
                 z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
-                support_logits_per_action = tf.reshape(
-                    tensor=action_scores, shape=(-1, num_actions, num_atoms))
+                support_logits_per_action = tf.reshape(tensor=action_scores,
+                                                       shape=(-1, num_actions,
+                                                              num_atoms))
                 support_prob_per_action = tf.nn.softmax(
                     logits=support_logits_per_action)
-                action_scores = tf.reduce_sum(
-                    input_tensor=z * support_prob_per_action, axis=-1)
+                action_scores = tf.reduce_sum(input_tensor=z *
+                                              support_prob_per_action,
+                                              axis=-1)
                 logits = support_logits_per_action
                 dist = support_prob_per_action
             else:
@@ -179,10 +182,9 @@ class QNetwork(object):
             return action_scores, z, support_logits_per_action, logits, dist
 
         (action_scores, z, support_logits_per_action, self.logits,
-         self.dist) = model.get_branch_output(
-             "action_value",
-             feature_layer=feature_layer,
-             default_impl=build_action_value)
+         self.dist) = model.get_branch_output("action_value",
+                                              feature_layer=feature_layer,
+                                              default_impl=build_action_value)
 
         if dueling:
 
@@ -200,18 +202,19 @@ class QNetwork(object):
                             activation_fn=tf.nn.relu,
                             normalizer_fn=tf.contrib.layers.layer_norm)
                     else:
-                        state_out = tf.layers.dense(
-                            state_out, units=hiddens[i], activation=tf.nn.relu)
+                        state_out = tf.layers.dense(state_out,
+                                                    units=hiddens[i],
+                                                    activation=tf.nn.relu)
                 if use_noisy:
-                    state_score = self.noisy_layer(
-                        "dueling_output",
-                        state_out,
-                        num_atoms,
-                        sigma0,
-                        non_linear=False)
+                    state_score = self.noisy_layer("dueling_output",
+                                                   state_out,
+                                                   num_atoms,
+                                                   sigma0,
+                                                   non_linear=False)
                 else:
-                    state_score = tf.layers.dense(
-                        state_out, units=num_atoms, activation=None)
+                    state_score = tf.layers.dense(state_out,
+                                                  units=num_atoms,
+                                                  activation=None)
                 return state_score
 
             state_score = model.get_branch_output(
@@ -223,14 +226,15 @@ class QNetwork(object):
                 support_logits_per_action_mean = tf.reduce_mean(
                     support_logits_per_action, 1)
                 support_logits_per_action_centered = (
-                    support_logits_per_action - tf.expand_dims(
-                        support_logits_per_action_mean, 1))
+                    support_logits_per_action -
+                    tf.expand_dims(support_logits_per_action_mean, 1))
                 support_logits_per_action = tf.expand_dims(
                     state_score, 1) + support_logits_per_action_centered
                 support_prob_per_action = tf.nn.softmax(
                     logits=support_logits_per_action)
-                self.value = tf.reduce_sum(
-                    input_tensor=z * support_prob_per_action, axis=-1)
+                self.value = tf.reduce_sum(input_tensor=z *
+                                           support_prob_per_action,
+                                           axis=-1)
                 self.logits = support_logits_per_action
                 self.dist = support_prob_per_action
             else:
@@ -262,16 +266,15 @@ class QNetwork(object):
         epsilon_out = tf.random_normal(shape=[out_size])
         epsilon_in = self.f_epsilon(epsilon_in)
         epsilon_out = self.f_epsilon(epsilon_out)
-        epsilon_w = tf.matmul(
-            a=tf.expand_dims(epsilon_in, -1), b=tf.expand_dims(epsilon_out, 0))
+        epsilon_w = tf.matmul(a=tf.expand_dims(epsilon_in, -1),
+                              b=tf.expand_dims(epsilon_out, 0))
         epsilon_b = epsilon_out
-        sigma_w = tf.get_variable(
-            name=prefix + "_sigma_w",
-            shape=[in_size, out_size],
-            dtype=tf.float32,
-            initializer=tf.random_uniform_initializer(
-                minval=-1.0 / np.sqrt(float(in_size)),
-                maxval=1.0 / np.sqrt(float(in_size))))
+        sigma_w = tf.get_variable(name=prefix + "_sigma_w",
+                                  shape=[in_size, out_size],
+                                  dtype=tf.float32,
+                                  initializer=tf.random_uniform_initializer(
+                                      minval=-1.0 / np.sqrt(float(in_size)),
+                                      maxval=1.0 / np.sqrt(float(in_size))))
         # TF noise generation can be unreliable on GPU
         # If generating the noise on the CPU,
         # lowering sigma0 to 0.1 may be helpful
@@ -279,19 +282,17 @@ class QNetwork(object):
             name=prefix + "_sigma_b",
             shape=[out_size],
             dtype=tf.float32,  # 0.5~GPU, 0.1~CPU
-            initializer=tf.constant_initializer(
-                sigma0 / np.sqrt(float(in_size))))
+            initializer=tf.constant_initializer(sigma0 /
+                                                np.sqrt(float(in_size))))
 
-        w = tf.get_variable(
-            name=prefix + "_fc_w",
-            shape=[in_size, out_size],
-            dtype=tf.float32,
-            initializer=layers.xavier_initializer())
-        b = tf.get_variable(
-            name=prefix + "_fc_b",
-            shape=[out_size],
-            dtype=tf.float32,
-            initializer=tf.zeros_initializer())
+        w = tf.get_variable(name=prefix + "_fc_w",
+                            shape=[in_size, out_size],
+                            dtype=tf.float32,
+                            initializer=layers.xavier_initializer())
+        b = tf.get_variable(name=prefix + "_fc_b",
+                            shape=[out_size],
+                            dtype=tf.float32,
+                            initializer=tf.zeros_initializer())
 
         action_activation = tf.nn.xw_plus_b(action_in, w + sigma_w * epsilon_w,
                                             b + sigma_b * epsilon_b)
@@ -318,15 +319,16 @@ class QValuePolicy(object):
         random_valid_action_logits = tf.where(
             tf.equal(q_values, tf.float32.min),
             tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
-        random_actions = tf.squeeze(
-            tf.multinomial(random_valid_action_logits, 1), axis=1)
+        random_actions = tf.squeeze(tf.multinomial(random_valid_action_logits,
+                                                   1),
+                                    axis=1)
 
         chose_random = tf.random_uniform(
             tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32) < eps
         stochastic_actions = tf.where(chose_random, random_actions,
                                       deterministic_actions)
-        self.action = tf.cond(stochastic, lambda: stochastic_actions,
-                              lambda: deterministic_actions)
+        self.action = tf.cond(stochastic, lambda: stochastic_actions, lambda:
+                              deterministic_actions)
         self.action_prob = None
 
 
@@ -413,8 +415,8 @@ def postprocess_trajectory(policy,
             policy.parameter_noise_sigma_val *= 1.01
         else:
             policy.parameter_noise_sigma_val /= 1.01
-        policy.parameter_noise_sigma.load(
-            policy.parameter_noise_sigma_val, session=policy.get_session())
+        policy.parameter_noise_sigma.load(policy.parameter_noise_sigma_val,
+                                          session=policy.get_session())
 
     return _postprocess_dqn(policy, sample_batch)
 
@@ -425,21 +427,20 @@ def build_q_model(policy, obs_space, action_space, config):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
-    policy.q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        OutputSpec(action_space.n),
-        config["model"],
-        framework="tf",
-        name=Q_SCOPE)
+    policy.q_model = ModelCatalog.get_model_v2(obs_space,
+                                               action_space,
+                                               OutputSpec(action_space.n),
+                                               config["model"],
+                                               framework="tf",
+                                               name=Q_SCOPE)
 
-    policy.target_q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        OutputSpec(action_space.n),
-        config["model"],
-        framework="tf",
-        name=Q_TARGET_SCOPE)
+    policy.target_q_model = ModelCatalog.get_model_v2(obs_space,
+                                                      action_space,
+                                                      OutputSpec(
+                                                          action_space.n),
+                                                      config["model"],
+                                                      framework="tf",
+                                                      name=Q_TARGET_SCOPE)
 
     return policy.q_model
 
@@ -481,11 +482,10 @@ def _build_parameter_noise(policy, pnet_params):
     policy.parameter_noise = list()
     # No need to add any noise on LayerNorm parameters
     for var in pnet_params:
-        noise_var = tf.get_variable(
-            name=var.name.split(":")[0] + "_noise",
-            shape=var.shape,
-            initializer=tf.constant_initializer(.0),
-            trainable=False)
+        noise_var = tf.get_variable(name=var.name.split(":")[0] + "_noise",
+                                    shape=var.shape,
+                                    initializer=tf.constant_initializer(.0),
+                                    trainable=False)
         policy.parameter_noise.append(noise_var)
     remove_noise_ops = list()
     for var, var_noise in zip(pnet_params, policy.parameter_noise):
@@ -496,9 +496,8 @@ def _build_parameter_noise(policy, pnet_params):
         generate_noise_ops.append(
             tf.assign(
                 var_noise,
-                tf.random_normal(
-                    shape=var_noise.shape,
-                    stddev=policy.parameter_noise_sigma)))
+                tf.random_normal(shape=var_noise.shape,
+                                 stddev=policy.parameter_noise_sigma)))
     with tf.control_dependencies(generate_noise_ops):
         add_noise_ops = list()
         for var, var_noise in zip(pnet_params, policy.parameter_noise):
@@ -544,23 +543,24 @@ def build_q_losses(policy, batch_tensors):
         q_dist_tp1_best = tf.reduce_sum(
             q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1), 1)
     else:
-        q_tp1_best_one_hot_selection = tf.one_hot(
-            tf.argmax(q_tp1, 1), policy.action_space.n)
+        q_tp1_best_one_hot_selection = tf.one_hot(tf.argmax(q_tp1, 1),
+                                                  policy.action_space.n)
         q_tp1_best = tf.reduce_sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
         q_dist_tp1_best = tf.reduce_sum(
             q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1), 1)
 
-    policy.q_loss = _build_q_loss(
-        q_t_selected, q_logits_t_selected, q_tp1_best, q_dist_tp1_best,
-        batch_tensors[SampleBatch.REWARDS], batch_tensors[SampleBatch.DONES],
-        batch_tensors[PRIO_WEIGHTS], policy.config)
+    policy.q_loss = _build_q_loss(q_t_selected, q_logits_t_selected,
+                                  q_tp1_best, q_dist_tp1_best,
+                                  batch_tensors[SampleBatch.REWARDS],
+                                  batch_tensors[SampleBatch.DONES],
+                                  batch_tensors[PRIO_WEIGHTS], policy.config)
 
     return policy.q_loss.loss
 
 
 def adam_optimizer(policy, config):
-    return tf.train.AdamOptimizer(
-        learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+    return tf.train.AdamOptimizer(learning_rate=policy.cur_lr,
+                                  epsilon=config["adam_epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):
@@ -655,12 +655,14 @@ def _postprocess_dqn(policy, batch):
 
     # Prioritize on the worker side
     if batch.count > 0 and policy.config["worker_side_prioritization"]:
-        td_errors = policy.compute_td_error(
-            batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
-            batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
-            batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
-        new_priorities = (
-            np.abs(td_errors) + policy.config["prioritized_replay_eps"])
+        td_errors = policy.compute_td_error(batch[SampleBatch.CUR_OBS],
+                                            batch[SampleBatch.ACTIONS],
+                                            batch[SampleBatch.REWARDS],
+                                            batch[SampleBatch.NEXT_OBS],
+                                            batch[SampleBatch.DONES],
+                                            batch[PRIO_WEIGHTS])
+        new_priorities = (np.abs(td_errors) +
+                          policy.config["prioritized_replay_eps"])
         batch.data[PRIO_WEIGHTS] = new_priorities
 
     return batch
@@ -670,8 +672,8 @@ def _reduce_mean_ignore_inf(x, axis):
     """Same as tf.reduce_mean() but ignores -inf values."""
     mask = tf.not_equal(x, tf.float32.min)
     x_zeroed = tf.where(mask, x, tf.zeros_like(x))
-    return (tf.reduce_sum(x_zeroed, axis) / tf.reduce_sum(
-        tf.cast(mask, tf.float32), axis))
+    return (tf.reduce_sum(x_zeroed, axis) /
+            tf.reduce_sum(tf.cast(mask, tf.float32), axis))
 
 
 def _huber_loss(x, delta=1.0):

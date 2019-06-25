@@ -36,10 +36,12 @@ class VisionNetwork(TorchModel):
             SlimConv2d(in_channels, out_channels, kernel, stride, None))
         self._convs = nn.Sequential(*layers)
 
-        self._logits = SlimFC(
-            out_channels, num_outputs, initializer=nn.init.xavier_uniform_)
-        self._value_branch = SlimFC(
-            out_channels, 1, initializer=normc_initializer())
+        self._logits = SlimFC(out_channels,
+                              num_outputs,
+                              initializer=nn.init.xavier_uniform_)
+        self._value_branch = SlimFC(out_channels,
+                                    1,
+                                    initializer=normc_initializer())
 
     @override(TorchModel)
     def _forward(self, input_dict, hidden_state):

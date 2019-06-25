@@ -172,9 +172,8 @@ def build_tf_policy(name,
 
         @override(TFPolicy)
         def extra_compute_action_fetches(self):
-            return dict(
-                TFPolicy.extra_compute_action_fetches(self),
-                **self._extra_action_fetches)
+            return dict(TFPolicy.extra_compute_action_fetches(self),
+                        **self._extra_action_fetches)
 
         @override(TFPolicy)
         def extra_compute_action_feed_dict(self):
@@ -187,9 +186,8 @@ def build_tf_policy(name,
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
                 # auto-add empty learner stats dict if needed
-                return dict({
-                    LEARNER_STATS_KEY: {}
-                }, **extra_learn_fetches_fn(self))
+                return dict({LEARNER_STATS_KEY: {}},
+                            **extra_learn_fetches_fn(self))
             else:
                 return TFPolicy.extra_compute_grad_fetches(self)
 

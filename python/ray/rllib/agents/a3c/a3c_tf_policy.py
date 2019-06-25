@@ -5,7 +5,6 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.models.modelv2 import OutputSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
@@ -39,12 +38,13 @@ class A3CLoss(object):
 
 
 def actor_critic_loss(policy, batch_tensors):
-    policy.loss = A3CLoss(
-        policy.action_dist, batch_tensors[SampleBatch.ACTIONS],
-        batch_tensors[Postprocessing.ADVANTAGES],
-        batch_tensors[Postprocessing.VALUE_TARGETS],
-        policy.convert_to_eager(policy.vf), policy.config["vf_loss_coeff"],
-        policy.config["entropy_coeff"])
+    policy.loss = A3CLoss(policy.action_dist,
+                          batch_tensors[SampleBatch.ACTIONS],
+                          batch_tensors[Postprocessing.ADVANTAGES],
+                          batch_tensors[Postprocessing.VALUE_TARGETS],
+                          policy.convert_to_eager(policy.vf),
+                          policy.config["vf_loss_coeff"],
+                          policy.config["entropy_coeff"])
     return policy.loss.total_loss
 
 
@@ -73,9 +73,8 @@ def add_value_function_fetch(policy):
 
 class ValueNetworkMixin(object):
     def __init__(self):
-        self.vf = tf.reshape(
-            self.model.get_branch_output(
-                "value", OutputSpec(1), feature_layer=self.feature_out), [-1])
+        self.vf = self.model.get_value_prediction(
+            self.input_dict, self.model_out, self.state_in, self.seq_lens)
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {

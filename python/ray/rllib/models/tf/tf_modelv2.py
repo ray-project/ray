@@ -14,11 +14,11 @@ class TFModelV2(ModelV2):
 
     def __init__(self, obs_space, action_space, output_spec, model_config,
                  name):
-        ModelV2.__init__(
-            self,
-            obs_space,
-            action_space,
-            output_spec,
-            model_config,
-            name,
-            framework="tf")
+        ModelV2.__init__(self,
+                         obs_space,
+                         action_space,
+                         output_spec,
+                         model_config,
+                         name,
+                         framework="tf")
+        print("Init TFModel2")

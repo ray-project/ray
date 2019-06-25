@@ -17,12 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 def make_v1_wrapper(legacy_model_cls):
-
     class ModelV1Wrapper(TFModelV2):
         """Compatibility wrapper that allows V1 models to be used as ModelV2."""
 
-        def __init__(self, obs_space, action_space, num_outputs,
-                     model_config, name):
+        def __init__(self, obs_space, action_space, num_outputs, model_config,
+                     name):
             TFModelV2.__init__(self, obs_space, action_space, num_outputs,
                                model_config, name)
             self.legacy_model_cls = legacy_model_cls
@@ -47,16 +46,12 @@ def make_v1_wrapper(legacy_model_cls):
             with tf.variable_scope(self.name) as scope:
                 self.variable_scope = scope
 
-            self.graph = tf.get_default_graph()
-            print("DEFAULT GRAPH 2", tf.get_default_graph())
-
         @override(ModelV2)
         def get_initial_state(self):
             return self.initial_state
 
         @override(ModelV2)
         def __call__(self, input_dict, state, seq_lens):
-            print("DEFAULT GRAPH 3", tf.get_default_graph())
             if self.cur_instance:
                 # create a weight-sharing model copy
                 with tf.variable_scope(self.cur_instance.scope, reuse=True):
@@ -65,18 +60,18 @@ def make_v1_wrapper(legacy_model_cls):
                         self.num_outputs, self.model_config, state, seq_lens)
             else:
                 # create a new model instance
-                with self.graph.as_default():
-                    with tf.variable_scope(self.name):
-                        new_instance = self.legacy_model_cls(
-                            input_dict, self.obs_space, self.action_space,
-                            self.num_outputs, self.model_config, state, seq_lens)
+                with tf.variable_scope(self.name):
+                    new_instance = self.legacy_model_cls(
+                        input_dict, self.obs_space, self.action_space,
+                        self.num_outputs, self.model_config, state, seq_lens)
             self.cur_instance = new_instance
             self.variable_scope = new_instance.scope
             return new_instance.outputs, new_instance.state_out
 
         @override(ModelV2)
         def variables(self):
-            return super(ModelV1Wrapper, self).variables() + _scope_vars(self.variable_scope)
+            return super(ModelV1Wrapper, self).variables() + _scope_vars(
+                self.variable_scope)
 
         @override(ModelV2)
         def custom_loss(self, policy_loss, loss_inputs):
@@ -86,7 +81,38 @@ def make_v1_wrapper(legacy_model_cls):
         def metrics(self):
             return self.cur_instance.custom_stats()
 
-        def branch_variable_scope(self, branch_type):
+        @override(ModelV2)
+        def get_value_prediction(self, input_dict, state, seq_lens):
+            assert self.cur_instance, "must call forward first"
+
+            with self._branch_variable_scope("value_function"):
+                # Simple case: sharing the feature layer
+                if True:  #self.vf_share_layers:
+                    return tf.reshape(linear(self.cur_instance.last_layer, 1, "value_function",
+                                  normc_initializer(1.0)), [-1])
+
+                # Create a new separate model with no RNN state, etc.
+                branch_model_config = self.model_config.copy()
+                branch_model_config["free_log_std"] = False
+                if branch_model_config["use_lstm"]:
+                    branch_model_config["use_lstm"] = False
+                    logger.warning(
+                        "It is not recommended to use a LSTM model with "
+                        "vf_share_layers=False (consider setting it to True). "
+                        "If you want to not share layers, you can implement "
+                        "a custom LSTM model that overrides the "
+                        "value_function() method.")
+                branch_instance = self.legacy_model_cls(
+                    self.cur_instance.input_dict,
+                    self.obs_space,
+                    self.action_space,
+                    1,
+                    branch_model_config,
+                    state_in=None,
+                    seq_lens=None)
+                return tf.reshape(branch_instance.outputs, [-1])
+
+        def _branch_variable_scope(self, branch_type):
             if branch_type in self.branches_created:
                 reuse = True
             else:
@@ -97,41 +123,6 @@ def make_v1_wrapper(legacy_model_cls):
                 return tf.variable_scope(branch_type, reuse=reuse)
 
     return ModelV1Wrapper
-
-#    @override(TFModelV2)
-#    def _get_branch_fallback(self,
-#                             branch_type,
-#                             reuse,
-#                             output_spec=None,
-#                             feature_layer=None,
-#                             default_impl=None):
-#        assert self.cur_instance, "must call forward first"
-#
-#        # Simple case: sharing the feature layer
-#        if feature_layer is not None:
-#            return linear(feature_layer, output_spec.size, branch_type,
-#                          normc_initializer(1.0))
-#
-#        # Create a new separate model with no RNN state, etc.
-#        branch_model_config = self.model_config.copy()
-#        branch_model_config["free_log_std"] = False
-#        if branch_model_config["use_lstm"]:
-#            branch_model_config["use_lstm"] = False
-#            logger.warning(
-#                "It is not recommended to use a LSTM model with "
-#                "vf_share_layers=False (consider setting it to True). "
-#                "If you want to not share layers, you can implement "
-#                "a custom LSTM model that overrides the "
-#                "value_function() method.")
-#        branch_instance = self.legacy_model_cls(
-#            self.cur_instance.input_dict,
-#            self.obs_space,
-#            self.action_space,
-#            output_spec.size,
-#            branch_model_config,
-#            state_in=None,
-#            seq_lens=None)
-#        return branch_instance.outputs
 
 
 def _scope_vars(scope, trainable_only=False):
