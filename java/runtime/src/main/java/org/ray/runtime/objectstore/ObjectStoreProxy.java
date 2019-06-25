@@ -16,7 +16,7 @@ import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.config.RunMode;
-import org.ray.runtime.generated.ErrorType;
+import org.ray.runtime.generated.Gcs.ErrorType;
 import org.ray.runtime.util.IdUtil;
 import org.ray.runtime.util.Serializer;
 import org.slf4j.Logger;

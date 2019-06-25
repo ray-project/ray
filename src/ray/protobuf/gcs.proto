@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package ray.rpc;
 
-option java_multiple_files = true;
 option java_package = "org.ray.runtime.generated";
 
 // Language of a worker or task.
