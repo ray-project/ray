@@ -88,11 +88,13 @@ class DynamicTFPolicy(TFPolicy):
                 previous action and reward in the model input
 
         Attributes:
-            config
-            model
-            action_dist
-            state_in
-            seq_lens
+            config: config of the policy
+            model: model instance, if any
+            model_out: output tensors of the model
+            action_dist: action distribution of the model, if any
+            state_in: state input tensors, if any
+            state_out: state output tensors, if any
+            seq_lens: tensor of sequence lengths
         """
         self.config = config
         self._loss_fn = loss_fn
