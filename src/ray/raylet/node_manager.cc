@@ -835,7 +835,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   client->SetClientID(from_flatbuf<ClientID>(*message->worker_id()));
-  // XXX
   Language language = static_cast<Language>(message->language());
   auto worker =
       std::make_shared<Worker>(message->worker_pid(), language, client);
@@ -1757,7 +1756,7 @@ bool NodeManager::AssignTask(const Task &task) {
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
   auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
-  
+
   auto message = protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
                                               fbb.CreateVector(resource_id_set_flatbuf));
   fbb.Finish(message);
@@ -2014,9 +2013,9 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
              const TaskTableData &task_data) {
         // The task was in the GCS task table. Use the stored task spec to
         // re-execute the task.
-//        auto message = flatbuffers::GetRoot<protocol::Task>(task_data.task().data());
-//        XXX const Task task(*message);
-        const Task task(nullptr);
+        std::unique_ptr<rpc::Task> task_message(new rpc::Task);
+        task_message->ParseFromString(task_data.task().data());
+        const Task task(std::move(task_message));
         ResubmitTask(task);
       },
       /*failure_callback=*/
