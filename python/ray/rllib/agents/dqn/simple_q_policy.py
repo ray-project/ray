@@ -16,7 +16,7 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf
-from ray.rllib.utils.huber_loss import huber_loss
+from ray.rllib.utils.tf_ops import huber_loss
 
 tf = try_import_tf()
 
