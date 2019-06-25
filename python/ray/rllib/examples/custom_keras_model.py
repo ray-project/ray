@@ -15,13 +15,13 @@ from ray import tune
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
+from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="DQN")  # Try PG, PPO, DQN
+parser.add_argument("--run", type=str, default="SimpleQ")  # Try PG, PPO, DQN
 parser.add_argument("--stop", type=int, default=200)
 
 
@@ -61,14 +61,40 @@ class MyKerasModel(TFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
-class MyKerasQModel(SimpleQModel):
+class MyKerasQModel(DistributionalQModel):
     """Custom model for DQN."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name, q_hiddens):
-        super(MyKerasQModel,
-              self).__init__(obs_space, action_space, num_outputs,
-                             model_config, name, q_hiddens)
+    def __init__(self,
+                 obs_space,
+                 action_space,
+                 num_outputs,
+                 model_config,
+                 name,
+                 q_hiddens=(256, ),
+                 dueling=False,
+                 num_atoms=1,
+                 use_noisy=False,
+                 v_min=-10.0,
+                 v_max=10.0,
+                 sigma0=0.5,
+                 parameter_noise=False):
+        super(MyKerasQModel, self).__init__(
+            obs_space,
+            action_space,
+            num_outputs,
+            model_config,
+            name,
+            q_hiddens,
+            dueling=False,
+            num_atoms=1,
+            use_noisy=False,
+            v_min=-10.0,
+            v_max=10.0,
+            sigma0=0.5,
+            parameter_noise=False)
+
+        # Define the core model layers which will be used by the other
+        # output heads of DistributionalQModel
         self.inputs = tf.keras.layers.Input(
             shape=obs_space.shape, name="observations")
         layer_1 = tf.keras.layers.Dense(
@@ -84,14 +110,11 @@ class MyKerasQModel(SimpleQModel):
         self.base_model = tf.keras.Model(self.inputs, layer_out)
         self.register_variables(self.base_model.variables)
 
+    # Implement the core forward method
     def forward(self, input_dict, state, seq_lens):
         self.prev_input = input_dict
         model_out = self.base_model(input_dict["obs"])
         return model_out, state
-
-    def get_q_values(self, model_out):
-        # using default impl from SimpleQModel
-        return self.q_value_head(model_out)
 
 
 if __name__ == "__main__":

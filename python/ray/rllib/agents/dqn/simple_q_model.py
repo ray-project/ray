@@ -10,7 +10,10 @@ tf = try_import_tf()
 
 
 class SimpleQModel(TFModelV2):
-    """Extension of standard TFModel to provide Q values."""
+    """Extension of standard TFModel to provide Q values.
+    
+    Note that this class by itself is not a valid model unless you
+    implement forward() in a subclass."""
 
     def __init__(self,
                  obs_space,

@@ -11,8 +11,11 @@ tf = try_import_tf()
 
 class DistributionalQModel(TFModelV2):
     """Extension of standard TFModel to provide distributional Q values.
-    
-    It also supports options for noisy nets and parameter space noise."""
+
+    It also supports options for noisy nets and parameter space noise.
+
+    Note that this class by itself is not a valid model unless you
+    implement forward() in a subclass."""
 
     def __init__(self,
                  obs_space,
@@ -28,8 +31,8 @@ class DistributionalQModel(TFModelV2):
                  v_max=10.0,
                  sigma0=0.5,
                  parameter_noise=False):
-        super(DistributionalQModel, self).__init__(obs_space, action_space,
-                                           num_outputs, model_config, name)
+        super(DistributionalQModel, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name)
 
         # setup the Q head output (i.e., model for get_q_values)
         self.model_out = tf.keras.layers.Input(
@@ -68,7 +71,9 @@ class DistributionalQModel(TFModelV2):
                     non_linear=False)
             elif q_hiddens:
                 action_scores = tf.layers.dense(
-                    action_out, units=self.action_space.n * num_atoms, activation=None)
+                    action_out,
+                    units=self.action_space.n * num_atoms,
+                    activation=None)
             else:
                 action_scores = model_outputs
             if num_atoms > 1:
@@ -77,14 +82,17 @@ class DistributionalQModel(TFModelV2):
                 z = tf.range(num_atoms, dtype=tf.float32)
                 z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
                 support_logits_per_action = tf.reshape(
-                    tensor=action_scores, shape=(-1, self.action_space.n, num_atoms))
+                    tensor=action_scores,
+                    shape=(-1, self.action_space.n, num_atoms))
                 support_prob_per_action = tf.nn.softmax(
                     logits=support_logits_per_action)
                 action_scores = tf.reduce_sum(
                     input_tensor=z * support_prob_per_action, axis=-1)
                 logits = support_logits_per_action
                 dist = support_prob_per_action
-                return [action_scores, z, support_logits_per_action, logits, dist]
+                return [
+                    action_scores, z, support_logits_per_action, logits, dist
+                ]
             else:
                 logits = tf.expand_dims(tf.ones_like(action_scores), -1)
                 dist = tf.expand_dims(tf.ones_like(action_scores), -1)
@@ -95,8 +103,8 @@ class DistributionalQModel(TFModelV2):
             for i in range(len(q_hiddens)):
                 if use_noisy:
                     state_out = self._noisy_layer("dueling_hidden_%d" % i,
-                                                 state_out, q_hiddens[i],
-                                                 sigma0)
+                                                  state_out, q_hiddens[i],
+                                                  sigma0)
                 elif parameter_noise:
                     state_out = tf.contrib.layers.fully_connected(
                         state_out,
@@ -119,18 +127,22 @@ class DistributionalQModel(TFModelV2):
             return state_score
 
         def build_action_value_in_scope(model_out):
-            with tf.variable_scope(name + "/action_value", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope(
+                    name + "/action_value", reuse=tf.AUTO_REUSE):
                 return build_action_value(model_out)
 
         def build_state_score_in_scope(model_out):
             with tf.variable_scope(name + "/state_value", reuse=tf.AUTO_REUSE):
                 return build_state_score(model_out)
 
-        q_out = tf.keras.layers.Lambda(build_action_value_in_scope)(self.model_out)
-        state_out = tf.keras.layers.Lambda(build_state_score_in_scope)(self.model_out)
+        q_out = tf.keras.layers.Lambda(build_action_value_in_scope)(
+            self.model_out)
+        state_out = tf.keras.layers.Lambda(build_state_score_in_scope)(
+            self.model_out)
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
         self.state_value_head = tf.keras.Model(self.model_out, state_out)
         self.register_variables(self.q_value_head.variables)
+        self.register_variables(self.state_value_head.variables)
 
     def get_q_value_distributions(self, model_out):
         """Returns distributional values for Q(s, a) given a state embedding.
@@ -152,8 +164,12 @@ class DistributionalQModel(TFModelV2):
 
         return self.state_value_head(model_out)
 
-    def _noisy_layer(self, prefix, action_in, out_size, sigma0,
-                    non_linear=True):
+    def _noisy_layer(self,
+                     prefix,
+                     action_in,
+                     out_size,
+                     sigma0,
+                     non_linear=True):
         """
         a common dense layer: y = w^{T}x + b
         a noisy layer: y = (w + \epsilon_w*\sigma_w)^{T}x +
