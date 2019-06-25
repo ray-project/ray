@@ -71,13 +71,18 @@ class TaskDependencyManager {
   /// \param task The task that is pending execution.
   void TaskPending(const Task &task);
 
-  /// Mark that the given task is no longer pending execution. Any objects that
-  /// it creates that are not already local are now considered to be remote. If
-  /// there are any subscribed tasks that depend on these objects, then the
-  /// objects will be requested.
+  /// Mark that the given task is no longer pending local execution. It is
+  /// assumed that a remote node is now responsible for executing it.
   ///
   /// \param task_id The ID of the task to cancel.
-  void TaskCanceled(const TaskID &task_id);
+  void CancelUnfinishedTask(const TaskID &task_id);
+
+  /// Mark that the given task finished execution locally and is no longer
+  /// pending execution. This includes tasks that threw an error (e.g., due to
+  /// worker death).
+  ///
+  /// \param task_id The ID of the task that finished.
+  void CancelFinishedTask(const TaskID &task_id);
 
   /// Handle an object becoming locally available. If there are any subscribed
   /// tasks that depend on this object, then the object will be canceled.
@@ -167,6 +172,17 @@ class TaskDependencyManager {
   /// The task lease has an expiration time. If we do not renew the lease
   /// before that time, then other nodes may choose to execute the task.
   void AcquireTaskLease(const TaskID &task_id);
+  /// Add a task lease entry to the GCS for the given task ID. It will expire
+  /// after the given lease period. A lease period of -1 indicates that the
+  /// lease will never expire (unless it is overwritten).
+  void AddTaskLeaseData(const TaskID &task_id, int64_t lease_period);
+  /// Mark that the given task is no longer pending execution. Any objects that
+  /// it creates that are not already local are now considered to be remote. If
+  /// there are any subscribed tasks that depend on these objects, then the
+  /// objects will be requested. If task_finished is true, a task lease entry
+  /// will be added to the GCS to reflect that this task has finished
+  /// execution.
+  void CancelTask(const TaskID &task_id, bool task_finished);
 
   /// The object manager, used to fetch required objects from remote nodes.
   ObjectManagerInterface &object_manager_;

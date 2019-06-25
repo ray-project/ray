@@ -247,6 +247,15 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   }
 }
 
+void TaskDependencyManager::AddTaskLeaseData(const TaskID &task_id,
+                                             int64_t lease_period) {
+  auto task_lease_data = std::make_shared<TaskLeaseDataT>();
+  task_lease_data->node_manager_id = client_id_.Hex();
+  task_lease_data->acquired_at = current_sys_time_ms();
+  task_lease_data->timeout = lease_period;
+  RAY_CHECK_OK(task_lease_table_.Add(DriverID::Nil(), task_id, task_lease_data, nullptr));
+}
+
 void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
   auto it = pending_tasks_.find(task_id);
   int64_t now_ms = current_time_ms();
@@ -261,11 +270,7 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
                      << (it->second.expires_at - now_ms) << "ms";
   }
 
-  auto task_lease_data = std::make_shared<TaskLeaseDataT>();
-  task_lease_data->node_manager_id = client_id_.Hex();
-  task_lease_data->acquired_at = current_sys_time_ms();
-  task_lease_data->timeout = it->second.lease_period;
-  RAY_CHECK_OK(task_lease_table_.Add(DriverID::Nil(), task_id, task_lease_data, nullptr));
+  AddTaskLeaseData(task_id, it->second.lease_period);
 
   auto period = boost::posix_time::milliseconds(it->second.lease_period / 2);
   it->second.lease_timer->expires_from_now(period);
@@ -284,16 +289,25 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
                                      RayConfig::instance().max_task_lease_timeout_ms());
 }
 
-void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
+void TaskDependencyManager::CancelTask(const TaskID &task_id, bool task_finished) {
   // Record that the task is no longer pending execution.
   auto it = pending_tasks_.find(task_id);
-  if (it == pending_tasks_.end()) {
-    return;
+  if (it != pending_tasks_.end()) {
+    pending_tasks_.erase(it);
   }
-  pending_tasks_.erase(it);
+
+  // If the task finished execution, then add a task lease entry with an
+  // infinite timeout to the GCS.
+  if (task_finished) {
+    AddTaskLeaseData(task_id, -1);
+  }
 
   // Find any subscribed tasks that are dependent on objects created by the
   // canceled task.
+  // TODO(swang): For tasks that finished locally, it may take some time
+  // before we receive notifications that the objects that the task created
+  // are local. We may want to treat the object as remote only after a
+  // timeout has passed without receiving such a notification.
   auto remote_task_entry = required_tasks_.find(task_id);
   if (remote_task_entry != required_tasks_.end()) {
     for (const auto &object_entry : remote_task_entry->second) {
@@ -302,6 +316,14 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
       HandleRemoteDependencyRequired(object_entry.first);
     }
   }
+}
+
+void TaskDependencyManager::CancelFinishedTask(const TaskID &task_id) {
+  CancelTask(task_id, /*task_finished=*/true);
+}
+
+void TaskDependencyManager::CancelUnfinishedTask(const TaskID &task_id) {
+  CancelTask(task_id, /*task_finished=*/false);
 }
 
 void TaskDependencyManager::RemoveTasksAndRelatedObjects(

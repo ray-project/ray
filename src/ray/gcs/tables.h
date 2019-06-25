@@ -703,17 +703,20 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
   Status Add(const DriverID &driver_id, const TaskID &id,
              std::shared_ptr<TaskLeaseDataT> &data, const WriteCallback &done) override {
     RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(driver_id, id, data, done)));
-    // Mark the entry for expiration in Redis. It's okay if this command fails
-    // since the lease entry itself contains the expiration period. In the
-    // worst case, if the command fails, then a client that looks up the lease
-    // entry will overestimate the expiration time.
-    // TODO(swang): Use a common helper function to format the key instead of
-    // hardcoding it to match the Redis module.
-    std::vector<std::string> args = {"PEXPIRE",
-                                     EnumNameTablePrefix(prefix_) + id.Binary(),
-                                     std::to_string(data->timeout)};
+    if (data->timeout > 0) {
+      // Mark the entry for expiration in Redis. It's okay if this command fails
+      // since the lease entry itself contains the expiration period. In the
+      // worst case, if the command fails, then a client that looks up the lease
+      // entry will overestimate the expiration time.
+      // TODO(swang): Use a common helper function to format the key instead of
+      // hardcoding it to match the Redis module.
+      std::vector<std::string> args = {"PEXPIRE",
+                                       EnumNameTablePrefix(prefix_) + id.Binary(),
+                                       std::to_string(data->timeout)};
 
-    return GetRedisContext(id)->RunArgvAsync(args);
+      RAY_RETURN_NOT_OK(GetRedisContext(id)->RunArgvAsync(args));
+    }
+    return Status::OK();
   }
 };
 
