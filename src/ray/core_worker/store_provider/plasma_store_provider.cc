@@ -4,6 +4,11 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/object_interface.h"
 
+// Print a warning every this number of attempts.
+#define WARN_PER_NUM_ATTEMPTS 50
+// Max number of ids to print in the warning message.
+#define MAX_IDS_TO_PRINT_IN_WARNING 20
+
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
@@ -108,7 +113,30 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     num_attempts += 1;
-    // TODO(zhijunfu): log a message if attempted too many times.
+    if (num_attempts % WARN_PER_NUM_ATTEMPTS == 0) {
+      // Print a warning if we've attempted too many times, but some objects are still
+      // unavailable.
+      std::ostringstream oss;
+      size_t printed = 0;
+      for (auto &entry : unready) {
+        if (printed >= MAX_IDS_TO_PRINT_IN_WARNING) {
+          break;
+        }
+        if (printed > 0) {
+          oss << ", ";
+        }
+        oss << entry.first.Hex();
+      }
+      if (printed < unready.size()) {
+        oss << ", etc";
+      }
+      RAY_LOG(WARNING)
+          << "Attempted " << num_attempts << " times to reconstruct objects, but "
+          << "some objects are still unavailable. If this message continues to print,"
+          << " it may indicate that object's creating task is hanging, or something wrong"
+          << " happened in raylet backend. " << unready.size()
+          << " object(s) pending: " << oss.str() << ".";
+    }
   }
 
   if (was_blocked) {
