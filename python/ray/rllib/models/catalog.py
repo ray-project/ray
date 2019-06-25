@@ -230,8 +230,30 @@ class ModelCatalog(object):
                                                       model_interface):
                     raise ValueError("The given model must subclass",
                                      model_interface)
-                return model_cls(obs_space, action_space, num_outputs,
-                                 model_config, name, **model_kwargs)
+                created = set()
+
+                # Track and warn if variables were created but no registered
+                def track_var_creation(next_creator, **kw):
+                    v = next_creator(**kw)
+                    created.add(v)
+                    return v
+
+                with tf.variable_creator_scope(track_var_creation):
+                    instance = model_cls(obs_space, action_space, num_outputs,
+                                         model_config, name, **model_kwargs)
+                registered = set(instance.variables())
+                not_registered = set()
+                for var in created:
+                    if var not in registered:
+                        not_registered.add(var)
+                if not_registered:
+                    raise ValueError(
+                        "It looks like variables {} were created as part of "
+                        "{} but does not appear in model.variables() ({}). "
+                        "Did you forget to call model.register_variables() "
+                        "on the variables in question?".format(
+                            not_registered, instance, registered))
+                return instance
 
         if framework == "tf":
             legacy_model_cls = ModelCatalog.get_model
@@ -246,7 +268,7 @@ class ModelCatalog(object):
     def _wrap_if_needed(model_cls, model_interface):
         assert issubclass(model_cls, TFModelV2)
 
-        if issubclass(model_cls, model_interface):
+        if not model_interface or issubclass(model_cls, model_interface):
             return model_cls
 
         class wrapper(model_interface, model_cls):

@@ -73,8 +73,7 @@ def add_value_function_fetch(policy):
 
 class ValueNetworkMixin(object):
     def __init__(self):
-        self.vf = self.model.get_value_prediction(
-            self.input_dict, self.model_out, self.state_in, self.seq_lens)
+        self.vf = self.model.get_value_prediction()
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {

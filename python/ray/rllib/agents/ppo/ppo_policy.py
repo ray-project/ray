@@ -221,8 +221,9 @@ class KLCoeffMixin(object):
 class ValueNetworkMixin(object):
     def __init__(self, obs_space, action_space, config):
         if config["use_gae"]:
-            self.value_function = self.model.get_value_prediction(
-                self.input_dict, self.state_in, self.seq_lens)
+            self.value_function = self.model.get_value_prediction()
+
+
 #
 #            if config["vf_share_layers"]:
 #                self.value_function = tf.reshape(

@@ -39,7 +39,7 @@ class SimpleQModel(TFModelV2):
             q_out = self.model_out
 
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
-        self.register_model_variables(self.q_value_head.variables)
+        self.register_variables(self.q_value_head.variables)
 
     def get_q_values(self, input_dict, model_out, state, seq_lens):
         """Returns Q(s, a) given a feature tensor for the state.

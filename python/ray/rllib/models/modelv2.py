@@ -76,7 +76,7 @@ class ModelV2(object):
         """
         raise NotImplementedError
 
-    def get_value_prediction(self, input_dict, model_out, state, seq_lens):
+    def get_value_prediction(self):
         raise NotImplementedError
 
     def custom_loss(self, policy_loss, loss_inputs):
@@ -113,7 +113,7 @@ class ModelV2(object):
         """
         return {}
 
-    def register_model_variables(self, variables):
+    def register_variables(self, variables):
         """Register the given list of variables with this model."""
         self.var_list.extend(variables)
 

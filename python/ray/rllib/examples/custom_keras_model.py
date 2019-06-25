@@ -45,17 +45,19 @@ class MyKerasModel(TFModelV2):
             activation=None,
             kernel_initializer=normc_initializer(0.01))(layer_1)
         value_out = tf.keras.layers.Dense(
-            1, name="value_out", activation=None,
+            1,
+            name="value_out",
+            activation=None,
             kernel_initializer=normc_initializer(0.01))(layer_1)
         self.base_model = tf.keras.Model(self.inputs, [layer_out, value_out])
-        self.register_model_variables(self.base_model.variables)
+        self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
         self.prev_input = input_dict
         model_out, self._value_out = self.base_model(input_dict["obs"])
         return model_out, state
 
-    def get_value_prediction(self, input_dict, state, seq_lens):
+    def get_value_prediction(self):
         return tf.reshape(self._value_out, [-1])
 
 
@@ -80,7 +82,7 @@ class MyKerasQModel(SimpleQModel):
             activation=tf.nn.relu,
             kernel_initializer=normc_initializer(1.0))(layer_1)
         self.base_model = tf.keras.Model(self.inputs, layer_out)
-        self.register_model_variables(self.base_model.variables)
+        self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
         self.prev_input = input_dict
