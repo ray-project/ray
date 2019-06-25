@@ -55,7 +55,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         // incoming request.
         server_call->GetFactory().CreateCall();
         server_call->SetState(ServerCallState::PROCESSING);
-        server_call->GetIOService().post([server_call] { server_call->HandleRequest(); });
+        server_call->HandleRequest();
         break;
       case ServerCallState::SENDING_REPLY:
         // The reply has been sent, this call can be deleted now.
