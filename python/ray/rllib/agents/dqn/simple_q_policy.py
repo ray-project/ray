@@ -71,7 +71,7 @@ def build_q_models(policy, obs_space, action_space, config):
 
     if config["hiddens"]:
         num_outputs = 256
-        config["model"]["skip_final_linear"] = True
+        config["model"]["no_final_linear"] = True
     else:
         num_outputs = action_space.n
 
