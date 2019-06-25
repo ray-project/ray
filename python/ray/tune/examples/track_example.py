@@ -9,7 +9,7 @@ from keras.models import Sequential
 from keras.layers import (Dense, Dropout, Flatten, Conv2D, MaxPooling2D)
 
 from ray.tune import track
-from ray.tune.examples.utils import TuneKerasCallback, get_mnist_data
+from ray.tune.examples.utils import TuneReporterCallback, get_mnist_data
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -63,7 +63,7 @@ def train_mnist(args):
         batch_size=batch_size,
         epochs=epochs,
         validation_data=(x_test, y_test),
-        callbacks=[TuneKerasCallback(track.metric)])
+        callbacks=[TuneReporterCallback(track.metric)])
     track.shutdown()
 
 

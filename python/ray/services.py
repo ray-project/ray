@@ -1233,6 +1233,7 @@ def build_java_worker_command(
     assert java_worker_options is not None
 
     command = "java "
+
     if redis_address is not None:
         command += "-Dray.redis.address={} ".format(redis_address)
 
@@ -1253,6 +1254,8 @@ def build_java_worker_command(
         # Put `java_worker_options` in the last, so it can overwrite the
         # above options.
         command += java_worker_options + " "
+
+    command += "RAY_WORKER_OPTION_0 "
     command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command

@@ -61,15 +61,10 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
           main_service,
           boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(),
                                          object_manager_config.object_manager_port)),
-      object_manager_socket_(main_service),
-      node_manager_acceptor_(main_service, boost::asio::ip::tcp::endpoint(
-                                               boost::asio::ip::tcp::v4(),
-                                               node_manager_config.node_manager_port)),
-      node_manager_socket_(main_service) {
+      object_manager_socket_(main_service) {
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
-  DoAcceptNodeManager();
 
   RAY_CHECK_OK(RegisterGcs(
       node_ip_address, socket_name_, object_manager_config.store_socket_name,
@@ -100,7 +95,7 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
   client_info.raylet_socket_name = raylet_socket_name;
   client_info.object_store_socket_name = object_store_socket_name;
   client_info.object_manager_port = object_manager_acceptor_.local_endpoint().port();
-  client_info.node_manager_port = node_manager_acceptor_.local_endpoint().port();
+  client_info.node_manager_port = node_manager_.GetServerPort();
   // Add resource information.
   for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
     client_info.resources_total_label.push_back(resource_pair.first);
@@ -118,33 +113,6 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
   RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
 
   return Status::OK();
-}
-
-void Raylet::DoAcceptNodeManager() {
-  node_manager_acceptor_.async_accept(node_manager_socket_,
-                                      boost::bind(&Raylet::HandleAcceptNodeManager, this,
-                                                  boost::asio::placeholders::error));
-}
-
-void Raylet::HandleAcceptNodeManager(const boost::system::error_code &error) {
-  if (!error) {
-    ClientHandler<boost::asio::ip::tcp> client_handler =
-        [this](TcpClientConnection &client) {
-          node_manager_.ProcessNewNodeManager(client);
-        };
-    MessageHandler<boost::asio::ip::tcp> message_handler =
-        [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-               const uint8_t *message) {
-          node_manager_.ProcessNodeManagerMessage(*client, message_type, message);
-        };
-    // Accept a new TCP client and dispatch it to the node manager.
-    auto new_connection = TcpClientConnection::Create(
-        client_handler, message_handler, std::move(node_manager_socket_), "node manager",
-        node_manager_message_enum,
-        static_cast<int64_t>(protocol::MessageType::DisconnectClient));
-  }
-  // We're ready to accept another client.
-  DoAcceptNodeManager();
 }
 
 void Raylet::DoAcceptObjectManager() {
