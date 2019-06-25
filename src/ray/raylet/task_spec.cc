@@ -143,9 +143,8 @@ std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
 }
 
 std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
-  return {};
-//  XXX auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-//  return string_vec_from_flatbuf(*message->dynamic_worker_options());
+  return rpc::VectorFromProtobuf(
+      message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
 }  // namespace raylet
