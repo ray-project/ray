@@ -4,6 +4,8 @@ FROM ray-project/base-deps
 
 # We install ray and boto3 to enable the ray autoscaler as
 # a test runner.
+RUN conda install -y -c anaconda wrapt=1.11.1
+RUN conda install -y -c anaconda numpy=1.16.4
 RUN pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev1-cp27-cp27mu-manylinux1_x86_64.whl boto3
 # We install this after the latest wheels -- this should not override the latest wheels.
 RUN apt-get install -y zlib1g-dev
