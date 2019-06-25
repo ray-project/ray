@@ -11,9 +11,7 @@ import pandas as pd
 
 import ray
 from ray.tune import run, sample_from
-from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
-from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
 class ExperimentAnalysisSuite(unittest.TestCase):
@@ -27,35 +25,22 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.test_path = os.path.join(self.test_dir, self.test_name)
         self.run_test_exp()
 
-        self.ea = ExperimentAnalysis(self.test_path)
-
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
         ray.shutdown()
 
     def run_test_exp(self):
-        ahb = AsyncHyperBandScheduler(
-            time_attr="training_iteration",
-            metric=self.metric,
-            mode="max",
-            grace_period=5,
-            max_t=100)
-
-        run(MyTrainableClass,
+        self.ea = run(
+            MyTrainableClass,
             name=self.test_name,
-            scheduler=ahb,
             local_dir=self.test_dir,
-            **{
-                "stop": {
-                    "training_iteration": 1
-                },
-                "num_samples": 10,
-                "config": {
-                    "width": sample_from(
-                        lambda spec: 10 + int(90 * random.random())),
-                    "height": sample_from(
-                        lambda spec: int(100 * random.random())),
-                },
+            return_trials=False,
+            stop={"training_iteration": 1},
+            num_samples=self.num_samples,
+            config={
+                "width": sample_from(
+                    lambda spec: 10 + int(90 * random.random())),
+                "height": sample_from(lambda spec: int(100 * random.random())),
             })
 
     def testDataframe(self):
@@ -87,7 +72,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue("height" in best_config)
 
     def testBestTrial(self):
-        best_trial = self.ea._get_best_trial(self.metric)
+        best_trial = self.ea.get_best_info(self.metric, flatten=False)
 
         self.assertTrue(isinstance(best_trial, dict))
         self.assertTrue("local_dir" in best_trial)
@@ -98,6 +83,18 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue("height" in best_trial["config"])
         self.assertTrue("last_result" in best_trial)
         self.assertTrue(self.metric in best_trial["last_result"])
+
+        min_trial = self.ea.get_best_info(
+            self.metric, mode="min", flatten=False)
+
+        self.assertTrue(isinstance(min_trial, dict))
+        self.assertLess(min_trial["last_result"][self.metric],
+                        best_trial["last_result"][self.metric])
+
+        flat_trial = self.ea.get_best_info(self.metric, flatten=True)
+
+        self.assertTrue(isinstance(min_trial, dict))
+        self.assertTrue(self.metric in flat_trial)
 
     def testCheckpoints(self):
         checkpoints = self.ea._checkpoints
@@ -120,6 +117,21 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue("_metadata_checkpoint_dir" in runner_data)
         self.assertEqual(runner_data["_metadata_checkpoint_dir"],
                          os.path.expanduser(self.test_path))
+
+    def testBestLogdir(self):
+        logdir = self.ea.get_best_logdir(self.metric)
+        self.assertTrue(logdir.startswith(self.test_path))
+        logdir2 = self.ea.get_best_logdir(self.metric, mode="min")
+        self.assertTrue(logdir2.startswith(self.test_path))
+        self.assertNotEquals(logdir, logdir2)
+
+    def testAllDataframes(self):
+        dataframes = self.ea.get_all_trial_dataframes()
+        self.assertTrue(len(dataframes) == self.num_samples)
+
+        self.assertTrue(isinstance(dataframes, dict))
+        for df in dataframes.values():
+            self.assertEqual(df.training_iteration.max(), 1)
 
 
 if __name__ == "__main__":

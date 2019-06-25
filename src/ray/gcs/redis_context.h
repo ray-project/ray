@@ -9,7 +9,7 @@
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 
-#include "ray/gcs/format/gcs_generated.h"
+#include "ray/protobuf/gcs.pb.h"
 
 extern "C" {
 #include "ray/thirdparty/hiredis/adapters/ae.h"
@@ -24,6 +24,9 @@ struct aeEventLoop;
 namespace ray {
 
 namespace gcs {
+
+using rpc::TablePrefix;
+using rpc::TablePubsub;
 
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
@@ -126,8 +129,8 @@ class RedisContext {
   /// -1 for unused. If set, then data must be provided.
   /// \return Status.
   template <typename ID>
-  Status RunAsync(const std::string &command, const ID &id, const uint8_t *data,
-                  int64_t length, const TablePrefix prefix,
+  Status RunAsync(const std::string &command, const ID &id, const void *data,
+                  size_t length, const TablePrefix prefix,
                   const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
 
@@ -157,9 +160,9 @@ class RedisContext {
 };
 
 template <typename ID>
-Status RedisContext::RunAsync(const std::string &command, const ID &id,
-                              const uint8_t *data, int64_t length,
-                              const TablePrefix prefix, const TablePubsub pubsub_channel,
+Status RedisContext::RunAsync(const std::string &command, const ID &id, const void *data,
+                              size_t length, const TablePrefix prefix,
+                              const TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
   int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, false);
   if (length > 0) {

@@ -493,8 +493,9 @@ def test_warning_monitor_died(shutdown_only):
     malformed_message = "asdf"
     redis_client = ray.worker.global_worker.redis_client
     redis_client.execute_command(
-        "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.HEARTBEAT_BATCH,
-        ray.gcs_utils.TablePubsub.HEARTBEAT_BATCH, fake_id, malformed_message)
+        "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.Value("HEARTBEAT_BATCH"),
+        ray.gcs_utils.TablePubsub.Value("HEARTBEAT_BATCH_PUBSUB"), fake_id,
+        malformed_message)
 
     wait_for_errors(ray_constants.MONITOR_DIED_ERROR, 1)
 
