@@ -18,8 +18,8 @@ from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
-from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
-from ray.rllib.models.torch.model import TorchModel
+from ray.rllib.models.pytorch.fcnet import FullyConnectedNetwork
+from ray.rllib.models.pytorch.model import TorchModel
 from ray.rllib.rollout import rollout
 from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env
@@ -216,20 +216,19 @@ class TupleSpyModel(Model):
 class NestedSpacesTest(unittest.TestCase):
     def testInvalidModel(self):
         ModelCatalog.register_custom_model("invalid", InvalidModel)
-        self.assertRaises(
-            ValueError, lambda: PGTrainer(env="CartPole-v0",
-                                          config={
-                                              "model": {
-                                                  "custom_model": "invalid",
-                                              },
-                                          }))
+        self.assertRaises(ValueError, lambda: PGTrainer(
+            env="CartPole-v0", config={
+                "model": {
+                    "custom_model": "invalid",
+                },
+            }))
 
     def testInvalidModel2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
         self.assertRaisesRegexp(
-            ValueError, "Expected output.*", lambda: PGTrainer(
-                env="CartPole-v0",
-                config={
+            ValueError, "Expected output.*",
+            lambda: PGTrainer(
+                env="CartPole-v0", config={
                     "model": {
                         "custom_model": "invalid2",
                     },
@@ -333,21 +332,16 @@ class NestedSpacesTest(unittest.TestCase):
                 "train_batch_size": 5,
                 "multiagent": {
                     "policies": {
-                        "tuple_policy": (PGTFPolicy, TUPLE_SPACE, act_space, {
-                            "model": {
-                                "custom_model": "tuple_spy"
-                            }
-                        }),
-                        "dict_policy": (PGTFPolicy, DICT_SPACE, act_space, {
-                            "model": {
-                                "custom_model": "dict_spy"
-                            }
-                        }),
+                        "tuple_policy": (
+                            PGTFPolicy, TUPLE_SPACE, act_space,
+                            {"model": {"custom_model": "tuple_spy"}}),
+                        "dict_policy": (
+                            PGTFPolicy, DICT_SPACE, act_space,
+                            {"model": {"custom_model": "dict_spy"}}),
                     },
                     "policy_mapping_fn": lambda a: {
                         "tuple_agent": "tuple_policy",
-                        "dict_agent": "dict_policy"
-                    }[a],
+                        "dict_agent": "dict_policy"}[a],
                 },
             })
         pg.train()

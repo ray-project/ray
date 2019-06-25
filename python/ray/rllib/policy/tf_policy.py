@@ -196,7 +196,6 @@ class TFPolicy(Policy):
         self._grads = [g for (g, v) in self._grads_and_vars]
         self._variables = ray.experimental.tf_utils.TensorFlowVariables(
             self._loss, self._sess)
-        print("VARIABLES", self._variables.variables)
 
         # gather update ops for any batch norm layers
         if not self._update_ops:

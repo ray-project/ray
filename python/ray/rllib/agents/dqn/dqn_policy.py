@@ -428,18 +428,22 @@ def build_q_model(policy, obs_space, action_space, config):
     policy.q_model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
-        OutputSpec(action_space.n),
+        action_space.n,
         config["model"],
         framework="tf",
-        name=Q_SCOPE)
+        model_interface=model_interface,
+        name=Q_SCOPE,
+        **model_kw)
 
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
-        OutputSpec(action_space.n),
+        action_space.n,
         config["model"],
         framework="tf",
-        name=Q_TARGET_SCOPE)
+        model_interface=model_interface,
+        name=Q_TARGET_SCOPE,
+        **model_kw)
 
     return policy.q_model
 

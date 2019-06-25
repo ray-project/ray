@@ -77,6 +77,11 @@ class ModelV2(object):
         raise NotImplementedError
 
     def value_function(self):
+        """Return the value function estimate for the most recent forward pass.
+
+        Returns:
+            value estimate tensor of shape [BATCH].
+        """
         raise NotImplementedError
 
     def custom_loss(self, policy_loss, loss_inputs):

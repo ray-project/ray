@@ -22,4 +22,3 @@ class TFModelV2(ModelV2):
             model_config,
             name,
             framework="tf")
-        print("Init TFModel2")
