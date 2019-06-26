@@ -184,6 +184,11 @@ class Experiment(object):
     def checkpoint_dir(self):
         return os.path.join(self.spec["local_dir"], self.name)
 
+    @property
+    def remote_checkpoint_dir(self):
+        if self.spec["upload_dir"]:
+            return os.path.join(self.spec["upload_dir"], self.name)
+
 
 def convert_to_experiment_list(experiments):
     """Produces a list of Experiment objects.

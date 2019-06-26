@@ -37,13 +37,6 @@ def _make_scheduler(args):
             args.scheduler, _SCHEDULERS.keys()))
 
 
-def _find_checkpoint_dir(base_path, experiment_name):
-    # TODO(rliaw): Make sure the checkpoint_dir is resolved earlier.
-    # Right now it is resolved somewhere far down the trial generation process
-    if base_path:
-        return os.path.join(base_path, experiment_name)
-
-
 def _should_resume(checkpoint_dir, resume):
     restore = False
     if TrialRunner.checkpoint_exists(checkpoint_dir):
@@ -229,19 +222,15 @@ def run(run_or_experiment,
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 
-    local_checkpoint_dir = _find_checkpoint_dir(experiment.spec["local_dir"],
-                                                experiment.name)
-    # TODO(rliaw): what happens if upload_dir fails?
-    remote_checkpoint_dir = _find_checkpoint_dir(upload_dir, experiment.name)
     if sync_to_cloud:
-        assert remote_checkpoint_dir, (
+        assert experiment.remote_checkpoint_dir, (
             "Need `upload_dir` if `sync_to_cloud` given.")
 
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),
         scheduler=scheduler or FIFOScheduler(),
-        local_checkpoint_dir=local_checkpoint_dir,
-        remote_checkpoint_dir=remote_checkpoint_dir,
+        local_checkpoint_dir=experiment.local_checkpoint_dir,
+        remote_checkpoint_dir=experiment.remote_checkpoint_dir,
         sync_to_cloud=sync_to_cloud,
         resume=resume,
         launch_web_server=with_server,
