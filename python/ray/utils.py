@@ -65,8 +65,7 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    worker.raylet_client.push_error(job_id, error_type, message,
-                                    time.time())
+    worker.raylet_client.push_error(job_id, error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
@@ -97,8 +96,8 @@ def push_error_to_driver_through_redis(redis_client,
                                                        message, time.time())
     redis_client.execute_command(
         "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"),
-        job_id.binary(), error_data)
+        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"), job_id.binary(),
+        error_data)
 
 
 def is_cython(obj):
@@ -221,9 +220,11 @@ def binary_to_object_id(binary_object_id):
 def binary_to_task_id(binary_task_id):
     return ray.TaskID(binary_task_id)
 
+
 def compute_driver_id_from_job_id(job_id):
     assert isinstance(job_id, ray.JobID)
     return ray.WorkerID(job_id.binary())
+
 
 def binary_to_hex(identifier):
     hex_identifier = binascii.hexlify(identifier)

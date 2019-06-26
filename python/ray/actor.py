@@ -344,9 +344,8 @@ class ActorClass(object):
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
-            if (self._last_job_id_exported_for is None
-                    or self._last_job_id_exported_for !=
-                    worker.current_job_id):
+            if (self._last_job_id_exported_for is None or
+                    self._last_job_id_exported_for != worker.current_job_id):
                 # If this actor class was exported in a previous session, we
                 # need to export this function again, because current GCS
                 # doesn't have it.

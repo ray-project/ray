@@ -714,10 +714,8 @@ class FunctionActorManager(object):
         # Fetch raw data from GCS.
         (job_id_str, class_name, module, pickled_class,
          actor_method_names) = self._worker.redis_client.hmget(
-             key, [
-                 "job_id", "class_name", "module", "class",
-                 "actor_method_names"
-             ])
+             key,
+             ["job_id", "class_name", "module", "class", "actor_method_names"])
 
         class_name = ensure_str(class_name)
         module_name = ensure_str(module)
@@ -742,11 +740,12 @@ class FunctionActorManager(object):
                 traceback.format_exc())
             # Log the error message.
             push_error_to_driver(
-                self._worker, ray_constants.REGISTER_ACTOR_PUSH_ERROR,
+                self._worker,
+                ray_constants.REGISTER_ACTOR_PUSH_ERROR,
                 "Failed to unpickle actor class '{}' for actor ID {}. "
-                "Traceback:\n{}".format(class_name,
-                                        self._worker.actor_id.hex(),
-                                        traceback_str), job_id=job_id)
+                "Traceback:\n{}".format(
+                    class_name, self._worker.actor_id.hex(), traceback_str),
+                job_id=job_id)
             # TODO(rkn): In the future, it might make sense to have the worker
             # exit here. However, currently that would lead to hanging if
             # someone calls ray.get on a method invoked on the actor.

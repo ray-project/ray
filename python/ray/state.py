@@ -873,8 +873,7 @@ class GlobalState(object):
         ]
 
         return {
-            binary_to_hex(job_id): self._error_messages(
-                ray.JobID(job_id))
+            binary_to_hex(job_id): self._error_messages(ray.JobID(job_id))
             for job_id in job_ids
         }
 
@@ -1095,8 +1094,7 @@ def errors(include_cluster_errors=True):
         Error messages pushed from the cluster.
     """
     worker = ray.worker.global_worker
-    error_messages = state.error_messages(
-        job_id=worker.current_job_id)
+    error_messages = state.error_messages(job_id=worker.current_job_id)
     if include_cluster_errors:
         error_messages += state.error_messages(job_id=ray.JobID.nil())
     return error_messages
