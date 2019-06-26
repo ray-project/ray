@@ -22,6 +22,18 @@ class SimpleQModel(TFModelV2):
                  model_config,
                  name,
                  q_hiddens=(256, )):
+        """Initialize variables of this model.
+
+        Extra model kwargs:
+            q_hiddens (list): defines size of hidden layers for the q head.
+                These will be used to postprocess the model output for the
+                purposes of computing Q values.
+
+        Note that the core layers for forward() are not defined here, this
+        only defines the layers for the Q head. Those layers for forward()
+        should be defined in subclasses of SimpleQModel.
+        """
+
         super(SimpleQModel, self).__init__(obs_space, action_space,
                                            num_outputs, model_config, name)
 

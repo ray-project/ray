@@ -31,6 +31,25 @@ class DistributionalQModel(TFModelV2):
                  v_max=10.0,
                  sigma0=0.5,
                  parameter_noise=False):
+        """Initialize variables of this model.
+
+        Extra model kwargs:
+            q_hiddens (list): defines size of hidden layers for the q head.
+                These will be used to postprocess the model output for the
+                purposes of computing Q values.
+            dueling (bool): whether to build the state value head for DDQN
+            num_atoms (int): if >1, enables distributional DQN
+            use_noisy (bool): use noisy nets
+            v_min (float): min value support for distributional DQN
+            v_max (float): max value support for distributional DQN
+            sigma0 (float): initial value of noisy nets
+            parameter_noise (bool): enable layer norm for param noise
+
+        Note that the core layers for forward() are not defined here, this
+        only defines the layers for the Q head. Those layers for forward()
+        should be defined in subclasses of DistributionalQModel.
+        """
+
         super(DistributionalQModel, self).__init__(
             obs_space, action_space, num_outputs, model_config, name)
 
@@ -137,12 +156,14 @@ class DistributionalQModel(TFModelV2):
 
         q_out = tf.keras.layers.Lambda(build_action_value_in_scope)(
             self.model_out)
-        state_out = tf.keras.layers.Lambda(build_state_score_in_scope)(
-            self.model_out)
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
-        self.state_value_head = tf.keras.Model(self.model_out, state_out)
         self.register_variables(self.q_value_head.variables)
-        self.register_variables(self.state_value_head.variables)
+
+        if dueling:
+            state_out = tf.keras.layers.Lambda(build_state_score_in_scope)(
+                self.model_out)
+            self.state_value_head = tf.keras.Model(self.model_out, state_out)
+            self.register_variables(self.state_value_head.variables)
 
     def get_q_value_distributions(self, model_out):
         """Returns distributional values for Q(s, a) given a state embedding.
