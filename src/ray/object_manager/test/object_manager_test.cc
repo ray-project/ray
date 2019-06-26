@@ -14,6 +14,8 @@ int64_t wait_timeout_ms;
 
 namespace ray {
 
+using rpc::ClientTableData;
+
 static inline void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
@@ -46,10 +48,10 @@ class MockServer {
     std::string ip = endpoint.address().to_string();
     unsigned short object_manager_port = endpoint.port();
 
-    ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
-    client_info.node_manager_address = ip;
-    client_info.node_manager_port = object_manager_port;
-    client_info.object_manager_port = object_manager_port;
+    ClientTableData client_info = gcs_client_->client_table().GetLocalClient();
+    client_info.set_node_manager_address(ip);
+    client_info.set_node_manager_port(object_manager_port);
+    client_info.set_object_manager_port(object_manager_port);
     ray::Status status = gcs_client_->client_table().Connect(client_info);
     object_manager_.RegisterGcs();
     return status;
@@ -64,11 +66,11 @@ class MockServer {
   void HandleAcceptObjectManager(const boost::system::error_code &error) {
     ClientHandler<boost::asio::ip::tcp> client_handler =
         [this](TcpClientConnection &client) { object_manager_.ProcessNewClient(client); };
-    MessageHandler<boost::asio::ip::tcp> message_handler = [this](
-        std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-        const uint8_t *message) {
-      object_manager_.ProcessClientMessage(client, message_type, message);
-    };
+    MessageHandler<boost::asio::ip::tcp> message_handler =
+        [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
+               const uint8_t *message) {
+          object_manager_.ProcessClientMessage(client, message_type, message);
+        };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
         client_handler, message_handler, std::move(object_manager_socket_),
@@ -219,16 +221,17 @@ class TestObjectManager : public TestObjectManagerBase {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback([this](
-        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-      ClientID parsed_id = ClientID::FromBinary(data.client_id);
-      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-        num_connected_clients += 1;
-      }
-      if (num_connected_clients == 2) {
-        StartTests();
-      }
-    });
+    gcs_client_1->client_table().RegisterClientAddedCallback(
+        [this](gcs::AsyncGcsClient *client, const ClientID &id,
+               const ClientTableData &data) {
+          ClientID parsed_id = ClientID::FromBinary(data.client_id());
+          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+            num_connected_clients += 1;
+          }
+          if (num_connected_clients == 2) {
+            StartTests();
+          }
+        });
   }
 
   void StartTests() {
@@ -291,9 +294,10 @@ class TestObjectManager : public TestObjectManagerBase {
     UniqueID sub_id = ray::UniqueID::FromRandom();
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
-        sub_id, object_1, [this, sub_id, object_1, object_2](
-                              const ray::ObjectID &object_id,
-                              const std::unordered_set<ray::ClientID> &clients) {
+        sub_id, object_1,
+        [this, sub_id, object_1, object_2](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }
@@ -455,19 +459,19 @@ class TestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "Server client ids:"
                    << "\n";
-    ClientTableDataT data;
+    ClientTableData data;
     gcs_client_1->client_table().GetClient(client_id_1, data);
-    RAY_LOG(DEBUG) << (ClientID::FromBinary(data.client_id).IsNil());
-    RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::FromBinary(data.client_id);
-    RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address;
-    RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port;
-    ASSERT_EQ(client_id_1, ClientID::FromBinary(data.client_id));
-    ClientTableDataT data2;
+    RAY_LOG(DEBUG) << (ClientID::FromBinary(data.client_id()).IsNil());
+    RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::FromBinary(data.client_id());
+    RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address();
+    RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port();
+    ASSERT_EQ(client_id_1, ClientID::FromBinary(data.client_id()));
+    ClientTableData data2;
     gcs_client_1->client_table().GetClient(client_id_2, data2);
-    RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::FromBinary(data2.client_id);
-    RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address;
-    RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port;
-    ASSERT_EQ(client_id_2, ClientID::FromBinary(data2.client_id));
+    RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::FromBinary(data2.client_id());
+    RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address();
+    RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port();
+    ASSERT_EQ(client_id_2, ClientID::FromBinary(data2.client_id()));
   }
 };
 

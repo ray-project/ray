@@ -20,12 +20,11 @@ class CoreWorker {
   ///
   /// \param[in] worker_type Type of this worker.
   /// \param[in] langauge Language of this worker.
+  ///
+  /// NOTE(zhijunfu): the constructor would throw if a failure happens.
   CoreWorker(const WorkerType worker_type, const WorkerLanguage language,
              const std::string &store_socket, const std::string &raylet_socket,
              DriverID driver_id = DriverID::Nil());
-
-  /// Connect to raylet.
-  Status Connect();
 
   /// Type of this worker.
   enum WorkerType WorkerType() const { return worker_type_; }
@@ -46,23 +45,26 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
  private:
+  /// Translate from WorkLanguage to Language type (required by raylet client).
+  ///
+  /// \param[in] language Language for a task.
+  /// \return Translated task language.
+  ::Language ToTaskLanguage(WorkerLanguage language);
+
   /// Type of this worker.
   const enum WorkerType worker_type_;
 
   /// Language of this worker.
   const enum WorkerLanguage language_;
 
-  /// Language of this worker as specified in flatbuf (used by task spec).
-  ::Language task_language_;
-
-  /// Worker context per thread.
-  WorkerContext worker_context_;
-
   /// Plasma store socket name.
-  std::string store_socket_;
+  const std::string store_socket_;
 
   /// raylet socket name.
-  std::string raylet_socket_;
+  const std::string raylet_socket_;
+
+  /// Worker context.
+  WorkerContext worker_context_;
 
   /// Plasma store client.
   plasma::PlasmaClient store_client_;
@@ -71,10 +73,7 @@ class CoreWorker {
   std::mutex store_client_mutex_;
 
   /// Raylet client.
-  std::unique_ptr<RayletClient> raylet_client_;
-
-  /// Whether this worker has been initialized.
-  bool is_initialized_;
+  RayletClient raylet_client_;
 
   /// The `CoreWorkerTaskInterface` instance.
   CoreWorkerTaskInterface task_interface_;

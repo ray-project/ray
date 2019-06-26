@@ -309,15 +309,15 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
     // TODO(rkn): What do we want to do if the send failed?
   }
 
-  ProfileEventT profile_event;
-  profile_event.event_type = "transfer_send";
-  profile_event.start_time = start_time;
-  profile_event.end_time = end_time;
+  rpc::ProfileTableData::ProfileEvent profile_event;
+  profile_event.set_event_type("transfer_send");
+  profile_event.set_start_time(start_time);
+  profile_event.set_end_time(end_time);
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
-  profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
-                             std::to_string(chunk_index) + ",\"" + status.ToString() +
-                             "\"]";
+  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() +
+                               "\"," + std::to_string(chunk_index) + ",\"" +
+                               status.ToString() + "\"]");
   profile_events_.push_back(profile_event);
 }
 
@@ -329,15 +329,15 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
     // TODO(rkn): What do we want to do if the send failed?
   }
 
-  ProfileEventT profile_event;
-  profile_event.event_type = "transfer_receive";
-  profile_event.start_time = start_time;
-  profile_event.end_time = end_time;
+  rpc::ProfileTableData::ProfileEvent profile_event;
+  profile_event.set_event_type("transfer_receive");
+  profile_event.set_start_time(start_time);
+  profile_event.set_end_time(end_time);
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
-  profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"," +
-                             std::to_string(chunk_index) + ",\"" + status.ToString() +
-                             "\"]";
+  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() +
+                               "\"," + std::to_string(chunk_index) + ",\"" +
+                               status.ToString() + "\"]");
   profile_events_.push_back(profile_event);
 }
 
@@ -801,11 +801,12 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
   ObjectID object_id = ObjectID::FromBinary(pr->object_id()->str());
   ClientID client_id = ClientID::FromBinary(pr->client_id()->str());
 
-  ProfileEventT profile_event;
-  profile_event.event_type = "receive_pull_request";
-  profile_event.start_time = current_sys_time_seconds();
-  profile_event.end_time = profile_event.start_time;
-  profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"]";
+  rpc::ProfileTableData::ProfileEvent profile_event;
+  profile_event.set_event_type("receive_pull_request");
+  profile_event.set_start_time(current_sys_time_seconds());
+  profile_event.set_end_time(profile_event.start_time());
+  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() +
+                               "\"]");
   profile_events_.push_back(profile_event);
 
   Push(object_id, client_id);
@@ -938,13 +939,13 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
   }
 }
 
-ProfileTableDataT ObjectManager::GetAndResetProfilingInfo() {
-  ProfileTableDataT profile_info;
-  profile_info.component_type = "object_manager";
-  profile_info.component_id = client_id_.Binary();
+rpc::ProfileTableData ObjectManager::GetAndResetProfilingInfo() {
+  rpc::ProfileTableData profile_info;
+  profile_info.set_component_type("object_manager");
+  profile_info.set_component_id(client_id_.Binary());
 
   for (auto const &profile_event : profile_events_) {
-    profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
+    profile_info.add_profile_events()->CopyFrom(profile_event);
   }
 
   profile_events_.clear();

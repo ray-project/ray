@@ -168,6 +168,8 @@ class _Bracket():
         return "Bracket: " + iters
 
 
+ASHAScheduler = AsyncHyperBandScheduler
+
 if __name__ == "__main__":
     sched = AsyncHyperBandScheduler(
         grace_period=1, max_t=10, reduction_factor=2)
