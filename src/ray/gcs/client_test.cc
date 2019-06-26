@@ -569,7 +569,7 @@ void TestLogSubscribeAll(const JobID &job_id,
     ASSERT_EQ(id, job_ids[test->NumCallbacks()]);
     // Check that we get notifications in the same order as the writes.
     for (const auto &entry : data) {
-      ASSERT_EQ(entry.driver_id(), job_ids[test->NumCallbacks()].Binary());
+      ASSERT_EQ(entry.job_id(), job_ids[test->NumCallbacks()].Binary());
       test->IncrementNumCallbacks();
     }
     if (test->NumCallbacks() == job_ids.size()) {
@@ -763,14 +763,14 @@ void TestLogSubscribeId(const JobID &job_id,
   JobID job_id1 = JobID::FromRandom();
   std::vector<std::string> job_ids1 = {"abc", "def", "ghi"};
   auto data1 = std::make_shared<JobTableData>();
-  data1->set_driver_id(driver_ids1[0]);
-  RAY_CHECK_OK(client->driver_table().Append(driver_id, driver_id1, data1, nullptr));
+  data1->set_job_id(job_ids1[0]);
+  RAY_CHECK_OK(client->job_table().Append(job_id, job_id1, data1, nullptr));
 
   // Add a log entry at a second key.
   JobID job_id2 = JobID::FromRandom();
   std::vector<std::string> job_ids2 = {"jkl", "mno", "pqr"};
   auto data2 = std::make_shared<JobTableData>();
-  data2->set_driver_id(job_ids2[0]);
+  data2->set_job_id(job_ids2[0]);
   RAY_CHECK_OK(client->job_table().Append(job_id, job_id2, data2, nullptr));
 
   // The callback for a notification from the table. This should only be
@@ -1026,7 +1026,7 @@ void TestLogSubscribeCancel(const JobID &job_id,
     auto remaining = std::vector<std::string>(++job_ids.begin(), job_ids.end());
     for (const auto &remaining_job_id : remaining) {
       auto data = std::make_shared<JobTableData>();
-      data->set_driver_id(remaining_job_id);
+      data->set_job_id(remaining_job_id);
       RAY_CHECK_OK(
           client->job_table().Append(job_id, random_job_id, data, nullptr));
     }
