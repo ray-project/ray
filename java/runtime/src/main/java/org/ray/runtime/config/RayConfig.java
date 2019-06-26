@@ -160,7 +160,7 @@ public class RayConfig {
       rayletConfigParameters.add(parameter);
     }
 
-    // JOb resource path.
+    // Job resource path.
     if (config.hasPath("ray.job.resource-path")) {
       jobResourcePath = config.getString("ray.job.resource-path");
     } else {
