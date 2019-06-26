@@ -179,27 +179,36 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ClientRemoved(data);
-  };
+  auto node_manager_client_removed =
+      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+             const ClientTableDataT &data) { ClientRemoved(data); };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
-  // Register a callback on the client table for resource create/update requests
-  auto node_manager_resource_createupdated = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ResourceCreateUpdated(data);
-  };
-  gcs_client_->client_table().RegisterResourceCreateUpdatedCallback(
-      node_manager_resource_createupdated);
-
-  // Register a callback on the client table for resource delete requests
-  auto node_manager_resource_deleted = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ResourceDeleted(data);
-  };
-  gcs_client_->client_table().RegisterResourceDeletedCallback(
-      node_manager_resource_deleted);
+  // Subscribe to resource changes.
+  const auto &resources_changed =
+      [this](gcs::AsyncGcsClient *client, const ClientID &id,
+             const GcsChangeMode change_mode,
+             const std::unordered_map<std::string, std::shared_ptr<RayResource>> &data) {
+        if (change_mode == GcsChangeMode::APPEND_OR_ADD) {
+          ResourceSet resource_set;
+          for (auto &entry : data) {
+            resource_set.AddOrUpdateResource(entry.first,
+                                             entry.second->resource_capacity);
+          }
+          ResourceCreateUpdated(id, resource_set);
+        }
+        if (change_mode == GcsChangeMode::REMOVE) {
+          std::vector<std::string> resource_names;
+          for (auto &entry : data) {
+            resource_names.push_back(entry.first);
+          }
+          ResourceDeleted(id, resource_names);
+        }
+      };
+  RAY_RETURN_NOT_OK(
+      gcs_client_->resource_table().Subscribe(DriverID::Nil(), ClientID::Nil(),
+                                              /*subscribe_callback=*/resources_changed,
+                                              /*done_callback=*/nullptr));
 
   // Subscribe to heartbeat batches from the monitor.
   const auto &heartbeat_batch_added = [this](
@@ -397,9 +406,10 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
     return;
   }
 
-  ResourceSet resources_total(client_data.resources_total_label,
-                              client_data.resources_total_capacity);
-  cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
+  // TODO (kfstorm): Fetch resource table
+  // ResourceSet resources_total(client_data.resources_total_label,
+  //                             client_data.resources_total_capacity);
+  // cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
 }
 
 ray::Status NodeManager::ConnectRemoteNodeManager(const ClientID &client_id,

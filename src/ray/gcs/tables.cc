@@ -543,28 +543,6 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   }
 }
 
-void ClientTable::RegisterResourceCreateUpdatedCallback(
-    const ClientTableCallback &callback) {
-  resource_createupdated_callback_ = callback;
-  // Call the callback for any clients that are cached.
-  for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() &&
-        (entry.second.entry_type == EntryType::RES_CREATEUPDATE)) {
-      resource_createupdated_callback_(client_, entry.first, entry.second);
-    }
-  }
-}
-
-void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &callback) {
-  resource_deleted_callback_ = callback;
-  // Call the callback for any clients that are cached.
-  for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() && entry.second.entry_type == EntryType::RES_DELETE) {
-      resource_deleted_callback_(client_, entry.first, entry.second);
-    }
-  }
-}
-
 void ClientTable::HandleNotification(AsyncGcsClient *client,
                                      const ClientTableDataT &data) {
   ClientID client_id = ClientID::FromBinary(data.client_id);

@@ -60,6 +60,8 @@ void Monitor::Tick() {
           }
           if (!marked) {
             RAY_CHECK_OK(gcs_client_.client_table().MarkDisconnected(client_id));
+            // TODO (kfstorm): delete will not send notification?
+            gcs_client_.resource_table().Delete(DriverID::Nil(), {client_id});
             // Broadcast a warning to all of the drivers indicating that the node
             // has been marked as dead.
             // TODO(rkn): Define this constant somewhere else.
