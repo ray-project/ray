@@ -76,6 +76,11 @@ public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
     nativeActorHandle = deserialize((byte[]) in.readObject());
   }
 
+  @Override
+  protected void finalize() {
+    free(nativeActorHandle);
+  }
+
   private static native long fork(long nativeActorHandle);
 
   private static native byte[] getActorId(long nativeActorHandle);
@@ -89,4 +94,6 @@ public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
   private static native byte[] serialize(long nativeActorHandle);
 
   private static native long deserialize(byte[] data);
+
+  private static native void free(long nativeActorHandle);
 }

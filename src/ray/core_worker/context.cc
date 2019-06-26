@@ -69,7 +69,11 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
 void WorkerContext::SetCurrentTask(const raylet::TaskSpecification &spec) {
   current_driver_id = spec.DriverId();
   if (spec.IsActorCreationTask()) {
+    RAY_CHECK(current_actor_id.IsNil());
     current_actor_id = spec.ActorCreationId();
+  }
+  if (spec.IsActorTask()) {
+    RAY_CHECK(current_actor_id == spec.ActorId());
   }
   GetThreadContext().SetCurrentTask(spec);
 }

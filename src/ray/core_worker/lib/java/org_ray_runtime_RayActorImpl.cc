@@ -19,9 +19,8 @@ extern "C" {
  * Signature: (J)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_fork(JNIEnv *env, jclass o,
-                                                              jlong nativeActorHandle) {
+                                                               jlong nativeActorHandle) {
   auto new_actor_handle = GetActorHandle(nativeActorHandle).Fork();
-  // TODO (kfstorm): free ActorHandle
   return reinterpret_cast<jlong>(new_actor_handle.release());
 }
 
@@ -91,13 +90,23 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_serialize(
  * Signature: ([B)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_deserialize(JNIEnv *env,
-                                                                     jclass o,
-                                                                     jbyteArray data) {
+                                                                      jclass o,
+                                                                      jbyteArray data) {
   auto binary = ReadBinary<std::string>(env, data, [](const ray::Buffer &buffer) {
     RAY_CHECK(buffer.Size() > 0);
     return std::string(reinterpret_cast<char *>(buffer.Data()), buffer.Size());
   });
   return reinterpret_cast<jlong>(ray::ActorHandle::Deserialize(binary).release());
+}
+
+/*
+ * Class:     org_ray_runtime_RayActorImpl
+ * Method:    free
+ * Signature: (J)V
+ */
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_free(JNIEnv *env, jclass o,
+                                                               jlong nativeActorHandle) {
+  delete &GetActorHandle(nativeActorHandle);
 }
 
 #ifdef __cplusplus

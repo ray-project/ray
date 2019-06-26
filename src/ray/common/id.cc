@@ -130,7 +130,7 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
 }
 
 const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
-                                              int64_t num_forks) {
+                                             int64_t num_forks) {
   // Compute hashes.
   SHA256_CTX ctx;
   sha256_init(&ctx);
