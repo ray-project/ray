@@ -11,13 +11,15 @@ namespace gcs {
 
 using StatusCallback = std::function<void(Status status)>;
 
-template <typename T>
-class DatumCallback {
- public:
-  using SingleItem = std::function<void(Status status, boost::optional<T> datum)>;
+template <typename Data>
+using OptionalItemCallback
+  = std::function<void(Status status, boost::optional<Data> datum)>;
 
-  using MultiItem = std::function<void(Status status, std::vector<T> datums)>;
-};
+template <typename Data>
+using MultiItemCallback = std::function<void(Status status, std::vector<Data> datums)>;
+
+template <typename ID, typename Data>
+using SubscribeCallback = std::function<void(ID id, std::vector<Data> datums)>;
 
 }  // namespace gcs
 

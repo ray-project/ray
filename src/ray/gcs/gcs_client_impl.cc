@@ -17,6 +17,10 @@ GcsClientImpl::~GcsClientImpl() {
 }
 
 Status GcsClientImpl::Connect() {
+  if (is_connected_) {
+    return Status::OK();
+  }
+
   if (option_.server_list_.empty()) {
     RAY_LOG(INFO) << "connect failed, gcs service address is empty.";
     return Status::Invalid("gcs service address is empty!");
@@ -41,6 +45,7 @@ Status GcsClientImpl::Connect() {
   }
 
   Status status = async_gcs_client_->Attach(*io_service_);
+  is_connected_ = status.ok() ? true : false;
   RAY_LOG(INFO) << "Connect status=" << status;
   return status;
 }

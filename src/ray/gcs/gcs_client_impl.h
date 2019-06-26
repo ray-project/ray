@@ -14,6 +14,8 @@ namespace ray {
 
 namespace gcs {
 
+/// \class GcsClientImpl
+/// Implementation layer of GCS client.
 class GcsClientImpl {
  public:
   GcsClientImpl(ClientOption option, ClientInfo info,
@@ -21,8 +23,12 @@ class GcsClientImpl {
 
   virtual ~GcsClientImpl();
 
+  /// Connect to GCS Service. Non-thread safe.
+  ///
+  /// \return Status
   virtual Status Connect();
 
+  /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect();
 
   AsyncGcsClient &AsyncClient() {
@@ -38,6 +44,7 @@ class GcsClientImpl {
 
   boost::asio::io_service *io_service_{nullptr};
   std::vector<std::thread> thread_pool_;
+  bool is_connected_{false};
 
   std::unique_ptr<AsyncGcsClient> async_gcs_client_;
 };

@@ -10,13 +10,10 @@ namespace gcs {
 NodeStateAccessor::NodeStateAccessor(GcsClientImpl &client_impl)
     : client_impl_(client_impl) {}
 
-Status NodeStateAccessor::GetAll(std::vector<ClientTableData> *result) {
+Status NodeStateAccessor::GetAll(std::unordered_map<ClientID, ClientTableData> *result) {
   RAY_CHECK(result != nullptr);
   ClientTable &client_table = client_impl_.AsyncClient().client_table();
-  std::unordered_map<ClientID, ClientTableData> node_map = client_table.GetAllClients();
-  for (auto const &node : node_map) {
-    result->emplace_back(std::move(node.second));
-  }
+  *result = std::move(client_table.GetAllClients());
   return Status::OK();
 }
 

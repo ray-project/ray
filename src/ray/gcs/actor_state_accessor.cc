@@ -13,9 +13,10 @@ ActorStateAccessor::ActorStateAccessor(GcsClientImpl &client_impl)
 
 Status ActorStateAccessor::AsyncGet(
     const DriverID &driver_id, const ActorID &actor_id,
-    const DatumCallback<ActorTableData>::OptionalItem &callback) {
-  auto inner_callback = [callback](AsyncGcsClient *client, const ActorID &actor_id,
-                                   const std::vector<ActorTableData> &data) {
+    const OptionalItemCallback<ActorTableData> &callback) {
+  RAY_DCHECK(callback != nullptr);
+  auto on_done = [callback](AsyncGcsClient *client, const ActorID &actor_id,
+                            const std::vector<ActorTableData> &data) {
     boost::optional<ActorTableData> result;
     if (!data.empty()) {
       RAY_CHECK(data.size() == 1);
@@ -25,59 +26,86 @@ Status ActorStateAccessor::AsyncGet(
   };
 
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
-  return actor_table.Lookup(driver_id, actor_id, inner_callback);
+  return actor_table.Lookup(driver_id, actor_id, on_done);
 }
 
 Status ActorStateAccessor::AsyncAdd(const DriverID &driver_id, const ActorID &actor_id,
                                     std::shared_ptr<ActorTableData> data_ptr,
                                     size_t log_length, const StatusCallback &callback) {
-  auto on_successed = [callback, data_ptr](
-      AsyncGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
-    callback(Status::OK());
-  };
-
-  auto on_failed = [callback, data_ptr](AsyncGcsClient *client, const ActorID &actor_id,
-                                        const ActorTableData &data) {
-    callback(Status::Invalid("Redis return error, maybe exceed max reconstruction"));
-  };
-
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
-  return actor_table.AppendAt(driver_id, actor_id, data_ptr, on_successed, on_failed,
+  if (callback != nullptr) {
+    auto on_success = [callback, data_ptr](
+      AsyncGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
+      callback(Status::OK());
+    };
+
+    auto on_failure = [callback, data_ptr](AsyncGcsClient *client, const ActorID &actor_id,
+                                           const ActorTableData &data) {
+      callback(Status::Invalid("GCS return error, maybe exceed max reconstruction"));
+    };
+
+    return actor_table.AppendAt(driver_id, actor_id, data_ptr, on_success, on_failure,
+                                log_length);
+  }
+
+  return actor_table.AppendAt(driver_id, actor_id, data_ptr, nullptr, nullptr,
                               log_length);
 }
 
 Status ActorStateAccessor::AsyncSubscribe(
-    const DriverID &driver_id, const DatumCallback<ActorTableData>::MultiItem &subscribe,
+    const DriverID &driver_id, const ClientID &client_id,
+    const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
+  RAY_DCHECK(subscribe != nullptr);
   auto on_subscribe = [subscribe](AsyncGcsClient *client, const ActorID &actor_id,
                                   const std::vector<ActorTableData> &data) {
-    subscribe(Status::OK(), data);
+    subscribe(actor_id, data);
   };
 
-  auto on_done = [done](AsyncGcsClient *client) { done(Status::OK()); };
+  auto on_done = [done](AsyncGcsClient *client) {
+    if (done != nullptr) {
+      done(Status::OK());
+    }
+  };
 
-  const ClientID &client_id = client_impl_.GetClientInfo().id_;
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
   return actor_table.Subscribe(driver_id, client_id, on_subscribe, on_done);
 }
 
+Status ActorStateAccessor::AsyncRequestNotifications(const DriverID &driver_id,
+                                                     const ActorID &actor_id,
+                                                     const ClientID &client_id) {
+  ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
+  actor_table.RequestNotifications(driver_id, actor_id, client_id);
+  return Status::OK();
+}
+
+Status ActorStateAccessor::AsyncCancelNotifications(const DriverID &driver_id,
+                                                    const ActorID &actor_id,
+                                                    const ClientID &client_id) {
+  ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
+  actor_table.CancelNotifications(driver_id, actor_id, client_id);
+  return Status::OK();
+}
+
 Status ActorStateAccessor::AsyncGetCheckpointIds(
     const DriverID &driver_id, const ActorID &actor_id,
-    const DatumCallback<ActorCheckpointIdData>::OptionalItem &callback) {
-  auto on_successed = [callback](AsyncGcsClient *client, const ActorID &actor_id,
-                                 const ActorCheckpointIdData &data) {
+    const OptionalItemCallback<ActorCheckpointIdData> &callback) {
+  RAY_DCHECK(callback != nullptr);
+  auto on_success = [callback](AsyncGcsClient *client, const ActorID &actor_id,
+                               const ActorCheckpointIdData &data) {
     boost::optional<ActorCheckpointIdData> result(data);
     callback(Status::OK(), std::move(result));
   };
 
-  auto on_failed = [callback](AsyncGcsClient *client, const ActorID &actor_id) {
+  auto on_failure = [callback](AsyncGcsClient *client, const ActorID &actor_id) {
     boost::optional<ActorCheckpointIdData> result;
     callback(Status::KeyError("DriverID or ActorID not exist."), std::move(result));
   };
 
   ActorCheckpointIdTable &checkpoint_id_table =
       client_impl_.AsyncClient().actor_checkpoint_id_table();
-  return checkpoint_id_table.Lookup(driver_id, actor_id, on_successed, on_failed);
+  return checkpoint_id_table.Lookup(driver_id, actor_id, on_success, on_failure);
 }
 
 }  // namespace gcs

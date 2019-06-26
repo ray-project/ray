@@ -11,26 +11,98 @@ namespace gcs {
 
 class GcsClientImpl;
 
+/// \class ActorStateAccessor
+/// ActorStateAccessor class encapsulates the implementation details of
+/// read or write or subscribe of actor's specification(immutable fields which
+/// determined at submission time, and mutable fields which determined at runtime).
 class ActorStateAccessor {
  public:
   ActorStateAccessor(GcsClientImpl &client_impl);
 
   ~ActorStateAccessor() {}
 
+  /// Get actor specification from gcs asynchronously.
+  ///
+  /// \param driver_id The ID of the job (driver or app).
+  /// \param actor_id The ID of actor that is looked up in the GCS.
+  /// \param call_back Callback that is called after read data done.
+  /// \return Status
   Status AsyncGet(const DriverID &driver_id, const ActorID &actor_id,
-                  const DatumCallback<ActorTableData>::OptionalItem &callback);
+                  const OptionalItemCallback<ActorTableData> &callback);
 
+  /// Add a actor to gcs asynchronously.
+  ///
+  /// \param driver_id The ID of the job (driver or app).
+  /// \param actor_id The ID of actor that is add to the GCS.
+  /// \param call_back Callback that is called after the data has been written to the GCS.
+  /// \return Status
   Status AsyncAdd(const DriverID &driver_id, const ActorID &actor_id,
                   std::shared_ptr<ActorTableData> data_ptr, size_t log_length,
                   const StatusCallback &callback);
 
-  Status AsyncSubscribe(const DriverID &driver_id,
-                        const DatumCallback<ActorTableData>::MultiItem &subscribe,
+
+  /// Subscribe to any add operations of actor. The caller may choose
+  /// to subscribe to all add, or to subscribe only to actors that it
+  /// requests notifications for. This may only be called once per actor
+  /// instance.
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each Add to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific actors in GCS
+  /// via `AsyncRequestNotifications`.
+  /// \param subscribe Callback that is called on each received message. If the
+  /// callback is called with an empty vector, then there was no data at the key.
+  /// \param done Callback that is called when subscription is complete and we
+  /// are ready to receive messages.
+  /// \return Status
+  Status AsyncSubscribe(const DriverID &driver_id, const ClientID &client_id,
+                        const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                         const StatusCallback &done);
 
+  /// Request notifications about a actor in GCS.
+  ///
+  /// The notifications will be returned via the subscribe callback that was
+  /// registered by `AsyncSubscribe`.  An initial notification will be returned for
+  /// the current values at the actor, if any, and a subsequent notification will
+  /// be published for every following update to the key. Before
+  /// notifications can be requested, the caller must first call `AsyncSubscribe`
+  /// with the same `client_id`.
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param client_id The client who is requesting notifications. Before
+  /// notifications can be requested, a call to `AsyncSubscribe` to GCS
+  /// with the same `client_id` must complete successfully.
+  /// \param actor_id The ID of the actor to request notifications for.
+  /// notifications can be requested, a call to `AsyncSubscribe`
+  /// must complete successfully.
+  /// \return Status
+  Status AsyncRequestNotifications(const DriverID &driver_id, const ActorID &actor_id,
+                                   const ClientID &client_id);
+
+  /// Cancel notifications about a actor in GCS.
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param actor_id The ID of the actor to request notifications for.
+  /// \return Status
+  Status AsyncCancelNotifications(const DriverID &driver_id, const ActorID &actor_id,
+                                  const ClientID &client_id);
+  ///
+  /// \param driver_id The ID of the job (= driver).
+  /// \param id The ID of the key to request notifications for.
+  /// \param client_id The client who originally requested notifications.
+  /// \return Status
+Status AsyncCancelNotifications(const DriverID &driver_id, const ActorID &actor_id);
+
+  /// Get actor's checkpoint ids asynchronously.
+  ///
+  /// \param driver_id The ID of the job (driver or app).
+  /// \param actor_id The ID of actor who's checkpoint ids is lookup.
+  /// \param callback  Callback that is called when read is complete.
   Status AsyncGetCheckpointIds(
       const DriverID &driver_id, const ActorID &actor_id,
-      const DatumCallback<ActorCheckpointIdData>::OptionalItem &callback);
+      const OptionalItemCallback<ActorCheckpointIdData> &callback);
 
  private:
   GcsClientImpl &client_impl_;

@@ -13,17 +13,21 @@ namespace gcs {
 
 class GcsClientImpl;
 
+/// \class NodeStateAccessor
+/// NodeStateAccessor class encapsulates the implementation details of
+/// read or write or subscribe of node's specification(immutable fields like id,
+/// and mutable fields like runtime state).
 class NodeStateAccessor {
  public:
   NodeStateAccessor(GcsClientImpl &client_impl);
 
   ~NodeStateAccessor() {}
 
-  Status GetAll(std::vector<ClientTableData> *result);
-
-  Status AsyncGetAvailableResource(
-      const ClientID &node_id,
-      DatumCallback<std::map<std::string, double>>::SingleItem callback);
+  /// Get the information of all nodes(all raylet) from gcs.
+  ///
+  /// \param result all nodes list
+  /// \return Status
+  Status GetAll(std::unordered_map<ClientID, ClientTableData> *result);
 
  private:
   GcsClientImpl &client_impl_;
