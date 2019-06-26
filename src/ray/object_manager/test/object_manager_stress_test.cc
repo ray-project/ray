@@ -11,6 +11,8 @@
 
 namespace ray {
 
+using rpc::ClientTableData;
+
 std::string store_executable;
 
 static inline void flushall_redis(void) {
@@ -52,10 +54,10 @@ class MockServer {
     std::string ip = endpoint.address().to_string();
     unsigned short object_manager_port = endpoint.port();
 
-    ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
-    client_info.node_manager_address = ip;
-    client_info.node_manager_port = object_manager_port;
-    client_info.object_manager_port = object_manager_port;
+    ClientTableData client_info = gcs_client_->client_table().GetLocalClient();
+    client_info.set_node_manager_address(ip);
+    client_info.set_node_manager_port(object_manager_port);
+    client_info.set_object_manager_port(object_manager_port);
     ray::Status status = gcs_client_->client_table().Connect(client_info);
     object_manager_.RegisterGcs();
     return status;
@@ -242,8 +244,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     gcs_client_1->client_table().RegisterClientAddedCallback(
         [this](gcs::AsyncGcsClient *client, const ClientID &id,
-               const ClientTableDataT &data) {
-          ClientID parsed_id = ClientID::FromBinary(data.client_id);
+               const ClientTableData &data) {
+          ClientID parsed_id = ClientID::FromBinary(data.client_id());
           if (parsed_id == client_id_1 || parsed_id == client_id_2) {
             num_connected_clients += 1;
           }
@@ -438,16 +440,16 @@ class StressTestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "All connected clients:"
                    << "\n";
-    ClientTableDataT data;
+    ClientTableData data;
     gcs_client_1->client_table().GetClient(client_id_1, data);
-    RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data.client_id) << "\n"
-                   << "ClientIp=" << data.node_manager_address << "\n"
-                   << "ClientPort=" << data.node_manager_port;
-    ClientTableDataT data2;
+    RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data.client_id()) << "\n"
+                   << "ClientIp=" << data.node_manager_address() << "\n"
+                   << "ClientPort=" << data.node_manager_port();
+    ClientTableData data2;
     gcs_client_1->client_table().GetClient(client_id_2, data2);
-    RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data2.client_id) << "\n"
-                   << "ClientIp=" << data2.node_manager_address << "\n"
-                   << "ClientPort=" << data2.node_manager_port;
+    RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data2.client_id()) << "\n"
+                   << "ClientIp=" << data2.node_manager_address() << "\n"
+                   << "ClientPort=" << data2.node_manager_port();
   }
 };
 
