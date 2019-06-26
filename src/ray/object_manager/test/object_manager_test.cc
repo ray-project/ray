@@ -14,6 +14,8 @@ int64_t wait_timeout_ms;
 
 namespace ray {
 
+using rpc::ClientTableData;
+
 static inline void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
@@ -39,10 +41,11 @@ class MockServer {
     RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
     auto object_manager_port = config_.object_manager_port;
-    ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
-    client_info.node_manager_address = "0.0.0.0";
-    client_info.node_manager_port = object_manager_port;
-    client_info.object_manager_port = object_manager_port;
+    ClientTableData client_info = gcs_client_->client_table().GetLocalClient();
+    client_info.set_node_manager_address("0.0.0.0");
+    client_info.set_node_manager_port(object_manager_port);
+    client_info.set_object_manager_port(object_manager_port);
+
     ray::Status status = gcs_client_->client_table().Connect(client_info);
     object_manager_.RegisterGcs();
     return status;
@@ -189,8 +192,8 @@ class TestObjectManager : public TestObjectManagerBase {
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     gcs_client_1->client_table().RegisterClientAddedCallback(
         [this](gcs::AsyncGcsClient *client, const ClientID &id,
-               const ClientTableDataT &data) {
-          ClientID parsed_id = ClientID::FromBinary(data.client_id);
+               const ClientTableData &data) {
+          ClientID parsed_id = ClientID::FromBinary(data.client_id());
           if (parsed_id == client_id_1 || parsed_id == client_id_2) {
             num_connected_clients += 1;
           }
@@ -426,19 +429,19 @@ class TestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "Server client ids:"
                    << "\n";
-    ClientTableDataT data;
+    ClientTableData data;
     gcs_client_1->client_table().GetClient(client_id_1, data);
-    RAY_LOG(DEBUG) << (ClientID::FromBinary(data.client_id).IsNil());
-    RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::FromBinary(data.client_id);
-    RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address;
-    RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port;
-    ASSERT_EQ(client_id_1, ClientID::FromBinary(data.client_id));
-    ClientTableDataT data2;
+    RAY_LOG(DEBUG) << (ClientID::FromBinary(data.client_id()).IsNil());
+    RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::FromBinary(data.client_id());
+    RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address();
+    RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port();
+    ASSERT_EQ(client_id_1, ClientID::FromBinary(data.client_id()));
+    ClientTableData data2;
     gcs_client_1->client_table().GetClient(client_id_2, data2);
-    RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::FromBinary(data2.client_id);
-    RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address;
-    RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port;
-    ASSERT_EQ(client_id_2, ClientID::FromBinary(data2.client_id));
+    RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::FromBinary(data2.client_id());
+    RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address();
+    RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port();
+    ASSERT_EQ(client_id_2, ClientID::FromBinary(data2.client_id()));
   }
 };
 

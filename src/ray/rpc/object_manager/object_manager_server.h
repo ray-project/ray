@@ -10,7 +10,7 @@
 namespace ray {
 namespace rpc {
 
-/// Implementations of the `ObjectManagerService`, check interface in
+/// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
 class ObjectManagerServiceHandler {
  public:
@@ -32,20 +32,20 @@ class ObjectManagerServiceHandler {
                                         RequestDoneCallback done_callback) = 0;
 };
 
-/// The `GrpcServer` for `ObjectManagerService`.
-class ObjectManagerServer : public GrpcServer {
+/// The `GrpcService` for `ObjectManagerGrpcService`.
+class ObjectManagerGrpcService : public GrpcService {
  public:
-  /// Construct a `ObjectManagerServer`.
+  /// Construct a `ObjectManagerGrpcService`.
   ///
-  /// \param[in] port See `GrpcServer`.
+  /// \param[in] port See `GrpcService`.
   /// \param[in] handler The service handler that actually handle the requests.
-  ObjectManagerServer(const uint32_t port, boost::asio::io_service &main_service,
-                      ObjectManagerServiceHandler &service_handler)
-      : GrpcServer("ObjectManager", port, main_service),
+  ObjectManagerGrpcService(boost::asio::io_service &main_service,
+                           ObjectManagerServiceHandler &service_handler)
+      : GrpcService("ObjectManager", port, main_service),
         service_handler_(service_handler){};
 
   void RegisterServices(::grpc::ServerBuilder &builder) override {
-    /// Register `ObjectManagerService`.
+    /// Register `ObjectManagerGrpcService`.
     builder.RegisterService(&service_);
   }
 
@@ -54,36 +54,41 @@ class ObjectManagerServer : public GrpcServer {
           *server_call_factories_and_concurrencies) override {
     // Initialize the factory for `Push` requests.
     std::unique_ptr<ServerCallFactory> push_call_factory(
-        new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
-                                  PushRequest, PushReply>(
-            service_, &ObjectManagerService::AsyncService::RequestPush, service_handler_,
-            &ObjectManagerServiceHandler::HandlePushRequest, cq_));
+        new ServerCallFactoryImpl<ObjectManagerGrpcService,
+                                  ObjectManagerServiceHandler, PushRequest,
+                                  PushReply>(
+            service_, &ObjectManagerGrpcService::AsyncService::RequestPush,
+            service_handler_, &ObjectManagerServiceHandler::HandlePushRequest, cq_,
+            main_service_));
     server_call_factories_and_concurrencies->emplace_back(std::move(push_call_factory),
-                                                          30);
+                                                          60);
 
     // Initialize the factory for `Pull` requests.
     std::unique_ptr<ServerCallFactory> pull_call_factory(
-        new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
-                                  PullRequest, PullReply>(
-            service_, &ObjectManagerService::AsyncService::RequestPull, service_handler_,
-            &ObjectManagerServiceHandler::HandlePullRequest, cq_));
+        new ServerCallFactoryImpl<ObjectManagerGrpcService,
+                                  ObjectManagerServiceHandler, PullRequest,
+                                  PullReply>(
+            service_, &ObjectManagerGrpcService::AsyncService::RequestPull,
+            service_handler_, &ObjectManagerServiceHandler::HandlePullRequest, cq_,
+            main_service_));
     server_call_factories_and_concurrencies->emplace_back(std::move(pull_call_factory),
-                                                          2);
+                                                          60);
 
     // Initialize the factory for `FreeObjects` requests.
     std::unique_ptr<ServerCallFactory> free_objects_call_factory(
-        new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
-                                  FreeObjectsRequest, FreeObjectsReply>(
-            service_, &ObjectManagerService::AsyncService::RequestFreeObjects,
+        new ServerCallFactoryImpl<ObjectManagerGrpcService,
+                                  ObjectManagerServiceHandler, FreeObjectsRequest,
+                                  FreeObjectsReply>(
+            service_, &ObjectManagerGrpcService::AsyncService::RequestFreeObjects,
             service_handler_, &ObjectManagerServiceHandler::HandleFreeObjectsRequest,
-            cq_));
+            cq_, main_service_));
     server_call_factories_and_concurrencies->emplace_back(
-        std::move(free_objects_call_factory), 1);
+        std::move(free_objects_call_factory), 2);
   }
 
  private:
   /// The grpc async service object.
-  ObjectManagerService::AsyncService service_;
+  ObjectManagerGrpcService::AsyncService service_;
   /// The service handler that actually handle the requests.
   ObjectManagerServiceHandler &service_handler_;
 };

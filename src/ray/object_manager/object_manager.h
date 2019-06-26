@@ -134,7 +134,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_id Object id
   /// \param client_id Remote server client id
   void SendPullRequest(const ObjectID &object_id, const ClientID &client_id,
-                              std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
+                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
 
   /// Get the rpc client according to the client ID
   ///
@@ -256,7 +256,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \return All profiling information that has accumulated since the last call
   /// to this method.
-  ProfileTableDataT GetAndResetProfilingInfo();
+  rpc::ProfileTableData GetAndResetProfilingInfo();
 
   /// Returns debug string for class.
   ///
@@ -443,22 +443,25 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.
-  std::vector<ProfileEventT> profile_events_;
+  std::vector<rpc::ProfileTableData::ProfileEvent> profile_events_;
 
   /// mutex lock used to protect profile_events_, profile_events_ is used in main thread
-  /// and rpc thread
+  /// and rpc thread.
   std::mutex profile_mutex_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
 
-  /// The gPRC server
-  rpc::ObjectManagerServer object_manager_server_;
+  /// The gPRC server.
+  rpc::GrpcServer object_manager_server_;
 
-  /// The client call manager used to deal with reply
+  /// The gRPC service.
+  rpc::ObjectManagerGrpcService object_manager_service_;
+
+  /// The client call manager used to deal with reply.
   rpc::ClientCallManager client_call_manager_;
 
-  /// clientID - object manager gRPC client
+  /// clientID - object manager gRPC client.
   std::unordered_map<ClientID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
 };

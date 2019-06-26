@@ -16,6 +16,8 @@ namespace ray {
 
 namespace raylet {
 
+using rpc::ClientTableData;
+
 class Task;
 class NodeManager;
 
