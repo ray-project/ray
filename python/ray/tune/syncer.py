@@ -49,7 +49,10 @@ class BaseSyncer(object):
             sync_function (func): Function for syncing the local_dir to
                 remote_dir. Defaults to a Noop.
         """
-        self._local_dir = os.path.join(local_dir, "")
+        if local_dir:
+            self._local_dir = os.path.join(local_dir, "")
+        else:
+            self._local_dir = local_dir
         self._remote_dir = remote_dir
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")

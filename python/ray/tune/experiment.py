@@ -64,6 +64,7 @@ class Experiment(object):
                  resources_per_trial=None,
                  num_samples=1,
                  local_dir=None,
+                 upload_dir=None,
                  trial_name_creator=None,
                  loggers=None,
                  sync_to_driver=None,
@@ -77,8 +78,7 @@ class Experiment(object):
                  repeat=None,
                  trial_resources=None,
                  custom_loggers=None,
-                 sync_function=None,
-                 upload_dir=None):
+                 sync_function=None):
         if repeat:
             _raise_deprecation_note("repeat", "num_samples", soft=False)
         if trial_resources:
@@ -86,9 +86,6 @@ class Experiment(object):
                 "trial_resources", "resources_per_trial", soft=False)
         if sync_function:
             raise DeprecationWarning("`sync_function` is deprecated. Please"
-                                     " use `tune.run` for uploading.")
-        if upload_dir:
-            raise DeprecationWarning("`upload_dir` is deprecated. Please"
                                      " use `tune.run` for uploading.")
 
         run_identifier = Experiment._register_if_needed(run)
@@ -99,6 +96,7 @@ class Experiment(object):
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
             "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
+            "upload_dir": upload_dir,
             "trial_name_creator": trial_name_creator,
             "loggers": loggers,
             "sync_to_driver": sync_to_driver,
@@ -182,7 +180,8 @@ class Experiment(object):
 
     @property
     def checkpoint_dir(self):
-        return os.path.join(self.spec["local_dir"], self.name)
+        if self.local_dir:
+            return os.path.join(self.local_dir, self.name)
 
     @property
     def remote_checkpoint_dir(self):

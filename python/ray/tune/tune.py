@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import click
 import logging
-import os
 import time
 
 from ray.tune.error import TuneError
@@ -132,10 +131,14 @@ def run(run_or_experiment,
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
-        sync_function (func|str): Function for syncing the local_dir to
+        sync_to_cloud (func|str): Function for syncing the local_dir to
             upload_dir. If string, then it must be a string template for
             syncer to run. If not provided, the sync command defaults
             to standard S3 or gsutil sync comamnds.
+        sync_to_driver (func|str): Function for syncing trial logdir from
+            remote node to local. If string, then it must be a
+            string template for syncer to run. If not provided, defaults
+            to using rsync.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
@@ -211,6 +214,7 @@ def run(run_or_experiment,
             resources_per_trial=resources_per_trial,
             num_samples=num_samples,
             local_dir=local_dir,
+            upload_dir=upload_dir,
             sync_to_driver=sync_to_driver,
             trial_name_creator=trial_name_creator,
             loggers=loggers,
@@ -229,7 +233,7 @@ def run(run_or_experiment,
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),
         scheduler=scheduler or FIFOScheduler(),
-        local_checkpoint_dir=experiment.local_checkpoint_dir,
+        local_checkpoint_dir=experiment.checkpoint_dir,
         remote_checkpoint_dir=experiment.remote_checkpoint_dir,
         sync_to_cloud=sync_to_cloud,
         resume=resume,

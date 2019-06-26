@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import glob
 import os
 import shutil
 import sys
@@ -1032,27 +1033,25 @@ class TestSyncFunctionality(unittest.TestCase):
 
     def testCloudFunctions(self):
         tmpdir = tempfile.mkdtemp()
+        tmpdir2 = tempfile.mkdtemp()
+        os.mkdir(os.path.join(tmpdir2, "foo"))
 
         def sync_func(local, remote):
-            with open(os.path.join(local, "test.log"), "w") as f:
-                print("writing to", f.name)
-                f.write(remote)
+            for filename in glob.glob(os.path.join(local, "*.json")):
+                shutil.copy(filename, remote)
 
         [trial] = tune.run(
             "__fake",
             name="foo",
             max_failures=0,
             local_dir=tmpdir,
-            **{
-                "stop": {
-                    "training_iteration": 1
-                },
-                "upload_dir": "test",
-                "sync_to_cloud": tune.function(sync_func)
-            })
-        test_file_path = os.path.join(trial.local_dir, "test.log")
-        self.assertTrue(os.path.exists(test_file_path))
+            stop={"training_iteration": 1},
+            upload_dir=tmpdir2,
+            sync_to_cloud=tune.function(sync_func))
+        test_file_path = glob.glob(os.path.join(tmpdir2, "foo", "*.json"))
+        self.assertTrue(test_file_path)
         shutil.rmtree(tmpdir)
+        shutil.rmtree(tmpdir2)
 
     def testClusterSyncFunction(self):
         def sync_func_driver(source, target):
@@ -2087,7 +2086,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",
@@ -2146,7 +2145,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir)
 
         runner.add_trial(
             Trial(
@@ -2201,7 +2200,7 @@ class TrialRunnerTest(unittest.TestCase):
             },
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
@@ -2222,7 +2221,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init()
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
