@@ -8,7 +8,7 @@ import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.policy.tf_policy import LearningRateSchedule, EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.explained_variance import explained_variance
@@ -126,7 +126,7 @@ def ppo_surrogate_loss(policy, batch_tensors):
         policy.convert_to_eager(policy.value_function),
         policy.convert_to_eager(policy.kl_coeff),
         mask,
-        entropy_coeff=policy.config["entropy_coeff"],
+        entropy_coeff=policy.entropy_coeff,
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
         vf_loss_coeff=policy.config["vf_loss_coeff"],
@@ -148,6 +148,8 @@ def kl_and_loss_stats(policy, batch_tensors):
         "vf_explained_var": policy.explained_variance,
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
+        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
+
     }
 
     return stats_fetches
@@ -268,6 +270,7 @@ class ValueNetworkMixin(object):
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     KLCoeffMixin.__init__(policy, config)
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"], config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
@@ -280,4 +283,4 @@ PPOTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_ppo_gae,
     gradients_fn=clip_gradients,
     before_loss_init=setup_mixins,
-    mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin])
+    mixins=[LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin, ValueNetworkMixin])

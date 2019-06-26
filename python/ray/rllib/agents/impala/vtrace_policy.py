@@ -242,7 +242,7 @@ class VTraceTFPolicy(LearningRateSchedule, EntropyCoeffSchedule, VTracePostproce
             actions, axis=1)
 
         EntropyCoeffSchedule.__init__(self, self.config["entropy_coeff"],
-                                      self.config["entropy_schedule"])
+                                      self.config["entropy_coeff_schedule"])
 
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
@@ -302,9 +302,9 @@ class VTraceTFPolicy(LearningRateSchedule, EntropyCoeffSchedule, VTracePostproce
         self.stats_fetches = {
             LEARNER_STATS_KEY: {
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
-                "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
+                "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
                 "grad_gnorm": tf.global_norm(self._grads),
                 "var_gnorm": tf.global_norm(self.var_list),
                 "vf_loss": self.loss.vf_loss,
