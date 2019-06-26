@@ -793,8 +793,9 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
     auto object_manager_client = std::make_shared<rpc::ObjectManagerClient>(
         connection_info.ip, connection_info.port, client_call_manager_);
 
-    RAY_LOG(DEBUG) << "Get rpc client, address: " << connection_info.ip << ", port: "
-                   << connection_info.port << ", local port: " << GetServerPort();
+    RAY_LOG(DEBUG) << "Get rpc client, address: " << connection_info.ip
+                   << ", port: " << connection_info.port
+                   << ", local port: " << GetServerPort();
 
     it = remote_object_manager_clients_
              .emplace(client_id, std::move(object_manager_client))

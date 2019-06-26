@@ -44,14 +44,6 @@ def ray_start_cluster_with_resource():
     cluster.shutdown()
 
 
-def print_mem():
-    os.system('top -b -n 3 -o %MEM | head -20 > tmp.log')
-    os.system('cat tmp.log')
-    os.system('free -h > tmp.log')
-    os.system('cat tmp.log')
-    os.system('ps -eo pmem --sort=-pmem | head -10 > tmp.log')
-    os.system('cat tmp.log')
-
 # This test is here to make sure that when we broadcast an object to a bunch of
 # machines, we don't have too many excess object transfers.
 def test_object_broadcast(ray_start_cluster_with_resource):
@@ -82,7 +74,6 @@ def test_object_broadcast(ray_start_cluster_with_resource):
         # Broadcast an object to all machines.
         x_id = create_object.remote()
         object_ids.append(x_id)
-        print_mem()
         ray.get([
             f._remote(args=[x_id], resources={str(i % num_nodes): 1})
             for i in range(10 * num_nodes)
