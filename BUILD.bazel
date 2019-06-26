@@ -195,10 +195,10 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        ":core_worker_cc_proto",
         ":ray_common",
         ":ray_util",
         ":raylet_lib",
-        ":core_worker_cc_proto",
     ],
 )
 
