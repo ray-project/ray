@@ -2613,7 +2613,7 @@ def test_workers(shutdown_only):
         worker_ids = set(ray.get([f.remote() for _ in range(10)]))
 
 
-def test_specific_driver_id():
+def test_specific_job_id():
     dummy_driver_id = ray.JobID(b"00112233445566778899")
     ray.init(num_cpus=1, job_id=dummy_driver_id)
 

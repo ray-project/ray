@@ -140,4 +140,4 @@ class ImportThread(object):
                 self.worker,
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                 traceback_str,
-                driver_id=ray.utils.compute_driver_id_from_job_id(job_id))
+                job_id=job_id)

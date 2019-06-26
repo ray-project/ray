@@ -293,9 +293,9 @@ cdef class RayletClient:
             postincrement(iterator)
         return resources_dict
 
-    def push_error(self, WorkerID driver_id, error_type, error_message,
+    def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
-        check_status(self.client.get().PushError(driver_id.native(),
+        check_status(self.client.get().PushError(job_id.native(),
                                                  error_type.encode("ascii"),
                                                  error_message.encode("ascii"),
                                                  timestamp))

@@ -70,7 +70,7 @@ void Monitor::Tick() {
                           << " has missed too many heartbeats from it.";
             // We use the nil JobID to broadcast the message to all drivers.
             RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
-                WorkerID::Nil(), type, error_message.str(), current_time_ms()));
+                JobID::Nil(), type, error_message.str(), current_time_ms()));
           }
         };
         RAY_CHECK_OK(gcs_client_.client_table().Lookup(lookup_callback));

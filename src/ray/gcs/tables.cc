@@ -449,18 +449,18 @@ Status Hash<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   return Status::OK();
 }
 
-Status ErrorTable::PushErrorToDriver(const WorkerID &driver_id, const std::string &type,
+Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &type,
                                      const std::string &error_message, double timestamp) {
   auto data = std::make_shared<ErrorTableData>();
-  data->set_driver_id(driver_id.Binary());
+  data->set_job_id(job_id.Binary());
   data->set_type(type);
   data->set_error_message(error_message);
   data->set_timestamp(timestamp);
-  return Append(ComputeJobId(driver_id), driver_id, data, /*done_callback=*/nullptr);
+  return Append(job_id, job_id, data, /*done_callback=*/nullptr);
 }
 
 std::string ErrorTable::DebugString() const {
-  return Log<WorkerID, ErrorTableData>::DebugString();
+  return Log<JobID, ErrorTableData>::DebugString();
 }
 
 Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
@@ -796,7 +796,7 @@ template class Log<TaskID, TaskReconstructionData>;
 template class Table<TaskID, TaskLeaseData>;
 template class Table<ClientID, HeartbeatTableData>;
 template class Table<ClientID, HeartbeatBatchTableData>;
-template class Log<WorkerID, ErrorTableData>;
+template class Log<JobID, ErrorTableData>;
 template class Log<ClientID, ClientTableData>;
 template class Log<JobID, JobTableData>;
 template class Log<UniqueID, ProfileTableData>;

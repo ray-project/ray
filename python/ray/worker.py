@@ -450,7 +450,7 @@ class Worker(object):
                             self,
                             ray_constants.WAIT_FOR_CLASS_PUSH_ERROR,
                             warning_message,
-                            driver_id=ray.utils.compute_driver_id_from_job_id(self.current_job_id))
+                            job_id=self.current_job_id)
                     warning_sent = True
 
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
@@ -748,7 +748,7 @@ class Worker(object):
             # Run the function on all workers.
             self.redis_client.hmset(
                 key, {
-                    "job_id": ray.utils.compute_driver_id_from_job_id(self.current_job_id).binary(),
+                    "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
                     "run_on_other_drivers": str(run_on_other_drivers)
@@ -946,7 +946,7 @@ class Worker(object):
             self,
             ray_constants.TASK_PUSH_ERROR,
             str(failure_object),
-            driver_id=ray.utils.compute_driver_id_from_job_id(self.current_job_id))
+            job_id=self.current_job_id)
         # Mark the actor init as failed
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
@@ -1767,7 +1767,7 @@ def connect(node,
                 worker.redis_client,
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
-                driver_id=None)
+                job_id=None)
 
     worker.lock = threading.RLock()
 
@@ -1782,7 +1782,6 @@ def connect(node,
         import __main__ as main
         driver_info = {
             "node_ip_address": node.node_ip_address,
-            # TODO(qwang): driver_id
             "driver_id": worker.worker_id,
             "start_time": time.time(),
             "plasma_store_socket": node.plasma_store_socket_name,

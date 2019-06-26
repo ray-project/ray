@@ -115,8 +115,8 @@ message ActorTableData {
 }
 
 message ErrorTableData {
-  // The ID of the driver that the error is for.
-  bytes driver_id = 1;
+  // The ID of the job that the error is for.
+  bytes job_id = 1;
   // The type of the error.
   string type = 2;
   // The error message.

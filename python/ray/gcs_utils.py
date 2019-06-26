@@ -61,11 +61,11 @@ TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
 
 
-def construct_error_message(driver_id, error_type, message, timestamp):
+def construct_error_message(job_id, error_type, message, timestamp):
     """Construct a serialized ErrorTableData object.
 
     Args:
-        driver_id: The ID of the driver that the error should go to. If this is
+        job_id: The ID of the job that the error should go to. If this is
             nil, then the error will go to all drivers.
         error_type: The type of the error.
         message: The error message.
@@ -75,7 +75,7 @@ def construct_error_message(driver_id, error_type, message, timestamp):
         The serialized object.
     """
     data = ErrorTableData()
-    data.driver_id = driver_id.binary()
+    data.job_id = job_id.binary()
     data.type = error_type
     data.error_message = message
     data.timestamp = timestamp

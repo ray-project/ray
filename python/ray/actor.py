@@ -185,7 +185,7 @@ class ActorClass(object):
             task.
         _resources: The default resources required by the actor creation task.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
-        _last_job_id_exported_for: The ID of the job ID of the last Ray
+        _last_job_id_exported_for: The ID of the job of the last Ray
             session during which this actor class definition was exported. This
             is an imperfect mechanism used to determine if we need to export
             the remote function again. It is imperfect in the sense that the

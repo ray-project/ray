@@ -186,9 +186,9 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
     }
   } break;
   case TaskState::DRIVER: {
-    const auto job_ids = GetDriverTaskIds();
+    const auto driver_task_ids = GetDriverTaskIds();
     for (auto it = task_ids.begin(); it != task_ids.end();) {
-      if (job_ids.count(*it) == 1) {
+      if (driver_task_ids.count(*it) == 1) {
         it = task_ids.erase(it);
       } else {
         it++;
@@ -392,15 +392,15 @@ void SchedulingQueue::RemoveBlockedTaskId(const TaskID &task_id) {
   RAY_CHECK(erased == 1);
 }
 
-void SchedulingQueue::AddDriverTaskId(const TaskID &job_id) {
-  RAY_LOG(DEBUG) << "Added driver task " << job_id;
-  auto inserted = driver_task_ids_.insert(job_id);
+void SchedulingQueue::AddDriverTaskId(const TaskID &task_id) {
+  RAY_LOG(DEBUG) << "Added driver task " << task_id;
+  auto inserted = driver_task_ids_.insert(task_id);
   RAY_CHECK(inserted.second);
 }
 
-void SchedulingQueue::RemoveDriverTaskId(const TaskID &job_id) {
-  RAY_LOG(DEBUG) << "Removed driver task " << job_id;
-  auto erased = driver_task_ids_.erase(job_id);
+void SchedulingQueue::RemoveDriverTaskId(const TaskID &task_id) {
+  RAY_LOG(DEBUG) << "Removed driver task " << task_id;
+  auto erased = driver_task_ids_.erase(task_id);
   RAY_CHECK(erased == 1);
 }
 

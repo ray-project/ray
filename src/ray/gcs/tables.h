@@ -755,7 +755,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
 
 }  // namespace raylet
 
-class ErrorTable : private Log<WorkerID, ErrorTableData> {
+class ErrorTable : private Log<JobID, ErrorTableData> {
  public:
   ErrorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
              AsyncGcsClient *client)
@@ -764,20 +764,20 @@ class ErrorTable : private Log<WorkerID, ErrorTableData> {
     prefix_ = TablePrefix::ERROR_INFO;
   };
 
-  /// Push an error message for a specific driver.
+  /// Push an error message for the driver of a specific.
   ///
   /// TODO(rkn): We need to make sure that the errors are unique because
   /// duplicate messages currently cause failures (the GCS doesn't allow it). A
   /// natural way to do this is to have finer-grained time stamps.
   ///
-  /// \param driver_id The ID of the driver that generated the error. If the error
+  /// \param job_id The ID of the job that generated the error. If the error
   /// should be pushed to all drivers, then this should be nil.
   /// \param type The type of the error.
   /// \param error_message The error message to push.
   /// \param timestamp The timestamp of the error.
   /// \return Status.
   // TODO(qwang): refactor this API to implement broadcast.
-  Status PushErrorToDriver(const WorkerID &driver_id, const std::string &type,
+  Status PushErrorToDriver(const JobID &job_id, const std::string &type,
                            const std::string &error_message, double timestamp);
 
   /// Returns debug string for class.

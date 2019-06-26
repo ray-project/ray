@@ -125,12 +125,12 @@ class RayletClient {
 
   /// Push an error to the relevant driver.
   ///
-  /// \param The ID of the driver that the error is for.
+  /// \param The ID of the job_id that the error is for.
   /// \param The type of the error.
   /// \param The error message.
   /// \param The timestamp of the error.
   /// \return ray::Status.
-  ray::Status PushError(const ray::WorkerID &driver_id, const std::string &type,
+  ray::Status PushError(const ray::JobID &job_id, const std::string &type,
                         const std::string &error_message, double timestamp);
 
   /// Store some profile events in the GCS.

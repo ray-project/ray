@@ -117,8 +117,7 @@ public class WorkerContext {
   }
 
   /**
-   * @return If this worker is a driver, this method returns the job ID; Otherwise, it returns
-   *     the ID of the current running task.
+   * The ID of the current job.
    */
   public UniqueId getCurrentJobId() {
     return currentJobId;

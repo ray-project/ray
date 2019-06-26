@@ -319,12 +319,12 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   return ray::Status::OK();
 }
 
-ray::Status RayletClient::PushError(const ray::WorkerID &driver_id,
+ray::Status RayletClient::PushError(const ray::JobID &job_id,
                                     const std::string &type,
                                     const std::string &error_message, double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreatePushErrorRequest(
-      fbb, to_flatbuf(fbb, driver_id), fbb.CreateString(type),
+      fbb, to_flatbuf(fbb, job_id), fbb.CreateString(type),
       fbb.CreateString(error_message), timestamp);
   fbb.Finish(message);
 

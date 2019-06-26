@@ -215,7 +215,6 @@ ray::Status NodeManager::RegisterGcs() {
       /*done_callback=*/nullptr));
 
   // Subscribe to driver table updates.
-  // TODO(qwang): rename client id parameter.
   const auto job_table_handler =
       [this](gcs::AsyncGcsClient *client, const JobID &job_id,
              const std::vector<JobTableData> &job_data) {
@@ -276,7 +275,7 @@ void NodeManager::HandleJobTableUpdate(
       // the results for these tasks as not required, cancel any attempts
       // at reconstruction. Note that at this time the workers are likely
       // alive because of the delay in killing workers.
-      CleanUpTasksForExitedJob(job_id);
+      CleanUpTasksForFinishedJob(job_id);
     }
   }
 }
@@ -691,7 +690,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   }
 }
 
-void NodeManager::CleanUpTasksForExitedJob(const JobID &job_id) {
+void NodeManager::CleanUpTasksForFinishedJob(const JobID &job_id) {
   auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
   task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
   // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
@@ -1001,7 +1000,7 @@ void NodeManager::ProcessDisconnectClientMessage(
         error_message << "A worker died or was killed while executing task " << task_id
                       << ".";
         RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-            ComputeDriverId(job_id), type, error_message.str(), current_time_ms()));
+            job_id, type, error_message.str(), current_time_ms()));
       }
     }
 
@@ -1143,12 +1142,12 @@ void NodeManager::ProcessWaitRequestMessage(
 void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::PushErrorRequest>(message_data);
 
-  WorkerID driver_id = from_flatbuf<WorkerID>(*message->driver_id());
+  JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto const &type = string_from_flatbuf(*message->type());
   auto const &error_message = string_from_flatbuf(*message->error_message());
   double timestamp = message->timestamp();
 
-  RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(driver_id, type,
+  RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(job_id, type,
                                                             error_message, timestamp));
 }
 
@@ -1355,7 +1354,7 @@ void NodeManager::ScheduleTasks(
           << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
           << " for placement. Check the client table to view node resources.";
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          ComputeDriverId(task.GetTaskSpecification().JobId()), type, error_message.str(),
+          task.GetTaskSpecification().JobId(), type, error_message.str(),
           current_time_ms()));
     }
     // Assert that this placeable task is not feasible locally (necessary but not
@@ -1416,7 +1415,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
       std::string error_message = stream.str();
       RAY_LOG(WARNING) << error_message;
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          ComputeDriverId(task.GetTaskSpecification().JobId()), "task", error_message,
+          task.GetTaskSpecification().JobId(), "task", error_message,
           current_time_ms()));
     }
   }
@@ -2073,7 +2072,7 @@ void NodeManager::ResubmitTask(const Task &task) {
                   << " is a driver task and so the object created by ray.put "
                   << "could not be reconstructed.";
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        ComputeDriverId(task.GetTaskSpecification().JobId()), type, error_message.str(),
+        task.GetTaskSpecification().JobId(), type, error_message.str(),
         current_time_ms()));
     return;
   }

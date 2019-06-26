@@ -326,12 +326,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       const ActorID &actor_id, const ActorTableData &data,
       const ray::gcs::ActorTable::WriteCallback &failure_callback);
 
-  /// When a job exited(or finished), loop over all of the queued tasks for that job and
+  /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
   ///
   /// \param job_id The job that exited.
   /// \return Void.
-  void CleanUpTasksForExitedJob(const JobID &job_id);
+  void CleanUpTasksForFinishedJob(const JobID &job_id);
 
   /// Handle an object becoming local. This updates any local accounting, but
   /// does not write to any global accounting in the GCS.

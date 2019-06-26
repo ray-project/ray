@@ -434,7 +434,7 @@ class FunctionActorManager(object):
                     "Failed to unpickle the remote function '{}' with "
                     "function ID {}. Traceback:\n{}".format(
                         function_name, function_id.hex(), traceback_str),
-                    driver_id=ray.utils.compute_driver_id_from_job_id(job_id))
+                    job_id=job_id)
             else:
                 # The below line is necessary. Because in the driver process,
                 # if the function is defined in the file where the python
@@ -553,7 +553,7 @@ class FunctionActorManager(object):
                         self._worker,
                         ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                         warning_message,
-                        driver_id=ray.utils.compute_driver_id_from_job_id(job_id))
+                        job_id=job_id)
                 warning_sent = True
             time.sleep(0.001)
 
@@ -746,8 +746,7 @@ class FunctionActorManager(object):
                 "Failed to unpickle actor class '{}' for actor ID {}. "
                 "Traceback:\n{}".format(class_name,
                                         self._worker.actor_id.hex(),
-                                        traceback_str),
-                driver_id=ray.utils.compute_driver_id_from_job_id(job_id))
+                                        traceback_str), job_id=job_id)
             # TODO(rkn): In the future, it might make sense to have the worker
             # exit here. However, currently that would lead to hanging if
             # someone calls ray.get on a method invoked on the actor.
@@ -861,7 +860,7 @@ class FunctionActorManager(object):
                     self._worker,
                     ray_constants.CHECKPOINT_PUSH_ERROR,
                     traceback_str,
-                    driver_id=ray.utils.compute_driver_id_from_job_id(self._worker.current_job_id))
+                    job_id=self._worker.current_job_id)
 
     def _restore_and_log_checkpoint(self, actor):
         """Restore an actor from a checkpoint if available and log any errors.
@@ -900,4 +899,4 @@ class FunctionActorManager(object):
                 self._worker,
                 ray_constants.CHECKPOINT_PUSH_ERROR,
                 traceback_str,
-                driver_id=ray.utils.compute_driver_id_from_job_id(self._worker.current_job_id))
+                job_id=self._worker.current_job_id)
