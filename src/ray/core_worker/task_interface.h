@@ -89,9 +89,8 @@ class ActorHandle {
   }
 
   void Serialize(std::string *output) {
-    std::unique_lock<std::mutex> guard(mutex_);
-
     ray::rpc::ActorHandle temp;
+    std::unique_lock<std::mutex> guard(mutex_);
     temp.set_actor_id(actor_id_.Binary());
     temp.set_actor_handle_id(actor_handle_id_.Binary());
     temp.set_actor_language((int)actor_language_);
@@ -102,6 +101,7 @@ class ActorHandle {
     temp.set_actor_cursor(actor_cursor_.Binary());
     temp.set_task_counter(task_counter_);
     temp.set_num_forks(num_forks_);
+    guard.unlock();
     temp.SerializeToString(output);
   }
 
