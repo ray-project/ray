@@ -140,7 +140,7 @@ class ComputeTDErrorMixin(object):
             return np.zeros_like(rew_t)
 
         td_err = self.get_session().run(
-            self.td_error,
+            self.q_loss.td_error,
             feed_dict={
                 self.get_placeholder(SampleBatch.CUR_OBS): [
                     np.array(ob) for ob in obs_t
