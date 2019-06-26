@@ -179,8 +179,8 @@ def _make_time_major(policy, tensor, drop_last=False):
     if isinstance(tensor, list):
         return [_make_time_major(policy, t, drop_last) for t in tensor]
 
-    if policy.model.state_init:
-        B = tf.shape(policy.model.seq_lens)[0]
+    if policy.state_in:
+        B = tf.shape(policy.seq_lens)[0]
         T = tf.shape(tensor)[0] // B
     else:
         # Important: chop the tensor into batches at known episode cut
@@ -219,15 +219,14 @@ def build_appo_surrogate_loss(policy, batch_tensors):
     behaviour_logits = batch_tensors[BEHAVIOUR_LOGITS]
     unpacked_behaviour_logits = tf.split(
         behaviour_logits, output_hidden_shape, axis=1)
-    unpacked_outputs = tf.split(
-        policy.model.outputs, output_hidden_shape, axis=1)
+    unpacked_outputs = tf.split(policy.model_out, output_hidden_shape, axis=1)
     action_dist = policy.action_dist
     prev_action_dist = policy.dist_class(behaviour_logits)
     values = policy.value_function
 
-    if policy.model.state_in:
-        max_seq_len = tf.reduce_max(policy.model.seq_lens) - 1
-        mask = tf.sequence_mask(policy.model.seq_lens, max_seq_len)
+    if policy.state_in:
+        max_seq_len = tf.reduce_max(policy.seq_lens) - 1
+        mask = tf.sequence_mask(policy.seq_lens, max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(rewards)
@@ -316,7 +315,7 @@ def postprocess_trajectory(policy,
             last_r = 0.0
         else:
             next_state = []
-            for i in range(len(policy.model.state_in)):
+            for i in range(len(policy.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
             last_r = policy.value(sample_batch["new_obs"][-1], *next_state)
         batch = compute_advantages(
@@ -332,7 +331,7 @@ def postprocess_trajectory(policy,
 
 
 def add_values_and_logits(policy):
-    out = {BEHAVIOUR_LOGITS: policy.model.outputs}
+    out = {BEHAVIOUR_LOGITS: policy.model_out}
     if not policy.config["vtrace"]:
         out[SampleBatch.VF_PREDS] = policy.value_function
     return out
@@ -367,11 +366,11 @@ class ValueNetworkMixin(object):
     def value(self, ob, *args):
         feed_dict = {
             self.get_placeholder(SampleBatch.CUR_OBS): [ob],
-            self.model.seq_lens: [1]
+            self.seq_lens: [1]
         }
-        assert len(args) == len(self.model.state_in), \
-            (args, self.model.state_in)
-        for k, v in zip(self.model.state_in, args):
+        assert len(args) == len(self.state_in), \
+            (args, self.state_in)
+        for k, v in zip(self.state_in, args):
             feed_dict[k] = v
         vf = self.get_session().run(self.value_function, feed_dict)
         return vf[0]
