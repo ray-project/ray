@@ -153,19 +153,23 @@ class ActorHandle {
   /// Descriptor of actor definition.
   /// e.g. class info for Java actor. module and class info for Python actor.
   const ray::ActorDefinitionDescriptor actor_definition_descriptor_;
+
+  // Fields below are guarded by the mutex.
+
   /// The unique id of the last return of the last task.
   /// It's used as a dependency for the next task.
   ObjectID actor_cursor_;
   /// The number of tasks that have been invoked on this actor.
-  int task_counter_;
+  int64_t task_counter_;
   /// The number of times that this actor handle has been forked.
   /// It's used to make sure ids of actor handles are unique.
-  int num_forks_;
+  int64_t num_forks_;
   /// The new actor handles that were created from this handle
   /// since the last task on this handle was submitted. This is
   /// used to garbage-collect dummy objects that are no longer
   /// necessary in the backend.
   std::vector<ray::ActorHandleID> new_actor_handles_;
+
   /// Mutex to protect ActorHandle.
   std::mutex mutex_;
 
