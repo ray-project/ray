@@ -14,12 +14,12 @@ COPTS = ["-DRAY_USE_GLOG"]
 proto_library(
     name = "common_proto",
     srcs = ["src/ray/protobuf/common.proto"],
+    visibility = ["//java:__subpackages__"],
 )
 
 cc_proto_library(
     name = "common_cc_proto",
     deps = [":common_proto"],
-    visibility = ["//java:__subpackages__"],
 )
 
 proto_library(

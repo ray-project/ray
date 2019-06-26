@@ -13,17 +13,6 @@ def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_p
         includes = includes,
     )
 
-def flatbuffer_java_library(name, srcs, outs, out_prefix, includes = [], include_paths = []):
-    flatbuffer_library_public(
-        name = name,
-        srcs = srcs,
-        outs = outs,
-        language_flag = "-j",
-        out_prefix = out_prefix,
-        include_paths = include_paths,
-        includes = includes,
-    )
-
 def define_java_module(name, additional_srcs = [], additional_resources = [], define_test_lib = False, test_deps = [], **kwargs):
     lib_name = "org_ray_ray_" + name
     pom_file_targets = [lib_name]
