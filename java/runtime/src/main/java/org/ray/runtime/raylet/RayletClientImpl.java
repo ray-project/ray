@@ -1,13 +1,16 @@
 package org.ray.runtime.raylet;
 
 import com.google.common.base.Preconditions;
-import com.google.flatbuffers.FlatBufferBuilder;
+import com.google.common.collect.ImmutableList;
+import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
@@ -15,10 +18,7 @@ import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
-import org.ray.runtime.generated.Arg;
-import org.ray.runtime.generated.Language;
-import org.ray.runtime.generated.ResourcePair;
-import org.ray.runtime.generated.TaskInfo;
+import org.ray.runtime.generated.Common;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
@@ -86,7 +86,7 @@ public class RayletClientImpl implements RayletClient {
     Preconditions.checkState(!spec.parentTaskId.isNil());
     Preconditions.checkState(!spec.jobId.isNil());
 
-    ByteBuffer info = convertTaskSpecToFlatbuffer(spec);
+    ByteBuffer info = convertTaskSpecToProtobuf(spec);
     byte[] cursorId = null;
     if (!spec.getExecutionDependencies().isEmpty()) {
       //TODO(hchen): handle more than one dependencies.
@@ -100,7 +100,7 @@ public class RayletClientImpl implements RayletClient {
     byte[] bytes = nativeGetTask(client);
     assert (null != bytes);
     ByteBuffer bb = ByteBuffer.wrap(bytes);
-    return parseTaskSpecFromFlatbuffer(bb);
+    return parseTaskSpecFromProtobuf(bb);
   }
 
   @Override
@@ -127,7 +127,7 @@ public class RayletClientImpl implements RayletClient {
 
   @Override
   public void freePlasmaObjects(List<ObjectId> objectIds, boolean localOnly,
-                                boolean deleteCreatingTasks) {
+      boolean deleteCreatingTasks) {
     byte[][] objectIdsArray = IdUtil.getIdBytes(objectIds);
     nativeFreePlasmaObjects(client, objectIdsArray, localOnly, deleteCreatingTasks);
   }
@@ -142,36 +142,32 @@ public class RayletClientImpl implements RayletClient {
     nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
   }
 
-  private static TaskSpec parseTaskSpecFromFlatbuffer(ByteBuffer bb) {
-    bb.order(ByteOrder.LITTLE_ENDIAN);
-    TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
-    UniqueId jobId = UniqueId.fromByteBuffer(info.jobIdAsByteBuffer());
-    TaskId taskId = TaskId.fromByteBuffer(info.taskIdAsByteBuffer());
-    TaskId parentTaskId = TaskId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
-    int parentCounter = info.parentCounter();
-    UniqueId actorCreationId = UniqueId.fromByteBuffer(info.actorCreationIdAsByteBuffer());
-    int maxActorReconstructions = info.maxActorReconstructions();
-    UniqueId actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
-    UniqueId actorHandleId = UniqueId.fromByteBuffer(info.actorHandleIdAsByteBuffer());
-    int actorCounter = info.actorCounter();
-    int numReturns = info.numReturns();
-
-    // Deserialize new actor handles
-    UniqueId[] newActorHandles = IdUtil.getUniqueIdsFromByteBuffer(
-        info.newActorHandlesAsByteBuffer());
+  private static TaskSpec parseTaskSpecFromProtobuf(ByteBuffer bb) {
+    Common.TaskSpec taskSpec;
+    try {
+      taskSpec = Common.TaskSpec.parseFrom(bb);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Invalid protobuf data.");
+    }
+    UniqueId jobId = UniqueId.fromByteBuffer(taskSpec.getJobId().asReadOnlyByteBuffer());
+    TaskId taskId = TaskId.fromByteBuffer(taskSpec.getTaskId().asReadOnlyByteBuffer());
+    TaskId parentTaskId = TaskId.fromByteBuffer(taskSpec.getParentTaskId().asReadOnlyByteBuffer());
+    int parentCounter = (int) taskSpec.getParentCounter();
+    int numReturns = (int) taskSpec.getNumReturns();
 
     // Deserialize args
-    FunctionArg[] args = new FunctionArg[info.argsLength()];
-    for (int i = 0; i < info.argsLength(); i++) {
-      Arg arg = info.args(i);
+    FunctionArg[] args = new FunctionArg[taskSpec.getArgsCount()];
+    for (int i = 0; i < args.length; i++) {
+      Common.TaskArg arg = taskSpec.getArgs(i);
 
-      int objectIdsLength = arg.objectIdsAsByteBuffer().remaining() / UniqueId.LENGTH;
+      int objectIdsLength = arg.getObjectIdsCount();
       if (objectIdsLength > 0) {
         Preconditions.checkArgument(objectIdsLength == 1,
             "This arg has more than one id: {}", objectIdsLength);
-        args[i] = FunctionArg.passByReference(ObjectId.fromByteBuffer(arg.objectIdsAsByteBuffer()));
+        args[i] = FunctionArg
+            .passByReference(ObjectId.fromByteBuffer(arg.getObjectIds(i).asReadOnlyByteBuffer()));
       } else {
-        ByteBuffer lbb = arg.dataAsByteBuffer();
+        ByteBuffer lbb = arg.getData().asReadOnlyByteBuffer();
         Preconditions.checkState(lbb != null && lbb.remaining() > 0);
         byte[] data = new byte[lbb.remaining()];
         lbb.get(data);
@@ -180,21 +176,41 @@ public class RayletClientImpl implements RayletClient {
     }
 
     // Deserialize required resources;
-    Map<String, Double> resources = new HashMap<>();
-    for (int i = 0; i < info.requiredResourcesLength(); i++) {
-      resources.put(info.requiredResources(i).key(), info.requiredResources(i).value());
-    }
+    Map<String, Double> resources = taskSpec.getRequiredResourcesMap();
     // Deserialize function descriptor
-    Preconditions.checkArgument(info.language() == Language.JAVA);
-    Preconditions.checkArgument(info.functionDescriptorLength() == 3);
+    Preconditions.checkArgument(taskSpec.getLanguage() == Common.Language.JAVA);
+    Preconditions.checkArgument(taskSpec.getFunctionDescriptorCount() == 3);
     JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
-        info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
+        taskSpec.getFunctionDescriptor(0), taskSpec.getFunctionDescriptor(1),
+        taskSpec.getFunctionDescriptor(2)
     );
 
-    // Deserialize dynamic worker options.
+    // Deserialize ActorCreationTaskSpec.
+    UniqueId actorCreationId = UniqueId.NIL;
+    int maxActorReconstructions = 0;
+    UniqueId[] newActorHandles = new UniqueId[0];
     List<String> dynamicWorkerOptions = new ArrayList<>();
-    for (int i = 0; i < info.dynamicWorkerOptionsLength(); ++i) {
-      dynamicWorkerOptions.add(info.dynamicWorkerOptions(i));
+    if (taskSpec.getType() == Common.TaskType.ACTOR_CREATION_TASK) {
+      Common.ActorCreationTaskSpec actorCreationTaskSpec = taskSpec.getActorCreationTaskSpec();
+      actorCreationId = UniqueId
+          .fromByteBuffer(actorCreationTaskSpec.getActorId().asReadOnlyByteBuffer());
+      maxActorReconstructions = (int) actorCreationTaskSpec.getMaxActorReconstructions();
+      dynamicWorkerOptions = ImmutableList
+          .copyOf(actorCreationTaskSpec.getDynamicWorkerOptionsList());
+    }
+
+    // Deserialize ActorTaskSpec.
+    UniqueId actorId = UniqueId.NIL;
+    UniqueId actorHandleId = UniqueId.NIL;
+    int actorCounter = 0;
+    if (taskSpec.getType() == Common.TaskType.ACTOR_TASK) {
+      Common.ActorTaskSpec actorTaskSpec = taskSpec.getActorTaskSpec();
+      actorId = UniqueId.fromByteBuffer(actorTaskSpec.getActorId().asReadOnlyByteBuffer());
+      actorHandleId = UniqueId
+          .fromByteBuffer(actorTaskSpec.getActorHandleId().asReadOnlyByteBuffer());
+      actorCounter = (int) actorTaskSpec.getActorCounter();
+      newActorHandles = (UniqueId[]) actorTaskSpec.getNewActorHandlesList().stream()
+          .map(bytes -> UniqueId.fromByteBuffer(bytes.asReadOnlyByteBuffer())).toArray();
     }
 
     return new TaskSpec(jobId, taskId, parentTaskId, parentCounter, actorCreationId,
@@ -202,90 +218,72 @@ public class RayletClientImpl implements RayletClient {
         args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
 
-  private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
+  private static ByteBuffer convertTaskSpecToProtobuf(TaskSpec task) {
     ByteBuffer bb = taskSpecBuffer.get();
     bb.clear();
 
-    FlatBufferBuilder fbb = new FlatBufferBuilder(bb);
-    final int jobIdOffset = fbb.createString(task.jobId.toByteBuffer());
-    final int taskIdOffset = fbb.createString(task.taskId.toByteBuffer());
-    final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
-    final int parentCounter = task.parentCounter;
-    final int actorCreateIdOffset = fbb.createString(task.actorCreationId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb.createString(task.actorId.toByteBuffer());
-    final int maxActorReconstructions = task.maxActorReconstructions;
-    final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
-    final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
-    final int actorCounter = task.actorCounter;
-    final int numReturnsOffset = task.numReturns;
-
-    // Serialize the new actor handles.
-    int newActorHandlesOffset
-        = fbb.createString(IdUtil.concatIds(task.newActorHandles));
+    Common.TaskSpec.Builder builder = Common.TaskSpec.newBuilder()
+        .setJobId(ByteString.copyFrom(task.jobId.getBytes()))
+        .setTaskId(ByteString.copyFrom(task.taskId.getBytes()))
+        .setParentCounter(task.parentCounter)
+        .setNumReturns(0)
+        .putAllRequiredResources(task.resources);
 
     // Serialize args
-    int[] argsOffsets = new int[task.args.length];
-    for (int i = 0; i < argsOffsets.length; i++) {
-      int objectIdOffset = 0;
-      int dataOffset = 0;
-      if (task.args[i].id != null) {
-        objectIdOffset = fbb.createString(
-            IdUtil.concatIds(new ObjectId[]{task.args[i].id}));
-      } else {
-        objectIdOffset = fbb.createString("");
-      }
-      if (task.args[i].data != null) {
-        dataOffset = fbb.createString(ByteBuffer.wrap(task.args[i].data));
-      }
-      argsOffsets[i] = Arg.createArg(fbb, objectIdOffset, dataOffset);
-    }
-    int argsOffset = fbb.createVectorOfTables(argsOffsets);
+    builder.addAllArgs(
+        Arrays.stream(task.args).map(arg -> {
+          Common.TaskArg.Builder argBuilder = Common.TaskArg.newBuilder();
+          if (arg.id != null) {
+            argBuilder.addObjectIds(ByteString.copyFrom(arg.id.getBytes())).build();
+          } else {
+            argBuilder.setData(ByteString.copyFrom(arg.data)).build();
+          }
+          return argBuilder.build();
+        }).collect(Collectors.toList())
+    );
 
-    // Serialize required resources
-    // The required_resources vector indicates the quantities of the different
-    // resources required by this task. The index in this vector corresponds to
-    // the resource type defined in the ResourceIndex enum. For example,
-    int[] requiredResourcesOffsets = new int[task.resources.size()];
-    int i = 0;
-    for (Map.Entry<String, Double> entry : task.resources.entrySet()) {
-      int keyOffset = fbb.createString(ByteBuffer.wrap(entry.getKey().getBytes()));
-      requiredResourcesOffsets[i++] =
-          ResourcePair.createResourcePair(fbb, keyOffset, entry.getValue());
-    }
-    int requiredResourcesOffset = fbb.createVectorOfTables(requiredResourcesOffsets);
-
-    int[] requiredPlacementResourcesOffsets = new int[0];
-    int requiredPlacementResourcesOffset =
-        fbb.createVectorOfTables(requiredPlacementResourcesOffsets);
-
-    int language;
-    int functionDescriptorOffset;
-
+    // Serialize function descriptor.
     if (task.language == TaskLanguage.JAVA) {
       // This is a Java task.
-      language = Language.JAVA;
-      int[] functionDescriptorOffsets = new int[]{
-          fbb.createString(task.getJavaFunctionDescriptor().className),
-          fbb.createString(task.getJavaFunctionDescriptor().name),
-          fbb.createString(task.getJavaFunctionDescriptor().typeDescriptor)
-      };
-      functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+      builder.setLanguage(Common.Language.JAVA);
+      builder.addAllFunctionDescriptor(ImmutableList.of(
+          task.getJavaFunctionDescriptor().className,
+          task.getJavaFunctionDescriptor().name,
+          task.getJavaFunctionDescriptor().typeDescriptor
+      ));
     } else {
       // This is a Python task.
-      language = Language.PYTHON;
-      int[] functionDescriptorOffsets = new int[]{
-          fbb.createString(task.getPyFunctionDescriptor().moduleName),
-          fbb.createString(task.getPyFunctionDescriptor().className),
-          fbb.createString(task.getPyFunctionDescriptor().functionName),
-          fbb.createString("")
-      };
-      functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+      builder.setLanguage(Common.Language.PYTHON);
+      builder.addAllFunctionDescriptor(ImmutableList.of(
+          task.getPyFunctionDescriptor().moduleName,
+          task.getPyFunctionDescriptor().className,
+          task.getPyFunctionDescriptor().functionName,
+          ""
+      ));
     }
 
-    int [] dynamicWorkerOptionsOffsets = new int[task.dynamicWorkerOptions.size()];
-    for (int index = 0; index < task.dynamicWorkerOptions.size(); ++index) {
-      dynamicWorkerOptionsOffsets[index] = fbb.createString(task.dynamicWorkerOptions.get(index));
+    if (!task.actorCreationId.isNil()) {
+      // Construct ActorCreationTaskSpec.
+      builder.setActorCreationTaskSpec(
+          Common.ActorCreationTaskSpec.newBuilder()
+              .setActorId(ByteString.copyFrom(task.actorCreationId.getBytes()))
+              .setMaxActorReconstructions(task.maxActorReconstructions)
+              .addAllDynamicWorkerOptions(task.dynamicWorkerOptions)
+      );
     }
+    if (!task.actorId.isNil()) {
+      // Construct ActorTaskSpec.
+      List<ByteString> newHandles = Arrays.stream(task.newActorHandles)
+          .map(id -> ByteString.copyFrom(id.getBytes())).collect(Collectors.toList());
+      builder.setActorTaskSpec(
+          Common.ActorTaskSpec.newBuilder()
+              .setActorId(ByteString.copyFrom(task.actorId.getBytes()))
+              .setActorHandleId(ByteString.copyFrom(task.actorHandleId.getBytes()))
+              .setActorCounter(task.actorCounter)
+              .addAllNewActorHandles(newHandles)
+      );
+    }
+<<<<<<< HEAD
     int dynamicWorkerOptionsOffset = fbb.createVectorOfTables(dynamicWorkerOptionsOffsets);
 
     int root = TaskInfo.createTaskInfo(
@@ -310,6 +308,10 @@ public class RayletClientImpl implements RayletClient {
         dynamicWorkerOptionsOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
+=======
+
+    ByteBuffer buffer = builder.build().toByteString().asReadOnlyByteBuffer();
+>>>>>>> java compilable
 
     if (buffer.remaining() > TASK_SPEC_BUFFER_SIZE) {
       LOGGER.error(
@@ -375,5 +377,5 @@ public class RayletClientImpl implements RayletClient {
       byte[] checkpointId);
 
   private static native void nativeSetResource(long conn, String resourceName, double capacity,
-                                               byte[] nodeId) throws RayException;
+      byte[] nodeId) throws RayException;
 }

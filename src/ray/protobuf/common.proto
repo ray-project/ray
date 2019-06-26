@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
-option java_package = "ray.runtime.generated";
+option java_package = "org.ray.runtime.generated";
 
 // Language of a task or worker.
 enum Language {
@@ -33,11 +33,11 @@ message TaskSpec {
   // For a Java function, it should be: [class_name, method_name, type_descriptor]
   repeated string function_descriptor = 3;
   // ID of the driver that created this task.
-  string driver_id = 4;
+  bytes driver_id = 4;
   // Task ID of the task.
-  string task_id = 5;
+  bytes task_id = 5;
   // Task ID of the parent task.
-  string parent_task_id = 6;
+  bytes parent_task_id = 6;
   // A count of the number of tasks submitted by the parent task before this one.
   uint64 parent_counter = 7;
   // Task arguments.
@@ -62,15 +62,15 @@ message TaskArg {
   // object ID in this list which represents the object that is being passed.
   // However to support reducers in a MapReduce workload, we also support
   // passing multiple object IDs for each argument.
-  repeated string object_ids = 1;
+  repeated bytes object_ids = 1;
   // Data for pass-by-value arguments.
-  string data = 2;
+  bytes data = 2;
 }
 
 // Task spec of an actor creation task.
 message ActorCreationTaskSpec {
   // ID of the actor that will be created by this task.
-  string actor_id = 2;
+  bytes actor_id = 2;
   // The max number of times this actor should be recontructed.
   // If this number of 0 or negative, the actor won't be reconstructed on failure.
   uint64 max_actor_reconstructions = 3;
@@ -85,25 +85,25 @@ message ActorCreationTaskSpec {
 message ActorTaskSpec {
   // Actor ID of the task. This is the actor that this task is executed on
   // or NIL_ACTOR_ID if the task is just a normal task.
-  string actor_id = 2;
+  bytes actor_id = 2;
   // The ID of the handle that was used to submit the task. This should be
   // unique across handles with the same actor_id.
-  string actor_handle_id = 3;
+  bytes actor_handle_id = 3;
   // The dummy object ID of the actor creation task if this is an actor method.
-  string actor_creation_dummy_object_id = 4;
+  bytes actor_creation_dummy_object_id = 4;
   // Number of tasks that have been submitted to this actor so far.
   uint64 actor_counter = 5;
   // If this is an actor task, then this will be populated with all of the new
   // actor handles that were forked from this handle since the last task on
   // this handle was submitted.
   // Note that this is a long string that concatenate all of the new_actor_handle IDs.
-  repeated string new_actor_handles = 6;
+  repeated bytes new_actor_handles = 6;
 }
 
 message TaskExecutionSpec {
   // A list of object IDs representing the dependencies of this task that may
   // change at execution time.
-  repeated string dependencies = 1;
+  repeated bytes dependencies = 1;
   // The last time this task was received for scheduling.
   double last_timestamp = 2;
   // The number of times this task was spilled back by raylets.

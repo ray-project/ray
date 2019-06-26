@@ -1,3 +1,4 @@
+load("//bazel:ray.bzl", "define_java_module")
 load("@build_stack_rules_proto//java:java_proto_compile.bzl", "java_proto_compile")
 
 exports_files([
@@ -49,7 +50,7 @@ define_java_module(
 define_java_module(
     name = "runtime",
     additional_srcs = [
-        ":all_java_proto",
+        ":copy_proto",
     ],
     additional_resources = [
         ":java_native_deps",
@@ -178,11 +179,34 @@ filegroup(
     ],
 )
 
+genrule(
+    name = "copy_proto",
+    srcs = [
+        ":all_java_proto",
+    ],
+    # NOTE(hchen): This rule is added to `runtime` lib's `srcs` to make sure we run it
+    # before compiling the `runtime` lib. However, in bazel, a `java_library` only accepts
+    # `.java` or `.srcjar` as its `srcs`. Thus this rule generates an empty `.java` file.
+    outs = ["copy_proto_out.java"],
+    cmd = """
+        set -x
+        WORK_DIR=$$(pwd)
+        # Copy protobuf-generated files.
+        rm -rf $$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
+        for f in $(locations //java:all_java_proto); do
+            unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/java/runtime/src/main/java
+        done
+        touch $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
+)
+
 # Generates the depedencies needed by maven.
 genrule(
     name = "gen_maven_deps",
     srcs = [
-        ":all_java_proto",
+        ":copy_proto",
         ":java_native_deps",
         ":copy_pom_file",
         "@plasma//:org_apache_arrow_arrow_plasma",
@@ -198,14 +222,6 @@ genrule(
         for f in $(locations //java:java_native_deps); do
             chmod +w $$f
             cp $$f $$NATIVE_DEPS_DIR
-        done
-        # Copy protobuf-generated files.
-        GENERATED_DIR=$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
-        rm -rf $$GENERATED_DIR
-        mkdir -p $$GENERATED_DIR
-        for f in $(locations //java:all_java_proto); do
-            unzip $$f
-            mv org/ray/runtime/generated/* $$GENERATED_DIR
         done
         # Install plasma jar to local maven repo.
         mvn install:install-file -Dfile=$(locations @plasma//:org_apache_arrow_arrow_plasma) -Dpackaging=jar \
