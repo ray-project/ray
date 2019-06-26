@@ -95,8 +95,12 @@ class BaseSyncer(object):
         self.sync(self._local_dir, self._remote_path, *args, **kwargs)
         self.last_sync_up_time = time.time()
 
-    def close(self):
-        pass
+    def reset(self):
+        self.last_sync_up_time = float("-inf")
+        self.last_sync_down_time = float("-inf")
+
+    # def close(self):
+    #     pass
 
     def wait(self):
         pass
@@ -146,8 +150,16 @@ class CommandSyncer(BaseSyncer):
             final_cmd, shell=True, stdout=self.logfile)
         return True
 
-    def close(self):
-        self.logfile.close()
+    def reset(self):
+        if self.sync_process:
+            logger.warning("Sync process still running but resetting anyways.")
+            self.sync_process = None
+        super(CommandSyncer, self).reset()
+
+    # def close(self):
+    #     logger.warning("Closing log file.")
+    #     import ipdb; ipdb.set_trace()
+    #     self.logfile.close()
 
     def wait(self):
         if self.sync_process:

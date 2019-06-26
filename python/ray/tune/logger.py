@@ -240,7 +240,6 @@ class UnifiedLogger(Logger):
         for _logger in self._loggers:
             _logger.close()
         self._log_syncer.sync_down()
-        self._log_syncer.close()
 
     def flush(self):
         for _logger in self._loggers:
@@ -254,8 +253,13 @@ class UnifiedLogger(Logger):
         with the Ray autoscaler.
         """
         if worker_ip != self._log_syncer.worker_ip:
+            logger.info("Syncing (blocking) results to {}".format(worker_ip))
+            self._log_syncer.reset()
             self._log_syncer.set_worker_ip(worker_ip)
             self._log_syncer.sync_up()
+            # TODO: change this because this is blocking. But failures
+            # are rare, so maybe this is OK?
+            self._log_syncer.wait()
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):

@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import click
 import logging
+import os
 import time
 
 from ray.tune.error import TuneError
