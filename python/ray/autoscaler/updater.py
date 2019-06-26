@@ -204,7 +204,9 @@ class NodeUpdater(object):
                         "mkdir -p {}".format(os.path.dirname(remote_path)),
                         redirect=None if self.verbose else redirect,
                     )
-                    sync_cmd(local_path, remote_path,
+                    sync_cmd(
+                        local_path,
+                        remote_path,
                         redirect=None if self.verbose else redirect)
 
     def do_update(self):
@@ -230,13 +232,15 @@ class NodeUpdater(object):
         with LogTimer("NodeUpdater: {}".format(m)):
             with open("/dev/null", "w") as redirect:
                 for cmd in self.initialization_commands:
-                    self.ssh_cmd(cmd, redirect=None if self.verbose else redirect)
+                    self.ssh_cmd(
+                        cmd, redirect=None if self.verbose else redirect)
 
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
             with open("/dev/null", "w") as redirect:
                 for cmd in self.setup_commands:
-                    self.ssh_cmd(cmd, redirect=None if self.verbose else redirect)
+                    self.ssh_cmd(
+                        cmd, redirect=None if self.verbose else redirect)
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         logger.info("NodeUpdater: "

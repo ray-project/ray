@@ -30,7 +30,7 @@ class ClusterState(object):
                     workers = json.loads(open(self.save_path).read())
                     head_config = workers.get(provider_config["head_ip"])
                     if not head_config or head_config.get(
-                        "tags", {}).get(TAG_RAY_NODE_TYPE) != "head":
+                            "tags", {}).get(TAG_RAY_NODE_TYPE) != "head":
                         workers = {}
                         logger.info("Head IP changed - recreating cluster.")
                 else:
@@ -61,8 +61,7 @@ class ClusterState(object):
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
                     logger.debug("ClusterState: "
-                                "Writing cluster state: {}".format(
-                                    workers))
+                                 "Writing cluster state: {}".format(workers))
                     f.write(json.dumps(workers))
 
     def get(self):
