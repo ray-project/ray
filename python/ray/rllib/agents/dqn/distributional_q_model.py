@@ -94,7 +94,7 @@ class DistributionalQModel(TFModelV2):
                     units=self.action_space.n * num_atoms,
                     activation=None)
             else:
-                action_scores = model_outputs
+                action_scores = model_out
             if num_atoms > 1:
                 # Distributional Q-learning uses a discrete support z
                 # to represent the action value distribution

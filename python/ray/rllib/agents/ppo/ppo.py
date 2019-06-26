@@ -152,8 +152,7 @@ def validate_config(config):
             "with the policy model ('vf_share_layers': False).")
 
     # auto set the model option for layer sharing
-    if "vf_share_layers" not in config["model"]:
-        config["model"]["vf_share_layers"] = config["vf_share_layers"]
+    config["model"]["vf_share_layers"] = config["vf_share_layers"]
 
 
 PPOTrainer = build_trainer(
