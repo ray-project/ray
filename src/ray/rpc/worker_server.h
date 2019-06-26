@@ -20,9 +20,8 @@ class WorkerTaskHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] done_callback The callback to be called when the request is done.
-  virtual void HandleAssignTask(const AssignTaskRequest &request,
-                                 AssignTaskReply *reply,
-                                 RequestDoneCallback done_callback) = 0;
+  virtual void HandleAssignTask(const AssignTaskRequest &request, AssignTaskReply *reply,
+                                RequestDoneCallback done_callback) = 0;
 };
 
 /// The `GrpcServer` for `WorkerService`.
@@ -33,9 +32,8 @@ class WorkerTaskGrpcService : public GrpcService {
   /// \param[in] main_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
   WorkerTaskGrpcService(boost::asio::io_service &main_service,
-               WorkerTaskHandler &service_handler)
-      : GrpcService(main_service),
-        service_handler_(service_handler){};
+                        WorkerTaskHandler &service_handler)
+      : GrpcService(main_service), service_handler_(service_handler){};
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -46,11 +44,10 @@ class WorkerTaskGrpcService : public GrpcService {
           *server_call_factories_and_concurrencies) override {
     // Initialize the Factory for `AssignTask` requests.
     std::unique_ptr<ServerCallFactory> push_task_call_Factory(
-        new ServerCallFactoryImpl<WorkerTaskService, WorkerTaskHandler,
-                                  AssignTaskRequest, AssignTaskReply>(
+        new ServerCallFactoryImpl<WorkerTaskService, WorkerTaskHandler, AssignTaskRequest,
+                                  AssignTaskReply>(
             service_, &WorkerTaskService::AsyncService::RequestAssignTask,
-            service_handler_, &WorkerTaskHandler::HandleAssignTask, cq,
-            main_service_));
+            service_handler_, &WorkerTaskHandler::HandleAssignTask, cq, main_service_));
 
     // Set `AssignTask`'s accept concurrency to 100.
     server_call_factories_and_concurrencies->emplace_back(

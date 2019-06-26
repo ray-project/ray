@@ -14,21 +14,17 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    boost::asio::io_service &io_service,
-    rpc::GrpcServer &server)
+    boost::asio::io_service &io_service, rpc::GrpcServer &server)
     : task_service_(io_service, *this) {
-  
   server.RegisterService(task_service_);
 }
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
-    const rpc::AssignTaskRequest &request,
-    rpc::AssignTaskReply *reply,
+    const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
     rpc::RequestDoneCallback done_callback) {
-
   const std::string &task_message = request.task_spec();
   const raylet::Task task(*flatbuffers::GetRoot<protocol::Task>(
-      reinterpret_cast<const uint8_t *>(task_message.data())));  
+      reinterpret_cast<const uint8_t *>(task_message.data())));
   const auto &spec = task.GetTaskSpecification();
 
   auto status = task_handler_(spec);
@@ -36,7 +32,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 }
 
 Status CoreWorkerRayletTaskReceiver::SetTaskHandler(const TaskHandler &callback) {
-  task_handler_ = callback; 
+  task_handler_ = callback;
   return Status::OK();
 }
 

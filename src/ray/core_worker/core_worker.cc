@@ -15,7 +15,6 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
       task_interface_(*this),
       object_interface_(*this),
       task_execution_interface_(*this) {
-
   auto status = store_client_.Connect(store_socket_);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"
@@ -25,7 +24,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
 
   // TODO(zhijunfu): For non-driver worker, the initialization of
   // raylet client is delayed to when `TaskExecutionInterface::Run()`
-  // is called, as it is until that time the port for the worker 
+  // is called, as it is until that time the port for the worker
   // rpc server can be determined, and this information needs to be
   // included when worker registers to raylet.
   if (worker_type_ == WorkerType::DRIVER) {
@@ -37,9 +36,8 @@ void CoreWorker::InitializeRayletClient(int server_port) {
   if (raylet_client_ == nullptr) {
     raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
         raylet_socket_, worker_context_.GetWorkerID(),
-        (worker_type_ == ray::WorkerType::WORKER),
-        worker_context_.GetCurrentDriverID(), ToTaskLanguage(language_),
-        server_port));
+        (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentDriverID(),
+        ToTaskLanguage(language_), server_port));
   }
 }
 

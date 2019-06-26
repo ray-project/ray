@@ -13,35 +13,34 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   task_receivers_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-          new CoreWorkerRayletTaskReceiver(
-          main_service_, worker_server_)));
+          new CoreWorkerRayletTaskReceiver(main_service_, worker_server_)));
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
   auto callback = [this, executor](const raylet::TaskSpecification &spec) {
-      core_worker_.worker_context_.SetCurrentTask(spec);
+    core_worker_.worker_context_.SetCurrentTask(spec);
 
-      WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
-                                    ? WorkerLanguage::JAVA
-                                    : WorkerLanguage::PYTHON;
-      RayFunction func{language, spec.FunctionDescriptor()};
+    WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
+                                  ? WorkerLanguage::JAVA
+                                  : WorkerLanguage::PYTHON;
+    RayFunction func{language, spec.FunctionDescriptor()};
 
-      std::vector<std::shared_ptr<Buffer>> args;
-      RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
+    std::vector<std::shared_ptr<Buffer>> args;
+    RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
 
-      auto num_returns = spec.NumReturns();
-      if (spec.IsActorCreationTask() || spec.IsActorTask()) {
-        RAY_CHECK(num_returns > 0);
-        // Decrease to account for the dummy object id.
-        // TODO (zhijunfu): note this logic only applies to task submitted via raylet.
-        num_returns--;
-      }
+    auto num_returns = spec.NumReturns();
+    if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+      RAY_CHECK(num_returns > 0);
+      // Decrease to account for the dummy object id.
+      // TODO (zhijunfu): note this logic only applies to task submitted via raylet.
+      num_returns--;
+    }
 
-      auto status = executor(func, args, spec.TaskId(), num_returns);
-      // TODO(zhijunfu):
-      // 1. Check and handle failure.
-      // 2. Save or load checkpoint.
-      return status;
+    auto status = executor(func, args, spec.TaskId(), num_returns);
+    // TODO(zhijunfu):
+    // 1. Check and handle failure.
+    // 2. Save or load checkpoint.
+    return status;
   };
 
   for (auto &entry : task_receivers_) {

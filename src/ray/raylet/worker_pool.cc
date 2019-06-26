@@ -176,8 +176,7 @@ pid_t WorkerPool::StartProcess(const std::vector<const char *> &worker_command_a
 void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
   const auto pid = worker->Pid();
   const auto port = worker->Port();
-  RAY_LOG(DEBUG) << "Registering worker with pid " << pid
-                 << ", port: " << port;
+  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
   auto &state = GetStateForLanguage(worker->GetLanguage());
   state.registered_workers.insert(std::move(worker));
 

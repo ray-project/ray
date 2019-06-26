@@ -847,8 +847,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   auto client_id = from_flatbuf<ClientID>(*message->client_id());
   client->SetClientID(from_flatbuf<ClientID>(*message->client_id()));
-  auto worker =
-      std::make_shared<Worker>(message->worker_pid(), message->language(), message->port(), client);
+  auto worker = std::make_shared<Worker>(message->worker_pid(), message->language(),
+                                         message->port(), client);
   if (message->is_worker()) {
     // Register the new worker.
     bool use_push_task = (worker->Port() > 0);
@@ -856,7 +856,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       auto entry = worker_clients_.find(client_id);
       if (entry != worker_clients_.end()) {
         RAY_LOG(WARNING) << "Received registration of a new worker that already exists: "
-                          << client_id;
+                         << client_id;
         return;
       }
 
@@ -1781,69 +1781,68 @@ bool NodeManager::AssignTask(const Task &task) {
   }
 
   auto task_id = spec.TaskId();
-  auto finish_assign_task_callback =
-      [this, worker, task_id](Status status) {
-        // Remove the ASSIGNED task from the SWAP queue.
-        TaskState state;
-        auto assigned_task = local_queues_.RemoveTask(task_id, &state);
-        RAY_CHECK(state == TaskState::SWAP);
+  auto finish_assign_task_callback = [this, worker, task_id](Status status) {
+    // Remove the ASSIGNED task from the SWAP queue.
+    TaskState state;
+    auto assigned_task = local_queues_.RemoveTask(task_id, &state);
+    RAY_CHECK(state == TaskState::SWAP);
 
-        if (status.ok()) {
-          auto spec = assigned_task.GetTaskSpecification();
-          // We successfully assigned the task to the worker.
-          worker->AssignTaskId(spec.TaskId());
-          worker->AssignDriverId(spec.DriverId());
-          // Actor tasks require extra accounting to track the actor's state.
-          if (spec.IsActorTask()) {
-            auto actor_entry = actor_registry_.find(spec.ActorId());
-            RAY_CHECK(actor_entry != actor_registry_.end());
-            // Process any new actor handles that were created since the
-            // previous task on this handle was executed. The first task
-            // submitted on a new actor handle will depend on the dummy object
-            // returned by the previous task, so the dependency will not be
-            // released until this first task is submitted.
-            for (auto &new_handle_id : spec.NewActorHandles()) {
-              // Get the execution dependency for the first task submitted on the new
-              // actor handle. Since the new actor handle was created after this task
-              // began and before this task finished, it must have the same execution
-              // dependency.
-              const auto &execution_dependencies =
-                  assigned_task.GetTaskExecutionSpec().ExecutionDependencies();
-              // TODO(swang): We expect this task to have exactly 1 execution dependency,
-              // the dummy object returned by the previous actor task. However, this
-              // leaks information about the TaskExecutionSpecification implementation.
-              RAY_CHECK(execution_dependencies.size() == 1);
-              const ObjectID &execution_dependency = execution_dependencies.front();
-              // Add the new handle and give it a reference to the finished task's
-              // execution dependency.
-              actor_entry->second.AddHandle(new_handle_id, execution_dependency);
-            }
-
-            // TODO(swang): For actors with multiple actor handles, to
-            // guarantee that tasks are replayed in the same order after a
-            // failure, we must update the task's execution dependency to be
-            // the actor's current execution dependency.
-          } else {
-            RAY_CHECK(spec.NewActorHandles().empty());
-          }
-
-          // Mark the task as running.
-          // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
-          // Notify the task dependency manager that we no longer need this task's
-          // object dependencies.
-          RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(spec.TaskId()));
-        } else {
-          RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
-          // We failed to send the task to the worker, so disconnect the worker.
-          ProcessDisconnectClientMessage(worker->Connection());
-          // Queue this task for future assignment. We need to do this since
-          // DispatchTasks() removed it from the ready queue. The task will be
-          // assigned to a worker once one becomes available.
-          // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueTasks({assigned_task}, TaskState::READY);
-          DispatchTasks(MakeTasksWithResources({assigned_task}));
+    if (status.ok()) {
+      auto spec = assigned_task.GetTaskSpecification();
+      // We successfully assigned the task to the worker.
+      worker->AssignTaskId(spec.TaskId());
+      worker->AssignDriverId(spec.DriverId());
+      // Actor tasks require extra accounting to track the actor's state.
+      if (spec.IsActorTask()) {
+        auto actor_entry = actor_registry_.find(spec.ActorId());
+        RAY_CHECK(actor_entry != actor_registry_.end());
+        // Process any new actor handles that were created since the
+        // previous task on this handle was executed. The first task
+        // submitted on a new actor handle will depend on the dummy object
+        // returned by the previous task, so the dependency will not be
+        // released until this first task is submitted.
+        for (auto &new_handle_id : spec.NewActorHandles()) {
+          // Get the execution dependency for the first task submitted on the new
+          // actor handle. Since the new actor handle was created after this task
+          // began and before this task finished, it must have the same execution
+          // dependency.
+          const auto &execution_dependencies =
+              assigned_task.GetTaskExecutionSpec().ExecutionDependencies();
+          // TODO(swang): We expect this task to have exactly 1 execution dependency,
+          // the dummy object returned by the previous actor task. However, this
+          // leaks information about the TaskExecutionSpecification implementation.
+          RAY_CHECK(execution_dependencies.size() == 1);
+          const ObjectID &execution_dependency = execution_dependencies.front();
+          // Add the new handle and give it a reference to the finished task's
+          // execution dependency.
+          actor_entry->second.AddHandle(new_handle_id, execution_dependency);
         }
+
+        // TODO(swang): For actors with multiple actor handles, to
+        // guarantee that tasks are replayed in the same order after a
+        // failure, we must update the task's execution dependency to be
+        // the actor's current execution dependency.
+      } else {
+        RAY_CHECK(spec.NewActorHandles().empty());
+      }
+
+      // Mark the task as running.
+      // (See design_docs/task_states.rst for the state transition diagram.)
+      local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
+      // Notify the task dependency manager that we no longer need this task's
+      // object dependencies.
+      RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(spec.TaskId()));
+    } else {
+      RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
+      // We failed to send the task to the worker, so disconnect the worker.
+      ProcessDisconnectClientMessage(worker->Connection());
+      // Queue this task for future assignment. We need to do this since
+      // DispatchTasks() removed it from the ready queue. The task will be
+      // assigned to a worker once one becomes available.
+      // (See design_docs/task_states.rst for the state transition diagram.)
+      local_queues_.QueueTasks({assigned_task}, TaskState::READY);
+      DispatchTasks(MakeTasksWithResources({assigned_task}));
+    }
   };
 
   if (worker->Port() > 0) {
@@ -1863,44 +1862,42 @@ bool NodeManager::AssignTask(const Task &task) {
     rpc::AssignTaskRequest request;
     request.set_task_id(task_id.Binary());
     request.set_task_spec(task.Serialize());
-  
-    auto status = client->AssignTask(request, [this, worker](
-                     Status status, const rpc::AssignTaskReply &reply) {
-      // Worker has finished this task. The logic below is the same
-      // as ProcessGetTaskMessage(). 
-      auto conn = worker->Connection();
-      auto registered_worker = worker_pool_.GetRegisteredWorker(conn);
-      if (registered_worker == nullptr) {
-        RAY_LOG(DEBUG) << "worker with pid " << worker->Pid()
-                       << " has already dead";
-        return;
-      }
 
-      // If the worker was assigned a task, mark it as finished.
-      RAY_CHECK(!worker->GetAssignedTaskId().IsNil());
-      FinishAssignedTask(*worker);
+    auto status = client->AssignTask(
+        request, [this, worker](Status status, const rpc::AssignTaskReply &reply) {
+          // Worker has finished this task. The logic below is the same
+          // as ProcessGetTaskMessage().
+          auto conn = worker->Connection();
+          auto registered_worker = worker_pool_.GetRegisteredWorker(conn);
+          if (registered_worker == nullptr) {
+            RAY_LOG(DEBUG) << "worker with pid " << worker->Pid() << " has already dead";
+            return;
+          }
 
-      HandleWorkerAvailable(worker);
-    });
+          // If the worker was assigned a task, mark it as finished.
+          RAY_CHECK(!worker->GetAssignedTaskId().IsNil());
+          FinishAssignedTask(*worker);
 
-    // NOTE: we cannot directly call `finish_assign_task_callback` here because 
+          HandleWorkerAvailable(worker);
+        });
+
+    // NOTE: we cannot directly call `finish_assign_task_callback` here because
     // it assumes the task is in SWAP queue, thus we need to delay invoking this
     // function after the assigned tasks are moved from READY queue to SWAP queue
     // in `DispatchTasks`.
     // Another option is to move the tasks to SWAP queue here just before calling
     // `finish_assign_task_callback` so we can save an io_service post, at the
     // expense of calling `MoveTask` for each of the assigned tasks.
-    io_service_.post([status, finish_assign_task_callback]() {
-      finish_assign_task_callback(status); 
-    });
-    
+    io_service_.post(
+        [status, finish_assign_task_callback]() { finish_assign_task_callback(status); });
+
   } else {
     ResourceIdSet resource_id_set =
         worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
     auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
-    auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
-                                                fbb.CreateVector(resource_id_set_flatbuf));
+    auto message = protocol::CreateGetTaskReply(
+        fbb, spec.ToFlatbuffer(fbb), fbb.CreateVector(resource_id_set_flatbuf));
     fbb.Finish(message);
     const auto &task_id = spec.TaskId();
     worker->Connection()->WriteMessageAsync(

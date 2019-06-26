@@ -51,6 +51,7 @@ class ClientCallImpl : public ClientCall {
  public:
   void OnReplyReceived() override { callback_(GrpcStatusToRayStatus(status_), reply_); }
   Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
+
  private:
   /// Constructor.
   ///

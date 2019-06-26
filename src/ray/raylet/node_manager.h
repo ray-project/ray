@@ -458,7 +458,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// worker is registered with a port greater than zero (which indicates it will
   /// act as a rpc server), and when a worker finishes it assigned task, which is
   /// indicated by a `GetTask` message (or a rpc reply if the worker is a rpc server).
-  /// 
+  ///
   /// \param worker Worker that is available.
   /// \return void.
   void HandleWorkerAvailable(std::shared_ptr<Worker> worker);
@@ -536,8 +536,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       remote_node_manager_clients_;
 
   /// Map from node ids to clients of the local workers.
-  std::unordered_map<ClientID, std::unique_ptr<rpc::WorkerTaskClient>>
-      worker_clients_;      
+  std::unordered_map<ClientID, std::unique_ptr<rpc::WorkerTaskClient>> worker_clients_;
 };
 
 }  // namespace raylet

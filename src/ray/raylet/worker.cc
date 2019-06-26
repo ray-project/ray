@@ -10,7 +10,7 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(pid_t pid, const Language &language,int port,
+Worker::Worker(pid_t pid, const Language &language, int port,
                std::shared_ptr<LocalClientConnection> connection)
     : pid_(pid),
       language_(language),
