@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 import time
 import warnings
+import os
 
 import ray
 from ray.tests.cluster_utils import Cluster
@@ -289,6 +290,13 @@ def test_object_transfer_retry(ray_start_cluster):
     end_time = time.time()
     assert end_time - start_time < repeated_push_delay
 
+def print_mem():
+    os.system('top -b -n 3 -o %MEM | head -20 > tmp.log')
+    os.system('cat tmp.log')
+    os.system('free -h > tmp.log')
+    os.system('cat tmp.log')
+    os.system('ps -eo pmem --sort=-pmem | head -10 > tmp.log')
+    os.system('cat tmp.log')
 
 # The purpose of this test is to make sure we can transfer many objects. In the
 # past, this has caused failures in which object managers create too many open
