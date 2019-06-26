@@ -4,9 +4,6 @@ from __future__ import print_function
 
 from collections import namedtuple
 from ray.rllib.models.model import restore_original_dimensions
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
 
 
 class ModelV2(object):
