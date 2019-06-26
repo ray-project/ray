@@ -11,6 +11,7 @@ import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
+import org.ray.runtime.util.IdUtil;
 
 /**
  * Represents necessary information of a task for scheduling and executing.
@@ -50,7 +51,10 @@ public class TaskSpec {
   // Task arguments.
   public final FunctionArg[] args;
 
-  // return ids
+  // number of return objects.
+  public final int numReturns;
+
+  // returns ids.
   public final ObjectId[] returnIds;
 
   // The task's resource demands.
@@ -58,6 +62,8 @@ public class TaskSpec {
 
   // Language of this task.
   public final TaskLanguage language;
+
+  public final List<String> dynamicWorkerOptions;
 
   // Descriptor of the remote function.
   // Note, if task language is Java, the type is JavaFunctionDescriptor. If the task language
@@ -86,10 +92,11 @@ public class TaskSpec {
       int actorCounter,
       UniqueId[] newActorHandles,
       FunctionArg[] args,
-      ObjectId[] returnIds,
+      int numReturns,
       Map<String, Double> resources,
       TaskLanguage language,
-      FunctionDescriptor functionDescriptor) {
+      FunctionDescriptor functionDescriptor,
+      List<String> dynamicWorkerOptions) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
@@ -101,7 +108,13 @@ public class TaskSpec {
     this.actorCounter = actorCounter;
     this.newActorHandles = newActorHandles;
     this.args = args;
-    this.returnIds = returnIds;
+    this.numReturns = numReturns;
+    this.dynamicWorkerOptions = dynamicWorkerOptions;
+
+    returnIds = new ObjectId[numReturns];
+    for (int i = 0; i < numReturns; ++i) {
+      returnIds[i] = IdUtil.computeReturnId(taskId, i + 1);
+    }
     this.resources = resources;
     this.language = language;
     if (language == TaskLanguage.JAVA) {
@@ -145,10 +158,11 @@ public class TaskSpec {
         ", actorCounter=" + actorCounter +
         ", newActorHandles=" + Arrays.toString(newActorHandles) +
         ", args=" + Arrays.toString(args) +
-        ", returnIds=" + Arrays.toString(returnIds) +
+        ", numReturns=" + numReturns +
         ", resources=" + resources +
         ", language=" + language +
         ", functionDescriptor=" + functionDescriptor +
+        ", dynamicWorkerOptions=" + dynamicWorkerOptions +
         ", executionDependencies=" + executionDependencies +
         '}';
   }

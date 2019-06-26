@@ -101,7 +101,7 @@ def get_address_info_from_redis_helper(redis_address,
     # Redis) must have run "CONFIG SET protected-mode no".
     redis_client = create_redis_client(redis_address, password=redis_password)
 
-    client_table = ray.experimental.state.parse_client_table(redis_client)
+    client_table = ray.state._parse_client_table(redis_client)
     if len(client_table) == 0:
         raise Exception(
             "Redis has started but no raylets have registered yet.")
@@ -1194,6 +1194,7 @@ def start_raylet(redis_address,
         "--java_worker_command={}".format(java_worker_command),
         "--redis_password={}".format(redis_password or ""),
         "--temp_dir={}".format(temp_dir),
+        "--session_dir={}".format(session_dir),
     ]
     process_info = start_ray_process(
         command,
@@ -1231,7 +1232,8 @@ def build_java_worker_command(
     """
     assert java_worker_options is not None
 
-    command = "java ".format(java_worker_options)
+    command = "java "
+
     if redis_address is not None:
         command += "-Dray.redis.address={} ".format(redis_address)
 
@@ -1252,6 +1254,8 @@ def build_java_worker_command(
         # Put `java_worker_options` in the last, so it can overwrite the
         # above options.
         command += java_worker_options + " "
+
+    command += "RAY_WORKER_OPTION_0 "
     command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command

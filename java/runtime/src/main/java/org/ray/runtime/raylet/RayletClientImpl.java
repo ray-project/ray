@@ -154,6 +154,7 @@ public class RayletClientImpl implements RayletClient {
     UniqueId actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
     UniqueId actorHandleId = UniqueId.fromByteBuffer(info.actorHandleIdAsByteBuffer());
     int actorCounter = info.actorCounter();
+    int numReturns = info.numReturns();
 
     // Deserialize new actor handles
     UniqueId[] newActorHandles = IdUtil.getUniqueIdsFromByteBuffer(
@@ -177,8 +178,6 @@ public class RayletClientImpl implements RayletClient {
         args[i] = FunctionArg.passByValue(data);
       }
     }
-    // Deserialize return ids
-    ObjectId[] returnIds = IdUtil.getObjectIdsFromByteBuffer(info.returnsAsByteBuffer());
 
     // Deserialize required resources;
     Map<String, Double> resources = new HashMap<>();
@@ -191,9 +190,16 @@ public class RayletClientImpl implements RayletClient {
     JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
+
+    // Deserialize dynamic worker options.
+    List<String> dynamicWorkerOptions = new ArrayList<>();
+    for (int i = 0; i < info.dynamicWorkerOptionsLength(); ++i) {
+      dynamicWorkerOptions.add(info.dynamicWorkerOptions(i));
+    }
+
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
         maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
-        args, returnIds, resources, TaskLanguage.JAVA, functionDescriptor);
+        args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -211,6 +217,7 @@ public class RayletClientImpl implements RayletClient {
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
+    final int numReturnsOffset = task.numReturns;
 
     // Serialize the new actor handles.
     int newActorHandlesOffset
@@ -233,9 +240,6 @@ public class RayletClientImpl implements RayletClient {
       argsOffsets[i] = Arg.createArg(fbb, objectIdOffset, dataOffset);
     }
     int argsOffset = fbb.createVectorOfTables(argsOffsets);
-
-    // Serialize returns
-    int returnsOffset = fbb.createString(IdUtil.concatIds(task.returnIds));
 
     // Serialize required resources
     // The required_resources vector indicates the quantities of the different
@@ -278,6 +282,12 @@ public class RayletClientImpl implements RayletClient {
       functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
     }
 
+    int [] dynamicWorkerOptionsOffsets = new int[task.dynamicWorkerOptions.size()];
+    for (int index = 0; index < task.dynamicWorkerOptions.size(); ++index) {
+      dynamicWorkerOptionsOffsets[index] = fbb.createString(task.dynamicWorkerOptions.get(index));
+    }
+    int dynamicWorkerOptionsOffset = fbb.createVectorOfTables(dynamicWorkerOptionsOffsets);
+
     int root = TaskInfo.createTaskInfo(
         fbb,
         driverIdOffset,
@@ -292,11 +302,12 @@ public class RayletClientImpl implements RayletClient {
         actorCounter,
         newActorHandlesOffset,
         argsOffset,
-        returnsOffset,
+        numReturnsOffset,
         requiredResourcesOffset,
         requiredPlacementResourcesOffset,
         language,
-        functionDescriptorOffset);
+        functionDescriptorOffset,
+        dynamicWorkerOptionsOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
 

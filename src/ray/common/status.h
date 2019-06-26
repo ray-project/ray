@@ -54,6 +54,17 @@
 // This macro is used to replace the "ARROW_CHECK_OK" macro.
 #define RAY_ARROW_CHECK_OK(s) RAY_ARROW_CHECK_OK_PREPEND(s, "Bad status")
 
+// If arrow status is not ok, return a ray IOError status
+// with the error message.
+#define RAY_ARROW_RETURN_NOT_OK(s)               \
+  do {                                           \
+    ::arrow::Status _s = (s);                    \
+    if (RAY_PREDICT_FALSE(!_s.ok())) {           \
+      return ray::Status::IOError(_s.message()); \
+      ;                                          \
+    }                                            \
+  } while (0)
+
 namespace ray {
 
 enum class StatusCode : char {

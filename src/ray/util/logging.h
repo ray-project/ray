@@ -16,19 +16,19 @@ enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK(condition)                                                   \
-  (condition) ? RAY_IGNORE_EXPR(0)                                             \
-              : ::ray::Voidify() &                                             \
-                    ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                        << " Check failed: " #condition " "
+#define RAY_CHECK(condition)                                                          \
+  (condition)                                                                         \
+      ? RAY_IGNORE_EXPR(0)                                                            \
+      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
+                               << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 
-#define RAY_DCHECK(condition)                                                  \
-  (condition) ? RAY_IGNORE_EXPR(0)                                             \
-              : ::ray::Voidify() &                                             \
-                    ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
-                        << " Debug check failed: " #condition " "
+#define RAY_DCHECK(condition)                                                         \
+  (condition)                                                                         \
+      ? RAY_IGNORE_EXPR(0)                                                            \
+      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
+                               << " Debug check failed: " #condition " "
 #else
 
 #define RAY_DCHECK(condition) RAY_CHECK(condition)

@@ -5,8 +5,7 @@ RLlib is an open-source library for reinforcement learning that offers both high
 
 .. image:: rllib-stack.svg
 
-Learn more about RLlib's design by reading the `ICML paper <https://arxiv.org/abs/1712.09381>`__.
-To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-training.html>`__.
+To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-training.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
 
 Installation
 ------------
@@ -96,12 +95,21 @@ Offline Datasets
 * `Input API <rllib-offline.html#input-api>`__
 * `Output API <rllib-offline.html#output-api>`__
 
-Concepts
---------
-* `Policies <rllib-concepts.html>`__
-* `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
-* `Policy Optimization <rllib-concepts.html#policy-optimization>`__
-* `Trainers <rllib-concepts.html#trainers>`__
+Concepts and Building Custom Algorithms
+---------------------------------------
+*  `Policies <rllib-concepts.html>`__
+
+   -  `Building Policies in TensorFlow <rllib-concepts.html#building-policies-in-tensorflow>`__
+
+   -  `Building Policies in TensorFlow Eager <rllib-concepts.html#building-policies-in-tensorflow-eager>`__
+
+   -  `Building Policies in PyTorch <rllib-concepts.html#building-policies-in-pytorch>`__
+
+   -  `Extending Existing Policies <rllib-concepts.html#extending-existing-policies>`__
+
+*  `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
+*  `Policy Optimization <rllib-concepts.html#policy-optimization>`__
+*  `Trainers <rllib-concepts.html#trainers>`__
 
 Examples
 --------

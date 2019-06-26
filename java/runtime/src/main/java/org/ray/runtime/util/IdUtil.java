@@ -13,7 +13,7 @@ import org.ray.api.id.UniqueId;
 /**
  * Helper method for different Ids.
  * Note: any changes to these methods must be synced with C++ helper functions
- * in src/ray/id.h
+ * in src/ray/common/id.h
  */
 public class IdUtil {
   public static final int OBJECT_INDEX_POS = 16;
@@ -161,7 +161,7 @@ public class IdUtil {
   }
 
   /**
-   * This method is the same as `hash()` method of `ID` class in ray/src/ray/id.h
+   * This method is the same as `Hash()` method of `ID` class in ray/src/ray/common/id.h
    */
   private static long murmurHash64A(byte[] data, int length, int seed) {
     final long m = 0xc6a4a7935bd1e995L;

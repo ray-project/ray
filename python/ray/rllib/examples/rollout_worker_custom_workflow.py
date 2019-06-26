@@ -1,4 +1,4 @@
-"""Example of using policy evaluator classes directly to implement training.
+"""Example of using rollout worker classes directly to implement training.
 
 Instead of using the built-in Trainer classes provided by RLlib, here we define
 a custom Policy class and manually coordinate distributed sample
@@ -15,7 +15,7 @@ import gym
 import ray
 from ray import tune
 from ray.rllib.policy import Policy
-from ray.rllib.evaluation import PolicyEvaluator, SampleBatch
+from ray.rllib.evaluation import RolloutWorker, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 
 parser = argparse.ArgumentParser()
@@ -67,8 +67,8 @@ def training_workflow(config, reporter):
     env = gym.make("CartPole-v0")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = [
-        PolicyEvaluator.as_remote().remote(lambda c: gym.make("CartPole-v0"),
-                                           CustomPolicy)
+        RolloutWorker.as_remote().remote(lambda c: gym.make("CartPole-v0"),
+                                         CustomPolicy)
         for _ in range(config["num_workers"])
     ]
 
@@ -97,7 +97,7 @@ def training_workflow(config, reporter):
         # Do some arbitrary updates based on the T2 batch
         policy.update_some_value(sum(T2["rewards"]))
 
-        reporter(**collect_metrics(remote_evaluators=workers))
+        reporter(**collect_metrics(remote_workers=workers))
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ provider:
     # Availability zone(s), comma-separated, that nodes may be launched in.
     # Nodes are currently spread between zones by a round-robin approach,
     # however this implementation detail should not be relied upon.
-    availability_zone: us-west-2a,us-west-2b
+    availability_zone: us-west-2b
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -90,8 +90,8 @@ file_mounts: {
 # List of shell commands to run to set up nodes.
 setup_commands:
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_<<<PYTHON_VERSION>>>/bin:$PATH"' >> ~/.bashrc
-    - ray || wget https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev0-<<<WHEEL_STR>>>-manylinux1_x86_64.whl
-    - rllib || pip install -U ray-0.8.0.dev0-<<<WHEEL_STR>>>-manylinux1_x86_64.whl[rllib]
+    - ray || wget https://s3-us-west-2.amazonaws.com/ray-wheels/releases/<<<RAY_VERSION>>>/<<<RAY_COMMIT>>>/ray-<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl
+    - rllib || pip install -U ray-<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl[rllib]
     - pip install tensorflow-gpu==1.12.0
     - echo "sudo halt" | at now + 60 minutes
     # Consider uncommenting these if you also want to run apt-get commands during setup

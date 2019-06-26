@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import copy
 import logging
+from functools import wraps
 
 from ray.function_manager import FunctionDescriptor
 import ray.signature
@@ -74,14 +75,17 @@ class RemoteFunction(object):
 
         self._last_driver_id_exported_for = None
 
+        # Override task.remote's signature and docstring
+        @wraps(function)
+        def _remote_proxy(*args, **kwargs):
+            return self._remote(args=args, kwargs=kwargs)
+
+        self.remote = _remote_proxy
+
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
                         "of running '{}()', try '{}.remote()'.".format(
                             self._function_name, self._function_name))
-
-    def remote(self, *args, **kwargs):
-        """This runs immediately when a remote function is called."""
-        return self._remote(args=args, kwargs=kwargs)
 
     def _submit(self,
                 args=None,

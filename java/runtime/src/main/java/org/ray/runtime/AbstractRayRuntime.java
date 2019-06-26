@@ -35,6 +35,7 @@ import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.IdUtil;
+import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -363,8 +364,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
 
     int maxActorReconstruction = 0;
+    List<String> dynamicWorkerOptions = ImmutableList.of();
     if (taskOptions instanceof ActorCreationOptions) {
       maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
+      String jvmOptions = ((ActorCreationOptions) taskOptions).jvmOptions;
+      if (!StringUtil.isNullOrEmpty(jvmOptions)) {
+        dynamicWorkerOptions = ImmutableList.of(((ActorCreationOptions) taskOptions).jvmOptions);
+      }
     }
 
     TaskLanguage language;
@@ -390,10 +396,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.increaseTaskCounter(),
         actor.getNewActorHandles().toArray(new UniqueId[0]),
         ArgumentsBuilder.wrap(args, language == TaskLanguage.PYTHON),
-        returnIds,
+        numReturns,
         resources,
         language,
-        functionDescriptor
+        functionDescriptor,
+        dynamicWorkerOptions
     );
   }
 

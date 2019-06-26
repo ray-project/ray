@@ -18,6 +18,7 @@ from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.sample import function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.util import warn_if_slow
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.web_server import TuneServer
@@ -77,7 +78,7 @@ class TrialRunner(object):
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
     Example:
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         runner.add_trial(Trial(...))
         runner.add_trial(Trial(...))
         while not runner.is_finished():
@@ -98,14 +99,12 @@ class TrialRunner(object):
     CKPT_FILE_TMPL = "experiment_state-{}.json"
 
     def __init__(self,
-                 search_alg,
+                 search_alg=None,
                  scheduler=None,
                  launch_web_server=False,
                  metadata_checkpoint_dir=None,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
-                 queue_trials=False,
-                 reuse_actors=False,
                  trial_executor=None):
         """Initializes a new TrialRunner.
 
@@ -119,20 +118,15 @@ class TrialRunner(object):
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
-            queue_trials (bool): Whether to queue trials when the cluster does
-                not currently have enough resources to launch one. This should
-                be set to True when running on an autoscaling cluster to enable
-                automatic scale-up.
             reuse_actors (bool): Whether to reuse actors between different
                 trials when possible. This can drastically speed up experiments
                 that start and stop actors often (e.g., PBT in
                 time-multiplexing mode).
             trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
         """
-        self._search_alg = search_alg
+        self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
-        self.trial_executor = (trial_executor or RayTrialExecutor(
-            queue_trials=queue_trials, reuse_actors=reuse_actors))
+        self.trial_executor = trial_executor or RayTrialExecutor()
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -141,7 +135,6 @@ class TrialRunner(object):
         self._total_time = 0
         self._iteration = 0
         self._verbose = verbose
-        self._queue_trials = queue_trials
 
         self._server = None
         self._server_port = server_port
@@ -229,11 +222,8 @@ class TrialRunner(object):
             "This will ignore any new changes to the specification."
         ]))
 
-        from ray.tune.suggest import BasicVariantGenerator
         runner = TrialRunner(
-            search_alg or BasicVariantGenerator(),
-            scheduler=scheduler,
-            trial_executor=trial_executor)
+            search_alg, scheduler=scheduler, trial_executor=trial_executor)
 
         runner.__setstate__(runner_state["runner_data"])
 

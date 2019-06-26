@@ -18,7 +18,7 @@ following command.
 
 .. code-block:: python
 
-  ray.global_state.chrome_tracing_dump(filename="/tmp/timeline.json")
+  ray.timeline(filename="/tmp/timeline.json")
 
 Then open `chrome://tracing`_ in the Chrome web browser, and load
 ``timeline.json``.

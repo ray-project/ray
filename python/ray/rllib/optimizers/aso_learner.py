@@ -25,11 +25,11 @@ class LearnerThread(threading.Thread):
     improves overall throughput.
     """
 
-    def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_iter,
+    def __init__(self, local_worker, minibatch_buffer_size, num_sgd_iter,
                  learner_queue_size):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
-        self.local_evaluator = local_evaluator
+        self.local_worker = local_worker
         self.inqueue = queue.Queue(maxsize=learner_queue_size)
         self.outqueue = queue.Queue()
         self.minibatch_buffer = MinibatchBuffer(
@@ -52,7 +52,7 @@ class LearnerThread(threading.Thread):
             batch, _ = self.minibatch_buffer.get()
 
         with self.grad_timer:
-            fetches = self.local_evaluator.learn_on_batch(batch)
+            fetches = self.local_worker.learn_on_batch(batch)
             self.weights_updated = True
             self.stats = get_learner_stats(fetches)
 

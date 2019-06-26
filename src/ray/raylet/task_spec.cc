@@ -65,8 +65,8 @@ TaskSpecification::TaskSpecification(
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const Language &language, const std::vector<std::string> &function_descriptor)
-    : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
-                        ObjectID::nil(), 0, ActorID::nil(), ActorHandleID::nil(), -1, {},
+    : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::Nil(),
+                        ObjectID::Nil(), 0, ActorID::Nil(), ActorHandleID::Nil(), -1, {},
                         task_arguments, num_returns, required_resources,
                         std::unordered_map<std::string, double>(), language,
                         function_descriptor) {}
@@ -80,22 +80,16 @@ TaskSpecification::TaskSpecification(
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    const Language &language, const std::vector<std::string> &function_descriptor)
+    const Language &language, const std::vector<std::string> &function_descriptor,
+    const std::vector<std::string> &dynamic_worker_options)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
   TaskID task_id = GenerateTaskId(driver_id, parent_task_id, parent_counter);
-
   // Add argument object IDs.
   std::vector<flatbuffers::Offset<Arg>> arguments;
   for (auto &argument : task_arguments) {
     arguments.push_back(argument->ToFlatbuffer(fbb));
-  }
-
-  // Generate return ids.
-  std::vector<ray::ObjectID> returns;
-  for (int64_t i = 1; i < num_returns + 1; ++i) {
-    returns.push_back(ObjectID::for_task_return(task_id, i));
   }
 
   // Serialize the TaskSpecification.
@@ -104,10 +98,11 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, actor_creation_id),
       to_flatbuf(fbb, actor_creation_dummy_object_id), max_actor_reconstructions,
       to_flatbuf(fbb, actor_id), to_flatbuf(fbb, actor_handle_id), actor_counter,
-      ids_to_flatbuf(fbb, new_actor_handles), fbb.CreateVector(arguments),
-      ids_to_flatbuf(fbb, returns), map_to_flatbuf(fbb, required_resources),
+      ids_to_flatbuf(fbb, new_actor_handles), fbb.CreateVector(arguments), num_returns,
+      map_to_flatbuf(fbb, required_resources),
       map_to_flatbuf(fbb, required_placement_resources), language,
-      string_vec_to_flatbuf(fbb, function_descriptor));
+      string_vec_to_flatbuf(fbb, function_descriptor),
+      string_vec_to_flatbuf(fbb, dynamic_worker_options));
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -167,12 +162,11 @@ int64_t TaskSpecification::NumArgs() const {
 
 int64_t TaskSpecification::NumReturns() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return (message->returns()->size() / kUniqueIDSize);
+  return message->num_returns();
 }
 
 ObjectID TaskSpecification::ReturnId(int64_t return_index) const {
-  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return ids_from_flatbuf<ObjectID>(*message->returns())[return_index];
+  return ObjectID::ForTaskReturn(TaskId(), return_index + 1);
 }
 
 bool TaskSpecification::ArgByRef(int64_t arg_index) const {
@@ -221,11 +215,9 @@ Language TaskSpecification::GetLanguage() const {
   return message->language();
 }
 
-bool TaskSpecification::IsActorCreationTask() const {
-  return !ActorCreationId().is_nil();
-}
+bool TaskSpecification::IsActorCreationTask() const { return !ActorCreationId().IsNil(); }
 
-bool TaskSpecification::IsActorTask() const { return !ActorId().is_nil(); }
+bool TaskSpecification::IsActorTask() const { return !ActorId().IsNil(); }
 
 ActorID TaskSpecification::ActorCreationId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
@@ -265,6 +257,11 @@ ObjectID TaskSpecification::ActorDummyObject() const {
 std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return ids_from_flatbuf<ActorHandleID>(*message->new_actor_handles());
+}
+
+std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return string_vec_from_flatbuf(*message->dynamic_worker_options());
 }
 
 }  // namespace raylet

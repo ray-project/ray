@@ -18,20 +18,16 @@ class IOContext(object):
         config (dict): Configuration of the agent.
         worker_index (int): When there are multiple workers created, this
             uniquely identifies the current worker.
-        evaluator (PolicyEvaluator): policy evaluator object reference.
+        worker (RolloutWorker): rollout worker object reference.
     """
 
     @PublicAPI
-    def __init__(self,
-                 log_dir=None,
-                 config=None,
-                 worker_index=0,
-                 evaluator=None):
+    def __init__(self, log_dir=None, config=None, worker_index=0, worker=None):
         self.log_dir = log_dir or os.getcwd()
         self.config = config or {}
         self.worker_index = worker_index
-        self.evaluator = evaluator
+        self.worker = worker
 
     @PublicAPI
     def default_sampler_input(self):
-        return self.evaluator.sampler
+        return self.worker.sampler

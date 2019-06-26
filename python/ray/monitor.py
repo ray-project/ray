@@ -37,8 +37,7 @@ class Monitor(object):
 
     def __init__(self, redis_address, autoscaling_config, redis_password=None):
         # Initialize the Redis clients.
-        self.state = ray.experimental.state.GlobalState()
-        self.state._initialize_global_state(
+        ray.state.state._initialize_global_state(
             args.redis_address, redis_password=redis_password)
         self.redis = ray.services.create_redis_client(
             redis_address, password=redis_password)
@@ -102,29 +101,26 @@ class Monitor(object):
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
 
-        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            data, 0)
-        heartbeat_data = gcs_entries.Entries(0)
+        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
+        heartbeat_data = gcs_entries.entries[0]
 
-        message = (ray.gcs_utils.HeartbeatBatchTableData.
-                   GetRootAsHeartbeatBatchTableData(heartbeat_data, 0))
+        message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
+            heartbeat_data)
 
-        for j in range(message.BatchLength()):
-            heartbeat_message = message.Batch(j)
-
-            num_resources = heartbeat_message.ResourcesTotalLabelLength()
+        for heartbeat_message in message.batch:
+            num_resources = len(heartbeat_message.resources_available_label)
             static_resources = {}
             dynamic_resources = {}
             for i in range(num_resources):
-                dyn = heartbeat_message.ResourcesAvailableLabel(i)
-                static = heartbeat_message.ResourcesTotalLabel(i)
+                dyn = heartbeat_message.resources_available_label[i]
+                static = heartbeat_message.resources_total_label[i]
                 dynamic_resources[dyn] = (
-                    heartbeat_message.ResourcesAvailableCapacity(i))
+                    heartbeat_message.resources_available_capacity[i])
                 static_resources[static] = (
-                    heartbeat_message.ResourcesTotalCapacity(i))
+                    heartbeat_message.resources_total_capacity[i])
 
             # Update the load metrics for this raylet.
-            client_id = ray.utils.binary_to_hex(heartbeat_message.ClientId())
+            client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
             if ip:
                 self.load_metrics.update(ip, static_resources,
@@ -149,7 +145,7 @@ class Monitor(object):
         xray_object_table_prefix = (
             ray.gcs_utils.TablePrefix_OBJECT_string.encode("ascii"))
 
-        task_table_objects = self.state.task_table()
+        task_table_objects = ray.tasks()
         driver_id_hex = binary_to_hex(driver_id)
         driver_task_id_bins = set()
         for task_id_hex, task_info in task_table_objects.items():
@@ -161,7 +157,7 @@ class Monitor(object):
             driver_task_id_bins.add(hex_to_binary(task_id_hex))
 
         # Get objects associated with the driver.
-        object_table_objects = self.state.object_table()
+        object_table_objects = ray.objects()
         driver_object_id_bins = set()
         for object_id, _ in object_table_objects.items():
             task_id_bin = ray._raylet.compute_task_id(object_id).binary()
@@ -171,13 +167,13 @@ class Monitor(object):
         def to_shard_index(id_bin):
             if len(id_bin) == ray.TaskID.size():
                 return binary_to_task_id(id_bin).redis_shard_hash() % len(
-                    self.state.redis_clients)
+                    ray.state.state.redis_clients)
             else:
                 return binary_to_object_id(id_bin).redis_shard_hash() % len(
-                    self.state.redis_clients)
+                    ray.state.state.redis_clients)
 
         # Form the redis keys to delete.
-        sharded_keys = [[] for _ in range(len(self.state.redis_clients))]
+        sharded_keys = [[] for _ in range(len(ray.state.state.redis_clients))]
         for task_id_bin in driver_task_id_bins:
             sharded_keys[to_shard_index(task_id_bin)].append(
                 xray_task_table_prefix + task_id_bin)
@@ -190,7 +186,7 @@ class Monitor(object):
             keys = sharded_keys[shard_index]
             if len(keys) == 0:
                 continue
-            redis = self.state.redis_clients[shard_index]
+            redis = ray.state.state.redis_clients[shard_index]
             num_deleted = redis.delete(*keys)
             logger.info("Monitor: "
                         "Removed {} dead redis entries of the "
@@ -209,12 +205,10 @@ class Monitor(object):
             unused_channel: The message channel.
             data: The message data.
         """
-        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            data, 0)
-        driver_data = gcs_entries.Entries(0)
-        message = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(
-            driver_data, 0)
-        driver_id = message.DriverId()
+        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
+        driver_data = gcs_entries.entries[0]
+        message = ray.gcs_utils.DriverTableData.FromString(driver_data)
+        driver_id = message.driver_id
         logger.info("Monitor: "
                     "XRay Driver {} has been removed.".format(
                         binary_to_hex(driver_id)))
@@ -256,7 +250,7 @@ class Monitor(object):
                 message_handler(channel, data)
 
     def update_raylet_map(self):
-        all_raylet_nodes = self.state.client_table()
+        all_raylet_nodes = ray.nodes()
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
             client_id = (raylet_info.get("DBClientID")

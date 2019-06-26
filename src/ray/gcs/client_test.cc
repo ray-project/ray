@@ -5,9 +5,9 @@ extern "C" {
 #include "ray/thirdparty/hiredis/hiredis.h"
 }
 
+#include "ray/common/ray_config.h"
 #include "ray/gcs/client.h"
 #include "ray/gcs/tables.h"
-#include "ray/ray_config.h"
 
 namespace ray {
 
@@ -29,7 +29,7 @@ class TestGcs : public ::testing::Test {
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
     client_ = std::make_shared<gcs::AsyncGcsClient>("127.0.0.1", 6379, command_type_,
                                                     /*is_test_client=*/true);
-    driver_id_ = DriverID::from_random();
+    driver_id_ = DriverID::FromRandom();
   }
 
   virtual ~TestGcs() {
@@ -84,22 +84,22 @@ class TestGcsWithChainAsio : public TestGcsWithAsio {
 
 void TestTableLookup(const DriverID &driver_id,
                      std::shared_ptr<gcs::AsyncGcsClient> client) {
-  TaskID task_id = TaskID::from_random();
-  auto data = std::make_shared<protocol::TaskT>();
-  data->task_specification = "123";
+  TaskID task_id = TaskID::FromRandom();
+  auto data = std::make_shared<TaskTableData>();
+  data->set_task("123");
 
   // Check that we added the correct task.
   auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
-                                      const protocol::TaskT &d) {
+                                      const TaskTableData &d) {
     ASSERT_EQ(id, task_id);
-    ASSERT_EQ(data->task_specification, d.task_specification);
+    ASSERT_EQ(data->task(), d.task());
   };
 
   // Check that the lookup returns the added task.
   auto lookup_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
-                                         const protocol::TaskT &d) {
+                                         const TaskTableData &d) {
     ASSERT_EQ(id, task_id);
-    ASSERT_EQ(data->task_specification, d.task_specification);
+    ASSERT_EQ(data->task(), d.task());
     test->Stop();
   };
 
@@ -133,16 +133,16 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableLookup);
 void TestLogLookup(const DriverID &driver_id,
                    std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Append some entries to the log at an object ID.
-  TaskID task_id = TaskID::from_random();
+  TaskID task_id = TaskID::FromRandom();
   std::vector<std::string> node_manager_ids = {"abc", "def", "ghi"};
   for (auto &node_manager_id : node_manager_ids) {
-    auto data = std::make_shared<TaskReconstructionDataT>();
-    data->node_manager_id = node_manager_id;
+    auto data = std::make_shared<TaskReconstructionData>();
+    data->set_node_manager_id(node_manager_id);
     // Check that we added the correct object entries.
     auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
-                                        const TaskReconstructionDataT &d) {
+                                        const TaskReconstructionData &d) {
       ASSERT_EQ(id, task_id);
-      ASSERT_EQ(data->node_manager_id, d.node_manager_id);
+      ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
     };
     RAY_CHECK_OK(
         client->task_reconstruction_log().Append(driver_id, task_id, data, add_callback));
@@ -150,11 +150,11 @@ void TestLogLookup(const DriverID &driver_id,
 
   // Check that lookup returns the added object entries.
   auto lookup_callback = [task_id, node_manager_ids](
-      gcs::AsyncGcsClient *client, const TaskID &id,
-      const std::vector<TaskReconstructionDataT> &data) {
+                             gcs::AsyncGcsClient *client, const TaskID &id,
+                             const std::vector<TaskReconstructionData> &data) {
     ASSERT_EQ(id, task_id);
     for (const auto &entry : data) {
-      ASSERT_EQ(entry.node_manager_id, node_manager_ids[test->NumCallbacks()]);
+      ASSERT_EQ(entry.node_manager_id(), node_manager_ids[test->NumCallbacks()]);
       test->IncrementNumCallbacks();
     }
     if (test->NumCallbacks() == node_manager_ids.size()) {
@@ -178,11 +178,11 @@ TEST_F(TestGcsWithAsio, TestLogLookup) {
 
 void TestTableLookupFailure(const DriverID &driver_id,
                             std::shared_ptr<gcs::AsyncGcsClient> client) {
-  TaskID task_id = TaskID::from_random();
+  TaskID task_id = TaskID::FromRandom();
 
   // Check that the lookup does not return data.
   auto lookup_callback = [](gcs::AsyncGcsClient *client, const TaskID &id,
-                            const protocol::TaskT &d) { RAY_CHECK(false); };
+                            const TaskTableData &d) { RAY_CHECK(false); };
 
   // Check that the lookup returns an empty entry.
   auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id) {
@@ -205,18 +205,18 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableLookupFailure);
 
 void TestLogAppendAt(const DriverID &driver_id,
                      std::shared_ptr<gcs::AsyncGcsClient> client) {
-  TaskID task_id = TaskID::from_random();
+  TaskID task_id = TaskID::FromRandom();
   std::vector<std::string> node_manager_ids = {"A", "B"};
-  std::vector<std::shared_ptr<TaskReconstructionDataT>> data_log;
+  std::vector<std::shared_ptr<TaskReconstructionData>> data_log;
   for (const auto &node_manager_id : node_manager_ids) {
-    auto data = std::make_shared<TaskReconstructionDataT>();
-    data->node_manager_id = node_manager_id;
+    auto data = std::make_shared<TaskReconstructionData>();
+    data->set_node_manager_id(node_manager_id);
     data_log.push_back(data);
   }
 
   // Check that we added the correct task.
   auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
-                                    const TaskReconstructionDataT &d) {
+                                    const TaskReconstructionData &d) {
     ASSERT_EQ(id, task_id);
     test->IncrementNumCallbacks();
   };
@@ -241,11 +241,11 @@ void TestLogAppendAt(const DriverID &driver_id,
       /*done callback=*/nullptr, failure_callback, /*log_length=*/1));
 
   auto lookup_callback = [node_manager_ids](
-      gcs::AsyncGcsClient *client, const TaskID &id,
-      const std::vector<TaskReconstructionDataT> &data) {
+                             gcs::AsyncGcsClient *client, const TaskID &id,
+                             const std::vector<TaskReconstructionData> &data) {
     std::vector<std::string> appended_managers;
     for (const auto &entry : data) {
-      appended_managers.push_back(entry.node_manager_id);
+      appended_managers.push_back(entry.node_manager_id());
     }
     ASSERT_EQ(appended_managers, node_manager_ids);
     test->Stop();
@@ -265,25 +265,25 @@ TEST_F(TestGcsWithAsio, TestLogAppendAt) {
 
 void TestSet(const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add some entries to the set at an object ID.
-  ObjectID object_id = ObjectID::from_random();
+  ObjectID object_id = ObjectID::FromRandom();
   std::vector<std::string> managers = {"abc", "def", "ghi"};
   for (auto &manager : managers) {
-    auto data = std::make_shared<ObjectTableDataT>();
-    data->manager = manager;
+    auto data = std::make_shared<ObjectTableData>();
+    data->set_manager(manager);
     // Check that we added the correct object entries.
     auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const ObjectID &id,
-                                          const ObjectTableDataT &d) {
+                                          const ObjectTableData &d) {
       ASSERT_EQ(id, object_id);
-      ASSERT_EQ(data->manager, d.manager);
+      ASSERT_EQ(data->manager(), d.manager());
       test->IncrementNumCallbacks();
     };
     RAY_CHECK_OK(client->object_table().Add(driver_id, object_id, data, add_callback));
   }
 
   // Check that lookup returns the added object entries.
-  auto lookup_callback = [object_id, managers](
-      gcs::AsyncGcsClient *client, const ObjectID &id,
-      const std::vector<ObjectTableDataT> &data) {
+  auto lookup_callback = [object_id, managers](gcs::AsyncGcsClient *client,
+                                               const ObjectID &id,
+                                               const std::vector<ObjectTableData> &data) {
     ASSERT_EQ(id, object_id);
     ASSERT_EQ(data.size(), managers.size());
     test->IncrementNumCallbacks();
@@ -293,13 +293,14 @@ void TestSet(const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   RAY_CHECK_OK(client->object_table().Lookup(driver_id, object_id, lookup_callback));
 
   for (auto &manager : managers) {
-    auto data = std::make_shared<ObjectTableDataT>();
-    data->manager = manager;
+    auto data = std::make_shared<ObjectTableData>();
+    data->set_manager(manager);
     // Check that we added the correct object entries.
-    auto remove_entry_callback = [object_id, data](
-        gcs::AsyncGcsClient *client, const ObjectID &id, const ObjectTableDataT &d) {
+    auto remove_entry_callback = [object_id, data](gcs::AsyncGcsClient *client,
+                                                   const ObjectID &id,
+                                                   const ObjectTableData &d) {
       ASSERT_EQ(id, object_id);
-      ASSERT_EQ(data->manager, d.manager);
+      ASSERT_EQ(data->manager(), d.manager());
       test->IncrementNumCallbacks();
     };
     RAY_CHECK_OK(
@@ -308,8 +309,8 @@ void TestSet(const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsClient> cli
 
   // Check that the entries are removed.
   auto lookup_callback2 = [object_id, managers](
-      gcs::AsyncGcsClient *client, const ObjectID &id,
-      const std::vector<ObjectTableDataT> &data) {
+                              gcs::AsyncGcsClient *client, const ObjectID &id,
+                              const std::vector<ObjectTableData> &data) {
     ASSERT_EQ(id, object_id);
     ASSERT_EQ(data.size(), 0);
     test->IncrementNumCallbacks();
@@ -331,17 +332,17 @@ TEST_F(TestGcsWithAsio, TestSet) {
 
 void TestDeleteKeysFromLog(
     const DriverID &driver_id, std::shared_ptr<gcs::AsyncGcsClient> client,
-    std::vector<std::shared_ptr<TaskReconstructionDataT>> &data_vector) {
+    std::vector<std::shared_ptr<TaskReconstructionData>> &data_vector) {
   std::vector<TaskID> ids;
   TaskID task_id;
   for (auto &data : data_vector) {
-    task_id = TaskID::from_random();
+    task_id = TaskID::FromRandom();
     ids.push_back(task_id);
     // Check that we added the correct object entries.
     auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
-                                        const TaskReconstructionDataT &d) {
+                                        const TaskReconstructionData &d) {
       ASSERT_EQ(id, task_id);
-      ASSERT_EQ(data->node_manager_id, d.node_manager_id);
+      ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
       test->IncrementNumCallbacks();
     };
     RAY_CHECK_OK(
@@ -350,8 +351,8 @@ void TestDeleteKeysFromLog(
   for (const auto &task_id : ids) {
     // Check that lookup returns the added object entries.
     auto lookup_callback = [task_id, data_vector](
-        gcs::AsyncGcsClient *client, const TaskID &id,
-        const std::vector<TaskReconstructionDataT> &data) {
+                               gcs::AsyncGcsClient *client, const TaskID &id,
+                               const std::vector<TaskReconstructionData> &data) {
       ASSERT_EQ(id, task_id);
       ASSERT_EQ(data.size(), 1);
       test->IncrementNumCallbacks();
@@ -366,7 +367,7 @@ void TestDeleteKeysFromLog(
   }
   for (const auto &task_id : ids) {
     auto lookup_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
-                                     const std::vector<TaskReconstructionDataT> &data) {
+                                     const std::vector<TaskReconstructionData> &data) {
       ASSERT_EQ(id, task_id);
       ASSERT_TRUE(data.size() == 0);
       test->IncrementNumCallbacks();
@@ -378,25 +379,25 @@ void TestDeleteKeysFromLog(
 
 void TestDeleteKeysFromTable(const DriverID &driver_id,
                              std::shared_ptr<gcs::AsyncGcsClient> client,
-                             std::vector<std::shared_ptr<protocol::TaskT>> &data_vector,
+                             std::vector<std::shared_ptr<TaskTableData>> &data_vector,
                              bool stop_at_end) {
   std::vector<TaskID> ids;
   TaskID task_id;
   for (auto &data : data_vector) {
-    task_id = TaskID::from_random();
+    task_id = TaskID::FromRandom();
     ids.push_back(task_id);
     // Check that we added the correct object entries.
     auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
-                                        const protocol::TaskT &d) {
+                                        const TaskTableData &d) {
       ASSERT_EQ(id, task_id);
-      ASSERT_EQ(data->task_specification, d.task_specification);
+      ASSERT_EQ(data->task(), d.task());
       test->IncrementNumCallbacks();
     };
     RAY_CHECK_OK(client->raylet_task_table().Add(driver_id, task_id, data, add_callback));
   }
   for (const auto &task_id : ids) {
     auto task_lookup_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
-                                          const protocol::TaskT &data) {
+                                          const TaskTableData &data) {
       ASSERT_EQ(id, task_id);
       test->IncrementNumCallbacks();
     };
@@ -413,7 +414,7 @@ void TestDeleteKeysFromTable(const DriverID &driver_id,
     test->IncrementNumCallbacks();
   };
   auto undesired_callback = [](gcs::AsyncGcsClient *client, const TaskID &id,
-                               const protocol::TaskT &data) { ASSERT_TRUE(false); };
+                               const TaskTableData &data) { ASSERT_TRUE(false); };
   for (size_t i = 0; i < ids.size(); ++i) {
     RAY_CHECK_OK(client->raylet_task_table().Lookup(
         driver_id, task_id, undesired_callback, expected_failure_callback));
@@ -427,17 +428,17 @@ void TestDeleteKeysFromTable(const DriverID &driver_id,
 
 void TestDeleteKeysFromSet(const DriverID &driver_id,
                            std::shared_ptr<gcs::AsyncGcsClient> client,
-                           std::vector<std::shared_ptr<ObjectTableDataT>> &data_vector) {
+                           std::vector<std::shared_ptr<ObjectTableData>> &data_vector) {
   std::vector<ObjectID> ids;
   ObjectID object_id;
   for (auto &data : data_vector) {
-    object_id = ObjectID::from_random();
+    object_id = ObjectID::FromRandom();
     ids.push_back(object_id);
     // Check that we added the correct object entries.
     auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const ObjectID &id,
-                                          const ObjectTableDataT &d) {
+                                          const ObjectTableData &d) {
       ASSERT_EQ(id, object_id);
-      ASSERT_EQ(data->manager, d.manager);
+      ASSERT_EQ(data->manager(), d.manager());
       test->IncrementNumCallbacks();
     };
     RAY_CHECK_OK(client->object_table().Add(driver_id, object_id, data, add_callback));
@@ -445,8 +446,8 @@ void TestDeleteKeysFromSet(const DriverID &driver_id,
   for (const auto &object_id : ids) {
     // Check that lookup returns the added object entries.
     auto lookup_callback = [object_id, data_vector](
-        gcs::AsyncGcsClient *client, const ObjectID &id,
-        const std::vector<ObjectTableDataT> &data) {
+                               gcs::AsyncGcsClient *client, const ObjectID &id,
+                               const std::vector<ObjectTableData> &data) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data.size(), 1);
       test->IncrementNumCallbacks();
@@ -460,7 +461,7 @@ void TestDeleteKeysFromSet(const DriverID &driver_id,
   }
   for (const auto &object_id : ids) {
     auto lookup_callback = [object_id](gcs::AsyncGcsClient *client, const ObjectID &id,
-                                       const std::vector<ObjectTableDataT> &data) {
+                                       const std::vector<ObjectTableData> &data) {
       ASSERT_EQ(id, object_id);
       ASSERT_TRUE(data.size() == 0);
       test->IncrementNumCallbacks();
@@ -473,11 +474,11 @@ void TestDeleteKeysFromSet(const DriverID &driver_id,
 void TestDeleteKeys(const DriverID &driver_id,
                     std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Test delete function for keys of Log.
-  std::vector<std::shared_ptr<TaskReconstructionDataT>> task_reconstruction_vector;
+  std::vector<std::shared_ptr<TaskReconstructionData>> task_reconstruction_vector;
   auto AppendTaskReconstructionData = [&task_reconstruction_vector](size_t add_count) {
     for (size_t i = 0; i < add_count; ++i) {
-      auto data = std::make_shared<TaskReconstructionDataT>();
-      data->node_manager_id = ObjectID::from_random().hex();
+      auto data = std::make_shared<TaskReconstructionData>();
+      data->set_node_manager_id(ObjectID::FromRandom().Hex());
       task_reconstruction_vector.push_back(data);
     }
   };
@@ -502,11 +503,11 @@ void TestDeleteKeys(const DriverID &driver_id,
   TestDeleteKeysFromLog(driver_id, client, task_reconstruction_vector);
 
   // Test delete function for keys of Table.
-  std::vector<std::shared_ptr<protocol::TaskT>> task_vector;
+  std::vector<std::shared_ptr<TaskTableData>> task_vector;
   auto AppendTaskData = [&task_vector](size_t add_count) {
     for (size_t i = 0; i < add_count; ++i) {
-      auto task_data = std::make_shared<protocol::TaskT>();
-      task_data->task_specification = ObjectID::from_random().hex();
+      auto task_data = std::make_shared<TaskTableData>();
+      task_data->set_task(ObjectID::FromRandom().Hex());
       task_vector.push_back(task_data);
     }
   };
@@ -528,11 +529,11 @@ void TestDeleteKeys(const DriverID &driver_id,
             9 * RayConfig::instance().maximum_gcs_deletion_batch_size());
 
   // Test delete function for keys of Set.
-  std::vector<std::shared_ptr<ObjectTableDataT>> object_vector;
+  std::vector<std::shared_ptr<ObjectTableData>> object_vector;
   auto AppendObjectData = [&object_vector](size_t add_count) {
     for (size_t i = 0; i < add_count; ++i) {
-      auto data = std::make_shared<ObjectTableDataT>();
-      data->manager = ObjectID::from_random().hex();
+      auto data = std::make_shared<ObjectTableData>();
+      data->set_manager(ObjectID::FromRandom().Hex());
       object_vector.push_back(data);
     }
   };
@@ -560,59 +561,20 @@ TEST_F(TestGcsWithAsio, TestDeleteKey) {
   TestDeleteKeys(driver_id_, client_);
 }
 
-// Task table callbacks.
-void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
-               const TaskTableDataT &data) {
-  ASSERT_EQ(data.scheduling_state, SchedulingState::SCHEDULED);
-  ASSERT_EQ(data.raylet_id, kRandomId);
-}
-
-void TaskLookupHelper(gcs::AsyncGcsClient *client, const TaskID &id,
-                      const TaskTableDataT &data, bool do_stop) {
-  ASSERT_EQ(data.scheduling_state, SchedulingState::SCHEDULED);
-  ASSERT_EQ(data.raylet_id, kRandomId);
-  if (do_stop) {
-    test->Stop();
-  }
-}
-void TaskLookup(gcs::AsyncGcsClient *client, const TaskID &id,
-                const TaskTableDataT &data) {
-  TaskLookupHelper(client, id, data, /*do_stop=*/false);
-}
-void TaskLookupWithStop(gcs::AsyncGcsClient *client, const TaskID &id,
-                        const TaskTableDataT &data) {
-  TaskLookupHelper(client, id, data, /*do_stop=*/true);
-}
-
-void TaskLookupFailure(gcs::AsyncGcsClient *client, const TaskID &id) {
-  RAY_CHECK(false);
-}
-
-void TaskLookupAfterUpdate(gcs::AsyncGcsClient *client, const TaskID &id,
-                           const TaskTableDataT &data) {
-  ASSERT_EQ(data.scheduling_state, SchedulingState::LOST);
-  test->Stop();
-}
-
-void TaskLookupAfterUpdateFailure(gcs::AsyncGcsClient *client, const TaskID &id) {
-  RAY_CHECK(false);
-  test->Stop();
-}
-
 void TestLogSubscribeAll(const DriverID &driver_id,
                          std::shared_ptr<gcs::AsyncGcsClient> client) {
   std::vector<DriverID> driver_ids;
   for (int i = 0; i < 3; i++) {
-    driver_ids.emplace_back(DriverID::from_random());
+    driver_ids.emplace_back(DriverID::FromRandom());
   }
   // Callback for a notification.
   auto notification_callback = [driver_ids](gcs::AsyncGcsClient *client,
                                             const DriverID &id,
-                                            const std::vector<DriverTableDataT> data) {
+                                            const std::vector<DriverTableData> data) {
     ASSERT_EQ(id, driver_ids[test->NumCallbacks()]);
     // Check that we get notifications in the same order as the writes.
     for (const auto &entry : data) {
-      ASSERT_EQ(entry.driver_id, driver_ids[test->NumCallbacks()].binary());
+      ASSERT_EQ(entry.driver_id(), driver_ids[test->NumCallbacks()].Binary());
       test->IncrementNumCallbacks();
     }
     if (test->NumCallbacks() == driver_ids.size()) {
@@ -633,7 +595,7 @@ void TestLogSubscribeAll(const DriverID &driver_id,
   // subscribed, we will append to the key several times and check that we get
   // notified for each.
   RAY_CHECK_OK(client->driver_table().Subscribe(
-      driver_id, ClientID::nil(), notification_callback, subscribe_callback));
+      driver_id, ClientID::Nil(), notification_callback, subscribe_callback));
 
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called (or an assertion failure).
@@ -651,24 +613,24 @@ void TestSetSubscribeAll(const DriverID &driver_id,
                          std::shared_ptr<gcs::AsyncGcsClient> client) {
   std::vector<ObjectID> object_ids;
   for (int i = 0; i < 3; i++) {
-    object_ids.emplace_back(ObjectID::from_random());
+    object_ids.emplace_back(ObjectID::FromRandom());
   }
   std::vector<std::string> managers = {"abc", "def", "ghi"};
 
   // Callback for a notification.
   auto notification_callback = [object_ids, managers](
-      gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsTableNotificationMode notification_mode,
-      const std::vector<ObjectTableDataT> data) {
+                                   gcs::AsyncGcsClient *client, const ObjectID &id,
+                                   const GcsChangeMode change_mode,
+                                   const std::vector<ObjectTableData> data) {
     if (test->NumCallbacks() < 3 * 3) {
-      ASSERT_EQ(notification_mode, GcsTableNotificationMode::APPEND_OR_ADD);
+      ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
     } else {
-      ASSERT_EQ(notification_mode, GcsTableNotificationMode::REMOVE);
+      ASSERT_EQ(change_mode, GcsChangeMode::REMOVE);
     }
     ASSERT_EQ(id, object_ids[test->NumCallbacks() / 3 % 3]);
     // Check that we get notifications in the same order as the writes.
     for (const auto &entry : data) {
-      ASSERT_EQ(entry.manager, managers[test->NumCallbacks() % 3]);
+      ASSERT_EQ(entry.manager(), managers[test->NumCallbacks() % 3]);
       test->IncrementNumCallbacks();
     }
     if (test->NumCallbacks() == object_ids.size() * 3 * 2) {
@@ -683,8 +645,8 @@ void TestSetSubscribeAll(const DriverID &driver_id,
     // We have subscribed. Do the writes to the table.
     for (size_t i = 0; i < object_ids.size(); i++) {
       for (size_t j = 0; j < managers.size(); j++) {
-        auto data = std::make_shared<ObjectTableDataT>();
-        data->manager = managers[j];
+        auto data = std::make_shared<ObjectTableData>();
+        data->set_manager(managers[j]);
         for (int k = 0; k < 3; k++) {
           // Add the same entry several times.
           // Expect no notification if the entry already exists.
@@ -695,8 +657,8 @@ void TestSetSubscribeAll(const DriverID &driver_id,
     }
     for (size_t i = 0; i < object_ids.size(); i++) {
       for (size_t j = 0; j < managers.size(); j++) {
-        auto data = std::make_shared<ObjectTableDataT>();
-        data->manager = managers[j];
+        auto data = std::make_shared<ObjectTableData>();
+        data->set_manager(managers[j]);
         for (int k = 0; k < 3; k++) {
           // Remove the same entry several times.
           // Expect no notification if the entry doesn't exist.
@@ -711,7 +673,7 @@ void TestSetSubscribeAll(const DriverID &driver_id,
   // subscribed, we will append to the key several times and check that we get
   // notified for each.
   RAY_CHECK_OK(client->object_table().Subscribe(
-      driver_id, ClientID::nil(), notification_callback, subscribe_callback));
+      driver_id, ClientID::Nil(), notification_callback, subscribe_callback));
 
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called (or an assertion failure).
@@ -728,21 +690,22 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeAll) {
 void TestTableSubscribeId(const DriverID &driver_id,
                           std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a table entry.
-  TaskID task_id1 = TaskID::from_random();
+  TaskID task_id1 = TaskID::FromRandom();
   std::vector<std::string> task_specs1 = {"abc", "def", "ghi"};
 
   // Add a table entry at a second key.
-  TaskID task_id2 = TaskID::from_random();
+  TaskID task_id2 = TaskID::FromRandom();
   std::vector<std::string> task_specs2 = {"jkl", "mno", "pqr"};
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto notification_callback = [task_id2, task_specs2](
-      gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
+  auto notification_callback = [task_id2, task_specs2](gcs::AsyncGcsClient *client,
+                                                       const TaskID &id,
+                                                       const TaskTableData &data) {
     // Check that we only get notifications for the requested key.
     ASSERT_EQ(id, task_id2);
     // Check that we get notifications in the same order as the writes.
-    ASSERT_EQ(data.task_specification, task_specs2[test->NumCallbacks()]);
+    ASSERT_EQ(data.task(), task_specs2[test->NumCallbacks()]);
     test->IncrementNumCallbacks();
     if (test->NumCallbacks() == task_specs2.size()) {
       test->Stop();
@@ -752,7 +715,7 @@ void TestTableSubscribeId(const DriverID &driver_id,
   // The failure callback should be called once since both keys start as empty.
   bool failure_notification_received = false;
   auto failure_callback = [task_id2, &failure_notification_received](
-      gcs::AsyncGcsClient *client, const TaskID &id) {
+                              gcs::AsyncGcsClient *client, const TaskID &id) {
     ASSERT_EQ(id, task_id2);
     // The failure notification should be the first notification received.
     ASSERT_EQ(test->NumCallbacks(), 0);
@@ -769,13 +732,13 @@ void TestTableSubscribeId(const DriverID &driver_id,
     // Write both keys. We should only receive notifications for the key that
     // we requested them for.
     for (const auto &task_spec : task_specs1) {
-      auto data = std::make_shared<protocol::TaskT>();
-      data->task_specification = task_spec;
+      auto data = std::make_shared<TaskTableData>();
+      data->set_task(task_spec);
       RAY_CHECK_OK(client->raylet_task_table().Add(driver_id, task_id1, data, nullptr));
     }
     for (const auto &task_spec : task_specs2) {
-      auto data = std::make_shared<protocol::TaskT>();
-      data->task_specification = task_spec;
+      auto data = std::make_shared<TaskTableData>();
+      data->set_task(task_spec);
       RAY_CHECK_OK(client->raylet_task_table().Add(driver_id, task_id2, data, nullptr));
     }
   };
@@ -804,29 +767,29 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeId);
 void TestLogSubscribeId(const DriverID &driver_id,
                         std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a log entry.
-  DriverID driver_id1 = DriverID::from_random();
+  DriverID driver_id1 = DriverID::FromRandom();
   std::vector<std::string> driver_ids1 = {"abc", "def", "ghi"};
-  auto data1 = std::make_shared<DriverTableDataT>();
-  data1->driver_id = driver_ids1[0];
+  auto data1 = std::make_shared<DriverTableData>();
+  data1->set_driver_id(driver_ids1[0]);
   RAY_CHECK_OK(client->driver_table().Append(driver_id, driver_id1, data1, nullptr));
 
   // Add a log entry at a second key.
-  DriverID driver_id2 = DriverID::from_random();
+  DriverID driver_id2 = DriverID::FromRandom();
   std::vector<std::string> driver_ids2 = {"jkl", "mno", "pqr"};
-  auto data2 = std::make_shared<DriverTableDataT>();
-  data2->driver_id = driver_ids2[0];
+  auto data2 = std::make_shared<DriverTableData>();
+  data2->set_driver_id(driver_ids2[0]);
   RAY_CHECK_OK(client->driver_table().Append(driver_id, driver_id2, data2, nullptr));
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
   auto notification_callback = [driver_id2, driver_ids2](
-      gcs::AsyncGcsClient *client, const UniqueID &id,
-      const std::vector<DriverTableDataT> &data) {
+                                   gcs::AsyncGcsClient *client, const UniqueID &id,
+                                   const std::vector<DriverTableData> &data) {
     // Check that we only get notifications for the requested key.
     ASSERT_EQ(id, driver_id2);
     // Check that we get notifications in the same order as the writes.
     for (const auto &entry : data) {
-      ASSERT_EQ(entry.driver_id, driver_ids2[test->NumCallbacks()]);
+      ASSERT_EQ(entry.driver_id(), driver_ids2[test->NumCallbacks()]);
       test->IncrementNumCallbacks();
     }
     if (test->NumCallbacks() == driver_ids2.size()) {
@@ -845,14 +808,14 @@ void TestLogSubscribeId(const DriverID &driver_id,
     // we requested them for.
     auto remaining = std::vector<std::string>(++driver_ids1.begin(), driver_ids1.end());
     for (const auto &driver_id_it : remaining) {
-      auto data = std::make_shared<DriverTableDataT>();
-      data->driver_id = driver_id_it;
+      auto data = std::make_shared<DriverTableData>();
+      data->set_driver_id(driver_id_it);
       RAY_CHECK_OK(client->driver_table().Append(driver_id, driver_id1, data, nullptr));
     }
     remaining = std::vector<std::string>(++driver_ids2.begin(), driver_ids2.end());
     for (const auto &driver_id_it : remaining) {
-      auto data = std::make_shared<DriverTableDataT>();
-      data->driver_id = driver_id_it;
+      auto data = std::make_shared<DriverTableData>();
+      data->set_driver_id(driver_id_it);
       RAY_CHECK_OK(client->driver_table().Append(driver_id, driver_id2, data, nullptr));
     }
   };
@@ -878,31 +841,31 @@ TEST_F(TestGcsWithAsio, TestLogSubscribeId) {
 void TestSetSubscribeId(const DriverID &driver_id,
                         std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a set entry.
-  ObjectID object_id1 = ObjectID::from_random();
+  ObjectID object_id1 = ObjectID::FromRandom();
   std::vector<std::string> managers1 = {"abc", "def", "ghi"};
-  auto data1 = std::make_shared<ObjectTableDataT>();
-  data1->manager = managers1[0];
+  auto data1 = std::make_shared<ObjectTableData>();
+  data1->set_manager(managers1[0]);
   RAY_CHECK_OK(client->object_table().Add(driver_id, object_id1, data1, nullptr));
 
   // Add a set entry at a second key.
-  ObjectID object_id2 = ObjectID::from_random();
+  ObjectID object_id2 = ObjectID::FromRandom();
   std::vector<std::string> managers2 = {"jkl", "mno", "pqr"};
-  auto data2 = std::make_shared<ObjectTableDataT>();
-  data2->manager = managers2[0];
+  auto data2 = std::make_shared<ObjectTableData>();
+  data2->set_manager(managers2[0]);
   RAY_CHECK_OK(client->object_table().Add(driver_id, object_id2, data2, nullptr));
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
   auto notification_callback = [object_id2, managers2](
-      gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsTableNotificationMode notification_mode,
-      const std::vector<ObjectTableDataT> &data) {
-    ASSERT_EQ(notification_mode, GcsTableNotificationMode::APPEND_OR_ADD);
+                                   gcs::AsyncGcsClient *client, const ObjectID &id,
+                                   const GcsChangeMode change_mode,
+                                   const std::vector<ObjectTableData> &data) {
+    ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
     // Check that we only get notifications for the requested key.
     ASSERT_EQ(id, object_id2);
     // Check that we get notifications in the same order as the writes.
     for (const auto &entry : data) {
-      ASSERT_EQ(entry.manager, managers2[test->NumCallbacks()]);
+      ASSERT_EQ(entry.manager(), managers2[test->NumCallbacks()]);
       test->IncrementNumCallbacks();
     }
     if (test->NumCallbacks() == managers2.size()) {
@@ -921,14 +884,14 @@ void TestSetSubscribeId(const DriverID &driver_id,
     // we requested them for.
     auto remaining = std::vector<std::string>(++managers1.begin(), managers1.end());
     for (const auto &manager : remaining) {
-      auto data = std::make_shared<ObjectTableDataT>();
-      data->manager = manager;
+      auto data = std::make_shared<ObjectTableData>();
+      data->set_manager(manager);
       RAY_CHECK_OK(client->object_table().Add(driver_id, object_id1, data, nullptr));
     }
     remaining = std::vector<std::string>(++managers2.begin(), managers2.end());
     for (const auto &manager : remaining) {
-      auto data = std::make_shared<ObjectTableDataT>();
-      data->manager = manager;
+      auto data = std::make_shared<ObjectTableData>();
+      data->set_manager(manager);
       RAY_CHECK_OK(client->object_table().Add(driver_id, object_id2, data, nullptr));
     }
   };
@@ -954,10 +917,10 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeId) {
 void TestTableSubscribeCancel(const DriverID &driver_id,
                               std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a table entry.
-  TaskID task_id = TaskID::from_random();
+  TaskID task_id = TaskID::FromRandom();
   std::vector<std::string> task_specs = {"jkl", "mno", "pqr"};
-  auto data = std::make_shared<protocol::TaskT>();
-  data->task_specification = task_specs[0];
+  auto data = std::make_shared<TaskTableData>();
+  data->set_task(task_specs[0]);
   RAY_CHECK_OK(client->raylet_task_table().Add(driver_id, task_id, data, nullptr));
 
   // The failure callback should not be called since all keys are non-empty
@@ -968,15 +931,16 @@ void TestTableSubscribeCancel(const DriverID &driver_id,
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto notification_callback = [task_id, task_specs](
-      gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
+  auto notification_callback = [task_id, task_specs](gcs::AsyncGcsClient *client,
+                                                     const TaskID &id,
+                                                     const TaskTableData &data) {
     ASSERT_EQ(id, task_id);
     // Check that we only get notifications for the first and last writes,
     // since notifications are canceled in between.
     if (test->NumCallbacks() == 0) {
-      ASSERT_EQ(data.task_specification, task_specs.front());
+      ASSERT_EQ(data.task(), task_specs.front());
     } else {
-      ASSERT_EQ(data.task_specification, task_specs.back());
+      ASSERT_EQ(data.task(), task_specs.back());
     }
     test->IncrementNumCallbacks();
     if (test->NumCallbacks() == 2) {
@@ -998,8 +962,8 @@ void TestTableSubscribeCancel(const DriverID &driver_id,
     // a notification for these writes.
     auto remaining = std::vector<std::string>(++task_specs.begin(), task_specs.end());
     for (const auto &task_spec : remaining) {
-      auto data = std::make_shared<protocol::TaskT>();
-      data->task_specification = task_spec;
+      auto data = std::make_shared<TaskTableData>();
+      data->set_task(task_spec);
       RAY_CHECK_OK(client->raylet_task_table().Add(driver_id, task_id, data, nullptr));
     }
     // Request notifications again. We should receive a notification for the
@@ -1029,17 +993,17 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeCancel);
 void TestLogSubscribeCancel(const DriverID &driver_id,
                             std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a log entry.
-  DriverID random_driver_id = DriverID::from_random();
+  DriverID random_driver_id = DriverID::FromRandom();
   std::vector<std::string> driver_ids = {"jkl", "mno", "pqr"};
-  auto data = std::make_shared<DriverTableDataT>();
-  data->driver_id = driver_ids[0];
+  auto data = std::make_shared<DriverTableData>();
+  data->set_driver_id(driver_ids[0]);
   RAY_CHECK_OK(client->driver_table().Append(driver_id, random_driver_id, data, nullptr));
 
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
   auto notification_callback = [random_driver_id, driver_ids](
-      gcs::AsyncGcsClient *client, const UniqueID &id,
-      const std::vector<DriverTableDataT> &data) {
+                                   gcs::AsyncGcsClient *client, const UniqueID &id,
+                                   const std::vector<DriverTableData> &data) {
     ASSERT_EQ(id, random_driver_id);
     // Check that we get a duplicate notification for the first write. We get a
     // duplicate notification because the log is append-only and notifications
@@ -1047,7 +1011,7 @@ void TestLogSubscribeCancel(const DriverID &driver_id,
     auto driver_ids_copy = driver_ids;
     driver_ids_copy.insert(driver_ids_copy.begin(), driver_ids_copy.front());
     for (const auto &entry : data) {
-      ASSERT_EQ(entry.driver_id, driver_ids_copy[test->NumCallbacks()]);
+      ASSERT_EQ(entry.driver_id(), driver_ids_copy[test->NumCallbacks()]);
       test->IncrementNumCallbacks();
     }
     if (test->NumCallbacks() == driver_ids_copy.size()) {
@@ -1069,8 +1033,8 @@ void TestLogSubscribeCancel(const DriverID &driver_id,
     // receive a notification for these writes.
     auto remaining = std::vector<std::string>(++driver_ids.begin(), driver_ids.end());
     for (const auto &remaining_driver_id : remaining) {
-      auto data = std::make_shared<DriverTableDataT>();
-      data->driver_id = remaining_driver_id;
+      auto data = std::make_shared<DriverTableData>();
+      data->set_driver_id(remaining_driver_id);
       RAY_CHECK_OK(
           client->driver_table().Append(driver_id, random_driver_id, data, nullptr));
     }
@@ -1102,26 +1066,26 @@ TEST_F(TestGcsWithAsio, TestLogSubscribeCancel) {
 void TestSetSubscribeCancel(const DriverID &driver_id,
                             std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a set entry.
-  ObjectID object_id = ObjectID::from_random();
+  ObjectID object_id = ObjectID::FromRandom();
   std::vector<std::string> managers = {"jkl", "mno", "pqr"};
-  auto data = std::make_shared<ObjectTableDataT>();
-  data->manager = managers[0];
+  auto data = std::make_shared<ObjectTableData>();
+  data->set_manager(managers[0]);
   RAY_CHECK_OK(client->object_table().Add(driver_id, object_id, data, nullptr));
 
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
   auto notification_callback = [object_id, managers](
-      gcs::AsyncGcsClient *client, const ObjectID &id,
-      const GcsTableNotificationMode notification_mode,
-      const std::vector<ObjectTableDataT> &data) {
-    ASSERT_EQ(notification_mode, GcsTableNotificationMode::APPEND_OR_ADD);
+                                   gcs::AsyncGcsClient *client, const ObjectID &id,
+                                   const GcsChangeMode change_mode,
+                                   const std::vector<ObjectTableData> &data) {
+    ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
     ASSERT_EQ(id, object_id);
     // Check that we get a duplicate notification for the first write. We get a
     // duplicate notification because notifications
     // are canceled after the first write, then requested again.
     if (data.size() == 1) {
       // first notification
-      ASSERT_EQ(data[0].manager, managers[0]);
+      ASSERT_EQ(data[0].manager(), managers[0]);
       test->IncrementNumCallbacks();
     } else {
       // second notification
@@ -1129,7 +1093,7 @@ void TestSetSubscribeCancel(const DriverID &driver_id,
       std::unordered_set<std::string> managers_set(managers.begin(), managers.end());
       std::unordered_set<std::string> data_managers_set;
       for (const auto &entry : data) {
-        data_managers_set.insert(entry.manager);
+        data_managers_set.insert(entry.manager());
         test->IncrementNumCallbacks();
       }
       ASSERT_EQ(managers_set, data_managers_set);
@@ -1153,8 +1117,8 @@ void TestSetSubscribeCancel(const DriverID &driver_id,
     // receive a notification for these writes.
     auto remaining = std::vector<std::string>(++managers.begin(), managers.end());
     for (const auto &manager : remaining) {
-      auto data = std::make_shared<ObjectTableDataT>();
-      data->manager = manager;
+      auto data = std::make_shared<ObjectTableData>();
+      data->set_manager(manager);
       RAY_CHECK_OK(client->object_table().Add(driver_id, object_id, data, nullptr));
     }
     // Request notifications again. We should receive a notification for the
@@ -1183,17 +1147,17 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeCancel) {
 }
 
 void ClientTableNotification(gcs::AsyncGcsClient *client, const ClientID &client_id,
-                             const ClientTableDataT &data, bool is_insertion) {
+                             const ClientTableData &data, bool is_insertion) {
   ClientID added_id = client->client_table().GetLocalClientId();
   ASSERT_EQ(client_id, added_id);
-  ASSERT_EQ(ClientID::from_binary(data.client_id), added_id);
-  ASSERT_EQ(ClientID::from_binary(data.client_id), added_id);
-  ASSERT_EQ(data.entry_type == EntryType::INSERTION, is_insertion);
+  ASSERT_EQ(ClientID::FromBinary(data.client_id()), added_id);
+  ASSERT_EQ(ClientID::FromBinary(data.client_id()), added_id);
+  ASSERT_EQ(data.entry_type() == ClientTableData::INSERTION, is_insertion);
 
-  ClientTableDataT cached_client;
+  ClientTableData cached_client;
   client->client_table().GetClient(added_id, cached_client);
-  ASSERT_EQ(ClientID::from_binary(cached_client.client_id), added_id);
-  ASSERT_EQ(cached_client.entry_type == EntryType::INSERTION, is_insertion);
+  ASSERT_EQ(ClientID::FromBinary(cached_client.client_id()), added_id);
+  ASSERT_EQ(cached_client.entry_type() == ClientTableData::INSERTION, is_insertion);
 }
 
 void TestClientTableConnect(const DriverID &driver_id,
@@ -1201,17 +1165,17 @@ void TestClientTableConnect(const DriverID &driver_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
+      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
         ClientTableNotification(client, id, data, true);
         test->Stop();
       });
 
   // Connect and disconnect to client table. We should receive notifications
   // for the addition and removal of our own entry.
-  ClientTableDataT local_client_info = client->client_table().GetLocalClient();
-  local_client_info.node_manager_address = "127.0.0.1";
-  local_client_info.node_manager_port = 0;
-  local_client_info.object_manager_port = 0;
+  ClientTableData local_client_info = client->client_table().GetLocalClient();
+  local_client_info.set_node_manager_address("127.0.0.1");
+  local_client_info.set_node_manager_port(0);
+  local_client_info.set_object_manager_port(0);
   RAY_CHECK_OK(client->client_table().Connect(local_client_info));
   test->Start();
 }
@@ -1226,23 +1190,23 @@ void TestClientTableDisconnect(const DriverID &driver_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
+      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
         ClientTableNotification(client, id, data, /*is_insertion=*/true);
         // Disconnect from the client table. We should receive a notification
         // for the removal of our own entry.
         RAY_CHECK_OK(client->client_table().Disconnect());
       });
   client->client_table().RegisterClientRemovedCallback(
-      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
+      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
         ClientTableNotification(client, id, data, /*is_insertion=*/false);
         test->Stop();
       });
   // Connect to the client table. We should receive notification for the
   // addition of our own entry.
-  ClientTableDataT local_client_info = client->client_table().GetLocalClient();
-  local_client_info.node_manager_address = "127.0.0.1";
-  local_client_info.node_manager_port = 0;
-  local_client_info.object_manager_port = 0;
+  ClientTableData local_client_info = client->client_table().GetLocalClient();
+  local_client_info.set_node_manager_address("127.0.0.1");
+  local_client_info.set_node_manager_port(0);
+  local_client_info.set_object_manager_port(0);
   RAY_CHECK_OK(client->client_table().Connect(local_client_info));
   test->Start();
 }
@@ -1257,20 +1221,20 @@ void TestClientTableImmediateDisconnect(const DriverID &driver_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
+      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
         ClientTableNotification(client, id, data, true);
       });
   client->client_table().RegisterClientRemovedCallback(
-      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
+      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
         ClientTableNotification(client, id, data, false);
         test->Stop();
       });
   // Connect to then immediately disconnect from the client table. We should
   // receive notifications for the addition and removal of our own entry.
-  ClientTableDataT local_client_info = client->client_table().GetLocalClient();
-  local_client_info.node_manager_address = "127.0.0.1";
-  local_client_info.node_manager_port = 0;
-  local_client_info.object_manager_port = 0;
+  ClientTableData local_client_info = client->client_table().GetLocalClient();
+  local_client_info.set_node_manager_address("127.0.0.1");
+  local_client_info.set_node_manager_port(0);
+  local_client_info.set_object_manager_port(0);
   RAY_CHECK_OK(client->client_table().Connect(local_client_info));
   RAY_CHECK_OK(client->client_table().Disconnect());
   test->Start();
@@ -1283,28 +1247,185 @@ TEST_F(TestGcsWithAsio, TestClientTableImmediateDisconnect) {
 
 void TestClientTableMarkDisconnected(const DriverID &driver_id,
                                      std::shared_ptr<gcs::AsyncGcsClient> client) {
-  ClientTableDataT local_client_info = client->client_table().GetLocalClient();
-  local_client_info.node_manager_address = "127.0.0.1";
-  local_client_info.node_manager_port = 0;
-  local_client_info.object_manager_port = 0;
+  ClientTableData local_client_info = client->client_table().GetLocalClient();
+  local_client_info.set_node_manager_address("127.0.0.1");
+  local_client_info.set_node_manager_port(0);
+  local_client_info.set_object_manager_port(0);
   // Connect to the client table to start receiving notifications.
   RAY_CHECK_OK(client->client_table().Connect(local_client_info));
   // Mark a different client as dead.
-  ClientID dead_client_id = ClientID::from_random();
+  ClientID dead_client_id = ClientID::FromRandom();
   RAY_CHECK_OK(client->client_table().MarkDisconnected(dead_client_id));
   // Make sure we only get a notification for the removal of the client we
   // marked as dead.
-  client->client_table().RegisterClientRemovedCallback([dead_client_id](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ASSERT_EQ(ClientID::from_binary(data.client_id), dead_client_id);
-    test->Stop();
-  });
+  client->client_table().RegisterClientRemovedCallback(
+      [dead_client_id](gcs::AsyncGcsClient *client, const UniqueID &id,
+                       const ClientTableData &data) {
+        ASSERT_EQ(ClientID::FromBinary(data.client_id()), dead_client_id);
+        test->Stop();
+      });
   test->Start();
 }
 
 TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
   test = this;
   TestClientTableMarkDisconnected(driver_id_, client_);
+}
+
+void TestHashTable(const DriverID &driver_id,
+                   std::shared_ptr<gcs::AsyncGcsClient> client) {
+  const int expected_count = 14;
+  ClientID client_id = ClientID::FromRandom();
+  // Prepare the first resource map: data_map1.
+  auto cpu_data = std::make_shared<RayResource>();
+  cpu_data->set_resource_name("CPU");
+  cpu_data->set_resource_capacity(100);
+  auto gpu_data = std::make_shared<RayResource>();
+  gpu_data->set_resource_name("GPU");
+  gpu_data->set_resource_capacity(2);
+  DynamicResourceTable::DataMap data_map1;
+  data_map1.emplace("CPU", cpu_data);
+  data_map1.emplace("GPU", gpu_data);
+  // Prepare the second resource map: data_map2 which decreases CPU,
+  // increases GPU and add a new CUSTOM compared to data_map1.
+  auto data_cpu = std::make_shared<RayResource>();
+  data_cpu->set_resource_name("CPU");
+  data_cpu->set_resource_capacity(50);
+  auto data_gpu = std::make_shared<RayResource>();
+  data_gpu->set_resource_name("GPU");
+  data_gpu->set_resource_capacity(10);
+  auto data_custom = std::make_shared<RayResource>();
+  data_custom->set_resource_name("CUSTOM");
+  data_custom->set_resource_capacity(2);
+  DynamicResourceTable::DataMap data_map2;
+  data_map2.emplace("CPU", data_cpu);
+  data_map2.emplace("GPU", data_gpu);
+  data_map2.emplace("CUSTOM", data_custom);
+  data_map2["CPU"]->set_resource_capacity(50);
+  // This is a common comparison function for the test.
+  auto compare_test = [](const DynamicResourceTable::DataMap &data1,
+                         const DynamicResourceTable::DataMap &data2) {
+    ASSERT_EQ(data1.size(), data2.size());
+    for (const auto &data : data1) {
+      auto iter = data2.find(data.first);
+      ASSERT_TRUE(iter != data2.end());
+      ASSERT_EQ(iter->second->resource_name(), data.second->resource_name());
+      ASSERT_EQ(iter->second->resource_capacity(), data.second->resource_capacity());
+    }
+  };
+  auto subscribe_callback = [](AsyncGcsClient *client) {
+    ASSERT_TRUE(true);
+    test->IncrementNumCallbacks();
+  };
+  auto notification_callback = [data_map1, data_map2, compare_test](
+                                   AsyncGcsClient *client, const ClientID &id,
+                                   const GcsChangeMode change_mode,
+                                   const DynamicResourceTable::DataMap &data) {
+    if (change_mode == GcsChangeMode::REMOVE) {
+      ASSERT_EQ(data.size(), 2);
+      ASSERT_TRUE(data.find("GPU") != data.end());
+      ASSERT_TRUE(data.find("CUSTOM") != data.end() || data.find("CPU") != data.end());
+      // The key "None-Existent" will not appear in the notification.
+    } else {
+      if (data.size() == 2) {
+        compare_test(data_map1, data);
+      } else if (data.size() == 3) {
+        compare_test(data_map2, data);
+      } else {
+        ASSERT_TRUE(false);
+      }
+    }
+    test->IncrementNumCallbacks();
+    // It is not sure which of the notification or lookup callback will come first.
+    if (test->NumCallbacks() == expected_count) {
+      test->Stop();
+    }
+  };
+  // Step 0: Subscribe the change of the hash table.
+  RAY_CHECK_OK(client->resource_table().Subscribe(
+      driver_id, ClientID::Nil(), notification_callback, subscribe_callback));
+  RAY_CHECK_OK(client->resource_table().RequestNotifications(
+      driver_id, client_id, client->client_table().GetLocalClientId()));
+
+  // Step 1: Add elements to the hash table.
+  auto update_callback1 = [data_map1, compare_test](
+                              AsyncGcsClient *client, const ClientID &id,
+                              const DynamicResourceTable::DataMap &callback_data) {
+    compare_test(data_map1, callback_data);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(
+      client->resource_table().Update(driver_id, client_id, data_map1, update_callback1));
+  auto lookup_callback1 = [data_map1, compare_test](
+                              AsyncGcsClient *client, const ClientID &id,
+                              const DynamicResourceTable::DataMap &callback_data) {
+    compare_test(data_map1, callback_data);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->resource_table().Lookup(driver_id, client_id, lookup_callback1));
+
+  // Step 2: Decrease one element, increase one and add a new one.
+  RAY_CHECK_OK(client->resource_table().Update(driver_id, client_id, data_map2, nullptr));
+  auto lookup_callback2 = [data_map2, compare_test](
+                              AsyncGcsClient *client, const ClientID &id,
+                              const DynamicResourceTable::DataMap &callback_data) {
+    compare_test(data_map2, callback_data);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->resource_table().Lookup(driver_id, client_id, lookup_callback2));
+  std::vector<std::string> delete_keys({"GPU", "CUSTOM", "None-Existent"});
+  auto remove_callback = [delete_keys](AsyncGcsClient *client, const ClientID &id,
+                                       const std::vector<std::string> &callback_data) {
+    for (int i = 0; i < callback_data.size(); ++i) {
+      // All deleting keys exist in this argument even if the key doesn't exist.
+      ASSERT_EQ(callback_data[i], delete_keys[i]);
+    }
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->resource_table().RemoveEntries(driver_id, client_id, delete_keys,
+                                                      remove_callback));
+  DynamicResourceTable::DataMap data_map3(data_map2);
+  data_map3.erase("GPU");
+  data_map3.erase("CUSTOM");
+  auto lookup_callback3 = [data_map3, compare_test](
+                              AsyncGcsClient *client, const ClientID &id,
+                              const DynamicResourceTable::DataMap &callback_data) {
+    compare_test(data_map3, callback_data);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->resource_table().Lookup(driver_id, client_id, lookup_callback3));
+
+  // Step 3: Reset the the resources to data_map1.
+  RAY_CHECK_OK(
+      client->resource_table().Update(driver_id, client_id, data_map1, update_callback1));
+  auto lookup_callback4 = [data_map1, compare_test](
+                              AsyncGcsClient *client, const ClientID &id,
+                              const DynamicResourceTable::DataMap &callback_data) {
+    compare_test(data_map1, callback_data);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->resource_table().Lookup(driver_id, client_id, lookup_callback4));
+
+  // Step 4: Removing all elements will remove the home Hash table from GCS.
+  RAY_CHECK_OK(client->resource_table().RemoveEntries(
+      driver_id, client_id, {"GPU", "CPU", "CUSTOM", "None-Existent"}, nullptr));
+  auto lookup_callback5 = [](AsyncGcsClient *client, const ClientID &id,
+                             const DynamicResourceTable::DataMap &callback_data) {
+    ASSERT_EQ(callback_data.size(), 0);
+    test->IncrementNumCallbacks();
+    // It is not sure which of notification or lookup callback will come first.
+    if (test->NumCallbacks() == expected_count) {
+      test->Stop();
+    }
+  };
+  RAY_CHECK_OK(client->resource_table().Lookup(driver_id, client_id, lookup_callback5));
+  test->Start();
+  ASSERT_EQ(test->NumCallbacks(), expected_count);
+}
+
+TEST_F(TestGcsWithAsio, TestHashTable) {
+  test = this;
+  TestHashTable(driver_id_, client_);
 }
 
 #undef TEST_MACRO

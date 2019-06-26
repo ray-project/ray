@@ -19,10 +19,6 @@ from ray.tune.trial import Trial, Checkpoint
 
 logger = logging.getLogger(__name__)
 
-# Parameters are transferred from the top PBT_QUANTILE fraction of trials to
-# the bottom PBT_QUANTILE fraction.
-PBT_QUANTILE = 0.25
-
 
 class PBTTrialState(object):
     """Internal PBT state tracked per-trial."""
@@ -120,9 +116,10 @@ class PopulationBasedTraining(FIFOScheduler):
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The training result objective value attribute. As
-            with `time_attr`, this may refer to any objective value. Stopping
+        metric (str): The training result objective value attribute. Stopping
             procedures will use this attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
         perturbation_interval (float): Models will be considered for
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
@@ -133,6 +130,10 @@ class PopulationBasedTraining(FIFOScheduler):
             A function specifies the distribution of a continuous parameter.
             You must specify at least one of `hyperparam_mutations` or
             `custom_explore_fn`.
+        quantile_fraction (float): Parameters are transferred from the top
+            `quantile_fraction` fraction of trials to the bottom
+            `quantile_fraction` fraction. Needs to be between 0 and 0.5.
+            Setting it to 0 essentially implies doing no exploitation at all.
         resample_probability (float): The probability of resampling from the
             original distribution when applying `hyperparam_mutations`. If not
             resampled, the value will be perturbed by a factor of 1.2 or 0.8
@@ -149,7 +150,8 @@ class PopulationBasedTraining(FIFOScheduler):
     Example:
         >>> pbt = PopulationBasedTraining(
         >>>     time_attr="training_iteration",
-        >>>     reward_attr="episode_reward_mean",
+        >>>     metric="episode_reward_mean",
+        >>>     mode="max",
         >>>     perturbation_interval=10,  # every 10 `time_attr` units
         >>>                                # (training_iterations in this case)
         >>>     hyperparam_mutations={
@@ -165,9 +167,12 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def __init__(self,
                  time_attr="time_total_s",
-                 reward_attr="episode_reward_mean",
+                 reward_attr=None,
+                 metric="episode_reward_mean",
+                 mode="max",
                  perturbation_interval=60.0,
                  hyperparam_mutations={},
+                 quantile_fraction=0.25,
                  resample_probability=0.25,
                  custom_explore_fn=None,
                  log_config=True):
@@ -175,11 +180,32 @@ class PopulationBasedTraining(FIFOScheduler):
             raise TuneError(
                 "You must specify at least one of `hyperparam_mutations` or "
                 "`custom_explore_fn` to use PBT.")
+
+        if quantile_fraction > 0.5 or quantile_fraction < 0:
+            raise TuneError(
+                "You must set `quantile_fraction` to a value between 0 and"
+                "0.5. Current value: '{}'".format(quantile_fraction))
+
+        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
+
         FIFOScheduler.__init__(self)
-        self._reward_attr = reward_attr
+        self._metric = metric
+        if mode == "max":
+            self._metric_op = 1.
+        elif mode == "min":
+            self._metric_op = -1.
         self._time_attr = time_attr
         self._perturbation_interval = perturbation_interval
         self._hyperparam_mutations = hyperparam_mutations
+        self._quantile_fraction = quantile_fraction
         self._resample_probability = resample_probability
         self._trial_state = {}
         self._custom_explore_fn = custom_explore_fn
@@ -199,7 +225,7 @@ class PopulationBasedTraining(FIFOScheduler):
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
-        score = result[self._reward_attr]
+        score = self._metric_op * result[self._metric]
         state.last_score = score
         state.last_perturbation_time = time
         lower_quantile, upper_quantile = self._quantiles()
@@ -228,6 +254,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
         For each step, logs: [target trial tag, clone trial tag, target trial
         iteration, clone trial iteration, old config, new config].
+
         """
         trial_name, trial_to_clone_name = (trial_state.orig_tag,
                                            new_state.orig_tag)
@@ -258,7 +285,9 @@ class PopulationBasedTraining(FIFOScheduler):
     def _exploit(self, trial_executor, trial, trial_to_clone):
         """Transfers perturbed state from trial_to_clone -> trial.
 
-        If specified, also logs the updated hyperparam state."""
+        If specified, also logs the updated hyperparam state.
+
+        """
 
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
@@ -299,7 +328,9 @@ class PopulationBasedTraining(FIFOScheduler):
     def _quantiles(self):
         """Returns trials in the lower and upper `quantile` of the population.
 
-        If there is not enough data to compute this, returns empty lists."""
+        If there is not enough data to compute this, returns empty lists.
+
+        """
 
         trials = []
         for trial, state in self._trial_state.items():
@@ -310,14 +341,19 @@ class PopulationBasedTraining(FIFOScheduler):
         if len(trials) <= 1:
             return [], []
         else:
-            return (trials[:int(math.ceil(len(trials) * PBT_QUANTILE))],
-                    trials[int(math.floor(-len(trials) * PBT_QUANTILE)):])
+            num_trials_in_quantile = int(
+                math.ceil(len(trials) * self._quantile_fraction))
+            if num_trials_in_quantile > len(trials) / 2:
+                num_trials_in_quantile = int(math.floor(len(trials) / 2))
+            return (trials[:num_trials_in_quantile],
+                    trials[-num_trials_in_quantile:])
 
     def choose_trial_to_run(self, trial_runner):
         """Ensures all trials get fair share of time (as defined by time_attr).
 
         This enables the PBT scheduler to support a greater number of
         concurrent trials than can fit in the cluster at any given time.
+
         """
 
         candidates = []

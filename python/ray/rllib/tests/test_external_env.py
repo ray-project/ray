@@ -11,10 +11,10 @@ import uuid
 import ray
 from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
-from ray.rllib.tests.test_policy_evaluator import (BadPolicy, MockPolicy,
-                                                   MockEnv)
+from ray.rllib.tests.test_rollout_worker import (BadPolicy, MockPolicy,
+                                                 MockEnv)
 from ray.tune.registry import register_env
 
 
@@ -119,7 +119,7 @@ class MultiServing(ExternalEnv):
 
 class TestExternalEnv(unittest.TestCase):
     def testExternalEnvCompleteEpisodes(self):
-        ev = PolicyEvaluator(
+        ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
             batch_steps=40,
@@ -129,7 +129,7 @@ class TestExternalEnv(unittest.TestCase):
             self.assertEqual(batch.count, 50)
 
     def testExternalEnvTruncateEpisodes(self):
-        ev = PolicyEvaluator(
+        ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
             batch_steps=40,
@@ -139,7 +139,7 @@ class TestExternalEnv(unittest.TestCase):
             self.assertEqual(batch.count, 40)
 
     def testExternalEnvOffPolicy(self):
-        ev = PolicyEvaluator(
+        ev = RolloutWorker(
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy=MockPolicy,
             batch_steps=40,
@@ -151,7 +151,7 @@ class TestExternalEnv(unittest.TestCase):
             self.assertEqual(batch["actions"][-1], 42)
 
     def testExternalEnvBadActions(self):
-        ev = PolicyEvaluator(
+        ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=BadPolicy,
             sample_async=True,
@@ -196,7 +196,7 @@ class TestExternalEnv(unittest.TestCase):
         raise Exception("failed to improve reward")
 
     def testExternalEnvHorizonNotSupported(self):
-        ev = PolicyEvaluator(
+        ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
             episode_horizon=20,

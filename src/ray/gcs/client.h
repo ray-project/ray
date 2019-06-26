@@ -4,10 +4,10 @@
 #include <map>
 #include <string>
 
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/gcs/asio.h"
 #include "ray/gcs/tables.h"
-#include "ray/id.h"
-#include "ray/status.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -44,11 +44,7 @@ class RAY_EXPORT AsyncGcsClient {
   /// one event loop should be attached at a time.
   Status Attach(boost::asio::io_service &io_service);
 
-  inline FunctionTable &function_table();
   // TODO: Some API for getting the error on the driver
-  inline ClassTable &class_table();
-  inline CustomSerializerTable &custom_serializer_table();
-  inline ConfigTable &config_table();
   ObjectTable &object_table();
   raylet::TaskTable &raylet_task_table();
   ActorTable &actor_table();
@@ -62,6 +58,7 @@ class RAY_EXPORT AsyncGcsClient {
   ProfileTable &profile_table();
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
+  DynamicResourceTable &resource_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -80,8 +77,6 @@ class RAY_EXPORT AsyncGcsClient {
   std::string DebugString() const;
 
  private:
-  std::unique_ptr<FunctionTable> function_table_;
-  std::unique_ptr<ClassTable> class_table_;
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
@@ -94,6 +89,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ClientTable> client_table_;
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
+  std::unique_ptr<DynamicResourceTable> resource_table_;
   // The following contexts write to the data shard
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_async_clients_;

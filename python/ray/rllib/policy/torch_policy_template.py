@@ -5,6 +5,7 @@ from __future__ import print_function
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
 
 
@@ -24,7 +25,7 @@ def build_torch_policy(name,
     """Helper function for creating a torch policy at runtime.
 
     Arguments:
-        name (str): name of the policy (e.g., "PPOTFPolicy")
+        name (str): name of the policy (e.g., "PPOTorchPolicy")
         loss_fn (func): function that returns a loss tensor the policy,
             and dict of experience tensor placeholders
         get_default_config (func): optional function that returns the default
@@ -55,18 +56,10 @@ def build_torch_policy(name,
         a TorchPolicy instance that uses the specified args
     """
 
-    if not name.endswith("TorchPolicy"):
-        raise ValueError("Name should match *TorchPolicy", name)
+    original_kwargs = locals().copy()
+    base = add_mixins(TorchPolicy, mixins)
 
-    base = TorchPolicy
-    while mixins:
-
-        class new_base(mixins.pop(), base):
-            pass
-
-        base = new_base
-
-    class graph_cls(base):
+    class policy_cls(base):
         def __init__(self, obs_space, action_space, config):
             if get_default_config:
                 config = dict(get_default_config(), **config)
@@ -108,11 +101,13 @@ def build_torch_policy(name,
                 return TorchPolicy.extra_grad_process(self)
 
         @override(TorchPolicy)
-        def extra_action_out(self, model_out):
+        def extra_action_out(self, input_dict, state_batches, model_out):
             if extra_action_out_fn:
-                return extra_action_out_fn(self, model_out)
+                return extra_action_out_fn(self, input_dict, state_batches,
+                                           model_out)
             else:
-                return TorchPolicy.extra_action_out(self, model_out)
+                return TorchPolicy.extra_action_out(self, input_dict,
+                                                    state_batches, model_out)
 
         @override(TorchPolicy)
         def optimizer(self):
@@ -128,6 +123,11 @@ def build_torch_policy(name,
             else:
                 return TorchPolicy.extra_grad_info(self, batch_tensors)
 
-    graph_cls.__name__ = name
-    graph_cls.__qualname__ = name
-    return graph_cls
+    @staticmethod
+    def with_updates(**overrides):
+        return build_torch_policy(**dict(original_kwargs, **overrides))
+
+    policy_cls.with_updates = with_updates
+    policy_cls.__name__ = name
+    policy_cls.__qualname__ = name
+    return policy_cls
