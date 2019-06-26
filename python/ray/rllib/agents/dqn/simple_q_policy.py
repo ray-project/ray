@@ -5,8 +5,6 @@ from __future__ import print_function
 
 from gym.spaces import Discrete
 
-import numpy as np
-
 import ray
 from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
 from ray.rllib.policy.policy import Policy
@@ -172,8 +170,6 @@ def build_q_losses(policy, batch_tensors):
 
 
 def _compute_q_values(policy, model, obs, obs_space, action_space):
-    config = policy.config
-    num_actions = action_space.n
     input_dict = {
         "obs": obs,
         "is_training": policy._get_is_training_placeholder(),

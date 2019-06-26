@@ -2,7 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import random
+import numpy as np
+
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils import try_import_tf
 
@@ -169,7 +170,7 @@ class DistributionalQModel(TFModelV2):
         """Returns distributional values for Q(s, a) given a state embedding.
 
         Override this in your custom model to customize the Q output head.
-        
+
         Arguments:
             model_out (Tensor): embedding from the model layers
 

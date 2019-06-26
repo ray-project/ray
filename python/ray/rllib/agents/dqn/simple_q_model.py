@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import random
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils import try_import_tf
 
@@ -11,7 +10,7 @@ tf = try_import_tf()
 
 class SimpleQModel(TFModelV2):
     """Extension of standard TFModel to provide Q values.
-    
+
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
 
@@ -59,7 +58,7 @@ class SimpleQModel(TFModelV2):
         """Returns Q(s, a) given a feature tensor for the state.
 
         Override this in your custom model to customize the Q output head.
-        
+
         Arguments:
             model_out (Tensor): embedding from the model layers
 

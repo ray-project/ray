@@ -90,8 +90,8 @@ class Model(object):
                 restored, num_outputs, options)
         except NotImplementedError:
             ok = False
-        # In TF 1.14, you cannot construct variable scopes in exception handlers
-        # so we have to set the OK flag and check it here:
+        # In TF 1.14, you cannot construct variable scopes in exception
+        # handlers so we have to set the OK flag and check it here:
         if not ok:
             self.outputs, self.last_layer = self._build_layers(
                 input_dict["obs"], num_outputs, options)

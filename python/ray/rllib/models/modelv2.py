@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
 from ray.rllib.models.model import restore_original_dimensions
 
 
@@ -25,7 +24,7 @@ class ModelV2(object):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name, framework):
-        """Initialize the model.  
+        """Initialize the model.
 
         This method should create any variables used by the model.
         """

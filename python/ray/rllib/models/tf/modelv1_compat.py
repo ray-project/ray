@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def make_v1_wrapper(legacy_model_cls):
     class ModelV1Wrapper(TFModelV2):
-        """Compatibility wrapper that allows V1 models to be used as ModelV2."""
+        """Wrapper that allows V1 models to be used as ModelV2."""
 
         def __init__(self, obs_space, action_space, num_outputs, model_config,
                      name):
@@ -29,8 +29,9 @@ def make_v1_wrapper(legacy_model_cls):
             # Tracks the last v1 model created by the call to forward
             self.cur_instance = None
 
-            # XXX: Try to guess the initial state size. Since the size of the state
-            # is known only after forward() for V1 models, it might be wrong.
+            # XXX: Try to guess the initial state size. Since the size of the
+            # state is known only after forward() for V1 models, it might be
+            # wrong.
             if model_config.get("use_lstm"):
                 cell_size = model_config.get("lstm_cell_size", 256)
                 self.initial_state = [
