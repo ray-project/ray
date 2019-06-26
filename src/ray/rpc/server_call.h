@@ -114,7 +114,14 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    io_service_.post([this] { HandleRequestImpl(); });
+    if (!io_service_.stopped()) {
+      io_service_.post([this] { HandleRequestImpl(); });
+    } else {
+      // Handle service for rpc call has stopped, we must handle the call here
+      // to send reply and remove it from cq
+      RAY_LOG(DEBUG) << "Handle service has been closed.";
+      Finish(Status::Invalid("HandleServiceClosed"));
+    }
   }
 
   void HandleRequestImpl() {

@@ -44,6 +44,14 @@ def ray_start_cluster_with_resource():
     cluster.shutdown()
 
 
+def print_mem():
+    os.system('top -b -n 3 -o %MEM | head -20 > tmp.log')
+    os.system('cat tmp.log')
+    os.system('free -h > tmp.log')
+    os.system('cat tmp.log')
+    os.system('ps -eo pmem --sort=-pmem | head -10 > tmp.log')
+    os.system('cat tmp.log')
+
 # This test is here to make sure that when we broadcast an object to a bunch of
 # machines, we don't have too many excess object transfers.
 def test_object_broadcast(ray_start_cluster_with_resource):
@@ -74,6 +82,7 @@ def test_object_broadcast(ray_start_cluster_with_resource):
         # Broadcast an object to all machines.
         x_id = create_object.remote()
         object_ids.append(x_id)
+        print_mem()
         ray.get([
             f._remote(args=[x_id], resources={str(i % num_nodes): 1})
             for i in range(10 * num_nodes)
@@ -291,15 +300,6 @@ def test_object_transfer_retry(ray_start_cluster):
     assert end_time - start_time < repeated_push_delay
 
 
-def print_mem():
-    os.system('top -b -n 3 -o %MEM | head -20 > tmp.log')
-    os.system('cat tmp.log')
-    os.system('free -h > tmp.log')
-    os.system('cat tmp.log')
-    os.system('ps -eo pmem --sort=-pmem | head -10 > tmp.log')
-    os.system('cat tmp.log')
-
-
 # The purpose of this test is to make sure we can transfer many objects. In the
 # past, this has caused failures in which object managers create too many open
 # files and run out of resources.
@@ -333,8 +333,5 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
 
     do_transfers()
     do_transfers()
-    print_mem()
     do_transfers()
-    print_mem()
     do_transfers()
-    print_mem()

@@ -48,7 +48,7 @@ class MockServer {
 
     auto object_manager_port = config_.object_manager_port;
     ClientTableData client_info = gcs_client_->client_table().GetLocalClient();
-    client_info.set_node_manager_address("0.0.0.0");
+    client_info.set_node_manager_address("127.0.0.1");
     client_info.set_node_manager_port(object_manager_port);
     client_info.set_object_manager_port(object_manager_port);
 

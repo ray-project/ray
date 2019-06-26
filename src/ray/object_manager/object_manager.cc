@@ -19,7 +19,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       rpc_work_(rpc_service_),
       connection_pool_(),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-      object_manager_server_(config_.object_manager_port),
+      object_manager_server_("object_manager", config_.object_manager_port),
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(main_service) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
@@ -47,6 +47,7 @@ void ObjectManager::StartRpcService() {
   for (int i = 0; i < config_.rpc_service_threads_number; i++) {
     rpc_threads_[i] = std::thread(&ObjectManager::RunRpcService, this);
   }
+  object_manager_server_.RegisterService(object_manager_service_);
   object_manager_server_.Run();
 }
 
@@ -718,10 +719,11 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
                  << object_id << "].";
 
   rpc::ProfileTableData::ProfileEvent profile_event;
-  profile_event.event_type = "receive_pull_request";
-  profile_event.start_time = current_sys_time_seconds();
-  profile_event.end_time = profile_event.start_time;
-  profile_event.extra_data = "[\"" + object_id.Hex() + "\",\"" + client_id.Hex() + "\"]";
+  profile_event.set_event_type("receive_pull_request");
+  profile_event.set_start_time(current_sys_time_seconds());
+  profile_event.set_end_time(profile_event.start_time());
+  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() +
+                               "\"]");
   {
     std::lock_guard<std::mutex> lock(profile_mutex_);
     profile_events_.emplace_back(profile_event);
@@ -790,6 +792,9 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
     }
     auto object_manager_client = std::make_shared<rpc::ObjectManagerClient>(
         connection_info.ip, connection_info.port, client_call_manager_);
+
+    RAY_LOG(DEBUG) << "Get rpc client, address: " << connection_info.ip << ", port: "
+                   << connection_info.port << ", local port: " << GetServerPort();
 
     it = remote_object_manager_clients_
              .emplace(client_id, std::move(object_manager_client))

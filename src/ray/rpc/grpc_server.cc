@@ -12,6 +12,9 @@ void GrpcServer::Run() {
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
+  if (services_.size() == 0) {
+    RAY_LOG(WARNING) << "No service is found when start grpc server.";
+  }
   for (auto &entry : services_) {
     builder.RegisterService(&entry.get());
   }
@@ -55,14 +58,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         // incoming request.
         server_call->GetFactory().CreateCall();
         server_call->SetState(ServerCallState::PROCESSING);
-        if (!main_service_.stopped()) {
-          main_service_.post([server_call] { server_call->HandleRequest(); });
-        } else {
-          // Handle service for rpc call has stopped, we must handle the call here
-          // to send reply and remove it from cq
-          RAY_LOG(DEBUG) << "Handle service has been closed.";
-          server_call->Finish(Status::Invalid("HandleServiceClosed"));
-        }
+        server_call->HandleRequest();
         break;
       case ServerCallState::SENDING_REPLY:
         // The reply has been sent, this call can be deleted now.
