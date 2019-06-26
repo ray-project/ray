@@ -39,7 +39,7 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
-    # Deay schedule for the entropy regularizer
+    # Decay schedule for the entropy regularizer
     "entropy_coeff_schedule": None,
     # PPO clip parameter
     "clip_param": 0.3,
