@@ -30,8 +30,6 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  /// \param[in] main_service The main event loop, to which service handler functions
-  /// will be posted.
   GrpcServer(const std::string &name, const uint32_t port) : name_(name), port_(port) {}
 
   /// Destruct this gRPC server.
@@ -50,9 +48,11 @@ class GrpcServer {
   /// Get the port of this gRPC server.
   int GetPort() const { return port_; }
 
-  /// Register a grpc service.
+  /// Register a grpc service. Multiple services can be registered to the same server.
+  /// Note that the `service` registered must remain valid for the lifetime of the
+  /// `GrpcServer`, as it holds the underlying `grpc::Service`.
   ///
-  /// \param[in] builder The `GrpcService` to register to this server.
+  /// \param[in] service A `GrpcService` to register to this server.
   void RegisterService(GrpcService &service);
 
  protected:
@@ -80,14 +80,11 @@ class GrpcServer {
 /// Base class that represents an abstract gRPC service.
 ///
 /// Subclass should implement `InitServerCallFactories` to decide
-/// which kinds of requests this server should accept.
+/// which kinds of requests this service should accept.
 class GrpcService {
  public:
   /// Constructor.
   ///
-  /// \param[in] name Name of this server, used for logging and debugging purpose.
-  /// \param[in] port The port to bind this server to. If it's 0, a random available port
-  ///  will be chosen.
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
   GrpcService(boost::asio::io_service &main_service) : main_service_(main_service) {}
@@ -96,7 +93,8 @@ class GrpcService {
   ~GrpcService() {}
 
  protected:
-  /// TODO
+  /// Return the underlying grpc::Service object for this class.
+  /// This is passed to `GrpcServer` to be registered to grpc `ServerBuilder`.
   virtual grpc::Service &GetGrpcService() = 0;
 
   /// Subclasses should implement this method to initialize the `ServerCallFactory`
@@ -105,7 +103,7 @@ class GrpcService {
   /// `accept_concurrency` `ServerCall` objects, each of which will be used to accept and
   /// handle an incoming request.
   ///
-  /// \param[out] service The `grpc::Service` object.
+  /// \param[in] cq The grpc completion queue.
   /// \param[out] server_call_factories_and_concurrencies The `ServerCallFactory` objects,
   /// and the maximum number of concurrent requests that gRPC server can accept.
   virtual void InitServerCallFactories(

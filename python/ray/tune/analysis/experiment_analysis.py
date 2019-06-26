@@ -47,7 +47,14 @@ class ExperimentAnalysis(object):
         >>>     experiment_path="~/tune_results/my_exp")
     """
 
-    def __init__(self, experiment_path):
+    def __init__(self, experiment_path, trials=None):
+        """Initializer.
+
+        Args:
+            experiment_path (str): Path to where experiment is located.
+            trials (list|None): List of trials that can be accessed via
+                `analysis.trials`.
+        """
         experiment_path = os.path.expanduser(experiment_path)
         if not os.path.isdir(experiment_path):
             raise TuneError(
@@ -55,7 +62,8 @@ class ExperimentAnalysis(object):
         experiment_state_paths = glob.glob(
             os.path.join(experiment_path, "experiment_state*.json"))
         if not experiment_state_paths:
-            raise TuneError("No experiment state found!")
+            raise TuneError(
+                "No experiment state found in {}!".format(experiment_path))
         experiment_filename = max(
             list(experiment_state_paths))  # if more than one, pick latest
         with open(os.path.join(experiment_path, experiment_filename)) as f:
@@ -65,10 +73,27 @@ class ExperimentAnalysis(object):
             raise TuneError("Experiment state invalid; no checkpoints found.")
         self._checkpoints = self._experiment_state["checkpoints"]
         self._scrubbed_checkpoints = unnest_checkpoints(self._checkpoints)
+        self.trials = trials
+        self._dataframe = None
 
-    def dataframe(self):
-        """Returns a pandas.DataFrame object constructed from the trials."""
-        return pd.DataFrame(self._scrubbed_checkpoints)
+    def get_all_trial_dataframes(self):
+        trial_dfs = {}
+        for checkpoint in self._checkpoints:
+            logdir = checkpoint["logdir"]
+            progress = max(glob.glob(os.path.join(logdir, "progress.csv")))
+            trial_dfs[checkpoint["trial_id"]] = pd.read_csv(progress)
+        return trial_dfs
+
+    def dataframe(self, refresh=False):
+        """Returns a pandas.DataFrame object constructed from the trials.
+
+        Args:
+            refresh (bool): Clears the cache which may have an existing copy.
+
+        """
+        if self._dataframe is None or refresh:
+            self._dataframe = pd.DataFrame(self._scrubbed_checkpoints)
+        return self._dataframe
 
     def stats(self):
         """Returns a dictionary of the statistics of the experiment."""
@@ -87,22 +112,45 @@ class ExperimentAnalysis(object):
                 return pd.read_csv(progress)
         raise ValueError("Trial id {} not found".format(trial_id))
 
-    def get_best_trainable(self, metric, trainable_cls):
-        """Returns the best Trainable based on the experiment metric."""
-        return trainable_cls(config=self.get_best_config(metric))
+    def get_best_trainable(self, metric, trainable_cls, mode="max"):
+        """Returns the best Trainable based on the experiment metric.
 
-    def get_best_config(self, metric):
-        """Retrieve the best config from the best trial."""
-        return self._get_best_trial(metric)["config"]
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
 
-    def _get_best_trial(self, metric):
-        """Retrieve the best trial based on the experiment metric."""
-        return max(
+        """
+        return trainable_cls(config=self.get_best_config(metric, mode=mode))
+
+    def get_best_config(self, metric, mode="max"):
+        """Retrieve the best config from the best trial.
+
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
+
+        """
+        return self.get_best_info(metric, flatten=False, mode=mode)["config"]
+
+    def get_best_logdir(self, metric, mode="max"):
+        df = self.dataframe()
+        if mode == "max":
+            return df.iloc[df[metric].idxmax()].logdir
+        elif mode == "min":
+            return df.iloc[df[metric].idxmin()].logdir
+
+    def get_best_info(self, metric, mode="max", flatten=True):
+        """Retrieve the best trial based on the experiment metric.
+
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
+            flatten (bool): Assumes trial info is flattened, where
+                nested entries are concatenated like `info:metric`.
+        """
+        optimize_op = max if mode == "max" else min
+        if flatten:
+            return optimize_op(
+                self._scrubbed_checkpoints, key=lambda d: d.get(metric, 0))
+        return optimize_op(
             self._checkpoints, key=lambda d: d["last_result"].get(metric, 0))
-
-    def _get_sorted_trials(self, metric):
-        """Retrive trials in sorted order based on the experiment metric."""
-        return sorted(
-            self._checkpoints,
-            key=lambda d: d["last_result"].get(metric, 0),
-            reverse=True)

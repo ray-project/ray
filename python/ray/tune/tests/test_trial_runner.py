@@ -441,6 +441,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self.assertRaises(TuneError, f)
 
+    def testNestedStoppingReturn(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test={"test1": {"test2": i}})
+
+        [trial] = tune.run(train, stop={"test": {"test1": {"test2": 6}}})
+        self.assertEqual(trial.last_result["training_iteration"], 7)
+
     def testEarlyReturn(self):
         def train(config, reporter):
             reporter(timesteps_total=100, done=True)

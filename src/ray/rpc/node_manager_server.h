@@ -30,11 +30,11 @@ class NodeManagerGrpcService : public GrpcService {
  public:
   /// Constructor.
   ///
-  /// \param[in] main_service See super class.
+  /// \param[in] io_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  NodeManagerGrpcService(boost::asio::io_service &main_service,
+  NodeManagerGrpcService(boost::asio::io_service &io_service,
                          NodeManagerServiceHandler &service_handler)
-      : GrpcService(main_service), service_handler_(service_handler){};
+      : GrpcService(io_service), service_handler_(service_handler){};
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }

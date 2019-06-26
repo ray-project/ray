@@ -114,6 +114,10 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
+    io_service_.post([this] { HandleRequestImpl(); });
+  }
+
+  void HandleRequestImpl() {
     state_ = ServerCallState::PROCESSING;
     (service_handler_.*handle_request_function_)(request_, &reply_,
                                                  [this](Status status) {
