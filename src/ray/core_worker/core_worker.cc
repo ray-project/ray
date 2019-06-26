@@ -6,7 +6,7 @@ namespace ray {
 CoreWorker::CoreWorker(const enum WorkerType worker_type,
                        const enum WorkerLanguage language,
                        const std::string &store_socket, const std::string &raylet_socket,
-                       JobID job_id)
+                       const JobID &job_id)
     : worker_type_(worker_type),
       language_(language),
       store_socket_(store_socket),
