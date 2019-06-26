@@ -63,6 +63,8 @@ public class TaskSpec {
   // Language of this task.
   public final TaskLanguage language;
 
+  public final List<String> dynamicWorkerOptions;
+
   // Descriptor of the remote function.
   // Note, if task language is Java, the type is JavaFunctionDescriptor. If the task language
   // is Python, the type is PyFunctionDescriptor.
@@ -93,7 +95,8 @@ public class TaskSpec {
       int numReturns,
       Map<String, Double> resources,
       TaskLanguage language,
-      FunctionDescriptor functionDescriptor) {
+      FunctionDescriptor functionDescriptor,
+      List<String> dynamicWorkerOptions) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
@@ -106,6 +109,8 @@ public class TaskSpec {
     this.newActorHandles = newActorHandles;
     this.args = args;
     this.numReturns = numReturns;
+    this.dynamicWorkerOptions = dynamicWorkerOptions;
+
     returnIds = new ObjectId[numReturns];
     for (int i = 0; i < numReturns; ++i) {
       returnIds[i] = IdUtil.computeReturnId(taskId, i + 1);
@@ -157,6 +162,7 @@ public class TaskSpec {
         ", resources=" + resources +
         ", language=" + language +
         ", functionDescriptor=" + functionDescriptor +
+        ", dynamicWorkerOptions=" + dynamicWorkerOptions +
         ", executionDependencies=" + executionDependencies +
         '}';
   }

@@ -4,12 +4,16 @@
 #include <unordered_map>
 
 #include "ray/common/id.h"
-#include "ray/gcs/format/gcs_generated.h"
+#include "ray/protobuf/gcs.pb.h"
 #include "ray/raylet/task.h"
 
 namespace ray {
 
 namespace raylet {
+
+using rpc::ActorTableData;
+using ActorState = rpc::ActorTableData::ActorState;
+using rpc::ActorCheckpointData;
 
 /// \class ActorRegistration
 ///
@@ -23,13 +27,13 @@ class ActorRegistration {
   ///
   /// \param actor_table_data Information from the global actor table about
   /// this actor. This includes the actor's node manager location.
-  ActorRegistration(const ActorTableDataT &actor_table_data);
+  explicit ActorRegistration(const ActorTableData &actor_table_data);
 
   /// Recreate an actor's registration from a checkpoint.
   ///
   /// \param checkpoint_data The checkpoint used to restore the actor.
-  ActorRegistration(const ActorTableDataT &actor_table_data,
-                    const ActorCheckpointDataT &checkpoint_data);
+  ActorRegistration(const ActorTableData &actor_table_data,
+                    const ActorCheckpointData &checkpoint_data);
 
   /// Each actor may have multiple callers, or "handles". A frontier leaf
   /// represents the execution state of the actor with respect to a single
@@ -46,15 +50,15 @@ class ActorRegistration {
   /// Get the actor table data.
   ///
   /// \return The actor table data.
-  const ActorTableDataT &GetTableData() const { return actor_table_data_; }
+  const ActorTableData &GetTableData() const { return actor_table_data_; }
 
   /// Get the actor's current state (ALIVE or DEAD).
   ///
   /// \return The actor's current state.
-  const ActorState &GetState() const { return actor_table_data_.state; }
+  const ActorState GetState() const { return actor_table_data_.state(); }
 
   /// Update actor's state.
-  void SetState(const ActorState &state) { actor_table_data_.state = state; }
+  void SetState(const ActorState &state) { actor_table_data_.set_state(state); }
 
   /// Get the actor's node manager location.
   ///
@@ -131,13 +135,13 @@ class ActorRegistration {
   /// \param actor_id ID of this actor.
   /// \param task The task that just finished on the actor.
   /// \return A shared pointer to the generated checkpoint data.
-  std::shared_ptr<ActorCheckpointDataT> GenerateCheckpointData(const ActorID &actor_id,
-                                                               const Task &task);
+  std::shared_ptr<ActorCheckpointData> GenerateCheckpointData(const ActorID &actor_id,
+                                                              const Task &task);
 
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.
-  ActorTableDataT actor_table_data_;
+  ActorTableData actor_table_data_;
   /// The object representing the state following the actor's most recently
   /// executed task. The next task to execute on the actor should be marked as
   /// execution-dependent on this object.

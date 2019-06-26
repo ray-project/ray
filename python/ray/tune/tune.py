@@ -4,11 +4,11 @@ from __future__ import print_function
 
 import click
 import logging
-import os
 import time
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -39,7 +39,7 @@ def _make_scheduler(args):
 def _find_checkpoint_dir(exp):
     # TODO(rliaw): Make sure the checkpoint_dir is resolved earlier.
     # Right now it is resolved somewhere far down the trial generation process
-    return os.path.join(exp.spec["local_dir"], exp.name)
+    return exp.checkpoint_dir
 
 
 def _prompt_restore(checkpoint_dir, resume):
@@ -89,9 +89,10 @@ def run(run_or_experiment,
         verbose=2,
         resume=False,
         queue_trials=False,
-        reuse_actors=False,
+        reuse_actors=True,
         trial_executor=None,
         raise_on_failed_trial=True,
+        return_trials=True,
         ray_auto_init=True):
     """Executes training.
 
@@ -273,7 +274,9 @@ def run(run_or_experiment,
         else:
             logger.error("Trials did not complete: %s", errored_trials)
 
-    return runner.get_trials()
+    if return_trials:
+        return runner.get_trials()
+    return ExperimentAnalysis(experiment.checkpoint_dir)
 
 
 def run_experiments(experiments,
