@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
-message PushTaskRequest {
+message AssignTaskRequest {
   // The ID of the task to be pushed.
   bytes task_id = 1;
   // The task to be pushed. This should include task_id.
@@ -13,11 +13,11 @@ message PushTaskRequest {
   bytes task_spec = 2;
 }
 
-message PushTaskReply {
+message AssignTaskReply {
 }
 
 // Service for worker.
 service WorkerTaskService {
   // Push a task to a worker.
-  rpc PushTask(PushTaskRequest) returns (PushTaskReply);
+  rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
 }

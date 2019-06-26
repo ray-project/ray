@@ -57,9 +57,10 @@ class CoreWorkerTaskExecutionInterface {
   /// The RPC server.
   rpc::GrpcServer worker_server_;
 
-  /// event loop where tasks are processed.
+  /// Event loop where tasks are processed.
   boost::asio::io_service main_service_;
 
+  /// The asio work to keep main_service_ alive.
   boost::asio::io_service::work main_work_;
 
   friend class CoreWorker;

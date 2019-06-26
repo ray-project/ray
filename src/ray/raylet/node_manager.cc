@@ -1858,14 +1858,14 @@ bool NodeManager::AssignTask(const Task &task) {
     }
     auto &client = client_entry->second;
 
-    // TODO(zhijunfu): PushTask() only sends the task spec to the worker, but
+    // TODO(zhijunfu): AssignTask() only sends the task spec to the worker, but
     // doesn't include the task resource ids.
-    rpc::PushTaskRequest request;
+    rpc::AssignTaskRequest request;
     request.set_task_id(task_id.Binary());
     request.set_task_spec(task.Serialize());
   
-    auto status = client->PushTask(request, [this, worker](
-                     Status status, const rpc::PushTaskReply &reply) {
+    auto status = client->AssignTask(request, [this, worker](
+                     Status status, const rpc::AssignTaskReply &reply) {
       // Worker has finished this task. The logic below is the same
       // as ProcessGetTaskMessage(). 
       auto conn = worker->Connection();

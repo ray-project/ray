@@ -298,7 +298,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   ASSERT_EQ(context.GetNextTaskIndex(), 3);
   ASSERT_EQ(context.GetNextPutIndex(), 3);
 }
-/*
+
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
@@ -420,7 +420,7 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
 }
-*/
+
 TEST_F(SingleNodeTest, TestNormalTaskLocal) {
   std::unordered_map<std::string, double> resources;
   TestNormalTask(resources);

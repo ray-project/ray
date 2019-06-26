@@ -58,9 +58,6 @@ class ServerCall {
 
   /// Get the factory that created this `ServerCall`.
   virtual const ServerCallFactory &GetFactory() const = 0;
-
-  /// Get io service.
-  virtual boost::asio::io_service &GetIOService() = 0;
 };
 
 /// The factory that creates a particular kind of `ServerCall` objects.
@@ -129,8 +126,6 @@ class ServerCallImpl : public ServerCall {
   }
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
-
-  boost::asio::io_service &GetIOService() override { return io_service_; }
 
  private:
   /// Tell gRPC to finish this request.

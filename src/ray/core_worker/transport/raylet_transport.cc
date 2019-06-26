@@ -21,9 +21,9 @@ CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
   server.RegisterService(task_service_);
 }
 
-void CoreWorkerRayletTaskReceiver::HandlePushTask(
-    const rpc::PushTaskRequest &request,
-    rpc::PushTaskReply *reply,
+void CoreWorkerRayletTaskReceiver::HandleAssignTask(
+    const rpc::AssignTaskRequest &request,
+    rpc::AssignTaskReply *reply,
     rpc::RequestDoneCallback done_callback) {
 
   const std::string &task_message = request.task_spec();
