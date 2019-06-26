@@ -4,9 +4,8 @@
 namespace ray {
 
 CoreWorker::CoreWorker(const enum WorkerType worker_type,
-                       const enum WorkerLanguage language,
-                       const std::string &store_socket, const std::string &raylet_socket,
-                       DriverID driver_id)
+                       const ray::rpc::Language language, const std::string &store_socket,
+                       const std::string &raylet_socket, DriverID driver_id)
     : worker_type_(worker_type),
       language_(language),
       store_socket_(store_socket),
@@ -27,20 +26,6 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
     RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"
                    << " core worker: " << status.message();
     throw std::runtime_error(status.message());
-  }
-}
-
-::Language CoreWorker::ToTaskLanguage(WorkerLanguage language) {
-  switch (language) {
-  case ray::WorkerLanguage::JAVA:
-    return ::Language::JAVA;
-    break;
-  case ray::WorkerLanguage::PYTHON:
-    return ::Language::PYTHON;
-    break;
-  default:
-    RAY_LOG(FATAL) << "invalid language specified: " << static_cast<int>(language);
-    break;
   }
 }
 

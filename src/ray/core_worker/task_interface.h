@@ -43,27 +43,15 @@ struct ActorCreationOptions {
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const WorkerLanguage actor_language,
-              const ActorDefinitionDescriptor &actor_definition_descriptor)
+              const ray::rpc::Language actor_language,
+              const std::vector<std::string> &actor_creation_task_function_descriptor)
       : actor_id_(actor_id),
         actor_handle_id_(actor_handle_id),
         actor_language_(actor_language),
-        actor_definition_descriptor_(actor_definition_descriptor),
+        actor_creation_task_function_descriptor_(actor_creation_task_function_descriptor),
         actor_cursor_(ObjectID::FromBinary(actor_id.Binary())),
         task_counter_(0),
         num_forks_(0) {}
-
-  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const WorkerLanguage actor_language,
-              const ActorDefinitionDescriptor &actor_definition_descriptor,
-              const ObjectID &actor_cursor, int task_counter, int num_forks)
-      : actor_id_(actor_id),
-        actor_handle_id_(actor_handle_id),
-        actor_language_(actor_language),
-        actor_definition_descriptor_(actor_definition_descriptor),
-        actor_cursor_(actor_cursor),
-        task_counter_(task_counter),
-        num_forks_(num_forks) {}
 
   /// ID of the actor.
   const ray::ActorID &ActorID() const { return actor_id_; };
@@ -72,11 +60,11 @@ class ActorHandle {
   const ray::ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
 
   /// Language of the actor.
-  const ray::WorkerLanguage ActorLanguage() const { return actor_language_; };
+  const ray::rpc::Language ActorLanguage() const { return actor_language_; };
   /// Descriptor of actor definition.
   /// e.g. class info for Java actor. module and class info for Python actor.
-  const ray::ActorDefinitionDescriptor &ActorDefinitionDescriptor() const {
-    return actor_definition_descriptor_;
+  const std::vector<std::string> &ActorCreationTaskFunctionDescriptor() const {
+    return actor_creation_task_function_descriptor_;
   };
 
   /// The unique id of the last return of the last task.
@@ -94,7 +82,7 @@ class ActorHandle {
     std::unique_lock<std::mutex> guard(mutex_);
     auto new_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
         actor_id_, ComputeNextActorHandleId(actor_handle_id_, ++num_forks_),
-        actor_language_, actor_definition_descriptor_));
+        actor_language_, actor_creation_task_function_descriptor_));
     new_handle->actor_cursor_ = actor_cursor_;
     new_actor_handles_.push_back(new_handle->actor_handle_id_);
     return new_handle;
@@ -107,8 +95,8 @@ class ActorHandle {
     temp.set_actor_id(actor_id_.Binary());
     temp.set_actor_handle_id(actor_handle_id_.Binary());
     temp.set_actor_language((int)actor_language_);
-    for (auto &item : actor_definition_descriptor_) {
-      temp.add_actor_definition_descriptor(item);
+    for (auto &item : actor_creation_task_function_descriptor_) {
+      temp.add_actor_creation_task_function_descriptor(item);
     }
     temp.set_actor_handle_id(actor_handle_id_.Binary());
     temp.set_actor_cursor(actor_cursor_.Binary());
@@ -120,16 +108,19 @@ class ActorHandle {
   static std::unique_ptr<ActorHandle> Deserialize(const std::string &data) {
     ray::rpc::ActorHandle temp;
     temp.ParseFromString(data);
-    ray::ActorDefinitionDescriptor actor_definition_descriptor;
-    for (auto &item : temp.actor_definition_descriptor()) {
-      actor_definition_descriptor.push_back(item);
+    std::vector<std::string> actor_creation_task_function_descriptor;
+    for (auto &item : temp.actor_creation_task_function_descriptor()) {
+      actor_creation_task_function_descriptor.push_back(item);
     }
-    return std::unique_ptr<ActorHandle>(new ActorHandle(
-        ray::ActorID::FromBinary(temp.actor_id()),
-        ray::ActorHandleID::FromBinary(temp.actor_handle_id()),
-        (WorkerLanguage)temp.actor_language(), actor_definition_descriptor,
-        ray::ObjectID::FromBinary(temp.actor_cursor()), temp.task_counter(),
-        temp.num_forks()));
+    auto ret = std::unique_ptr<ActorHandle>(
+        new ActorHandle(ray::ActorID::FromBinary(temp.actor_id()),
+                        ray::ActorHandleID::FromBinary(temp.actor_handle_id()),
+                        (ray::rpc::Language)temp.actor_language(),
+                        actor_creation_task_function_descriptor));
+    ret->actor_cursor_ = ray::ObjectID::FromBinary(temp.actor_cursor());
+    ret->task_counter_ = temp.task_counter();
+    ret->num_forks_ = temp.num_forks();
+    return ret;
   }
 
  private:
@@ -149,10 +140,10 @@ class ActorHandle {
   /// ID of this actor handle.
   const ray::ActorHandleID actor_handle_id_;
   /// Language of the actor.
-  enum WorkerLanguage actor_language_;
+  enum ray::rpc::Language actor_language_;
   /// Descriptor of actor definition.
   /// e.g. class info for Java actor. module and class info for Python actor.
-  const ray::ActorDefinitionDescriptor actor_definition_descriptor_;
+  const std::vector<std::string> actor_creation_task_function_descriptor_;
 
   // Fields below are guarded by the mutex.
 

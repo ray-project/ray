@@ -12,9 +12,8 @@ message ActorHandle {
   // Language of the actor.
   int32 actor_language = 3;
 
-  // Descriptor of actor definition.
-  // e.g. class info for Java actor. module and class info for Python actor.
-  repeated string actor_definition_descriptor = 4;
+  // Function descriptor of actor creation task.
+  repeated string actor_creation_task_function_descriptor = 4;
 
   // The unique id of the last return of the last task.
   // It's used as a dependency for the next task.

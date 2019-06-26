@@ -30,7 +30,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   }
 
   auto task_arguments = BuildTaskArguments(args);
-  auto language = core_worker_.ToTaskLanguage(function.language);
+  auto language = ToTaskLanguage(function.language);
 
   ray::raylet::TaskSpecification spec(context.GetCurrentDriverID(),
                                       context.GetCurrentTaskID(), next_task_index,
@@ -54,29 +54,14 @@ Status CoreWorkerTaskInterface::CreateActor(
   std::vector<ObjectID> return_ids;
   return_ids.push_back(ObjectID::ForTaskReturn(task_id, 1));
   ActorID actor_creation_id = ActorID::FromBinary(return_ids[0].Binary());
-  ray::ActorDefinitionDescriptor actor_definition_descriptor;
-  switch (function.language) {
-  case WorkerLanguage::PYTHON:
-    RAY_CHECK(function.function_descriptor.size() == 3);
-    actor_definition_descriptor.push_back(function.function_descriptor[0]);
-    actor_definition_descriptor.push_back(function.function_descriptor[1]);
-    break;
-  case WorkerLanguage::JAVA:
-    RAY_CHECK(function.function_descriptor.size() == 3);
-    actor_definition_descriptor.push_back(function.function_descriptor[0]);
-    break;
-  default:
-    return Status::Invalid("Invalid language.");
-  }
-
   *actor_handle = std::unique_ptr<ActorHandle>(
       new ActorHandle(actor_creation_id, ActorHandleID::Nil(), function.language,
-                      actor_definition_descriptor));
+                      function.function_descriptor));
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
   auto task_arguments = BuildTaskArguments(args);
-  auto language = core_worker_.ToTaskLanguage(function.language);
+  auto language = ToTaskLanguage(function.language);
 
   // Note that the caller is supposed to specify required placement resources
   // correctly via actor_creation_options.resources.
@@ -113,7 +98,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
 
   auto task_arguments = BuildTaskArguments(args);
-  auto language = core_worker_.ToTaskLanguage(function.language);
+  auto language = ToTaskLanguage(function.language);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
 
