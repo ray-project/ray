@@ -416,7 +416,7 @@ class TFPolicy(Policy):
         if len(self._state_inputs) != len(state_batches):
             raise ValueError(
                 "Must pass in RNN state batches for placeholders {}, got {}".
-                    format(self._state_inputs, state_batches))
+                format(self._state_inputs, state_batches))
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
         builder.add_feed_dict({self._obs_input: obs_batch})
         if state_batches:
@@ -443,7 +443,7 @@ class TFPolicy(Policy):
         if len(gradients) != len(self._grads):
             raise ValueError(
                 "Unexpected number of gradients to apply, got {} for {}".
-                    format(gradients, self._grads))
+                format(gradients, self._grads))
         builder.add_feed_dict({self._is_training: True})
         builder.add_feed_dict(dict(zip(self._grads, gradients)))
         fetches = builder.add_fetches([self._apply_op])
@@ -473,9 +473,9 @@ class TFPolicy(Policy):
         feed_dict = {}
         if self._batch_divisibility_req > 1:
             meets_divisibility_reqs = (
-                    len(batch[SampleBatch.CUR_OBS]) %
-                    self._batch_divisibility_req == 0
-                    and max(batch[SampleBatch.AGENT_INDEX]) == 0)  # not multiagent
+                len(batch[SampleBatch.CUR_OBS]) %
+                self._batch_divisibility_req == 0
+                and max(batch[SampleBatch.AGENT_INDEX]) == 0)  # not multiagent
         else:
             meets_divisibility_reqs = True
 
@@ -527,7 +527,7 @@ class LearningRateSchedule(object):
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = tf.get_variable("lr", initializer=lr)
+        self.cur_lr = tf.get_variable("lr", initializer=lr, trainable=False)
         if lr_schedule is None:
             self.lr_schedule = ConstantSchedule(lr)
         else:
@@ -551,16 +551,17 @@ class EntropyCoeffSchedule(object):
     """Mixin for TFPolicy that adds entropy coeff decay."""
 
     @DeveloperAPI
-    def __init__(self, entropy_coeff, entropy_schedule):
-        self.entropy_coeff = tf.get_variable("entropy_coeff", initializer=entropy_coeff)
-        self._entropy_schedule = entropy_schedule
+    def __init__(self, entropy_coeff, entropy_coeff_schedule):
+        self.entropy_coeff = tf.get_variable(
+            "entropy_coeff", initializer=entropy_coeff, trainable=False)
+        self._entropy_schedule = entropy_coeff_schedule
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
         if self._entropy_schedule is not None:
             self.entropy_coeff.load(
-                self.config['entropy_coeff'] *
+                self.entropy_coeff.eval(session=self._sess) *
                 (1 - global_vars['timestep'] /
-                 self.config['entropy_schedule']),
+                 self.config['entropy_coeff_schedule']),
                 session=self._sess)
