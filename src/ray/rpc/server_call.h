@@ -94,20 +94,27 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] factory The factory which created this call.
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
+  /// \param[in] io_service The event loop.
   ServerCallImpl(
       const ServerCallFactory &factory, ServiceHandler &service_handler,
-      HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function)
+      HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
+      boost::asio::io_service &io_service)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
-        response_writer_(&context_) {}
+        response_writer_(&context_),
+        io_service_(io_service) {}
 
   ServerCallState GetState() const override { return state_; }
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
+    io_service_.post([this] { HandleRequestImpl(); });
+  }
+
+  void HandleRequestImpl() {
     state_ = ServerCallState::PROCESSING;
     (service_handler_.*handle_request_function_)(request_, &reply_,
                                                  [this](Status status) {
@@ -145,6 +152,9 @@ class ServerCallImpl : public ServerCall {
 
   /// The reponse writer.
   grpc::ServerAsyncResponseWriter<Reply> response_writer_;
+
+  /// The event loop.
+  boost::asio::io_service &io_service_;
 
   /// The request message.
   Request request_;
@@ -185,23 +195,26 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] cq The `CompletionQueue`.
+  /// \param[in] io_service The event loop.
   ServerCallFactoryImpl(
       AsyncService &service,
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq)
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      boost::asio::io_service &io_service)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
-        cq_(cq) {}
+        cq_(cq),
+        io_service_(io_service) {}
 
   ServerCall *CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
     auto call = new ServerCallImpl<ServiceHandler, Request, Reply>(
-        *this, service_handler_, handle_request_function_);
+        *this, service_handler_, handle_request_function_, io_service_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_, &call->request_,
@@ -225,6 +238,9 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// The `CompletionQueue`.
   const std::unique_ptr<grpc::ServerCompletionQueue> &cq_;
+
+  /// The event loop.
+  boost::asio::io_service &io_service_;
 };
 
 }  // namespace rpc
