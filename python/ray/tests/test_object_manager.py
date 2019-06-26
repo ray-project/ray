@@ -331,5 +331,8 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
 
     do_transfers()
     do_transfers()
+    print_mem()
     do_transfers()
+    print_mem()
     do_transfers()
+    print_mem()

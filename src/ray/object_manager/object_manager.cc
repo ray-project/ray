@@ -202,7 +202,7 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   if (rpc_client) {
     // Try pulling from the client.
     rpc_service_.post([this, object_id, client_id, rpc_client]() {
-      auto st = SendPullRequest(object_id, client_id, rpc_client);
+      SendPullRequest(object_id, client_id, rpc_client);
     });
   } else {
     RAY_LOG(ERROR) << "Couldn't send pull request from " << client_id_ << " to "
@@ -244,7 +244,7 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   }
 };
 
-ray::Status ObjectManager::SendPullRequest(
+void ObjectManager::SendPullRequest(
     const ObjectID &object_id, const ClientID &client_id,
     std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
   rpc::PullRequest pull_request;
@@ -258,7 +258,6 @@ ray::Status ObjectManager::SendPullRequest(
                        << " failed due to" << status.message();
     }
   });
-  return Status::OK();
 }
 
 void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
