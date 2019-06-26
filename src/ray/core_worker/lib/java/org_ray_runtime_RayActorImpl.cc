@@ -21,7 +21,7 @@ extern "C" {
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_fork(JNIEnv *env, jclass o,
                                                               jlong nativeActorHandle) {
   auto new_actor_handle = GetActorHandle(nativeActorHandle).Fork();
-  // TODO: free ActorHandle
+  // TODO (kfstorm): free ActorHandle
   return reinterpret_cast<jlong>(new_actor_handle.release());
 }
 

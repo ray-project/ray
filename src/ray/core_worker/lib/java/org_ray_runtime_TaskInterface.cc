@@ -149,7 +149,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterface_createActor(
   ReleaseTaskArgs(env, byte_arrays_to_be_released, byte_pointers_to_be_released);
 
   ThrowRayExceptionIfNotOK(env, status);
-  // TODO: free ActorHandle
+  // TODO (kfstorm): free ActorHandle
   return reinterpret_cast<jlong>(actor_handle.release());
 }
 
