@@ -59,7 +59,11 @@ def test_task_forward(benchmark, num_tasks):
             num_cpus=16,
             object_store_memory=10**7,
     ) as cluster:
-        cluster.add_node(resources={"my_resource": 100})
+        cluster.add_node(
+            num_cpus=16,
+            object_store_memory=10**7,
+            resources={"my_resource": 100},
+        )
 
         @ray.remote(resources={"my_resource": 0.001})
         def f():
