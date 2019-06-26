@@ -136,10 +136,6 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir):
     The trial state should also be consistent with the checkpoint.
     """
     tmpdir = str(tmpdir)
-    class TestTrainable(MockTrainer):
-        def __init__(self, config, logger_creator):
-            Trainable.__init__(self, config, logger_creator)
-            self.logdir = tmpdir
 
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
@@ -183,7 +179,6 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir):
     assert t2.has_checkpoint()
     node3 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node2)
-    raise NotImplementedError("Need to check for Trainable checkpoint migration.")
     cluster.wait_for_nodes()
     runner.step()  # Recovery step
     assert t2.last_result["training_iteration"] == 2

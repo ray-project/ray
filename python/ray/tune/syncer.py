@@ -27,11 +27,13 @@ ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX)
 
 _syncers = {}
 
+
 def validate_sync_string(sync_string):
     if "{source}" not in sync_string:
         raise ValueError("Sync template missing '{source}'.")
     if "{target}" not in sync_string:
         raise ValueError("Sync template missing '{target}'.")
+
 
 def wait_for_sync():
     for syncer in _syncers.values():
@@ -129,7 +131,10 @@ class CommandSyncer(BaseSyncer):
         validate_sync_string(sync_template)
         self._sync_template = sync_template
         self.logfile = tempfile.NamedTemporaryFile(
-            prefix="log_sync", dir=self._local_dir, suffix=".log", delete=False)
+            prefix="log_sync",
+            dir=self._local_dir,
+            suffix=".log",
+            delete=False)
 
         self.sync_process = None
 
@@ -167,9 +172,8 @@ def _get_sync_cls(sync_function):
     elif isinstance(sync_function, str):
         return CommandSyncer
     else:
-        raise ValueError(
-            "Sync function {} must be string or function".format(
-                sync_function))
+        raise ValueError("Sync function {} must be string or function".format(
+            sync_function))
 
 
 def get_syncer(local_dir, remote_dir=None, sync_function=None):
@@ -204,15 +208,15 @@ def get_syncer(local_dir, remote_dir=None, sync_function=None):
             raise TuneError(
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX))
-        _syncers[key] = CommandSyncer(
-            local_dir, remote_dir, "aws s3 sync {source} {target}")
+        _syncers[key] = CommandSyncer(local_dir, remote_dir,
+                                      "aws s3 sync {source} {target}")
     elif remote_dir.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):
             raise TuneError(
                 "Upload uri starting with '{}' requires gsutil tool"
                 " to be installed".format(GS_PREFIX))
         _syncers[key] = CommandSyncer(local_dir, remote_dir,
-                             "gsutil rsync -r {source} {target}")
+                                      "gsutil rsync -r {source} {target}")
     else:
         raise TuneError("Upload uri must start with one of: {}"
                         "".format(ALLOWED_REMOTE_PREFIXES))

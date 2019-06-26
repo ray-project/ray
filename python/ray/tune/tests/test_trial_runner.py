@@ -1014,11 +1014,9 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_driver": "ls {source}"
                 })
 
-        tmpdir = tempfile.mkdtemp()
-        logfile = os.path.join(tmpdir, "test.log")
-
-        with patch("ray.tune.syncer.CommandSyncer.sync_function") as mock_fn, patch(
-                "ray.services.get_node_ip_address") as mock_sync:
+        with patch("ray.tune.syncer.CommandSyncer.sync_function"
+                   ) as mock_fn, patch(
+                       "ray.services.get_node_ip_address") as mock_sync:
             mock_sync.return_value = "0.0.0.0"
             [trial] = tune.run(
                 "__fake",
@@ -1034,6 +1032,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
     def testCloudFunctions(self):
         tmpdir = tempfile.mkdtemp()
+
         def sync_func(local, remote):
             with open(os.path.join(local, "test.log"), "w") as f:
                 print("writing to", f.name)
@@ -1068,8 +1067,7 @@ class TestSyncFunctionality(unittest.TestCase):
             name="foo",
             max_failures=0,
             stop={"training_iteration": 1},
-            sync_to_driver=tune.function(sync_func_driver)
-        )
+            sync_to_driver=tune.function(sync_func_driver))
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
@@ -1080,12 +1078,10 @@ class TestSyncFunctionality(unittest.TestCase):
                 name="foo",
                 max_failures=0,
                 stop={"training_iteration": 1},
-                sync_to_driver=tune.function(sync_func_driver)
-            )
+                sync_to_driver=tune.function(sync_func_driver))
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
-
 
     def testNoSync(self):
         def sync_func(source, target):
