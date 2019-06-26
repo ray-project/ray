@@ -101,7 +101,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                      gcs_client_->raylet_task_table(), gcs_client_->raylet_task_table(),
                      config.max_lineage_size),
       actor_registry_(),
-      node_manager_server_(config.node_manager_port, io_service, *this),
+      node_manager_server_("NodeManager", config.node_manager_port),
+      node_manager_service_(io_service, *this),
       client_call_manager_(io_service) {
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -119,6 +120,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
   RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
+  node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.Run();
 }
 

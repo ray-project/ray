@@ -25,25 +25,22 @@ class NodeManagerServiceHandler {
                                  RequestDoneCallback done_callback) = 0;
 };
 
-/// The `GrpcServer` for `NodeManagerService`.
-class NodeManagerServer : public GrpcServer {
+/// The `GrpcService` for `NodeManagerService`.
+class NodeManagerGrpcService : public GrpcService {
  public:
   /// Constructor.
   ///
-  /// \param[in] port See super class.
-  /// \param[in] main_service See super class.
+  /// \param[in] io_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  NodeManagerServer(const uint32_t port, boost::asio::io_service &main_service,
-                    NodeManagerServiceHandler &service_handler)
-      : GrpcServer("NodeManager", port, main_service),
-        service_handler_(service_handler){};
+  NodeManagerGrpcService(boost::asio::io_service &io_service,
+                         NodeManagerServiceHandler &service_handler)
+      : GrpcService(io_service), service_handler_(service_handler){};
 
-  void RegisterServices(grpc::ServerBuilder &builder) override {
-    /// Register `NodeManagerService`.
-    builder.RegisterService(&service_);
-  }
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
     // Initialize the factory for `ForwardTask` requests.
@@ -51,7 +48,8 @@ class NodeManagerServer : public GrpcServer {
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
                                   ForwardTaskRequest, ForwardTaskReply>(
             service_, &NodeManagerService::AsyncService::RequestForwardTask,
-            service_handler_, &NodeManagerServiceHandler::HandleForwardTask, cq_));
+            service_handler_, &NodeManagerServiceHandler::HandleForwardTask, cq,
+            main_service_));
 
     // Set `ForwardTask`'s accept concurrency to 100.
     server_call_factories_and_concurrencies->emplace_back(
@@ -61,6 +59,7 @@ class NodeManagerServer : public GrpcServer {
  private:
   /// The grpc async service object.
   NodeManagerService::AsyncService service_;
+
   /// The service handler that actually handle the requests.
   NodeManagerServiceHandler &service_handler_;
 };
