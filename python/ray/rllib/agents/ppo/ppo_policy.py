@@ -98,9 +98,8 @@ class PPOLoss(object):
                 vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
         else:
             self.mean_vf_loss = tf.constant(0.0)
-            loss = reduce_mean_valid(-surrogate_loss +
-                                     cur_kl_coeff * action_kl -
-                                     entropy_coeff * curr_entropy)
+            loss = reduce_mean_valid(-surrogate_loss + cur_kl_coeff * action_kl
+                                     - entropy_coeff * curr_entropy)
         self.loss = loss
 
 
@@ -149,7 +148,6 @@ def kl_and_loss_stats(policy, batch_tensors):
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
-
     }
 
     return stats_fetches
@@ -270,7 +268,8 @@ class ValueNetworkMixin(object):
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     KLCoeffMixin.__init__(policy, config)
-    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"], config["entropy_coeff_schedule"])
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
@@ -283,4 +282,7 @@ PPOTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_ppo_gae,
     gradients_fn=clip_gradients,
     before_loss_init=setup_mixins,
-    mixins=[LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin, ValueNetworkMixin])
+    mixins=[
+        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
+        ValueNetworkMixin
+    ])

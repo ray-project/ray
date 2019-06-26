@@ -379,7 +379,8 @@ class ValueNetworkMixin(object):
 
 
 def setup_mixins(policy, obs_space, action_space, config):
-    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"], config["entropy_coeff_schedule"])
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     ValueNetworkMixin.__init__(policy)
 

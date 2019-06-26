@@ -113,8 +113,9 @@ class VTracePostprocessing(object):
     @override(TFPolicy)
     def extra_compute_action_fetches(self):
         return dict(
-            TFPolicy.extra_compute_action_fetches(self),
-            **{BEHAVIOUR_LOGITS: self.model.outputs})
+            TFPolicy.extra_compute_action_fetches(self), **{
+                BEHAVIOUR_LOGITS: self.model.outputs
+            })
 
     @override(Policy)
     def postprocess_trajectory(self,
@@ -126,7 +127,8 @@ class VTracePostprocessing(object):
         return sample_batch
 
 
-class VTraceTFPolicy(LearningRateSchedule, EntropyCoeffSchedule, VTracePostprocessing, TFPolicy):
+class VTraceTFPolicy(LearningRateSchedule, EntropyCoeffSchedule,
+                     VTracePostprocessing, TFPolicy):
     def __init__(self,
                  observation_space,
                  action_space,
