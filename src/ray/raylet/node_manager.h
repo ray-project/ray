@@ -27,10 +27,10 @@ namespace raylet {
 
 using rpc::ActorTableData;
 using rpc::ClientTableData;
-using rpc::JobTableData;
 using rpc::ErrorType;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
+using rpc::JobTableData;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.

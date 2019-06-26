@@ -563,9 +563,8 @@ void TestLogSubscribeAll(const JobID &job_id,
     job_ids.emplace_back(JobID::FromRandom());
   }
   // Callback for a notification.
-  auto notification_callback = [job_ids](gcs::AsyncGcsClient *client,
-                                            const JobID &id,
-                                            const std::vector<JobTableData> data) {
+  auto notification_callback = [job_ids](gcs::AsyncGcsClient *client, const JobID &id,
+                                         const std::vector<JobTableData> data) {
     ASSERT_EQ(id, job_ids[test->NumCallbacks()]);
     // Check that we get notifications in the same order as the writes.
     for (const auto &entry : data) {
@@ -1027,8 +1026,7 @@ void TestLogSubscribeCancel(const JobID &job_id,
     for (const auto &remaining_job_id : remaining) {
       auto data = std::make_shared<JobTableData>();
       data->set_job_id(remaining_job_id);
-      RAY_CHECK_OK(
-          client->job_table().Append(job_id, random_job_id, data, nullptr));
+      RAY_CHECK_OK(client->job_table().Append(job_id, random_job_id, data, nullptr));
     }
     // Request notifications again. We should receive a notification for the
     // current values at the key.

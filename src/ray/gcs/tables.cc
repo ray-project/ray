@@ -288,8 +288,8 @@ std::string Table<ID, Data>::DebugString() const {
 }
 
 template <typename ID, typename Data>
-Status Set<ID, Data>::Add(const JobID &job_id, const ID &id,
-                          std::shared_ptr<Data> &data, const WriteCallback &done) {
+Status Set<ID, Data>::Add(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
+                          const WriteCallback &done) {
   num_adds_++;
   auto callback = [this, id, data, done](const CallbackReply &reply) {
     if (done != nullptr) {

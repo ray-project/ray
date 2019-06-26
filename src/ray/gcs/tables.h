@@ -24,12 +24,12 @@ using rpc::ActorCheckpointData;
 using rpc::ActorCheckpointIdData;
 using rpc::ActorTableData;
 using rpc::ClientTableData;
-using rpc::JobTableData;
 using rpc::ErrorTableData;
 using rpc::GcsChangeMode;
 using rpc::GcsEntry;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
+using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::ProfileTableData;
 using rpc::RayResource;
@@ -67,8 +67,8 @@ class LogInterface {
  public:
   using WriteCallback =
       std::function<void(AsyncGcsClient *client, const ID &id, const Data &data)>;
-  virtual Status Append(const JobID &job_id, const ID &id,
-                        std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
+  virtual Status Append(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
+                        const WriteCallback &done) = 0;
   virtual Status AppendAt(const JobID &job_id, const ID &task_id,
                           std::shared_ptr<Data> &data, const WriteCallback &done,
                           const WriteCallback &failure, int log_length) = 0;
@@ -272,8 +272,8 @@ template <typename ID, typename Data>
 class TableInterface {
  public:
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const JobID &job_id, const ID &task_id,
-                     std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
+  virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<Data> &data,
+                     const WriteCallback &done) = 0;
   virtual ~TableInterface(){};
 };
 
@@ -380,8 +380,8 @@ class SetInterface {
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
   virtual Status Add(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
                      const WriteCallback &done) = 0;
-  virtual Status Remove(const JobID &job_id, const ID &id,
-                        std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
+  virtual Status Remove(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
+                        const WriteCallback &done) = 0;
   virtual ~SetInterface(){};
 };
 
@@ -691,8 +691,8 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
     prefix_ = TablePrefix::TASK_LEASE;
   }
 
-  Status Add(const JobID &job_id, const TaskID &id,
-             std::shared_ptr<TaskLeaseData> &data, const WriteCallback &done) override {
+  Status Add(const JobID &job_id, const TaskID &id, std::shared_ptr<TaskLeaseData> &data,
+             const WriteCallback &done) override {
     RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(job_id, id, data, done)));
     // Mark the entry for expiration in Redis. It's okay if this command fails
     // since the lease entry itself contains the expiration period. In the

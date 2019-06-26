@@ -215,13 +215,12 @@ ray::Status NodeManager::RegisterGcs() {
       /*done_callback=*/nullptr));
 
   // Subscribe to driver table updates.
-  const auto job_table_handler =
-      [this](gcs::AsyncGcsClient *client, const JobID &job_id,
-             const std::vector<JobTableData> &job_data) {
-        HandleJobTableUpdate(job_id, job_data);
-      };
-  RAY_RETURN_NOT_OK(gcs_client_->job_table().Subscribe(
-      JobID::Nil(), ClientID::Nil(), job_table_handler, nullptr));
+  const auto job_table_handler = [this](gcs::AsyncGcsClient *client, const JobID &job_id,
+                                        const std::vector<JobTableData> &job_data) {
+    HandleJobTableUpdate(job_id, job_data);
+  };
+  RAY_RETURN_NOT_OK(gcs_client_->job_table().Subscribe(JobID::Nil(), ClientID::Nil(),
+                                                       job_table_handler, nullptr));
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
@@ -252,11 +251,11 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
   });
 }
 
-void NodeManager::HandleJobTableUpdate(
-    const JobID &id, const std::vector<JobTableData> &job_data) {
+void NodeManager::HandleJobTableUpdate(const JobID &id,
+                                       const std::vector<JobTableData> &job_data) {
   for (const auto &entry : job_data) {
-    RAY_LOG(DEBUG) << "HandleJobTableUpdate "
-                   << UniqueID::FromBinary(entry.job_id()) << " " << entry.is_dead();
+    RAY_LOG(DEBUG) << "HandleJobTableUpdate " << UniqueID::FromBinary(entry.job_id())
+                   << " " << entry.is_dead();
     if (entry.is_dead()) {
       auto job_id = JobID::FromBinary(entry.job_id());
       auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
@@ -1147,8 +1146,8 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   auto const &error_message = string_from_flatbuf(*message->error_message());
   double timestamp = message->timestamp();
 
-  RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(job_id, type,
-                                                            error_message, timestamp));
+  RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(job_id, type, error_message,
+                                                            timestamp));
 }
 
 void NodeManager::ProcessPrepareActorCheckpointRequest(
@@ -1415,8 +1414,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
       std::string error_message = stream.str();
       RAY_LOG(WARNING) << error_message;
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          task.GetTaskSpecification().JobId(), "task", error_message,
-          current_time_ms()));
+          task.GetTaskSpecification().JobId(), "task", error_message, current_time_ms()));
     }
   }
   task_dependency_manager_.TaskCanceled(spec.TaskId());

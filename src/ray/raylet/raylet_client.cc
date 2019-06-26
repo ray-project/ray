@@ -319,8 +319,7 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   return ray::Status::OK();
 }
 
-ray::Status RayletClient::PushError(const ray::JobID &job_id,
-                                    const std::string &type,
+ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string &type,
                                     const std::string &error_message, double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreatePushErrorRequest(

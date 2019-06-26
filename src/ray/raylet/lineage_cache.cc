@@ -275,9 +275,8 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   // TODO(swang): Make this better...
   auto task_data = std::make_shared<TaskTableData>();
   task_data->set_task(task->TaskData().Serialize());
-  RAY_CHECK_OK(
-      task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().JobId()),
-                        task_id, task_data, task_callback));
+  RAY_CHECK_OK(task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().JobId()),
+                                 task_id, task_data, task_callback));
 
   // We successfully wrote the task, so mark it as committing.
   // TODO(swang): Use a batched interface and write with all object entries.
