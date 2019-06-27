@@ -2125,7 +2125,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
         self.assertEquals(trials[2].status, Trial.RUNNING)
 
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         for tid in ["trial_terminate", "trial_fail"]:
             original_trial = runner.get_trial(tid)
             restored_trial = runner2.get_trial(tid)
@@ -2177,7 +2177,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         runner.step()
 
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         new_trials = runner2.get_trials()
         self.assertEquals(len(new_trials), 3)
         self.assertTrue(
@@ -2206,7 +2206,7 @@ class TrialRunnerTest(unittest.TestCase):
             runner.step()
         # force checkpoint
         runner.checkpoint()
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         new_trial = runner2.get_trials()[0]
         self.assertTrue("callbacks" in new_trial.config)
         self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
@@ -2229,7 +2229,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.checkpoint()
         self.assertEquals(count_checkpoints(tmpdir), 1)
 
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         for i in range(5):
             runner2.step()
         self.assertEquals(count_checkpoints(tmpdir), 2)

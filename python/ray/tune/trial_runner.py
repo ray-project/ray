@@ -163,7 +163,7 @@ class TrialRunner(object):
 
         if self._validate_resume(resume_type=resume):
             try:
-                self._resume()
+                self.resume()
                 logger.info("Resuming trial.")
                 self._resumed = True
             except Exception:
@@ -181,9 +181,9 @@ class TrialRunner(object):
         Args:
             resume_type: One of "REMOTE", "LOCAL", "PROMPT".
         """
-        assert self._local_checkpoint_dir or self._remote_checkpoint_dir
         if not resume_type:
             return False
+        assert self._local_checkpoint_dir or self._remote_checkpoint_dir
         if resume_type in ["LOCAL", "PROMPT"]:
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError("Called resume when no checkpoint exists "
@@ -252,7 +252,7 @@ class TrialRunner(object):
         self._syncer.sync_up_if_needed()
         return self._local_checkpoint_dir
 
-    def _resume(self):
+    def resume(self):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops

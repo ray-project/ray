@@ -296,7 +296,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     ray.shutdown()
 
     cluster = _start_new_cluster()
-    runner = TrialRunner.restore(dirpath)
+    runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
     runner.step()  # start
     runner.step()  # start2
 
@@ -382,7 +382,7 @@ tune.run_experiments(
     for i in range(100):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner.restore(local_checkpoint_dir)
+            runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res and last_res.get("training_iteration"):
@@ -474,7 +474,7 @@ tune.run_experiments(
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner.restore(local_checkpoint_dir)
+            runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res and last_res.get("training_iteration") == 3:
@@ -490,7 +490,7 @@ tune.run_experiments(
     Experiment._register_if_needed(_Mock)
 
     # Inspect the internal trialrunner
-    runner = TrialRunner.restore(local_checkpoint_dir)
+    runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
     trials = runner.get_trials()
     assert trials[0].last_result["training_iteration"] == 3
     assert trials[0].status == Trial.PENDING

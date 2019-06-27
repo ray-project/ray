@@ -36,28 +36,6 @@ def _make_scheduler(args):
             args.scheduler, _SCHEDULERS.keys()))
 
 
-def _should_resume(checkpoint_dir, resume):
-    restore = False
-    if TrialRunner.checkpoint_exists(checkpoint_dir):
-        if resume == "prompt":
-            msg = ("Found incomplete experiment at {}. "
-                   "Would you like to resume it?".format(checkpoint_dir))
-            restore = click.confirm(msg, default=False)
-            if restore:
-                logger.info("Tip: to always resume, "
-                            "pass resume=True to run()")
-            else:
-                logger.info("Tip: to always start a new experiment, "
-                            "pass resume=False to run()")
-        elif resume:
-            restore = True
-        else:
-            logger.info("Tip: to resume incomplete experiments, "
-                        "pass resume='prompt' or resume=True to run()")
-
-    return restore
-
-
 def _get_resume_path(local_checkpoint_dir, remote_checkpoint_dir):
     if TrialRunner.checkpoint_exists(local_checkpoint_dir):
         return local_checkpoint_dir
