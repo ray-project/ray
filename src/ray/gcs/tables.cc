@@ -534,7 +534,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   // Add as is
   RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable Insertion/Deletion "
                     "notification for client id "
-                   << client_id << ". EntryType: " << int(data.entry_type())
+                 << client_id << ". EntryType: " << int(data.entry_type())
                  << ". Setting the client cache to data.";
   client_cache_[client_id] = data;
 
