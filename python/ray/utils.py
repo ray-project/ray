@@ -221,11 +221,6 @@ def binary_to_task_id(binary_task_id):
     return ray.TaskID(binary_task_id)
 
 
-def compute_driver_id_from_job_id(job_id):
-    assert isinstance(job_id, ray.JobID)
-    return ray.WorkerID(job_id.binary())
-
-
 def binary_to_hex(identifier):
     hex_identifier = binascii.hexlify(identifier)
     if sys.version_info >= (3, 0):
